@@ -1,0 +1,17 @@
+[package]
+name = "reifydb"
+authors = ["Dev <dominique@reifydb.com>"]
+homepage = "https://reifydb.com"
+readme = "readme.md"
+license = "AGPL-3"
+
+version = "0.0.1"
+rust-version = "1.85.1"
+edition = "2021"
+
+
+[dependencies]
+
+[profile.dev]
+lto = false
+opt-level = 0
