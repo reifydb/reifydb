@@ -170,11 +170,8 @@ dependencies = [
  "goldenfile",
  "nom",
  "nom_locate",
- "scopeguard",
- "similar-asserts",
- "tempfile",
+ "serde",
  "test_each_file",
- "yansi",
 ]
 
 [[package]]

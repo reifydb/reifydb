@@ -12,12 +12,9 @@ edition = "2021"
 
 [dependencies]
 goldenfile = "1.5"
-nom = {version = "8.0.0"}
-nom_locate = {version = "5.0.0"}
-scopeguard = {version = "1.2.0"}
-similar-asserts = {version = "1.7.0"}
-tempfile = {version = "3.19.1"}
-yansi = {version = "1.0.1"}
+nom = { version = "8.0.0" }
+nom_locate = { version = "5.0.0" }
+serde = { version = "1.0.219", features = ["derive"] }
 
 [dev-dependencies]
 test_each_file = "0.3.2"

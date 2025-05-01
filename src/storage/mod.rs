@@ -4,4 +4,3 @@
 pub use error::Error;
 
 mod error;
-mod value;
