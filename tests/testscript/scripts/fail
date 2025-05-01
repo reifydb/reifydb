@@ -1,0 +1,27 @@
+# ! is parsed correctly into the fail attribute. It is output as an error, since
+# the runner expects an error.
+! command arg
+---
+Error: Command { name: "command", args: [Argument { key: None, value: "arg" }], prefix: None, tags: {}, silent: false, fail: true, line_number: 3 }
+
+# Errors and panics are handled when ! is given.
+! _error foo
+---
+Error: foo
+
+! _panic foo
+---
+Panic: foo
+
+# () can be used to silence the output.
+(!_error foo)
+(!_panic foo)
+---
+ok
+
+# Prefixes can be used too.
+a: ! _error foo
+b:!_panic foo
+---
+a: Error: foo
+b: Panic: foo

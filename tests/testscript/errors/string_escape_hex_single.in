@@ -1,0 +1,3 @@
+# A single hex character in an \x escape errors.
+'\xf'
+---

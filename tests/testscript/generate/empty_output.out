@@ -1,0 +1,13 @@
+# The parser should handle multiple empty output blocks in sequence, including
+# an empty block at the end of the file.
+command
+---
+Command { name: "command", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 3 }
+
+command
+---
+Command { name: "command", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 6 }
+
+command
+---
+Command { name: "command", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 9 }

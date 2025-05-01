@@ -1,0 +1,3 @@
+# A non-hex character in an \x escape errors.
+'\xfg'
+---

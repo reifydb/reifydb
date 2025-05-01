@@ -1,0 +1,4 @@
+# Whitespace before a command is disallowed, since we may want to support
+# indentation later for whatever purpose.
+   command
+---

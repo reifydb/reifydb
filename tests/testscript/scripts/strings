@@ -1,0 +1,67 @@
+# Unquoted strings can be numeric.
+0: 1 2 3=4
+01: 23 45 67=89
+---
+0: Command { name: "1", args: [Argument { key: None, value: "2" }, Argument { key: Some("3"), value: "4" }], prefix: Some("0"), tags: {}, silent: false, fail: false, line_number: 2 }
+01: Command { name: "23", args: [Argument { key: None, value: "45" }, Argument { key: Some("67"), value: "89" }], prefix: Some("01"), tags: {}, silent: false, fail: false, line_number: 3 }
+
+# Unquoted strings can start with _.
+_prefix: _command _arg _key=_value
+---
+_prefix: Command { name: "_command", args: [Argument { key: None, value: "_arg" }, Argument { key: Some("_key"), value: "_value" }], prefix: Some("_prefix"), tags: {}, silent: false, fail: false, line_number: 9 }
+
+# Unquoted strings can contain -_./@
+prefix-_.: command-_./@ arg-_./@ key-_./@=value-_./@
+---
+prefix-_.: Command { name: "command-_./@", args: [Argument { key: None, value: "arg-_./@" }, Argument { key: Some("key-_./@"), value: "value-_./@" }], prefix: Some("prefix-_."), tags: {}, silent: false, fail: false, line_number: 14 }
+
+# Single-quoted strings can contain any character, including newlines.
+'➡️': '😀' '"👋"' '\t'='\0' '
+
+  🚀
+
+'
+---
+➡️: Command { name: "😀", args: [Argument { key: None, value: "\"👋\"" }, Argument { key: Some("\t"), value: "\0" }, Argument { key: None, value: "\n\n  🚀\n\n" }], prefix: Some("➡\u{fe0f}"), tags: {}, silent: false, fail: false, line_number: 19 }
+
+# Double-quoted strings can too.
+"➡️": "😀" "'👋'" "\t"="\0" "
+
+  🚀
+
+"
+---
+➡️: Command { name: "😀", args: [Argument { key: None, value: "'👋'" }, Argument { key: Some("\t"), value: "\0" }, Argument { key: None, value: "\n\n  🚀\n\n" }], prefix: Some("➡\u{fe0f}"), tags: {}, silent: false, fail: false, line_number: 28 }
+
+# Single- and double-quoted strings can also be empty, but is not allowed in
+# identifiers (prefixes, commands, and argument names). It is allowed as
+# argument values.
+command foo="" bar=''
+---
+Command { name: "command", args: [Argument { key: Some("foo"), value: "" }, Argument { key: Some("bar"), value: "" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 39 }
+
+# Escape sequences are respected both in single and double quotes, including
+# both quote types.
+'\\ \' \" \0 \n \r \t \\ \x00 \x7A \xff \u{1F44b}'
+"\\ \' \" \0 \n \r \t \\ \x00 \x7A \xff \u{1F44b}"
+---
+Command { name: "\\ ' \" \0 \n \r \t \\ \0 z ÿ 👋", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 45 }
+Command { name: "\\ ' \" \0 \n \r \t \\ \0 z ÿ 👋", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 46 }
+
+# Quoted strings can contain the other, unescaped quote kind.
+'"'
+"'"
+---
+Command { name: "\"", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 52 }
+Command { name: "'", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 53 }
+
+# Quoted strings can also contain special characters like silencing ( and prefix
+# : without them being interpreted as such.
+'(command:' arg
+---
+Command { name: "(command:", args: [Argument { key: None, value: "arg" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 60 }
+
+# They can also contain comments.
+'command # with comment'
+---
+Command { name: "command # with comment", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 65 }

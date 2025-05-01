@@ -1,0 +1,29 @@
+# Comment at start.
+#
+# Comments can contain arbitrary characters, like 👋 and	(tab).
+
+# Comment before command.
+command id=1
+---
+Command { name: "command", args: [Argument { key: Some("id"), value: "1" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 6 }
+
+command id=2 # Comment beside command.
+---
+Command { name: "command", args: [Argument { key: Some("id"), value: "2" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 10 }
+
+command id=3
+# Comment after command.
+---
+Command { name: "command", args: [Argument { key: Some("id"), value: "3" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 14 }
+
+# Comment between blocks.
+
+command id=4
+---
+Command { name: "command", args: [Argument { key: Some("id"), value: "4" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 21 }
+
+command id=5 // Comment using //.
+---
+Command { name: "command", args: [Argument { key: Some("id"), value: "5" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 25 }
+
+# Comment at end.

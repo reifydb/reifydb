@@ -1,0 +1,17 @@
+# Silencing a command should suppress its output.
+(command)
+---
+ok
+
+# Interspersing silenced commands with non-silenced ones should work.
+command id=1
+(command id=2)
+command id=3
+---
+Command { name: "command", args: [Argument { key: Some("id"), value: "1" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 7 }
+Command { name: "command", args: [Argument { key: Some("id"), value: "3" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 9 }
+
+# Whitespace is allowed around the parentheses, except for the first.
+( command  )  # eol
+---
+ok

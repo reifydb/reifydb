@@ -1,0 +1,4 @@
+# A bare backslash in a quoted string errors, as an unknown escape sequence.
+# This is a bit unfortunate, but it's how nom's escaped_transform() works.
+'\ '
+---
