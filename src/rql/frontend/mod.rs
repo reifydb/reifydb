@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub use error::Error;
-
-mod error;
-mod value;
-mod frontend;
+mod ast;
+mod lex;
+mod parse;

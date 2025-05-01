@@ -4,5 +4,9 @@
 pub use error::Error;
 
 mod error;
-mod value;
-mod frontend;
+mod keyword;
+mod lexer;
+mod operator;
+mod separator;
+
+pub type Result<T> = std::result::Result<T, Error>;
