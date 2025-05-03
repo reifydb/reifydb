@@ -42,11 +42,12 @@ macro_rules! keyword {
 
 keyword! {
     Select     => "SELECT",
+    By         => "BY",
     From       => "FROM",
     Where      => "WHERE",
-    GroupBy    => "GROUP BY",
+    Group      => "GROUP",
     Having     => "HAVING",
-    OrderBy    => "ORDER BY",
+    Order      => "ORDER",
     Limit      => "LIMIT",
     Offset     => "OFFSET",
 
@@ -105,11 +106,12 @@ pub(crate) fn parse_keyword(input: Span) -> IResult<Span, Token> {
     let parser = alt((
         alt((
             value(Keyword::Select, tag_no_case("SELECT")),
+            value(Keyword::By, tag_no_case("By")),
             value(Keyword::From, tag_no_case("FROM")),
             value(Keyword::Where, tag_no_case("WHERE")),
-            value(Keyword::GroupBy, tag_no_case("GROUP BY")),
+            value(Keyword::Group, tag_no_case("GROUP")),
             value(Keyword::Having, tag_no_case("HAVING")),
-            value(Keyword::OrderBy, tag_no_case("ORDER BY")),
+            value(Keyword::Order, tag_no_case("ORDER")),
             value(Keyword::Limit, tag_no_case("LIMIT")),
             value(Keyword::Offset, tag_no_case("OFFSET")),
             value(Keyword::Insert, tag_no_case("INSERT")),
@@ -203,11 +205,12 @@ mod tests {
 
     generate_keyword_tests! {
         test_keyword_select => (Select, "SELECT"),
+        test_keyword_by => (By, "BY"),
         test_keyword_from => (From, "FROM"),
         test_keyword_where => (Where, "WHERE"),
-        test_keyword_group_by => (GroupBy, "GROUP BY"),
+        test_keyword_group => (Group, "GROUP"),
         test_keyword_having => (Having, "HAVING"),
-        test_keyword_order_by => (OrderBy, "ORDER BY"),
+        test_keyword_order => (Order, "ORDER"),
         test_keyword_limit => (Limit, "LIMIT"),
         test_keyword_offset => (Offset, "OFFSET"),
         test_keyword_insert => (Insert, "INSERT"),
