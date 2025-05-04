@@ -1,11 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::frontend::lex::{Error, Span, Token, TokenKind};
+use crate::rql::frontend::lex::{Error, Token, TokenKind};
 use nom::branch::alt;
 use nom::bytes::tag_no_case;
-use nom::combinator::value;
+use nom::character::complete::alphanumeric1;
+use nom::combinator::{map, not, peek};
+use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
+use nom_locate::LocatedSpan;
 use std::fmt::{Display, Formatter};
 
 macro_rules! keyword {
@@ -97,71 +100,76 @@ impl Display for Keyword {
     }
 }
 
-pub(crate) fn parse_keyword(input: Span) -> IResult<Span, Token> {
+type Span<'a> = LocatedSpan<&'a str>;
+
+fn keyword_tag<'a>(kw: Keyword, tag: &'static str) -> impl Parser<Span<'a>, Output = Keyword, Error = nom::error::Error<Span<'a>>> + 'a {
+    move |input: Span<'a>| map(terminated(tag_no_case(tag), not(peek(alphanumeric1))), move |_| kw).parse(input)
+}
+pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     let start = input;
 
     let parser = alt((
         alt((
-            value(Keyword::Select, tag_no_case("SELECT")),
-            value(Keyword::By, tag_no_case("By")),
-            value(Keyword::From, tag_no_case("FROM")),
-            value(Keyword::Where, tag_no_case("WHERE")),
-            value(Keyword::Group, tag_no_case("GROUP")),
-            value(Keyword::Having, tag_no_case("HAVING")),
-            value(Keyword::Order, tag_no_case("ORDER")),
-            value(Keyword::Limit, tag_no_case("LIMIT")),
-            value(Keyword::Offset, tag_no_case("OFFSET")),
-            value(Keyword::Insert, tag_no_case("INSERT")),
-            value(Keyword::Into, tag_no_case("INTO")),
-            value(Keyword::Values, tag_no_case("VALUES")),
-            value(Keyword::Update, tag_no_case("UPDATE")),
-            value(Keyword::Set, tag_no_case("SET")),
+            keyword_tag(Keyword::Select, "SELECT"),
+            keyword_tag(Keyword::By, "BY"),
+            keyword_tag(Keyword::From, "FROM"),
+            keyword_tag(Keyword::Where, "WHERE"),
+            keyword_tag(Keyword::Group, "GROUP"),
+            keyword_tag(Keyword::Having, "HAVING"),
+            keyword_tag(Keyword::Order, "ORDER"),
+            keyword_tag(Keyword::Limit, "LIMIT"),
+            keyword_tag(Keyword::Offset, "OFFSET"),
+            keyword_tag(Keyword::Insert, "INSERT"),
         )),
         alt((
-            value(Keyword::Delete, tag_no_case("DELETE")),
-            value(Keyword::Join, tag_no_case("JOIN")),
-            value(Keyword::On, tag_no_case("ON")),
-            value(Keyword::As, tag_no_case("AS")),
-            value(Keyword::Using, tag_no_case("USING")),
-            value(Keyword::Union, tag_no_case("UNION")),
-            value(Keyword::Intersect, tag_no_case("INTERSECT")),
-            value(Keyword::Except, tag_no_case("EXCEPT")),
-            value(Keyword::Let, tag_no_case("LET")),
-            value(Keyword::If, tag_no_case("IF")),
-            value(Keyword::Else, tag_no_case("ELSE")),
-            value(Keyword::End, tag_no_case("END")),
-            value(Keyword::Loop, tag_no_case("LOOP")),
+            keyword_tag(Keyword::Into, "INTO"),
+            keyword_tag(Keyword::Values, "VALUES"),
+            keyword_tag(Keyword::Update, "UPDATE"),
+            keyword_tag(Keyword::Set, "SET"),
+            keyword_tag(Keyword::Delete, "DELETE"),
+            keyword_tag(Keyword::Join, "JOIN"),
+            keyword_tag(Keyword::On, "ON"),
+            keyword_tag(Keyword::As, "AS"),
+            keyword_tag(Keyword::Using, "USING"),
+            keyword_tag(Keyword::Union, "UNION"),
+            keyword_tag(Keyword::Intersect, "INTERSECT"),
+            keyword_tag(Keyword::Except, "EXCEPT"),
+            keyword_tag(Keyword::Let, "LET"),
+            keyword_tag(Keyword::If, "IF"),
+            keyword_tag(Keyword::Else, "ELSE"),
+            keyword_tag(Keyword::End, "END"),
         )),
         alt((
-            value(Keyword::Return, tag_no_case("RETURN")),
-            value(Keyword::Define, tag_no_case("DEFINE")),
-            value(Keyword::Function, tag_no_case("FUNCTION")),
-            value(Keyword::Call, tag_no_case("CALL")),
-            value(Keyword::Describe, tag_no_case("DESCRIBE")),
-            value(Keyword::Show, tag_no_case("SHOW")),
-            value(Keyword::Create, tag_no_case("CREATE")),
-            value(Keyword::Drop, tag_no_case("DROP")),
-            value(Keyword::And, tag_no_case("AND")),
-            value(Keyword::Or, tag_no_case("OR")),
-            value(Keyword::Not, tag_no_case("NOT")),
-            value(Keyword::In, tag_no_case("IN")),
-            value(Keyword::Between, tag_no_case("BETWEEN")),
-            value(Keyword::Like, tag_no_case("LIKE")),
-            value(Keyword::Is, tag_no_case("IS")),
+            keyword_tag(Keyword::Loop, "LOOP"),
+            keyword_tag(Keyword::Return, "RETURN"),
+            keyword_tag(Keyword::Define, "DEFINE"),
+            keyword_tag(Keyword::Function, "FUNCTION"),
+            keyword_tag(Keyword::Call, "CALL"),
+            keyword_tag(Keyword::Describe, "DESCRIBE"),
+            keyword_tag(Keyword::Show, "SHOW"),
+            keyword_tag(Keyword::Create, "CREATE"),
+            keyword_tag(Keyword::Drop, "DROP"),
+            keyword_tag(Keyword::And, "AND"),
+            keyword_tag(Keyword::Or, "OR"),
+            keyword_tag(Keyword::Not, "NOT"),
+            keyword_tag(Keyword::In, "IN"),
+            keyword_tag(Keyword::Between, "BETWEEN"),
+            keyword_tag(Keyword::Like, "LIKE"),
+            keyword_tag(Keyword::Is, "IS"),
         )),
     ));
 
-    parser.map(|kw| Token { kind: TokenKind::Keyword(kw), span: start.take(kw.as_str().len()) }).parse(input)
+    parser.map(|kw| Token { kind: TokenKind::Keyword(kw), span: start.take(kw.as_str().len()).into() }).parse(input)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::rql::frontend::lex::keyword::{parse_keyword, Keyword};
-    use crate::rql::frontend::lex::{Span, Token, TokenKind};
+    use crate::rql::frontend::lex::{LocatedSpan, TokenKind};
 
     #[test]
     fn test_parse_keyword_invalid() {
-        let input = Span::new("foobar rest");
+        let input = LocatedSpan::new("foobar rest");
         let result = parse_keyword(input);
 
         assert!(result.is_err(), "expected error parsing invalid keyword, got: {:?}", result);
@@ -171,18 +179,16 @@ mod tests {
         for mode in [false, true] {
             let input_str = if mode { format!("{repr} rest") } else { format!("{} rest", repr.to_uppercase()) };
 
-            let input = Span::new(&input_str);
+            let input = LocatedSpan::new(input_str.as_str());
 
             let result = parse_keyword(input).unwrap();
             let (remaining, token) = result;
 
-            let expected = Token { kind: TokenKind::Keyword(keyword), span: Span::new(repr) };
-
-            assert_eq!(token.kind, expected.kind, "kind mismatch for keyword: {}", repr);
-            assert_eq!(token.span.fragment(), &repr);
-            assert_eq!(token.span.location_offset(), 0);
-            assert_eq!(token.span.location_line(), 1);
-            assert_eq!(remaining.fragment(), &format!(" rest"));
+            assert_eq!(TokenKind::Keyword(keyword), token.kind, "kind mismatch for keyword: {}", repr);
+            assert_eq!(token.span.fragment, repr);
+            assert_eq!(token.span.offset, 0);
+            assert_eq!(token.span.line, 1);
+            assert_eq!(*remaining.fragment(), " rest");
         }
     }
 

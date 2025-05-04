@@ -1,11 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::frontend::lex::{Span, Token, TokenKind};
+use crate::rql::frontend::lex::{Token, TokenKind};
 use nom::branch::alt;
 use nom::bytes::tag;
 use nom::combinator::value;
 use nom::{IResult, Input, Parser};
+use nom_locate::LocatedSpan;
 
 macro_rules! operator {
     (
@@ -57,7 +58,7 @@ operator! {
     QuestionMark     => "?"
 }
 
-pub(crate) fn parse_operator(input: Span) -> IResult<Span, Token> {
+pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     let start = input;
 
     let parser = alt((
@@ -97,17 +98,18 @@ pub(crate) fn parse_operator(input: Span) -> IResult<Span, Token> {
         )),
     ));
 
-    parser.map(|op| Token { kind: TokenKind::Operator(op), span: start.take(op.as_str().len()) }).parse(input)
+    parser.map(|op| Token { kind: TokenKind::Operator(op), span: start.take(op.as_str().len()).into() }).parse(input)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::rql::frontend::lex::operator::{parse_operator, Operator};
-    use crate::rql::frontend::lex::{Span, Token, TokenKind};
+    use crate::rql::frontend::lex::TokenKind;
+    use nom_locate::LocatedSpan;
 
     #[test]
     fn test_parse_operator_invalid() {
-        let input = Span::new("foobar rest");
+        let input = LocatedSpan::new("foobar rest");
         let result = parse_operator(input);
 
         assert!(result.is_err(), "expected error parsing invalid operator, got: {:?}", result);
@@ -115,17 +117,15 @@ mod tests {
 
     fn check_operator(op: Operator, symbol: &str) {
         let input_str = format!("{symbol} rest");
-        let input = Span::new(&input_str);
+        let input = LocatedSpan::new(input_str.as_str());
 
         let result = parse_operator(input).unwrap();
         let (remaining, token) = result;
 
-        let expected = Token { kind: TokenKind::Operator(op), span: Span::new(symbol) };
-
-        assert_eq!(token.kind, expected.kind, "kind mismatch for symbol: {}", symbol);
-        assert_eq!(token.span.fragment(), &symbol);
-        assert_eq!(token.span.location_offset(), 0);
-        assert_eq!(token.span.location_line(), 1);
+        assert_eq!(TokenKind::Operator(op), token.kind, "kind mismatch for symbol: {}", symbol);
+        assert_eq!(token.span.fragment, symbol);
+        assert_eq!(token.span.offset, 0);
+        assert_eq!(token.span.line, 1);
         assert_eq!(remaining.fragment(), &format!(" rest"));
     }
 

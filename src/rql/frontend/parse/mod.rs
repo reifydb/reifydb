@@ -2,7 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 mod error;
+mod identifier;
+mod infix;
+mod literal;
 mod node;
+mod primary;
+mod tuple;
+mod r#type;
 
 pub use error::*;
 
@@ -28,19 +34,20 @@ pub(crate) enum Precedence {
     Primary,
 }
 
-pub(crate) type Result<T, E = Error> = core::result::Result<T, E>;
+pub type Result<T> = core::result::Result<T, Error>;
 
-pub(crate) fn parse(tokens: Vec<Token>) -> Result<Vec<Node>> {
-    Parser::new(tokens).parse()
+pub(crate) fn parse<'a>(tokens: Vec<Token>) -> Result<Vec<Node>> {
+    let mut parser = Parser::new(tokens);
+    parser.parse()
 }
 
-struct Parser<'a> {
-    tokens: Vec<Token<'a>>,
+struct Parser {
+    tokens: Vec<Token>,
     precedence_map: HashMap<Operator, Precedence>,
 }
 
-impl<'a> Parser<'a> {
-    fn new(tokens: Vec<Token<'a>>) -> Self {
+impl Parser {
+    fn new(mut tokens: Vec<Token>) -> Self {
         let mut precedence_map = HashMap::new();
         precedence_map.insert(Operator::Equal, Precedence::Assignment);
 
@@ -67,7 +74,6 @@ impl<'a> Parser<'a> {
         precedence_map.insert(Operator::Arrow, Precedence::Primary);
         precedence_map.insert(Operator::Colon, Precedence::Primary);
 
-        let mut tokens = tokens;
         tokens.reverse();
         Self { tokens, precedence_map }
     }
@@ -141,7 +147,7 @@ impl<'a> Parser<'a> {
         if got.kind == expected {
             Ok(())
         } else {
-            Err(Error::unexpected(expected, got))
+            Err(Error::unexpected(expected, got.clone()))
         }
     }
 
@@ -171,7 +177,7 @@ impl<'a> Parser<'a> {
             let precedence = self.precedence_map.get(&operator).cloned();
             Ok(precedence.unwrap_or(Precedence::None))
         } else {
-            unreachable!()
+            Ok(Precedence::None)
         }
     }
 
@@ -187,7 +193,7 @@ impl<'a> Parser<'a> {
         if got.kind == expected {
             Ok(())
         } else {
-            Err(Error::unexpected(expected, got))
+            Err(Error::unexpected(expected, got.clone()))
         }
     }
 
@@ -204,15 +210,13 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use crate::rql::frontend::lex::Literal::{False, Number, True};
-    use crate::rql::frontend::lex::NumberKind::{Binary, Decimal, Hex, Octal};
+    use crate::rql::frontend::lex::Operator::Plus;
     use crate::rql::frontend::lex::Separator::Semicolon;
-    use crate::rql::frontend::lex::TokenKind::Separator;
-    use crate::rql::frontend::lex::{lex, Operator, TokenKind};
+    use crate::rql::frontend::lex::TokenKind::{Identifier, Literal, Separator};
+    use crate::rql::frontend::lex::{lex, TokenKind};
+    use crate::rql::frontend::parse::Error::UnexpectedEndOfFile;
     use crate::rql::frontend::parse::Precedence::Term;
     use crate::rql::frontend::parse::{Error, Parser, Precedence};
-    use Error::UnexpectedEndOfFile;
-    use Operator::Plus;
-    use TokenKind::{Identifier, Literal};
 
     #[test]
     fn test_advance_but_eof() {
@@ -227,16 +231,16 @@ mod tests {
         let mut parser = Parser::new(tokens);
 
         let one = parser.advance().unwrap();
-        assert_eq!(one.kind, Literal(Number(Decimal)));
-        assert_eq!(*one.span.fragment(), "1");
+        assert_eq!(one.kind, Literal(Number));
+        assert_eq!(one.span.fragment, "1");
 
         let plus = parser.advance().unwrap();
         assert_eq!(plus.kind, TokenKind::Operator(Plus));
-        assert_eq!(*plus.span.fragment(), "+");
+        assert_eq!(plus.span.fragment, "+");
 
         let two = parser.advance().unwrap();
-        assert_eq!(two.kind, Literal(Number(Decimal)));
-        assert_eq!(*two.span.fragment(), "2");
+        assert_eq!(two.kind, Literal(Number));
+        assert_eq!(two.span.fragment, "2");
     }
 
     #[test]
@@ -256,7 +260,7 @@ mod tests {
 
         if let Error::UnexpectedToken { expected, got, .. } = result.err().unwrap() {
             assert_eq!(expected, Literal(True));
-            assert_eq!(got, Literal(False));
+            assert_eq!(got.kind, Literal(False));
         }
     }
 
@@ -267,8 +271,8 @@ mod tests {
         let result = parser.consume(Literal(True)).unwrap();
         assert_eq!(result.kind, Literal(True));
 
-        let result = parser.consume(Literal(Number(Decimal))).unwrap();
-        assert_eq!(result.kind, Literal(Number(Decimal)));
+        let result = parser.consume(Literal(Number)).unwrap();
+        assert_eq!(result.kind, Literal(Number));
     }
 
     #[test]
@@ -294,8 +298,8 @@ mod tests {
         let result = parser.consume_if(Literal(True)).unwrap().unwrap();
         assert_eq!(result.kind, Literal(True));
 
-        let result = parser.consume_if(Literal(Number(Hex))).unwrap().unwrap();
-        assert_eq!(result.kind, Literal(Number(Hex)));
+        let result = parser.consume_if(Literal(Number)).unwrap().unwrap();
+        assert_eq!(result.kind, Literal(Number));
     }
 
     #[test]
@@ -352,7 +356,7 @@ mod tests {
 
         if let Error::UnexpectedToken { expected, got, .. } = result.err().unwrap() {
             assert_eq!(expected, Literal(False));
-            assert_eq!(got, Literal(True));
+            assert_eq!(got.kind, Literal(True));
         }
     }
 
@@ -398,7 +402,7 @@ mod tests {
 
         parser.advance().unwrap();
         let number_token = parser.peek().unwrap().clone();
-        assert_eq!(number_token.kind, Literal(Number(Decimal)));
+        assert_eq!(number_token.kind, Literal(Number));
     }
 
     #[test]
@@ -428,7 +432,7 @@ mod tests {
 
         parser.advance().unwrap();
 
-        let result = parser.peek_expect(Literal(Number(Octal)));
+        let result = parser.peek_expect(Literal(Number));
         assert!(result.is_ok());
     }
 
@@ -442,7 +446,7 @@ mod tests {
 
         if let Error::UnexpectedToken { expected, got, .. } = result.err().unwrap() {
             assert_eq!(expected, Literal(False));
-            assert_eq!(got, Literal(Number(Binary)))
+            assert_eq!(got.kind, Literal(Number))
         }
     }
 }
