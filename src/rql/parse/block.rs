@@ -4,18 +4,18 @@
 use crate::rql::lex::Operator::{CloseParen, OpenParen};
 use crate::rql::lex::Token;
 use crate::rql::parse;
-use crate::rql::parse::node::NodeBlock;
+use crate::rql::ast::AstBlock;
 use crate::rql::parse::{Parser, Precedence};
 
 impl Parser {
-    pub(crate) fn parse_block(&mut self) -> parse::Result<NodeBlock> {
+    pub(crate) fn parse_block(&mut self) -> parse::Result<AstBlock> {
         let token = self.consume_operator(OpenParen)?;
         let result = self.parse_block_inner(token)?;
         self.consume_operator(CloseParen)?;
         Ok(result)
     }
 
-    pub(crate) fn parse_block_inner(&mut self, token: Token) -> parse::Result<NodeBlock> {
+    pub(crate) fn parse_block_inner(&mut self, token: Token) -> parse::Result<AstBlock> {
         let mut nodes = Vec::new();
         loop {
             self.skip_new_line()?;
@@ -24,15 +24,15 @@ impl Parser {
             }
             nodes.push(self.parse_node(Precedence::None)?);
         }
-        Ok(NodeBlock { token, nodes })
+        Ok(AstBlock { token, nodes })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::rql::lex::lex;
-    use crate::rql::parse::node::Node::Literal;
-    use crate::rql::parse::node::NodeLiteral;
+    use crate::rql::ast::Ast::Literal;
+    use crate::rql::ast::AstLiteral;
     use crate::rql::parse::parse;
 
     #[test]
@@ -127,7 +127,7 @@ mod tests {
         let block = from.source.as_block();
         assert_eq!(block.nodes.len(), 1);
 
-        let Literal(NodeLiteral::Boolean(boolean_node)) = block.nodes.first().unwrap() else { panic!() };
+        let Literal(AstLiteral::Boolean(boolean_node)) = block.nodes.first().unwrap() else { panic!() };
         assert!(boolean_node.value());
     }
 }

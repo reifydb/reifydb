@@ -4,20 +4,20 @@
 use crate::rql::lex::Keyword;
 use crate::rql::lex::Operator::OpenParen;
 use crate::rql::parse;
-use crate::rql::parse::node::{Node, NodeFrom};
+use crate::rql::ast::{Ast, AstFrom};
 use crate::rql::parse::Parser;
 
 impl Parser {
-    pub(crate) fn parse_from(&mut self) -> parse::Result<NodeFrom> {
+    pub(crate) fn parse_from(&mut self) -> parse::Result<AstFrom> {
         let token = self.consume_keyword(Keyword::From)?;
 
         let source = if self.current()?.is_operator(OpenParen) {
-            Node::Block(self.parse_block()?)
+            Ast::Block(self.parse_block()?)
         } else {
             let ident = self.parse_identifier()?;
-            Node::Identifier(ident)
+            Ast::Identifier(ident)
         };
-        Ok(NodeFrom { token, source: Box::new(source) })
+        Ok(AstFrom { token, source: Box::new(source) })
     }
 }
 
@@ -25,7 +25,7 @@ impl Parser {
 mod tests {
     use crate::rql::lex::Keyword::From;
     use crate::rql::lex::{lex, TokenKind};
-    use crate::rql::parse::node::Node;
+    use crate::rql::ast::Ast;
     use crate::rql::parse::Parser;
 
     #[test]
@@ -40,7 +40,7 @@ mod tests {
 
         assert_eq!(from.token.kind, TokenKind::Keyword(From));
         match *from.source {
-            Node::Identifier(ref id) => assert_eq!(id.0.value(), "users"),
+            Ast::Identifier(ref id) => assert_eq!(id.0.value(), "users"),
             _ => panic!("Expected Identifier node"),
         }
     }
@@ -55,11 +55,11 @@ mod tests {
         let result = result.pop().unwrap();
         let from = result.as_from();
         match *from.source {
-            Node::Block(ref block) => {
+            Ast::Block(ref block) => {
                 assert!(!block.nodes.is_empty(), "Block should not be empty");
                 match &block.nodes[0] {
-                    Node::From(from_inner) => match *from_inner.source {
-                        Node::Identifier(ref id) => assert_eq!(id.0.value(), "users"),
+                    Ast::From(from_inner) => match *from_inner.source {
+                        Ast::Identifier(ref id) => assert_eq!(id.0.value(), "users"),
                         _ => panic!("Expected Identifier inside nested FROM"),
                     },
                     _ => panic!("Expected From node inside Block"),

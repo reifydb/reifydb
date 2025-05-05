@@ -6,17 +6,17 @@
 
 use crate::rql::lex::Operator::CloseParen;
 use crate::rql::lex::{Operator, Separator, Token, TokenKind};
+use crate::rql::ast::AstTuple;
 use crate::rql::parse;
-use crate::rql::parse::node::NodeTuple;
 use crate::rql::parse::{Parser, Precedence};
 
 impl Parser {
-    pub(crate) fn parse_tuple(&mut self) -> parse::Result<NodeTuple> {
+    pub(crate) fn parse_tuple(&mut self) -> parse::Result<AstTuple> {
         let token = self.consume_operator(Operator::OpenParen)?;
         self.parse_tuple_call(token)
     }
 
-    pub(crate) fn parse_tuple_call(&mut self, operator: Token) -> parse::Result<NodeTuple> {
+    pub(crate) fn parse_tuple_call(&mut self, operator: Token) -> parse::Result<AstTuple> {
         let mut nodes = Vec::new();
         loop {
             self.skip_new_line()?;
@@ -29,17 +29,16 @@ impl Parser {
         }
 
         self.consume_operator(CloseParen)?;
-        Ok(NodeTuple { token: operator, nodes })
+        Ok(AstTuple { token: operator, nodes })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::rql::lex::lex;
-    use crate::rql::parse::infix::{InfixOperator, NodeInfix};
-    use crate::rql::parse::node::Node::{Identifier, Infix, Literal, Type};
-    use crate::rql::parse::node::NodeLiteral::Number;
-    use crate::rql::parse::node::{NodeLiteral, NodeType};
+    use crate::rql::ast::Ast::{Identifier, Infix, Literal, Type};
+    use crate::rql::ast::AstLiteral::Number;
+    use crate::rql::ast::{InfixOperator, AstInfix, AstType};
     use crate::rql::parse::parse;
 
     #[test]
@@ -72,14 +71,14 @@ mod tests {
 
         let node = result[0].as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
-        let Infix(NodeInfix { left, operator, right, .. }) = &node else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &node else { panic!() };
 
         let Literal(Number(left)) = &left.as_ref() else { panic!() };
         assert_eq!(left.value(), "1");
 
         let node = right.as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
-        let NodeInfix { left, operator, right, .. } = &node.as_infix();
+        let AstInfix { left, operator, right, .. } = &node.as_infix();
 
         let Literal(Number(left)) = &left.as_ref() else { panic!() };
         assert_eq!(left.value(), "2");
@@ -108,12 +107,12 @@ mod tests {
 
         let node = result[0].as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
-        let Infix(NodeInfix { left, operator, right, .. }) = &node else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &node else { panic!() };
 
         let identifier = &left.as_identifier();
         assert_eq!(identifier.value(), "u");
 
-        let Type(NodeType::Boolean(_)) = right.as_ref() else { panic!() };
+        let Type(AstType::Boolean(_)) = right.as_ref() else { panic!() };
     }
 
     #[test]
@@ -140,16 +139,16 @@ mod tests {
         let node = result[0].as_tuple();
 
         let Some(u_node) = node.nodes.first() else { panic!() };
-        let Infix(NodeInfix { left, operator, right, .. }) = &u_node else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "u");
-        let Type(NodeType::Boolean(_)) = right.as_ref() else { panic!() };
+        let Type(AstType::Boolean(_)) = right.as_ref() else { panic!() };
 
         let Some(v_node) = node.nodes.last() else { panic!() };
-        let Infix(NodeInfix { left, operator, right, .. }) = &v_node else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &v_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "v");
-        let Type(NodeType::Text(_)) = right.as_ref() else { panic!() };
+        let Type(AstType::Text(_)) = right.as_ref() else { panic!() };
     }
 
     #[test]
@@ -161,19 +160,19 @@ mod tests {
         let node = result[0].as_tuple();
 
         let Some(u_node) = node.nodes.first() else { panic!() };
-        let Infix(NodeInfix { left, operator, right, .. }) = &u_node else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "u");
         assert!(matches!(operator, InfixOperator::Assign(_)));
-        let Literal(NodeLiteral::Number(number)) = right.as_ref() else { panic!() };
+        let Literal(Number(number)) = right.as_ref() else { panic!() };
         assert_eq!(number.value(), "1");
 
         let Some(v_node) = node.nodes.last() else { panic!() };
-        let Infix(NodeInfix { left, operator, right, .. }) = &v_node else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &v_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "v");
         assert!(matches!(operator, InfixOperator::Assign(_)));
-        let Literal(NodeLiteral::Number(number)) = right.as_ref() else { panic!() };
+        let Literal(Number(number)) = right.as_ref() else { panic!() };
         assert_eq!(number.value(), "2");
     }
 
@@ -190,15 +189,15 @@ mod tests {
         let node = result[0].as_tuple();
 
         let Some(u_node) = node.nodes.first() else { panic!() };
-        let Infix(NodeInfix { left, operator, right, .. }) = &u_node else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "u");
-        let Type(NodeType::Boolean(_)) = right.as_ref() else { panic!() };
+        let Type(AstType::Boolean(_)) = right.as_ref() else { panic!() };
 
         let Some(v_node) = node.nodes.last() else { panic!() };
-        let Infix(NodeInfix { left, operator, right, .. }) = &v_node else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &v_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "v");
-        let Type(NodeType::Text(_)) = right.as_ref() else { panic!() };
+        let Type(AstType::Text(_)) = right.as_ref() else { panic!() };
     }
 }

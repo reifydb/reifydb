@@ -3,42 +3,42 @@
 
 use crate::rql::lex::Literal;
 use crate::rql::parse;
-use crate::rql::parse::node::{NodeLiteral, NodeLiteralBoolean, NodeLiteralNumber, NodeLiteralText, NodeLiteralUndefined};
+use crate::rql::ast::{AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralText, AstLiteralUndefined};
 use crate::rql::parse::Parser;
 use std::str::FromStr;
 
 impl Parser {
-    pub(crate) fn parse_literal_number(&mut self) -> parse::Result<NodeLiteral> {
+    pub(crate) fn parse_literal_number(&mut self) -> parse::Result<AstLiteral> {
         let token = self.consume_literal(Literal::Number)?;
-        Ok(NodeLiteral::Number(NodeLiteralNumber(token)))
+        Ok(AstLiteral::Number(AstLiteralNumber(token)))
     }
 
-    pub(crate) fn parse_literal_text(&mut self) -> parse::Result<NodeLiteral> {
+    pub(crate) fn parse_literal_text(&mut self) -> parse::Result<AstLiteral> {
         let token = self.consume_literal(Literal::Text)?;
-        Ok(NodeLiteral::Text(NodeLiteralText(token)))
+        Ok(AstLiteral::Text(AstLiteralText(token)))
     }
 
-    pub(crate) fn parse_literal_true(&mut self) -> parse::Result<NodeLiteral> {
+    pub(crate) fn parse_literal_true(&mut self) -> parse::Result<AstLiteral> {
         let token = self.consume_literal(Literal::True)?;
-        Ok(NodeLiteral::Boolean(NodeLiteralBoolean(token)))
+        Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
     }
 
-    pub(crate) fn parse_literal_false(&mut self) -> parse::Result<NodeLiteral> {
+    pub(crate) fn parse_literal_false(&mut self) -> parse::Result<AstLiteral> {
         let token = self.consume_literal(Literal::False)?;
-        Ok(NodeLiteral::Boolean(NodeLiteralBoolean(token)))
+        Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
     }
 
-    pub(crate) fn parse_literal_undefined(&mut self) -> parse::Result<NodeLiteral> {
+    pub(crate) fn parse_literal_undefined(&mut self) -> parse::Result<AstLiteral> {
         let token = self.consume_literal(Literal::Undefined)?;
-        Ok(NodeLiteral::Undefined(NodeLiteralUndefined(token)))
+        Ok(AstLiteral::Undefined(AstLiteralUndefined(token)))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::rql::lex::lex;
-    use crate::rql::parse::node::Node::Literal;
-    use crate::rql::parse::node::NodeLiteral;
+    use crate::rql::ast::Ast::Literal;
+    use crate::rql::ast::AstLiteral;
     use crate::rql::parse::parse;
 
     #[test]
@@ -47,7 +47,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(NodeLiteral::Text(node)) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Text(node)) = &result[0] else { panic!() };
         assert_eq!(node.value(), "ElodiE");
     }
 
@@ -57,7 +57,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(NodeLiteral::Number(node)) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Number(node)) = &result[0] else { panic!() };
         assert_eq!(node.value(), "42");
     }
 
@@ -67,7 +67,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(NodeLiteral::Boolean(node)) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Boolean(node)) = &result[0] else { panic!() };
         assert_eq!(node.value(), true);
     }
 
@@ -77,7 +77,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(NodeLiteral::Boolean(node)) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Boolean(node)) = &result[0] else { panic!() };
         assert_eq!(node.value(), false);
     }
 }

@@ -4,11 +4,11 @@
 use crate::rql::lex::Keyword;
 use crate::rql::lex::Separator::Comma;
 use crate::rql::parse;
-use crate::rql::parse::node::NodeSelect;
+use crate::rql::ast::AstSelect;
 use crate::rql::parse::{Parser, Precedence};
 
 impl Parser {
-    pub(crate) fn parse_select(&mut self) -> parse::Result<NodeSelect> {
+    pub(crate) fn parse_select(&mut self) -> parse::Result<AstSelect> {
         let token = self.consume_keyword(Keyword::Select)?;
 
         let mut columns = Vec::new();
@@ -28,7 +28,7 @@ impl Parser {
             }
         }
 
-        Ok(NodeSelect { token, columns })
+        Ok(AstSelect { token, columns })
     }
 }
 
@@ -36,7 +36,7 @@ impl Parser {
 mod tests {
     use super::*;
     use crate::rql::lex::lex;
-    use crate::rql::parse::node::Node;
+    use crate::rql::ast::Ast;
 
     #[test]
     fn test_select_star() {
@@ -48,7 +48,7 @@ mod tests {
         let result = result.pop().unwrap();
         let select = result.as_select();
         assert_eq!(select.columns.len(), 1);
-        assert!(matches!(select.columns[0], Node::Wildcard(_)));
+        assert!(matches!(select.columns[0], Ast::Wildcard(_)));
     }
 
     #[test]
@@ -60,7 +60,7 @@ mod tests {
         let result = result.pop().unwrap();
         let select = result.as_select();
         assert_eq!(select.columns.len(), 1);
-        assert!(matches!(select.columns[0], Node::Identifier(_)));
+        assert!(matches!(select.columns[0], Ast::Identifier(_)));
         assert_eq!(select.columns[0].value(), "name");
     }
 
@@ -73,10 +73,10 @@ mod tests {
         let result = result.pop().unwrap();
         let select = result.as_select();
         assert_eq!(select.columns.len(), 2);
-        assert!(matches!(select.columns[0], Node::Identifier(_)));
+        assert!(matches!(select.columns[0], Ast::Identifier(_)));
         assert_eq!(select.columns[0].value(), "name");
 
-        assert!(matches!(select.columns[1], Node::Identifier(_)));
+        assert!(matches!(select.columns[1], Ast::Identifier(_)));
         assert_eq!(select.columns[1].value(), "age");
     }
 }

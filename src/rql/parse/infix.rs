@@ -1,48 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::{Operator, Token, TokenKind};
+use crate::rql::lex::{Operator, TokenKind};
+use crate::rql::ast::{InfixOperator, Ast, AstInfix};
 use crate::rql::parse;
-use crate::rql::parse::node::Node;
 use crate::rql::parse::{Error, Parser};
 
-#[derive(Debug, PartialEq)]
-pub(crate) enum InfixOperator {
-    Add(Token),
-    Arrow(Token),
-    AccessPackage(Token),
-    AccessProperty(Token),
-    Assign(Token),
-    Call(Token),
-    Subtract(Token),
-    Multiply(Token),
-    Divide(Token),
-    Modulo(Token),
-    Equal(Token),
-    NotEqual(Token),
-    LessThan(Token),
-    LessThanEqual(Token),
-    GreaterThan(Token),
-    GreaterThanEqual(Token),
-    TypeAscription(Token),
-}
-
-#[derive(Debug, PartialEq)]
-pub(crate) struct NodeInfix {
-    pub(crate) token: Token,
-    pub(crate) left: Box<Node>,
-    pub(crate) operator: InfixOperator,
-    pub(crate) right: Box<Node>,
-}
-
 impl Parser {
-    pub(crate) fn parse_infix(&mut self, left: Node) -> parse::Result<NodeInfix> {
+    pub(crate) fn parse_infix(&mut self, left: Ast) -> parse::Result<AstInfix> {
         let precedence = self.current_precedence()?;
 
         let operator = self.parse_infix_operator()?;
 
         let right = if let InfixOperator::Call(token) = &operator {
-            Node::Tuple(self.parse_tuple_call(token.clone())?)
+            Ast::Tuple(self.parse_tuple_call(token.clone())?)
         // } else if let InfixOperator::Arrow(_) = &operator {
         // Node::Block(self.parse_block_inner(left.token())?)
         // unimplemented!()
@@ -50,7 +21,7 @@ impl Parser {
             self.parse_node(precedence)?
         };
 
-        Ok(NodeInfix { token: left.token().clone(), left: Box::new(left), operator, right: Box::new(right) })
+        Ok(AstInfix { token: left.token().clone(), left: Box::new(left), operator, right: Box::new(right) })
     }
 
     pub(crate) fn parse_infix_operator(&mut self) -> parse::Result<InfixOperator> {
@@ -86,9 +57,9 @@ mod tests {
     use std::ops::Deref;
 
     use crate::rql::lex::lex;
-    use crate::rql::parse::infix::{InfixOperator, NodeInfix};
-    use crate::rql::parse::node::Node::{Infix, Literal};
-    use crate::rql::parse::node::{NodeLiteral, NodeTuple};
+    use crate::rql::ast::Ast::{Infix, Literal};
+    use crate::rql::ast::{AstLiteral, AstTuple};
+    use crate::rql::parse::infix::{InfixOperator, AstInfix};
     use crate::rql::parse::parse;
 
     #[test]
@@ -97,14 +68,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::Add(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -114,14 +85,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::Subtract(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -131,14 +102,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::Multiply(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -148,14 +119,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::Divide(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -165,14 +136,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::Modulo(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -182,14 +153,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::GreaterThan(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -199,14 +170,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::GreaterThanEqual(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -216,14 +187,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::LessThan(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -233,14 +204,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::LessThanEqual(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -250,14 +221,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::Equal(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -267,14 +238,14 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
 
-        let Literal(NodeLiteral::Number(node)) = left.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
         assert!(matches!(operator, InfixOperator::NotEqual(_)));
 
-        let Literal(NodeLiteral::Number(node)) = right.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -284,13 +255,13 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(NodeInfix { left, operator, right, .. }) = &result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &result[0] else { panic!() };
         let identifier = left.as_identifier();
         assert_eq!(identifier.value(), "test");
 
         let InfixOperator::Call(_) = operator else { panic!() };
 
-        let NodeTuple { nodes, .. } = right.as_tuple();
+        let AstTuple { nodes, .. } = right.as_tuple();
         assert_eq!(*nodes, vec![]);
     }
 
@@ -300,16 +271,16 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let NodeInfix { left, operator, right, .. } = &result[0].as_infix();
+        let AstInfix { left, operator, right, .. } = &result[0].as_infix();
         let identifier = left.as_identifier();
         assert_eq!(identifier.value(), "test");
 
         let InfixOperator::Call(_) = operator else { panic!() };
 
-        let NodeTuple { nodes, .. } = right.as_tuple();
+        let AstTuple { nodes, .. } = right.as_tuple();
         assert_eq!(nodes.len(), 1);
 
-        let Some(Literal(NodeLiteral::Text(arg_1))) = &nodes.first() else { panic!() };
+        let Some(Literal(AstLiteral::Text(arg_1))) = &nodes.first() else { panic!() };
         assert_eq!(arg_1.value(), "elodie");
     }
 
@@ -319,9 +290,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let NodeInfix { left, operator, right, .. } = &result[0].as_infix();
+        let AstInfix { left, operator, right, .. } = &result[0].as_infix();
         {
-            let NodeInfix { left, operator, right, .. } = left.as_infix();
+            let AstInfix { left, operator, right, .. } = left.as_infix();
 
             let package = left.as_identifier();
             assert_eq!(package.value(), "some_package");
@@ -334,7 +305,7 @@ mod tests {
 
         assert!(matches!(operator, InfixOperator::Call(_)));
 
-        let NodeTuple { nodes, .. } = right.as_tuple();
+        let AstTuple { nodes, .. } = right.as_tuple();
         assert_eq!(*nodes, vec![]);
     }
 
@@ -344,11 +315,11 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let NodeInfix { left, operator, right, .. } = &result[0].as_infix();
+        let AstInfix { left, operator, right, .. } = &result[0].as_infix();
         {
-            let NodeInfix { left, operator, right, .. } = left.as_infix();
+            let AstInfix { left, operator, right, .. } = left.as_infix();
             {
-                let NodeInfix { left, operator, right, .. } = left.as_infix();
+                let AstInfix { left, operator, right, .. } = left.as_infix();
                 let root_package = left.as_identifier();
                 assert_eq!(root_package.value(), "reify");
 
@@ -366,10 +337,10 @@ mod tests {
 
         assert!(matches!(operator, InfixOperator::Call(_)));
 
-        let NodeTuple { nodes, .. } = right.as_tuple();
+        let AstTuple { nodes, .. } = right.as_tuple();
         assert_eq!(nodes.len(), 1);
 
-        let Literal(NodeLiteral::Text(node)) = &nodes[0] else { panic!() };
+        let Literal(AstLiteral::Text(node)) = &nodes[0] else { panic!() };
         assert_eq!(node.value(), "Elodie");
     }
     //

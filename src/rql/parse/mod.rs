@@ -7,7 +7,6 @@ mod from;
 mod identifier;
 mod infix;
 mod literal;
-mod node;
 mod primary;
 mod select;
 mod tuple;
@@ -17,7 +16,7 @@ pub use error::*;
 
 use crate::rql::lex::Separator::NewLine;
 use crate::rql::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
-use crate::rql::parse::node::Node;
+use crate::rql::ast::Ast;
 use crate::rql::parse::Error::UnexpectedEndOfFile;
 use std::cmp::PartialOrd;
 use std::collections::HashMap;
@@ -39,7 +38,7 @@ pub(crate) enum Precedence {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub(crate) fn parse<'a>(tokens: Vec<Token>) -> Result<Vec<Node>> {
+pub(crate) fn parse<'a>(tokens: Vec<Token>) -> Result<Vec<Ast>> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
@@ -81,7 +80,7 @@ impl Parser {
         Self { tokens, precedence_map }
     }
 
-    fn parse(&mut self) -> Result<Vec<Node>> {
+    fn parse(&mut self) -> Result<Vec<Ast>> {
         let mut nodes = vec![];
         loop {
             if self.is_eof() {
@@ -93,6 +92,15 @@ impl Parser {
             }
         }
         Ok(nodes)
+    }
+
+    pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast> {
+        let mut left = self.parse_primary()?;
+
+        while !self.is_eof() && precedence < self.current_precedence()? {
+            left = Ast::Infix(self.parse_infix(left)?);
+        }
+        Ok(left)
     }
 
     pub(crate) fn advance(&mut self) -> Result<Token> {
@@ -212,16 +220,16 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use crate::rql::lex::Literal::{False, Number, True};
-	use crate::rql::lex::Operator::Plus;
-	use crate::rql::lex::Separator::Semicolon;
-	use crate::rql::lex::TokenKind::{Identifier, Literal, Separator};
-	use crate::rql::lex::{lex, TokenKind};
-	use crate::rql::parse::Error::UnexpectedEndOfFile;
-	use crate::rql::parse::Precedence::Term;
-	use crate::rql::parse::{Error, Parser, Precedence};
+    use crate::rql::lex::Literal::{False, Number, True};
+    use crate::rql::lex::Operator::Plus;
+    use crate::rql::lex::Separator::Semicolon;
+    use crate::rql::lex::TokenKind::{Identifier, Literal, Separator};
+    use crate::rql::lex::{lex, TokenKind};
+    use crate::rql::parse::Error::UnexpectedEndOfFile;
+    use crate::rql::parse::Precedence::Term;
+    use crate::rql::parse::{Error, Parser, Precedence};
 
-	#[test]
+    #[test]
     fn test_advance_but_eof() {
         let mut parser = Parser::new(vec![]);
         let result = parser.advance();
