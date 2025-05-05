@@ -3,6 +3,10 @@
 
 pub use error::Error;
 
+pub mod ast;
 mod error;
+mod execute;
+mod lex;
+mod parse;
+mod plan;
 mod value;
-mod frontend;

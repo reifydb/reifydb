@@ -13,11 +13,11 @@ use std::fmt::{Display, Formatter};
 pub enum ValueType {
     /// A boolean: true or false.
     Boolean,
-    /// A 32-bit signed integer
+    /// A 2-byte signed integer
     Int2,
     /// A UTF-8 encoded text.
     Text,
-    /// A 32-bit unsigned integer
+    /// A 2-byte unsigned integer
     Uint2,
 }
 
@@ -25,8 +25,8 @@ impl Display for ValueType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ValueType::Boolean => f.write_str("BOOLEAN"),
-            ValueType::Int2 => f.write_str("I32"),
-            ValueType::Uint2 => f.write_str("U32"),
+            ValueType::Int2 => f.write_str("INT2"),
+            ValueType::Uint2 => f.write_str("UINT2"),
             ValueType::Text => f.write_str("TEXT"),
         }
     }

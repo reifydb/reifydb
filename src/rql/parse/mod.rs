@@ -1,21 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+mod block;
 mod error;
+mod from;
 mod identifier;
 mod infix;
 mod literal;
 mod node;
 mod primary;
+mod select;
 mod tuple;
 mod r#type;
 
 pub use error::*;
 
-use crate::rql::frontend::lex::Separator::NewLine;
-use crate::rql::frontend::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
-use crate::rql::frontend::parse::node::Node;
-use crate::rql::frontend::parse::Error::UnexpectedEndOfFile;
+use crate::rql::lex::Separator::NewLine;
+use crate::rql::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
+use crate::rql::parse::node::Node;
+use crate::rql::parse::Error::UnexpectedEndOfFile;
 use std::cmp::PartialOrd;
 use std::collections::HashMap;
 
@@ -181,15 +184,15 @@ impl Parser {
         }
     }
 
-    pub(crate) fn peek(&self) -> Result<&Token> {
+    pub(crate) fn peek_next(&self) -> Result<&Token> {
         if self.tokens.len() < 2 {
             return Err(Error::eof());
         }
         self.tokens.get(self.tokens.len() - 2).ok_or(Error::eof())
     }
 
-    pub(crate) fn peek_expect(&self, expected: TokenKind) -> Result<()> {
-        let got = self.peek()?;
+    pub(crate) fn peek_next_expect(&self, expected: TokenKind) -> Result<()> {
+        let got = self.peek_next()?;
         if got.kind == expected {
             Ok(())
         } else {
@@ -209,16 +212,16 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::frontend::lex::Literal::{False, Number, True};
-    use crate::rql::frontend::lex::Operator::Plus;
-    use crate::rql::frontend::lex::Separator::Semicolon;
-    use crate::rql::frontend::lex::TokenKind::{Identifier, Literal, Separator};
-    use crate::rql::frontend::lex::{lex, TokenKind};
-    use crate::rql::frontend::parse::Error::UnexpectedEndOfFile;
-    use crate::rql::frontend::parse::Precedence::Term;
-    use crate::rql::frontend::parse::{Error, Parser, Precedence};
+	use crate::rql::lex::Literal::{False, Number, True};
+	use crate::rql::lex::Operator::Plus;
+	use crate::rql::lex::Separator::Semicolon;
+	use crate::rql::lex::TokenKind::{Identifier, Literal, Separator};
+	use crate::rql::lex::{lex, TokenKind};
+	use crate::rql::parse::Error::UnexpectedEndOfFile;
+	use crate::rql::parse::Precedence::Term;
+	use crate::rql::parse::{Error, Parser, Precedence};
 
-    #[test]
+	#[test]
     fn test_advance_but_eof() {
         let mut parser = Parser::new(vec![]);
         let result = parser.advance();
@@ -377,71 +380,71 @@ mod tests {
     }
 
     #[test]
-    fn test_peek_but_eof() {
+    fn test_peek_next_but_eof() {
         let tokens = lex("").unwrap();
         let mut parser = Parser::new(tokens);
-        let result = parser.peek();
+        let result = parser.peek_next();
         assert_eq!(result, Err(UnexpectedEndOfFile))
     }
 
     #[test]
-    fn test_peek_but_nothing_to_peek() {
+    fn test_peek_next_but_nothing_to_peek_next() {
         let tokens = lex("true").unwrap();
         let mut parser = Parser::new(tokens);
-        let result = parser.peek();
+        let result = parser.peek_next();
         assert_eq!(result, Err(UnexpectedEndOfFile))
     }
 
     #[test]
-    fn test_peek() {
+    fn test_peek_next() {
         let tokens = lex("true false 1").unwrap();
         let mut parser = Parser::new(tokens);
 
-        let false_token = parser.peek().unwrap().clone();
+        let false_token = parser.peek_next().unwrap().clone();
         assert_eq!(false_token.kind, Literal(False));
 
         parser.advance().unwrap();
-        let number_token = parser.peek().unwrap().clone();
+        let number_token = parser.peek_next().unwrap().clone();
         assert_eq!(number_token.kind, Literal(Number));
     }
 
     #[test]
-    fn test_peek_expect_but_eof() {
+    fn test_peek_next_expect_but_eof() {
         let tokens = lex("").unwrap();
         let parser = Parser::new(tokens);
-        let result = parser.peek_expect(Separator(Semicolon));
+        let result = parser.peek_next_expect(Separator(Semicolon));
         assert_eq!(result, Err(UnexpectedEndOfFile))
     }
 
     #[test]
-    fn test_peek_expect_but_nothing_to_peek() {
+    fn test_peek_next_expect_but_nothing_to_peek_next() {
         let tokens = lex("true").unwrap();
         let parser = Parser::new(tokens);
 
-        let result = parser.peek_expect(Separator(Semicolon));
+        let result = parser.peek_next_expect(Separator(Semicolon));
         assert_eq!(result, Err(UnexpectedEndOfFile));
     }
 
     #[test]
-    fn test_peek_expect() {
+    fn test_peek_next_expect() {
         let tokens = lex("true false 0o123").unwrap();
         let mut parser = Parser::new(tokens);
 
-        let result = parser.peek_expect(Literal(False));
+        let result = parser.peek_next_expect(Literal(False));
         assert!(result.is_ok());
 
         parser.advance().unwrap();
 
-        let result = parser.peek_expect(Literal(Number));
+        let result = parser.peek_next_expect(Literal(Number));
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_peek_expect_but_different() {
+    fn test_peek_next_expect_but_different() {
         let tokens = lex("true 0b111").unwrap();
         let mut parser = Parser::new(tokens);
 
-        let result = parser.peek_expect(Literal(False));
+        let result = parser.peek_next_expect(Literal(False));
         assert!(result.is_err());
 
         if let Error::UnexpectedToken { expected, got, .. } = result.err().unwrap() {

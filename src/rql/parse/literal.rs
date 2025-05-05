@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::frontend::lex::Literal;
-use crate::rql::frontend::parse;
-use crate::rql::frontend::parse::node::{NodeLiteral, NodeLiteralBoolean, NodeLiteralNumber, NodeLiteralText, NodeLiteralUndefined};
-use crate::rql::frontend::parse::Parser;
+use crate::rql::lex::Literal;
+use crate::rql::parse;
+use crate::rql::parse::node::{NodeLiteral, NodeLiteralBoolean, NodeLiteralNumber, NodeLiteralText, NodeLiteralUndefined};
+use crate::rql::parse::Parser;
 use std::str::FromStr;
 
 impl Parser {
@@ -36,10 +36,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::frontend::lex::lex;
-    use crate::rql::frontend::parse::node::Node::Literal;
-    use crate::rql::frontend::parse::node::NodeLiteral;
-    use crate::rql::frontend::parse::parse;
+    use crate::rql::lex::lex;
+    use crate::rql::parse::node::Node::Literal;
+    use crate::rql::parse::node::NodeLiteral;
+    use crate::rql::parse::parse;
 
     #[test]
     fn test_text() {

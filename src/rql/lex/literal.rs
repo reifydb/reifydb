@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::frontend::lex::Literal::{False, Number, Text, True, Undefined};
-use crate::rql::frontend::lex::{Token, TokenKind};
+use crate::rql::lex::Literal::{False, Number, Text, True, Undefined};
+use crate::rql::lex::{Token, TokenKind};
 use nom::branch::alt;
 use nom::bytes::{is_not, tag, tag_no_case, take_while1};
 use nom::character::{char, digit1, multispace0};
@@ -69,7 +69,7 @@ fn parse_undefined(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rql::frontend::lex::Literal::{False, True, Undefined};
+    use crate::rql::lex::Literal::{False, True, Undefined};
     use nom::Offset;
 
     #[test]

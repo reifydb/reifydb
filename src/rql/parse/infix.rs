@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::frontend::lex::{Operator, Token, TokenKind};
-use crate::rql::frontend::parse;
-use crate::rql::frontend::parse::node::Node;
-use crate::rql::frontend::parse::{Error, Parser};
+use crate::rql::lex::{Operator, Token, TokenKind};
+use crate::rql::parse;
+use crate::rql::parse::node::Node;
+use crate::rql::parse::{Error, Parser};
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum InfixOperator {
@@ -85,11 +85,11 @@ impl Parser {
 mod tests {
     use std::ops::Deref;
 
-    use crate::rql::frontend::lex::lex;
-    use crate::rql::frontend::parse::infix::{InfixOperator, NodeInfix};
-    use crate::rql::frontend::parse::node::Node::{Infix, Literal};
-    use crate::rql::frontend::parse::node::{NodeLiteral, NodeTuple};
-    use crate::rql::frontend::parse::parse;
+    use crate::rql::lex::lex;
+    use crate::rql::parse::infix::{InfixOperator, NodeInfix};
+    use crate::rql::parse::node::Node::{Infix, Literal};
+    use crate::rql::parse::node::{NodeLiteral, NodeTuple};
+    use crate::rql::parse::parse;
 
     #[test]
     fn test_add() {

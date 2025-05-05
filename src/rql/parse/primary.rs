@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::frontend::lex::Literal::{False, Number, Text, True, Undefined};
-use crate::rql::frontend::lex::Separator::NewLine;
-use crate::rql::frontend::lex::{Operator, TokenKind};
-use crate::rql::frontend::parse;
-use crate::rql::frontend::parse::node::{Node, NodePrefix, PrefixOperator};
-use crate::rql::frontend::parse::{Error, Parser, Precedence};
+use crate::rql::lex::Literal::{False, Number, Text, True, Undefined};
+use crate::rql::lex::Separator::NewLine;
+use crate::rql::lex::{Keyword, Operator, TokenKind};
+use crate::rql::parse;
+use crate::rql::parse::node::{Node, NodePrefix, NodeWildcard, PrefixOperator};
+use crate::rql::parse::{Error, Parser, Precedence};
 
 impl Parser {
     pub(crate) fn parse_primary(&mut self) -> parse::Result<Node> {
@@ -29,11 +29,14 @@ impl Parser {
                     let operator = self.parse_prefix_operator()?;
                     Ok(Node::Prefix(NodePrefix { operator, node: Box::new(self.parse_node(Precedence::None)?) }))
                 }
+                Operator::Asterisk => Ok(Node::Wildcard(NodeWildcard(self.advance()?))),
                 Operator::OpenParen => Ok(Node::Tuple(self.parse_tuple()?)),
+                // Operator::OpenParen => Ok(Node::Block(self.parse_block()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
             },
             TokenKind::Keyword(keyword) => match keyword {
-                // Keyword::From => Ok(Node::From(self.parse_from()?)),
+                Keyword::From => Ok(Node::From(self.parse_from()?)),
+                Keyword::Select => Ok(Node::Select(self.parse_select()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
             },
             _ => match current {
@@ -67,10 +70,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::frontend::lex::lex;
-    use crate::rql::frontend::parse::node::Node::Literal;
-    use crate::rql::frontend::parse::node::{Node, NodeLiteral, NodePrefix, PrefixOperator};
-    use crate::rql::frontend::parse::parse;
+    use crate::rql::lex::lex;
+    use crate::rql::parse::node::Node::Literal;
+    use crate::rql::parse::node::{Node, NodeLiteral, NodePrefix, PrefixOperator};
+    use crate::rql::parse::parse;
     use std::ops::Deref;
 
     #[test]

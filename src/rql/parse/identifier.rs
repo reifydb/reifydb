@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::frontend::lex::TokenKind;
-use crate::rql::frontend::parse;
-use crate::rql::frontend::parse::node::NodeIdentifier;
-use crate::rql::frontend::parse::Parser;
+use crate::rql::lex::TokenKind;
+use crate::rql::parse;
+use crate::rql::parse::node::NodeIdentifier;
+use crate::rql::parse::Parser;
 
 impl Parser {
     pub(crate) fn parse_identifier(&mut self) -> parse::Result<NodeIdentifier> {
@@ -15,10 +15,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::frontend::lex::lex;
-    use crate::rql::frontend::parse::node::Node::Identifier;
-    use crate::rql::frontend::parse::node::NodeIdentifier;
-    use crate::rql::frontend::parse::parse;
+    use crate::rql::lex::lex;
+    use crate::rql::parse::node::Node::Identifier;
+    use crate::rql::parse::node::NodeIdentifier;
+    use crate::rql::parse::parse;
 
     #[test]
     fn identifier() {

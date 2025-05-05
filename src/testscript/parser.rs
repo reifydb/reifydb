@@ -10,9 +10,7 @@ use crate::testscript::command::{Argument, Block, Command};
 
 use nom::branch::alt;
 use nom::bytes::complete::{escaped_transform, is_not, tag, take, take_while_m_n};
-use nom::character::complete::{
-    alphanumeric1, anychar, char, line_ending, not_line_ending, one_of, space0, space1,
-};
+use nom::character::complete::{alphanumeric1, anychar, char, line_ending, not_line_ending, one_of, space0, space1};
 use nom::combinator::{consumed, eof, map_res, opt, peek, recognize, value, verify};
 use nom::error::ErrorKind;
 use nom::multi::{many0, many0_count, many_till, separated_list1};
@@ -159,8 +157,7 @@ fn argument(input: Span) -> IResult<Argument> {
 
 /// Parses a list of []-delimited command tags separated by comma or whitespace.
 fn taglist(input: Span) -> IResult<HashSet<String>> {
-    let (input, tags) =
-        delimited(tag("["), separated_list1(one_of(", "), string), tag("]")).parse(input)?;
+    let (input, tags) = delimited(tag("["), separated_list1(one_of(", "), string), tag("]")).parse(input)?;
     Ok((input, HashSet::from_iter(tags)))
 }
 
@@ -178,8 +175,7 @@ fn output(input: Span) -> IResult<Span> {
         return Ok((input, output));
     }
     // TODO: many_till(anychar) is probably too expensive.
-    recognize(many_till(anychar, pair(alt((line_ending, eof)), alt((line_ending, eof)))))
-        .parse(input)
+    recognize(many_till(anychar, pair(alt((line_ending, eof)), alt((line_ending, eof))))).parse(input)
 }
 
 /// Parses a string, both quoted (' or ") and unquoted.
@@ -228,25 +224,14 @@ fn quoted_string(quote: char) -> impl FnMut(Span) -> IResult<String> {
                     value('\n', tag("n")),
                     value('\r', tag("r")),
                     value('\t', tag("t")),
-                    map_res(
-                        preceded(tag("x"), take(2usize)),
-                        |input: Span| match u8::from_str_radix(input.fragment(), 16) {
-                            Ok(byte) => Ok(char::from(byte)),
-                            Err(_) => Err(Error::new(input, ErrorKind::HexDigit)),
-                        },
-                    ),
-                    map_res(
-                        delimited(
-                            tag("u{"),
-                            take_while_m_n(1, 6, |c: char| c.is_ascii_hexdigit()),
-                            tag("}"),
-                        ),
-                        |input: Span| {
-                            let codepoint = u32::from_str_radix(input.fragment(), 16)
-                                .or(Err(Error::new(input, ErrorKind::HexDigit)))?;
-                            char::from_u32(codepoint).ok_or(Error::new(input, ErrorKind::Char))
-                        },
-                    ),
+                    map_res(preceded(tag("x"), take(2usize)), |input: Span| match u8::from_str_radix(input.fragment(), 16) {
+                        Ok(byte) => Ok(char::from(byte)),
+                        Err(_) => Err(Error::new(input, ErrorKind::HexDigit)),
+                    }),
+                    map_res(delimited(tag("u{"), take_while_m_n(1, 6, |c: char| c.is_ascii_hexdigit()), tag("}")), |input: Span| {
+                        let codepoint = u32::from_str_radix(input.fragment(), 16).or(Err(Error::new(input, ErrorKind::HexDigit)))?;
+                        char::from_u32(codepoint).ok_or(Error::new(input, ErrorKind::Char))
+                    }),
                 )),
             ),
             tag(q),
@@ -258,10 +243,7 @@ fn quoted_string(quote: char) -> impl FnMut(Span) -> IResult<String> {
 
 /// Parses a line that only contains whitespace and/or a comment.
 fn empty_or_comment_line(input: Span) -> IResult<Span> {
-    verify(recognize(delimited(space0, opt(comment), alt((line_ending, eof)))), |line: &Span| {
-        !line.is_empty()
-    })
-    .parse(input)
+    verify(recognize(delimited(space0, opt(comment), alt((line_ending, eof)))), |line: &Span| !line.is_empty()).parse(input)
 }
 
 /// Parses a # or // comment until the end of the line/file (not inclusive).
