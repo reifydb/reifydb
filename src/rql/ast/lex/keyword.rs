@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::{Error, Token, TokenKind};
+use crate::rql::ast::lex::{Error, Token, TokenKind};
 use nom::branch::alt;
 use nom::bytes::tag_no_case;
 use nom::character::complete::alphanumeric1;
@@ -164,8 +164,8 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::keyword::{parse_keyword, Keyword};
-    use crate::rql::lex::{LocatedSpan, TokenKind};
+    use crate::rql::ast::lex::keyword::{parse_keyword, Keyword};
+    use crate::rql::ast::lex::{LocatedSpan, TokenKind};
 
     #[test]
     fn test_parse_keyword_invalid() {

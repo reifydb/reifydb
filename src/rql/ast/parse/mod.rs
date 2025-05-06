@@ -14,10 +14,10 @@ mod r#type;
 
 pub use error::*;
 
-use crate::rql::lex::Separator::NewLine;
-use crate::rql::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
+use crate::rql::ast::lex::Separator::NewLine;
+use crate::rql::ast::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
+use crate::rql::ast::parse::Error::UnexpectedEndOfFile;
 use crate::rql::ast::Ast;
-use crate::rql::parse::Error::UnexpectedEndOfFile;
 use std::cmp::PartialOrd;
 use std::collections::HashMap;
 
@@ -220,14 +220,14 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::Literal::{False, Number, True};
-    use crate::rql::lex::Operator::Plus;
-    use crate::rql::lex::Separator::Semicolon;
-    use crate::rql::lex::TokenKind::{Identifier, Literal, Separator};
-    use crate::rql::lex::{lex, TokenKind};
-    use crate::rql::parse::Error::UnexpectedEndOfFile;
-    use crate::rql::parse::Precedence::Term;
-    use crate::rql::parse::{Error, Parser, Precedence};
+    use crate::rql::ast::lex::Literal::{False, Number, True};
+    use crate::rql::ast::lex::Operator::Plus;
+    use crate::rql::ast::lex::Separator::Semicolon;
+    use crate::rql::ast::lex::TokenKind::{Identifier, Literal, Separator};
+    use crate::rql::ast::lex::{lex, TokenKind};
+    use crate::rql::ast::parse::Error::UnexpectedEndOfFile;
+    use crate::rql::ast::parse::Precedence::Term;
+    use crate::rql::ast::parse::{Error, Parser, Precedence};
 
     #[test]
     fn test_advance_but_eof() {

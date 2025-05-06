@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb::rql::ast;
 use reifydb::rql::ast::{Ast, AstFrom};
-use reifydb::rql::parse;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -104,7 +104,7 @@ fn main() {
         },
     );
 
-    let mut ast = parse(
+    let mut ast = ast::parse(
         r#"
     FROM users 
     SELECT name

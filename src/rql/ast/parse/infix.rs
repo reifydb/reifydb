@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::{Operator, TokenKind};
-use crate::rql::ast::{InfixOperator, Ast, AstInfix};
-use crate::rql::parse;
-use crate::rql::parse::{Error, Parser};
+use crate::rql::ast::lex::{Operator, TokenKind};
+use crate::rql::ast::parse::{Error, Parser};
+use crate::rql::ast::{parse, Ast, AstInfix, InfixOperator};
 
 impl Parser {
     pub(crate) fn parse_infix(&mut self, left: Ast) -> parse::Result<AstInfix> {
@@ -56,11 +55,11 @@ impl Parser {
 mod tests {
     use std::ops::Deref;
 
-    use crate::rql::lex::lex;
+    use crate::rql::ast::lex::lex;
+    use crate::rql::ast::parse::infix::{AstInfix, InfixOperator};
+    use crate::rql::ast::parse::parse;
     use crate::rql::ast::Ast::{Infix, Literal};
     use crate::rql::ast::{AstLiteral, AstTuple};
-    use crate::rql::parse::infix::{InfixOperator, AstInfix};
-    use crate::rql::parse::parse;
 
     #[test]
     fn test_add() {

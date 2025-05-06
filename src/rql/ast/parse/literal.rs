@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::Literal;
-use crate::rql::parse;
-use crate::rql::ast::{AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralText, AstLiteralUndefined};
-use crate::rql::parse::Parser;
+use crate::rql::ast::lex::Literal;
+use crate::rql::ast::parse::Parser;
+use crate::rql::ast::{parse, AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralText, AstLiteralUndefined};
 use std::str::FromStr;
 
 impl Parser {
@@ -36,10 +35,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::lex;
+    use crate::rql::ast::lex::lex;
+    use crate::rql::ast::parse::parse;
     use crate::rql::ast::Ast::Literal;
     use crate::rql::ast::AstLiteral;
-    use crate::rql::parse::parse;
 
     #[test]
     fn test_text() {

@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::parse;
-use crate::rql::ast::AstType;
-use crate::rql::parse::Error::InvalidType;
-use crate::rql::parse::Parser;
+use crate::rql::ast::parse::Error::InvalidType;
+use crate::rql::ast::parse::Parser;
+use crate::rql::ast::{parse, AstType};
 
 impl Parser {
     pub(crate) fn parse_type(&mut self) -> parse::Result<AstType> {
@@ -53,10 +52,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::lex;
+    use crate::rql::ast::lex::lex;
+    use crate::rql::ast::parse::Error::InvalidType;
+    use crate::rql::ast::parse::Parser;
     use crate::rql::ast::AstType;
-    use crate::rql::parse::Error::InvalidType;
-    use crate::rql::parse::Parser;
 
     #[test]
     fn test_not_a_type() {

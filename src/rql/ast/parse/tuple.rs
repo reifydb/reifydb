@@ -4,11 +4,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::Operator::CloseParen;
-use crate::rql::lex::{Operator, Separator, Token, TokenKind};
-use crate::rql::ast::AstTuple;
-use crate::rql::parse;
-use crate::rql::parse::{Parser, Precedence};
+use crate::rql::ast::lex::Operator::CloseParen;
+use crate::rql::ast::lex::{Operator, Separator, Token, TokenKind};
+use crate::rql::ast::parse::{Parser, Precedence};
+use crate::rql::ast::{parse, AstTuple};
 
 impl Parser {
     pub(crate) fn parse_tuple(&mut self) -> parse::Result<AstTuple> {
@@ -35,11 +34,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::lex;
+    use crate::rql::ast::lex::lex;
+    use crate::rql::ast::parse::parse;
     use crate::rql::ast::Ast::{Identifier, Infix, Literal, Type};
     use crate::rql::ast::AstLiteral::Number;
-    use crate::rql::ast::{InfixOperator, AstInfix, AstType};
-    use crate::rql::parse::parse;
+    use crate::rql::ast::{AstInfix, AstType, InfixOperator};
 
     #[test]
     fn empty_tuple() {

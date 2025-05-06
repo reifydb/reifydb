@@ -10,12 +10,12 @@ pub use keyword::Keyword;
 pub use operator::Operator;
 pub use separator::Separator;
 
-use crate::rql::lex::identifier::parse_identifier;
-use crate::rql::lex::keyword::parse_keyword;
-use crate::rql::lex::literal::parse_literal;
-use crate::rql::lex::operator::parse_operator;
-use crate::rql::lex::separator::parse_separator;
-use crate::rql::lex::TokenKind::EOF;
+use crate::rql::ast::lex::identifier::parse_identifier;
+use crate::rql::ast::lex::keyword::parse_keyword;
+use crate::rql::ast::lex::literal::parse_literal;
+use crate::rql::ast::lex::operator::parse_operator;
+use crate::rql::ast::lex::separator::parse_separator;
+use crate::rql::ast::lex::TokenKind::EOF;
 use nom::combinator::complete;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
@@ -95,7 +95,7 @@ fn token(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rql::lex::Literal::{Number, Text};
+    use crate::rql::ast::lex::Literal::{Number, Text};
     use TokenKind::Literal;
 
     fn span(s: &str) -> LocatedSpan<&str> {

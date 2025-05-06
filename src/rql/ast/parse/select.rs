@@ -1,11 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::Keyword;
-use crate::rql::lex::Separator::Comma;
-use crate::rql::parse;
-use crate::rql::ast::AstSelect;
-use crate::rql::parse::{Parser, Precedence};
+use crate::rql::ast::lex::Keyword;
+use crate::rql::ast::lex::Separator::Comma;
+use crate::rql::ast::parse::{Parser, Precedence};
+use crate::rql::ast::{parse, AstSelect};
 
 impl Parser {
     pub(crate) fn parse_select(&mut self) -> parse::Result<AstSelect> {
@@ -35,7 +34,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rql::lex::lex;
+    use crate::rql::ast::lex::lex;
     use crate::rql::ast::Ast;
 
     #[test]

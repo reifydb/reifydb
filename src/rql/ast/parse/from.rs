@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::Keyword;
-use crate::rql::lex::Operator::OpenParen;
-use crate::rql::parse;
-use crate::rql::ast::{Ast, AstFrom};
-use crate::rql::parse::Parser;
+use crate::rql::ast::ast::{Ast, AstFrom};
+use crate::rql::ast::lex::Keyword;
+use crate::rql::ast::lex::Operator::OpenParen;
+use crate::rql::ast::parse;
+use crate::rql::ast::parse::Parser;
 
 impl Parser {
     pub(crate) fn parse_from(&mut self) -> parse::Result<AstFrom> {
@@ -23,10 +23,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::Keyword::From;
-    use crate::rql::lex::{lex, TokenKind};
+    use crate::rql::ast::lex::Keyword::From;
+    use crate::rql::ast::lex::{lex, TokenKind};
+    use crate::rql::ast::parse::Parser;
     use crate::rql::ast::Ast;
-    use crate::rql::parse::Parser;
 
     #[test]
     fn test_parse_from_identifier() {

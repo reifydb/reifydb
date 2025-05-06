@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::{Token, TokenKind};
+use crate::rql::ast::lex::{Token, TokenKind};
 use nom::branch::alt;
 use nom::bytes::tag;
 use nom::combinator::value;
@@ -42,8 +42,8 @@ pub(crate) fn parse_separator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::separator::{parse_separator, Separator};
-    use crate::rql::lex::TokenKind;
+    use crate::rql::ast::lex::separator::{parse_separator, Separator};
+    use crate::rql::ast::lex::TokenKind;
     use nom_locate::LocatedSpan;
 
     #[test]

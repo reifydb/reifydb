@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::{Literal, Token, TokenKind};
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use crate::rql::ast::lex::{Literal, Token, TokenKind};
 
 #[derive(Debug, PartialEq)]
 pub enum Ast {

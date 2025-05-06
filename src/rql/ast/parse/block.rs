@@ -1,11 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::Operator::{CloseParen, OpenParen};
-use crate::rql::lex::Token;
-use crate::rql::parse;
-use crate::rql::ast::AstBlock;
-use crate::rql::parse::{Parser, Precedence};
+use crate::rql::ast::lex::Operator::{CloseParen, OpenParen};
+use crate::rql::ast::lex::Token;
+use crate::rql::ast::parse::{Parser, Precedence};
+use crate::rql::ast::{parse, AstBlock};
 
 impl Parser {
     pub(crate) fn parse_block(&mut self) -> parse::Result<AstBlock> {
@@ -30,10 +29,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::lex;
+    use crate::rql::ast::lex::lex;
+    use crate::rql::ast::parse::parse;
     use crate::rql::ast::Ast::Literal;
     use crate::rql::ast::AstLiteral;
-    use crate::rql::parse::parse;
 
     #[test]
     fn empty_block() {

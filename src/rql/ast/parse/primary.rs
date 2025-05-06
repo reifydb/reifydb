@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::Literal::{False, Number, Text, True, Undefined};
-use crate::rql::lex::Separator::NewLine;
-use crate::rql::lex::{Keyword, Operator, TokenKind};
-use crate::rql::parse;
-use crate::rql::ast::{Ast, AstPrefix, AstWildcard, PrefixOperator};
-use crate::rql::parse::{Error, Parser, Precedence};
+use crate::rql::ast::lex::Literal::{False, Number, Text, True, Undefined};
+use crate::rql::ast::lex::Separator::NewLine;
+use crate::rql::ast::lex::{Keyword, Operator, TokenKind};
+use crate::rql::ast::parse::{Error, Parser, Precedence};
+use crate::rql::ast::{parse, Ast, AstPrefix, AstWildcard, PrefixOperator};
 
 impl Parser {
     pub(crate) fn parse_primary(&mut self) -> parse::Result<Ast> {
@@ -70,10 +69,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::lex;
+    use crate::rql::ast::lex::lex;
+    use crate::rql::ast::parse::parse;
     use crate::rql::ast::Ast::Literal;
     use crate::rql::ast::{Ast, AstLiteral, AstPrefix, PrefixOperator};
-    use crate::rql::parse::parse;
     use std::ops::Deref;
 
     #[test]

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::rql::lex::{Token, TokenKind};
+use crate::rql::ast::lex::{Token, TokenKind};
 use nom::bytes::complete::take_while1;
 use nom::bytes::take_while;
 use nom::combinator::{complete, recognize};
@@ -24,8 +24,8 @@ fn is_identifier_char(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::rql::lex::identifier::parse_identifier;
-    use crate::rql::lex::TokenKind;
+    use crate::rql::ast::lex::identifier::parse_identifier;
+    use crate::rql::ast::lex::TokenKind;
     use nom_locate::LocatedSpan;
 
     #[test]
