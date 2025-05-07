@@ -5,6 +5,6 @@ use crate::expression::Expression;
 
 #[derive(Debug)]
 pub enum Node {
-    Project { input: Box<Node>, expressions: Vec<Expression> },
-    Scan { /*source: Source(Table|Buffer|Index)...*/ filter: Vec<Expression> },
+    Project { expressions: Vec<Expression> },
+    Scan { filter: Vec<Expression> },
 }

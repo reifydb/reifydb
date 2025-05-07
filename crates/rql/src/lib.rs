@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub use error::Error;
+pub use expression::Expression;
 pub use value::{Value, ValueType};
 
 pub mod ast;

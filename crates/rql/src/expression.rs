@@ -8,9 +8,6 @@ use crate::Value;
 
 #[derive(Debug)]
 pub enum Expression {
-    /// A constant value.
-    Constant(Value),
-
     /// lhs AND rhs: logical AND of two booleans
     And(Box<Expression>, Box<Expression>),
     /// a OR b: logical OR of two booleans
@@ -18,5 +15,8 @@ pub enum Expression {
     /// NOT a: logical NOT of a boolean
     Not(Box<Expression>),
 
-    
+    /// A constant value.
+    Constant(Value),
+
+    Identifier(String),
 }

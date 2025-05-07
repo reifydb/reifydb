@@ -7,9 +7,8 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::rql::ast;
-use reifydb::rql::plan::node::Node;
-use reifydb::rql::plan::{plan, Plan};
+use reifydb::rql::plan::{QueryPlan, plan};
+use reifydb::rql::{Expression, ast};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -25,72 +24,30 @@ pub struct Database {
     pub tables: HashMap<String, Table>,
 }
 
-// #[derive(Debug)]
-// pub enum Plan {
-//     ScanSeq { table_name: String },
-//     Project { input: Box<Plan>, columns: Vec<String> },
-// }
-
-// pub fn plan(ast: &Ast) -> Result<Plan, String> {
-//     match ast {
-//         Ast::Block(nodes) => {
-//             let mut current: Option<Plan> = None;
-//
-//             for node in &nodes.nodes {
-//                 match node {
-//                     Ast::From(from) => {
-//                         current = Some(plan_from(from)?);
-//                     }
-//                     Ast::Select(select) => {
-//                         let plan = current.unwrap();
-//
-//                         let mut columns = vec![];
-//                         for column in &select.columns {
-//                             match column {
-//                                 Ast::Identifier(node) => {
-//                                     columns.push(node.value().to_string());
-//                                 }
-//                                 _ => unimplemented!(),
-//                             }
-//                         }
-//
-//                         current = Some(Plan::Project { input: Box::new(plan), columns });
-//                     }
-//                     _ => return Err("Unsupported AST node in block".to_string()),
-//                 }
-//             }
-//
-//             current.ok_or("Empty block".to_string())
-//         }
-//         _ => unimplemented!(),
-//     }
-// }
-
-// pub fn plan_from(from: &AstFrom) -> Result<Plan, String> {
-//     dbg!(&from);
-//     match &*from.source {
-//         Ast::Identifier(id) => Ok(Plan::ScanSeq { table_name: id.name() }),
-//         other => unimplemented!("{:?}", other),
-//     }
-// }
-
-pub fn execute_plan(plan: &Plan, db: &Database) -> Result<Vec<Row>, String> {
-    match plan {
-        Plan::Query { node } => execute_node(node, db),
-    }
+pub fn execute_plan(plan: &QueryPlan, db: &Database) -> Result<Vec<Row>, String> {
+    execute_node(plan, db, None)
 }
 
-pub fn execute_node(node: &Node, db: &Database) -> Result<Vec<Row>, String> {
-    match node {
-        Node::Project { input, .. } => {
-            let input_rows = execute_node(input, db)?;
-            // if columns.len() == 1 && columns[0] == "*" {
-            //     return Ok(input_rows);
-            // }
-
-            let columns = vec!["id".to_string(), "name".to_string()];
-
-            let result = input_rows
+fn execute_node(
+    node: &QueryPlan,
+    db: &Database,
+    input: Option<Vec<Row>>,
+) -> Result<Vec<Row>, String> {
+    let result = match node {
+        QueryPlan::Scan { source, next } => {
+            let table = db.tables.get(source).ok_or("Table not found")?;
+            Ok::<Vec<Row>, String>(table.rows.clone())
+        }
+        QueryPlan::Project { expressions, next } => {
+            let input_rows = input.ok_or("Missing input for Project")?;
+            let columns: Vec<String> = expressions
+                .iter()
+                .filter_map(|expr| match expr {
+                    Expression::Identifier(name) => Some(name.clone()),
+                    _ => None,
+                })
+                .collect();
+            let projected = input_rows
                 .into_iter()
                 .map(|row| {
                     let filtered = columns
@@ -100,24 +57,27 @@ pub fn execute_node(node: &Node, db: &Database) -> Result<Vec<Row>, String> {
                     Row(filtered)
                 })
                 .collect();
-            Ok(result)
+            Ok(projected)
         }
-        Node::Scan { .. } => {
-            let table_name = "users";
-            let table = db.tables.get(table_name).ok_or("Table not found")?;
-            Ok(table.rows.clone())
-        }
+    }?;
+
+    if let Some(next_node) = match node {
+        QueryPlan::Scan { next, .. } | QueryPlan::Project { next, .. } => next.as_ref(),
+    } {
+        execute_node(next_node, db, Some(result))
+    } else {
+        Ok(result)
     }
 }
 
-pub struct CursorIter<I>
+pub struct RowIter<I>
 where
     I: Iterator,
 {
     iter: I,
 }
 
-impl<I> CursorIter<I>
+impl<I> RowIter<I>
 where
     I: Iterator,
 {
@@ -125,7 +85,7 @@ where
         Self { iter }
     }
 
-    pub fn map<B, M>(self, mut f: M) -> CursorIter<impl Iterator<Item = B>>
+    pub fn map<B, M>(self, mut f: M) -> RowIter<impl Iterator<Item = B>>
     where
         M: FnMut(I::Item) -> B,
     {
@@ -133,22 +93,22 @@ where
             let mapped = f(item);
             mapped
         });
-        CursorIter::new(iter)
+        RowIter::new(iter)
     }
 
-    pub fn filter<P>(self, mut predicate: P) -> CursorIter<impl Iterator<Item = I::Item>>
+    pub fn filter<P>(self, mut predicate: P) -> RowIter<impl Iterator<Item = I::Item>>
     where
         P: FnMut(&I::Item) -> bool,
     {
         let iter = self.iter.filter(move |item| predicate(item));
-        CursorIter::new(iter)
+        RowIter::new(iter)
     }
 
-    pub fn take(self, n: usize) -> CursorIter<impl Iterator<Item = I::Item>> {
-        CursorIter::new(self.iter.take(n))
+    pub fn take(self, n: usize) -> RowIter<impl Iterator<Item = I::Item>> {
+        RowIter::new(self.iter.take(n))
     }
 
-    pub fn interleave<J>(self, other: J) -> CursorIter<impl Iterator<Item = I::Item>>
+    pub fn interleave<J>(self, other: J) -> RowIter<impl Iterator<Item = I::Item>>
     where
         J: IntoIterator<Item = I::Item>,
         I: Iterator,
@@ -158,21 +118,18 @@ where
 
         let iter = a.zip(b).flat_map(|(x, y)| vec![x, y]);
 
-        CursorIter::new(iter)
+        RowIter::new(iter)
     }
 
-    pub fn zip<J>(
-        self,
-        other: CursorIter<J>,
-    ) -> CursorIter<impl Iterator<Item = (I::Item, J::Item)>>
+    pub fn zip<J>(self, other: RowIter<J>) -> RowIter<impl Iterator<Item = (I::Item, J::Item)>>
     where
         J: Iterator,
     {
-        CursorIter::new(self.iter.zip(other.iter))
+        RowIter::new(self.iter.zip(other.iter))
     }
 }
 
-impl<I> Iterator for CursorIter<I>
+impl<I> Iterator for RowIter<I>
 where
     I: Iterator,
 {
@@ -291,20 +248,19 @@ fn main() {
         },
     );
 
-    let mut ast = ast::parse(
+    let mut statements = ast::parse(
         r#"
         FROM users
         SELECT name
     "#,
     );
 
-    let plan = plan(ast).unwrap();
+    for statement in statements {
+        let plan = plan(statement).unwrap();
 
-    //
-    //     let plan = plan(&ast).unwrap();
-    //
-    let result = execute_plan(&plan, &db).unwrap();
-    for row in result {
-        println!("{:?}", row);
+        let result = execute_plan(&plan, &db).unwrap();
+        for row in result {
+            println!("{:?}", row);
+        }
     }
 }

@@ -14,10 +14,10 @@ mod r#type;
 
 pub use error::*;
 
+use crate::ast::Ast;
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
 use crate::ast::parse::Error::UnexpectedEndOfFile;
-use crate::ast::Ast;
 use std::cmp::PartialOrd;
 use std::collections::HashMap;
 
@@ -155,11 +155,7 @@ impl Parser {
 
     pub(crate) fn current_expect(&self, expected: TokenKind) -> Result<()> {
         let got = self.current()?;
-        if got.kind == expected {
-            Ok(())
-        } else {
-            Err(Error::unexpected(expected, got.clone()))
-        }
+        if got.kind == expected { Ok(()) } else { Err(Error::unexpected(expected, got.clone())) }
     }
 
     pub(crate) fn current_expect_literal(&self, literal: Literal) -> Result<()> {
@@ -201,11 +197,7 @@ impl Parser {
 
     pub(crate) fn peek_next_expect(&self, expected: TokenKind) -> Result<()> {
         let got = self.peek_next()?;
-        if got.kind == expected {
-            Ok(())
-        } else {
-            Err(Error::unexpected(expected, got.clone()))
-        }
+        if got.kind == expected { Ok(()) } else { Err(Error::unexpected(expected, got.clone())) }
     }
 
     fn is_eof(&self) -> bool {
@@ -224,7 +216,7 @@ mod tests {
     use crate::ast::lex::Operator::Plus;
     use crate::ast::lex::Separator::Semicolon;
     use crate::ast::lex::TokenKind::{Identifier, Literal, Separator};
-    use crate::ast::lex::{lex, TokenKind};
+    use crate::ast::lex::{TokenKind, lex};
     use crate::ast::parse::Error::UnexpectedEndOfFile;
     use crate::ast::parse::Precedence::Term;
     use crate::ast::parse::{Error, Parser, Precedence};

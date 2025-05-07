@@ -6,6 +6,18 @@
 
 use crate::ast::lex::{Literal, Token, TokenKind};
 
+#[derive(Debug)]
+pub struct AstStatement(pub Vec<Ast>);
+
+impl IntoIterator for AstStatement {
+    type Item = Ast;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Ast {
     Block(AstBlock),
@@ -53,66 +65,42 @@ impl Ast {
         matches!(self, Ast::Block(_))
     }
     pub fn as_block(&self) -> &AstBlock {
-        if let Ast::Block(result) = self {
-            result
-        } else {
-            panic!("not block")
-        }
+        if let Ast::Block(result) = self { result } else { panic!("not block") }
     }
 
     pub fn is_from(&self) -> bool {
         matches!(self, Ast::From(_))
     }
     pub fn as_from(&self) -> &AstFrom {
-        if let Ast::From(result) = self {
-            result
-        } else {
-            panic!("not from")
-        }
+        if let Ast::From(result) = self { result } else { panic!("not from") }
     }
 
     pub fn is_identifier(&self) -> bool {
         matches!(self, Ast::Identifier(_))
     }
     pub fn as_identifier(&self) -> &AstIdentifier {
-        if let Ast::Identifier(result) = self {
-            result
-        } else {
-            panic!("not identifier")
-        }
+        if let Ast::Identifier(result) = self { result } else { panic!("not identifier") }
     }
 
     pub fn is_infix(&self) -> bool {
         matches!(self, Ast::Infix(_))
     }
     pub fn as_infix(&self) -> &AstInfix {
-        if let Ast::Infix(result) = self {
-            result
-        } else {
-            panic!("not infix")
-        }
+        if let Ast::Infix(result) = self { result } else { panic!("not infix") }
     }
 
     pub fn is_literal(&self) -> bool {
         matches!(self, Ast::Literal(_))
     }
     pub fn as_literal(&self) -> &AstLiteral {
-        if let Ast::Literal(result) = self {
-            result
-        } else {
-            panic!("not literal")
-        }
+        if let Ast::Literal(result) = self { result } else { panic!("not literal") }
     }
 
     pub fn is_prefix(&self) -> bool {
         matches!(self, Ast::Prefix(_))
     }
     pub fn as_prefix(&self) -> &AstPrefix {
-        if let Ast::Prefix(result) = self {
-            result
-        } else {
-            panic!("not prefix")
-        }
+        if let Ast::Prefix(result) = self { result } else { panic!("not prefix") }
     }
 
     pub fn is_select(&self) -> bool {
@@ -120,11 +108,7 @@ impl Ast {
     }
 
     pub fn as_select(&self) -> &AstSelect {
-        if let Ast::Select(result) = self {
-            result
-        } else {
-            panic!("not select")
-        }
+        if let Ast::Select(result) = self { result } else { panic!("not select") }
     }
 
     pub fn is_tuple(&self) -> bool {
@@ -132,11 +116,7 @@ impl Ast {
     }
 
     pub fn as_tuple(&self) -> &AstTuple {
-        if let Ast::Tuple(result) = self {
-            result
-        } else {
-            panic!("not tuple")
-        }
+        if let Ast::Tuple(result) = self { result } else { panic!("not tuple") }
     }
 }
 
