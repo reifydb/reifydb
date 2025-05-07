@@ -4,11 +4,9 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use error::Error;
-pub use expression::Expression;
+pub use row::{Row, RowIter, RowIterator};
+pub use value::{Value, ValueType};
+pub use core::result;
 
-pub mod ast;
-pub mod catalog;
-mod error;
-mod expression;
-pub mod plan;
+mod row;
+mod value;

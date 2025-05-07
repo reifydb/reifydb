@@ -51,6 +51,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "core"
+version = "0.0.1"
+dependencies = [
+ "dyn-clone",
+ "serde",
+]
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
+
+[[package]]
 name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -181,6 +195,7 @@ checksum = "809e8dc61f6de73b46c85f4c96486310fe304c434cfa43669d7b40f711150908"
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
+ "core",
  "encoding",
  "rql",
  "serde",
@@ -192,6 +207,8 @@ dependencies = [
 name = "rql"
 version = "0.0.1"
 dependencies = [
+ "core",
+ "dyn-clone",
  "nom",
  "nom_locate",
  "serde",

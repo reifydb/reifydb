@@ -1,5 +1,5 @@
 [package]
-name = "rql"
+name = "core"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -7,11 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-core = { workspace = true }
-
 dyn-clone = { workspace = true }
-nom = { workspace = true }
-nom_locate = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
