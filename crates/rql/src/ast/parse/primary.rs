@@ -5,7 +5,7 @@ use crate::ast::lex::Literal::{False, Number, Text, True, Undefined};
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Operator, TokenKind};
 use crate::ast::parse::{Error, Parser, Precedence};
-use crate::ast::{parse, Ast, AstPrefix, AstWildcard, PrefixOperator};
+use crate::ast::{Ast, AstPrefix, AstWildcard, PrefixOperator, parse};
 
 impl Parser {
     pub(crate) fn parse_primary(&mut self) -> parse::Result<Ast> {
@@ -26,15 +26,18 @@ impl Parser {
             TokenKind::Operator(operator) => match operator {
                 Operator::Plus | Operator::Minus | Operator::Bang => {
                     let operator = self.parse_prefix_operator()?;
-                    Ok(Ast::Prefix(AstPrefix { operator, node: Box::new(self.parse_node(Precedence::None)?) }))
+                    Ok(Ast::Prefix(AstPrefix {
+                        operator,
+                        node: Box::new(self.parse_node(Precedence::None)?),
+                    }))
                 }
                 Operator::Asterisk => Ok(Ast::Wildcard(AstWildcard(self.advance()?))),
                 Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
-                // Operator::OpenParen => Ok(Node::Block(self.parse_block()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
             },
             TokenKind::Keyword(keyword) => match keyword {
                 Keyword::From => Ok(Ast::From(self.parse_from()?)),
+                Keyword::Limit => Ok(Ast::Limit(self.parse_limit()?)),
                 Keyword::Select => Ok(Ast::Select(self.parse_select()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
             },
@@ -43,7 +46,9 @@ impl Parser {
                 _ if current.is_literal(True) => Ok(Ast::Literal(self.parse_literal_true()?)),
                 _ if current.is_literal(False) => Ok(Ast::Literal(self.parse_literal_false()?)),
                 _ if current.is_literal(Text) => Ok(Ast::Literal(self.parse_literal_text()?)),
-                _ if current.is_literal(Undefined) => Ok(Ast::Literal(self.parse_literal_undefined()?)),
+                _ if current.is_literal(Undefined) => {
+                    Ok(Ast::Literal(self.parse_literal_undefined()?))
+                }
                 _ if current.is_identifier() => match self.parse_type() {
                     Ok(node) => Ok(Ast::Type(node)),
                     Err(_) => Ok(Ast::Identifier(self.parse_identifier()?)),
@@ -69,9 +74,9 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::Ast::Literal;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
-    use crate::ast::Ast::Literal;
     use crate::ast::{Ast, AstLiteral, AstPrefix, PrefixOperator};
     use std::ops::Deref;
 

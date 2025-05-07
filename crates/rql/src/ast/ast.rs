@@ -24,6 +24,7 @@ pub enum Ast {
     From(AstFrom),
     Identifier(AstIdentifier),
     Infix(AstInfix),
+    Limit(AstLimit),
     Literal(AstLiteral),
     Nop,
     Prefix(AstPrefix),
@@ -40,6 +41,7 @@ impl Ast {
             Ast::From(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
+            Ast::Limit(node) => &node.token,
             Ast::Literal(node) => match node {
                 AstLiteral::Boolean(node) => &node.0,
                 AstLiteral::Number(node) => &node.0,
@@ -87,6 +89,13 @@ impl Ast {
     }
     pub fn as_infix(&self) -> &AstInfix {
         if let Ast::Infix(result) = self { result } else { panic!("not infix") }
+    }
+
+    pub fn is_limit(&self) -> bool {
+        matches!(self, Ast::Limit(_))
+    }
+    pub fn as_limit(&self) -> &AstLimit {
+        if let Ast::Limit(result) = self { result } else { panic!("not limit") }
     }
 
     pub fn is_literal(&self) -> bool {
@@ -139,6 +148,12 @@ pub enum AstExpression {
 pub struct AstFrom {
     pub token: Token,
     pub source: Box<Ast>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstLimit {
+    pub token: Token,
+    pub limit: usize,
 }
 
 #[derive(Debug, PartialEq)]

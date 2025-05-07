@@ -29,9 +29,7 @@ pub enum QueryPlan {
     //     keys: Vec<String>,
     //     next: Option<Box<Plan>>,
     // },
-    // Limit {
-    //     count: usize,
-    //     next: Option<Box<Plan>>,
+    Limit { limit: usize, next: Option<Box<QueryPlan>> },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -62,10 +60,7 @@ pub fn plan(statement: AstStatement) -> Result<QueryPlan> {
             //     keys: order.keys.clone(),
             //     next: head,
             // },
-            // Ast::Limit(limit) => Plan::Limit {
-            //     count: limit.count,
-            //     next: head,
-            // },
+            Ast::Limit(limit) => QueryPlan::Limit { limit: limit.limit, next: head },
             _ => unimplemented!("Unsupported AST node"),
         }));
     }

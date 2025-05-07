@@ -19,27 +19,38 @@ pub struct Table {
     pub rows: Vec<Row>,
 }
 
+impl Table {
+    pub fn scan(&self) -> impl Iterator<Item = Row> + '_ {
+        self.rows.iter().cloned()
+    }
+}
+
 #[derive(Debug)]
 pub struct Database {
     pub tables: HashMap<String, Table>,
 }
 
 pub fn execute_plan(plan: &QueryPlan, db: &Database) -> Result<Vec<Row>, String> {
-    execute_node(plan, db, None)
+    let iter = execute_node(plan, db, None)?;
+    Ok(iter.collect())
 }
 
-fn execute_node(
-    node: &QueryPlan,
-    db: &Database,
-    input: Option<Vec<Row>>,
-) -> Result<Vec<Row>, String> {
-    let result = match node {
+fn execute_node<'a>(
+    node: &'a QueryPlan,
+    db: &'a Database,
+    input: Option<Box<dyn Iterator<Item = Row> + 'a>>,
+) -> Result<Box<dyn Iterator<Item = Row> + 'a>, String> {
+    let result_iter: Box<dyn Iterator<Item = Row> + 'a> = match node {
         QueryPlan::Scan { source, next } => {
             let table = db.tables.get(source).ok_or("Table not found")?;
-            Ok::<Vec<Row>, String>(table.rows.clone())
+            Box::new(table.scan())
+        }
+        QueryPlan::Limit { limit: count, next } => {
+            let input_iter = input.ok_or("Missing input for Project")?;
+            Box::new(input_iter.take(*count))
         }
         QueryPlan::Project { expressions, next } => {
-            let input_rows = input.ok_or("Missing input for Project")?;
+            let input_iter = input.ok_or("Missing input for Project")?;
             let columns: Vec<String> = expressions
                 .iter()
                 .filter_map(|expr| match expr {
@@ -47,26 +58,23 @@ fn execute_node(
                     _ => None,
                 })
                 .collect();
-            let projected = input_rows
-                .into_iter()
-                .map(|row| {
-                    let filtered = columns
-                        .iter()
-                        .filter_map(|c| row.0.get(c).map(|v| (c.clone(), v.clone())))
-                        .collect();
-                    Row(filtered)
-                })
-                .collect();
-            Ok(projected)
-        }
-    }?;
+            Box::new(input_iter.map(move |row| {
+                let filtered = columns
+                    .iter()
+                    .filter_map(|c| row.0.get(c).map(|v| (c.clone(), v.clone())))
+                    .collect();
+                Row(filtered)
+            }))
+        } // Add more cases (Filter, OrderBy, Limit) here
+    };
 
     if let Some(next_node) = match node {
-        QueryPlan::Scan { next, .. } | QueryPlan::Project { next, .. } => next.as_ref(),
+        QueryPlan::Scan { next, .. } | QueryPlan::Project { next, .. } => next.as_deref(),
+        QueryPlan::Limit { next, .. } => next.as_deref(),
     } {
-        execute_node(next_node, db, Some(result))
+        execute_node(next_node, db, Some(result_iter))
     } else {
-        Ok(result)
+        Ok(result_iter)
     }
 }
 
@@ -252,6 +260,7 @@ fn main() {
         r#"
         FROM users
         SELECT name
+        LIMIT 100
     "#,
     );
 
