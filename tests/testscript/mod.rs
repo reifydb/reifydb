@@ -1,3 +1,6 @@
+// This file includes portions of code from https://github.com/erikgrinaker/goldenscript (MIT License).
+// Original Apache 2 License Copyright (c) erikgrinaker 2024.
+
 #![warn(clippy::all)]
 
 use reifydb::testscript;

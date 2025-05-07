@@ -1,3 +1,6 @@
+// This file includes portions of code from https://github.com/erikgrinaker/goldenscript (MIT License).
+// Original Apache 2 License Copyright (c) erikgrinaker 2024.
+
 //! This crate provides the testscript testing framework, loosely based on
 //! Cockroach Labs' [`datadriven`](https://github.com/cockroachdb/datadriven)
 //! framework for Go. It combines several testing techniques that make it easy

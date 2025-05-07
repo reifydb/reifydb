@@ -2,7 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 pub use error::Error;
+pub use value::{Value, ValueType};
 
 pub mod ast;
+pub mod catalog;
 mod error;
-pub mod value;
+mod expression;
+pub mod plan;
+mod value;
