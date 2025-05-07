@@ -32,6 +32,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "cli"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
+]
+
+[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -48,6 +55,13 @@ name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
+
+[[package]]
+name = "encoding"
+version = "0.0.1"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "errno"
@@ -167,11 +181,20 @@ checksum = "809e8dc61f6de73b46c85f4c96486310fe304c434cfa43669d7b40f711150908"
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
- "goldenfile",
+ "encoding",
+ "rql",
+ "serde",
+ "storage",
+ "storage-memory",
+]
+
+[[package]]
+name = "rql"
+version = "0.0.1"
+dependencies = [
  "nom",
  "nom_locate",
  "serde",
- "test_each_file",
 ]
 
 [[package]]
@@ -234,6 +257,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "storage"
+version = "0.0.1"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "storage-memory"
+version = "0.0.1"
+
+[[package]]
 name = "syn"
 version = "2.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -267,6 +301,16 @@ dependencies = [
  "quote",
  "syn",
  "unicode-ident",
+]
+
+[[package]]
+name = "testing"
+version = "0.0.1"
+dependencies = [
+ "goldenfile",
+ "nom",
+ "nom_locate",
+ "test_each_file",
 ]
 
 [[package]]

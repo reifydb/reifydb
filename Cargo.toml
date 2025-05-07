@@ -1,24 +1,50 @@
-[package]
-name = "reifydb"
+[workspace]
+resolver = "2"
+
+members = [
+    "bin/cli",
+    "crates/encoding",
+    "crates/rql",
+    "crates/storage/storage",
+    "crates/storage/memory",
+    "crates/testing",
+    "pkg/rust"
+]
+
+default-members = [
+    "bin/cli",
+    "crates/encoding",
+    "crates/rql",
+    "crates/storage/storage",
+    "crates/storage/memory",
+    "crates/testing",
+    "pkg/rust"
+]
+
+[workspace.package]
 authors = ["Dev <dominique@reifydb.com>"]
 homepage = "https://reifydb.com"
+repository = "https://github.com/reifydb/reifydb"
 readme = "readme.md"
 license = "AGPL-3"
 
 version = "0.0.1"
 rust-version = "1.85.1"
-edition = "2021"
-
-
-[dependencies]
-goldenfile = "1.8.0"
-nom = { version = "8.0.0" }
-nom_locate = { version = "5.0.0" }
-serde = { version = "1.0.219", features = ["derive"] }
-
-[dev-dependencies]
-test_each_file = "0.3.2"
+edition = "2024"
 
 [profile.dev]
 lto = false
 opt-level = 0
+
+[workspace.dependencies]
+reifydb = { path = "pkg/rust", version = "0.0.1" }
+encoding = { path = "crates/encoding", version = "0.0.1"}
+rql = { path = "crates/rql", version = "0.0.1" }
+storage = { path = "crates/storage/storage", version = "0.0.1"}
+storage-memory = { path = "crates/storage/memory", version = "0.0.1"}
+test = { path = "crates/testing", version = "0.0.1" }
+
+goldenfile = {version = "1.8.0"}
+nom = { version = "8.0.0" }
+nom_locate = { version = "5.0.0" }
+serde = { version = "1.0.219", features = ["derive"] }

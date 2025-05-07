@@ -1,0 +1,15 @@
+[package]
+name = "reifydb"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+encoding = { workspace = true }
+rql = { workspace = true }
+storage = { workspace = true }
+storage-memory = { workspace = true }
+
+serde = { workspace = true }
