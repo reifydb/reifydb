@@ -7,10 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+base = { workspace = true}
 encoding = { workspace = true }
-core = { workspace = true}
 rql = { workspace = true }
 storage = { workspace = true }
-storage-memory = { workspace = true }
 
 serde = { workspace = true }

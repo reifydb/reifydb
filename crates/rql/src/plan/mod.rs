@@ -2,9 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{Ast, AstFrom, AstStatement};
-use std::ops::Deref;
 
-use crate::expression::Expression;
+use base::expression::Expression;
 pub use error::Error;
 
 mod error;

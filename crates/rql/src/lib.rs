@@ -5,10 +5,8 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub use error::Error;
-pub use expression::Expression;
 
 pub mod ast;
-pub mod catalog;
 mod error;
-mod expression;
+pub mod execute;
 pub mod plan;

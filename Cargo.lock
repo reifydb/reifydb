@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "base"
+version = "0.0.1"
+dependencies = [
+ "dyn-clone",
+ "serde",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -48,14 +56,6 @@ dependencies = [
  "libc",
  "once_cell",
  "windows-sys",
-]
-
-[[package]]
-name = "core"
-version = "0.0.1"
-dependencies = [
- "dyn-clone",
- "serde",
 ]
 
 [[package]]
@@ -195,19 +195,18 @@ checksum = "809e8dc61f6de73b46c85f4c96486310fe304c434cfa43669d7b40f711150908"
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
- "core",
+ "base",
  "encoding",
  "rql",
  "serde",
  "storage",
- "storage-memory",
 ]
 
 [[package]]
 name = "rql"
 version = "0.0.1"
 dependencies = [
- "core",
+ "base",
  "dyn-clone",
  "nom",
  "nom_locate",
@@ -279,10 +278,6 @@ version = "0.0.1"
 dependencies = [
  "serde",
 ]
-
-[[package]]
-name = "storage-memory"
-version = "0.0.1"
 
 [[package]]
 name = "syn"

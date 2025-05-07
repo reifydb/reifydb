@@ -1,5 +1,5 @@
 [package]
-name = "core"
+name = "base"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true

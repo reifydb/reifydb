@@ -22,7 +22,7 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use core::*;
+pub use base::*;
 pub use error::Error;
 
 /// Handles serialization and deserialization of data types.

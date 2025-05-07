@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use core::Value;
+use crate::Value;
 
 #[derive(Debug)]
 pub enum Expression {

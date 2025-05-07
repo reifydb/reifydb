@@ -11,7 +11,6 @@ use std::fmt::{Display, Formatter};
 /// encapsulates issues encountered at any stage of query lifecycle—from malformed syntax to failed
 /// execution.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-
 pub enum Error {}
 
 impl Display for Error {

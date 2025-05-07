@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-core = { workspace = true }
+base = { workspace = true }
 
 dyn-clone = { workspace = true }
 nom = { workspace = true }

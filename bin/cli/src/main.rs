@@ -4,103 +4,102 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::rql::plan::{QueryPlan, plan};
-use reifydb::rql::{Expression, ast};
-use reifydb::{Row, RowIter, Value};
+use reifydb::catalog::{
+    Catalog, Column, ColumnName, Columns, Store, StoreKind, StoreName, TableName,
+};
+use reifydb::rql::ast;
+use reifydb::rql::execute::execute_plan;
+use reifydb::rql::plan::plan;
+use reifydb::{Database, Table, Value, ValueType};
 use std::collections::HashMap;
 
-#[derive(Debug)]
-pub struct Table {
-    pub rows: Vec<Row>,
-}
+struct DummyCatalog {}
 
-impl Table {
-    pub fn scan(&self) -> RowIter {
-        Box::new(self.rows.clone().into_iter())
+impl Catalog for DummyCatalog {
+    fn get(&self, name: impl AsRef<str>) -> reifydb::catalog::Result<Option<Store>> {
+        let name = name.as_ref();
+
+        if name == "users" {
+            Ok(Some(Store {
+                name: StoreName::new("users"),
+                kind: StoreKind::Table(reifydb::catalog::Table {
+                    name: TableName::new("users"),
+                    columns: Columns::new([
+                        Column {
+                            name: ColumnName::new("id"),
+                            value_type: ValueType::Int2,
+                            default: None,
+                        },
+                        Column {
+                            name: ColumnName::new("name"),
+                            value_type: ValueType::Text,
+                            default: None,
+                        },
+                        Column {
+                            name: ColumnName::new("gender"),
+                            value_type: ValueType::Boolean,
+                            default: None,
+                        },
+                    ]),
+                }),
+            }))
+        } else {
+            Ok(Some(Store {
+                name: StoreName::new("other_users"),
+                kind: StoreKind::Table(reifydb::catalog::Table {
+                    name: TableName::new("other_users"),
+                    columns: Columns::new([
+                        Column {
+                            name: ColumnName::new("id"),
+                            value_type: ValueType::Int2,
+                            default: None,
+                        },
+                        Column {
+                            name: ColumnName::new("name"),
+                            value_type: ValueType::Text,
+                            default: None,
+                        },
+                    ]),
+                }),
+            }))
+        }
+    }
+
+    fn list(&self) -> reifydb::catalog::Result<Vec<Store>> {
+        todo!()
     }
 }
 
-#[derive(Debug)]
-pub struct Database {
-    pub tables: HashMap<String, Table>,
-}
-
-pub fn execute_plan(plan: &QueryPlan, db: &Database) -> Result<Vec<Row>, String> {
-    let iter = execute_node(plan, db, None)?;
-    Ok(iter.collect())
-}
-
-fn execute_node<'a>(
-    node: &'a QueryPlan,
-    db: &'a Database,
-    input: Option<Box<dyn Iterator<Item = Vec<Value>> + 'a>>,
-) -> Result<Box<dyn Iterator<Item = Vec<Value>> + 'a>, String> {
-    let result_iter: Box<dyn Iterator<Item = Vec<Value>> + 'a> = match node {
-        QueryPlan::Scan { source, .. } => {
-            let table = db.tables.get(source).ok_or("Table not found")?;
-            Box::new(table.scan())
-        }
-
-        QueryPlan::Limit { limit: count, .. } => {
-            let input_iter = input.ok_or("Missing input for Limit")?;
-            Box::new(input_iter.take(*count))
-        }
-
-        QueryPlan::Project { expressions, .. } => {
-            let input_iter = input.ok_or("Missing input for Project")?;
-
-            let column_indexes: Vec<usize> = expressions
-                .iter()
-                .filter_map(|expr| {
-                    if let Expression::Identifier(name) = expr {
-                        if name == "id" {
-                            Some(0)
-                        } else if name == "name" {
-                            Some(1)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            Box::new(
-                input_iter.map(move |row| column_indexes.iter().map(|&i| row[i].clone()).collect()),
-            )
-        }
-    };
-
-    // Recurse if there's a next node
-    if let Some(next_node) = match node {
-        QueryPlan::Scan { next, .. }
-        | QueryPlan::Project { next, .. }
-        | QueryPlan::Limit { next, .. } => next.as_deref(),
-    } {
-        execute_node(next_node, db, Some(result_iter))
-    } else {
-        Ok(result_iter)
-    }
-}
 fn main() {
-    let mut db = Database { tables: HashMap::new() };
+    let catalog = DummyCatalog {};
+
+    let mut db = Database { catalog, tables: HashMap::new() };
 
     db.tables.insert(
         "users".to_string(),
         Table {
             rows: vec![
-                vec![Value::Int2(1), Value::Text("Alice".to_string())],
-                vec![Value::Int2(2), Value::Text("Box".to_string())],
+                vec![Value::Int2(1), Value::Text("Alice".to_string()), Value::Boolean(true)],
+                vec![Value::Int2(2), Value::Text("Bob".to_string()), Value::Boolean(false)],
             ],
         },
     );
 
-    let mut statements = ast::parse(
+    db.tables.insert(
+        "other_users".to_string(),
+        Table {
+            rows: vec![
+                vec![Value::Int2(3), Value::Text("OtherAlice".to_string())],
+                vec![Value::Int2(4), Value::Text("OtherBob".to_string())],
+            ],
+        },
+    );
+
+    let statements = ast::parse(
         r#"
-        FROM users
-        LIMIT 10
-        SELECT id, name, id, name
+        FROM other_users
+        LIMIT 2
+        SELECT id, name, gender, name, id
     "#,
     );
 
