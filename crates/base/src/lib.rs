@@ -4,16 +4,18 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+use crate::catalog::Catalog;
 pub use core::result;
+pub use key::{Key, KeyError};
 pub use row::{Row, RowIter, RowIterator};
 use std::collections::HashMap;
 pub use value::{Value, ValueType};
-use crate::catalog::Catalog;
 
 pub mod catalog;
+pub mod expression;
+mod key;
 mod row;
 mod value;
-pub mod expression;
 
 #[derive(Debug)]
 pub struct Table {

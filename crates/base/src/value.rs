@@ -18,6 +18,8 @@ pub enum ValueType {
     Text,
     /// A 2-byte unsigned integer
     Uint2,
+    /// Value is not defined (think null in common programming languages)
+    Undefined,
 }
 
 impl Display for ValueType {
@@ -27,6 +29,7 @@ impl Display for ValueType {
             ValueType::Int2 => f.write_str("INT2"),
             ValueType::Uint2 => f.write_str("UINT2"),
             ValueType::Text => f.write_str("TEXT"),
+            ValueType::Undefined => f.write_str("UNDEFINED"),
         }
     }
 }
@@ -36,12 +39,14 @@ impl Display for ValueType {
 pub enum Value {
     /// A boolean: true or false.
     Boolean(bool),
-    /// A 32-bit signed integer
-    Int2(i32),
+    /// A 2-byte signed integer
+    Int2(i16),
     /// A UTF-8 encoded text.
     Text(String),
-    /// A 32-bit unsigned integer
-    Uint2(u32),
+    /// A 2-byte unsigned integer
+    Uint2(u16),
+    /// Value is not defined (think null in common programming languages)
+    Undefined,
 }
 
 impl Display for Value {
@@ -52,6 +57,7 @@ impl Display for Value {
             Value::Int2(value) => Display::fmt(value, f),
             Value::Text(value) => Display::fmt(value, f),
             Value::Uint2(value) => Display::fmt(value, f),
+            Value::Undefined => f.write_str("undefined"),
         }
     }
 }

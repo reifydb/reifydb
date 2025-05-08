@@ -6,9 +6,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-goldenfile = "1.8.0"
-nom = { version = "8.0.0" }
-nom_locate = { version = "5.0.0" }
+goldenfile = { workspace = true }
+nom = { workspace = true }
+nom_locate = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
-test_each_file = "0.3.2"
+test_each_file = "0.3.4"

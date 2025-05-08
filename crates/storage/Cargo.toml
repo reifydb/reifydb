@@ -6,4 +6,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-serde = {workspace = true}
+encoding = { workspace = true }
+
+regex = {workspace = true}
+serde = { workspace = true }
+
+[dev-dependencies]
+testing = { workspace = true }

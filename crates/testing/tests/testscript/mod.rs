@@ -1,10 +1,9 @@
-// This file includes portions of code from https://github.com/erikgrinaker/goldenscript (MIT License).
+// This file includes portions of code from https://github.com/erikgrinaker/goldenscript (Apache 2 License).
 // Original Apache 2 License Copyright (c) erikgrinaker 2024.
 
 #![warn(clippy::all)]
 
 use std::error::Error;
-use std::fmt::Write as _;
 use std::io::Write as _;
 use test_each_file::test_each_path;
 use testing::testscript;
@@ -13,7 +12,7 @@ use testing::testscript;
 test_each_path! { in "crates/testing/tests/testscript/scripts" as scripts => test_testscript }
 
 fn test_testscript(path: &std::path::Path) {
-    testscript::run(&mut DebugRunner::new(), path).expect("runner failed")
+    testscript::run_path(&mut DebugRunner::new(), path).expect("runner failed")
 }
 
 // Run testscripts in tests/generate with output in a separate file. This is

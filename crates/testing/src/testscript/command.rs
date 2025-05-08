@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// This file includes portions of code from https://github.com/erikgrinaker/goldenscript (MIT License).
+// This file includes portions of code from https://github.com/erikgrinaker/goldenscript (Apache 2 License).
 // Original Apache 2 License Copyright (c) erikgrinaker 2024.
 
 use std::collections::{BTreeSet, HashSet, VecDeque};

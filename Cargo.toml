@@ -38,10 +38,12 @@ base = { path = "crates/base", version = "0.0.1" }
 encoding = { path = "crates/encoding", version = "0.0.1" }
 rql = { path = "crates/rql", version = "0.0.1" }
 storage = { path = "crates/storage", version = "0.0.1" }
-test = { path = "crates/testing", version = "0.0.1" }
+testing = { path = "crates/testing", version = "0.0.1" }
 
 dyn-clone = { version = "1.0.19" }
 goldenfile = { version = "1.8.0" }
 nom = { version = "8.0.0" }
 nom_locate = { version = "5.0.0" }
+regex = { version = "1.11.1" }
 serde = { version = "1.0.219", features = ["derive"] }
+uuid = { version = "1.16.0", features = ["v4"] }

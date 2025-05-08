@@ -4,6 +4,7 @@
 // This file includes portions of code from https://github.com/erikgrinaker/goldenscript (MIT License).
 // Original Apache 2 License Copyright (c) erikgrinaker 2024.
 
+use std::env::temp_dir;
 use crate::testscript::parser::parse;
 use crate::testscript::Command;
 
@@ -70,7 +71,7 @@ pub trait Runner {
 /// IO, parser, or runner failure. If the environment variable
 /// `UPDATE_TESTFILES=1` is set, the new output file will replace the input
 /// file.
-pub fn run<R: Runner, P: AsRef<std::path::Path>>(runner: &mut R, path: P) -> std::io::Result<()> {
+pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(runner: &mut R, path: P) -> std::io::Result<()> {
     let path = path.as_ref();
     let Some(dir) = path.parent() else {
         return Err(std::io::Error::new(
@@ -90,6 +91,25 @@ pub fn run<R: Runner, P: AsRef<std::path::Path>>(runner: &mut R, path: P) -> std
 
     goldenfile::Mint::new(dir).new_goldenfile(filename)?.write_all(output.as_bytes())
 }
+
+pub fn run<R: Runner, S: Into<String>>(runner: R, test: S) {
+    try_run(runner, test).unwrap();
+}
+
+pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> std::io::Result<()> {
+    let input = test.into();
+
+    let dir = temp_dir();
+    let file_name = format!("{}.txt", uuid::Uuid::new_v4());
+    let file_path = dir.join(&file_name);
+
+    let mut file = std::fs::File::create(&file_path)?;
+    file.write_all(input.as_bytes())?;
+
+    let output = generate(&mut runner, &input)?;
+    goldenfile::Mint::new(dir).new_goldenfile(&file_name)?.write_all(output.as_bytes())
+}
+
 
 /// Generates output for a testscript input, without comparing them.
 pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<String> {

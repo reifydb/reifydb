@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// This file includes portions of code from https://github.com/erikgrinaker/goldenscript (MIT License).
+// This file includes portions of code from https://github.com/erikgrinaker/goldenscript (Apache 2 License).
 // Original Apache 2 License Copyright (c) erikgrinaker 2024.
 
 //! This crate provides the testscript testing framework, loosely based on
@@ -165,7 +165,7 @@
 //!
 //! #[test]
 //! fn btreemap() {
-//!     testscript::run(&mut BTreeMapRunner::default(), "btreemap").expect("testscript failed")
+//!     testscript::run_path(&mut BTreeMapRunner::default(), "btreemap").expect("testscript failed")
 //! }
 //! ```
 //!
@@ -366,7 +366,7 @@
 //!
 //! #[test]
 //! fn test() -> std::io::Result<()> {
-//!     testscript::run(&mut Runner, "tests/scripts/test")
+//!     testscript::run_path(&mut Runner, "tests/scripts/test")
 //! }
 //! ```
 //!
@@ -452,7 +452,7 @@
 //! test_each_path! { in "crates/testing/tests/testscript/scripts" as scripts => test_testscript }
 //!
 //! fn test_testscript(path: &std::path::Path) {
-//!     testscript::run(&mut Runner, path).unwrap()
+//!     testscript::run_path(&mut Runner, path).unwrap()
 //! }
 //! ```
 //!
@@ -469,4 +469,4 @@ mod parser;
 mod runner;
 
 pub use command::{Argument, ArgumentConsumer, Command};
-pub use runner::{generate, run, Runner};
+pub use runner::{Runner, generate, run, run_path, try_run};
