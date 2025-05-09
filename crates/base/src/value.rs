@@ -35,8 +35,10 @@ impl Display for ValueType {
 }
 
 /// A RQL value, represented as a native Rust type.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Value {
+    /// Value is not defined (think null in common programming languages)
+    Undefined,
     /// A boolean: true or false.
     Boolean(bool),
     /// A 2-byte signed integer
@@ -45,8 +47,6 @@ pub enum Value {
     Text(String),
     /// A 2-byte unsigned integer
     Uint2(u16),
-    /// Value is not defined (think null in common programming languages)
-    Undefined,
 }
 
 impl Display for Value {

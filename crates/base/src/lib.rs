@@ -12,6 +12,7 @@ use std::collections::HashMap;
 pub use value::{Value, ValueType};
 
 pub mod catalog;
+pub mod encoding;
 pub mod expression;
 mod key;
 mod row;

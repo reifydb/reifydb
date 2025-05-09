@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-encoding = { workspace = true }
+base = { workspace = true }
 
 regex = {workspace = true}
 serde = { workspace = true }

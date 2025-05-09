@@ -5,6 +5,7 @@
 // Original Apache 2 License Copyright (c) erikgrinaker 2024.
 
 use crate::Result;
+use base::encoding::keycode;
 use std::ops::RangeBounds;
 
 pub type Key = Vec<u8>;
@@ -29,7 +30,7 @@ pub trait Engine: Send {
 
     /// Iterates over all key-value pairs starting with the given prefix.
     fn scan_prefix(&mut self, prefix: &Key) -> Self::ScanIterator<'_> {
-        unimplemented!()
+        self.scan(keycode::prefix_range(prefix))
     }
 }
 

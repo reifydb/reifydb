@@ -9,7 +9,6 @@ use testing::testscript;
 use testscript::run;
 
 #[test]
-#[ignore]
 fn test_scan_prefix() {
     run(
         test_memory_instance(),
@@ -125,7 +124,6 @@ scan_prefix "\xff\xff\xff\xff"
 scan_prefix "\xff\xff\xff\xff\xff"
 ---
 ok
-
 "#,
     )
 }

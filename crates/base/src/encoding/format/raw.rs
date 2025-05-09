@@ -4,7 +4,7 @@
 // This file includes portions of code from https://github.com/erikgrinaker/toydb (Apache 2 License).
 // Original Apache 2 License Copyright (c) erikgrinaker 2024.
 
-use crate::format::Formatter;
+use crate::encoding::format::Formatter;
 
 /// Formats raw byte slices without any decoding.
 pub struct Raw;

@@ -8,7 +8,6 @@ repository.workspace = true
 
 [dependencies]
 base = { workspace = true}
-encoding = { workspace = true }
 rql = { workspace = true }
 storage = { workspace = true }
 

@@ -8,13 +8,13 @@
 #[cfg(test)]
 pub mod test {
     use storage::{Engine, EngineMut, Key, Value};
-    use encoding::format;
-    use encoding::format::Formatter;
     use regex::Regex;
     use std::error::Error as StdError;
     use std::fmt::Write as _;
     use std::ops::{Bound, RangeBounds};
     use std::result::Result as StdResult;
+    use base::encoding::format;
+    use base::encoding::format::Formatter;
 
     pub struct Runner<E: Engine + EngineMut> {
         pub engine: E,

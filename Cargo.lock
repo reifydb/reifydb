@@ -16,7 +16,9 @@ name = "base"
 version = "0.0.1"
 dependencies = [
  "dyn-clone",
+ "hex",
  "serde",
+ "serde_bytes",
 ]
 
 [[package]]
@@ -80,13 +82,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
-name = "encoding"
-version = "0.0.1"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "errno"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -125,6 +120,12 @@ dependencies = [
  "tempfile",
  "yansi",
 ]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "libc"
@@ -228,7 +229,6 @@ name = "reifydb"
 version = "0.0.1"
 dependencies = [
  "base",
- "encoding",
  "rql",
  "serde",
  "storage",
@@ -274,6 +274,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_bytes"
+version = "0.11.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8437fd221bde2d4ca316d61b90e337e9e702b3820b87d63caa9ba6c02bd06d96"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -308,7 +317,7 @@ dependencies = [
 name = "storage"
 version = "0.0.1"
 dependencies = [
- "encoding",
+ "base",
  "regex",
  "serde",
  "testing",

@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use base::encoding;
 
 /// Represents all possible errors that can occur within the ReifyDB system.
 ///
