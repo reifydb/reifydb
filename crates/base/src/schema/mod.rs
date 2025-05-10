@@ -54,21 +54,3 @@ impl From<&str> for SchemaName {
         Self::new(value)
     }
 }
-
-pub trait Schema {
-    // returns most recent version
-    fn get(&self, name: impl AsRef<str>) -> Result<Option<Store>>;
-
-    // returns the store as of the specified version
-    // fn get_as_of(&self, name: impl AsRef<str>, version) -> Result<Option<Store>>;
-
-    fn list(&self) -> Result<Vec<Store>>;
-}
-
-pub trait SchemaMut: Schema {
-    fn create(&self, store: Store) -> Result<()>;
-
-    fn create_if_not_exists(&self, store: Store) -> Result<()>;
-
-    fn drop(&self, name: impl AsRef<str>) -> Result<()>;
-}

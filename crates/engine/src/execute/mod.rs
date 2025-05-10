@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Catalog, Transaction};
+use crate::{Schema, Transaction};
 use base::Row;
 use base::Value;
 use base::expression::Expression;
-use base::schema::{Schema, StoreKind};
+use base::schema::StoreKind;
 use rql::plan::QueryPlan;
 
 pub fn execute_plan(plan: &QueryPlan, rx: &impl Transaction) -> Result<Vec<Row>, String> {

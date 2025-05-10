@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Engine, TransactionMut};
+use crate::TransactionMut;
+use crate::engine::Engine;
 use log::error;
 
 /// A client session. Executes raw RQL statements against an engine and
