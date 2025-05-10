@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::catalog::column::Columns;
+use crate::schema::column::Columns;
 
 #[derive(Debug)]
 pub struct TableName(String);

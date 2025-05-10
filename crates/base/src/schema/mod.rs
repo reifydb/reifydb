@@ -26,6 +26,9 @@ impl From<&str> for StoreName {
 
 #[derive(Debug)]
 pub enum StoreKind {
+    // Ring
+    // Series
+    // Stack
     Table(Table),
 }
 
@@ -37,13 +40,32 @@ pub struct Store {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub trait Catalog {
+#[derive(Debug)]
+pub struct SchemaName(String);
+
+impl SchemaName {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+}
+
+impl From<&str> for SchemaName {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+pub trait Schema {
+    // returns most recent version
     fn get(&self, name: impl AsRef<str>) -> Result<Option<Store>>;
+
+    // returns the store as of the specified version
+    // fn get_as_of(&self, name: impl AsRef<str>, version) -> Result<Option<Store>>;
 
     fn list(&self) -> Result<Vec<Store>>;
 }
 
-pub trait CatalogMut {
+pub trait SchemaMut: Schema {
     fn create(&self, store: Store) -> Result<()>;
 
     fn create_if_not_exists(&self, store: Store) -> Result<()>;

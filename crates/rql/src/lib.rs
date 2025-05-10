@@ -8,5 +8,4 @@ pub use error::Error;
 
 pub mod ast;
 mod error;
-pub mod execute;
 pub mod plan;

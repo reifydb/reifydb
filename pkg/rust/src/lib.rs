@@ -32,5 +32,8 @@ mod error;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use rql;
 
+/// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
+pub use engine;
+
 /// The underlying key-value store responsible for persistence and data access.
 pub use storage;

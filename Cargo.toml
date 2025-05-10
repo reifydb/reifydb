@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "bin/cli",
     "crates/base",
+    "crates/engine",
     "crates/rql",
     "crates/storage",
     "crates/testing",
@@ -13,6 +14,7 @@ members = [
 default-members = [
     "bin/cli",
     "crates/base",
+    "crates/engine",
     "crates/rql",
     "crates/storage",
     "crates/testing",
@@ -37,6 +39,7 @@ opt-level = 0
 [workspace.dependencies]
 reifydb = { path = "pkg/rust", version = "0.0.1" }
 base = { path = "crates/base", version = "0.0.1" }
+engine = { path = "crates/engine", version = "0.0.1" }
 rql = { path = "crates/rql", version = "0.0.1" }
 storage = { path = "crates/storage", version = "0.0.1" }
 testing = { path = "crates/testing", version = "0.0.1" }
@@ -44,6 +47,7 @@ testing = { path = "crates/testing", version = "0.0.1" }
 dyn-clone = { version = "1.0.19" }
 goldenfile = { version = "1.8.0" }
 hex = {version = "0.4.3"}
+log = {version = "0.4.27"}
 nom = { version = "8.0.0" }
 nom_locate = { version = "5.0.0" }
 regex = { version = "1.11.1" }
