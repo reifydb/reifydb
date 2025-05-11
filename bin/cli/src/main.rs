@@ -9,7 +9,7 @@ use reifydb::engine::{CatalogMut, Engine, SchemaMut, Transaction, TransactionMut
 use reifydb::rql::ast;
 use reifydb::rql::plan::plan;
 use reifydb::schema::{
-    Column, ColumnName, Columns, Schema, SchemaName, Store, StoreKind, StoreName, Table, TableName,
+    Column, ColumnName, Schema, SchemaName, Store, StoreKind, StoreName, Table, TableName,
 };
 use reifydb::storage::Memory;
 use reifydb::{Value, ValueType, engine};
@@ -27,7 +27,7 @@ fn main() {
             name: StoreName::new("users"),
             kind: StoreKind::Table(Table {
                 name: TableName::new("users"),
-                columns: Columns::new([
+                columns: vec![
                     Column {
                         name: ColumnName::new("id"),
                         value_type: ValueType::Int2,
@@ -43,7 +43,7 @@ fn main() {
                         value_type: ValueType::Boolean,
                         default: None,
                     },
-                ]),
+                ],
             }),
         })
         .unwrap();
@@ -66,7 +66,7 @@ fn main() {
         r#"
         from users
         limit 3
-        select id, name, name
+        select gender, id, name, name
     "#,
     );
 

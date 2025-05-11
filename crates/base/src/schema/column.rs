@@ -26,21 +26,3 @@ pub struct Column {
     pub value_type: ValueType,
     pub default: Option<Expression>,
 }
-
-#[derive(Debug)]
-pub struct Columns(Vec<Column>);
-
-impl Columns {
-    pub fn new(columns: impl IntoIterator<Item = Column>) -> Self {
-        Self(columns.into_iter().collect())
-    }
-}
-
-impl<'a> IntoIterator for &'a Columns {
-    type Item = &'a Column;
-    type IntoIter = std::slice::Iter<'a, Column>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}

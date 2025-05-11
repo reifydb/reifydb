@@ -3,7 +3,6 @@
 
 use crate::session::Session;
 use base::expression::Expression;
-use base::schema::Store;
 use base::{Key, Row, RowIter};
 
 pub trait Engine<'a>: Sized {
@@ -77,19 +76,28 @@ pub trait CatalogMut: Catalog {
 }
 
 pub trait Schema {
+    type Store: Store;
     // returns most recent version
-    fn get(&self, store: impl AsRef<str>) -> crate::Result<&Store>;
+    fn get(&self, store: impl AsRef<str>) -> crate::Result<&Self::Store>;
 
     // returns the store as of the specified version
     // fn get_as_of(&self, name: impl AsRef<str>, version) -> Result<Option<Store>>;
 
-    fn list(&self) -> crate::Result<Vec<&Store>>;
+    fn list(&self) -> crate::Result<Vec<&Self::Store>>;
 }
 
 pub trait SchemaMut: Schema {
-    fn create(&mut self, store: Store) -> crate::Result<()>;
+    type StoreMut: StoreMut;
 
-    fn create_if_not_exists(&mut self, store: Store) -> crate::Result<()>;
+    fn create(&mut self, store: base::schema::Store) -> crate::Result<()>;
+
+    fn create_if_not_exists(&mut self, store: base::schema::Store) -> crate::Result<()>;
 
     fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()>;
 }
+
+pub trait Store {
+    fn column_index(&self, column: impl AsRef<str>) -> crate::Result<usize>;
+}
+
+pub trait StoreMut: Store {}

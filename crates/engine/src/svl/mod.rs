@@ -8,6 +8,7 @@ use std::sync::{Arc, RwLock};
 mod catalog;
 mod schema;
 mod transaction;
+mod store;
 
 pub struct Engine<S: storage::EngineMut> {
     inner: Arc<RwLock<EngineInner<S>>>,

@@ -1,11 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Schema, Transaction};
+use crate::{Schema, Store, Transaction};
 use base::Row;
 use base::Value;
 use base::expression::Expression;
-use base::schema::StoreKind;
 use rql::plan::QueryPlan;
 
 pub fn execute_plan(plan: &QueryPlan, rx: &impl Transaction) -> Result<Vec<Row>, String> {
@@ -40,12 +39,14 @@ fn execute_node<'a>(
                     .iter()
                     .filter_map(|expr| {
                         if let Expression::Identifier(name) = expr {
-                            let table = match &rx.schema("test").unwrap().get(source).unwrap().kind
-                            {
-                                StoreKind::Table(table) => table,
-                            };
+                            // let table = match &rx.schema("test").unwrap().get(source).unwrap().kind
+                            // {
+                            //     StoreKind::Table(table) => table,
+                            // };
+                            //
+                            // table.column_index(name)
 
-                            table.column_index(name)
+                            rx.schema("test").unwrap().get(source).unwrap().column_index(name).ok()
                         } else {
                             None
                         }

@@ -4,7 +4,9 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use engine::{Catalog, CatalogMut, Engine, Schema, SchemaMut, Transaction, TransactionMut};
+pub use engine::{
+    Catalog, CatalogMut, Engine, Schema, SchemaMut, Store,StoreMut, Transaction, TransactionMut,
+};
 pub use error::Error;
 
 mod engine;
