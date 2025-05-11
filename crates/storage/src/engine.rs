@@ -29,7 +29,7 @@ pub trait Engine: Send {
     fn scan(&self, range: impl RangeBounds<Key>) -> Self::ScanIterator<'_>;
 
     /// Iterates over all key-value pairs starting with the given prefix.
-    fn scan_prefix(&mut self, prefix: &Key) -> Self::ScanIterator<'_> {
+    fn scan_prefix(&self, prefix: &Key) -> Self::ScanIterator<'_> {
         self.scan(keycode::prefix_range(prefix))
     }
 }

@@ -1,6 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use bincode::error::{DecodeError, EncodeError};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -11,12 +15,24 @@ use std::fmt::{Display, Formatter};
 /// unsupported data formats, or internal encoding bugs. It is designed to provide
 /// precise error feedback for low-level serialization and deserialization logic.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Error {}
+pub struct Error(pub String);
 
 impl Display for Error {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
     }
 }
 
 impl std::error::Error for Error {}
+
+impl From<EncodeError> for Error {
+    fn from(value: EncodeError) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<DecodeError> for Error {
+    fn from(value: DecodeError) -> Self {
+        Self(value.to_string())
+    }
+}

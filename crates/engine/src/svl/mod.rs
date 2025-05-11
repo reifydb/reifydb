@@ -8,21 +8,23 @@ mod catalog;
 mod schema;
 mod transaction;
 
-pub struct Engine {
-    inner: Arc<RwLock<EngineInner>>,
+pub struct Engine<S: storage::EngineMut> {
+    inner: Arc<RwLock<EngineInner<S>>>,
 }
 
-pub struct EngineInner {}
+pub struct EngineInner<S: storage::EngineMut> {
+    pub storage: S,
+}
 
-impl Engine {
-    pub fn new() -> Self {
-        Self { inner: Arc::new(RwLock::new(EngineInner {})) }
+impl<S: storage::EngineMut> Engine<S> {
+    pub fn new(storage: S) -> Self {
+        Self { inner: Arc::new(RwLock::new(EngineInner { storage })) }
     }
 }
 
-impl<'a> crate::Engine<'a> for Engine {
-    type Rx = Transaction<'a>;
-    type Tx = TransactionMut<'a>;
+impl<'a, S: storage::EngineMut + 'a> crate::Engine<'a> for Engine<S> {
+    type Rx = Transaction<'a, S>;
+    type Tx = TransactionMut<'a, S>;
 
     fn begin(&'a self) -> crate::Result<Self::Tx> {
         let guard = self.inner.write().unwrap();

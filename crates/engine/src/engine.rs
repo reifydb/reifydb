@@ -33,7 +33,7 @@ pub trait Transaction {
     fn schema(&self) -> crate::Result<Option<Self::Schema>>;
 
     /// Fetches store rows by primary key, if they exist.
-    fn get(&self, table: &str, ids: &[Key]) -> crate::Result<Vec<Row>>;
+    fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>>;
     /// Scans a store's rows, optionally applying the given filter.
     fn scan(&self, store: impl AsRef<str>, filter: Option<Expression>) -> crate::Result<RowIter>;
 }
@@ -48,6 +48,8 @@ pub trait TransactionMut: Transaction {
 
     fn schema_mut(&self) -> crate::Result<Option<Self::SchemaMut>>;
 
+    fn set(&self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()>;
+
     /// Commits the transaction.
     fn commit(self) -> crate::Result<()>;
     /// Rolls back the transaction.
@@ -57,7 +59,7 @@ pub trait TransactionMut: Transaction {
 pub trait Catalog {
     type Schema: Schema;
 
-    fn get(&self, name: impl AsRef<str>) -> crate::Result<Option<Self::Schema>>;
+    fn get(&self, schema: impl AsRef<str>) -> crate::Result<Option<Self::Schema>>;
 
     fn list(&self) -> crate::Result<Vec<Self::Schema>>;
 }
@@ -72,7 +74,7 @@ pub trait CatalogMut: Catalog {
 
 pub trait Schema {
     // returns most recent version
-    fn get(&self, name: impl AsRef<str>) -> crate::Result<Option<Store>>;
+    fn get(&self, store: impl AsRef<str>) -> crate::Result<Option<Store>>;
 
     // returns the store as of the specified version
     // fn get_as_of(&self, name: impl AsRef<str>, version) -> Result<Option<Store>>;

@@ -44,13 +44,14 @@ rql = { path = "crates/rql", version = "0.0.1" }
 storage = { path = "crates/storage", version = "0.0.1" }
 testing = { path = "crates/testing", version = "0.0.1" }
 
+bincode = { version = "2.0.1", features = ["serde"] }
 dyn-clone = { version = "1.0.19" }
 goldenfile = { version = "1.8.0" }
-hex = {version = "0.4.3"}
-log = {version = "0.4.27"}
+hex = { version = "0.4.3" }
+log = { version = "0.4.27" }
 nom = { version = "8.0.0" }
 nom_locate = { version = "5.0.0" }
 regex = { version = "1.11.1" }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_bytes = { version = "0.11.17"}
+serde_bytes = { version = "0.11.17" }
 uuid = { version = "1.16.0", features = ["v4"] }
