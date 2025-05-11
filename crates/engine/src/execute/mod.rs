@@ -40,14 +40,7 @@ fn execute_node<'a>(
                     .iter()
                     .filter_map(|expr| {
                         if let Expression::Identifier(name) = expr {
-                            let table = match rx
-                                .schema()
-                                .unwrap()
-                                .unwrap()
-                                .get(source)
-                                .unwrap()
-                                .unwrap()
-                                .kind
+                            let table = match &rx.schema("test").unwrap().get(source).unwrap().kind
                             {
                                 StoreKind::Table(table) => table,
                             };

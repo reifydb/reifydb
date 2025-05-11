@@ -28,9 +28,9 @@ pub trait Transaction {
     type Catalog: Catalog;
     type Schema: Schema;
 
-    fn catalog(&self) -> crate::Result<Self::Catalog>;
+    fn catalog(&self) -> crate::Result<&Self::Catalog>;
 
-    fn schema(&self) -> crate::Result<Option<Self::Schema>>;
+    fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema>;
 
     /// Fetches store rows by primary key, if they exist.
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>>;
@@ -44,11 +44,11 @@ pub trait TransactionMut: Transaction {
     type CatalogMut: CatalogMut;
     type SchemaMut: SchemaMut;
 
-    fn catalog_mut(&self) -> crate::Result<Self::CatalogMut>;
+    fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut>;
 
-    fn schema_mut(&self) -> crate::Result<Option<Self::SchemaMut>>;
+    fn schema_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::SchemaMut>;
 
-    fn set(&self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()>;
+    fn set(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()>;
 
     /// Commits the transaction.
     fn commit(self) -> crate::Result<()>;
@@ -59,33 +59,37 @@ pub trait TransactionMut: Transaction {
 pub trait Catalog {
     type Schema: Schema;
 
-    fn get(&self, schema: impl AsRef<str>) -> crate::Result<Option<Self::Schema>>;
+    fn get(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema>;
 
-    fn list(&self) -> crate::Result<Vec<Self::Schema>>;
+    fn list(&self) -> crate::Result<Vec<&Self::Schema>>;
 }
 
 pub trait CatalogMut: Catalog {
-    fn create(&self, store: Store) -> crate::Result<()>;
+    type SchemaMut: SchemaMut;
 
-    fn create_if_not_exists(&self, store: Store) -> crate::Result<()>;
+    fn get_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::Schema>;
 
-    fn drop(&self, name: impl AsRef<str>) -> crate::Result<()>;
+    fn create(&mut self, schema: base::schema::Schema) -> crate::Result<()>;
+
+    fn create_if_not_exists(&mut self, schema: base::schema::Schema) -> crate::Result<()>;
+
+    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()>;
 }
 
 pub trait Schema {
     // returns most recent version
-    fn get(&self, store: impl AsRef<str>) -> crate::Result<Option<Store>>;
+    fn get(&self, store: impl AsRef<str>) -> crate::Result<&Store>;
 
     // returns the store as of the specified version
     // fn get_as_of(&self, name: impl AsRef<str>, version) -> Result<Option<Store>>;
 
-    fn list(&self) -> crate::Result<Vec<Store>>;
+    fn list(&self) -> crate::Result<Vec<&Store>>;
 }
 
 pub trait SchemaMut: Schema {
-    fn create(&self, store: Store) -> crate::Result<()>;
+    fn create(&mut self, store: Store) -> crate::Result<()>;
 
-    fn create_if_not_exists(&self, store: Store) -> crate::Result<()>;
+    fn create_if_not_exists(&mut self, store: Store) -> crate::Result<()>;
 
-    fn drop(&self, name: impl AsRef<str>) -> crate::Result<()>;
+    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()>;
 }

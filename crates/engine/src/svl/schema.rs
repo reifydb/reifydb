@@ -1,88 +1,44 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::ValueType;
-use base::schema::{Column, ColumnName, Columns, Store, StoreKind, StoreName, Table, TableName};
+use base::schema::{SchemaName, Store};
+use std::collections::HashMap;
+use std::ops::Deref;
 
-pub struct Schema {}
+pub struct Schema {
+    name: SchemaName,
+    stores: HashMap<String, Store>,
+}
+
+impl Schema {
+    pub fn new(name: SchemaName) -> Self {
+        Self { name, stores: HashMap::new() }
+    }
+}
 
 impl crate::Schema for Schema {
-    fn get(&self, name: impl AsRef<str>) -> crate::Result<Option<Store>> {
+    fn get(&self, name: impl AsRef<str>) -> crate::Result<&Store> {
         let name = name.as_ref();
-
-        if name == "users" {
-            Ok(Some(Store {
-                name: StoreName::new("users"),
-                kind: StoreKind::Table(Table {
-                    name: TableName::new("users"),
-                    columns: Columns::new([
-                        Column {
-                            name: ColumnName::new("id"),
-                            value_type: ValueType::Int2,
-                            default: None,
-                        },
-                        Column {
-                            name: ColumnName::new("name"),
-                            value_type: ValueType::Text,
-                            default: None,
-                        },
-                        Column {
-                            name: ColumnName::new("gender"),
-                            value_type: ValueType::Boolean,
-                            default: None,
-                        },
-                    ]),
-                }),
-            }))
-        } else {
-            Ok(Some(Store {
-                name: StoreName::new("other_users"),
-                kind: StoreKind::Table(Table {
-                    name: TableName::new("other_users"),
-                    columns: Columns::new([
-                        Column {
-                            name: ColumnName::new("id"),
-                            value_type: ValueType::Int2,
-                            default: None,
-                        },
-                        Column {
-                            name: ColumnName::new("name"),
-                            value_type: ValueType::Text,
-                            default: None,
-                        },
-                    ]),
-                }),
-            }))
-        }
+        Ok(self.stores.get(name).unwrap())
     }
 
-    fn list(&self) -> crate::Result<Vec<Store>> {
+    fn list(&self) -> crate::Result<Vec<&Store>> {
         todo!()
     }
 }
 
-pub struct SchemaMut {}
+impl crate::SchemaMut for Schema {
+    fn create(&mut self, store: Store) -> crate::Result<()> {
+        assert!(self.stores.get(store.name.deref()).is_none());
+        self.stores.insert(store.name.deref().to_owned(), store);
+        Ok(())
+    }
 
-impl crate::Schema for SchemaMut {
-    fn get(&self, name: impl AsRef<str>) -> crate::Result<Option<Store>> {
+    fn create_if_not_exists(&mut self, store: Store) -> crate::Result<()> {
         todo!()
     }
 
-    fn list(&self) -> crate::Result<Vec<Store>> {
-        todo!()
-    }
-}
-
-impl crate::SchemaMut for SchemaMut {
-    fn create(&self, store: Store) -> crate::Result<()> {
-        todo!()
-    }
-
-    fn create_if_not_exists(&self, store: Store) -> crate::Result<()> {
-        todo!()
-    }
-
-    fn drop(&self, name: impl AsRef<str>) -> crate::Result<()> {
+    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()> {
         todo!()
     }
 }

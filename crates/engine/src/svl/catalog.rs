@@ -1,47 +1,49 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::svl::schema::{Schema, SchemaMut};
-use base::schema::Store;
+use crate::svl::schema::Schema;
+use std::collections::HashMap;
+use std::ops::Deref;
 
-pub struct Catalog {}
+pub struct Catalog {
+    schema: HashMap<String, Schema>,
+}
+
+impl Catalog {
+    pub fn new() -> Self {
+        Self { schema: HashMap::new() }
+    }
+}
 
 impl crate::Catalog for Catalog {
     type Schema = Schema;
-
-    fn get(&self, name: impl AsRef<str>) -> crate::Result<Option<Self::Schema>> {
-        Ok(Some(Schema {}))
+    fn get(&self, schema: impl AsRef<str>) -> crate::Result<&Schema> {
+        Ok(self.schema.get(schema.as_ref()).unwrap())
     }
 
-    fn list(&self) -> crate::Result<Vec<Self::Schema>> {
+    fn list(&self) -> crate::Result<Vec<&Schema>> {
         todo!()
     }
 }
 
-pub struct CatalogMut {}
+impl crate::CatalogMut for Catalog {
+    type SchemaMut = Schema;
 
-impl crate::Catalog for CatalogMut {
-    type Schema = SchemaMut;
+    fn get_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::Schema> {
+        Ok(self.schema.get_mut(schema.as_ref()).unwrap())
+    }
 
-    fn get(&self, name: impl AsRef<str>) -> crate::Result<Option<Self::Schema>> {
+    fn create(&mut self, schema: base::schema::Schema) -> crate::Result<()> {
+        assert!(self.schema.get(schema.name.deref()).is_none()); // FIXME
+        self.schema.insert(schema.name.to_string(), Schema::new(schema.name));
+        Ok(())
+    }
+
+    fn create_if_not_exists(&mut self, schema: base::schema::Schema) -> crate::Result<()> {
         todo!()
     }
 
-    fn list(&self) -> crate::Result<Vec<Self::Schema>> {
-        todo!()
-    }
-}
-
-impl crate::CatalogMut for CatalogMut {
-    fn create(&self, store: Store) -> crate::Result<()> {
-        todo!()
-    }
-
-    fn create_if_not_exists(&self, store: Store) -> crate::Result<()> {
-        todo!()
-    }
-
-    fn drop(&self, name: impl AsRef<str>) -> crate::Result<()> {
+    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()> {
         todo!()
     }
 }

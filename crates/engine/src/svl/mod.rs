@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::svl::catalog::Catalog;
 use crate::svl::transaction::{Transaction, TransactionMut};
 use std::sync::{Arc, RwLock};
 
@@ -14,11 +15,12 @@ pub struct Engine<S: storage::EngineMut> {
 
 pub struct EngineInner<S: storage::EngineMut> {
     pub storage: S,
+    pub catalog: Catalog,
 }
 
 impl<S: storage::EngineMut> Engine<S> {
     pub fn new(storage: S) -> Self {
-        Self { inner: Arc::new(RwLock::new(EngineInner { storage })) }
+        Self { inner: Arc::new(RwLock::new(EngineInner { storage, catalog: Catalog::new() })) }
     }
 }
 

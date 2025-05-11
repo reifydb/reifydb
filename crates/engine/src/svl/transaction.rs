@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::{Catalog as _, CatalogMut};
 use crate::svl::EngineInner;
-use crate::svl::catalog::{Catalog, CatalogMut};
-use crate::svl::schema::{Schema, SchemaMut};
+use crate::svl::catalog::Catalog;
+use crate::svl::schema::Schema;
 use base::encoding::{Value as OtherValue, bincode};
 use base::expression::Expression;
 use base::{Key, Row, RowIter};
@@ -25,12 +26,12 @@ impl<'a, S: storage::EngineMut> crate::Transaction for Transaction<'a, S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
-    fn catalog(&self) -> crate::Result<Self::Catalog> {
-        Ok(Catalog {})
+    fn catalog(&self) -> crate::Result<&Self::Catalog> {
+        Ok(&self.engine.catalog)
     }
 
-    fn schema(&self) -> crate::Result<Option<Self::Schema>> {
-        Ok(Some(Schema {}))
+    fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema> {
+        self.engine.catalog.get(schema.as_ref())
     }
 
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>> {
@@ -64,12 +65,12 @@ impl<'a, S: storage::EngineMut> crate::Transaction for TransactionMut<'a, S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
-    fn catalog(&self) -> crate::Result<Self::Catalog> {
-        todo!()
+    fn catalog(&self) -> crate::Result<&Self::Catalog> {
+        Ok(&self.engine.catalog)
     }
 
-    fn schema(&self) -> crate::Result<Option<Self::Schema>> {
-        todo!()
+    fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema> {
+        self.engine.catalog.get(schema.as_ref())
     }
 
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>> {
@@ -82,18 +83,22 @@ impl<'a, S: storage::EngineMut> crate::Transaction for TransactionMut<'a, S> {
 }
 
 impl<'a, S: storage::EngineMut> crate::TransactionMut for TransactionMut<'a, S> {
-    type CatalogMut = CatalogMut;
-    type SchemaMut = SchemaMut;
+    type CatalogMut = Catalog;
+    type SchemaMut = Schema;
 
-    fn catalog_mut(&self) -> crate::Result<Self::CatalogMut> {
-        todo!()
+    fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut> {
+        Ok(&mut self.engine.catalog)
     }
 
-    fn schema_mut(&self) -> crate::Result<Option<Self::SchemaMut>> {
-        todo!()
+    fn schema_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::SchemaMut> {
+        // fixme has schema?!
+        // Ok()
+        let schema = self.engine.catalog.get_mut(schema.as_ref()).unwrap();
+
+        Ok(schema)
     }
 
-    fn set(&self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()> {
+    fn set(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()> {
         let store = store.as_ref();
         self.log.borrow_mut().insert(store.to_string(), rows);
         Ok(())
