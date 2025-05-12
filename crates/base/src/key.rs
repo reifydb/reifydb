@@ -42,7 +42,7 @@ impl TryFrom<Value> for Key {
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::Boolean(v) => Ok(Self::Boolean(v)),
+            Value::Bool(v) => Ok(Self::Boolean(v)),
             Value::Int2(v) => Ok(Self::Int2(v)),
             Value::Text(v) => Ok(Self::Text(v)),
             Value::Uint2(v) => Ok(Self::Uint2(v)),

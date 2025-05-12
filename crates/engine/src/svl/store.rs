@@ -1,7 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::schema::{Column, StoreName};
+use base::ValueType;
+use base::expression::Expression;
+use base::schema::{ColumnName, StoreName};
+
+#[derive(Debug)]
+pub struct Column {
+    pub name: ColumnName,
+    pub value: ValueType,
+    pub default: Option<Expression>,
+}
 
 pub struct Store {
     pub name: StoreName,

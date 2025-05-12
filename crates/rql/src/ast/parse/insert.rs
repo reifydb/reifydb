@@ -19,7 +19,7 @@ impl Parser {
         self.consume_keyword(Keyword::Values)?;
         let values = self.parse_tuple()?;
 
-        Ok(AstInsert::Values { token, schema, store, columns, values })
+        Ok(AstInsert::Values { token, schema, store, columns, rows: vec![values] })
     }
 }
 
@@ -43,7 +43,7 @@ mod tests {
         let insert = result.as_insert();
 
         match insert {
-            AstInsert::Values { schema, store, columns, values, .. } => {
+            AstInsert::Values { schema, store, columns, rows: values, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(store.value(), "users");
 
@@ -51,6 +51,9 @@ mod tests {
                 assert_eq!(columns[0].value(), "id");
                 assert_eq!(columns[1].value(), "name");
                 assert_eq!(columns[2].value(), "is_premium");
+
+                assert_eq!(values.len(), 1);
+                let values = &values[0];
 
                 assert_eq!(values.len(), 3);
                 {

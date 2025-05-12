@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::engine::StoreToCreate;
-use crate::svl::store::Store;
+use crate::svl::store::{Column, Store};
 use base::schema::SchemaName;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -37,7 +37,16 @@ impl crate::SchemaMut for Schema {
         match to_create {
             StoreToCreate::Table { name, columns } => {
                 assert!(self.stores.get(name.deref()).is_none());
-                self.stores.insert(name.deref().to_string(), Store { name, columns });
+                self.stores.insert(
+                    name.deref().to_string(),
+                    Store {
+                        name,
+                        columns: columns
+                            .into_iter()
+                            .map(|c| Column { name: c.name, value: c.value, default: c.default })
+                            .collect::<Vec<_>>(),
+                    },
+                );
             }
         }
         Ok(())

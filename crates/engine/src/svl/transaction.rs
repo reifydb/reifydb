@@ -119,12 +119,14 @@ impl<'a, S: storage::EngineMut> crate::TransactionMut for TransactionMut<'a, S> 
 
     fn commit(mut self) -> crate::Result<()> {
         let log = self.log.borrow_mut();
+        // FIXME store this information in KV
+        let last_id = self.engine.storage.scan(&bincode::serialize(&&(0 as i64))..).count();
 
         for (store, rows) in log.iter() {
             for (id, row) in rows.iter().enumerate() {
                 self.engine
                     .storage
-                    .set(&bincode::serialize(&(id as i64)), bincode::serialize(row))
+                    .set(&bincode::serialize(&((last_id + id + 1) as i64)), bincode::serialize(row))
                     .unwrap();
             }
         }

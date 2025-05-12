@@ -306,7 +306,7 @@ pub enum AstInsert {
         schema: AstIdentifier,
         store: AstIdentifier,
         columns: AstTuple,
-        values: AstTuple,
+        rows: Vec<AstTuple>,
     },
 }
 

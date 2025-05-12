@@ -13,7 +13,7 @@ fn main() {
 
     instance.tx(r#"insert into test.users(id, name, is_premium) values (1,'Alice',true)"#);
     instance.tx(r#"insert into test.users(id, name, is_premium) values (2,'Bob', false)"#);
-    instance.tx(r#"insert into test.users(id, name, is_premium) values (3,'Tina', false)"#);
+    instance.tx(r#"insert into test.users(id, name, is_premium) values (3,'Tina', true)"#);
 
     let result = instance.rx(r#"
         from test.users

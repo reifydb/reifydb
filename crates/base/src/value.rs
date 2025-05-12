@@ -11,7 +11,7 @@ use std::fmt::{Display, Formatter};
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ValueType {
     /// A boolean: true or false.
-    Boolean,
+    Bool,
     /// A 2-byte signed integer
     Int2,
     /// A UTF-8 encoded text.
@@ -25,7 +25,7 @@ pub enum ValueType {
 impl Display for ValueType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValueType::Boolean => f.write_str("BOOLEAN"),
+            ValueType::Bool => f.write_str("BOOL"),
             ValueType::Int2 => f.write_str("INT2"),
             ValueType::Uint2 => f.write_str("UINT2"),
             ValueType::Text => f.write_str("TEXT"),
@@ -40,7 +40,7 @@ pub enum Value {
     /// Value is not defined (think null in common programming languages)
     Undefined,
     /// A boolean: true or false.
-    Boolean(bool),
+    Bool(bool),
     /// A 2-byte signed integer
     Int2(i16),
     /// A UTF-8 encoded text.
@@ -52,8 +52,8 @@ pub enum Value {
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Boolean(true) => f.write_str("true"),
-            Value::Boolean(false) => f.write_str("false"),
+            Value::Bool(true) => f.write_str("true"),
+            Value::Bool(false) => f.write_str("false"),
             Value::Int2(value) => Display::fmt(value, f),
             Value::Text(value) => Display::fmt(value, f),
             Value::Uint2(value) => Display::fmt(value, f),

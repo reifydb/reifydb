@@ -3,8 +3,9 @@
 
 use crate::session::Session;
 use base::expression::Expression;
-use base::schema::{Column, SchemaName, StoreName};
+use base::schema::{SchemaName, StoreName};
 use base::{Key, Row, RowIter};
+use rql::plan::ColumnToCreate;
 
 pub trait Engine<'a>: Sized {
     type Rx: Transaction + 'a;
@@ -94,7 +95,7 @@ pub trait Schema {
 }
 
 pub enum StoreToCreate {
-    Table { name: StoreName, columns: Vec<Column> },
+    Table { name: StoreName, columns: Vec<ColumnToCreate> },
 }
 
 pub trait SchemaMut: Schema {

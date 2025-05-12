@@ -8,11 +8,13 @@ use base::Value;
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
 use rql::plan::{Plan, QueryPlan};
+use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum ExecutionResult {
     CreateSchema { name: SchemaName },
     CreateTable { schema: SchemaName, name: StoreName },
+    InsertIntoTable { schema: SchemaName, name: StoreName },
     Query { rows: Vec<Row> },
 }
 
@@ -38,6 +40,24 @@ pub fn execute_plan_mut(
             }
 
             ExecutionResult::CreateTable { schema, name }
+        }
+        Plan::InsertIntoTableValues { schema, name, columns, rows_to_insert } => {
+            let mut values = Vec::with_capacity(rows_to_insert.len());
+
+            for row in rows_to_insert {
+                let mut row_values = Vec::with_capacity(row.len());
+                for expr in row {
+                    match expr {
+                        Expression::Constant(value) => row_values.push(value),
+                        _ => unimplemented!(),
+                    }
+                }
+                values.push(row_values);
+            }
+
+            tx.insert(name.deref(), values).unwrap();
+
+            ExecutionResult::InsertIntoTable { schema, name }
         }
         Plan::Query(_) => unimplemented!(),
     })
