@@ -7,7 +7,7 @@ use crate::svl::schema::Schema;
 use base::encoding::{Value as OtherValue, bincode};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
-use base::{Catalog as _, CatalogMut};
+use base::{Catalog as _, CatalogMut, key_prefix};
 use base::{Key, Row, RowIter};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -45,10 +45,12 @@ impl<'a, S: storage::EngineMut> crate::Transaction for Transaction<'a, S> {
         store: impl AsRef<StoreName>,
         filter: Option<Expression>,
     ) -> crate::Result<RowIter> {
+        let store = store.as_ref();
+        println!("scan store {:?}", store);
         Ok(Box::new(
             self.engine
                 .storage
-                .scan_prefix(&vec![])
+                .scan_prefix(key_prefix!("{}::row::", store.deref()))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -119,14 +121,20 @@ impl<'a, S: storage::EngineMut> crate::TransactionMut for TransactionMut<'a, S> 
 
     fn commit(mut self) -> crate::Result<()> {
         let log = self.log.borrow_mut();
-        // FIXME store this information in KV
-        let last_id = self.engine.storage.scan(&bincode::serialize(&&(0 as i64))..).count();
 
         for (store, rows) in log.iter() {
+            // FIXME store this information in KV
+
+            let last_id = self.engine.storage.scan_prefix(&key_prefix!("{}::row::", store)).count();
+
             for (id, row) in rows.iter().enumerate() {
                 self.engine
                     .storage
-                    .set(&bincode::serialize(&((last_id + id + 1) as i64)), bincode::serialize(row))
+                    .set(
+                        // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
+                        key_prefix!("{}::row::{}", store, (last_id + id + 1)),
+                        bincode::serialize(row),
+                    )
                     .unwrap();
             }
         }

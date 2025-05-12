@@ -57,6 +57,13 @@ use std::ops::Bound;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[macro_export]
+macro_rules! key_prefix {
+    ($($arg:tt)*) => {
+        &(&format!($($arg)*)).as_bytes().to_vec()
+    };
+}
+
 /// Serializes a key to a binary Keycode representation.
 ///
 /// In the common case, the encoded key is borrowed for a storage engine call
@@ -197,6 +204,6 @@ mod tests {
         value_bool: Value::Bool(true) => "0101",
         // value_int: Value::Integer(-1) => "027fffffffffffffff",
         // value_float: Value::Float(PI) => "03c00921fb54442d18",
-        // value_string: Value::Text("foo".to_string()) => "04666f6f0000",
+        value_string: Value::Text("foo".to_string()) => "03666f6f0000",
     }
 }

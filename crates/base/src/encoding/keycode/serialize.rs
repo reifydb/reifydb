@@ -117,7 +117,6 @@ impl serde::ser::Serializer for &mut Serializer {
                 self.output.push(byte);
             }
         }
-
         self.output.push(0x00);
         self.output.push(0x00);
 
