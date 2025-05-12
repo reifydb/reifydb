@@ -4,8 +4,7 @@
 use crate::session::Session;
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
-use base::{Key, Row, RowIter};
-use rql::plan::ColumnToCreate;
+use base::{Catalog, CatalogMut, Key, Row, RowIter, Schema, SchemaMut};
 
 pub trait Engine<'a>: Sized {
     type Rx: Transaction + 'a;
@@ -62,54 +61,3 @@ pub trait TransactionMut: Transaction {
     /// Rolls back the transaction.
     fn rollback(self) -> crate::Result<()>;
 }
-
-pub trait Catalog {
-    type Schema: Schema;
-
-    fn get(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema>;
-
-    fn list(&self) -> crate::Result<Vec<&Self::Schema>>;
-}
-
-pub trait CatalogMut: Catalog {
-    type SchemaMut: SchemaMut;
-
-    fn get_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::Schema>;
-
-    fn create(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<()>;
-
-    fn create_if_not_exists(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<()>;
-
-    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()>;
-}
-
-pub trait Schema {
-    type Store: Store;
-    // returns most recent version
-    fn get(&self, store: impl AsRef<str>) -> crate::Result<&Self::Store>;
-
-    // returns the store as of the specified version
-    // fn get_as_of(&self, name: impl AsRef<str>, version) -> Result<Option<Store>>;
-
-    fn list(&self) -> crate::Result<Vec<&Self::Store>>;
-}
-
-pub enum StoreToCreate {
-    Table { name: StoreName, columns: Vec<ColumnToCreate> },
-}
-
-pub trait SchemaMut: Schema {
-    type StoreMut: StoreMut;
-
-    fn create(&mut self, store: StoreToCreate) -> crate::Result<()>;
-
-    fn create_if_not_exists(&mut self, store: StoreToCreate) -> crate::Result<()>;
-
-    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()>;
-}
-
-pub trait Store {
-    fn column_index(&self, column: impl AsRef<str>) -> crate::Result<usize>;
-}
-
-pub trait StoreMut: Store {}

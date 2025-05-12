@@ -4,10 +4,10 @@
 use crate::svl::EngineInner;
 use crate::svl::catalog::Catalog;
 use crate::svl::schema::Schema;
-use crate::{Catalog as _, CatalogMut};
 use base::encoding::{Value as OtherValue, bincode};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
+use base::{Catalog as _, CatalogMut};
 use base::{Key, Row, RowIter};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -33,7 +33,7 @@ impl<'a, S: storage::EngineMut> crate::Transaction for Transaction<'a, S> {
     }
 
     fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema> {
-        self.engine.catalog.get(schema.as_ref())
+        Ok(self.engine.catalog.get(schema.as_ref()).unwrap())
     }
 
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>> {
@@ -76,7 +76,7 @@ impl<'a, S: storage::EngineMut> crate::Transaction for TransactionMut<'a, S> {
     }
 
     fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema> {
-        self.engine.catalog.get(schema.as_ref())
+        Ok(self.engine.catalog.get(schema.as_ref()).unwrap())
     }
 
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>> {

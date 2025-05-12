@@ -11,7 +11,7 @@ fn main() {
     instance.tx("create schema test");
     instance.tx("create table test.users(id: int2, name: text, is_premium: bool)");
 
-    instance.tx(r#"insert into test.users(id, name, is_premium) values (1,'Alice',true)"#);
+    instance.tx(r#"insert into test.users(id, is_premium, name) values (1,true,'Alice')"#);
     instance.tx(r#"insert into test.users(id, name, is_premium) values (2,'Bob', false)"#);
     instance.tx(r#"insert into test.users(id, name, is_premium) values (3,'Tina', true)"#);
 

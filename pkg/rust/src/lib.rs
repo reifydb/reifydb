@@ -36,7 +36,7 @@ pub use rql;
 /// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
 pub use engine;
 use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
-use engine::{Engine, TransactionMut};
+use engine::{Engine, Transaction, TransactionMut};
 use rql::ast;
 use rql::plan::{plan, plan_mut};
 /// The underlying key-value store responsible for persistence and data access.
@@ -75,7 +75,7 @@ impl ReifyDB {
                 let mut tx = engine.begin().unwrap();
 
                 for statement in statements {
-                    let plan = plan_mut(statement).unwrap();
+                    let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
                     let er = execute_plan_mut(plan, &mut tx).unwrap();
                     result.push(er);
                 }

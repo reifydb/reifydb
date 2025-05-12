@@ -2,22 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{Ast, AstCreate, AstFrom, AstInsert, AstLiteral, AstStatement, AstType};
+use std::collections::HashMap;
+use std::ops::Deref;
 
 use base::expression::Expression;
 use base::schema::{ColumnName, SchemaName, StoreName};
-use base::{Value, ValueType};
+use base::{Catalog, ColumnToCreate, Schema, Store, Value, ValueType};
 pub use error::Error;
 
 mod error;
 pub mod node;
 mod planner;
-
-#[derive(Debug)]
-pub struct ColumnToCreate {
-    pub name: ColumnName,
-    pub value: ValueType,
-    pub default: Option<Expression>,
-}
 
 #[derive(Debug)]
 pub struct ColumnToInsert {
@@ -42,7 +37,7 @@ pub enum Plan {
     /// A INSERT INTO TABLE plan. Inserts values into the table
     InsertIntoTableValues {
         schema: SchemaName,
-        name: StoreName,
+        store: StoreName,
         columns: Vec<ColumnToInsert>,
         rows_to_insert: Vec<RowToInsert>,
     },
@@ -67,7 +62,7 @@ pub enum QueryPlan {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn plan_mut(statement: AstStatement) -> Result<Plan> {
+pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan> {
     for ast in statement.into_iter().rev() {
         match ast {
             Ast::Create(create) => {
@@ -123,55 +118,84 @@ pub fn plan_mut(statement: AstStatement) -> Result<Plan> {
             Ast::Insert(insert) => {
                 return match insert {
                     AstInsert::Values { schema, store, columns, rows, .. } => {
-                        let mut columns: Vec<ColumnToInsert> = vec![
-                            ColumnToInsert {
-                                name: ColumnName::new("id"),
-                                value: ValueType::Int2,
-                                default: None,
-                            },
-                            ColumnToInsert {
-                                name: ColumnName::new("name"),
-                                value: ValueType::Text,
-                                default: None,
-                            },
-                            ColumnToInsert {
-                                name: ColumnName::new("is_premium"),
-                                value: ValueType::Bool,
-                                default: None,
-                            },
-                        ];
+                        let schema = SchemaName::new(schema.0.value());
+                        let store = StoreName::new(store.0.value());
 
-                        let mut rows_to_insert: Vec<Vec<Expression>> = vec![];
+                        // Get the store schema from the catalog once
+                        let store_schema =
+                            catalog.get(schema.deref()).unwrap().get(store.deref()).unwrap();
 
-                        for row in rows {
-                            let mut row_to_insert = vec![];
-                            for row in row.nodes {
-                                match row {
-                                    Ast::Literal(literal) => match literal {
-                                        AstLiteral::Boolean(ast) => row_to_insert
-                                            .push(Expression::Constant(Value::Bool(ast.value()))),
-                                        AstLiteral::Number(ast) => {
-                                            row_to_insert.push(Expression::Constant(Value::Int2(
-                                                ast.value().parse().unwrap(),
-                                            )))
-                                        }
-                                        AstLiteral::Text(ast) => {
-                                            row_to_insert.push(Expression::Constant(Value::Text(
-                                                ast.value().to_string(),
-                                            )))
-                                        }
-                                        AstLiteral::Undefined(_) => unimplemented!(),
-                                    },
-                                    _ => unimplemented!(),
+                        // Build the user-specified column name list
+                        let insert_column_names: Vec<_> = columns
+                            .nodes
+                            .into_iter()
+                            .map(|column| match column {
+                                Ast::Identifier(ast) => ColumnName::new(ast.value()),
+                                _ => unimplemented!(),
+                            })
+                            .collect::<Vec<_>>();
+
+                        // Lookup actual columns from the store
+                        let mut columns: Vec<_> = insert_column_names
+                            .iter()
+                            .map(|name| store_schema.get_column(name.deref()).unwrap())
+                            .collect::<Vec<_>>();
+
+                        // Create a mapping: column name -> position in insert input
+                        let insert_index_map: HashMap<_, _> = insert_column_names
+                            .iter()
+                            .enumerate()
+                            .map(|(i, name)| (name.clone(), i))
+                            .collect();
+
+                        // Now reorder the row expressions to match store_schema.column order
+                        let rows_to_insert = rows
+                            .into_iter()
+                            .map(|row| {
+                                let mut values = vec![None; columns.len()];
+
+                                for (col_idx, col) in
+                                    store_schema.list_columns().unwrap().iter().enumerate()
+                                {
+                                    if let Some(&input_idx) = insert_index_map.get(&col.name) {
+                                        let expr = match &row.nodes[input_idx] {
+                                            Ast::Literal(AstLiteral::Boolean(ast)) => {
+                                                Expression::Constant(Value::Bool(ast.value()))
+                                            }
+                                            Ast::Literal(AstLiteral::Number(ast)) => {
+                                                Expression::Constant(Value::Int2(
+                                                    ast.value().parse().unwrap(),
+                                                ))
+                                            }
+                                            Ast::Literal(AstLiteral::Text(ast)) => {
+                                                Expression::Constant(Value::Text(
+                                                    ast.value().to_string(),
+                                                ))
+                                            }
+                                            _ => unimplemented!(),
+                                        };
+                                        values[col_idx] = Some(expr);
+                                    } else {
+                                        // Not provided in INSERT, use default
+                                        unimplemented!()
+                                    }
                                 }
-                            }
-                            rows_to_insert.push(row_to_insert);
-                        }
+
+                                values.into_iter().map(|v| v.unwrap()).collect::<Vec<_>>()
+                            })
+                            .collect::<Vec<_>>();
 
                         Ok(Plan::InsertIntoTableValues {
-                            schema: SchemaName::new(schema.value()),
-                            name: StoreName::new(store.value()),
-                            columns,
+                            schema,
+                            store,
+                            columns: columns
+                                .into_iter()
+                                .map(|c| ColumnToInsert {
+                                    name: c.name,
+                                    value: c.value,
+                                    default: c.default,
+                                })
+                                .collect(),
                             rows_to_insert,
                         })
                         // FIXME validate

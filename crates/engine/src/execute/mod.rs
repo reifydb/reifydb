@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::engine::StoreToCreate;
-use crate::{CatalogMut, Schema, SchemaMut, Store, Transaction, TransactionMut};
-use base::Row;
-use base::Value;
+use crate::{Transaction, TransactionMut};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
+use base::{CatalogMut, Schema, SchemaMut, Store, Value};
+use base::{Row, StoreToCreate};
 use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
 
@@ -25,9 +24,9 @@ pub fn execute_plan_mut(
     Ok(match plan {
         Plan::CreateSchema { name, if_not_exists } => {
             if if_not_exists {
-                tx.catalog_mut()?.create_if_not_exists(&name)?;
+                tx.catalog_mut()?.create_if_not_exists(&name).unwrap();
             } else {
-                tx.catalog_mut()?.create(&name)?;
+                tx.catalog_mut()?.create(&name).unwrap();
             }
             ExecutionResult::CreateSchema { name }
         }
@@ -41,7 +40,7 @@ pub fn execute_plan_mut(
 
             ExecutionResult::CreateTable { schema, name }
         }
-        Plan::InsertIntoTableValues { schema, name, columns, rows_to_insert } => {
+        Plan::InsertIntoTableValues { schema, store: name, columns, rows_to_insert } => {
             let mut values = Vec::with_capacity(rows_to_insert.len());
 
             for row in rows_to_insert {
@@ -105,7 +104,7 @@ fn execute_node(
                         //
                         // table.column_index(name)
 
-                        rx.schema("test").unwrap().get(source).unwrap().column_index(name).ok()
+                        rx.schema("test").unwrap().get(source).unwrap().get_column_index(name).ok()
                     } else {
                         None
                     }

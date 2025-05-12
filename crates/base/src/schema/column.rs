@@ -1,12 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-#[derive(Debug, PartialEq)]
+use std::ops::Deref;
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct ColumnName(String);
 
 impl ColumnName {
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
+    }
+}
+
+impl Deref for ColumnName {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

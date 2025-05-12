@@ -4,14 +4,19 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use core::result;
+pub use catalog::*;
+pub use error::Error;
 pub use key::{Key, KeyError};
 pub use row::{Row, RowIter, RowIterator};
 pub use value::{Value, ValueType};
 
-pub mod schema;
+mod catalog;
 pub mod encoding;
+mod error;
 pub mod expression;
 mod key;
 mod row;
+pub mod schema;
 mod value;
+
+pub type Result<T> = std::result::Result<T, Error>;

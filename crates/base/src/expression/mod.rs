@@ -3,7 +3,7 @@
 
 use crate::Value;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     /// lhs AND rhs: logical AND of two booleans
     And(Box<Expression>, Box<Expression>),
