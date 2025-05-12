@@ -13,6 +13,7 @@ mod tuple;
 mod r#type;
 mod limit;
 mod create;
+mod insert;
 
 pub use error::*;
 

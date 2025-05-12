@@ -4,26 +4,16 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::engine::{Engine, TransactionMut};
-use reifydb::{ReifyDB, Value};
+use reifydb::ReifyDB;
 
 fn main() {
     let instance = ReifyDB::in_memory();
     instance.tx("create schema test");
     instance.tx("create table test.users(id: int2, name: text, is_premium: bool)");
 
-    let mut tx = instance.engine().begin().unwrap();
-    tx.insert(
-        "users",
-        vec![
-            vec![Value::Int2(1), Value::Text("Alice".to_string()), Value::Boolean(true)],
-            vec![Value::Int2(2), Value::Text("Bob".to_string()), Value::Boolean(false)],
-            vec![Value::Int2(3), Value::Text("Tina".to_string()), Value::Boolean(false)],
-        ],
-    )
-    .unwrap();
-
-    tx.commit().unwrap();
+    instance.tx(r#"insert into test.users(id, name, is_premium) values (1,'Alice',true)"#);
+    instance.tx(r#"insert into test.users(id, name, is_premium) values (2,'Bob', false)"#);
+    instance.tx(r#"insert into test.users(id, name, is_premium) values (3,'Tina', false)"#);
 
     let result = instance.rx(r#"
         from test.users

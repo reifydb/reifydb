@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::{Literal, Token, TokenKind};
+use std::ops::Index;
 
 #[derive(Debug)]
 pub struct AstStatement(pub Vec<Ast>);
@@ -22,6 +23,7 @@ pub enum Ast {
     From(AstFrom),
     Identifier(AstIdentifier),
     Infix(AstInfix),
+    Insert(AstInsert),
     Limit(AstLimit),
     Literal(AstLiteral),
     Nop,
@@ -40,6 +42,7 @@ impl Ast {
             Ast::From(node) => &node.token(),
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
+            Ast::Insert(node) => &node.token(),
             Ast::Limit(node) => &node.token,
             Ast::Literal(node) => match node {
                 AstLiteral::Boolean(node) => &node.0,
@@ -97,6 +100,13 @@ impl Ast {
         if let Ast::Infix(result) = self { result } else { panic!("not infix") }
     }
 
+    pub fn is_insert(&self) -> bool {
+        matches!(self, Ast::Insert(_))
+    }
+    pub fn as_insert(&self) -> &AstInsert {
+        if let Ast::Insert(result) = self { result } else { panic!("not insert") }
+    }
+
     pub fn is_limit(&self) -> bool {
         matches!(self, Ast::Limit(_))
     }
@@ -112,6 +122,18 @@ impl Ast {
         if let Ast::Literal(result) = self { result } else { panic!("not literal") }
     }
 
+    pub fn is_literal_boolean(&self) -> bool {
+        matches!(self, Ast::Literal(AstLiteral::Boolean(_)))
+    }
+
+    pub fn as_literal_boolean(&self) -> &AstLiteralBoolean {
+        if let Ast::Literal(AstLiteral::Boolean(result)) = self {
+            result
+        } else {
+            panic!("not literal boolean")
+        }
+    }
+
     pub fn is_literal_number(&self) -> bool {
         matches!(self, Ast::Literal(AstLiteral::Number(_)))
     }
@@ -120,7 +142,19 @@ impl Ast {
         if let Ast::Literal(AstLiteral::Number(result)) = self {
             result
         } else {
-            panic!("not literal")
+            panic!("not literal number")
+        }
+    }
+
+    pub fn is_literal_text(&self) -> bool {
+        matches!(self, Ast::Literal(AstLiteral::Text(_)))
+    }
+
+    pub fn as_literal_text(&self) -> &AstLiteralText {
+        if let Ast::Literal(AstLiteral::Text(result)) = self {
+            result
+        } else {
+            panic!("not literal text")
         }
     }
 
@@ -266,6 +300,25 @@ pub struct AstInfix {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum AstInsert {
+    Values {
+        token: Token,
+        schema: AstIdentifier,
+        store: AstIdentifier,
+        columns: AstTuple,
+        values: AstTuple,
+    },
+}
+
+impl AstInsert {
+    pub fn token(&self) -> &Token {
+        match self {
+            AstInsert::Values { token, .. } => token,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct AstLiteralNumber(pub Token);
 
 impl AstLiteralNumber {
@@ -331,6 +384,20 @@ pub struct AstSelect {
 pub struct AstTuple {
     pub token: Token,
     pub nodes: Vec<Ast>,
+}
+
+impl AstTuple {
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+}
+
+impl Index<usize> for AstTuple {
+    type Output = Ast;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.nodes[index]
+    }
 }
 
 #[derive(Debug, PartialEq)]

@@ -107,7 +107,6 @@ mod tests {
 
                     assert!(matches!(name.operator, InfixOperator::Call(_)));
 
-                    dbg!(&name.right);
                     let tuple = name.right.deref().as_tuple();
                     assert_eq!(tuple.nodes.len(), 1);
 

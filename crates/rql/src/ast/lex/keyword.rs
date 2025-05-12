@@ -284,7 +284,6 @@ mod tests {
                     format!("{repr}{pattern} rest")
                 };
 
-                dbg!(&input_str);
                 let input = LocatedSpan::new(input_str.as_str());
 
                 let result = parse_keyword(input);
