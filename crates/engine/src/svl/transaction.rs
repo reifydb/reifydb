@@ -46,7 +46,6 @@ impl<'a, S: storage::EngineMut> crate::Transaction for Transaction<'a, S> {
         filter: Option<Expression>,
     ) -> crate::Result<RowIter> {
         let store = store.as_ref();
-        println!("scan store {:?}", store);
         Ok(Box::new(
             self.engine
                 .storage

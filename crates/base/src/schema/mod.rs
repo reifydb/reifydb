@@ -3,6 +3,7 @@
 
 pub use column::*;
 pub use error::Error;
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 mod column;
@@ -10,6 +11,12 @@ mod error;
 
 #[derive(Debug, Clone)]
 pub struct StoreName(String);
+
+impl Display for StoreName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 impl Deref for StoreName {
     type Target = str;
@@ -41,6 +48,12 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub struct SchemaName(String);
+
+impl Display for SchemaName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 impl Deref for SchemaName {
     type Target = str;

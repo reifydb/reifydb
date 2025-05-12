@@ -219,7 +219,7 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
                     AstFrom::Store { schema, store, .. } => {
                         QueryPlan::Scan {
                             // table: from.source.clone(),
-                            schema: SchemaName::from(store.value()),
+                            schema: SchemaName::from(schema.value()),
                             store: StoreName::new(store.value()),
                             next: head,
                         }

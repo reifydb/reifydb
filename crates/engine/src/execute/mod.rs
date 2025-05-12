@@ -4,7 +4,7 @@
 use crate::{Transaction, TransactionMut};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
-use base::{CatalogMut, Schema, SchemaMut, Store, Value};
+use base::{CatalogMut, Label, Schema, SchemaMut, Store, Value};
 use base::{Row, StoreToCreate};
 use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
@@ -14,7 +14,7 @@ pub enum ExecutionResult {
     CreateSchema { name: SchemaName },
     CreateTable { schema: SchemaName, name: StoreName },
     InsertIntoTable { schema: SchemaName, name: StoreName },
-    Query { rows: Vec<Row> },
+    Query { labels: Vec<Label>, rows: Vec<Row> },
 }
 
 pub fn execute_plan_mut(
@@ -67,44 +67,68 @@ pub fn execute_plan(plan: Plan, rx: &impl Transaction) -> crate::Result<Executio
         Plan::Query(query) => query,
         _ => unreachable!(), // FIXME
     };
-    let iter = execute_node(&plan, rx, None, None)?;
-    Ok(ExecutionResult::Query { rows: iter.collect() })
+    let (labels, iter) = execute_node(&plan, rx, vec![], None, None, None)?;
+    Ok(ExecutionResult::Query { labels, rows: iter.collect() })
 }
 
 fn execute_node(
     node: &QueryPlan,
     rx: &impl Transaction,
-    current_source: Option<String>,
+    current_labels: Vec<Label>,
+    current_schema: Option<String>,
+    current_store: Option<String>,
     input: Option<Box<dyn Iterator<Item = Vec<Value>>>>,
-) -> crate::Result<Box<dyn Iterator<Item = Vec<Value>>>> {
-    let (result_iter, source): (Box<dyn Iterator<Item = Vec<Value>>>, Option<String>) = match node {
-        QueryPlan::Scan { store: source, .. } => {
+) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>>>)> {
+    let (labels, result_iter, schema, store): (
+        Vec<Label>,
+        Box<dyn Iterator<Item = Vec<Value>>>,
+        Option<String>,
+        Option<String>,
+    ) = match node {
+        QueryPlan::Scan { schema, store, .. } => {
             // let table = db.tables.get(source).ok_or("Table not found")?;
             // (Box::new(table.scan()), Some(source.to_string()))
-            (Box::new(rx.scan(source, None).unwrap()), Some(source.to_string()))
+            (
+                current_labels,
+                Box::new(rx.scan(store, None).unwrap()),
+                Some(schema.to_string()),
+                Some(store.to_string()),
+            )
         }
 
         QueryPlan::Limit { limit: count, .. } => {
             let input_iter = input.ok_or("Missing input for Limit").unwrap();
-            (Box::new(input_iter.take(*count)), current_source)
+            (current_labels, Box::new(input_iter.take(*count)), current_schema, current_store)
         }
 
         QueryPlan::Project { expressions, .. } => {
-            let input_iter = input.ok_or("Missing input for Project").unwrap();
-            let source = current_source.as_ref().ok_or("Missing source for Project").unwrap();
+            let input_iter = input.ok_or("missing rows").unwrap();
+            let schema_name = current_schema.as_ref().ok_or("missing schema").unwrap();
+            let store_name = current_store.as_ref().ok_or("missing store").unwrap();
+
+            let store = rx.schema(schema_name.deref()).unwrap().get(store_name.deref()).unwrap();
+
+            let column_labels: Vec<Label> = expressions
+                .iter()
+                .filter_map(|expr| {
+                    if let Expression::Identifier(name) = expr {
+                        store.get_column(name).ok().map(|c| Label::Full {
+                            value: c.value,
+                            schema: SchemaName::from(schema_name.as_str()),
+                            store: StoreName::from(schema_name.as_str()),
+                            column: c.name,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
             let column_indexes: Vec<usize> = expressions
                 .iter()
                 .filter_map(|expr| {
                     if let Expression::Identifier(name) = expr {
-                        // let table = match &rx.schema("test").unwrap().get(source).unwrap().kind
-                        // {
-                        //     StoreKind::Table(table) => table,
-                        // };
-                        //
-                        // table.column_index(name)
-
-                        rx.schema("test").unwrap().get(source).unwrap().get_column_index(name).ok()
+                        store.get_column_index(name).ok()
                     } else {
                         None
                     }
@@ -112,11 +136,13 @@ fn execute_node(
                 .collect();
 
             (
+                column_labels,
                 Box::new(
                     input_iter
                         .map(move |row| column_indexes.iter().map(|&i| row[i].clone()).collect()),
                 ),
-                current_source,
+                current_schema,
+                current_store,
             )
         }
     };
@@ -126,8 +152,8 @@ fn execute_node(
         | QueryPlan::Project { next, .. }
         | QueryPlan::Limit { next, .. } => next.as_deref(),
     } {
-        execute_node(next_node, rx, source, Some(result_iter))
+        execute_node(next_node, rx, labels, schema, store, Some(result_iter))
     } else {
-        Ok(result_iter)
+        Ok((labels, result_iter))
     }
 }

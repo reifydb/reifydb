@@ -7,6 +7,7 @@
 pub use catalog::*;
 pub use error::Error;
 pub use key::{Key, KeyError};
+pub use label::Label;
 pub use row::{Row, RowIter, RowIterator};
 pub use value::{Value, ValueType};
 
@@ -15,6 +16,7 @@ pub mod encoding;
 mod error;
 pub mod expression;
 mod key;
+mod label;
 mod row;
 pub mod schema;
 mod value;
