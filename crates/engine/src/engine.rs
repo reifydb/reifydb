@@ -54,7 +54,7 @@ pub trait TransactionMut: Transaction {
     fn schema_mut(&mut self, schema: impl AsRef<SchemaName>)
     -> crate::Result<&mut Self::SchemaMut>;
 
-    fn set(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()>;
+    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()>;
 
     /// Commits the transaction.
     fn commit(self) -> crate::Result<()>;

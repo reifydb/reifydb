@@ -30,8 +30,9 @@ impl Parser {
         let schema = self.parse_identifier()?;
         self.consume_operator(Operator::Dot)?;
         let name = self.parse_identifier()?;
+        let definition = self.parse_tuple()?;
 
-        Ok(AstCreate::Table { token, name, schema })
+        Ok(AstCreate::Table { token, name, schema, definitions: definition })
     }
 }
 
@@ -71,67 +72,61 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let infix = result.as_infix();
-
-        let left = infix.left.deref();
-        let create = left.as_create();
+        let create = result.as_create();
 
         match create {
-            AstCreate::Table { name, schema, .. } => {
+            AstCreate::Table { name, schema, definitions, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "users");
+
+                assert_eq!(definitions.nodes.len(), 3);
+
+                {
+                    let id = definitions.nodes[0].as_infix();
+                    let identifier = id.left.as_identifier();
+                    assert_eq!(identifier.value(), "id");
+
+                    assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
+
+                    let ty = id.right.as_type();
+                    assert_eq!(ty.value(), "int2")
+                }
+
+                {
+                    let name = definitions.nodes[1].as_infix();
+                    let left = name.left.as_infix();
+                    {
+                        let identifier = left.left.as_identifier();
+                        assert_eq!(identifier.value(), "name");
+
+                        assert!(matches!(left.operator, InfixOperator::TypeAscription(_)));
+
+                        let ty = left.right.as_type();
+                        assert_eq!(ty.value(), "text")
+                    }
+
+                    assert!(matches!(name.operator, InfixOperator::Call(_)));
+
+                    dbg!(&name.right);
+                    let tuple = name.right.deref().as_tuple();
+                    assert_eq!(tuple.nodes.len(), 1);
+
+                    let size = tuple.nodes[0].as_literal_number();
+                    assert_eq!(size.value(), "255");
+                }
+
+                {
+                    let is_premium = definitions.nodes[2].as_infix();
+                    let identifier = is_premium.left.as_identifier();
+                    assert_eq!(identifier.value(), "is_premium");
+
+                    assert!(matches!(is_premium.operator, InfixOperator::TypeAscription(_)));
+
+                    let ty = is_premium.right.as_type();
+                    assert_eq!(ty.value(), "bool")
+                }
             }
             _ => unreachable!(),
-        }
-
-        assert!(matches!(infix.operator, InfixOperator::Call(_)));
-
-        let right = infix.right.deref().as_tuple();
-        assert_eq!(right.nodes.len(), 3);
-
-        {
-            let id = right.nodes[0].as_infix();
-            let identifier = id.left.as_identifier();
-            assert_eq!(identifier.value(), "id");
-
-            assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
-
-            let ty = id.right.as_type();
-            assert_eq!(ty.value(), "int2")
-        }
-
-        {
-            let name = right.nodes[1].as_infix();
-            let left = name.left.as_infix();
-            {
-                let identifier = left.left.as_identifier();
-                assert_eq!(identifier.value(), "name");
-
-                assert!(matches!(left.operator, InfixOperator::TypeAscription(_)));
-
-                let ty = left.right.as_type();
-                assert_eq!(ty.value(), "text")
-            }
-
-            assert!(matches!(name.operator, InfixOperator::Call(_)));
-
-            dbg!(&name.right);
-            let tuple = name.right.deref().as_tuple();
-            assert_eq!(tuple.nodes.len(), 1);
-
-            let size = tuple.nodes[0].as_literal_number();
-            assert_eq!(size.value(), "255");
-        }
-
-        {
-            let is_premium = right.nodes[2].as_infix();
-            let identifier = is_premium.left.as_identifier();
-            assert_eq!(identifier.value(), "is_premium");
-
-            assert!(matches!(is_premium.operator, InfixOperator::TypeAscription(_)));
-
-            let ty = is_premium.right.as_type();
-            assert_eq!(ty.value(), "bool")
         }
     }
 }

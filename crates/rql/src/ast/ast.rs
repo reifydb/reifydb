@@ -37,7 +37,7 @@ impl Ast {
         match self {
             Ast::Block(node) => &node.token,
             Ast::Create(node) => &node.token(),
-            Ast::From(node) => &node.token,
+            Ast::From(node) => &node.token(),
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
             Ast::Limit(node) => &node.token,
@@ -165,7 +165,7 @@ pub struct AstBlock {
 #[derive(Debug, PartialEq)]
 pub enum AstCreate {
     Schema { token: Token, name: AstIdentifier },
-    Table { token: Token, schema: AstIdentifier, name: AstIdentifier },
+    Table { token: Token, schema: AstIdentifier, name: AstIdentifier, definitions: AstTuple },
 }
 
 impl AstCreate {
@@ -186,10 +186,27 @@ pub enum AstExpression {
     Operator(AstOperator),
 }
 
+// #[derive(Debug, PartialEq)]
+// pub struct AstFrom {
+//     pub token: Token,
+//     pub schema: Option<Box<AstIdentifier>>,
+//     pub store: Option<AstIdentifier>,
+//     pub source: Box<Ast>, // either store or subquery
+// }
+
 #[derive(Debug, PartialEq)]
-pub struct AstFrom {
-    pub token: Token,
-    pub store: Box<Ast>,
+pub enum AstFrom {
+    Store { token: Token, schema: AstIdentifier, store: AstIdentifier },
+    Query { token: Token, query: Box<Ast> },
+}
+
+impl AstFrom {
+    pub fn token(&self) -> &Token {
+        match self {
+            AstFrom::Store { token, .. } => token,
+            AstFrom::Query { token, .. } => token,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

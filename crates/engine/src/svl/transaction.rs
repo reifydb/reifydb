@@ -111,7 +111,7 @@ impl<'a, S: storage::EngineMut> crate::TransactionMut for TransactionMut<'a, S> 
         Ok(schema)
     }
 
-    fn set(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()> {
+    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()> {
         let store = store.as_ref();
         self.log.borrow_mut().insert(store.to_string(), rows);
         Ok(())
