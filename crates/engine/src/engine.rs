@@ -3,6 +3,7 @@
 
 use crate::session::Session;
 use base::expression::Expression;
+use base::schema::{Column, SchemaName, StoreName};
 use base::{Key, Row, RowIter};
 
 pub trait Engine<'a>: Sized {
@@ -33,8 +34,13 @@ pub trait Transaction {
 
     /// Fetches store rows by primary key, if they exist.
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>>;
+
     /// Scans a store's rows, optionally applying the given filter.
-    fn scan(&self, store: impl AsRef<str>, filter: Option<Expression>) -> crate::Result<RowIter>;
+    fn scan(
+        &self,
+        store: impl AsRef<StoreName>,
+        filter: Option<Expression>,
+    ) -> crate::Result<RowIter>;
 }
 
 /// A TransactionMut executes transactional read & write operations on stores.
@@ -45,7 +51,8 @@ pub trait TransactionMut: Transaction {
 
     fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut>;
 
-    fn schema_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::SchemaMut>;
+    fn schema_mut(&mut self, schema: impl AsRef<SchemaName>)
+    -> crate::Result<&mut Self::SchemaMut>;
 
     fn set(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()>;
 
@@ -68,9 +75,9 @@ pub trait CatalogMut: Catalog {
 
     fn get_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::Schema>;
 
-    fn create(&mut self, schema: base::schema::Schema) -> crate::Result<()>;
+    fn create(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<()>;
 
-    fn create_if_not_exists(&mut self, schema: base::schema::Schema) -> crate::Result<()>;
+    fn create_if_not_exists(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<()>;
 
     fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()>;
 }
@@ -86,12 +93,16 @@ pub trait Schema {
     fn list(&self) -> crate::Result<Vec<&Self::Store>>;
 }
 
+pub enum StoreToCreate {
+    Table { name: StoreName, columns: Vec<Column> },
+}
+
 pub trait SchemaMut: Schema {
     type StoreMut: StoreMut;
 
-    fn create(&mut self, store: base::schema::Store) -> crate::Result<()>;
+    fn create(&mut self, store: StoreToCreate) -> crate::Result<()>;
 
-    fn create_if_not_exists(&mut self, store: base::schema::Store) -> crate::Result<()>;
+    fn create_if_not_exists(&mut self, store: StoreToCreate) -> crate::Result<()>;
 
     fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()>;
 }

@@ -18,6 +18,7 @@ impl IntoIterator for AstStatement {
 #[derive(Debug, PartialEq)]
 pub enum Ast {
     Block(AstBlock),
+    Create(AstCreate),
     From(AstFrom),
     Identifier(AstIdentifier),
     Infix(AstInfix),
@@ -35,6 +36,7 @@ impl Ast {
     pub fn token(&self) -> &Token {
         match self {
             Ast::Block(node) => &node.token,
+            Ast::Create(node) => &node.token(),
             Ast::From(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
@@ -65,6 +67,13 @@ impl Ast {
     }
     pub fn as_block(&self) -> &AstBlock {
         if let Ast::Block(result) = self { result } else { panic!("not block") }
+    }
+
+    pub fn is_create(&self) -> bool {
+        matches!(self, Ast::Create(_))
+    }
+    pub fn as_create(&self) -> &AstCreate {
+        if let Ast::Create(result) = self { result } else { panic!("not create") }
     }
 
     pub fn is_from(&self) -> bool {
@@ -98,8 +107,21 @@ impl Ast {
     pub fn is_literal(&self) -> bool {
         matches!(self, Ast::Literal(_))
     }
+
     pub fn as_literal(&self) -> &AstLiteral {
         if let Ast::Literal(result) = self { result } else { panic!("not literal") }
+    }
+
+    pub fn is_literal_number(&self) -> bool {
+        matches!(self, Ast::Literal(AstLiteral::Number(_)))
+    }
+
+    pub fn as_literal_number(&self) -> &AstLiteralNumber {
+        if let Ast::Literal(AstLiteral::Number(result)) = self {
+            result
+        } else {
+            panic!("not literal")
+        }
     }
 
     pub fn is_prefix(&self) -> bool {
@@ -124,12 +146,35 @@ impl Ast {
     pub fn as_tuple(&self) -> &AstTuple {
         if let Ast::Tuple(result) = self { result } else { panic!("not tuple") }
     }
+
+    pub fn is_type(&self) -> bool {
+        matches!(self, Ast::Type(_))
+    }
+
+    pub fn as_type(&self) -> &AstType {
+        if let Ast::Type(result) = self { result } else { panic!("not type") }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct AstBlock {
     pub token: Token,
     pub nodes: Vec<Ast>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum AstCreate {
+    Schema { token: Token, name: AstIdentifier },
+    Table { token: Token, schema: AstIdentifier, name: AstIdentifier },
+}
+
+impl AstCreate {
+    pub fn token(&self) -> &Token {
+        match self {
+            AstCreate::Schema { token, .. } => token,
+            AstCreate::Table { token, .. } => token,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -144,7 +189,7 @@ pub enum AstExpression {
 #[derive(Debug, PartialEq)]
 pub struct AstFrom {
     pub token: Token,
-    pub source: Box<Ast>,
+    pub store: Box<Ast>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -313,6 +358,12 @@ impl AstType {
             AstType::Uint8(token) => token,
             AstType::Uint16(token) => token,
         }
+    }
+}
+
+impl AstType {
+    pub fn value(&self) -> &str {
+        self.token().value()
     }
 }
 

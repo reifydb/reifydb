@@ -17,7 +17,7 @@ impl Parser {
             let ident = self.parse_identifier()?;
             Ast::Identifier(ident)
         };
-        Ok(AstFrom { token, source: Box::new(source) })
+        Ok(AstFrom { token, store: Box::new(source) })
     }
 }
 
@@ -39,7 +39,7 @@ mod tests {
         let from = result.as_from();
 
         assert_eq!(from.token.kind, TokenKind::Keyword(From));
-        match *from.source {
+        match *from.store {
             Ast::Identifier(ref id) => assert_eq!(id.0.value(), "users"),
             _ => panic!("Expected Identifier node"),
         }
@@ -54,11 +54,11 @@ mod tests {
 
         let result = result.pop().unwrap();
         let from = result.as_from();
-        match *from.source {
+        match *from.store {
             Ast::Block(ref block) => {
                 assert!(!block.nodes.is_empty(), "Block should not be empty");
                 match &block.nodes[0] {
-                    Ast::From(from_inner) => match *from_inner.source {
+                    Ast::From(from_inner) => match *from_inner.store {
                         Ast::Identifier(ref id) => assert_eq!(id.0.value(), "users"),
                         _ => panic!("Expected Identifier inside nested FROM"),
                     },

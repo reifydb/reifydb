@@ -41,7 +41,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let from = result[0].as_from();
-        let block = from.source.as_block();
+        let block = from.store.as_block();
         assert_eq!(block.nodes, vec![]);
     }
 
@@ -52,7 +52,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let from = result[0].as_from();
-        let block = from.source.as_block();
+        let block = from.store.as_block();
         assert_eq!(block.nodes, vec![]);
     }
 
@@ -67,7 +67,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let from = result[0].as_from();
-        let block = from.source.as_block();
+        let block = from.store.as_block();
         assert_eq!(block.nodes, vec![]);
     }
 
@@ -81,11 +81,11 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let from = result[0].as_from();
-        let block = from.source.as_block();
+        let block = from.store.as_block();
         assert_eq!(block.nodes.len(), 1);
 
         let from = block.nodes[0].as_from();
-        let block = from.source.as_block();
+        let block = from.store.as_block();
         assert_eq!(block.nodes.len(), 0);
     }
 
@@ -115,15 +115,15 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let from = result[0].as_from();
-        let block = from.source.as_block();
+        let block = from.store.as_block();
         assert_eq!(block.nodes.len(), 1);
 
         let from = block.nodes[0].as_from();
-        let block = from.source.as_block();
+        let block = from.store.as_block();
         assert_eq!(block.nodes.len(), 1);
 
         let from = block.nodes[0].as_from();
-        let block = from.source.as_block();
+        let block = from.store.as_block();
         assert_eq!(block.nodes.len(), 1);
 
         let Literal(AstLiteral::Boolean(boolean_node)) = block.nodes.first().unwrap() else { panic!() };

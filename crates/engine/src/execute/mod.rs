@@ -1,13 +1,48 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Schema, Store, Transaction};
+use crate::engine::StoreToCreate;
+use crate::{CatalogMut, Schema, SchemaMut, Store, Transaction, TransactionMut};
 use base::Row;
 use base::Value;
 use base::expression::Expression;
-use rql::plan::QueryPlan;
+use base::schema::{SchemaName, StoreName};
+use rql::plan::{Plan, QueryPlan};
 
-pub fn execute_plan(plan: &QueryPlan, rx: &impl Transaction) -> Result<Vec<Row>, String> {
+#[derive(Debug)]
+pub enum ExecutionResult {
+    CreateSchema { name: SchemaName },
+    CreateTable { schema: SchemaName, name: StoreName },
+}
+
+pub fn execute_plan_mut(
+    plan: Plan,
+    tx: &mut impl TransactionMut,
+) -> crate::Result<ExecutionResult> {
+    Ok(match plan {
+        Plan::CreateSchema { name, if_not_exists } => {
+            if if_not_exists {
+                tx.catalog_mut()?.create_if_not_exists(&name)?;
+            } else {
+                tx.catalog_mut()?.create(&name)?;
+            }
+            ExecutionResult::CreateSchema { name }
+        }
+        Plan::CreateTable { schema, name, if_not_exists, columns } => {
+            if if_not_exists {
+                unimplemented!()
+            } else {
+                tx.schema_mut(&schema)?
+                    .create(StoreToCreate::Table { name: name.clone(), columns });
+            }
+
+            ExecutionResult::CreateTable { schema, name }
+        }
+        Plan::Query(_) => unimplemented!(),
+    })
+}
+
+pub fn execute_plan_query(plan: &QueryPlan, rx: &impl Transaction) -> Result<Vec<Row>, String> {
     let iter = execute_node(plan, rx, None, None)?;
     Ok(iter.collect())
 }
@@ -20,7 +55,7 @@ fn execute_node<'a>(
 ) -> Result<Box<dyn Iterator<Item = Vec<Value>> + 'a>, String> {
     let (result_iter, source): (Box<dyn Iterator<Item = Vec<Value>> + 'a>, Option<String>) =
         match node {
-            QueryPlan::Scan { source, .. } => {
+            QueryPlan::Scan { store: source, .. } => {
                 // let table = db.tables.get(source).ok_or("Table not found")?;
                 // (Box::new(table.scan()), Some(source.to_string()))
                 (Box::new(rx.scan(source, None).unwrap()), Some(source.to_string()))

@@ -3,6 +3,7 @@
 
 use crate::ast::lex::{Error, Token, TokenKind};
 use nom::branch::alt;
+use nom::bytes::complete::tag;
 use nom::bytes::tag_no_case;
 use nom::character::complete::alphanumeric1;
 use nom::combinator::{map, not, peek};
@@ -92,6 +93,9 @@ keyword! {
     Between    => "BETWEEN",
     Like       => "LIKE",
     Is         => "IS",
+
+    Schema => "SCHEMA",
+    Table  => "TABLE",
 }
 
 impl Display for Keyword {
@@ -102,8 +106,17 @@ impl Display for Keyword {
 
 type Span<'a> = LocatedSpan<&'a str>;
 
-fn keyword_tag<'a>(kw: Keyword, tag: &'static str) -> impl Parser<Span<'a>, Output = Keyword, Error = nom::error::Error<Span<'a>>> + 'a {
-    move |input: Span<'a>| map(terminated(tag_no_case(tag), not(peek(alphanumeric1))), move |_| kw).parse(input)
+fn keyword_tag<'a>(
+    kw: Keyword,
+    tag_str: &'static str,
+) -> impl Parser<Span<'a>, Output = Keyword, Error = nom::error::Error<Span<'a>>> + 'a {
+    move |input: Span<'a>| {
+        map(
+            terminated(tag_no_case(tag_str), not(peek(alt((alphanumeric1, tag("_")))))),
+            move |_| kw,
+        )
+        .parse(input)
+    }
 }
 pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     let start = input;
@@ -157,14 +170,20 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Like, "LIKE"),
             keyword_tag(Keyword::Is, "IS"),
         )),
+        alt((keyword_tag(Keyword::Schema, "SCHEMA"), keyword_tag(Keyword::Table, "TABLE"))),
     ));
 
-    parser.map(|kw| Token { kind: TokenKind::Keyword(kw), span: start.take(kw.as_str().len()).into() }).parse(input)
+    parser
+        .map(|kw| Token {
+            kind: TokenKind::Keyword(kw),
+            span: start.take(kw.as_str().len()).into(),
+        })
+        .parse(input)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::keyword::{parse_keyword, Keyword};
+    use crate::ast::lex::keyword::{Keyword, parse_keyword};
     use crate::ast::lex::{LocatedSpan, TokenKind};
 
     #[test]
@@ -177,15 +196,21 @@ mod tests {
 
     fn check_keyword(keyword: Keyword, repr: &str) {
         for mode in [false, true] {
-            let input_str = if mode { format!("{repr} rest") } else { format!("{} rest", repr.to_uppercase()) };
+            let input_str =
+                if mode { format!("{repr} rest") } else { format!("{} rest", repr.to_lowercase()) };
 
             let input = LocatedSpan::new(input_str.as_str());
 
             let result = parse_keyword(input).unwrap();
             let (remaining, token) = result;
 
-            assert_eq!(TokenKind::Keyword(keyword), token.kind, "kind mismatch for keyword: {}", repr);
-            assert_eq!(token.span.fragment, repr);
+            assert_eq!(
+                TokenKind::Keyword(keyword),
+                token.kind,
+                "kind mismatch for keyword: {}",
+                repr
+            );
+            assert_eq!(token.span.fragment.to_lowercase(), repr.to_lowercase());
             assert_eq!(token.span.offset, 0);
             assert_eq!(token.span.line, 1);
             assert_eq!(*remaining.fragment(), " rest");
@@ -246,5 +271,83 @@ mod tests {
         test_keyword_between => (Between, "BETWEEN"),
         test_keyword_like => (Like, "LIKE"),
         test_keyword_is => (Is, "IS"),
+        test_keyword_schema => (Schema, "SCHEMA"),
+        test_keyword_table => (Table, "TABLE"),
+    }
+
+    fn check_no_keyword(repr: &str) {
+        for pattern in ["_something_else_", "somethingElse", "123"] {
+            for mode in [false, true] {
+                let input_str = if mode {
+                    format!("{pattern}{repr} rest")
+                } else {
+                    format!("{repr}{pattern} rest")
+                };
+
+                dbg!(&input_str);
+                let input = LocatedSpan::new(input_str.as_str());
+
+                let result = parse_keyword(input);
+                assert!(result.is_err(), "matched as keyword: {}", repr);
+            }
+        }
+    }
+
+    macro_rules! generate_not_keyword_tests {
+        ($($name:ident => ($repr:literal)),* $(,)?) => {
+            $(
+                #[test]
+                fn $name() {
+                    check_no_keyword($repr);
+                }
+            )*
+        };
+    }
+
+    generate_not_keyword_tests! {
+        test_not_keyword_select => ( "select"),
+        test_not_keyword_by => ( "by"),
+        test_not_keyword_from => ( "from"),
+        test_not_keyword_where => ( "where"),
+        test_not_keyword_group => ( "group"),
+        test_not_keyword_having => ( "having"),
+        test_not_keyword_order => ( "order"),
+        test_not_keyword_limit => ( "limit"),
+        test_not_keyword_offset => ( "offset"),
+        test_not_keyword_insert => ( "insert"),
+        test_not_keyword_into => ( "into"),
+        test_not_keyword_values => ( "values"),
+        test_not_keyword_update => ( "update"),
+        test_not_keyword_set => ( "set"),
+        test_not_keyword_delete => ( "delete"),
+        test_not_keyword_join => ( "join"),
+        test_not_keyword_on => ( "on"),
+        test_not_keyword_as => ( "as"),
+        test_not_keyword_using => ( "using"),
+        test_not_keyword_union => ( "union"),
+        test_not_keyword_intersect => ( "intersect"),
+        test_not_keyword_except => ( "except"),
+        test_not_keyword_let => ( "let"),
+        test_not_keyword_if => ( "if"),
+        test_not_keyword_else => ( "else"),
+        test_not_keyword_end => ( "end"),
+        test_not_keyword_loop => ( "loop"),
+        test_not_keyword_return => ( "return"),
+        test_not_keyword_define => ( "define"),
+        test_not_keyword_function => ( "function"),
+        test_not_keyword_call => ( "call"),
+        test_not_keyword_describe => ( "describe"),
+        test_not_keyword_show => ( "show"),
+        test_not_keyword_create => ( "create"),
+        test_not_keyword_drop => ( "drop"),
+        test_not_keyword_and => ( "and"),
+        test_not_keyword_or => ( "or"),
+        test_not_keyword_not => ( "not"),
+        test_not_keyword_in => ( "in"),
+        test_not_keyword_between => ( "between"),
+        test_not_keyword_like => ( "like"),
+        test_not_keyword_is => ( "is"),
+        test_not_keyword_schema => ( "schema"),
+        test_not_keyword_table => ( "table"),
     }
 }

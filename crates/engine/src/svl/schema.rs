@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::engine::StoreToCreate;
 use crate::svl::store::Store;
-use base::schema::{SchemaName, StoreKind};
+use base::schema::SchemaName;
 use std::collections::HashMap;
 use std::ops::Deref;
 
@@ -32,18 +33,17 @@ impl crate::Schema for Schema {
 impl crate::SchemaMut for Schema {
     type StoreMut = Store;
 
-    fn create(&mut self, store: base::schema::Store) -> crate::Result<()> {
-        assert!(self.stores.get(store.name.deref()).is_none());
-
-        let columns = match store.kind {
-            StoreKind::Table(table) => table.columns,
-        };
-
-        self.stores.insert(store.name.deref().to_owned(), Store { name: store.name, columns });
+    fn create(&mut self, to_create: StoreToCreate) -> crate::Result<()> {
+        match to_create {
+            StoreToCreate::Table { name, columns } => {
+                assert!(self.stores.get(name.deref()).is_none());
+                self.stores.insert(name.deref().to_string(), Store { name, columns });
+            }
+        }
         Ok(())
     }
 
-    fn create_if_not_exists(&mut self, store: base::schema::Store) -> crate::Result<()> {
+    fn create_if_not_exists(&mut self, to_create: StoreToCreate) -> crate::Result<()> {
         todo!()
     }
 

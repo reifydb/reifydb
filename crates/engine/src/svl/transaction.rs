@@ -1,15 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Catalog as _, CatalogMut};
 use crate::svl::EngineInner;
 use crate::svl::catalog::Catalog;
 use crate::svl::schema::Schema;
+use crate::{Catalog as _, CatalogMut};
 use base::encoding::{Value as OtherValue, bincode};
 use base::expression::Expression;
+use base::schema::{SchemaName, StoreName};
 use base::{Key, Row, RowIter};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 pub struct Transaction<'a, S: storage::EngineMut> {
@@ -38,7 +40,11 @@ impl<'a, S: storage::EngineMut> crate::Transaction for Transaction<'a, S> {
         unreachable!()
     }
 
-    fn scan(&self, store: impl AsRef<str>, filter: Option<Expression>) -> crate::Result<RowIter> {
+    fn scan(
+        &self,
+        store: impl AsRef<StoreName>,
+        filter: Option<Expression>,
+    ) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
                 .storage
@@ -77,7 +83,11 @@ impl<'a, S: storage::EngineMut> crate::Transaction for TransactionMut<'a, S> {
         todo!()
     }
 
-    fn scan(&self, store: impl AsRef<str>, filter: Option<Expression>) -> crate::Result<RowIter> {
+    fn scan(
+        &self,
+        store: impl AsRef<StoreName>,
+        filter: Option<Expression>,
+    ) -> crate::Result<RowIter> {
         todo!()
     }
 }
@@ -90,10 +100,13 @@ impl<'a, S: storage::EngineMut> crate::TransactionMut for TransactionMut<'a, S> 
         Ok(&mut self.engine.catalog)
     }
 
-    fn schema_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::SchemaMut> {
+    fn schema_mut(
+        &mut self,
+        schema: impl AsRef<SchemaName>,
+    ) -> crate::Result<&mut Self::SchemaMut> {
         // fixme has schema?!
         // Ok()
-        let schema = self.engine.catalog.get_mut(schema.as_ref()).unwrap();
+        let schema = self.engine.catalog.get_mut(schema.as_ref().deref()).unwrap();
 
         Ok(schema)
     }

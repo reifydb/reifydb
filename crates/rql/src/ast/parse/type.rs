@@ -3,44 +3,44 @@
 
 use crate::ast::parse::Error::InvalidType;
 use crate::ast::parse::Parser;
-use crate::ast::{parse, AstType};
+use crate::ast::{AstType, parse};
 
 impl Parser {
     pub(crate) fn parse_type(&mut self) -> parse::Result<AstType> {
         let value = self.current()?.span.fragment.as_str();
 
-        let constructor = if value.eq_ignore_ascii_case("Bool") {
+        let constructor = if value.eq_ignore_ascii_case("BOOL") {
             AstType::Boolean
-        } else if value.eq_ignore_ascii_case("Float4") {
+        } else if value.eq_ignore_ascii_case("FLOAT4") {
             AstType::Float4
-        } else if value.eq_ignore_ascii_case("Float8") {
+        } else if value.eq_ignore_ascii_case("FLOAT8") {
             AstType::Float8
-        } else if value.eq_ignore_ascii_case("Int1") {
+        } else if value.eq_ignore_ascii_case("INT1") {
             AstType::Int1
-        } else if value.eq_ignore_ascii_case("Int2") {
+        } else if value.eq_ignore_ascii_case("INT2") {
             AstType::Int2
-        } else if value.eq_ignore_ascii_case("Int4") {
+        } else if value.eq_ignore_ascii_case("INT4") {
             AstType::Int4
-        } else if value.eq_ignore_ascii_case("Int8") {
+        } else if value.eq_ignore_ascii_case("INT8") {
             AstType::Int8
-        } else if value.eq_ignore_ascii_case("Int16") {
+        } else if value.eq_ignore_ascii_case("INT16") {
             AstType::Int16
-        } else if value.eq_ignore_ascii_case("Number") {
+        } else if value.eq_ignore_ascii_case("NUMBER") {
             AstType::Number
-        } else if value.eq_ignore_ascii_case("Text") {
+        } else if value.eq_ignore_ascii_case("TEXT") {
             AstType::Text
-        } else if value.eq_ignore_ascii_case("Uint1") {
+        } else if value.eq_ignore_ascii_case("UINT1") {
             AstType::Uint1
-        } else if value.eq_ignore_ascii_case("Uint2") {
+        } else if value.eq_ignore_ascii_case("UINT2") {
             AstType::Uint2
-        } else if value.eq_ignore_ascii_case("Uint4") {
+        } else if value.eq_ignore_ascii_case("UINT4") {
             AstType::Uint4
-        } else if value.eq_ignore_ascii_case("Uint8") {
+        } else if value.eq_ignore_ascii_case("UINT8") {
             AstType::Uint8
-        } else if value.eq_ignore_ascii_case("Uint16") {
+        } else if value.eq_ignore_ascii_case("UINT16") {
             AstType::Uint16
         } else {
-            let token = self.current().unwrap(); // already checked it exists
+            let token = self.current()?;
             return Err(InvalidType(token.clone()));
         };
 
@@ -52,10 +52,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::AstType;
     use crate::ast::lex::lex;
     use crate::ast::parse::Error::InvalidType;
     use crate::ast::parse::Parser;
-    use crate::ast::AstType;
 
     #[test]
     fn test_not_a_type() {

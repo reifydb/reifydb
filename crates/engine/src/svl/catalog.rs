@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::svl::schema::Schema;
+use base::schema::SchemaName;
 use std::collections::HashMap;
 use std::ops::Deref;
 
@@ -33,13 +34,14 @@ impl crate::CatalogMut for Catalog {
         Ok(self.schema.get_mut(schema.as_ref()).unwrap())
     }
 
-    fn create(&mut self, schema: base::schema::Schema) -> crate::Result<()> {
-        assert!(self.schema.get(schema.name.deref()).is_none()); // FIXME
-        self.schema.insert(schema.name.to_string(), Schema::new(schema.name));
+    fn create(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<()> {
+        let schema = schema.as_ref().clone();
+        assert!(self.schema.get(schema.deref()).is_none()); // FIXME
+        self.schema.insert(schema.clone().into(), Schema::new(schema));
         Ok(())
     }
 
-    fn create_if_not_exists(&mut self, schema: base::schema::Schema) -> crate::Result<()> {
+    fn create_if_not_exists(&mut self, schema:  impl AsRef<SchemaName>) -> crate::Result<()> {
         todo!()
     }
 

@@ -36,6 +36,7 @@ impl Parser {
                 _ => Err(Error::unsupported(self.advance()?)),
             },
             TokenKind::Keyword(keyword) => match keyword {
+                Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
                 Keyword::From => Ok(Ast::From(self.parse_from()?)),
                 Keyword::Limit => Ok(Ast::Limit(self.parse_limit()?)),
                 Keyword::Select => Ok(Ast::Select(self.parse_select()?)),

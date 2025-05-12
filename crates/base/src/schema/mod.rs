@@ -4,13 +4,11 @@
 pub use column::*;
 pub use error::Error;
 use std::ops::Deref;
-pub use table::*;
 
 mod column;
 mod error;
-mod table;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StoreName(String);
 
 impl Deref for StoreName {
@@ -33,19 +31,10 @@ impl From<&str> for StoreName {
     }
 }
 
-#[derive(Debug)]
-pub enum StoreKind {
-    // Log
-    // Ring
-    // Series
-    // Stack
-    Table(Table),
-}
-
-#[derive(Debug)]
-pub struct Store {
-    pub name: StoreName,
-    pub kind: StoreKind,
+impl AsRef<StoreName> for StoreName {
+    fn as_ref(&self) -> &StoreName {
+        &self
+    }
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -67,6 +56,12 @@ impl SchemaName {
     }
 }
 
+impl AsRef<SchemaName> for SchemaName {
+    fn as_ref(&self) -> &SchemaName {
+        &self
+    }
+}
+
 impl From<&str> for SchemaName {
     fn from(value: &str) -> Self {
         Self::new(value)
@@ -76,4 +71,10 @@ impl From<&str> for SchemaName {
 #[derive(Debug, Clone)]
 pub struct Schema {
     pub name: SchemaName,
+}
+
+impl Into<String> for SchemaName {
+    fn into(self) -> String {
+        self.0
+    }
 }
