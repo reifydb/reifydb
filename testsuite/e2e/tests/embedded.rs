@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb::{Embedded, RDB, ReifyDB};
+use reifydb::{DB, Embedded, ReifyDB};
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
@@ -10,12 +10,12 @@ use testing::testscript;
 use testing::testscript::Command;
 
 pub struct EmbeddedRunner {
-    pub rdb: Embedded,
+    pub db: Embedded,
 }
 
 impl EmbeddedRunner {
     pub fn new() -> Self {
-        Self { rdb: ReifyDB::embedded() }
+        Self { db: ReifyDB::embedded() }
     }
 }
 
@@ -26,7 +26,7 @@ impl testscript::Runner for EmbeddedRunner {
             "tx" => {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
-                for line in self.rdb.tx(query.as_str()) {
+                for line in self.db.tx_execute(query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -34,7 +34,7 @@ impl testscript::Runner for EmbeddedRunner {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                for line in self.rdb.rx(query.as_str()) {
+                for line in self.db.rx_execute(query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -48,7 +48,7 @@ impl testscript::Runner for EmbeddedRunner {
     }
 }
 
-test_each_path! { in "testsuite/e2e/tests/scripts" as embedded_memory => test_embedded_svl_memory }
+test_each_path! { in "testsuite/e2e/tests/scripts" as embedded_svl_memory => test_embedded_svl_memory }
 
 fn test_embedded_svl_memory(path: &Path) {
     testscript::run_path(&mut EmbeddedRunner::new(), path).expect("test failed")
