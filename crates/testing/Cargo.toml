@@ -12,4 +12,4 @@ nom_locate = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-test_each_file = "0.3.4"
+test_each_file = { workspace = true }

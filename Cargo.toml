@@ -8,7 +8,8 @@ members = [
     "crates/rql",
     "crates/storage",
     "crates/testing",
-    "pkg/rust"
+    "pkg/rust",
+    "testsuite/e2e"
 ]
 
 default-members = [
@@ -18,7 +19,8 @@ default-members = [
     "crates/rql",
     "crates/storage",
     "crates/testing",
-    "pkg/rust"
+    "pkg/rust",
+    "testsuite/e2e"
 ]
 
 [workspace.package]
@@ -54,4 +56,5 @@ nom_locate = { version = "5.0.0" }
 regex = { version = "1.11.1" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = { version = "0.11.17" }
+test_each_file = { version = "0.3.4" }
 uuid = { version = "1.16.0", features = ["v4"] }

@@ -7,14 +7,28 @@ use base::schema::{SchemaName, StoreName};
 use base::{CatalogMut, Label, Schema, SchemaMut, Store, Value};
 use base::{Row, StoreToCreate};
 use rql::plan::{Plan, QueryPlan};
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum ExecutionResult {
-    CreateSchema { name: SchemaName },
-    CreateTable { schema: SchemaName, name: StoreName },
-    InsertIntoTable { schema: SchemaName, name: StoreName },
+    CreateSchema { schema: SchemaName },
+    CreateTable { schema: SchemaName, store: StoreName },
+    InsertIntoTable { schema: SchemaName, store: StoreName },
     Query { labels: Vec<Label>, rows: Vec<Row> },
+}
+
+impl Display for ExecutionResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExecutionResult::CreateSchema { schema } => {
+                write!(f, "schema created: {schema}")
+            }
+            ExecutionResult::CreateTable { .. } => todo!(),
+            ExecutionResult::InsertIntoTable { .. } => todo!(),
+            ExecutionResult::Query { .. } => todo!(),
+        }
+    }
 }
 
 pub fn execute_plan_mut(
@@ -28,7 +42,7 @@ pub fn execute_plan_mut(
             } else {
                 tx.catalog_mut()?.create(&name).unwrap();
             }
-            ExecutionResult::CreateSchema { name }
+            ExecutionResult::CreateSchema { schema: name }
         }
         Plan::CreateTable { schema, name, if_not_exists, columns } => {
             if if_not_exists {
@@ -38,7 +52,7 @@ pub fn execute_plan_mut(
                     .create(StoreToCreate::Table { name: name.clone(), columns });
             }
 
-            ExecutionResult::CreateTable { schema, name }
+            ExecutionResult::CreateTable { schema, store: name }
         }
         Plan::InsertIntoTableValues { schema, store: name, columns, rows_to_insert } => {
             let mut values = Vec::with_capacity(rows_to_insert.len());
@@ -56,7 +70,7 @@ pub fn execute_plan_mut(
 
             tx.insert(name.deref(), values).unwrap();
 
-            ExecutionResult::InsertIntoTable { schema, name }
+            ExecutionResult::InsertIntoTable { schema, store: name }
         }
         Plan::Query(_) => unimplemented!(),
     })

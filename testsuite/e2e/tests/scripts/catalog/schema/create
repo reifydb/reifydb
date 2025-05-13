@@ -1,0 +1,10 @@
+# creates a schema
+
+tx create schema test
+---
+schema created: test
+
+# schema was created
+list_schema
+---
+test

@@ -15,6 +15,8 @@ pub mod test {
     use std::result::Result as StdResult;
     use base::encoding::format;
     use base::encoding::format::Formatter;
+    use testing::testscript;
+    use testing::testscript::Command;
 
     pub struct Runner<E: Engine + EngineMut> {
         pub engine: E,
@@ -26,10 +28,10 @@ pub mod test {
         }
     }
 
-    impl<E: Engine + EngineMut> testing::testscript::Runner for Runner<E> {
+    impl<E: Engine + EngineMut> testscript::Runner for Runner<E> {
         fn run(
             &mut self,
-            command: &testing::testscript::Command,
+            command: &Command,
         ) -> StdResult<String, Box<dyn StdError>> {
             let mut output = String::new();
             match command.name.as_str() {

@@ -56,74 +56,124 @@ enum Mode {
     Server,
 }
 
-impl ReifyDB {
-    pub fn in_memory() -> Self {
-        Self { mode: Mode::Embedded { engine: engine::svl::Engine::new(Memory::default()) } }
-    }
-}
-
-// FIXME RESULT
-impl ReifyDB {
+pub trait RDB: Sized {
     /// runs tx
-    pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
-        match &self.mode {
-            Mode::Client => unimplemented!(),
-            Mode::Embedded { engine } => {
-                let mut result = vec![];
-                let statements = ast::parse(rql);
-
-                let mut tx = engine.begin().unwrap();
-
-                for statement in statements {
-                    let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
-                    let er = execute_plan_mut(plan, &mut tx).unwrap();
-                    result.push(er);
-                }
-
-                tx.commit().unwrap();
-
-                result
-            }
-            Mode::Server => unimplemented!(),
-        }
-    }
-
+    fn tx(&self, rql: &str) -> Vec<ExecutionResult>;
     /// runs rx
-    pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
-        match &self.mode {
-            Mode::Client => unimplemented!(),
-            Mode::Embedded { engine } => {
-                let mut result = vec![];
-                let statements = ast::parse(rql);
-
-                let rx = engine.begin_read_only().unwrap();
-                for statement in statements {
-                    let plan = plan(statement).unwrap();
-                    let er = execute_plan(plan, &rx).unwrap();
-                    result.push(er);
-                }
-
-                result
-            }
-            Mode::Server => unimplemented!(),
-        }
-    }
-
-    pub fn engine(&self) -> &engine::svl::Engine<Memory> {
-        match &self.mode {
-            Mode::Client => unimplemented!(),
-            Mode::Embedded { engine } => &engine,
-            Mode::Server => unimplemented!(),
-        }
-    }
-
-    pub fn engine_mut(&mut self) -> &mut engine::svl::Engine<Memory> {
-        match &mut self.mode {
-            Mode::Client => unimplemented!(),
-            Mode::Embedded { engine } => engine,
-            Mode::Server => unimplemented!(),
-        }
-    }
-
-    // runs rx
+    fn rx(&self, rql: &str) -> Vec<ExecutionResult>;
 }
+
+pub struct Embedded {
+    engine: engine::svl::Engine<Memory>,
+}
+
+impl Embedded {
+    pub fn new() -> Self {
+        Self { engine: engine::svl::Engine::new(Memory::default()) }
+    }
+}
+
+impl RDB for Embedded {
+    fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
+        let mut result = vec![];
+        let statements = ast::parse(rql);
+
+        let mut tx = self.engine.begin().unwrap();
+
+        for statement in statements {
+            let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
+            let er = execute_plan_mut(plan, &mut tx).unwrap();
+            result.push(er);
+        }
+
+        tx.commit().unwrap();
+
+        result
+    }
+
+    fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
+        let mut result = vec![];
+        let statements = ast::parse(rql);
+
+        let rx = self.engine.begin_read_only().unwrap();
+        for statement in statements {
+            let plan = plan(statement).unwrap();
+            let er = execute_plan(plan, &rx).unwrap();
+            result.push(er);
+        }
+
+        result
+    }
+}
+
+impl ReifyDB {
+    pub fn embedded() -> Embedded {
+        Embedded::new()
+    }
+}
+
+// // FIXME RESULT
+// impl ReifyDB {
+//     /// runs tx
+//     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
+//         match &self.mode {
+//             Mode::Client => unimplemented!(),
+//             Mode::Embedded { engine } => {
+//                 let mut result = vec![];
+//                 let statements = ast::parse(rql);
+//
+//                 let mut tx = engine.begin().unwrap();
+//
+//                 for statement in statements {
+//                     let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
+//                     let er = execute_plan_mut(plan, &mut tx).unwrap();
+//                     result.push(er);
+//                 }
+//
+//                 tx.commit().unwrap();
+//
+//                 result
+//             }
+//             Mode::Server => unimplemented!(),
+//         }
+//     }
+//
+//     /// runs rx
+//     pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
+//         match &self.mode {
+//             Mode::Client => unimplemented!(),
+//             Mode::Embedded { engine } => {
+//                 let mut result = vec![];
+//                 let statements = ast::parse(rql);
+//
+//                 let rx = engine.begin_read_only().unwrap();
+//                 for statement in statements {
+//                     let plan = plan(statement).unwrap();
+//                     let er = execute_plan(plan, &rx).unwrap();
+//                     result.push(er);
+//                 }
+//
+//                 result
+//             }
+//             Mode::Server => unimplemented!(),
+//         }
+//     }
+//
+//     pub fn engine(&self) -> &engine::svl::Engine<Memory> {
+//         match &self.mode {
+//             Mode::Client => unimplemented!(),
+//             Mode::Embedded { engine } => &engine,
+//             Mode::Server => unimplemented!(),
+//         }
+//     }
+//
+//     pub fn engine_mut(&mut self) -> &mut engine::svl::Engine<Memory> {
+//         match &mut self.mode {
+//             Mode::Client => unimplemented!(),
+//             Mode::Embedded { engine } => engine,
+//             Mode::Server => unimplemented!(),
+//         }
+//     }
+//
+//     // runs rx
+// }
