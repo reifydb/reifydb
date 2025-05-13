@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::{Literal, Token, TokenKind};
+use base::Value;
 use std::ops::Index;
 
 #[derive(Debug)]
@@ -212,23 +213,6 @@ impl AstCreate {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum AstExpression {
-    /// All columns, i.e. *.
-    All,
-    Identifier(AstIdentifier),
-    Literal(AstLiteral),
-    Operator(AstOperator),
-}
-
-// #[derive(Debug, PartialEq)]
-// pub struct AstFrom {
-//     pub token: Token,
-//     pub schema: Option<Box<AstIdentifier>>,
-//     pub store: Option<AstIdentifier>,
-//     pub source: Box<Ast>, // either store or subquery
-// }
-
-#[derive(Debug, PartialEq)]
 pub enum AstFrom {
     Store { token: Token, schema: AstIdentifier, store: AstIdentifier },
     Query { token: Token, query: Box<Ast> },
@@ -327,6 +311,14 @@ impl AstLiteralNumber {
     }
 }
 
+impl TryFrom<AstLiteralNumber> for Value {
+    type Error = ();
+
+    fn try_from(value: AstLiteralNumber) -> Result<Self, Self::Error> {
+        Ok(Value::Int2(value.value().parse::<i16>().unwrap()).into())
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct AstLiteralText(pub Token);
 
@@ -352,13 +344,6 @@ impl AstLiteralUndefined {
     pub fn value(&self) -> &str {
         self.0.span.fragment.as_str()
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum AstOperator {
-    Equal(Box<AstExpression>, Box<AstExpression>),
-    GreaterThan(Box<AstExpression>, Box<AstExpression>),
-    GreaterThanEqual(Box<AstExpression>, Box<AstExpression>),
 }
 
 #[derive(Debug, PartialEq)]

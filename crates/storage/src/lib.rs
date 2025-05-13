@@ -6,7 +6,7 @@
 
 pub use engine::{Engine, EngineMut, Key, ScanIterator, Value};
 pub use error::Error;
-pub use memory::{Memory, MemoryScanIterator};
+pub use memory::{Memory, MemoryScanIter};
 use std::result;
 
 mod engine;

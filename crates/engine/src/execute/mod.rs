@@ -1,14 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+mod display;
+
 use crate::{Transaction, TransactionMut};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
-use base::{CatalogMut, Label, Schema, SchemaMut, Store, Value};
+use base::{CatalogMut, Label, Schema, SchemaMut, Store, Value, ValueType};
 use base::{Row, StoreToCreate};
 use rql::plan::{Plan, QueryPlan};
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
+use std::vec;
 
 #[derive(Debug)]
 pub enum ExecutionResult {
@@ -18,18 +21,7 @@ pub enum ExecutionResult {
     Query { labels: Vec<Label>, rows: Vec<Row> },
 }
 
-impl Display for ExecutionResult {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExecutionResult::CreateSchema { schema } => {
-                write!(f, "schema created: {schema}")
-            }
-            ExecutionResult::CreateTable { .. } => todo!(),
-            ExecutionResult::InsertIntoTable { .. } => todo!(),
-            ExecutionResult::Query { .. } => todo!(),
-        }
-    }
-}
+
 
 pub fn execute_plan_mut(
     plan: Plan,
@@ -72,7 +64,7 @@ pub fn execute_plan_mut(
 
             ExecutionResult::InsertIntoTable { schema, store: name }
         }
-        Plan::Query(_) => unimplemented!(),
+        Plan::Query(_) => execute_plan(plan, tx)?,
     })
 }
 
@@ -81,41 +73,65 @@ pub fn execute_plan(plan: Plan, rx: &impl Transaction) -> crate::Result<Executio
         Plan::Query(query) => query,
         _ => unreachable!(), // FIXME
     };
-    let (labels, iter) = execute_node(&plan, rx, vec![], None, None, None)?;
+    let (labels, iter) = execute_node(plan, rx, vec![], None, None, None)?;
     Ok(ExecutionResult::Query { labels, rows: iter.collect() })
 }
 
 fn execute_node(
-    node: &QueryPlan,
+    node: QueryPlan,
     rx: &impl Transaction,
     current_labels: Vec<Label>,
     current_schema: Option<String>,
     current_store: Option<String>,
     input: Option<Box<dyn Iterator<Item = Vec<Value>>>>,
 ) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>>>)> {
-    let (labels, result_iter, schema, store): (
+    let (labels, result_iter, schema, store, next): (
         Vec<Label>,
         Box<dyn Iterator<Item = Vec<Value>>>,
         Option<String>,
         Option<String>,
+        Option<Box<QueryPlan>>,
     ) = match node {
-        QueryPlan::Scan { schema, store, .. } => {
+        QueryPlan::Scan { schema, store, next, .. } => {
             // let table = db.tables.get(source).ok_or("Table not found")?;
             // (Box::new(table.scan()), Some(source.to_string()))
             (
                 current_labels,
-                Box::new(rx.scan(store, None).unwrap()),
+                Box::new(rx.scan(store.clone(), None).unwrap()),
                 Some(schema.to_string()),
                 Some(store.to_string()),
+                next,
             )
         }
 
-        QueryPlan::Limit { limit: count, .. } => {
+        QueryPlan::Limit { limit: count, next, .. } => {
             let input_iter = input.ok_or("Missing input for Limit").unwrap();
-            (current_labels, Box::new(input_iter.take(*count)), current_schema, current_store)
+            (current_labels, Box::new(input_iter.take(count)), current_schema, current_store, next)
         }
 
-        QueryPlan::Project { expressions, .. } => {
+        QueryPlan::Project { expressions, next, .. } => {
+            if input.is_none() {
+                // free standing projection like select 1
+
+                let mut labels = vec![];
+                let mut values = vec![];
+
+                for (idx, expr) in expressions.into_iter().enumerate() {
+                    match expr {
+                        Expression::Constant(value) => {
+                            labels.push(Label::Custom {
+                                value: ValueType::from(&value),
+                                label: format!("{}", idx + 1),
+                            });
+                            values.push(value)
+                        }
+                        _ => unimplemented!(),
+                    }
+                }
+
+                return Ok((labels, Box::new(vec![values].into_iter())));
+            }
+
             let input_iter = input.ok_or("missing rows").unwrap();
             let schema_name = current_schema.as_ref().ok_or("missing schema").unwrap();
             let store_name = current_store.as_ref().ok_or("missing store").unwrap();
@@ -157,16 +173,13 @@ fn execute_node(
                 ),
                 current_schema,
                 current_store,
+                next,
             )
         }
     };
 
-    if let Some(next_node) = match node {
-        QueryPlan::Scan { next, .. }
-        | QueryPlan::Project { next, .. }
-        | QueryPlan::Limit { next, .. } => next.as_deref(),
-    } {
-        execute_node(next_node, rx, labels, schema, store, Some(result_iter))
+    if let Some(next_node) = next {
+        execute_node(*next_node, rx, labels, schema, store, Some(result_iter))
     } else {
         Ok((labels, result_iter))
     }

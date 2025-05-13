@@ -34,6 +34,18 @@ impl Display for ValueType {
     }
 }
 
+impl From<&Value> for ValueType {
+    fn from(value: &Value) -> Self {
+        match value {
+            Value::Undefined => ValueType::Undefined,
+            Value::Bool(_) => ValueType::Bool,
+            Value::Int2(_) => ValueType::Int2,
+            Value::Text(_) => ValueType::Text,
+            Value::Uint2(_) => ValueType::Uint2,
+        }
+    }
+}
+
 /// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Value {

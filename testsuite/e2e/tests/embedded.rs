@@ -34,6 +34,8 @@ impl testscript::Runner for EmbeddedRunner {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
+                dbg!(&query);
+
                 for line in self.db.rx_execute(query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }

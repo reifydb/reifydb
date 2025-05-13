@@ -4,7 +4,7 @@
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{parse, AstSelect};
+use crate::ast::{AstSelect, parse};
 
 impl Parser {
     pub(crate) fn parse_select(&mut self) -> parse::Result<AstSelect> {
@@ -35,7 +35,44 @@ impl Parser {
 mod tests {
     use super::*;
     use crate::ast::lex::lex;
-    use crate::ast::Ast;
+    use crate::ast::{Ast, InfixOperator};
+
+    #[test]
+    fn test_select_constant_number() {
+        let tokens = lex("SELECT 1").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let select = result.as_select();
+        assert_eq!(select.columns.len(), 1);
+
+        let number = select.columns[0].as_literal_number();
+        assert_eq!(number.value(), "1");
+    }
+
+    #[test]
+    fn test_select_multiple_expressions() {
+        let tokens = lex("SELECT 1 + 2, 4 * 3").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let select = result.as_select();
+        assert_eq!(select.columns.len(), 2);
+
+        let first = select.columns[0].as_infix();
+        assert_eq!(first.left.as_literal_number().value(), "1");
+        assert!(matches!(first.operator, InfixOperator::Add(_)));
+        assert_eq!(first.right.as_literal_number().value(), "2");
+
+        let second = select.columns[1].as_infix();
+        assert_eq!(second.left.as_literal_number().value(), "4");
+        assert!(matches!(second.operator, InfixOperator::Multiply(_)));
+        assert_eq!(second.right.as_literal_number().value(), "3");
+    }
 
     #[test]
     fn test_select_star() {

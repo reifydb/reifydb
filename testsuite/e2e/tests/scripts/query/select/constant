@@ -1,0 +1,19 @@
+# select constants
+
+rx "select 1, 'test', true, false"
+---
++---+------+------+-------+
+| 1 |  2   |  3   |   4   |
++---+------+------+-------+
+| 1 | test | true | false |
++---+------+------+-------+
+
+# tx can select constants as well
+
+tx "select 1, 'test', true, false"
+---
++---+------+------+-------+
+| 1 |  2   |  3   |   4   |
++---+------+------+-------+
+| 1 | test | true | false |
++---+------+------+-------+

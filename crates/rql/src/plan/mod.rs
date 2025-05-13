@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::{Ast, AstCreate, AstFrom, AstInsert, AstLiteral, AstStatement, AstType};
+use crate::ast::{
+    Ast, AstCreate, AstFrom, AstInfix, AstInsert, AstLiteral, AstSelect, AstStatement, AstType,
+};
 use std::collections::HashMap;
 use std::ops::Deref;
 
@@ -202,6 +204,7 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
                     }
                 };
             }
+            Ast::Select(select) => return Ok(Plan::Query(plan_select(select, None)?)),  
             node => unreachable!("{node:?}"),
         };
     }
@@ -231,14 +234,7 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
             //     condition: where_clause.condition.clone(),
             //     next: head,
             // },
-            Ast::Select(select) => QueryPlan::Project {
-                expressions: select
-                    .columns
-                    .iter()
-                    .map(|c| Expression::Identifier(c.as_identifier().value().to_string()))
-                    .collect(),
-                next: head,
-            },
+            Ast::Select(select) => plan_select(select, head)?,
             // Ast::OrderBy(order) => Plan::OrderBy {
             //     keys: order.keys.clone(),
             //     next: head,
@@ -249,4 +245,53 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
     }
 
     Ok(head.map(|boxed| Plan::Query(*boxed)).unwrap())
+}
+
+fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    Ok(QueryPlan::Project {
+        expressions: select
+            .columns
+            .into_iter()
+            .map(|ast| match ast {
+                // Ast::Block(_) => {}
+                // Ast::Create(_) => {}
+                // Ast::From(_) => {}
+                Ast::Identifier(node) => Expression::Identifier(node.value().to_string()),
+                Ast::Infix(node) => expression_infix(node).unwrap(),
+                Ast::Literal(node) => match node {
+                    AstLiteral::Boolean(node) => Expression::Constant(Value::Bool(node.value())),
+                    AstLiteral::Number(node) => Expression::Constant(node.try_into().unwrap()),
+                    AstLiteral::Text(node) => {
+                        Expression::Constant(Value::Text(node.value().to_string()))
+                    }
+                    AstLiteral::Undefined(_) => Expression::Constant(Value::Undefined),
+                },
+                ast => unimplemented!("{:?}", ast),
+            })
+            .collect(),
+        next: head,
+    })
+}
+
+fn expression_infix(infix: AstInfix) -> Result<Expression> {
+    todo!()
+    // match infix.operator {
+    //     InfixOperator::Add(_) => {}
+    //     InfixOperator::Arrow(_) => {}
+    //     InfixOperator::AccessPackage(_) => {}
+    //     InfixOperator::AccessProperty(_) => {}
+    //     InfixOperator::Assign(_) => {}
+    //     InfixOperator::Call(_) => {}
+    //     InfixOperator::Subtract(_) => {}
+    //     InfixOperator::Multiply(_) => {}
+    //     InfixOperator::Divide(_) => {}
+    //     InfixOperator::Modulo(_) => {}
+    //     InfixOperator::Equal(_) => {}
+    //     InfixOperator::NotEqual(_) => {}
+    //     InfixOperator::LessThan(_) => {}
+    //     InfixOperator::LessThanEqual(_) => {}
+    //     InfixOperator::GreaterThan(_) => {}
+    //     InfixOperator::GreaterThanEqual(_) => {}
+    //     InfixOperator::TypeAscription(_) => {}
+    // }
 }

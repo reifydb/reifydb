@@ -18,7 +18,7 @@ pub trait ScanIterator: DoubleEndedIterator<Item = Result<(Key, Value)>> {}
 impl<I: DoubleEndedIterator<Item = Result<(Key, Value)>>> ScanIterator for I {}
 
 pub trait Engine: Send {
-    type ScanIterator<'a>: ScanIterator + 'a
+    type ScanIter<'a>: ScanIterator + 'a
     where
         Self: 'a;
 
@@ -26,10 +26,10 @@ pub trait Engine: Send {
     fn get(&self, key: &Key) -> Result<Option<Value>>;
 
     /// Iterates over an ordered range of key-value pairs
-    fn scan(&self, range: impl RangeBounds<Key>) -> Self::ScanIterator<'_>;
+    fn scan(&self, range: impl RangeBounds<Key>) -> Self::ScanIter<'_>;
 
     /// Iterates over all key-value pairs starting with the given prefix.
-    fn scan_prefix(&self, prefix: &Key) -> Self::ScanIterator<'_> {
+    fn scan_prefix(&self, prefix: &Key) -> Self::ScanIter<'_> {
         self.scan(keycode::prefix_range(prefix))
     }
 }
