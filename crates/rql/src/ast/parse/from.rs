@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::ast::{Ast, AstFrom};
+use crate::ast::ast::AstFrom;
 use crate::ast::lex::Operator::OpenParen;
 use crate::ast::lex::{Keyword, Operator};
 use crate::ast::parse;
@@ -12,7 +12,7 @@ impl Parser {
         let token = self.consume_keyword(Keyword::From)?;
 
         if self.current()?.is_operator(OpenParen) {
-            Ok(AstFrom::Query { token, query: Box::new(Ast::Block(self.parse_block()?)) })
+            Ok(AstFrom::Query { token, query: self.parse_tuple()? })
         } else {
             let schema = self.parse_identifier()?;
             self.consume_operator(Operator::Dot)?;
@@ -27,7 +27,6 @@ mod tests {
     use crate::ast::AstFrom;
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
-    use std::ops::Deref;
 
     #[test]
     fn test_parse_from_identifier() {
@@ -61,10 +60,10 @@ mod tests {
         match from {
             AstFrom::Store { store, schema, .. } => unreachable!(),
             AstFrom::Query { query, .. } => {
-                let block = query.deref().as_block();
-                assert_eq!(block.nodes.len(), 2);
+                let tuple = query;
+                assert_eq!(tuple.len(), 2);
 
-                let from = block.nodes[0].as_from();
+                let from = tuple[0].as_from();
                 match from {
                     AstFrom::Store { store, schema, .. } => {
                         assert_eq!(store.value(), "users");
@@ -73,7 +72,7 @@ mod tests {
                     AstFrom::Query { .. } => unreachable!(),
                 }
 
-                let select = block.nodes[1].as_select();
+                let select = tuple[1].as_select();
                 assert_eq!(select.columns.len(), 1);
                 let column = select.columns[0].as_identifier();
                 assert_eq!(column.value(), "name");

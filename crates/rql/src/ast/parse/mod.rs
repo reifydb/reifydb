@@ -1,19 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-mod block;
+mod create;
 mod error;
 mod from;
 mod identifier;
 mod infix;
+mod insert;
+mod limit;
 mod literal;
 mod primary;
 mod select;
 mod tuple;
 mod r#type;
-mod limit;
-mod create;
-mod insert;
 
 pub use error::*;
 

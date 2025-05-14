@@ -19,7 +19,6 @@ impl IntoIterator for AstStatement {
 
 #[derive(Debug, PartialEq)]
 pub enum Ast {
-    Block(AstBlock),
     Create(AstCreate),
     From(AstFrom),
     Identifier(AstIdentifier),
@@ -38,7 +37,6 @@ pub enum Ast {
 impl Ast {
     pub fn token(&self) -> &Token {
         match self {
-            Ast::Block(node) => &node.token,
             Ast::Create(node) => &node.token(),
             Ast::From(node) => &node.token(),
             Ast::Identifier(node) => &node.0,
@@ -66,13 +64,6 @@ impl Ast {
 }
 
 impl Ast {
-    pub fn is_block(&self) -> bool {
-        matches!(self, Ast::Block(_))
-    }
-    pub fn as_block(&self) -> &AstBlock {
-        if let Ast::Block(result) = self { result } else { panic!("not block") }
-    }
-
     pub fn is_create(&self) -> bool {
         matches!(self, Ast::Create(_))
     }
@@ -192,12 +183,6 @@ impl Ast {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct AstBlock {
-    pub token: Token,
-    pub nodes: Vec<Ast>,
-}
-
-#[derive(Debug, PartialEq)]
 pub enum AstCreate {
     Schema { token: Token, name: AstIdentifier },
     Table { token: Token, schema: AstIdentifier, name: AstIdentifier, definitions: AstTuple },
@@ -215,7 +200,7 @@ impl AstCreate {
 #[derive(Debug, PartialEq)]
 pub enum AstFrom {
     Store { token: Token, schema: AstIdentifier, store: AstIdentifier },
-    Query { token: Token, query: Box<Ast> },
+    Query { token: Token, query: AstTuple },
 }
 
 impl AstFrom {
