@@ -119,7 +119,7 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
             }
             Ast::Insert(insert) => {
                 return match insert {
-                    AstInsert::Values { schema, store, columns, rows, .. } => {
+                    AstInsert { schema, store, columns, rows, .. } => {
                         let schema = SchemaName::new(schema.0.value());
                         let store = StoreName::new(store.0.value());
 
@@ -204,7 +204,7 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
                     }
                 };
             }
-            Ast::Select(select) => return Ok(Plan::Query(plan_select(select, None)?)),  
+            Ast::Select(select) => return Ok(Plan::Query(plan_select(select, None)?)),
             node => unreachable!("{node:?}"),
         };
     }

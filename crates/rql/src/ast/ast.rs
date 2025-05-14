@@ -43,7 +43,7 @@ impl Ast {
             Ast::From(node) => &node.token(),
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
-            Ast::Insert(node) => &node.token(),
+            Ast::Insert(node) => &node.token,
             Ast::Limit(node) => &node.token,
             Ast::Literal(node) => match node {
                 AstLiteral::Boolean(node) => &node.0,
@@ -284,22 +284,12 @@ pub struct AstInfix {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum AstInsert {
-    Values {
-        token: Token,
-        schema: AstIdentifier,
-        store: AstIdentifier,
-        columns: AstTuple,
-        rows: Vec<AstTuple>,
-    },
-}
-
-impl AstInsert {
-    pub fn token(&self) -> &Token {
-        match self {
-            AstInsert::Values { token, .. } => token,
-        }
-    }
+pub struct AstInsert {
+    pub token: Token,
+    pub schema: AstIdentifier,
+    pub store: AstIdentifier,
+    pub columns: AstTuple,
+    pub rows: Vec<AstTuple>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -363,6 +353,20 @@ pub enum PrefixOperator {
 pub struct AstSelect {
     pub token: Token,
     pub columns: Vec<Ast>,
+}
+
+impl Index<usize> for AstSelect {
+    type Output = Ast;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.columns[index]
+    }
+}
+
+impl AstSelect {
+    pub fn len(&self) -> usize {
+        self.columns.len()
+    }
 }
 
 #[derive(Debug, PartialEq)]

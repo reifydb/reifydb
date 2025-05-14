@@ -65,7 +65,6 @@ keyword! {
 
     Insert     => "INSERT",
     Into       => "INTO",
-    Values     => "VALUES",
     Update     => "UPDATE",
     Set        => "SET",
     Delete     => "DELETE",
@@ -136,7 +135,6 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
         )),
         alt((
             keyword_tag(Keyword::Into, "INTO"),
-            keyword_tag(Keyword::Values, "VALUES"),
             keyword_tag(Keyword::Update, "UPDATE"),
             keyword_tag(Keyword::Set, "SET"),
             keyword_tag(Keyword::Delete, "DELETE"),
@@ -240,7 +238,6 @@ mod tests {
         test_keyword_offset => (Offset, "OFFSET"),
         test_keyword_insert => (Insert, "INSERT"),
         test_keyword_into => (Into, "INTO"),
-        test_keyword_values => (Values, "VALUES"),
         test_keyword_update => (Update, "UPDATE"),
         test_keyword_set => (Set, "SET"),
         test_keyword_delete => (Delete, "DELETE"),
@@ -315,7 +312,6 @@ mod tests {
         test_not_keyword_offset => ( "offset"),
         test_not_keyword_insert => ( "insert"),
         test_not_keyword_into => ( "into"),
-        test_not_keyword_values => ( "values"),
         test_not_keyword_update => ( "update"),
         test_not_keyword_set => ( "set"),
         test_not_keyword_delete => ( "delete"),
