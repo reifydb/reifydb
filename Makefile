@@ -17,6 +17,10 @@ test:
 build:
 	cargo build --release
 
+.PHONY: coverage
+coverage:
+	cargo tarpaulin -o html --all --output-dir target/coverage
+
 .PHONY: push
 push: check
 	git push
