@@ -6,7 +6,7 @@ mod display;
 use crate::{Transaction, TransactionMut};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
-use base::{CatalogMut, Label, Schema, SchemaMut, Store, Value, ValueType};
+use base::{CatalogMut, Label, NopStore, Schema, SchemaMut, Store, Value, ValueType};
 use base::{Row, StoreToCreate};
 use rql::plan::{Plan, QueryPlan};
 use std::fmt::Display;
@@ -75,32 +75,28 @@ pub fn execute_plan(plan: Plan, rx: &impl Transaction) -> crate::Result<Executio
     Ok(ExecutionResult::Query { labels, rows: iter.collect() })
 }
 
-fn execute_node(
+fn execute_node<'a>(
     node: QueryPlan,
-    rx: &impl Transaction,
+    rx: &'a impl Transaction,
     current_labels: Vec<Label>,
     current_schema: Option<String>,
     current_store: Option<String>,
-    input: Option<Box<dyn Iterator<Item = Vec<Value>>>>,
-) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>>>)> {
+    input: Option<Box<dyn Iterator<Item = Vec<Value>> + 'a>>,
+) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>> + 'a>)> {
     let (labels, result_iter, schema, store, next): (
         Vec<Label>,
-        Box<dyn Iterator<Item = Vec<Value>>>,
+        Box<dyn Iterator<Item = Vec<Value>> + 'a>,
         Option<String>,
         Option<String>,
         Option<Box<QueryPlan>>,
     ) = match node {
-        QueryPlan::Scan { schema, store, next, .. } => {
-            // let table = db.tables.get(source).ok_or("Table not found")?;
-            // (Box::new(table.scan()), Some(source.to_string()))
-            (
-                current_labels,
-                Box::new(rx.scan(store.clone(), None).unwrap()),
-                Some(schema.to_string()),
-                Some(store.to_string()),
-                next,
-            )
-        }
+        QueryPlan::Scan { schema, store, next, .. } => (
+            current_labels,
+            Box::new(rx.scan(store.clone(), None).unwrap()),
+            Some(schema.to_string()),
+            Some(store.to_string()),
+            next,
+        ),
 
         QueryPlan::Limit { limit: count, next, .. } => {
             let input_iter = input.ok_or("Missing input for Limit").unwrap();
@@ -109,18 +105,16 @@ fn execute_node(
 
         QueryPlan::Project { expressions, next, .. } => {
             if input.is_none() {
-                // free standing projection like select 1
-
+                // Free-standing projection like `SELECT 1`
                 let mut labels = vec![];
                 let mut values = vec![];
 
                 for (idx, expr) in expressions.into_iter().enumerate() {
-                    let value = evaluate(expr).unwrap();
+                    let value = evaluate::<NopStore>(expr, None, None).unwrap();
                     labels.push(Label::Custom {
                         value: ValueType::from(&value),
                         label: format!("{}", idx + 1),
                     });
-
                     values.push(value);
                 }
 
@@ -133,43 +127,37 @@ fn execute_node(
 
             let store = rx.schema(schema_name.deref()).unwrap().get(store_name.deref()).unwrap();
 
-            let column_labels: Vec<Label> = expressions
+            let labels: Vec<Label> = expressions
                 .iter()
-                .filter_map(|expr| {
-                    if let Expression::Identifier(name) = expr {
-                        store.get_column(name).ok().map(|c| Label::Full {
-                            value: c.value,
-                            schema: SchemaName::from(schema_name.as_str()),
-                            store: StoreName::from(schema_name.as_str()),
-                            column: c.name,
-                        })
-                    } else {
-                        None
+                .enumerate()
+                .map(|(idx, expr)| match expr {
+                    Expression::Identifier(name) => store
+                        .get_column(name)
+                        .ok()
+                        .map(|c| Label::Column { value: c.value, column: c.name })
+                        .unwrap_or(Label::Custom {
+                            value: ValueType::Undefined,
+                            label: name.to_string(),
+                        }),
+                    _ => {
+                        Label::Custom { value: ValueType::Undefined, label: format!("{}", idx + 1) }
                     }
                 })
                 .collect();
 
-            let column_indexes: Vec<usize> = expressions
-                .iter()
-                .filter_map(|expr| {
-                    if let Expression::Identifier(name) = expr {
-                        store.get_column_index(name).ok()
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let store_ref = store;
 
-            (
-                column_labels,
-                Box::new(
-                    input_iter
-                        .map(move |row| column_indexes.iter().map(|&i| row[i].clone()).collect()),
-                ),
-                current_schema,
-                current_store,
-                next,
-            )
+            let projected_rows = input_iter.map(move |row| {
+                expressions
+                    .iter()
+                    .map(|expr| {
+                        evaluate(expr.clone(), Some(&row), Some(store_ref))
+                            .unwrap_or(Value::Undefined)
+                    })
+                    .collect::<Vec<Value>>()
+            });
+
+            (labels, Box::new(projected_rows), current_schema, current_store, next)
         }
     };
 
@@ -180,21 +168,28 @@ fn execute_node(
     }
 }
 
-pub fn evaluate(expression: Expression) -> crate::Result<Value> {
-    match expression {
-        Expression::Constant(value) => {
-            // labels.push(Label::Custom {
-            //     value: ValueType::from(&value),
-            //     label: format!("{}", idx + 1),
-            // });
-            return Ok(value);
+pub fn evaluate<S: Store>(
+    expr: Expression,
+    row: Option<&Row>,
+    store: Option<&S>,
+) -> Result<Value, String> {
+    match expr {
+        Expression::Identifier(name) => {
+            let store = store.ok_or("Store required for identifier evaluation")?;
+            let row = row.ok_or("Row required for identifier evaluation")?;
+            let index =
+                store.get_column_index(&name).map_err(|_| format!("Unknown column '{}'", name))?;
+            row.get(index).cloned().ok_or_else(|| format!("No value for column '{}'", name))
         }
-        Expression::Add(left, right) => {
-            let left = evaluate(*left)?;
-            let right = evaluate(*right)?;
 
-            return Ok(left.add(right));
+        Expression::Constant(value) => Ok(value),
+
+        Expression::Add(left, right) => {
+            let left = evaluate::<S>(*left, row, store)?;
+            let right = evaluate::<S>(*right, row, store)?;
+            Ok(left.add(right))
         }
-        _ => unimplemented!(),
+
+        _ => Err(format!("Unsupported expression: {:?}", expr)),
     }
 }

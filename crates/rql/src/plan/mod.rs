@@ -283,7 +283,8 @@ fn expression(ast: Ast) -> Result<Expression> {
             }
             _ => unimplemented!(),
         },
-        Ast::Infix(infix) => { expression_infix(infix) }
+        Ast::Identifier(identifier) => Ok(Expression::Identifier(identifier.value().to_string())),
+        Ast::Infix(infix) => expression_infix(infix),
         _ => unimplemented!("{ast:#?}"),
     }
 }

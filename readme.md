@@ -3,6 +3,13 @@
 - Design principles
   1.) Make it work, make it right, make it fast
 
+# Testing
+
+update goldenfiles
+```
+export UPDATE_GOLDENFILES=1 make test
+```
+
 ## Commercial Support
 
 ReifyDB is available as a managed service for selected users, if you're interested or want

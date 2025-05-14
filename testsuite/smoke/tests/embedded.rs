@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb::{Embedded, ReifyDB, DB};
+use reifydb::{DB, Embedded, ReifyDB};
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
@@ -26,6 +26,9 @@ impl testscript::Runner for EmbeddedRunner {
             "tx" => {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+
+                println!("tx: {query}");
+                    
                 for line in self.db.tx_execute(query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
@@ -34,7 +37,7 @@ impl testscript::Runner for EmbeddedRunner {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                dbg!(&query);
+                println!("rx: {query}");
 
                 for line in self.db.rx_execute(query.as_str()) {
                     writeln!(output, "{}", line)?;

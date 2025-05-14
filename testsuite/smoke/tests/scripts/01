@@ -18,8 +18,8 @@ inserted 1 row into table users created in schema test
 
 rx "from test.users limit 1 select id, name, name, is_premium, id"
 ---
-+--------------+----------------+----------------+----------------------+--------------+
-| test.test.id | test.test.name | test.test.name | test.test.is_premium | test.test.id |
-+--------------+----------------+----------------+----------------------+--------------+
-| 1            | Alice          | Alice          | true                 | 1            |
-+--------------+----------------+----------------+----------------------+--------------+
++----+-------+-------+------------+----+
+| id | name  | name  | is_premium | id |
++----+-------+-------+------------+----+
+| 1  | Alice | Alice | true       | 1  |
++----+-------+-------+------------+----+
