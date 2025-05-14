@@ -1,6 +1,6 @@
-# End-to-End Tests for ReifyDB
+# Functional Tests for ReifyDB
 
-This module contains end-to-end tests to ensure the entire database system behaves correctly across
+This module contains functional tests to ensure the entire database system behaves correctly across
 different variations/ implementations.
 
 ## 🧪 What’s Tested
@@ -15,5 +15,5 @@ Each test simulates real-world usage by executing a full flow:
 ## ▶️ Running Tests
 
 ```bash
-cargo test -p e2e
+cargo test -p functional
 ```

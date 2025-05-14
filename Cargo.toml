@@ -9,7 +9,7 @@ members = [
     "crates/storage",
     "crates/testing",
     "pkg/rust",
-    "testsuite/e2e",
+    "testsuite/functional",
     "testsuite/smoke"
 ]
 
@@ -21,7 +21,7 @@ default-members = [
     "crates/storage",
     "crates/testing",
     "pkg/rust",
-    "testsuite/e2e",
+    "testsuite/functional",
     "testsuite/smoke"
 ]
 

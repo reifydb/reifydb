@@ -53,8 +53,8 @@ impl testscript::Runner for EmbeddedRunner {
     }
 }
 
-test_each_path! { in "testsuite/e2e/tests/scripts" as embedded_svl_memory => test_embedded_svl_memory }
+test_each_path! { in "testsuite/functional/tests/scripts" as svl_memory => test_svl_memory }
 
-fn test_embedded_svl_memory(path: &Path) {
+fn test_svl_memory(path: &Path) {
     testscript::run_path(&mut EmbeddedRunner::new(), path).expect("test failed")
 }
