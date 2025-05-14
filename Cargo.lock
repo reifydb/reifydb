@@ -110,6 +110,7 @@ dependencies = [
  "log",
  "rql",
  "serde",
+ "serde_bytes",
  "storage",
 ]
 
