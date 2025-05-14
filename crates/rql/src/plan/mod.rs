@@ -3,6 +3,7 @@
 
 use crate::ast::{
     Ast, AstCreate, AstFrom, AstInfix, AstInsert, AstLiteral, AstSelect, AstStatement, AstType,
+    InfixOperator,
 };
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -273,25 +274,43 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
     })
 }
 
+fn expression(ast: Ast) -> Result<Expression> {
+    match ast {
+        Ast::Literal(literal) => match literal {
+            AstLiteral::Number(literal) => {
+                let value = literal.try_into().unwrap();
+                Ok(Expression::Constant(value))
+            }
+            _ => unimplemented!(),
+        },
+        Ast::Infix(infix) => { expression_infix(infix) }
+        _ => unimplemented!("{ast:#?}"),
+    }
+}
+
 fn expression_infix(infix: AstInfix) -> Result<Expression> {
-    todo!()
-    // match infix.operator {
-    //     InfixOperator::Add(_) => {}
-    //     InfixOperator::Arrow(_) => {}
-    //     InfixOperator::AccessPackage(_) => {}
-    //     InfixOperator::AccessProperty(_) => {}
-    //     InfixOperator::Assign(_) => {}
-    //     InfixOperator::Call(_) => {}
-    //     InfixOperator::Subtract(_) => {}
-    //     InfixOperator::Multiply(_) => {}
-    //     InfixOperator::Divide(_) => {}
-    //     InfixOperator::Modulo(_) => {}
-    //     InfixOperator::Equal(_) => {}
-    //     InfixOperator::NotEqual(_) => {}
-    //     InfixOperator::LessThan(_) => {}
-    //     InfixOperator::LessThanEqual(_) => {}
-    //     InfixOperator::GreaterThan(_) => {}
-    //     InfixOperator::GreaterThanEqual(_) => {}
-    //     InfixOperator::TypeAscription(_) => {}
-    // }
+    match infix.operator {
+        InfixOperator::Add(_) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+            Ok(Expression::Add(Box::new(left), Box::new(right)))
+        }
+        _ => unimplemented!(),
+        // InfixOperator::Arrow(_) => {}
+        // InfixOperator::AccessPackage(_) => {}
+        // InfixOperator::AccessProperty(_) => {}
+        // InfixOperator::Assign(_) => {}
+        // InfixOperator::Call(_) => {}
+        // InfixOperator::Subtract(_) => {}
+        // InfixOperator::Multiply(_) => {}
+        // InfixOperator::Divide(_) => {}
+        // InfixOperator::Modulo(_) => {}
+        // InfixOperator::Equal(_) => {}
+        // InfixOperator::NotEqual(_) => {}
+        // InfixOperator::LessThan(_) => {}
+        // InfixOperator::LessThanEqual(_) => {}
+        // InfixOperator::GreaterThan(_) => {}
+        // InfixOperator::GreaterThanEqual(_) => {}
+        // InfixOperator::TypeAscription(_) => {}
+    }
 }

@@ -16,4 +16,6 @@ pub enum Expression {
     Constant(Value),
 
     Identifier(String),
+    
+    Add(Box<Expression>, Box<Expression>),
 }

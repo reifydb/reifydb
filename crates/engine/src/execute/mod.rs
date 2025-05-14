@@ -115,16 +115,13 @@ fn execute_node(
                 let mut values = vec![];
 
                 for (idx, expr) in expressions.into_iter().enumerate() {
-                    match expr {
-                        Expression::Constant(value) => {
-                            labels.push(Label::Custom {
-                                value: ValueType::from(&value),
-                                label: format!("{}", idx + 1),
-                            });
-                            values.push(value)
-                        }
-                        _ => unimplemented!(),
-                    }
+                    let value = evaluate(expr).unwrap();
+                    labels.push(Label::Custom {
+                        value: ValueType::from(&value),
+                        label: format!("{}", idx + 1),
+                    });
+
+                    values.push(value);
                 }
 
                 return Ok((labels, Box::new(vec![values].into_iter())));
@@ -180,5 +177,24 @@ fn execute_node(
         execute_node(*next_node, rx, labels, schema, store, Some(result_iter))
     } else {
         Ok((labels, result_iter))
+    }
+}
+
+pub fn evaluate(expression: Expression) -> crate::Result<Value> {
+    match expression {
+        Expression::Constant(value) => {
+            // labels.push(Label::Custom {
+            //     value: ValueType::from(&value),
+            //     label: format!("{}", idx + 1),
+            // });
+            return Ok(value);
+        }
+        Expression::Add(left, right) => {
+            let left = evaluate(*left)?;
+            let right = evaluate(*right)?;
+
+            return Ok(left.add(right));
+        }
+        _ => unimplemented!(),
     }
 }
