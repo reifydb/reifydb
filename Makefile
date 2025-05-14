@@ -10,7 +10,8 @@ check:
 
 .PHONY: test
 test:
-	cargo test --lib --bins --tests
+	cargo nextest run -p smoke --all-targets
+	cargo nextest run --all-targets
 
 .PHONY: test
 build:

@@ -9,7 +9,8 @@ members = [
     "crates/storage",
     "crates/testing",
     "pkg/rust",
-    "testsuite/e2e"
+    "testsuite/e2e",
+    "testsuite/smoke"
 ]
 
 default-members = [
@@ -20,7 +21,8 @@ default-members = [
     "crates/storage",
     "crates/testing",
     "pkg/rust",
-    "testsuite/e2e"
+    "testsuite/e2e",
+    "testsuite/smoke"
 ]
 
 [workspace.package]

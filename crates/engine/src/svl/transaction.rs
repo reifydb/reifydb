@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::engine::InsertResult;
 use crate::svl::EngineInner;
 use crate::svl::catalog::Catalog;
 use crate::svl::schema::Schema;
@@ -112,10 +113,11 @@ impl<'a, S: storage::EngineMut> crate::TransactionMut for TransactionMut<'a, S> 
         Ok(schema)
     }
 
-    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()> {
+    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<InsertResult> {
+        let inserted = rows.len();
         let store = store.as_ref();
         self.log.borrow_mut().insert(store.to_string(), rows);
-        Ok(())
+        Ok(InsertResult { inserted })
     }
 
     fn commit(mut self) -> crate::Result<()> {

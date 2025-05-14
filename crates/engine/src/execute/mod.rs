@@ -9,19 +9,17 @@ use base::schema::{SchemaName, StoreName};
 use base::{CatalogMut, Label, Schema, SchemaMut, Store, Value, ValueType};
 use base::{Row, StoreToCreate};
 use rql::plan::{Plan, QueryPlan};
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
 use std::ops::Deref;
 use std::vec;
 
 #[derive(Debug)]
 pub enum ExecutionResult {
     CreateSchema { schema: SchemaName },
-    CreateTable { schema: SchemaName, store: StoreName },
-    InsertIntoTable { schema: SchemaName, store: StoreName },
+    CreateTable { schema: SchemaName, table: StoreName },
+    InsertIntoTable { schema: SchemaName, table: StoreName, inserted: usize },
     Query { labels: Vec<Label>, rows: Vec<Row> },
 }
-
-
 
 pub fn execute_plan_mut(
     plan: Plan,
@@ -44,7 +42,7 @@ pub fn execute_plan_mut(
                     .create(StoreToCreate::Table { name: name.clone(), columns });
             }
 
-            ExecutionResult::CreateTable { schema, store: name }
+            ExecutionResult::CreateTable { schema, table: name }
         }
         Plan::InsertIntoTableValues { schema, store: name, columns, rows_to_insert } => {
             let mut values = Vec::with_capacity(rows_to_insert.len());
@@ -60,9 +58,9 @@ pub fn execute_plan_mut(
                 values.push(row_values);
             }
 
-            tx.insert(name.deref(), values).unwrap();
+            let result = tx.insert(name.deref(), values).unwrap();
 
-            ExecutionResult::InsertIntoTable { schema, store: name }
+            ExecutionResult::InsertIntoTable { schema, table: name, inserted: result.inserted }
         }
         Plan::Query(_) => execute_plan(plan, tx)?,
     })

@@ -2,7 +2,7 @@
 
 tx create schema test
 ---
-schema created: test
+schema test created
 
 # schema was created
 list_schema

@@ -362,6 +362,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "smoke"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
+ "test_each_file",
+ "testing",
+]
+
+[[package]]
 name = "storage"
 version = "0.0.1"
 dependencies = [

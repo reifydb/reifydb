@@ -43,6 +43,11 @@ pub trait Transaction {
     ) -> crate::Result<RowIter>;
 }
 
+#[derive(Debug)]
+pub struct InsertResult {
+    pub inserted: usize,
+}
+
 /// A TransactionMut executes transactional read & write operations on stores.
 /// Provides snapshot isolation.
 pub trait TransactionMut: Transaction {
@@ -54,7 +59,7 @@ pub trait TransactionMut: Transaction {
     fn schema_mut(&mut self, schema: impl AsRef<SchemaName>)
     -> crate::Result<&mut Self::SchemaMut>;
 
-    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<()>;
+    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<InsertResult>;
 
     /// Commits the transaction.
     fn commit(self) -> crate::Result<()>;

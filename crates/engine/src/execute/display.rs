@@ -9,18 +9,24 @@ impl Display for ExecutionResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ExecutionResult::CreateSchema { schema } => {
-                write!(f, "schema created: {schema}")
+                write!(f, "schema {schema} created")
             }
-            ExecutionResult::CreateTable { .. } => todo!(),
-            ExecutionResult::InsertIntoTable { .. } => todo!(),
+            ExecutionResult::CreateTable { schema, table, .. } => {
+                write!(f, "table {table} created in schema {schema}")
+            }
+            ExecutionResult::InsertIntoTable { schema, table, inserted } => {
+                if *inserted != 1 {
+                    write!(f, "inserted {inserted} rows into table {table} in schema {schema}")
+                } else {
+                    write!(f, "inserted 1 row into table {table} created in schema {schema}")
+                }
+            }
             ExecutionResult::Query { labels, rows } => print_query(labels, rows, f),
         }
     }
 }
 
 fn print_query(labels: &Vec<Label>, rows: &Vec<Row>, f: &mut Formatter<'_>) -> std::fmt::Result {
-    let mut out = String::new();
-    
     let num_cols = labels.len();
     let mut col_widths = vec![0; num_cols];
 
@@ -65,21 +71,12 @@ fn print_query(labels: &Vec<Label>, rows: &Vec<Row>, f: &mut Formatter<'_>) -> s
                 .join("|")
         )
     };
-    
-    // uses string instead of writeln! because otherwise it causes some weird formatting in the tests
-    
-    out += separator.as_str();
-    out += "\n";
-    out += print_header_row(&labels.iter().map(|l| l.to_string()).collect::<Vec<_>>()).as_str();
-    out += "\n";
-    out += separator.as_str();
-    out += "\n";
-    
+
+    writeln!(f, "{}", separator)?;
+    writeln!(f, "{}", print_header_row(&labels.iter().map(|l| l.to_string()).collect::<Vec<_>>()))?;
+    writeln!(f, "{}", separator)?;
     for row in rows {
-        out += print_row(&row.iter().map(|v| v.to_string()).collect::<Vec<_>>()).as_str();
-        out += "\n";
+        writeln!(f, "{}", print_row(&row.iter().map(|v| v.to_string()).collect::<Vec<_>>()))?;
     }
-    
-    out += separator.as_str();
-    Display::fmt(&out, f)
+    write!(f, "{}", separator)
 }
