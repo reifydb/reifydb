@@ -145,40 +145,23 @@
 //! forever, both out of laziness and also because it allows unlimited time
 //! travel queries (it's a feature, not a bug!).
 
-use std::borrow::Cow;
-use std::collections::{BTreeSet, VecDeque};
-use std::error::Error;
-use std::ops::{Add, Bound, RangeBounds, Sub};
-use std::sync::{Arc, Mutex, MutexGuard};
+pub use version::Version;
+pub(crate) mod key;
+pub(crate) mod scan;
+pub(crate) mod transaction;
+pub(crate) mod version;
 
+use std::borrow::Cow;
+use std::collections::BTreeSet;
+use std::error::Error;
+use std::ops::{Add, RangeBounds, Sub};
+use std::sync::{Arc, Mutex};
+
+use crate::mvcc::key::{Key, KeyPrefix};
 use base::encoding;
-use base::encoding::{Key as _, Value, bincode, keycode};
+use base::encoding::{Key as _, Value};
 use serde::{Deserialize, Serialize};
 use storage::EngineMut;
-
-/// An MVCC version represents a logical timestamp. Each version belongs to a
-/// separate read/write transaction. The latest version is incremented when a
-/// new read-write transaction begins.
-#[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
-pub struct Version(pub u64);
-
-impl Sub<i32> for Version {
-    type Output = Version;
-
-    fn sub(self, rhs: i32) -> Self::Output {
-        Version(self.0 - rhs as u64)
-    }
-}
-
-impl Add<i32> for Version {
-    type Output = Version;
-
-    fn add(self, rhs: i32) -> Self::Output {
-        Version(self.0 + rhs as u64)
-    }
-}
-
-impl encoding::Value for Version {}
 
 // FIXME remove this
 /// Constructs an Error::InvalidData for the given format string.
@@ -198,66 +181,8 @@ macro_rules! errinput {
     };
 }
 
-/// MVCC keys, using the Keycode encoding which preserves the ordering and
-/// grouping of keys.
-///
-/// Cow byte slices allow encoding borrowed values and decoding owned values.
-#[derive(Debug, Deserialize, Serialize)]
-pub enum Key<'a> {
-    /// The next available version.
-    NextVersion,
-    /// Active (uncommitted) transactions by version.
-    TxnActive(Version),
-    /// A snapshot of the active set at each version. Only written for
-    /// versions where the active set is non-empty (excluding itself).
-    TxnActiveSnapshot(Version),
-    /// Keeps track of all keys written to by an active transaction (identified
-    /// by its version), in case it needs to roll back.
-    TxnWrite(
-        Version,
-        #[serde(with = "serde_bytes")]
-        #[serde(borrow)]
-        Cow<'a, [u8]>,
-    ),
-    /// A versioned key/value pair.
-    Version(
-        #[serde(with = "serde_bytes")]
-        #[serde(borrow)]
-        Cow<'a, [u8]>,
-        Version,
-    ),
-    /// Unversioned non-transactional key/value pairs, mostly used for metadata.
-    /// These exist separately from versioned keys, i.e. the unversioned key
-    /// "foo" is entirely independent of the versioned key "foo@7".
-    Unversioned(
-        #[serde(with = "serde_bytes")]
-        #[serde(borrow)]
-        Cow<'a, [u8]>,
-    ),
-}
-
-impl<'a> encoding::Key<'a> for Key<'a> {}
-
-/// MVCC key prefixes, for prefix scans. These must match the keys above,
-/// including the enum variant index.
-#[derive(Debug, Deserialize, Serialize)]
-enum KeyPrefix<'a> {
-    NextVersion,
-    TxnActive,
-    TxnActiveSnapshot,
-    TxnWrite(Version),
-    Version(
-        #[serde(with = "serde_bytes")]
-        #[serde(borrow)]
-        Cow<'a, [u8]>,
-    ),
-    Unversioned,
-}
-
-impl<'a> encoding::Key<'a> for KeyPrefix<'a> {}
-
 /// An MVCC-based transactional key-value engine. It wraps an underlying storage
-/// engine that's used for raw key/value storage.
+/// engine that's used for raw key-value storage.
 ///
 /// While it supports any number of concurrent transactions, individual read or
 /// write operations are executed sequentially, serialized via a mutex. There
@@ -265,36 +190,36 @@ impl<'a> encoding::Key<'a> for KeyPrefix<'a> {}
 /// requiring serialized access, and the Raft state machine that manages the
 /// MVCC engine applies commands one at a time from the Raft log, which will
 /// serialize them anyway.
-pub struct MVCC<E: EngineMut> {
-    pub engine: Arc<Mutex<E>>,
+pub struct Engine<S: EngineMut> {
+    pub storage: Arc<Mutex<S>>,
 }
 
 //FIXME
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-impl<E: EngineMut> MVCC<E> {
+impl<S: EngineMut> Engine<S> {
     /// Creates a new MVCC engine with the given storage engine.
-    pub fn new(engine: E) -> Self {
-        Self { engine: Arc::new(Mutex::new(engine)) }
+    pub fn new(engine: S) -> Self {
+        Self { storage: Arc::new(Mutex::new(engine)) }
     }
 
     /// Begins a new read-write transaction.
-    pub fn begin(&self) -> Result<Transaction<E>> {
-        Transaction::begin(self.engine.clone())
+    pub fn begin(&self) -> Result<Transaction<S>> {
+        Transaction::begin(self.storage.clone())
     }
 
     /// Begins a new read-only transaction at the latest version.
-    pub fn begin_read_only(&self) -> Result<Transaction<E>> {
-        Transaction::begin_read_only(self.engine.clone(), None)
+    pub fn begin_read_only(&self) -> Result<Transaction<S>> {
+        Transaction::begin_read_only(self.storage.clone(), None)
     }
 
     /// Begins a new read-only transaction as of the given version.
-    pub fn begin_as_of(&self, version: Version) -> Result<Transaction<E>> {
-        Transaction::begin_read_only(self.engine.clone(), Some(version))
+    pub fn begin_as_of(&self, version: Version) -> Result<Transaction<S>> {
+        Transaction::begin_read_only(self.storage.clone(), Some(version))
     }
 
     /// Resumes a transaction from the given transaction state.
-    // pub fn resume(&self, state: TransactionState) -> Result<Transaction<E>> {
+    // pub fn resume(&self, state: TransactionState) -> Result<Transaction<S>> {
     //     Transaction::resume(self.engine.clone(), state)
     // }
 
@@ -302,27 +227,27 @@ impl<E: EngineMut> MVCC<E> {
     pub fn get_unversioned(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         // self.engine.lock()?.get(&Key::Unversioned(key.into()).encode())
         // FIXME
-        Ok(self.engine.lock().unwrap().get(&Key::Unversioned(key.into()).encode()).unwrap())
+        Ok(self.storage.lock().unwrap().get(&Key::Unversioned(key.into()).encode()).unwrap())
     }
 
     /// Sets the value of an unversioned key.
     pub fn set_unversioned(&self, key: &[u8], value: Vec<u8>) -> Result<()> {
         // self.engine.lock()?.set(&Key::Unversioned(key.into()).encode(), value)
         // FIXME
-        Ok(self.engine.lock().unwrap().set(&Key::Unversioned(key.into()).encode(), value).unwrap())
+        Ok(self.storage.lock().unwrap().set(&Key::Unversioned(key.into()).encode(), value).unwrap())
     }
 
     /// Returns the status of the MVCC and storage engines.
     pub fn status(&self) -> Result<Status> {
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
+        let mut engine = self.storage.lock().unwrap();
         let versions = match engine.get(&Key::NextVersion.encode())? {
             Some(ref v) => Version::decode(v)? - 1,
             None => Version(0),
         };
         let active_txns = engine.scan_prefix(&KeyPrefix::TxnActive.encode()).count() as u64;
-        Ok(Status { versions, active_txns })
+        Ok(Status { version: versions, active_txs: active_txns })
         // Ok(Status { versions, active_txns, storage: engine.status()? })
     }
 }
@@ -330,10 +255,10 @@ impl<E: EngineMut> MVCC<E> {
 /// MVCC engine status.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Status {
-    /// The total number of MVCC versions (i.e. read-write transactions).
-    pub versions: Version,
+    /// The current MVCC.
+    pub version: Version,
     /// Number of currently active transactions.
-    pub active_txns: u64,
+    pub active_txs: u64,
     // ///The storage engine.
     // pub storage: super::engine::Status,
 }
@@ -341,9 +266,9 @@ pub struct Status {
 impl encoding::Value for Status {}
 
 /// An MVCC transaction.
-pub struct Transaction<E: EngineMut> {
+pub struct Transaction<S: EngineMut> {
     /// The underlying engine, shared by all transactions.
-    engine: Arc<Mutex<E>>,
+    engine: Arc<Mutex<S>>,
     /// The transaction state.
     state: TransactionState,
 }
@@ -410,431 +335,6 @@ impl From<TransactionState> for Cow<'_, TransactionState> {
 impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
     fn from(txn: &'a TransactionState) -> Self {
         Cow::Borrowed(txn)
-    }
-}
-
-impl<E: EngineMut> Transaction<E> {
-    /// Begins a new transaction in read-write mode. This will allocate a new
-    /// version that the transaction can write at, add it to the active set, and
-    /// record its active snapshot for time-travel queries.
-    fn begin(engine: Arc<Mutex<E>>) -> Result<Self> {
-        // FIXME
-        // let mut session = engine.lock()?;
-        let mut session = engine.lock().unwrap();
-
-        // Allocate a new version to write at.
-        let version = match session.get(&Key::NextVersion.encode())? {
-            Some(ref v) => Version::decode(v)?,
-            None => Version(1),
-        };
-        session.set(&Key::NextVersion.encode(), (version + 1).encode())?;
-
-        // Fetch the current set of active transactions, persist it for
-        // time-travel queries if non-empty, then add this txn to it.
-        let active = Self::scan_active(&mut session)?;
-        if !active.is_empty() {
-            session.set(&Key::TxnActiveSnapshot(version).encode(), active.encode())?
-        }
-        session.set(&Key::TxnActive(version).encode(), vec![])?;
-        drop(session);
-
-        Ok(Self { engine, state: TransactionState { version, read_only: false, active } })
-    }
-
-    /// Begins a new read-only transaction. If version is given it will see the
-    /// state as of the beginning of that version (ignoring writes at that
-    /// version). In other words, it sees the same state as the read-write
-    /// transaction at that version saw when it began.
-    fn begin_read_only(engine: Arc<Mutex<E>>, as_of: Option<Version>) -> Result<Self> {
-        // FIXME
-        // let mut session = engine.lock()?;
-        let mut session = engine.lock().unwrap();
-
-        // Fetch the latest version.
-        let mut version = match session.get(&Key::NextVersion.encode())? {
-            Some(ref v) => Version::decode(v)?,
-            None => Version(1),
-        };
-
-        // If requested, create the transaction as of a past version, restoring
-        // the active snapshot as of the beginning of that version. Otherwise,
-        // use the latest version and get the current, real-time snapshot.
-        let mut active = BTreeSet::new();
-        if let Some(as_of) = as_of {
-            if as_of >= version {
-                return errinput!("version {as_of} does not exist");
-            }
-            version = as_of;
-            if let Some(value) = session.get(&Key::TxnActiveSnapshot(version).encode())? {
-                active = BTreeSet::<Version>::decode(&value)?;
-            }
-        } else {
-            active = Self::scan_active(&mut session)?;
-        }
-
-        drop(session);
-
-        Ok(Self { engine, state: TransactionState { version, read_only: true, active } })
-    }
-
-    /// Resumes a transaction from the given state.
-    // fn resume(engine: Arc<Mutex<E>>, s: TransactionState) -> Result<Self> {
-    //     // For read-write transactions, verify that the transaction is still
-    //     // active before making further writes.
-    //     if !s.read_only && engine.lock()?.get(&Key::TxnActive(s.version).encode())?.is_none() {
-    //         return errinput!("no active transaction at version {}", s.version);
-    //     }
-    //     Ok(Self { engine, state: s })
-    // }
-
-    /// Fetches the set of currently active transactions.
-    fn scan_active(session: &mut MutexGuard<E>) -> Result<BTreeSet<Version>> {
-        let mut active = BTreeSet::new();
-        let mut scan = session.scan_prefix(&KeyPrefix::TxnActive.encode());
-        while let Some((key, _)) = scan.next().transpose()? {
-            match Key::decode(&key)? {
-                Key::TxnActive(version) => active.insert(version),
-                key => return errdata!("expected TxnActive key, got {key:?}"),
-            };
-        }
-        Ok(active)
-    }
-
-    /// Returns the version the transaction is running at.
-    pub fn version(&self) -> Version {
-        self.state.version
-    }
-
-    /// Returns whether the transaction is read-only.
-    pub fn read_only(&self) -> bool {
-        self.state.read_only
-    }
-
-    /// Returns the transaction's state. This can be used to instantiate a
-    /// functionally equivalent transaction via resume().
-    pub fn state(&self) -> &TransactionState {
-        &self.state
-    }
-
-    /// Commits the transaction, by removing it from the active set. This will
-    /// immediately make its writes visible to subsequent transactions. Also
-    /// removes its TxnWrite records, which are no longer needed.
-    ///
-    /// NB: commit does not flush writes to durable storage, since we rely on
-    /// the Raft log for persistence.
-    pub fn commit(self) -> Result<()> {
-        if self.state.read_only {
-            return Ok(());
-        }
-        // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
-
-        let mut remove = Vec::new();
-        for result in engine.scan_prefix(&KeyPrefix::TxnWrite(self.state.version).encode()) {
-            let (k, _) = result?;
-            remove.push(k);
-        }
-        for key in remove {
-            engine.remove(&key)?;
-        }
-
-        // FIXME
-        // engine.remove(&Key::TxnActive(self.state.version).encode())
-        engine.remove(&Key::TxnActive(self.state.version).encode()).unwrap();
-        Ok(())
-    }
-
-    /// Rolls back the transaction, by undoing all written versions and removing
-    /// it from the active set. The active set snapshot is left behind, since
-    /// this is needed for time travel queries at this version.
-    pub fn rollback(self) -> Result<()> {
-        if self.state.read_only {
-            return Ok(());
-        }
-        // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
-        let mut rollback = Vec::new();
-        let mut scan = engine.scan_prefix(&KeyPrefix::TxnWrite(self.state.version).encode());
-        while let Some((key, _)) = scan.next().transpose()? {
-            match Key::decode(&key)? {
-                Key::TxnWrite(_, key) => {
-                    rollback.push(Key::Version(key, self.state.version).encode())
-                    // the version
-                }
-                key => return errdata!("expected TxnWrite, got {key:?}"),
-            };
-            rollback.push(key); // the TxnWrite record
-        }
-        drop(scan);
-        for key in rollback.into_iter() {
-            engine.remove(&key)?;
-        }
-        // FIXME
-        // engine.remove(&Key::TxnActive(self.state.version).encode()) // remove from active set
-        engine.remove(&Key::TxnActive(self.state.version).encode()).unwrap();
-        Ok(())
-    }
-
-    /// Deletes a key.
-    pub fn delete(&self, key: &[u8]) -> Result<()> {
-        self.write_version(key, None)
-    }
-
-    /// Sets a value for a key.
-    pub fn set(&self, key: &[u8], value: Vec<u8>) -> Result<()> {
-        self.write_version(key, Some(value))
-    }
-
-    /// Writes a new version for a key at the transaction's version. None writes
-    /// a deletion tombstone. If a write conflict is found (either a newer or
-    /// uncommitted version), a serialization error is returned.  Replacing our
-    /// own uncommitted write is fine.
-    fn write_version(&self, key: &[u8], value: Option<Vec<u8>>) -> Result<()> {
-        if self.state.read_only {
-            // FIXME
-            todo!()
-            // return Err(Error::ReadOnly);
-        }
-        // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
-
-        // Check for write conflicts, i.e. if the latest key is invisible to us
-        // (either a newer version, or an uncommitted version in our past). We
-        // can only conflict with the latest key, since all transactions enforce
-        // the same invariant.
-        let from = Key::Version(
-            key.into(),
-            self.state.active.iter().min().copied().unwrap_or(self.state.version + 1),
-        )
-        .encode();
-        let to = Key::Version(key.into(), Version(u64::MAX)).encode();
-        if let Some((key, _)) = engine.scan(from..=to).last().transpose()? {
-            match Key::decode(&key)? {
-                Key::Version(_, version) => {
-                    if !self.state.is_visible(version) {
-                        // FIXME
-                        // return Err(Error::Serialization);
-                        todo!()
-                    }
-                }
-                key => return errdata!("expected Key::Version got {key:?}"),
-            }
-        }
-
-        // Write the new version and its write record.
-        //
-        // NB: TxnWrite contains the provided user key, not the encoded engine
-        // key, since we can construct the engine key using the version.
-        engine.set(&Key::TxnWrite(self.state.version, key.into()).encode(), vec![])?;
-        //FIXME
-        // engine.set(&Key::Version(key.into(), self.state.version).encode(), bincode::serialize(&value))
-        engine
-            .set(&Key::Version(key.into(), self.state.version).encode(), bincode::serialize(&value))
-            .unwrap();
-        Ok(())
-    }
-
-    /// Fetches a key's value, or None if it does not exist.
-    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
-
-        let from = Key::Version(key.into(), Version(0)).encode();
-        let to = Key::Version(key.into(), self.state.version).encode();
-        let mut scan = engine.scan(from..=to).rev();
-        while let Some((key, value)) = scan.next().transpose()? {
-            match Key::decode(&key)? {
-                Key::Version(_, version) => {
-                    if self.state.is_visible(version) {
-                        // FIXME
-                        // return bincode::deserialize(&value);
-                        return Ok(bincode::deserialize(&value).unwrap());
-                    }
-                }
-                key => return errdata!("expected Key::Version got {key:?}"),
-            };
-        }
-        Ok(None)
-    }
-
-    /// Returns an iterator over the latest visible key/value pairs at the
-    /// transaction's version.
-    pub fn scan(&self, range: impl RangeBounds<Vec<u8>>) -> ScanIterator<E> {
-        let start = match range.start_bound() {
-            Bound::Excluded(k) => {
-                Bound::Excluded(Key::Version(k.into(), Version(u64::MAX)).encode())
-            }
-            Bound::Included(k) => Bound::Included(Key::Version(k.into(), Version(0)).encode()),
-            Bound::Unbounded => Bound::Included(Key::Version(vec![].into(), Version(0)).encode()),
-        };
-        let end = match range.end_bound() {
-            Bound::Excluded(k) => Bound::Excluded(Key::Version(k.into(), Version(0)).encode()),
-            Bound::Included(k) => {
-                Bound::Included(Key::Version(k.into(), Version(u64::MAX)).encode())
-            }
-            Bound::Unbounded => Bound::Excluded(KeyPrefix::Unversioned.encode()),
-        };
-        ScanIterator::new(self.engine.clone(), self.state().clone(), (start, end))
-    }
-
-    /// Scans keys under a given prefix.
-    pub fn scan_prefix(&self, prefix: &[u8]) -> ScanIterator<E> {
-        // Normally, KeyPrefix::Version will only match all versions of the
-        // exact given key. We want all keys maching the prefix, so we chop off
-        // the Keycode byte slice terminator 0x0000 at the end.
-        let mut prefix = KeyPrefix::Version(prefix.into()).encode();
-        prefix.truncate(prefix.len() - 2);
-        let range = keycode::prefix_range(&prefix);
-        ScanIterator::new(self.engine.clone(), self.state().clone(), range)
-    }
-}
-
-/// An iterator over the latest live and visible key/value pairs for the txn.
-///
-/// The (single-threaded) engine is shared via mutex, and holding the mutex for
-/// the lifetime of the iterator can cause deadlocks (e.g. when the local SQL
-/// engine pulls from two tables concurrently during a join). Instead, we pull
-/// and buffer a batch of rows at a time, and release the mutex in between.
-///
-/// This does not implement DoubleEndedIterator (reverse scans), since the SQL
-/// layer doesn't currently need it.
-pub struct ScanIterator<E: EngineMut> {
-    /// The engine.
-    engine: Arc<Mutex<E>>,
-    /// The transaction state.
-    txn: TransactionState,
-    /// A buffer of live and visible key/value pairs to emit.
-    buffer: VecDeque<(Vec<u8>, Vec<u8>)>,
-    /// The remaining range after the buffer.
-    remainder: Option<(Bound<Vec<u8>>, Bound<Vec<u8>>)>,
-}
-
-/// Implement [`Clone`] manually. `derive(Clone)` isn't smart enough to figure
-/// out that we don't need `Engine: Clone` when it's in an [`Arc`]. See:
-/// <https://github.com/rust-lang/rust/issues/26925>.
-impl<E: EngineMut> Clone for ScanIterator<E> {
-    fn clone(&self) -> Self {
-        Self {
-            engine: self.engine.clone(),
-            txn: self.txn.clone(),
-            buffer: self.buffer.clone(),
-            remainder: self.remainder.clone(),
-        }
-    }
-}
-
-impl<E: EngineMut> ScanIterator<E> {
-    /// The number of live key/value pairs to pull from the engine each time we
-    /// lock it. Uses 2 in tests to exercise the buffering code.
-    const BUFFER_SIZE: usize = if cfg!(test) { 2 } else { 32 };
-
-    /// Creates a new scan iterator.
-    fn new(
-        engine: Arc<Mutex<E>>,
-        txn: TransactionState,
-        range: (Bound<Vec<u8>>, Bound<Vec<u8>>),
-    ) -> Self {
-        let buffer = VecDeque::with_capacity(Self::BUFFER_SIZE);
-        Self { engine, txn, buffer, remainder: Some(range) }
-    }
-
-    /// Fills the buffer, if there's any pending items.
-    fn fill_buffer(&mut self) -> Result<()> {
-        // Check if there's anything to buffer.
-        if self.buffer.len() >= Self::BUFFER_SIZE {
-            return Ok(());
-        }
-        let Some(range) = self.remainder.take() else {
-            return Ok(());
-        };
-        let range_end = range.1.clone();
-
-        // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
-        let mut iter = VersionIterator::new(&self.txn, engine.scan(range)).peekable();
-        while let Some((key, _, value)) = iter.next().transpose()? {
-            // If the next key equals this one, we're not at the latest version.
-            match iter.peek() {
-                Some(Ok((next, _, _))) if next == &key => continue,
-                // FIXME
-                // Some(Err(err)) => return Err(err.clone()),
-                Some(Err(err)) => unimplemented!(),
-                Some(Ok(_)) | None => {}
-            }
-
-            // Decode the value, and skip deleted keys (tombstones).
-            let Some(value) = bincode::deserialize(&value)? else { continue };
-            self.buffer.push_back((key, value));
-
-            // If we filled the buffer, save the remaining range (if any) and
-            // return. peek() has already buffered next(), so pull it.
-            if self.buffer.len() == Self::BUFFER_SIZE {
-                if let Some((next, version, _)) = iter.next().transpose()? {
-                    // We have to re-encode it as a raw engine key, since we
-                    // only have access to the decoded MVCC user key.
-                    let range_start = Bound::Included(Key::Version(next.into(), version).encode());
-                    self.remainder = Some((range_start, range_end));
-                }
-                return Ok(());
-            }
-        }
-        Ok(())
-    }
-}
-
-impl<E: EngineMut> Iterator for ScanIterator<E> {
-    type Item = Result<(Vec<u8>, Vec<u8>)>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.buffer.is_empty() {
-            if let Err(error) = self.fill_buffer() {
-                return Some(Err(error));
-            }
-        }
-        self.buffer.pop_front().map(Ok)
-    }
-}
-
-/// An iterator that decodes raw engine key/value pairs into MVCC key/value
-/// versions, and skips invisible versions. Helper for ScanIterator.
-struct VersionIterator<'a, I: storage::ScanIterator> {
-    /// The transaction the scan is running in.
-    txn: &'a TransactionState,
-    /// The inner engine scan iterator.
-    inner: I,
-}
-
-impl<'a, I: storage::ScanIterator> VersionIterator<'a, I> {
-    /// Creates a new MVCC version iterator for the given engine iterator.
-    fn new(txn: &'a TransactionState, inner: I) -> Self {
-        Self { txn, inner }
-    }
-
-    // Fallible next(). Returns the next visible key/version/value tuple.
-    fn try_next(&mut self) -> Result<Option<(Vec<u8>, Version, Vec<u8>)>> {
-        while let Some((key, value)) = self.inner.next().transpose()? {
-            let Key::Version(key, version) = Key::decode(&key)? else {
-                return errdata!("expected Key::Version got {key:?}");
-            };
-            if !self.txn.is_visible(version) {
-                continue;
-            }
-            return Ok(Some((key.into_owned(), version, value)));
-        }
-        Ok(None)
-    }
-}
-
-impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
-    type Item = Result<(Vec<u8>, Version, Vec<u8>)>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.try_next().transpose()
     }
 }
 
