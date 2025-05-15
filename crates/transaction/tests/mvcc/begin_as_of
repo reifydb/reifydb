@@ -56,10 +56,10 @@ t4: "key" → "2"
 
 # Writes should error.
 t4: !set foo=bar
-t4: !delete foo
+t4: !remove foo
 ---
-t4: Error: read-only transaction
-t4: Error: read-only transaction
+t4: Error: attempted mutation in a read-only transaction
+t4: Error: attempted mutation in a read-only transaction
 
 # t1 and t3 commit. Their writes still shouldn't be visible to t4, since
 # versions must be stable.
@@ -108,8 +108,8 @@ t7: "other" → "1"
 t8: !begin readonly as_of=5
 t8: !begin readonly as_of=9
 ---
-t8: Error: invalid input: version 5 does not exist
-t8: Error: invalid input: version 9 does not exist
+t8: Error: version not found: 5
+t8: Error: version not found: 9
 
 # Version 0 works though, but doesn't show anything.
 t8: begin readonly as_of=0

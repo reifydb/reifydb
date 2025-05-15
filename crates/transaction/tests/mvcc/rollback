@@ -25,7 +25,7 @@ ok
 
 t1: set a=1
 t2: set b=2
-t2: delete c
+t2: remove c
 t3: set d=3
 ---
 ok
@@ -55,18 +55,18 @@ mvcc:Version("d", 4) â†’ "3" ["\x04d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04" â†
 t1: !set b=1
 t3: !set c=3
 ---
-t1: Error: serialization failure, retry transaction
-t3: Error: serialization failure, retry transaction
+t1: Error: transaction serialization conflict occurred, retry transaction
+t3: Error: transaction serialization conflict occurred, retry transaction
 
 # When t2 is rolled back, none of its writes will be visible, and t1 and t3 can
 # perform their writes and successfully commit.
 t2: rollback [ops]
 ---
-t2: engine delete mvcc:Version("b", 3) ["\x04b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03"]
-t2: engine delete mvcc:TxWrite(3, "b") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03b\x00\x00"]
-t2: engine delete mvcc:Version("c", 3) ["\x04c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03"]
-t2: engine delete mvcc:TxWrite(3, "c") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03c\x00\x00"]
-t2: engine delete mvcc:TxActive(3) ["\x01\x00\x00\x00\x00\x00\x00\x00\x03"]
+t2: engine remove mvcc:Version("b", 3) ["\x04b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03"]
+t2: engine remove mvcc:TxWrite(3, "b") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03b\x00\x00"]
+t2: engine remove mvcc:Version("c", 3) ["\x04c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03"]
+t2: engine remove mvcc:TxWrite(3, "c") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03c\x00\x00"]
+t2: engine remove mvcc:TxActive(3) ["\x01\x00\x00\x00\x00\x00\x00\x00\x03"]
 
 t4: begin readonly
 t4: scan

@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::encoding;
+use crate::encoding::Error;
+use serde::ser::{Impossible, SerializeSeq, SerializeTuple, SerializeTupleVariant};
 // This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -8,10 +11,7 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
-use crate::encoding::keycode::Result;
-use crate::encoding::keycode::error::Error;
 use serde::Serialize;
-use serde::ser::{Impossible, SerializeSeq, SerializeTuple, SerializeTupleVariant};
 
 /// Serializes keys as binary byte vectors.
 pub(crate) struct Serializer {
@@ -31,20 +31,20 @@ impl serde::ser::Serializer for &mut Serializer {
     type SerializeStructVariant = Impossible<(), Error>;
 
     /// bool simply uses 1 for true and 0 for false.
-    fn serialize_bool(self, v: bool) -> Result<()> {
+    fn serialize_bool(self, v: bool) -> encoding::Result<()> {
         self.output.push(if v { 1 } else { 0 });
         Ok(())
     }
 
-    fn serialize_i8(self, _: i8) -> Result<()> {
+    fn serialize_i8(self, _: i8) -> encoding::Result<()> {
         unimplemented!()
     }
 
-    fn serialize_i16(self, _: i16) -> Result<()> {
+    fn serialize_i16(self, _: i16) -> encoding::Result<()> {
         unimplemented!()
     }
 
-    fn serialize_i32(self, _: i32) -> Result<()> {
+    fn serialize_i32(self, _: i32) -> encoding::Result<()> {
         unimplemented!()
     }
 
@@ -55,32 +55,32 @@ impl serde::ser::Serializer for &mut Serializer {
     /// The relative ordering of the remaining bits is already correct: -1, the
     /// largest negative integer, is encoded as 01111111...11111111, ordered
     /// after all other negative integers but before positive integers.
-    fn serialize_i64(self, v: i64) -> Result<()> {
+    fn serialize_i64(self, v: i64) -> encoding::Result<()> {
         let mut bytes = v.to_be_bytes();
         bytes[0] ^= 1 << 7; // flip sign bit
         self.output.extend(bytes);
         Ok(())
     }
 
-    fn serialize_u8(self, _: u8) -> Result<()> {
+    fn serialize_u8(self, _: u8) -> encoding::Result<()> {
         unimplemented!()
     }
 
-    fn serialize_u16(self, _: u16) -> Result<()> {
+    fn serialize_u16(self, _: u16) -> encoding::Result<()> {
         unimplemented!()
     }
 
-    fn serialize_u32(self, _: u32) -> Result<()> {
+    fn serialize_u32(self, _: u32) -> encoding::Result<()> {
         unimplemented!()
     }
 
     /// u64 simply uses the big-endian encoding.
-    fn serialize_u64(self, v: u64) -> Result<()> {
+    fn serialize_u64(self, v: u64) -> encoding::Result<()> {
         self.output.extend(v.to_be_bytes());
         Ok(())
     }
 
-    fn serialize_f32(self, _: f32) -> Result<()> {
+    fn serialize_f32(self, _: f32) -> encoding::Result<()> {
         unimplemented!()
     }
 
@@ -88,7 +88,7 @@ impl serde::ser::Serializer for &mut Serializer {
     /// order positive numbers after negative numbers, and also flips all other
     /// bits for negative numbers to order them from smallest to largest. NaN is
     /// ordered at the end.
-    fn serialize_f64(self, v: f64) -> Result<()> {
+    fn serialize_f64(self, v: f64) -> encoding::Result<()> {
         let mut bytes = v.to_be_bytes();
         match v.is_sign_negative() {
             false => bytes[0] ^= 1 << 7, // positive, flip sign bit
@@ -98,12 +98,12 @@ impl serde::ser::Serializer for &mut Serializer {
         Ok(())
     }
 
-    fn serialize_char(self, _: char) -> Result<()> {
+    fn serialize_char(self, _: char) -> encoding::Result<()> {
         unimplemented!()
     }
 
     // Strings are encoded like bytes.
-    fn serialize_str(self, v: &str) -> Result<()> {
+    fn serialize_str(self, v: &str) -> encoding::Result<()> {
         self.serialize_bytes(v.as_bytes())
     }
 
@@ -112,7 +112,7 @@ impl serde::ser::Serializer for &mut Serializer {
     // the shorter one orders before the longer one.
     //
     // We can't use e.g. length prefix encoding, since it doesn't sort correctly.
-    fn serialize_bytes(self, v: &[u8]) -> Result<()> {
+    fn serialize_bytes(self, v: &[u8]) -> encoding::Result<()> {
         for &byte in v {
             if byte == 0x00 {
                 self.output.push(0x00);
@@ -127,29 +127,38 @@ impl serde::ser::Serializer for &mut Serializer {
         Ok(())
     }
 
-    fn serialize_none(self) -> Result<()> {
+    fn serialize_none(self) -> encoding::Result<()> {
         unimplemented!()
     }
 
-    fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> Result<()> {
+    fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> encoding::Result<()> {
         unimplemented!()
     }
 
-    fn serialize_unit(self) -> Result<()> {
+    fn serialize_unit(self) -> encoding::Result<()> {
         unimplemented!()
     }
 
-    fn serialize_unit_struct(self, _: &'static str) -> Result<()> {
+    fn serialize_unit_struct(self, _: &'static str) -> encoding::Result<()> {
         unimplemented!()
     }
 
     /// Enum variants are serialized using their index, as a single byte.
-    fn serialize_unit_variant(self, _: &'static str, index: u32, _: &'static str) -> Result<()> {
+    fn serialize_unit_variant(
+        self,
+        _: &'static str,
+        index: u32,
+        _: &'static str,
+    ) -> encoding::Result<()> {
         self.output.push(index.try_into()?);
         Ok(())
     }
 
-    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, _: &T) -> Result<()> {
+    fn serialize_newtype_struct<T: Serialize + ?Sized>(
+        self,
+        _: &'static str,
+        _: &T,
+    ) -> encoding::Result<()> {
         unimplemented!()
     }
 
@@ -160,18 +169,18 @@ impl serde::ser::Serializer for &mut Serializer {
         index: u32,
         variant: &'static str,
         value: &T,
-    ) -> Result<()> {
+    ) -> encoding::Result<()> {
         self.serialize_unit_variant(name, index, variant)?;
         value.serialize(self)
     }
 
     /// Sequences are serialized as the concatenation of the serialized elements.
-    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq> {
+    fn serialize_seq(self, _: Option<usize>) -> encoding::Result<Self::SerializeSeq> {
         Ok(self)
     }
 
     /// Tuples are serialized as the concatenation of the serialized elements.
-    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple> {
+    fn serialize_tuple(self, _: usize) -> encoding::Result<Self::SerializeTuple> {
         Ok(self)
     }
 
@@ -179,7 +188,7 @@ impl serde::ser::Serializer for &mut Serializer {
         self,
         _: &'static str,
         _: usize,
-    ) -> Result<Self::SerializeTupleStruct> {
+    ) -> encoding::Result<Self::SerializeTupleStruct> {
         unimplemented!()
     }
 
@@ -191,16 +200,20 @@ impl serde::ser::Serializer for &mut Serializer {
         index: u32,
         variant: &'static str,
         _: usize,
-    ) -> Result<Self::SerializeTupleVariant> {
+    ) -> encoding::Result<Self::SerializeTupleVariant> {
         self.serialize_unit_variant(name, index, variant)?;
         Ok(self)
     }
 
-    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap> {
+    fn serialize_map(self, _: Option<usize>) -> encoding::Result<Self::SerializeMap> {
         unimplemented!()
     }
 
-    fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct> {
+    fn serialize_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> encoding::Result<Self::SerializeStruct> {
         unimplemented!()
     }
 
@@ -210,7 +223,7 @@ impl serde::ser::Serializer for &mut Serializer {
         _: u32,
         _: &'static str,
         _: usize,
-    ) -> Result<Self::SerializeStructVariant> {
+    ) -> encoding::Result<Self::SerializeStructVariant> {
         unimplemented!()
     }
 }
@@ -220,11 +233,11 @@ impl SerializeSeq for &mut Serializer {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
+    fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> encoding::Result<()> {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> encoding::Result<()> {
         Ok(())
     }
 }
@@ -234,11 +247,11 @@ impl SerializeTuple for &mut Serializer {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
+    fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> encoding::Result<()> {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> encoding::Result<()> {
         Ok(())
     }
 }
@@ -248,11 +261,11 @@ impl SerializeTupleVariant for &mut Serializer {
     type Ok = ();
     type Error = Error;
 
-    fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
+    fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> encoding::Result<()> {
         value.serialize(&mut **self)
     }
 
-    fn end(self) -> Result<()> {
+    fn end(self) -> encoding::Result<()> {
         Ok(())
     }
 }

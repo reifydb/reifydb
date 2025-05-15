@@ -12,6 +12,7 @@ use crate::mvcc::Version;
 use base::encoding;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::fmt::{Display, Formatter, Write};
 
 /// MVCC keys, using the Keycode encoding which preserves the ordering and
 /// grouping of keys.
@@ -49,6 +50,19 @@ pub enum Key<'a> {
         #[serde(borrow)]
         Cow<'a, [u8]>,
     ),
+}
+
+impl Display for Key<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Key::NextVersion => f.write_str("NextVersion"),
+            Key::TxActive(_) => f.write_str("TxActive"),
+            Key::TxActiveSnapshot(_) => f.write_str("TxActiveSnapshot"),
+            Key::TxWrite(_, _) => f.write_str("TxWrite"),
+            Key::Version(_, _) => f.write_str("Version"),
+            Key::Unversioned(_) => f.write_str("Unversioned"),
+        }
+    }
 }
 
 impl<'a> encoding::Key<'a> for Key<'a> {}

@@ -52,14 +52,12 @@ mod deserialize;
 mod error;
 mod serialize;
 
+use crate::encoding::Error;
 use crate::encoding::keycode::deserialize::Deserializer;
-use crate::encoding::keycode::error::Error;
 use crate::encoding::keycode::serialize::Serializer;
-use crate::invalid_data;
+use crate::{encoding, invalid_data};
 use serde::{Deserialize, Serialize};
 use std::ops::Bound;
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 #[macro_export]
 macro_rules! key_prefix {
@@ -82,7 +80,7 @@ pub fn serialize<T: Serialize>(key: &T) -> Vec<u8> {
 }
 
 /// Deserializes a key from a binary Keycode representation.
-pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> Result<T> {
+pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> encoding::Result<T> {
     let mut deserializer = Deserializer::from_bytes(input);
     let t = T::deserialize(&mut deserializer)?;
     if !deserializer.input.is_empty() {

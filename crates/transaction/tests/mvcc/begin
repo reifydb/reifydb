@@ -43,7 +43,7 @@ t3: v3 rw active={1,2}
 # Now, commit t2, which unregisters it.
 t2: commit [ops]
 ---
-t2: engine delete mvcc:TxActive(2) ["\x01\x00\x00\x00\x00\x00\x00\x00\x02"]
+t2: engine remove mvcc:TxActive(2) ["\x01\x00\x00\x00\x00\x00\x00\x00\x02"]
 
 # It should still be in t3's active set.
 t3: state

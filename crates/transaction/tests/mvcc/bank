@@ -64,7 +64,7 @@ ok
 
 bob: !set B=0
 ---
-bob: Error: serialization failure, retry transaction
+bob: Error: transaction serialization conflict occurred, retry transaction
 
 # MVCC caught the conflict, and Bob has to roll back and retry.
 bob: rollback

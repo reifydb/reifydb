@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::encoding::Key as _;
 use base::encoding::binary::decode_binary;
 use base::encoding::format::Formatter;
+use base::encoding::Key as _;
 use format::MVCC;
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -13,12 +13,15 @@ use std::result::Result as StdResult;
 
 use std::fmt::Write as _;
 use std::path::Path;
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
+use storage::test::{Emit, Operation};
 use storage::{Engine as StorageEngine, Memory};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
 use transaction::mvcc;
-use transaction::mvcc::{Engine, Key, KeyPrefix, Transaction, TransactionState, Version, format};
+use transaction::mvcc::{format, Engine, Key, KeyPrefix, Transaction, TransactionState, Version};
 
 // test_each_path! { in "crates/transaction/tests/mvcc" as mvcc => test_script }
 
@@ -28,48 +31,34 @@ fn test_script(path: &Path) {
     testscript::run_path(&mut MVCCRunner::new(), path).expect("test failed")
 }
 
-/// Tests that key prefixes are actually prefixes of keys.
-// #[test_case(KeyPrefix::NextVersion, Key::NextVersion; "NextVersion")]
-// #[test_case(KeyPrefix::TxActive, Key::TxActive(1); "TxActive")]
-// #[test_case(KeyPrefix::TxActiveSnapshot, Key::TxActiveSnapshot(1); "TxActiveSnapshot")]
-// #[test_case(KeyPrefix::TxWrite(1), Key::TxWrite(1, b"foo".as_slice().into()); "TxWrite")]
-// #[test_case(KeyPrefix::Version(b"foo".as_slice().into()), Key::Version(b"foo".as_slice().into(), 1); "Version"
-// 	)]
-// #[test_case(KeyPrefix::Unversioned, Key::Unversioned(b"foo".as_slice().into()); "Unversioned")]
-// fn key_prefix(prefix: KeyPrefix, key: Key) {
-//     let prefix = prefix.encode();
-//     let key = key.encode();
-//     assert_eq!(prefix, key[..prefix.len()])
-// }
+// type TestEngine = Emit<Mirror<BitCask, Memory>>;
+type TestEngine = Emit<Memory>;
 
 /// Runs MVCC tests.
 pub struct MVCCRunner {
-    mvcc: mvcc::Engine<Memory>,
-    txs: HashMap<String, Transaction<Memory>>,
-    // op_rx: Receiver<Operation>,
+    engine: Engine<TestEngine>,
+    txs: HashMap<String, Transaction<TestEngine>>,
+    operations: Receiver<Operation>,
     // _tempdir: TempDir,
 }
 
-// type TestEngine = Emit<Mirror<BitCask, Memory>>;
-
 impl MVCCRunner {
     fn new() -> Self {
-        // Use both a BitCask and a Memory engine, and mirror operations
-        // across them. Emit engine operations to op_rx.
-        // let (op_tx, op_rx) = crossbeam::channel::unbounded();
+        let (tx, rx) = mpsc::channel();
         // let tempdir = TempDir::with_prefix("toydb").expect("tempdir failed");
         // let bitcask = BitCask::new(tempdir.path().join("bitcask")).expect("bitcask failed");
         // let memory = Memory::new();
+
         // let engine = Emit::new(Mirror::new(bitcask, memory), op_tx);
-        let mvcc = Engine::new(Memory::default());
-        Self { mvcc, txs: HashMap::new() }
+        let engine = Emit::new(Memory::default(), tx);
+        Self { engine: Engine::new(engine), txs: HashMap::new(), operations: rx }
     }
 
     /// Fetches the named transaction from a command prefix.
     fn get_tx(
         &mut self,
         prefix: &Option<String>,
-    ) -> Result<&'_ mut Transaction<Memory>, Box<dyn StdError>> {
+    ) -> Result<&'_ mut Transaction<TestEngine>, Box<dyn StdError>> {
         let name = Self::tx_name(prefix)?;
         self.txs.get_mut(name).ok_or(format!("unknown tx {name}").into())
     }
@@ -109,9 +98,9 @@ impl testscript::Runner for MVCCRunner {
                 let as_of: Option<Version> = args.lookup_parse("as_of")?;
                 args.reject_rest()?;
                 let tx = match (readonly, as_of) {
-                    (false, None) => self.mvcc.begin()?,
-                    (true, None) => self.mvcc.begin_read_only()?,
-                    (true, Some(v)) => self.mvcc.begin_read_only_as_of(v)?,
+                    (false, None) => self.engine.begin()?,
+                    (true, None) => self.engine.begin_read_only()?,
+                    (true, Some(v)) => self.engine.begin_read_only_as_of(v)?,
                     (false, Some(_)) => return Err("as_of only valid for read-only tx".into()),
                 };
                 self.txs.insert(name.to_string(), tx);
@@ -125,13 +114,13 @@ impl testscript::Runner for MVCCRunner {
                 tx.commit()?;
             }
 
-            // tx: delete KEY...
-            "delete" => {
+            // tx: remove KEY...
+            "remove" => {
                 let tx = self.get_tx(&command.prefix)?;
                 let mut args = command.consume_args();
                 for arg in args.rest_pos() {
                     let key = decode_binary(&arg.value);
-                    tx.delete(&key)?;
+                    tx.remove(&key)?;
                 }
                 args.reject_rest()?;
             }
@@ -139,7 +128,7 @@ impl testscript::Runner for MVCCRunner {
             // dump
             "dump" => {
                 command.consume_args().reject_rest()?;
-                let mut engine = self.mvcc.storage.lock().unwrap();
+                let mut engine = self.engine.storage.lock().unwrap();
                 let mut scan = engine.scan(..);
                 while let Some((key, value)) = scan.next().transpose()? {
                     let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
@@ -167,7 +156,7 @@ impl testscript::Runner for MVCCRunner {
                 let mut args = command.consume_args();
                 for arg in args.rest_pos() {
                     let key = decode_binary(&arg.value);
-                    let value = self.mvcc.get_unversioned(&key)?;
+                    let value = self.engine.get_unversioned(&key)?;
                     let fmtkv = format::Raw::key_maybe_value(&key, value.as_deref());
                     writeln!(output, "{fmtkv}")?;
                 }
@@ -179,20 +168,20 @@ impl testscript::Runner for MVCCRunner {
                 Self::no_tx(command)?;
                 let mut args = command.consume_args();
                 let version = args.next_pos().map(|a| a.parse()).transpose()?;
-                let mut tx = self.mvcc.begin()?;
+                let mut tx = self.engine.begin()?;
                 if let Some(version) = version {
                     if tx.version() > version {
                         return Err(format!("version {version} already used").into());
                     }
                     while tx.version() < version {
-                        tx = self.mvcc.begin()?;
+                        tx = self.engine.begin()?;
                     }
                 }
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
                     let value = decode_binary(&kv.value);
                     if value.is_empty() {
-                        tx.delete(&key)?;
+                        tx.remove(&key)?;
                     } else {
                         tx.set(&key, value)?;
                     }
@@ -277,7 +266,7 @@ impl testscript::Runner for MVCCRunner {
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
                     let value = decode_binary(&kv.value);
-                    self.mvcc.set_unversioned(&key, value)?;
+                    self.engine.set_unversioned(&key, value)?;
                 }
                 args.reject_rest()?;
             }
@@ -302,29 +291,29 @@ impl testscript::Runner for MVCCRunner {
             }
 
             // status
-            "status" => writeln!(output, "{:#?}", self.mvcc.status()?)?,
+            "status" => writeln!(output, "{:#?}", self.engine.status()?)?,
 
             name => return Err(format!("invalid command {name}").into()),
         }
 
         // If requested, output engine operations.
-        // if tags.remove("ops") {
-        //     while let Ok(op) = self.op_rx.try_recv() {
-        //         match op {
-        //             Operation::Delete { key } => {
-        //                 let fmtkey = MVCC::<format::Raw>::key(&key);
-        //                 let rawkey = format::Raw::key(&key);
-        //                 writeln!(output, "engine delete {fmtkey} [{rawkey}]")?
-        //             }
-        //             Operation::Flush => writeln!(output, "engine flush")?,
-        //             Operation::Set { key, value } => {
-        //                 let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
-        //                 let rawkv = format::Raw::key_value(&key, &value);
-        //                 writeln!(output, "engine set {fmtkv} [{rawkv}]")?
-        //             }
-        //         }
-        //     }
-        // }
+        if tags.remove("ops") {
+            while let Ok(op) = self.operations.try_recv() {
+                match op {
+                    Operation::Remove { key } => {
+                        let fmtkey = MVCC::<format::Raw>::key(&key);
+                        let rawkey = format::Raw::key(&key);
+                        writeln!(output, "engine remove {fmtkey} [{rawkey}]")?
+                    }
+                    Operation::Sync => writeln!(output, "engine sync")?,
+                    Operation::Set { key, value } => {
+                        let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
+                        let rawkv = format::Raw::key_value(&key, &value);
+                        writeln!(output, "engine set {fmtkv} [{rawkv}]")?
+                    }
+                }
+            }
+        }
 
         if let Some(tag) = tags.iter().next() {
             return Err(format!("unknown tag {tag}").into());
@@ -334,8 +323,8 @@ impl testscript::Runner for MVCCRunner {
     }
 
     // Drain unhandled engine operations.
-    // fn end_command(&mut self, _: &testscript::Command) -> Result<String, Box<dyn Error>> {
-    // while self.op_rx.try_recv().is_ok() {}
-    // Ok(String::new())
-    // }
+    fn end_command(&mut self, _: &testscript::Command) -> Result<String, Box<dyn StdError>> {
+        while self.operations.try_recv().is_ok() {}
+        Ok(String::new())
+    }
 }

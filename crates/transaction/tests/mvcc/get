@@ -11,8 +11,8 @@
 
 # Get should return the correct latest value.
 
-import 1 key=1 updated=1 deleted=1 tombstone=
-import 2 updated=2 deleted=
+import 1 key=1 updated=1 removed=1 tombstone=
+import 2 updated=2 removed=
 ---
 ok
 
@@ -23,10 +23,10 @@ t1: "key" → "1"
 t1: "updated" → "2"
 
 # Get results should mirror scan.
-t1: get key updated deleted tombstone missing
+t1: get key updated removed tombstone missing
 ---
 t1: "key" → "1"
 t1: "updated" → "2"
-t1: "deleted" → None
+t1: "removed" → None
 t1: "tombstone" → None
 t1: "missing" → None

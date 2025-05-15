@@ -23,7 +23,7 @@
 //!
 //! MVCC handles concurrency control by managing multiple historical versions of
 //! keys, identified by a timestamp. Every write adds a new version at a higher
-//! timestamp, with deletes having a special tombstone value. For example, the
+//! timestamp, with removes having a special tombstone value. For example, the
 //! keys a,b,c,d may have the following values at various logical timestamps (x
 //! is tombstone):
 //!
@@ -66,12 +66,12 @@
 //! transaction itself). Writes to keys that already have a past version in the
 //! active set will also return an error.
 //!
-//! To commit, a transaction simply deletes its record in the active set. This
+//! To commit, a transaction simply removes its record in the active set. This
 //! will immediately (and, crucially, atomically) make all of its writes visible
 //! to subsequent transactions, but not ongoing ones. If the transaction is
 //! cancelled and rolled back, it maintains a record of all keys it wrote as
 //! Key::TxWrite(version, key), so that it can find the corresponding versions
-//! and delete them before removing itself from the active set.
+//! and remove them before removing itself from the active set.
 //!
 //! Consider the following example, where we have two ongoing transactions at
 //! time T=2 and T=5, with some writes that are not yet committed marked in
@@ -97,7 +97,7 @@
 //! error and must retry, because the version e=e2 is in its active set.
 //!
 //! To commit, t2 can remove itself from the active set. A new transaction t6
-//! starting after the commit will then see c as deleted and e=e2. t5 will still
+//! starting after the commit will then see c as removed and e=e2. t5 will still
 //! not see any of t2's writes, because it's still in its local snapshot of the
 //! active set at the time it began.
 //!
@@ -584,8 +584,8 @@ impl<E: EngineMut> Transaction<E> {
         Ok(())
     }
 
-    /// Deletes a key.
-    pub fn delete(&self, key: &[u8]) -> Result<()> {
+    /// Removes a key.
+    pub fn remove(&self, key: &[u8]) -> Result<()> {
         self.write_version(key, None)
     }
 
@@ -774,7 +774,7 @@ impl<E: EngineMut> ScanIterator<E> {
                 Some(Ok(_)) | None => {}
             }
 
-            // Decode the value, and skip deleted keys (tombstones).
+            // Decode the value, and skip removed keys (tombstones).
             let Some(value) = bincode::deserialize(&value)? else { continue };
             self.buffer.push_back((key, value));
 
@@ -967,13 +967,13 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //                     tx.commit()?;
 //                 }
 //
-//                 // tx: delete KEY...
-//                 "delete" => {
+//                 // tx: remove KEY...
+//                 "remove" => {
 //                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     for arg in args.rest_pos() {
 //                         let key = decode_binary(&arg.value);
-//                         tx.delete(&key)?;
+//                         tx.remove(&key)?;
 //                     }
 //                     args.reject_rest()?;
 //                 }
@@ -1034,7 +1034,7 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //                         let key = decode_binary(kv.key.as_ref().unwrap());
 //                         let value = decode_binary(&kv.value);
 //                         if value.is_empty() {
-//                             tx.delete(&key)?;
+//                             tx.remove(&key)?;
 //                         } else {
 //                             tx.set(&key, value)?;
 //                         }
@@ -1137,10 +1137,10 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //             if tags.remove("ops") {
 //                 while let Ok(op) = self.op_rx.try_recv() {
 //                     match op {
-//                         Operation::Delete { key } => {
+//                         Operation::Remove { key } => {
 //                             let fmtkey = format::MVCC::<format::Raw>::key(&key);
 //                             let rawkey = format::Raw::key(&key);
-//                             writeln!(output, "engine delete {fmtkey} [{rawkey}]")?
+//                             writeln!(output, "engine remove {fmtkey} [{rawkey}]")?
 //                         }
 //                         Operation::Flush => writeln!(output, "engine flush")?,
 //                         Operation::Set { key, value } => {

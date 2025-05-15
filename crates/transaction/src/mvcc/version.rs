@@ -12,7 +12,7 @@ use base::encoding;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt;
-use std::fmt::{Formatter, Write};
+use std::fmt::{Debug, Formatter, Write};
 use std::num::ParseIntError;
 use std::ops::{Add, Sub};
 use std::str::FromStr;
@@ -20,13 +20,19 @@ use std::str::FromStr;
 /// An MVCC version represents a logical timestamp. Each version belongs to a
 /// separate read/write transaction. The latest version is incremented when a
 /// new read-write transaction begins.
-#[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Version(pub u64);
 
 impl FromStr for Version {
     type Err = ParseIntError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self(s.parse::<u64>()?))
+    }
+}
+
+impl Debug for Version {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.0, f)
     }
 }
 

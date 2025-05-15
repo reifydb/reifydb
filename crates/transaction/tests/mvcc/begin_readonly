@@ -20,10 +20,10 @@ t1: v1 ro active={}
 
 # Writes should error.
 t1: !set foo=bar
-t1: !delete foo
+t1: !remove foo
 ---
-t1: Error: read-only transaction
-t1: Error: read-only transaction
+t1: Error: attempted mutation in a read-only transaction
+t1: Error: attempted mutation in a read-only transaction
 
 # Start a new read-write transaction, then another read-only transaction which
 # should have it in its active set. t1 should not be in the active set, because

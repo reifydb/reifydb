@@ -30,9 +30,9 @@ t2: !set a=2 # past uncommitted
 t2: !set c=2 # future uncommitted
 t2: !set d=2 # future committed
 ---
-t2: Error: serialization failure, retry transaction
-t2: Error: serialization failure, retry transaction
-t2: Error: serialization failure, retry transaction
+t2: Error: transaction serialization conflict occurred, retry transaction
+t2: Error: transaction serialization conflict occurred, retry transaction
+t2: Error: transaction serialization conflict occurred, retry transaction
 
 dump
 ---

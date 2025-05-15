@@ -144,11 +144,13 @@
 //! ==================
 
 pub use engine::Engine;
+pub use error::Error;
 pub use key::{Key, KeyPrefix};
 pub use version::Version;
 
 mod catalog;
 mod engine;
+mod error;
 pub mod format;
 mod key;
 mod scan;
@@ -159,7 +161,6 @@ mod version;
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
-use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 use base::encoding;
@@ -167,26 +168,7 @@ use base::encoding::Value;
 use serde::{Deserialize, Serialize};
 use storage::EngineMut;
 
-// FIXME remove this
-/// Constructs an Error::InvalidData for the given format string.
-#[macro_export]
-macro_rules! errdata {
-    ($($args:tt)*) => {
-        unimplemented!()
-    };
-}
-
-// FIXME remove this
-/// Constructs an Error::InvalidInput for the given format string.
-#[macro_export]
-macro_rules! errinput {
-    ($($args:tt)*) => {
-        unimplemented!()
-    };
-}
-
-//FIXME
-pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// MVCC engine status.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -8,8 +8,8 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
-use crate::errdata;
-use crate::mvcc::{Key, TransactionState, Version};
+
+use crate::mvcc::{Error, Key, TransactionState, Version};
 use base::encoding::{Key as _, bincode};
 use std::collections::{Bound, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -79,6 +79,7 @@ impl<S: EngineMut> ScanIterator<S> {
         // let mut engine = self.engine.lock()?;
         let mut engine = self.engine.lock().unwrap();
         let mut iter = VersionIterator::new(&self.tx, engine.scan(range)).peekable();
+
         while let Some((key, _, value)) = iter.next().transpose()? {
             // If the next key equals this one, we're not at the latest version.
             match iter.peek() {
@@ -140,8 +141,9 @@ impl<'a, I: storage::ScanIterator> VersionIterator<'a, I> {
     // Fallible next(). Returns the next visible key/version/value tuple.
     fn try_next(&mut self) -> crate::mvcc::Result<Option<(Vec<u8>, Version, Vec<u8>)>> {
         while let Some((key, value)) = self.inner.next().transpose()? {
-            let Key::Version(key, version) = Key::decode(&key)? else {
-                return errdata!("expected Key::Version got {key:?}");
+            let decoded_key = Key::decode(&key)?;
+            let Key::Version(key, version) = decoded_key else {
+                return Err(Error::unexpected_key("Key::Version", decoded_key));
             };
             if !self.tx.is_visible(version) {
                 continue;

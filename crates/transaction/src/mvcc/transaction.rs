@@ -8,8 +8,8 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
-use crate::mvcc::{Transaction, TransactionState, Version};
-use crate::{Catalog as _, CatalogMut, errdata, errinput};
+use crate::mvcc::{Error, Transaction, TransactionState, Version};
+use crate::{Catalog as _, CatalogMut};
 use std::cell::UnsafeCell;
 
 use std::collections::BTreeSet;
@@ -186,7 +186,7 @@ impl<S: EngineMut> Transaction<S> {
         let mut active = BTreeSet::new();
         if let Some(as_of) = as_of {
             if as_of >= version {
-                return errinput!("version {as_of} does not exist");
+                return Err(Error::VersionNotFound { version: as_of });
             }
             version = as_of;
             if let Some(value) = session.get(&Key::TxActiveSnapshot(version).encode())? {
@@ -218,7 +218,7 @@ impl<S: EngineMut> Transaction<S> {
         while let Some((key, _)) = scan.next().transpose()? {
             match Key::decode(&key)? {
                 Key::TxActive(version) => active.insert(version),
-                key => return errdata!("expected TxActive key, got {key:?}"),
+                key => return Err(Error::unexpected_key("TxActive", key)),
             };
         }
         Ok(active)
@@ -287,7 +287,8 @@ impl<S: EngineMut> Transaction<S> {
                     rollback.push(Key::Version(key, self.state.version).encode())
                     // the version
                 }
-                key => return errdata!("expected TxWrite, got {key:?}"),
+                // key => return errdata!("expected TxWrite, got {key:?}"),
+                key => return Err(Error::unexpected_key("TxWrite", key)),
             };
             rollback.push(key); // the TxWrite record
         }
@@ -301,8 +302,8 @@ impl<S: EngineMut> Transaction<S> {
         Ok(())
     }
 
-    /// Deletes a key.
-    pub fn delete(&self, key: &[u8]) -> crate::mvcc::Result<()> {
+    /// Removes a key.
+    pub fn remove(&self, key: &[u8]) -> crate::mvcc::Result<()> {
         self.write_version(key, None)
     }
 
@@ -317,9 +318,7 @@ impl<S: EngineMut> Transaction<S> {
     /// own uncommitted write is fine.
     fn write_version(&self, key: &[u8], value: Option<Vec<u8>>) -> crate::mvcc::Result<()> {
         if self.state.read_only {
-            // FIXME
-            todo!()
-            // return Err(Error::ReadOnly);
+            return Err(Error::ReadOnly);
         }
         // FIXME
         // let mut engine = self.engine.lock()?;
@@ -339,12 +338,10 @@ impl<S: EngineMut> Transaction<S> {
             match Key::decode(&key)? {
                 Key::Version(_, version) => {
                     if !self.state.is_visible(version) {
-                        // FIXME
-                        // return Err(Error::Serialization);
-                        todo!()
+                        return Err(Error::Serialization);
                     }
                 }
-                key => return errdata!("expected Key::Version got {key:?}"),
+                key => return Err(Error::unexpected_key("Key::Version", key)),
             }
         }
 
@@ -379,7 +376,7 @@ impl<S: EngineMut> Transaction<S> {
                         return Ok(bincode::deserialize(&value).unwrap());
                     }
                 }
-                key => return errdata!("expected Key::Version got {key:?}"),
+                key => return Err(Error::unexpected_key("Key::Version", key)),
             };
         }
         Ok(None)

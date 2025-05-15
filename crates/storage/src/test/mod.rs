@@ -17,7 +17,7 @@ mod mirror;
 
 /// An engine operation emitted by the Emit engine.
 pub enum Operation {
-    Delete { key: Vec<u8> },
+    Remove { key: Vec<u8> },
     Sync,
     Set { key: Vec<u8>, value: Vec<u8> },
 }

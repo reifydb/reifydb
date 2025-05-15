@@ -9,7 +9,7 @@
 # The original Apache License can be found at:
 #   http://www.apache.org/licenses/LICENSE-2.0
 
-# Delete should return serialization errors both for uncommitted versions
+# Remove should return serialization errors both for uncommitted versions
 # (past and future), and future committed versions.
 
 t1: begin
@@ -26,13 +26,13 @@ t4: commit
 ---
 ok
 
-t2: !delete a # past uncommitted
-t2: !delete c # future uncommitted
-t2: !delete d # future committed
+t2: !remove a # past uncommitted
+t2: !remove c # future uncommitted
+t2: !remove d # future committed
 ---
-t2: Error: serialization failure, retry transaction
-t2: Error: serialization failure, retry transaction
-t2: Error: serialization failure, retry transaction
+t2: Error: transaction serialization conflict occurred, retry transaction
+t2: Error: transaction serialization conflict occurred, retry transaction
+t2: Error: transaction serialization conflict occurred, retry transaction
 
 dump
 ---

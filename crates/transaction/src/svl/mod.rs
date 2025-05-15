@@ -3,9 +3,11 @@
 
 use crate::svl::catalog::Catalog;
 use crate::svl::transaction::{Transaction, TransactionMut};
+pub use error::Error;
 use std::sync::{Arc, RwLock};
 
 mod catalog;
+mod error;
 mod schema;
 mod store;
 mod transaction;

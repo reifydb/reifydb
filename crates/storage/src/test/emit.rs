@@ -55,7 +55,7 @@ impl<E: EngineMut> EngineMut for Emit<E> {
 
     fn remove(&mut self, key: &Key) -> crate::Result<()> {
         self.inner.remove(key)?;
-        self.tx.send(crate::test::Operation::Delete { key: key.to_vec() }).unwrap();
+        self.tx.send(crate::test::Operation::Remove { key: key.to_vec() }).unwrap();
         Ok(())
     }
 

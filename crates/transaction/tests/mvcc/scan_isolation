@@ -21,7 +21,7 @@ ok
 # Past uncommitted.
 t2: begin
 t2: set a=2 c=2
-t2: delete b
+t2: remove b
 ---
 ok
 
@@ -33,7 +33,7 @@ ok
 # Future committed.
 t4: begin
 t4: set d=3 f=3
-t4: delete e
+t4: remove e
 t4: commit
 ---
 ok
@@ -41,7 +41,7 @@ ok
 # Future uncommitted.
 t5: begin
 t5: set d=4 g=4
-t5: delete f
+t5: remove f
 ---
 ok
 

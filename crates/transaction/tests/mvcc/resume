@@ -62,8 +62,8 @@ t6: "c" → "4"
 # Once t5 commits, a separate transaction should see its changes.
 t5: commit [ops]
 ---
-t5: engine delete mvcc:TxWrite(3, "b") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03b\x00\x00"]
-t5: engine delete mvcc:TxActive(3) ["\x01\x00\x00\x00\x00\x00\x00\x00\x03"]
+t5: engine remove mvcc:TxWrite(3, "b") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03b\x00\x00"]
+t5: engine remove mvcc:TxActive(3) ["\x01\x00\x00\x00\x00\x00\x00\x00\x03"]
 
 t7: begin
 t7: scan

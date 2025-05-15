@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::encoding;
 // This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 /// as keys in the key/value store.
 pub trait Key<'de>: Serialize + Deserialize<'de> {
     /// Decodes a key from a byte slice using Keycode.
-    fn decode(bytes: &'de [u8]) -> keycode::Result<Self> {
+    fn decode(bytes: &'de [u8]) -> encoding::Result<Self> {
         keycode::deserialize(bytes)
     }
 

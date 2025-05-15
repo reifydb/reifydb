@@ -25,4 +25,4 @@ t2: "key" → None
 t1: set key=1
 t2: !set key=2
 ---
-t2: Error: serialization failure, retry transaction
+t2: Error: transaction serialization conflict occurred, retry transaction

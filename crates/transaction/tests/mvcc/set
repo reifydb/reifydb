@@ -9,7 +9,7 @@
 # The original Apache License can be found at:
 #   http://www.apache.org/licenses/LICENSE-2.0
 
-# Sets should work on both existing, missing, and deleted keys.
+# Sets should work on both existing, missing, and removed keys.
 
 import a=1 b=1 x=
 ---
