@@ -136,18 +136,14 @@
 //! current active set, storing the snapshot in memory only. Read-only queries
 //! do not increment the version sequence number in Key::NextVersion.
 //!
-//! GARBAGE COLLECTION
+//! GARBAGE COLLECTION // FIXME add to mempool
 //! ==================
-//!
-//! Normally, old versions would be garbage collected regularly, when they are
-//! no longer needed by active transactions or time-travel queries. However,
-//! toyDB does not implement garbage collection, instead keeping all history
-//! forever, both out of laziness and also because it allows unlimited time
-//! travel queries (it's a feature, not a bug!).
 
+pub use engine::Engine;
 pub use version::Version;
-pub use transaction::init;
+
 mod catalog;
+mod engine;
 mod key;
 mod scan;
 mod schema;
@@ -158,13 +154,11 @@ mod version;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::ops::Sub;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
-use crate::TransactionMut;
-use crate::mvcc::key::{Key, KeyPrefix};
+use crate::mvcc::key::Key;
 use base::encoding;
-use base::encoding::{Key as _, Value};
+use base::encoding::Value;
 use serde::{Deserialize, Serialize};
 use storage::EngineMut;
 
@@ -186,100 +180,8 @@ macro_rules! errinput {
     };
 }
 
-/// An MVCC-based transactional key-value engine. It wraps an underlying storage
-/// engine that's used for raw key-value storage.
-///
-/// While it supports any number of concurrent transactions, individual read or
-/// write operations are executed sequentially, serialized via a mutex. There
-/// are two reasons for this: the storage engine itself is not thread-safe,
-/// requiring serialized access, and the Raft state machine that manages the
-/// MVCC engine applies commands one at a time from the Raft log, which will
-/// serialize them anyway.
-pub struct Engine<S: EngineMut> {
-    pub storage: Arc<Mutex<S>>,
-}
-
-impl<'a, S: storage::EngineMut + 'a> crate::Engine<'a, S> for Engine<S> {
-    type Rx = Transaction<S>;
-    // type Tx = TransactionMut<S>;
-    type Tx = Transaction<S>;
-
-    fn begin(&'a self) -> crate::Result<Self::Tx> {
-        // let guard = self.inner.write().unwrap();
-        // Ok(TransactionMut::new(guard))
-        Ok(Transaction::begin(self.storage.clone()).unwrap())
-    }
-
-    fn begin_read_only(&'a self) -> crate::Result<Self::Rx> {
-        // let guard = self.inner.read().unwrap();
-        // Ok(Transaction::new(guard))
-        // unimplemented!()
-        Ok(Transaction::begin_read_only(self.storage.clone(), None).unwrap())
-    }
-}
-
 //FIXME
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
-
-static CATALOG: OnceLock<()> = OnceLock::new();
-
-impl<S: EngineMut> Engine<S> {
-    /// Creates a new MVCC engine with the given storage engine.
-    pub fn new(engine: S) -> Self {
-        CATALOG.get_or_init(||{
-            init();
-        });
-        Self { storage: Arc::new(Mutex::new(engine)) }
-    }
-
-    /// Begins a new read-write transaction.
-    pub fn begin(&self) -> Result<Transaction<S>> {
-        Transaction::begin(self.storage.clone())
-    }
-
-    /// Begins a new read-only transaction at the latest version.
-    pub fn begin_read_only(&self) -> Result<Transaction<S>> {
-        Transaction::begin_read_only(self.storage.clone(), None)
-    }
-
-    /// Begins a new read-only transaction as of the given version.
-    pub fn begin_as_of(&self, version: Version) -> Result<Transaction<S>> {
-        Transaction::begin_read_only(self.storage.clone(), Some(version))
-    }
-
-    /// Resumes a transaction from the given transaction state.
-    // pub fn resume(&self, state: TransactionState) -> Result<Transaction<S>> {
-    //     Transaction::resume(self.engine.clone(), state)
-    // }
-
-    /// Fetches the value of an unversioned key.
-    pub fn get_unversioned(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        // self.engine.lock()?.get(&Key::Unversioned(key.into()).encode())
-        // FIXME
-        Ok(self.storage.lock().unwrap().get(&Key::Unversioned(key.into()).encode()).unwrap())
-    }
-
-    /// Sets the value of an unversioned key.
-    pub fn set_unversioned(&self, key: &[u8], value: Vec<u8>) -> Result<()> {
-        // self.engine.lock()?.set(&Key::Unversioned(key.into()).encode(), value)
-        // FIXME
-        Ok(self.storage.lock().unwrap().set(&Key::Unversioned(key.into()).encode(), value).unwrap())
-    }
-
-    /// Returns the status of the MVCC and storage engines.
-    pub fn status(&self) -> Result<Status> {
-        // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.storage.lock().unwrap();
-        let versions = match engine.get(&Key::NextVersion.encode())? {
-            Some(ref v) => Version::decode(v)? - 1,
-            None => Version(0),
-        };
-        let active_txs = engine.scan_prefix(&KeyPrefix::TxActive.encode()).count() as u64;
-        Ok(Status { version: versions, active_txs: active_txs })
-        // Ok(Status { versions, active_txs, storage: engine.status()? })
-    }
-}
 
 /// MVCC engine status.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -329,7 +231,7 @@ pub struct TransactionState {
     pub active: BTreeSet<Version>,
 }
 
-impl encoding::Value for TransactionState {}
+impl Value for TransactionState {}
 
 impl TransactionState {
     /// Checks whether the given version is visible to this transaction.

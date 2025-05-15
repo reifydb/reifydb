@@ -10,8 +10,6 @@ pub use error::Error;
 pub use schema::{ColumnToCreate, Schema, SchemaMut, StoreToCreate};
 pub use store::{NopStore, Store, StoreMut};
 
-pub use mvcc::init;
-
 mod catalog;
 mod engine;
 mod error;
