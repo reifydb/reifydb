@@ -32,7 +32,7 @@ impl<'a, S: storage::StorageEngineMut> crate::Transaction for Transaction<'a, S>
         Ok(&self.engine.catalog)
     }
 
-    fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema> {
+    fn schema(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Self::Schema> {
         Ok(self.engine.catalog.get(schema.as_ref()).unwrap())
     }
 
@@ -76,7 +76,7 @@ impl<'a, S: storage::StorageEngineMut> crate::Transaction for TransactionMut<'a,
         Ok(&self.engine.catalog)
     }
 
-    fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema> {
+    fn schema(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Self::Schema> {
         Ok(self.engine.catalog.get(schema.as_ref()).unwrap())
     }
 
@@ -107,7 +107,7 @@ impl<'a, S: storage::StorageEngineMut> crate::TransactionMut for TransactionMut<
     ) -> crate::Result<&mut Self::SchemaMut> {
         // fixme has schema?!
         // Ok()
-        let schema = self.engine.catalog.get_mut(schema.as_ref().deref()).unwrap();
+        let schema = self.engine.catalog.get_mut(schema.as_ref()).unwrap();
 
         Ok(schema)
     }

@@ -14,7 +14,7 @@ pub trait Transaction {
 
     fn catalog(&self) -> crate::Result<&Self::Catalog>;
 
-    fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema>;
+    fn schema(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Self::Schema>;
 
     /// Fetches store rows by primary key, if they exist.
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>>;
@@ -40,8 +40,7 @@ pub trait TransactionMut: Transaction {
 
     fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut>;
 
-    fn schema_mut(&mut self, schema: impl AsRef<SchemaName>)
-    -> crate::Result<&mut Self::SchemaMut>;
+    fn schema_mut(&mut self, schema: impl AsRef<SchemaName>)-> crate::Result<&mut Self::SchemaMut>;
 
     fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<InsertResult>;
 

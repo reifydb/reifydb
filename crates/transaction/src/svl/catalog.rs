@@ -4,10 +4,9 @@
 use crate::svl::schema::Schema;
 use base::schema::SchemaName;
 use std::collections::HashMap;
-use std::ops::Deref;
 
 pub struct Catalog {
-    schema: HashMap<String, Schema>,
+    schema: HashMap<SchemaName, Schema>,
 }
 
 impl Catalog {
@@ -18,7 +17,7 @@ impl Catalog {
 
 impl crate::Catalog for Catalog {
     type Schema = Schema;
-    fn get(&self, schema: impl AsRef<str>) -> crate::Result<&Schema> {
+    fn get(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Schema> {
         Ok(self.schema.get(schema.as_ref()).unwrap())
     }
 
@@ -30,13 +29,13 @@ impl crate::Catalog for Catalog {
 impl crate::CatalogMut for Catalog {
     type SchemaMut = Schema;
 
-    fn get_mut(&mut self, schema: impl AsRef<str>) -> crate::Result<&mut Self::Schema> {
+    fn get_mut(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<&mut Self::Schema> {
         Ok(self.schema.get_mut(schema.as_ref()).unwrap())
     }
 
     fn create(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<()> {
         let schema = schema.as_ref().clone();
-        assert!(self.schema.get(schema.deref()).is_none()); // FIXME
+        assert!(self.schema.get(schema.as_ref()).is_none()); // FIXME
         self.schema.insert(schema.clone().into(), Schema::new(schema));
         Ok(())
     }
@@ -45,7 +44,7 @@ impl crate::CatalogMut for Catalog {
         todo!()
     }
 
-    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()> {
+    fn drop(&mut self, name: impl AsRef<SchemaName>) -> crate::Result<()> {
         todo!()
     }
 }

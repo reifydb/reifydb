@@ -80,21 +80,21 @@ fn execute_node<'a>(
     node: QueryPlan,
     rx: &'a impl Transaction,
     current_labels: Vec<Label>,
-    current_schema: Option<String>,
+    current_schema: Option<SchemaName>,
     current_store: Option<String>,
     input: Option<Box<dyn Iterator<Item = Vec<Value>> + 'a>>,
 ) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>> + 'a>)> {
     let (labels, result_iter, schema, store, next): (
         Vec<Label>,
         Box<dyn Iterator<Item = Vec<Value>> + 'a>,
-        Option<String>,
+        Option<SchemaName>,
         Option<String>,
         Option<Box<QueryPlan>>,
     ) = match node {
         QueryPlan::Scan { schema, store, next, .. } => (
             current_labels,
             Box::new(rx.scan(store.clone(), None).unwrap()),
-            Some(schema.to_string()),
+            Some(schema),
             Some(store.to_string()),
             next,
         ),
@@ -126,7 +126,7 @@ fn execute_node<'a>(
             let schema_name = current_schema.as_ref().ok_or("missing schema").unwrap();
             let store_name = current_store.as_ref().ok_or("missing store").unwrap();
 
-            let store = rx.schema(schema_name.deref()).unwrap().get(store_name.deref()).unwrap();
+            let store = rx.schema(schema_name).unwrap().get(store_name.deref()).unwrap();
 
             let labels: Vec<Label> = expressions
                 .iter()

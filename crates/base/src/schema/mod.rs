@@ -5,6 +5,7 @@ pub use column::*;
 pub use error::Error;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
+use std::sync::Arc;
 
 mod column;
 mod error;
@@ -46,8 +47,8 @@ impl AsRef<StoreName> for StoreName {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[derive(Debug, Clone)]
-pub struct SchemaName(String);
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct SchemaName(Arc<String>);
 
 impl Display for SchemaName {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -65,7 +66,7 @@ impl Deref for SchemaName {
 
 impl SchemaName {
     pub fn new(name: impl Into<String>) -> Self {
-        Self(name.into())
+        Self(Arc::new(name.into()))
     }
 }
 
@@ -88,6 +89,6 @@ pub struct Schema {
 
 impl Into<String> for SchemaName {
     fn into(self) -> String {
-        self.0
+        self.0.to_string()
     }
 }

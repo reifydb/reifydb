@@ -127,7 +127,7 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
 
                         // Get the store schema from the catalog once
                         let store_schema =
-                            catalog.get(schema.deref()).unwrap().get(store.deref()).unwrap();
+                            catalog.get(schema.as_ref()).unwrap().get(store.deref()).unwrap();
 
                         // Build the user-specified column name list
                         let insert_column_names: Vec<_> = columns

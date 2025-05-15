@@ -39,7 +39,7 @@ impl<S: StorageEngineMut> crate::Transaction for Transaction<S> {
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
-    fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema> {
+    fn schema(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Self::Schema> {
         Ok(self.catalog().unwrap().get(schema.as_ref()).unwrap())
     }
 
@@ -96,7 +96,7 @@ impl<S: StorageEngineMut> crate::TransactionMut for Transaction<S> {
         &mut self,
         schema: impl AsRef<SchemaName>,
     ) -> crate::Result<&mut Self::SchemaMut> {
-        let schema = self.catalog_mut().unwrap().get_mut(schema.as_ref().deref()).unwrap();
+        let schema = self.catalog_mut().unwrap().get_mut(schema.as_ref()).unwrap();
 
         Ok(schema)
     }
