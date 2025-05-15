@@ -5,10 +5,11 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub use catalog::{Catalog, CatalogMut};
-pub use engine::{Engine, Transaction, TransactionMut};
+pub use engine::{TransactionEngine, TransactionEngineMut};
 pub use error::Error;
 pub use schema::{ColumnToCreate, Schema, SchemaMut, StoreToCreate};
 pub use store::{NopStore, Store, StoreMut};
+pub use transaction::{InsertResult, Transaction, TransactionMut};
 
 mod catalog;
 mod engine;
@@ -17,5 +18,6 @@ pub mod mvcc;
 mod schema;
 mod store;
 pub mod svl;
+mod transaction;
 
 pub type Result<T> = std::result::Result<T, Error>;

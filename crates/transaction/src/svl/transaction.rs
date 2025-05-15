@@ -1,11 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::engine::InsertResult;
 use crate::svl::EngineInner;
 use crate::svl::catalog::Catalog;
 use crate::svl::schema::Schema;
-use crate::{Catalog as _, CatalogMut};
+use crate::{Catalog as _, CatalogMut, InsertResult};
 use base::encoding::{Value as OtherValue, bincode};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
@@ -15,17 +14,17 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
-pub struct Transaction<'a, S: storage::EngineMut> {
+pub struct Transaction<'a, S: storage::StorageEngineMut> {
     engine: RwLockReadGuard<'a, EngineInner<S>>,
 }
 
-impl<'a, S: storage::EngineMut> Transaction<'a, S> {
+impl<'a, S: storage::StorageEngineMut> Transaction<'a, S> {
     pub fn new(engine: RwLockReadGuard<'a, EngineInner<S>>) -> Self {
         Self { engine }
     }
 }
 
-impl<'a, S: storage::EngineMut> crate::Transaction for Transaction<'a, S> {
+impl<'a, S: storage::StorageEngineMut> crate::Transaction for Transaction<'a, S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -58,18 +57,18 @@ impl<'a, S: storage::EngineMut> crate::Transaction for Transaction<'a, S> {
     }
 }
 
-pub struct TransactionMut<'a, S: storage::EngineMut> {
+pub struct TransactionMut<'a, S: storage::StorageEngineMut> {
     engine: RwLockWriteGuard<'a, EngineInner<S>>,
     log: RefCell<HashMap<String, Vec<Row>>>,
 }
 
-impl<'a, S: storage::EngineMut> TransactionMut<'a, S> {
+impl<'a, S: storage::StorageEngineMut> TransactionMut<'a, S> {
     pub fn new(engine: RwLockWriteGuard<'a, EngineInner<S>>) -> Self {
         Self { engine, log: RefCell::new(HashMap::new()) }
     }
 }
 
-impl<'a, S: storage::EngineMut> crate::Transaction for TransactionMut<'a, S> {
+impl<'a, S: storage::StorageEngineMut> crate::Transaction for TransactionMut<'a, S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -94,7 +93,7 @@ impl<'a, S: storage::EngineMut> crate::Transaction for TransactionMut<'a, S> {
     }
 }
 
-impl<'a, S: storage::EngineMut> crate::TransactionMut for TransactionMut<'a, S> {
+impl<'a, S: storage::StorageEngineMut> crate::TransactionMut for TransactionMut<'a, S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

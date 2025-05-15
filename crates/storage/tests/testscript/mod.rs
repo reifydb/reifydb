@@ -11,7 +11,7 @@
 /// Test helpers for engines.
 #[cfg(test)]
 pub mod test {
-    use storage::{Engine, EngineMut, Key, Value};
+    use storage::{StorageEngine, StorageEngineMut, Key, Value};
     use regex::Regex;
     use std::error::Error as StdError;
     use std::fmt::Write as _;
@@ -22,17 +22,17 @@ pub mod test {
     use testing::testscript;
     use testing::testscript::Command;
 
-    pub struct Runner<E: Engine + EngineMut> {
+    pub struct Runner<E: StorageEngine + StorageEngineMut> {
         pub engine: E,
     }
 
-    impl<E: Engine + EngineMut> Runner<E> {
+    impl<E: StorageEngine + StorageEngineMut> Runner<E> {
         pub fn new(engine: E) -> Self {
             Self { engine }
         }
     }
 
-    impl<E: Engine + EngineMut> testscript::Runner for Runner<E> {
+    impl<E: StorageEngine + StorageEngineMut> testscript::Runner for Runner<E> {
         fn run(
             &mut self,
             command: &Command,

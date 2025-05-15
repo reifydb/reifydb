@@ -13,7 +13,7 @@ use crate::mvcc::{Error, Key, TransactionState, Version};
 use base::encoding::{Key as _, bincode};
 use std::collections::{Bound, VecDeque};
 use std::sync::{Arc, Mutex};
-use storage::EngineMut;
+use storage::StorageEngineMut;
 
 /// An iterator over the latest live and visible key-value pairs for the tx.
 ///
@@ -24,7 +24,7 @@ use storage::EngineMut;
 ///
 /// This does not implement DoubleEndedIterator (reverse scans), since the SQL
 /// layer doesn't currently need it.
-pub struct ScanIterator<S: EngineMut> {
+pub struct ScanIterator<S: StorageEngineMut> {
     /// The engine.
     engine: Arc<Mutex<S>>,
     /// The transaction state.
@@ -38,7 +38,7 @@ pub struct ScanIterator<S: EngineMut> {
 /// Implement [`Clone`] manually. `derive(Clone)` isn't smart enough to figure
 /// out that we don't need `Engine: Clone` when it's in an [`Arc`]. See:
 /// <https://github.com/rust-lang/rust/issues/26925>.
-impl<S: EngineMut> Clone for ScanIterator<S> {
+impl<S: StorageEngineMut> Clone for ScanIterator<S> {
     fn clone(&self) -> Self {
         Self {
             engine: self.engine.clone(),
@@ -49,7 +49,7 @@ impl<S: EngineMut> Clone for ScanIterator<S> {
     }
 }
 
-impl<S: EngineMut> ScanIterator<S> {
+impl<S: StorageEngineMut> ScanIterator<S> {
     /// The number of live key-value pairs to pull from the engine each time we
     /// lock it. Uses 2 in tests to exercise the buffering code.
     const BUFFER_SIZE: usize = if cfg!(test) { 2 } else { 32 };
@@ -110,7 +110,7 @@ impl<S: EngineMut> ScanIterator<S> {
     }
 }
 
-impl<S: EngineMut> Iterator for ScanIterator<S> {
+impl<S: StorageEngineMut> Iterator for ScanIterator<S> {
     type Item = crate::mvcc::Result<(Vec<u8>, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {

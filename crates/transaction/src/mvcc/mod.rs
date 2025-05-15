@@ -166,7 +166,7 @@ use std::sync::{Arc, Mutex};
 use base::encoding;
 use base::encoding::Value;
 use serde::{Deserialize, Serialize};
-use storage::EngineMut;
+use storage::StorageEngineMut;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -184,7 +184,7 @@ pub struct Status {
 impl encoding::Value for Status {}
 
 /// An MVCC transaction.
-pub struct Transaction<S: EngineMut> {
+pub struct Transaction<S: StorageEngineMut> {
     /// The underlying engine, shared by all transactions.
     engine: Arc<Mutex<S>>,
     /// The transaction state.

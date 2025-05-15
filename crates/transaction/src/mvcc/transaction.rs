@@ -8,15 +8,15 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::mvcc::{Error, Transaction, TransactionState, Version};
-use crate::{Catalog as _, CatalogMut};
+use crate::{Catalog as _, CatalogMut, InsertResult};
 use std::cell::UnsafeCell;
 
 use std::collections::BTreeSet;
 use std::ops::{Bound, Deref, RangeBounds};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use crate::engine::InsertResult;
 use crate::mvcc::catalog::Catalog;
 use crate::mvcc::key::{Key, KeyPrefix};
 use crate::mvcc::scan::ScanIterator;
@@ -25,10 +25,10 @@ use base::encoding::{Key as _, Value, bincode, keycode};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
 use base::{Row, RowIter, key_prefix};
-use storage::EngineMut;
+use storage::StorageEngineMut;
 // FIXME remove this
 
-impl<S: EngineMut> crate::Transaction for Transaction<S> {
+impl<S: StorageEngineMut> crate::Transaction for Transaction<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -83,7 +83,7 @@ pub fn catalog_mut_singleton() -> &'static mut Catalog {
     unsafe { *CATALOG.get().unwrap().0.get() }
 }
 
-impl<S: EngineMut> crate::TransactionMut for Transaction<S> {
+impl<S: StorageEngineMut> crate::TransactionMut for Transaction<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
@@ -134,7 +134,7 @@ impl<S: EngineMut> crate::TransactionMut for Transaction<S> {
     }
 }
 
-impl<S: EngineMut> Transaction<S> {
+impl<S: StorageEngineMut> Transaction<S> {
     /// Begins a new transaction in read-write mode. This will allocate a new
     /// version that the transaction can write at, add it to the active set, and
     /// record its active snapshot for time-travel queries.

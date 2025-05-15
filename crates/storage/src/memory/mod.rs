@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Result;
-use crate::engine::{Engine, EngineMut, Key, Value};
+use crate::engine::{StorageEngine, StorageEngineMut, Key, Value};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Range;
 use std::ops::RangeBounds;
@@ -11,7 +11,7 @@ use std::ops::RangeBounds;
 #[derive(Default)]
 pub struct Memory(BTreeMap<Key, Value>);
 
-impl Engine for Memory {
+impl StorageEngine for Memory {
     type ScanIter<'a> = MemoryScanIter<'a>;
 
     fn get(&self, key: &Key) -> Result<Option<Value>> {
@@ -23,7 +23,7 @@ impl Engine for Memory {
     }
 }
 
-impl EngineMut for Memory {
+impl StorageEngineMut for Memory {
     fn set(&mut self, key: &Key, value: Value) -> Result<()> {
         self.0.insert(key.to_vec(), value);
         Ok(())

@@ -8,12 +8,13 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::mvcc::key::{Key, KeyPrefix};
 use crate::mvcc::transaction::init;
 use crate::mvcc::{Status, Transaction, Version};
 use base::encoding::{Key as _, Value};
 use std::sync::{Arc, Mutex, OnceLock};
-use storage::EngineMut;
+use storage::StorageEngineMut;
 
 /// An MVCC-based transactional key-value engine. It wraps an underlying storage
 /// engine that's used for raw key-value storage.
@@ -22,7 +23,7 @@ use storage::EngineMut;
 /// write operations are executed sequentially, serialized via a mutex. There
 /// are two reasons for this: the storage engine itself is not thread-safe,
 /// requiring serialized access.
-pub struct Engine<S: EngineMut> {
+pub struct Engine<S: StorageEngineMut> {
     // FIXME add concurrent safe MemPool module between Storage and transaction
     // idea - batch data and perform bulk insertions / update to underlying storage implementation
     // introduce ConfirmationLevel similar to Solana
@@ -32,16 +33,8 @@ pub struct Engine<S: EngineMut> {
     pub storage: Arc<Mutex<S>>,
 }
 
-impl<'a, S: storage::EngineMut + 'a> crate::Engine<'a, S> for Engine<S> {
+impl<'a, S: StorageEngineMut + 'a> crate::TransactionEngine<'a, S> for Engine<S> {
     type Rx = Transaction<S>;
-    // type Tx = TransactionMut<S>;
-    type Tx = Transaction<S>;
-
-    fn begin(&'a self) -> crate::Result<Self::Tx> {
-        // let guard = self.inner.write().unwrap();
-        // Ok(TransactionMut::new(guard))
-        Ok(Transaction::begin(self.storage.clone()).unwrap())
-    }
 
     fn begin_read_only(&'a self) -> crate::Result<Self::Rx> {
         // let guard = self.inner.read().unwrap();
@@ -51,9 +44,20 @@ impl<'a, S: storage::EngineMut + 'a> crate::Engine<'a, S> for Engine<S> {
     }
 }
 
+impl<'a, S: StorageEngineMut + 'a> crate::TransactionEngineMut<'a, S> for Engine<S> {
+    // type Tx = TransactionMut<S>;
+    type Tx = Transaction<S>;
+
+    fn begin(&'a self) -> crate::Result<Self::Tx> {
+        // let guard = self.inner.write().unwrap();
+        // Ok(TransactionMut::new(guard))
+        Ok(Transaction::begin(self.storage.clone()).unwrap())
+    }
+}
+
 static CATALOG: OnceLock<()> = OnceLock::new();
 
-impl<S: EngineMut> Engine<S> {
+impl<S: StorageEngineMut> Engine<S> {
     /// Creates a new MVCC engine with the given storage engine.
     pub fn new(engine: S) -> Self {
         CATALOG.get_or_init(|| {

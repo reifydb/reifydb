@@ -379,6 +379,7 @@ dependencies = [
  "base",
  "regex",
  "serde",
+ "test_each_file",
  "testing",
 ]
 

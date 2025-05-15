@@ -1,6 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+// originally licensed under the Apache License, Version 2.0.
+// Original copyright:
+//   Copyright (c) 2024 Erik Grinaker
+//
+// The original Apache License can be found at:
+//   http://www.apache.org/licenses/LICENSE-2.0
+
 use base::encoding::binary::decode_binary;
 use base::encoding::format::Formatter;
 use format::MVCC;
@@ -12,7 +20,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use storage::test::{Emit, Operation};
-use storage::{Engine as StorageEngine, Memory};
+use storage::{StorageEngine as StorageEngine, Memory};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
@@ -25,13 +33,13 @@ fn test_memory(path: &Path) {
 }
 
 /// Runs MVCC tests.
-pub struct MvccRunner<E: storage::EngineMut> {
+pub struct MvccRunner<E: storage::StorageEngineMut> {
     engine: Engine<Emit<E>>,
     txs: HashMap<String, Transaction<Emit<E>>>,
     operations: Receiver<Operation>,
 }
 
-impl<E: storage::EngineMut> MvccRunner<E> {
+impl<E: storage::StorageEngineMut> MvccRunner<E> {
     fn new(storage: E) -> Self {
         let (tx, rx) = mpsc::channel();
         Self { engine: Engine::new(Emit::new(storage, tx)), txs: HashMap::new(), operations: rx }
@@ -60,7 +68,7 @@ impl<E: storage::EngineMut> MvccRunner<E> {
     }
 }
 
-impl<E: storage::EngineMut> testscript::Runner for MvccRunner<E> {
+impl<E: storage::StorageEngineMut> testscript::Runner for MvccRunner<E> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         let mut tags = command.tags.clone();

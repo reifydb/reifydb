@@ -15,7 +15,7 @@ use std::ops::RangeBounds;
 pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
 
-/// A scan iterator over key-value pairs, returned by [`Engine::scan()`].
+/// A scan iterator over key-value pairs, returned by [`StorageEngine::scan()`].
 pub trait ScanIterator: DoubleEndedIterator<Item = Result<(Key, Value)>> {}
 
 /// Blanket implementation for all iterators that can act as a scan iterator.
@@ -24,7 +24,7 @@ impl<I: DoubleEndedIterator<Item = Result<(Key, Value)>>> ScanIterator for I {}
 /// A trait representing a read-only key-value engine that supports range and prefix scans.
 ///
 /// All implementors must be `Send` to allow safe sharing across threads.
-pub trait Engine: Send {
+pub trait StorageEngine: Send {
     /// An associated type representing the iterator returned by `scan` and `scan_prefix`.
     ///
     /// The iterator yields ordered key-value pairs and must implement [`ScanIterator`].
@@ -62,8 +62,8 @@ pub trait Engine: Send {
 
 /// A trait for storage engines that support mutation operations (writes, removes, and flush).
 ///
-/// This extends the [`Engine`] trait with write capabilities and requires `Send` for thread safety.
-pub trait EngineMut: Engine + Send {
+/// This extends the [`StorageEngine`] trait with write capabilities and requires `Send` for thread safety.
+pub trait StorageEngineMut: StorageEngine + Send {
     /// Inserts or updates the given `value` at the specified `key`.
     ///
     /// If the key already exists, its value is replaced.
