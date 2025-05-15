@@ -146,17 +146,22 @@
 //! travel queries (it's a feature, not a bug!).
 
 pub use version::Version;
-pub(crate) mod key;
-pub(crate) mod scan;
-pub(crate) mod transaction;
-pub(crate) mod version;
+pub use transaction::init;
+mod catalog;
+mod key;
+mod scan;
+mod schema;
+mod store;
+mod transaction;
+mod version;
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::ops::{Add, RangeBounds, Sub};
-use std::sync::{Arc, Mutex};
+use std::ops::Sub;
+use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::TransactionMut;
 use crate::mvcc::key::{Key, KeyPrefix};
 use base::encoding;
 use base::encoding::{Key as _, Value};
@@ -194,12 +199,36 @@ pub struct Engine<S: EngineMut> {
     pub storage: Arc<Mutex<S>>,
 }
 
+impl<'a, S: storage::EngineMut + 'a> crate::Engine<'a, S> for Engine<S> {
+    type Rx = Transaction<S>;
+    // type Tx = TransactionMut<S>;
+    type Tx = Transaction<S>;
+
+    fn begin(&'a self) -> crate::Result<Self::Tx> {
+        // let guard = self.inner.write().unwrap();
+        // Ok(TransactionMut::new(guard))
+        Ok(Transaction::begin(self.storage.clone()).unwrap())
+    }
+
+    fn begin_read_only(&'a self) -> crate::Result<Self::Rx> {
+        // let guard = self.inner.read().unwrap();
+        // Ok(Transaction::new(guard))
+        // unimplemented!()
+        Ok(Transaction::begin_read_only(self.storage.clone(), None).unwrap())
+    }
+}
+
 //FIXME
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+static CATALOG: OnceLock<()> = OnceLock::new();
 
 impl<S: EngineMut> Engine<S> {
     /// Creates a new MVCC engine with the given storage engine.
     pub fn new(engine: S) -> Self {
+        CATALOG.get_or_init(||{
+            init();
+        });
         Self { storage: Arc::new(Mutex::new(engine)) }
     }
 

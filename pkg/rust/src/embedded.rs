@@ -10,12 +10,12 @@ use storage::Memory;
 use transaction::{Transaction, TransactionMut};
 
 pub struct Embedded {
-    engine: Engine<'static, Memory, transaction::svl::Engine<Memory>>,
+    engine: Engine<'static, Memory, transaction::mvcc::Engine<Memory>>,
 }
 
 impl Embedded {
     pub fn new() -> Self {
-        Self { engine: Engine::new(transaction::svl::Engine::new(Memory::default())) }
+        Self { engine: Engine::new(transaction::mvcc::Engine::new(Memory::default())) }
     }
 }
 

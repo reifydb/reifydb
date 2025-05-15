@@ -5,17 +5,130 @@
 // Original Apache 2 License Copyright (c) erikgrinaker 2024.
 
 use crate::mvcc::{Transaction, TransactionState, Version};
-use crate::{errdata, errinput};
+use crate::{Catalog as _, CatalogMut, errdata, errinput};
+use std::cell::UnsafeCell;
 
 use std::collections::BTreeSet;
-use std::ops::{Bound, RangeBounds};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::ops::{Bound, Deref, RangeBounds};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
+use crate::engine::InsertResult;
+use crate::mvcc::catalog::Catalog;
 use crate::mvcc::key::{Key, KeyPrefix};
 use crate::mvcc::scan::ScanIterator;
+use crate::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
+use base::expression::Expression;
+use base::schema::{SchemaName, StoreName};
+use base::{Row, RowIter, key_prefix};
 use storage::EngineMut;
 // FIXME remove this
+
+impl<S: EngineMut> crate::Transaction for Transaction<S> {
+    type Catalog = Catalog;
+    type Schema = Schema;
+
+    fn catalog(&self) -> crate::Result<&'static Self::Catalog> {
+        // Ok(*CATALOG.get().expect("Catalog not initialized"))
+        // todo!()
+        // SAFETY: Caller guarantees exclusive access
+        unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
+    }
+
+    fn schema(&self, schema: impl AsRef<str>) -> crate::Result<&Self::Schema> {
+        Ok(self.catalog().unwrap().get(schema.as_ref()).unwrap())
+    }
+
+    fn get(&self, store: impl AsRef<str>, ids: &[base::Key]) -> crate::Result<Vec<Row>> {
+        todo!()
+    }
+
+    fn scan(
+        &self,
+        store: impl AsRef<StoreName>,
+        filter: Option<Expression>,
+    ) -> crate::Result<RowIter> {
+        let store = store.as_ref();
+        Ok(Box::new(
+            self.engine
+                .lock()
+                .unwrap()
+                .scan_prefix(key_prefix!("{}::row::", store.deref()))
+                .map(|r| Row::decode(&r.unwrap().1).unwrap())
+                .collect::<Vec<_>>()
+                .into_iter(),
+        ))
+    }
+}
+
+#[derive(Debug)]
+pub struct CatalogCell(UnsafeCell<&'static mut Catalog>);
+
+unsafe impl Sync for CatalogCell {} // ⚠️ only safe in single-threaded context
+
+static CATALOG: OnceLock<CatalogCell> = OnceLock::new();
+
+pub fn init() {
+    let boxed = Box::new(Catalog::new());
+    let leaked = Box::leak(boxed);
+    CATALOG.set(CatalogCell(UnsafeCell::new(leaked))).unwrap();
+}
+
+pub fn catalog_mut_singleton() -> &'static mut Catalog {
+    // SAFETY: Caller guarantees exclusive access
+    unsafe { *CATALOG.get().unwrap().0.get() }
+}
+
+impl<S: EngineMut> crate::TransactionMut for Transaction<S> {
+    type CatalogMut = Catalog;
+    type SchemaMut = Schema;
+
+    fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut> {
+        // SAFETY: Caller guarantees exclusive access
+        unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
+    }
+
+    fn schema_mut(
+        &mut self,
+        schema: impl AsRef<SchemaName>,
+    ) -> crate::Result<&mut Self::SchemaMut> {
+        let schema = self.catalog_mut().unwrap().get_mut(schema.as_ref().deref()).unwrap();
+
+        Ok(schema)
+    }
+
+    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<InsertResult> {
+        let store = store.as_ref();
+
+        let last_id =
+            self.engine.lock().unwrap().scan_prefix(&key_prefix!("{}::row::", store)).count();
+
+        // FIXME assumes every row gets inserted - not updated etc..
+        let inserted = rows.len();
+
+        for (id, row) in rows.iter().enumerate() {
+            self.engine
+                .lock()
+                .unwrap()
+                .set(
+                    // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
+                    key_prefix!("{}::row::{}", store, (last_id + id + 1)),
+                    bincode::serialize(row),
+                )
+                .unwrap();
+        }
+
+        Ok(InsertResult { inserted })
+    }
+
+    fn commit(self) -> crate::Result<()> {
+        todo!()
+    }
+
+    fn rollback(self) -> crate::Result<()> {
+        todo!()
+    }
+}
 
 impl<S: EngineMut> Transaction<S> {
     /// Begins a new transaction in read-write mode. This will allocate a new

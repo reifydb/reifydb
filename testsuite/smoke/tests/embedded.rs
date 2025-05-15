@@ -28,7 +28,7 @@ impl testscript::Runner for EmbeddedRunner {
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
                 println!("tx: {query}");
-                    
+
                 for line in self.db.tx_execute(query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
