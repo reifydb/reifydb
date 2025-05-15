@@ -25,13 +25,16 @@ impl Engine for Memory {
 
 impl EngineMut for Memory {
     fn set(&mut self, key: &Key, value: Value) -> Result<()> {
-        self.0.insert(key.
-        to_vec(), value);
+        self.0.insert(key.to_vec(), value);
         Ok(())
     }
 
     fn remove(&mut self, key: &Key) -> Result<()> {
         self.0.remove(key);
+        Ok(())
+    }
+
+    fn sync(&mut self) -> Result<()> {
         Ok(())
     }
 }

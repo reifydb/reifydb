@@ -12,5 +12,6 @@ use std::result;
 mod engine;
 mod error;
 mod memory;
+mod test;
 
 pub type Result<T> = result::Result<T, Error>;
