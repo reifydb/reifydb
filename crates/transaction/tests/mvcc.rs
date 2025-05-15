@@ -3,15 +3,11 @@
 
 use base::encoding::binary::decode_binary;
 use base::encoding::format::Formatter;
-use base::encoding::Key as _;
 use format::MVCC;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
-use std::ops::{Bound, RangeBounds};
-use std::result::Result as StdResult;
 
-use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
@@ -20,45 +16,32 @@ use storage::{Engine as StorageEngine, Memory};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
-use transaction::mvcc;
-use transaction::mvcc::{format, Engine, Key, KeyPrefix, Transaction, TransactionState, Version};
+use transaction::mvcc::{Engine, Key, KeyPrefix, Transaction, TransactionState, Version, format};
 
-// test_each_path! { in "crates/transaction/tests/mvcc" as mvcc => test_script }
+test_each_path! { in "crates/transaction/tests/mvcc" as memory => test_memory }
 
-test_each_path! { in "crates/transaction/tests/mvcc" => test_script }
-
-fn test_script(path: &Path) {
-    testscript::run_path(&mut MVCCRunner::new(), path).expect("test failed")
+fn test_memory(path: &Path) {
+    testscript::run_path(&mut MvccRunner::new(Memory::default()), path).expect("test failed")
 }
-
-// type TestEngine = Emit<Mirror<BitCask, Memory>>;
-type TestEngine = Emit<Memory>;
 
 /// Runs MVCC tests.
-pub struct MVCCRunner {
-    engine: Engine<TestEngine>,
-    txs: HashMap<String, Transaction<TestEngine>>,
+pub struct MvccRunner<E: storage::EngineMut> {
+    engine: Engine<Emit<E>>,
+    txs: HashMap<String, Transaction<Emit<E>>>,
     operations: Receiver<Operation>,
-    // _tempdir: TempDir,
 }
 
-impl MVCCRunner {
-    fn new() -> Self {
+impl<E: storage::EngineMut> MvccRunner<E> {
+    fn new(storage: E) -> Self {
         let (tx, rx) = mpsc::channel();
-        // let tempdir = TempDir::with_prefix("toydb").expect("tempdir failed");
-        // let bitcask = BitCask::new(tempdir.path().join("bitcask")).expect("bitcask failed");
-        // let memory = Memory::new();
-
-        // let engine = Emit::new(Mirror::new(bitcask, memory), op_tx);
-        let engine = Emit::new(Memory::default(), tx);
-        Self { engine: Engine::new(engine), txs: HashMap::new(), operations: rx }
+        Self { engine: Engine::new(Emit::new(storage, tx)), txs: HashMap::new(), operations: rx }
     }
 
     /// Fetches the named transaction from a command prefix.
     fn get_tx(
         &mut self,
         prefix: &Option<String>,
-    ) -> Result<&'_ mut Transaction<TestEngine>, Box<dyn StdError>> {
+    ) -> Result<&'_ mut Transaction<Emit<E>>, Box<dyn StdError>> {
         let name = Self::tx_name(prefix)?;
         self.txs.get_mut(name).ok_or(format!("unknown tx {name}").into())
     }
@@ -77,7 +60,7 @@ impl MVCCRunner {
     }
 }
 
-impl testscript::Runner for MVCCRunner {
+impl<E: storage::EngineMut> testscript::Runner for MvccRunner<E> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         let mut tags = command.tags.clone();
