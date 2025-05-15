@@ -423,9 +423,11 @@ dependencies = [
 name = "testing"
 version = "0.0.1"
 dependencies = [
+ "base",
  "goldenfile",
  "nom",
  "nom_locate",
+ "regex",
  "test_each_file",
  "uuid",
 ]
@@ -435,10 +437,11 @@ name = "transaction"
 version = "0.0.1"
 dependencies = [
  "base",
- "log",
  "serde",
  "serde_bytes",
  "storage",
+ "test_each_file",
+ "testing",
 ]
 
 [[package]]

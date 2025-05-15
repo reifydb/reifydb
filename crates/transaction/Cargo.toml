@@ -10,8 +10,9 @@ repository.workspace = true
 base = { workspace = true }
 storage = { workspace = true }
 
-log = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 
 [dev-dependencies]
+testing = { workspace = true }
+test_each_file = { workspace = true }

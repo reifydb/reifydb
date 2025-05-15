@@ -1,0 +1,47 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+# originally licensed under the Apache License, Version 2.0.
+# Original copyright:
+#   Copyright (c) 2024 Erik Grinaker
+#
+# The original Apache License can be found at:
+#   http://www.apache.org/licenses/LICENSE-2.0
+
+# Write skew is when t1 reads a and writes it to b while t2 reads b and writes
+# it to a. Snapshot isolation does not prevent this, which is expected, so we
+# assert the anomalous behavior. Fixing this would require implementing
+# serializable snapshot isolation.
+
+# Write some initial data.
+import a=1 b=2
+---
+ok
+
+t1: begin
+t2: begin
+---
+ok
+
+t1: get a
+t2: get b
+---
+t1: "a" → "1"
+t2: "b" → "2"
+
+t1: set b=1
+t2: set a=2
+---
+ok
+
+t1: commit
+t2: commit
+---
+ok
+
+t3: begin readonly
+t3: scan
+---
+t3: "a" → "2"
+t3: "b" → "1"

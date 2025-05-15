@@ -5,6 +5,7 @@ pub use error::Error;
 pub use key::Key;
 pub use value::Value;
 
+pub mod binary;
 pub mod bincode;
 mod error;
 pub mod format;

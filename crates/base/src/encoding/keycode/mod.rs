@@ -1,9 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// This file includes portions of code from https://github.com/erikgrinaker/toydb (Apache 2 License).
-// Original Apache 2 License Copyright (c) erikgrinaker 2024.
-
+// This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+// originally licensed under the Apache License, Version 2.0.
+// Original copyright:
+//   Copyright (c) 2024 Erik Grinaker
+//
+// The original Apache License can be found at:
+//   http://www.apache.org/licenses/LICENSE-2.0
 //! Keycode is a lexicographical order-preserving binary encoding for use with
 //! keys in key/value stores. It is designed for simplicity, not efficiency
 //! (i.e. it does not use varints or other compression methods).

@@ -1,9 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// This file includes portions of code from https://github.com/erikgrinaker/toydb (Apache 2 License).
-// Original Apache 2 License Copyright (c) erikgrinaker 2024.
-
+// This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+// originally licensed under the Apache License, Version 2.0.
+// Original copyright:
+//   Copyright (c) 2024 Erik Grinaker
+//
+// The original Apache License can be found at:
+//   http://www.apache.org/licenses/LICENSE-2.0
 use crate::mvcc::Version;
 use base::encoding;
 use serde::{Deserialize, Serialize};
@@ -52,7 +56,7 @@ impl<'a> encoding::Key<'a> for Key<'a> {}
 /// MVCC key prefixes, for prefix scans. These must match the keys above,
 /// including the enum variant index.
 #[derive(Debug, Deserialize, Serialize)]
-pub(crate) enum KeyPrefix<'a> {
+pub enum KeyPrefix<'a> {
     NextVersion,
     TxActive,
     TxActiveSnapshot,
@@ -66,3 +70,51 @@ pub(crate) enum KeyPrefix<'a> {
 }
 
 impl<'a> encoding::Key<'a> for KeyPrefix<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use crate::mvcc::{Key, KeyPrefix, Version};
+    use base::encoding::Key as _;
+
+    #[test]
+    fn key_prefix_next_version() {
+        let prefix = KeyPrefix::NextVersion.encode();
+        let key = Key::NextVersion.encode();
+        assert_eq!(prefix, key[..prefix.len()]);
+    }
+
+    #[test]
+    fn key_prefix_txn_active() {
+        let prefix = KeyPrefix::TxActive.encode();
+        let key = Key::TxActive(Version(1)).encode();
+        assert_eq!(prefix, key[..prefix.len()]);
+    }
+
+    #[test]
+    fn key_prefix_txn_active_snapshot() {
+        let prefix = KeyPrefix::TxActiveSnapshot.encode();
+        let key = Key::TxActiveSnapshot(Version(1)).encode();
+        assert_eq!(prefix, key[..prefix.len()]);
+    }
+
+    #[test]
+    fn key_prefix_txn_write() {
+        let prefix = KeyPrefix::TxWrite(Version(1)).encode();
+        let key = Key::TxWrite(Version(1), b"foo".as_slice().into()).encode();
+        assert_eq!(prefix, key[..prefix.len()]);
+    }
+
+    #[test]
+    fn key_prefix_version() {
+        let prefix = KeyPrefix::Version(b"foo".as_slice().into()).encode();
+        let key = Key::Version(b"foo".as_slice().into(), Version(1)).encode();
+        assert_eq!(prefix, key[..prefix.len()]);
+    }
+
+    #[test]
+    fn key_prefix_unversioned() {
+        let prefix = KeyPrefix::Unversioned.encode();
+        let key = Key::Unversioned(b"foo".as_slice().into()).encode();
+        assert_eq!(prefix, key[..prefix.len()]);
+    }
+}
