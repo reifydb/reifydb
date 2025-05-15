@@ -2,19 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::DB;
+use engine::Engine;
 use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
-use engine::{Engine, Transaction, TransactionMut};
 use rql::ast;
 use rql::plan::{plan, plan_mut};
 use storage::Memory;
+use transaction::{Transaction, TransactionMut};
 
 pub struct Embedded {
-    engine: engine::svl::Engine<Memory>,
+    engine: Engine<'static, Memory, transaction::svl::Engine<Memory>>,
 }
 
 impl Embedded {
     pub fn new() -> Self {
-        Self { engine: engine::svl::Engine::new(Memory::default()) }
+        Self { engine: Engine::new(transaction::svl::Engine::new(Memory::default())) }
     }
 }
 

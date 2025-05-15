@@ -3,15 +3,14 @@
 
 mod display;
 
-use crate::{Transaction, TransactionMut};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
 use base::{CatalogMut, Label, NopStore, Schema, SchemaMut, Store, Value, ValueType};
 use base::{Row, StoreToCreate};
 use rql::plan::{Plan, QueryPlan};
-use std::fmt::Display;
 use std::ops::Deref;
 use std::vec;
+use transaction::{Transaction, TransactionMut};
 
 #[derive(Debug)]
 pub enum ExecutionResult {
@@ -28,9 +27,9 @@ pub fn execute_plan_mut(
     Ok(match plan {
         Plan::CreateSchema { name, if_not_exists } => {
             if if_not_exists {
-                tx.catalog_mut()?.create_if_not_exists(&name).unwrap();
+                tx.catalog_mut().unwrap().create_if_not_exists(&name).unwrap();
             } else {
-                tx.catalog_mut()?.create(&name).unwrap();
+                tx.catalog_mut().unwrap().create(&name).unwrap();
             }
             ExecutionResult::CreateSchema { schema: name }
         }
@@ -38,7 +37,7 @@ pub fn execute_plan_mut(
             if if_not_exists {
                 unimplemented!()
             } else {
-                tx.schema_mut(&schema)?
+                tx.schema_mut(&schema).unwrap()
                     .create(StoreToCreate::Table { name: name.clone(), columns });
             }
 

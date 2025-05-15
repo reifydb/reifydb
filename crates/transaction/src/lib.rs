@@ -4,11 +4,12 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use engine::Engine;
+pub use engine::{Engine, Transaction, TransactionMut};
 pub use error::Error;
 
 mod engine;
 mod error;
-pub mod execute;
+pub mod mvcc;
+pub mod svl;
 
 pub type Result<T> = std::result::Result<T, Error>;

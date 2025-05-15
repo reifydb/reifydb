@@ -8,6 +8,7 @@ members = [
     "crates/rql",
     "crates/storage",
     "crates/testing",
+    "crates/transaction",
     "pkg/rust",
     "testsuite/functional",
     "testsuite/smoke"
@@ -20,6 +21,7 @@ default-members = [
     "crates/rql",
     "crates/storage",
     "crates/testing",
+    "crates/transaction",
     "pkg/rust",
     "testsuite/functional",
     "testsuite/smoke"
@@ -47,6 +49,7 @@ engine = { path = "crates/engine", version = "0.0.1" }
 rql = { path = "crates/rql", version = "0.0.1" }
 storage = { path = "crates/storage", version = "0.0.1" }
 testing = { path = "crates/testing", version = "0.0.1" }
+transaction = { path = "crates/transaction", version = "0.0.1" }
 
 bincode = { version = "2.0.1", features = ["serde"] }
 dyn-clone = { version = "1.0.19" }

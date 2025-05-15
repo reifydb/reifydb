@@ -11,5 +11,6 @@ base = { workspace = true }
 engine = { workspace = true }
 rql = { workspace = true }
 storage = { workspace = true }
+transaction = { workspace = true }
 
 serde = { workspace = true }

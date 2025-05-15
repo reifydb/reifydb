@@ -33,7 +33,6 @@ pub use rql;
 /// The underlying key-value store responsible for persistence and data access.
 pub use storage;
 
-
 mod embedded;
 mod error;
 

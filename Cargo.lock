@@ -112,6 +112,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "storage",
+ "transaction",
 ]
 
 [[package]]
@@ -281,6 +282,7 @@ dependencies = [
  "rql",
  "serde",
  "storage",
+ "transaction",
 ]
 
 [[package]]
@@ -426,6 +428,18 @@ dependencies = [
  "nom_locate",
  "test_each_file",
  "uuid",
+]
+
+[[package]]
+name = "transaction"
+version = "0.0.1"
+dependencies = [
+ "base",
+ "log",
+ "rql",
+ "serde",
+ "serde_bytes",
+ "storage",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 [package]
-name = "engine"
+name = "transaction"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,7 +10,6 @@ repository.workspace = true
 base = { workspace = true }
 rql = { workspace = true }
 storage = { workspace = true }
-transaction = { workspace = true }
 
 log = { workspace = true }
 serde = { workspace = true }
