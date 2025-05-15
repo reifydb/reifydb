@@ -10,8 +10,9 @@ use std::ops::Deref;
 
 use base::expression::Expression;
 use base::schema::{ColumnName, SchemaName, StoreName};
-use base::{Catalog, ColumnToCreate, Schema, Store, Value, ValueType};
+use base::{Value, ValueType};
 pub use error::Error;
+use transaction::{Catalog, ColumnToCreate, Schema, Store};
 
 mod error;
 pub mod node;

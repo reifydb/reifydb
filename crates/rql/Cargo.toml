@@ -8,8 +8,8 @@ repository.workspace = true
 
 [dependencies]
 base = { workspace = true }
+transaction = { workspace = true}
 
-dyn-clone = { workspace = true }
 nom = { workspace = true }
 nom_locate = { workspace = true }
 serde = { workspace = true }

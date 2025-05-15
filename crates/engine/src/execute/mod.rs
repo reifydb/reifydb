@@ -5,12 +5,13 @@ mod display;
 
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
-use base::{CatalogMut, Label, NopStore, Schema, SchemaMut, Store, Value, ValueType};
-use base::{Row, StoreToCreate};
+use base::{Label, Row, Value, ValueType};
 use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
 use std::vec;
-use transaction::{Transaction, TransactionMut};
+use transaction::{
+    CatalogMut, NopStore, Schema, SchemaMut, Store, StoreToCreate, Transaction, TransactionMut,
+};
 
 #[derive(Debug)]
 pub enum ExecutionResult {
@@ -37,7 +38,8 @@ pub fn execute_plan_mut(
             if if_not_exists {
                 unimplemented!()
             } else {
-                tx.schema_mut(&schema).unwrap()
+                tx.schema_mut(&schema)
+                    .unwrap()
                     .create(StoreToCreate::Table { name: name.clone(), columns });
             }
 

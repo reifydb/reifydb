@@ -4,14 +4,12 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use catalog::*;
 pub use error::Error;
 pub use key::{Key, KeyError};
 pub use label::Label;
 pub use row::{Row, RowIter, RowIterator};
 pub use value::{Value, ValueType};
 
-mod catalog;
 pub mod encoding;
 mod error;
 pub mod expression;

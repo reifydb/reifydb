@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::{Catalog, CatalogMut, Schema, SchemaMut};
 use base::expression::Expression;
 use base::schema::{SchemaName, StoreName};
-use base::{Catalog, CatalogMut, Key, Row, RowIter, Schema, SchemaMut};
+use base::{Key, Row, RowIter};
 
 pub trait Engine<'a, S: storage::Engine>: Sized {
     type Rx: Transaction;

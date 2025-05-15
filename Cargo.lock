@@ -290,10 +290,10 @@ name = "rql"
 version = "0.0.1"
 dependencies = [
  "base",
- "dyn-clone",
  "nom",
  "nom_locate",
  "serde",
+ "transaction",
 ]
 
 [[package]]
@@ -436,7 +436,6 @@ version = "0.0.1"
 dependencies = [
  "base",
  "log",
- "rql",
  "serde",
  "serde_bytes",
  "storage",
