@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use crate::mvcc::key::{Key, KeyPrefix};
 use crate::mvcc::scan::ScanIterator;
 use base::encoding::{Key as _, Value, bincode, keycode};
-use serde::{Deserialize, Serialize};
 use storage::EngineMut;
 // FIXME remove this
 
@@ -35,7 +34,7 @@ impl<S: EngineMut> Transaction<S> {
         session.set(&Key::NextVersion.encode(), (version + 1).encode())?;
 
         // Fetch the current set of active transactions, persist it for
-        // time-travel queries if non-empty, then add this txn to it.
+        // time-travel queries if non-empty, then add this tx to it.
         let active = Self::scan_active(&mut session)?;
         if !active.is_empty() {
             session.set(&Key::TxActiveSnapshot(version).encode(), active.encode())?
@@ -89,7 +88,7 @@ impl<S: EngineMut> Transaction<S> {
     // fn resume(engine: Arc<Mutex<S>>, s: TransactionState) -> Result<Self> {
     //     // For read-write transactions, verify that the transaction is still
     //     // active before making further writes.
-    //     if !s.read_only && engine.lock()?.get(&Key::TxnActive(s.version).encode())?.is_none() {
+    //     if !s.read_only && engine.lock()?.get(&Key::TxActive(s.version).encode())?.is_none() {
     //         return errinput!("no active transaction at version {}", s.version);
     //     }
     //     Ok(Self { engine, state: s })
@@ -98,11 +97,11 @@ impl<S: EngineMut> Transaction<S> {
     /// Fetches the set of currently active transactions.
     fn scan_active(session: &mut MutexGuard<S>) -> crate::mvcc::Result<BTreeSet<Version>> {
         let mut active = BTreeSet::new();
-        let mut scan = session.scan_prefix(&KeyPrefix::TxnActive.encode());
+        let mut scan = session.scan_prefix(&KeyPrefix::TxActive.encode());
         while let Some((key, _)) = scan.next().transpose()? {
             match Key::decode(&key)? {
                 Key::TxActive(version) => active.insert(version),
-                key => return errdata!("expected TxnActive key, got {key:?}"),
+                key => return errdata!("expected TxActive key, got {key:?}"),
             };
         }
         Ok(active)
@@ -126,7 +125,7 @@ impl<S: EngineMut> Transaction<S> {
 
     /// Commits the transaction, by removing it from the active set. This will
     /// immediately make its writes visible to subsequent transactions. Also
-    /// removes its TxnWrite records, which are no longer needed.
+    /// removes its TxWrite records, which are no longer needed.
     ///
     /// NB: commit does not flush writes to durable storage, since we rely on
     /// the Raft log for persistence.
@@ -139,7 +138,7 @@ impl<S: EngineMut> Transaction<S> {
         let mut engine = self.engine.lock().unwrap();
 
         let mut remove = Vec::new();
-        for result in engine.scan_prefix(&KeyPrefix::TxnWrite(self.state.version).encode()) {
+        for result in engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode()) {
             let (k, _) = result?;
             remove.push(k);
         }
@@ -148,7 +147,7 @@ impl<S: EngineMut> Transaction<S> {
         }
 
         // FIXME
-        // engine.remove(&Key::TxnActive(self.state.version).encode())
+        // engine.remove(&Key::TxActive(self.state.version).encode())
         engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
         Ok(())
     }
@@ -164,23 +163,23 @@ impl<S: EngineMut> Transaction<S> {
         // let mut engine = self.engine.lock()?;
         let mut engine = self.engine.lock().unwrap();
         let mut rollback = Vec::new();
-        let mut scan = engine.scan_prefix(&KeyPrefix::TxnWrite(self.state.version).encode());
+        let mut scan = engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode());
         while let Some((key, _)) = scan.next().transpose()? {
             match Key::decode(&key)? {
                 Key::TxWrite(_, key) => {
                     rollback.push(Key::Version(key, self.state.version).encode())
                     // the version
                 }
-                key => return errdata!("expected TxnWrite, got {key:?}"),
+                key => return errdata!("expected TxWrite, got {key:?}"),
             };
-            rollback.push(key); // the TxnWrite record
+            rollback.push(key); // the TxWrite record
         }
         drop(scan);
         for key in rollback.into_iter() {
             engine.remove(&key)?;
         }
         // FIXME
-        // engine.remove(&Key::TxnActive(self.state.version).encode()) // remove from active set
+        // engine.remove(&Key::TxActive(self.state.version).encode()) // remove from active set
         engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
         Ok(())
     }
@@ -234,7 +233,7 @@ impl<S: EngineMut> Transaction<S> {
 
         // Write the new version and its write record.
         //
-        // NB: TxnWrite contains the provided user key, not the encoded engine
+        // NB: TxWrite contains the provided user key, not the encoded engine
         // key, since we can construct the engine key using the version.
         engine.set(&Key::TxWrite(self.state.version, key.into()).encode(), vec![])?;
         //FIXME

@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 // This file includes portions of code from https://github.com/erikgrinaker/toydb (Apache 2 License).
 // Original Apache 2 License Copyright (c) erikgrinaker 2024.
 
@@ -63,7 +66,7 @@
 //! will immediately (and, crucially, atomically) make all of its writes visible
 //! to subsequent transactions, but not ongoing ones. If the transaction is
 //! cancelled and rolled back, it maintains a record of all keys it wrote as
-//! Key::TxnWrite(version, key), so that it can find the corresponding versions
+//! Key::TxWrite(version, key), so that it can find the corresponding versions
 //! and delete them before removing itself from the active set.
 //!
 //! Consider the following example, where we have two ongoing transactions at
@@ -115,7 +118,7 @@
 //! version consistency.
 //!
 //! To achieve this, every read-write transaction stores its active set snapshot
-//! in the storage engine as well, as Key::TxnActiveSnapshot, such that later
+//! in the storage engine as well, as Key::TxActiveSnapshot, such that later
 //! time-travel queries can restore its original snapshot. Furthermore, a
 //! time-travel query can only see versions below the snapshot version, otherwise
 //! it could see spurious in-progress or since-committed versions.
@@ -207,13 +210,13 @@ pub enum Key<'a> {
     /// The next available version.
     NextVersion,
     /// Active (uncommitted) transactions by version.
-    TxnActive(Version),
+    TxActive(Version),
     /// A snapshot of the active set at each version. Only written for
     /// versions where the active set is non-empty (excluding itself).
-    TxnActiveSnapshot(Version),
+    TxActiveSnapshot(Version),
     /// Keeps track of all keys written to by an active transaction (identified
     /// by its version), in case it needs to roll back.
-    TxnWrite(
+    TxWrite(
         Version,
         #[serde(with = "serde_bytes")]
         #[serde(borrow)]
@@ -243,9 +246,9 @@ impl<'a> encoding::Key<'a> for Key<'a> {}
 #[derive(Debug, Deserialize, Serialize)]
 enum KeyPrefix<'a> {
     NextVersion,
-    TxnActive,
-    TxnActiveSnapshot,
-    TxnWrite(Version),
+    TxActive,
+    TxActiveSnapshot,
+    TxWrite(Version),
     Version(
         #[serde(with = "serde_bytes")]
         #[serde(borrow)]
@@ -321,9 +324,9 @@ impl<E: EngineMut> MVCC<E> {
             Some(ref v) => Version::decode(v)? - 1,
             None => Version(0),
         };
-        let active_txns = engine.scan_prefix(&KeyPrefix::TxnActive.encode()).count() as u64;
-        Ok(Status { versions, active_txns })
-        // Ok(Status { versions, active_txns, storage: engine.status()? })
+        let active_txs = engine.scan_prefix(&KeyPrefix::TxActive.encode()).count() as u64;
+        Ok(Status { versions, active_txs })
+        // Ok(Status { versions, active_txs, storage: engine.status()? })
     }
 }
 
@@ -333,7 +336,7 @@ pub struct Status {
     /// The total number of MVCC versions (i.e. read-write transactions).
     pub versions: Version,
     /// Number of currently active transactions.
-    pub active_txns: u64,
+    pub active_txs: u64,
     // ///The storage engine.
     // pub storage: super::engine::Status,
 }
@@ -402,14 +405,14 @@ impl TransactionState {
 }
 
 impl From<TransactionState> for Cow<'_, TransactionState> {
-    fn from(txn: TransactionState) -> Self {
-        Cow::Owned(txn)
+    fn from(tx: TransactionState) -> Self {
+        Cow::Owned(tx)
     }
 }
 
 impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
-    fn from(txn: &'a TransactionState) -> Self {
-        Cow::Borrowed(txn)
+    fn from(tx: &'a TransactionState) -> Self {
+        Cow::Borrowed(tx)
     }
 }
 
@@ -430,12 +433,12 @@ impl<E: EngineMut> Transaction<E> {
         session.set(&Key::NextVersion.encode(), (version + 1).encode())?;
 
         // Fetch the current set of active transactions, persist it for
-        // time-travel queries if non-empty, then add this txn to it.
+        // time-travel queries if non-empty, then add this tx to it.
         let active = Self::scan_active(&mut session)?;
         if !active.is_empty() {
-            session.set(&Key::TxnActiveSnapshot(version).encode(), active.encode())?
+            session.set(&Key::TxActiveSnapshot(version).encode(), active.encode())?
         }
-        session.set(&Key::TxnActive(version).encode(), vec![])?;
+        session.set(&Key::TxActive(version).encode(), vec![])?;
         drop(session);
 
         Ok(Self { engine, state: TransactionState { version, read_only: false, active } })
@@ -465,7 +468,7 @@ impl<E: EngineMut> Transaction<E> {
                 return errinput!("version {as_of} does not exist");
             }
             version = as_of;
-            if let Some(value) = session.get(&Key::TxnActiveSnapshot(version).encode())? {
+            if let Some(value) = session.get(&Key::TxActiveSnapshot(version).encode())? {
                 active = BTreeSet::<Version>::decode(&value)?;
             }
         } else {
@@ -481,7 +484,7 @@ impl<E: EngineMut> Transaction<E> {
     // fn resume(engine: Arc<Mutex<E>>, s: TransactionState) -> Result<Self> {
     //     // For read-write transactions, verify that the transaction is still
     //     // active before making further writes.
-    //     if !s.read_only && engine.lock()?.get(&Key::TxnActive(s.version).encode())?.is_none() {
+    //     if !s.read_only && engine.lock()?.get(&Key::TxActive(s.version).encode())?.is_none() {
     //         return errinput!("no active transaction at version {}", s.version);
     //     }
     //     Ok(Self { engine, state: s })
@@ -490,11 +493,11 @@ impl<E: EngineMut> Transaction<E> {
     /// Fetches the set of currently active transactions.
     fn scan_active(session: &mut MutexGuard<E>) -> Result<BTreeSet<Version>> {
         let mut active = BTreeSet::new();
-        let mut scan = session.scan_prefix(&KeyPrefix::TxnActive.encode());
+        let mut scan = session.scan_prefix(&KeyPrefix::TxActive.encode());
         while let Some((key, _)) = scan.next().transpose()? {
             match Key::decode(&key)? {
-                Key::TxnActive(version) => active.insert(version),
-                key => return errdata!("expected TxnActive key, got {key:?}"),
+                Key::TxActive(version) => active.insert(version),
+                key => return errdata!("expected TxActive key, got {key:?}"),
             };
         }
         Ok(active)
@@ -518,7 +521,7 @@ impl<E: EngineMut> Transaction<E> {
 
     /// Commits the transaction, by removing it from the active set. This will
     /// immediately make its writes visible to subsequent transactions. Also
-    /// removes its TxnWrite records, which are no longer needed.
+    /// removes its TxWrite records, which are no longer needed.
     ///
     /// NB: commit does not flush writes to durable storage, since we rely on
     /// the Raft log for persistence.
@@ -531,7 +534,7 @@ impl<E: EngineMut> Transaction<E> {
         let mut engine = self.engine.lock().unwrap();
 
         let mut remove = Vec::new();
-        for result in engine.scan_prefix(&KeyPrefix::TxnWrite(self.state.version).encode()) {
+        for result in engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode()) {
             let (k, _) = result?;
             remove.push(k);
         }
@@ -540,8 +543,8 @@ impl<E: EngineMut> Transaction<E> {
         }
 
         // FIXME
-        // engine.remove(&Key::TxnActive(self.state.version).encode())
-        engine.remove(&Key::TxnActive(self.state.version).encode()).unwrap();
+        // engine.remove(&Key::TxActive(self.state.version).encode())
+        engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
         Ok(())
     }
 
@@ -556,24 +559,24 @@ impl<E: EngineMut> Transaction<E> {
         // let mut engine = self.engine.lock()?;
         let mut engine = self.engine.lock().unwrap();
         let mut rollback = Vec::new();
-        let mut scan = engine.scan_prefix(&KeyPrefix::TxnWrite(self.state.version).encode());
+        let mut scan = engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode());
         while let Some((key, _)) = scan.next().transpose()? {
             match Key::decode(&key)? {
-                Key::TxnWrite(_, key) => {
+                Key::TxWrite(_, key) => {
                     rollback.push(Key::Version(key, self.state.version).encode())
                     // the version
                 }
-                key => return errdata!("expected TxnWrite, got {key:?}"),
+                key => return errdata!("expected TxWrite, got {key:?}"),
             };
-            rollback.push(key); // the TxnWrite record
+            rollback.push(key); // the TxWrite record
         }
         drop(scan);
         for key in rollback.into_iter() {
             engine.remove(&key)?;
         }
         // FIXME
-        // engine.remove(&Key::TxnActive(self.state.version).encode()) // remove from active set
-        engine.remove(&Key::TxnActive(self.state.version).encode()).unwrap();
+        // engine.remove(&Key::TxActive(self.state.version).encode()) // remove from active set
+        engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
         Ok(())
     }
 
@@ -626,9 +629,9 @@ impl<E: EngineMut> Transaction<E> {
 
         // Write the new version and its write record.
         //
-        // NB: TxnWrite contains the provided user key, not the encoded engine
+        // NB: TxWrite contains the provided user key, not the encoded engine
         // key, since we can construct the engine key using the version.
-        engine.set(&Key::TxnWrite(self.state.version, key.into()).encode(), vec![])?;
+        engine.set(&Key::TxWrite(self.state.version, key.into()).encode(), vec![])?;
         //FIXME
         // engine.set(&Key::Version(key.into(), self.state.version).encode(), bincode::serialize(&value))
         engine
@@ -693,7 +696,7 @@ impl<E: EngineMut> Transaction<E> {
     }
 }
 
-/// An iterator over the latest live and visible key/value pairs for the txn.
+/// An iterator over the latest live and visible key/value pairs for the tx.
 ///
 /// The (single-threaded) engine is shared via mutex, and holding the mutex for
 /// the lifetime of the iterator can cause deadlocks (e.g. when the local SQL
@@ -706,7 +709,7 @@ pub struct ScanIterator<E: EngineMut> {
     /// The engine.
     engine: Arc<Mutex<E>>,
     /// The transaction state.
-    txn: TransactionState,
+    tx: TransactionState,
     /// A buffer of live and visible key/value pairs to emit.
     buffer: VecDeque<(Vec<u8>, Vec<u8>)>,
     /// The remaining range after the buffer.
@@ -720,7 +723,7 @@ impl<E: EngineMut> Clone for ScanIterator<E> {
     fn clone(&self) -> Self {
         Self {
             engine: self.engine.clone(),
-            txn: self.txn.clone(),
+            tx: self.tx.clone(),
             buffer: self.buffer.clone(),
             remainder: self.remainder.clone(),
         }
@@ -735,11 +738,11 @@ impl<E: EngineMut> ScanIterator<E> {
     /// Creates a new scan iterator.
     fn new(
         engine: Arc<Mutex<E>>,
-        txn: TransactionState,
+        tx: TransactionState,
         range: (Bound<Vec<u8>>, Bound<Vec<u8>>),
     ) -> Self {
         let buffer = VecDeque::with_capacity(Self::BUFFER_SIZE);
-        Self { engine, txn, buffer, remainder: Some(range) }
+        Self { engine, tx, buffer, remainder: Some(range) }
     }
 
     /// Fills the buffer, if there's any pending items.
@@ -756,7 +759,7 @@ impl<E: EngineMut> ScanIterator<E> {
         // FIXME
         // let mut engine = self.engine.lock()?;
         let mut engine = self.engine.lock().unwrap();
-        let mut iter = VersionIterator::new(&self.txn, engine.scan(range)).peekable();
+        let mut iter = VersionIterator::new(&self.tx, engine.scan(range)).peekable();
         while let Some((key, _, value)) = iter.next().transpose()? {
             // If the next key equals this one, we're not at the latest version.
             match iter.peek() {
@@ -804,15 +807,15 @@ impl<E: EngineMut> Iterator for ScanIterator<E> {
 /// versions, and skips invisible versions. Helper for ScanIterator.
 struct VersionIterator<'a, I: storage::ScanIterator> {
     /// The transaction the scan is running in.
-    txn: &'a TransactionState,
+    tx: &'a TransactionState,
     /// The inner engine scan iterator.
     inner: I,
 }
 
 impl<'a, I: storage::ScanIterator> VersionIterator<'a, I> {
     /// Creates a new MVCC version iterator for the given engine iterator.
-    fn new(txn: &'a TransactionState, inner: I) -> Self {
-        Self { txn, inner }
+    fn new(tx: &'a TransactionState, inner: I) -> Self {
+        Self { tx, inner }
     }
 
     // Fallible next(). Returns the next visible key/version/value tuple.
@@ -821,7 +824,7 @@ impl<'a, I: storage::ScanIterator> VersionIterator<'a, I> {
             let Key::Version(key, version) = Key::decode(&key)? else {
                 return errdata!("expected Key::Version got {key:?}");
             };
-            if !self.txn.is_visible(version) {
+            if !self.tx.is_visible(version) {
                 continue;
             }
             return Ok(Some((key.into_owned(), version, value)));
@@ -866,9 +869,9 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //
 //     /// Tests that key prefixes are actually prefixes of keys.
 //     #[test_case(KeyPrefix::NextVersion, Key::NextVersion; "NextVersion")]
-//     #[test_case(KeyPrefix::TxnActive, Key::TxnActive(1); "TxnActive")]
-//     #[test_case(KeyPrefix::TxnActiveSnapshot, Key::TxnActiveSnapshot(1); "TxnActiveSnapshot")]
-//     #[test_case(KeyPrefix::TxnWrite(1), Key::TxnWrite(1, b"foo".as_slice().into()); "TxnWrite")]
+//     #[test_case(KeyPrefix::TxActive, Key::TxActive(1); "TxActive")]
+//     #[test_case(KeyPrefix::TxActiveSnapshot, Key::TxActiveSnapshot(1); "TxActiveSnapshot")]
+//     #[test_case(KeyPrefix::TxWrite(1), Key::TxWrite(1, b"foo".as_slice().into()); "TxWrite")]
 //     #[test_case(KeyPrefix::Version(b"foo".as_slice().into()), Key::Version(b"foo".as_slice().into(), 1); "Version")]
 //     #[test_case(KeyPrefix::Unversioned, Key::Unversioned(b"foo".as_slice().into()); "Unversioned")]
 //     fn key_prefix(prefix: KeyPrefix, key: Key) {
@@ -880,7 +883,7 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //     /// Runs MVCC goldenscript tests.
 //     pub struct MVCCRunner {
 //         mvcc: MVCC<TestEngine>,
-//         txns: HashMap<String, Transaction<TestEngine>>,
+//         txs: HashMap<String, Transaction<TestEngine>>,
 //         op_rx: Receiver<Operation>,
 //         _tempdir: TempDir,
 //     }
@@ -897,27 +900,27 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //             let memory = Memory::new();
 //             let engine = Emit::new(Mirror::new(bitcask, memory), op_tx);
 //             let mvcc = MVCC::new(engine);
-//             Self { mvcc, op_rx, txns: HashMap::new(), _tempdir: tempdir }
+//             Self { mvcc, op_rx, txs: HashMap::new(), _tempdir: tempdir }
 //         }
 //
 //         /// Fetches the named transaction from a command prefix.
-//         fn get_txn(
+//         fn get_tx(
 //             &mut self,
 //             prefix: &Option<String>,
 //         ) -> Result<&'_ mut Transaction<TestEngine>, Box<dyn Error>> {
-//             let name = Self::txn_name(prefix)?;
-//             self.txns.get_mut(name).ok_or(format!("unknown txn {name}").into())
+//             let name = Self::tx_name(prefix)?;
+//             self.txs.get_mut(name).ok_or(format!("unknown tx {name}").into())
 //         }
 //
-//         /// Fetches the txn name from a command prefix, or errors.
-//         fn txn_name(prefix: &Option<String>) -> Result<&str, Box<dyn Error>> {
-//             prefix.as_deref().ok_or("no txn name".into())
+//         /// Fetches the tx name from a command prefix, or errors.
+//         fn tx_name(prefix: &Option<String>) -> Result<&str, Box<dyn Error>> {
+//             prefix.as_deref().ok_or("no tx name".into())
 //         }
 //
-//         /// Errors if a txn prefix is given.
-//         fn no_txn(command: &goldenscript::Command) -> Result<(), Box<dyn Error>> {
+//         /// Errors if a tx prefix is given.
+//         fn no_tx(command: &goldenscript::Command) -> Result<(), Box<dyn Error>> {
 //             if let Some(name) = &command.prefix {
-//                 return Err(format!("can't run {} with txn {name}", command.name).into());
+//                 return Err(format!("can't run {} with tx {name}", command.name).into());
 //             }
 //             Ok(())
 //         }
@@ -929,11 +932,11 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //             let mut tags = command.tags.clone();
 //
 //             match command.name.as_str() {
-//                 // txn: begin [readonly] [as_of=VERSION]
+//                 // tx: begin [readonly] [as_of=VERSION]
 //                 "begin" => {
-//                     let name = Self::txn_name(&command.prefix)?;
-//                     if self.txns.contains_key(name) {
-//                         return Err(format!("txn {name} already exists").into());
+//                     let name = Self::tx_name(&command.prefix)?;
+//                     if self.txs.contains_key(name) {
+//                         return Err(format!("tx {name} already exists").into());
 //                     }
 //                     let mut args = command.consume_args();
 //                     let readonly = match args.next_pos().map(|a| a.value.as_str()) {
@@ -943,30 +946,30 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //                     };
 //                     let as_of = args.lookup_parse("as_of")?;
 //                     args.reject_rest()?;
-//                     let txn = match (readonly, as_of) {
+//                     let tx = match (readonly, as_of) {
 //                         (false, None) => self.mvcc.begin()?,
 //                         (true, None) => self.mvcc.begin_read_only()?,
 //                         (true, Some(v)) => self.mvcc.begin_as_of(v)?,
-//                         (false, Some(_)) => return Err("as_of only valid for read-only txn".into()),
+//                         (false, Some(_)) => return Err("as_of only valid for read-only tx".into()),
 //                     };
-//                     self.txns.insert(name.to_string(), txn);
+//                     self.txs.insert(name.to_string(), tx);
 //                 }
 //
-//                 // txn: commit
+//                 // tx: commit
 //                 "commit" => {
-//                     let name = Self::txn_name(&command.prefix)?;
-//                     let txn = self.txns.remove(name).ok_or(format!("unknown txn {name}"))?;
+//                     let name = Self::tx_name(&command.prefix)?;
+//                     let tx = self.txs.remove(name).ok_or(format!("unknown tx {name}"))?;
 //                     command.consume_args().reject_rest()?;
-//                     txn.commit()?;
+//                     tx.commit()?;
 //                 }
 //
-//                 // txn: delete KEY...
+//                 // tx: delete KEY...
 //                 "delete" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     for arg in args.rest_pos() {
 //                         let key = decode_binary(&arg.value);
-//                         txn.delete(&key)?;
+//                         tx.delete(&key)?;
 //                     }
 //                     args.reject_rest()?;
 //                 }
@@ -983,13 +986,13 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //                     }
 //                 }
 //
-//                 // txn: get KEY...
+//                 // tx: get KEY...
 //                 "get" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     for arg in args.rest_pos() {
 //                         let key = decode_binary(&arg.value);
-//                         let value = txn.get(&key)?;
+//                         let value = tx.get(&key)?;
 //                         let fmtkv = format::Raw::key_maybe_value(&key, value.as_deref());
 //                         writeln!(output, "{fmtkv}")?;
 //                     }
@@ -998,7 +1001,7 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //
 //                 // get_unversioned KEY...
 //                 "get_unversioned" => {
-//                     Self::no_txn(command)?;
+//                     Self::no_tx(command)?;
 //                     let mut args = command.consume_args();
 //                     for arg in args.rest_pos() {
 //                         let key = decode_binary(&arg.value);
@@ -1011,92 +1014,92 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //
 //                 // import [VERSION] KEY=VALUE...
 //                 "import" => {
-//                     Self::no_txn(command)?;
+//                     Self::no_tx(command)?;
 //                     let mut args = command.consume_args();
 //                     let version = args.next_pos().map(|a| a.parse()).transpose()?;
-//                     let mut txn = self.mvcc.begin()?;
+//                     let mut tx = self.mvcc.begin()?;
 //                     if let Some(version) = version {
-//                         if txn.version() > version {
+//                         if tx.version() > version {
 //                             return Err(format!("version {version} already used").into());
 //                         }
-//                         while txn.version() < version {
-//                             txn = self.mvcc.begin()?;
+//                         while tx.version() < version {
+//                             tx = self.mvcc.begin()?;
 //                         }
 //                     }
 //                     for kv in args.rest_key() {
 //                         let key = decode_binary(kv.key.as_ref().unwrap());
 //                         let value = decode_binary(&kv.value);
 //                         if value.is_empty() {
-//                             txn.delete(&key)?;
+//                             tx.delete(&key)?;
 //                         } else {
-//                             txn.set(&key, value)?;
+//                             tx.set(&key, value)?;
 //                         }
 //                     }
 //                     args.reject_rest()?;
-//                     txn.commit()?;
+//                     tx.commit()?;
 //                 }
 //
-//                 // txn: resume JSON
+//                 // tx: resume JSON
 //                 "resume" => {
-//                     let name = Self::txn_name(&command.prefix)?;
+//                     let name = Self::tx_name(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     let raw = &args.next_pos().ok_or("state not given")?.value;
 //                     args.reject_rest()?;
 //                     let state: TransactionState = serde_json::from_str(raw)?;
-//                     let txn = self.mvcc.resume(state)?;
-//                     self.txns.insert(name.to_string(), txn);
+//                     let tx = self.mvcc.resume(state)?;
+//                     self.txs.insert(name.to_string(), tx);
 //                 }
 //
-//                 // txn: rollback
+//                 // tx: rollback
 //                 "rollback" => {
-//                     let name = Self::txn_name(&command.prefix)?;
-//                     let txn = self.txns.remove(name).ok_or(format!("unknown txn {name}"))?;
+//                     let name = Self::tx_name(&command.prefix)?;
+//                     let tx = self.txs.remove(name).ok_or(format!("unknown tx {name}"))?;
 //                     command.consume_args().reject_rest()?;
-//                     txn.rollback()?;
+//                     tx.rollback()?;
 //                 }
 //
-//                 // txn: scan [RANGE]
+//                 // tx: scan [RANGE]
 //                 "scan" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     let range =
 //                         parse_key_range(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."))?;
 //                     args.reject_rest()?;
 //
-//                     let kvs: Vec<_> = txn.scan(range).try_collect()?;
+//                     let kvs: Vec<_> = tx.scan(range).try_collect()?;
 //                     for (key, value) in kvs {
 //                         writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
 //                     }
 //                 }
 //
-//                 // txn: scan_prefix PREFIX
+//                 // tx: scan_prefix PREFIX
 //                 "scan_prefix" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
 //                     args.reject_rest()?;
 //
-//                     let kvs: Vec<_> = txn.scan_prefix(&prefix).try_collect()?;
+//                     let kvs: Vec<_> = tx.scan_prefix(&prefix).try_collect()?;
 //                     for (key, value) in kvs {
 //                         writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
 //                     }
 //                 }
 //
-//                 // txn: set KEY=VALUE...
+//                 // tx: set KEY=VALUE...
 //                 "set" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     for kv in args.rest_key() {
 //                         let key = decode_binary(kv.key.as_ref().unwrap());
 //                         let value = decode_binary(&kv.value);
-//                         txn.set(&key, value)?;
+//                         tx.set(&key, value)?;
 //                     }
 //                     args.reject_rest()?;
 //                 }
 //
 //                 // set_unversioned KEY=VALUE...
 //                 "set_unversioned" => {
-//                     Self::no_txn(command)?;
+//                     Self::no_tx(command)?;
 //                     let mut args = command.consume_args();
 //                     for kv in args.rest_key() {
 //                         let key = decode_binary(kv.key.as_ref().unwrap());
@@ -1106,11 +1109,11 @@ impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
 //                     args.reject_rest()?;
 //                 }
 //
-//                 // txn: state
+//                 // tx: state
 //                 "state" => {
 //                     command.consume_args().reject_rest()?;
-//                     let txn = self.get_txn(&command.prefix)?;
-//                     let state = txn.state();
+//                     let tx = self.get_tx(&command.prefix)?;
+//                     let state = tx.state();
 //                     write!(
 //                         output,
 //                         "v{} {} active={{{}}}",

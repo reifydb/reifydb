@@ -11,7 +11,7 @@ use std::collections::{Bound, VecDeque};
 use std::sync::{Arc, Mutex};
 use storage::EngineMut;
 
-/// An iterator over the latest live and visible key-value pairs for the txn.
+/// An iterator over the latest live and visible key-value pairs for the tx.
 ///
 /// The (single-threaded) engine is shared via mutex, and holding the mutex for
 /// the lifetime of the iterator can cause deadlocks (e.g. when the local SQL
@@ -53,11 +53,11 @@ impl<S: EngineMut> ScanIterator<S> {
     /// Creates a new scan iterator.
     pub(crate) fn new(
         engine: Arc<Mutex<S>>,
-        txn: TransactionState,
+        tx: TransactionState,
         range: (Bound<Vec<u8>>, Bound<Vec<u8>>),
     ) -> Self {
         let buffer = VecDeque::with_capacity(Self::BUFFER_SIZE);
-        Self { engine, tx: txn, buffer, remainder: Some(range) }
+        Self { engine, tx: tx, buffer, remainder: Some(range) }
     }
 
     /// Fills the buffer, if there's any pending items.
@@ -129,8 +129,8 @@ struct VersionIterator<'a, I: storage::ScanIterator> {
 
 impl<'a, I: storage::ScanIterator> VersionIterator<'a, I> {
     /// Creates a new MVCC version iterator for the given engine iterator.
-    fn new(txn: &'a TransactionState, inner: I) -> Self {
-        Self { tx: txn, inner }
+    fn new(tx: &'a TransactionState, inner: I) -> Self {
+        Self { tx: tx, inner }
     }
 
     // Fallible next(). Returns the next visible key/version/value tuple.

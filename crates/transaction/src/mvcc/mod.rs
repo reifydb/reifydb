@@ -63,7 +63,7 @@
 //! will immediately (and, crucially, atomically) make all of its writes visible
 //! to subsequent transactions, but not ongoing ones. If the transaction is
 //! cancelled and rolled back, it maintains a record of all keys it wrote as
-//! Key::TxnWrite(version, key), so that it can find the corresponding versions
+//! Key::TxWrite(version, key), so that it can find the corresponding versions
 //! and delete them before removing itself from the active set.
 //!
 //! Consider the following example, where we have two ongoing transactions at
@@ -115,7 +115,7 @@
 //! version consistency.
 //!
 //! To achieve this, every read-write transaction stores its active set snapshot
-//! in the storage engine as well, as Key::TxnActiveSnapshot, such that later
+//! in the storage engine as well, as Key::TxActiveSnapshot, such that later
 //! time-travel queries can restore its original snapshot. Furthermore, a
 //! time-travel query can only see versions below the snapshot version, otherwise
 //! it could see spurious in-progress or since-committed versions.
@@ -246,9 +246,9 @@ impl<S: EngineMut> Engine<S> {
             Some(ref v) => Version::decode(v)? - 1,
             None => Version(0),
         };
-        let active_txns = engine.scan_prefix(&KeyPrefix::TxnActive.encode()).count() as u64;
-        Ok(Status { version: versions, active_txs: active_txns })
-        // Ok(Status { versions, active_txns, storage: engine.status()? })
+        let active_txs = engine.scan_prefix(&KeyPrefix::TxActive.encode()).count() as u64;
+        Ok(Status { version: versions, active_txs: active_txs })
+        // Ok(Status { versions, active_txs, storage: engine.status()? })
     }
 }
 
@@ -327,14 +327,14 @@ impl TransactionState {
 }
 
 impl From<TransactionState> for Cow<'_, TransactionState> {
-    fn from(txn: TransactionState) -> Self {
-        Cow::Owned(txn)
+    fn from(tx: TransactionState) -> Self {
+        Cow::Owned(tx)
     }
 }
 
 impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
-    fn from(txn: &'a TransactionState) -> Self {
-        Cow::Borrowed(txn)
+    fn from(tx: &'a TransactionState) -> Self {
+        Cow::Borrowed(tx)
     }
 }
 
@@ -366,9 +366,9 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //
 //     /// Tests that key prefixes are actually prefixes of keys.
 //     #[test_case(KeyPrefix::NextVersion, Key::NextVersion; "NextVersion")]
-//     #[test_case(KeyPrefix::TxnActive, Key::TxnActive(1); "TxnActive")]
-//     #[test_case(KeyPrefix::TxnActiveSnapshot, Key::TxnActiveSnapshot(1); "TxnActiveSnapshot")]
-//     #[test_case(KeyPrefix::TxnWrite(1), Key::TxnWrite(1, b"foo".as_slice().into()); "TxnWrite")]
+//     #[test_case(KeyPrefix::TxActive, Key::TxActive(1); "TxActive")]
+//     #[test_case(KeyPrefix::TxActiveSnapshot, Key::TxActiveSnapshot(1); "TxActiveSnapshot")]
+//     #[test_case(KeyPrefix::TxWrite(1), Key::TxWrite(1, b"foo".as_slice().into()); "TxWrite")]
 //     #[test_case(KeyPrefix::Version(b"foo".as_slice().into()), Key::Version(b"foo".as_slice().into(), 1); "Version")]
 //     #[test_case(KeyPrefix::Unversioned, Key::Unversioned(b"foo".as_slice().into()); "Unversioned")]
 //     fn key_prefix(prefix: KeyPrefix, key: Key) {
@@ -380,7 +380,7 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //     /// Runs MVCC goldenscript tests.
 //     pub struct MVCCRunner {
 //         mvcc: MVCC<TestEngine>,
-//         txns: HashMap<String, Transaction<TestEngine>>,
+//         txs: HashMap<String, Transaction<TestEngine>>,
 //         op_rx: Receiver<Operation>,
 //         _tempdir: TempDir,
 //     }
@@ -397,27 +397,27 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //             let memory = Memory::new();
 //             let engine = Emit::new(Mirror::new(bitcask, memory), op_tx);
 //             let mvcc = MVCC::new(engine);
-//             Self { mvcc, op_rx, txns: HashMap::new(), _tempdir: tempdir }
+//             Self { mvcc, op_rx, txs: HashMap::new(), _tempdir: tempdir }
 //         }
 //
 //         /// Fetches the named transaction from a command prefix.
-//         fn get_txn(
+//         fn get_tx(
 //             &mut self,
 //             prefix: &Option<String>,
 //         ) -> Result<&'_ mut Transaction<TestEngine>, Box<dyn Error>> {
-//             let name = Self::txn_name(prefix)?;
-//             self.txns.get_mut(name).ok_or(format!("unknown txn {name}").into())
+//             let name = Self::tx_name(prefix)?;
+//             self.txs.get_mut(name).ok_or(format!("unknown tx {name}").into())
 //         }
 //
-//         /// Fetches the txn name from a command prefix, or errors.
-//         fn txn_name(prefix: &Option<String>) -> Result<&str, Box<dyn Error>> {
-//             prefix.as_deref().ok_or("no txn name".into())
+//         /// Fetches the tx name from a command prefix, or errors.
+//         fn tx_name(prefix: &Option<String>) -> Result<&str, Box<dyn Error>> {
+//             prefix.as_deref().ok_or("no tx name".into())
 //         }
 //
-//         /// Errors if a txn prefix is given.
-//         fn no_txn(command: &goldenscript::Command) -> Result<(), Box<dyn Error>> {
+//         /// Errors if a tx prefix is given.
+//         fn no_tx(command: &goldenscript::Command) -> Result<(), Box<dyn Error>> {
 //             if let Some(name) = &command.prefix {
-//                 return Err(format!("can't run {} with txn {name}", command.name).into());
+//                 return Err(format!("can't run {} with tx {name}", command.name).into());
 //             }
 //             Ok(())
 //         }
@@ -429,11 +429,11 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //             let mut tags = command.tags.clone();
 //
 //             match command.name.as_str() {
-//                 // txn: begin [readonly] [as_of=VERSION]
+//                 // tx: begin [readonly] [as_of=VERSION]
 //                 "begin" => {
-//                     let name = Self::txn_name(&command.prefix)?;
-//                     if self.txns.contains_key(name) {
-//                         return Err(format!("txn {name} already exists").into());
+//                     let name = Self::tx_name(&command.prefix)?;
+//                     if self.txs.contains_key(name) {
+//                         return Err(format!("tx {name} already exists").into());
 //                     }
 //                     let mut args = command.consume_args();
 //                     let readonly = match args.next_pos().map(|a| a.value.as_str()) {
@@ -443,30 +443,30 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //                     };
 //                     let as_of = args.lookup_parse("as_of")?;
 //                     args.reject_rest()?;
-//                     let txn = match (readonly, as_of) {
+//                     let tx = match (readonly, as_of) {
 //                         (false, None) => self.mvcc.begin()?,
 //                         (true, None) => self.mvcc.begin_read_only()?,
 //                         (true, Some(v)) => self.mvcc.begin_as_of(v)?,
-//                         (false, Some(_)) => return Err("as_of only valid for read-only txn".into()),
+//                         (false, Some(_)) => return Err("as_of only valid for read-only tx".into()),
 //                     };
-//                     self.txns.insert(name.to_string(), txn);
+//                     self.txs.insert(name.to_string(), tx);
 //                 }
 //
-//                 // txn: commit
+//                 // tx: commit
 //                 "commit" => {
-//                     let name = Self::txn_name(&command.prefix)?;
-//                     let txn = self.txns.remove(name).ok_or(format!("unknown txn {name}"))?;
+//                     let name = Self::tx_name(&command.prefix)?;
+//                     let tx = self.txs.remove(name).ok_or(format!("unknown tx {name}"))?;
 //                     command.consume_args().reject_rest()?;
-//                     txn.commit()?;
+//                     tx.commit()?;
 //                 }
 //
-//                 // txn: delete KEY...
+//                 // tx: delete KEY...
 //                 "delete" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     for arg in args.rest_pos() {
 //                         let key = decode_binary(&arg.value);
-//                         txn.delete(&key)?;
+//                         tx.delete(&key)?;
 //                     }
 //                     args.reject_rest()?;
 //                 }
@@ -483,13 +483,13 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //                     }
 //                 }
 //
-//                 // txn: get KEY...
+//                 // tx: get KEY...
 //                 "get" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     for arg in args.rest_pos() {
 //                         let key = decode_binary(&arg.value);
-//                         let value = txn.get(&key)?;
+//                         let value = tx.get(&key)?;
 //                         let fmtkv = format::Raw::key_maybe_value(&key, value.as_deref());
 //                         writeln!(output, "{fmtkv}")?;
 //                     }
@@ -498,7 +498,7 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //
 //                 // get_unversioned KEY...
 //                 "get_unversioned" => {
-//                     Self::no_txn(command)?;
+//                     Self::no_tx(command)?;
 //                     let mut args = command.consume_args();
 //                     for arg in args.rest_pos() {
 //                         let key = decode_binary(&arg.value);
@@ -511,92 +511,92 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //
 //                 // import [VERSION] KEY=VALUE...
 //                 "import" => {
-//                     Self::no_txn(command)?;
+//                     Self::no_tx(command)?;
 //                     let mut args = command.consume_args();
 //                     let version = args.next_pos().map(|a| a.parse()).transpose()?;
-//                     let mut txn = self.mvcc.begin()?;
+//                     let mut tx = self.mvcc.begin()?;
 //                     if let Some(version) = version {
-//                         if txn.version() > version {
+//                         if tx.version() > version {
 //                             return Err(format!("version {version} already used").into());
 //                         }
-//                         while txn.version() < version {
-//                             txn = self.mvcc.begin()?;
+//                         while tx.version() < version {
+//                             tx = self.mvcc.begin()?;
 //                         }
 //                     }
 //                     for kv in args.rest_key() {
 //                         let key = decode_binary(kv.key.as_ref().unwrap());
 //                         let value = decode_binary(&kv.value);
 //                         if value.is_empty() {
-//                             txn.delete(&key)?;
+//                             tx.delete(&key)?;
 //                         } else {
-//                             txn.set(&key, value)?;
+//                             tx.set(&key, value)?;
 //                         }
 //                     }
 //                     args.reject_rest()?;
-//                     txn.commit()?;
+//                     tx.commit()?;
 //                 }
 //
-//                 // txn: resume JSON
+//                 // tx: resume JSON
 //                 "resume" => {
-//                     let name = Self::txn_name(&command.prefix)?;
+//                     let name = Self::tx_name(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     let raw = &args.next_pos().ok_or("state not given")?.value;
 //                     args.reject_rest()?;
 //                     let state: TransactionState = serde_json::from_str(raw)?;
-//                     let txn = self.mvcc.resume(state)?;
-//                     self.txns.insert(name.to_string(), txn);
+//                     let tx = self.mvcc.resume(state)?;
+//                     self.txs.insert(name.to_string(), tx);
 //                 }
 //
-//                 // txn: rollback
+//                 // tx: rollback
 //                 "rollback" => {
-//                     let name = Self::txn_name(&command.prefix)?;
-//                     let txn = self.txns.remove(name).ok_or(format!("unknown txn {name}"))?;
+//                     let name = Self::tx_name(&command.prefix)?;
+//                     let tx = self.txs.remove(name).ok_or(format!("unknown tx {name}"))?;
 //                     command.consume_args().reject_rest()?;
-//                     txn.rollback()?;
+//                     tx.rollback()?;
 //                 }
 //
-//                 // txn: scan [RANGE]
+//                 // tx: scan [RANGE]
 //                 "scan" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     let range =
 //                         parse_key_range(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."))?;
 //                     args.reject_rest()?;
 //
-//                     let kvs: Vec<_> = txn.scan(range).try_collect()?;
+//                     let kvs: Vec<_> = tx.scan(range).try_collect()?;
 //                     for (key, value) in kvs {
 //                         writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
 //                     }
 //                 }
 //
-//                 // txn: scan_prefix PREFIX
+//                 // tx: scan_prefix PREFIX
 //                 "scan_prefix" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
 //                     args.reject_rest()?;
 //
-//                     let kvs: Vec<_> = txn.scan_prefix(&prefix).try_collect()?;
+//                     let kvs: Vec<_> = tx.scan_prefix(&prefix).try_collect()?;
 //                     for (key, value) in kvs {
 //                         writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
 //                     }
 //                 }
 //
-//                 // txn: set KEY=VALUE...
+//                 // tx: set KEY=VALUE...
 //                 "set" => {
-//                     let txn = self.get_txn(&command.prefix)?;
+//                     let tx = self.get_tx(&command.prefix)?;
 //                     let mut args = command.consume_args();
 //                     for kv in args.rest_key() {
 //                         let key = decode_binary(kv.key.as_ref().unwrap());
 //                         let value = decode_binary(&kv.value);
-//                         txn.set(&key, value)?;
+//                         tx.set(&key, value)?;
 //                     }
 //                     args.reject_rest()?;
 //                 }
 //
 //                 // set_unversioned KEY=VALUE...
 //                 "set_unversioned" => {
-//                     Self::no_txn(command)?;
+//                     Self::no_tx(command)?;
 //                     let mut args = command.consume_args();
 //                     for kv in args.rest_key() {
 //                         let key = decode_binary(kv.key.as_ref().unwrap());
@@ -606,11 +606,11 @@ impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
 //                     args.reject_rest()?;
 //                 }
 //
-//                 // txn: state
+//                 // tx: state
 //                 "state" => {
 //                     command.consume_args().reject_rest()?;
-//                     let txn = self.get_txn(&command.prefix)?;
-//                     let state = txn.state();
+//                     let tx = self.get_tx(&command.prefix)?;
+//                     let state = tx.state();
 //                     write!(
 //                         output,
 //                         "v{} {} active={{{}}}",

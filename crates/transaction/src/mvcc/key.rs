@@ -54,9 +54,9 @@ impl<'a> encoding::Key<'a> for Key<'a> {}
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) enum KeyPrefix<'a> {
     NextVersion,
-    TxnActive,
-    TxnActiveSnapshot,
-    TxnWrite(Version),
+    TxActive,
+    TxActiveSnapshot,
+    TxWrite(Version),
     Version(
         #[serde(with = "serde_bytes")]
         #[serde(borrow)]
