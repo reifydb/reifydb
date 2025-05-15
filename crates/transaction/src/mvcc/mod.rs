@@ -195,11 +195,7 @@ pub struct Transaction<S: EngineMut> {
 /// is separate from Transaction to allow it to be passed around independently
 /// of the engine. There are two main motivations for this:
 ///
-/// * It can be exported via Transaction.state(), (de)serialized, and later used
-///   to instantiate a new functionally equivalent Transaction via
-///   Transaction::resume(). This allows passing the transaction between the
-///   storage engine and SQL engine (potentially running on a different node)
-///   across the Raft state machine boundary.
+/// * It can be exported via Transaction.state(), (de)serialized, 
 ///
 /// * It can be borrowed independently of Engine, allowing references to it
 ///   in VisibleIterator, which would otherwise result in self-references.

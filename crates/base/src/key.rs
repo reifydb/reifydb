@@ -32,7 +32,7 @@ impl Ord for Key {
             (Key::Uint2(lhs), Key::Uint2(rhs)) => lhs.cmp(rhs),
             (Key::Undefined, _) => Ordering::Greater,
             (_, Key::Undefined) => Ordering::Less,
-            (left, right) => unimplemented!(),
+            (left, right) => unimplemented!("{left:?} {right:?}"),
         }
     }
 }

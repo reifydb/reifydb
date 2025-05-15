@@ -9,11 +9,11 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 use crate::mvcc::key::{Key, KeyPrefix};
+use crate::mvcc::transaction::init;
 use crate::mvcc::{Status, Transaction, Version};
 use base::encoding::{Key as _, Value};
 use std::sync::{Arc, Mutex, OnceLock};
 use storage::EngineMut;
-use crate::mvcc::transaction::init;
 
 /// An MVCC-based transactional key-value engine. It wraps an underlying storage
 /// engine that's used for raw key-value storage.
@@ -76,11 +76,6 @@ impl<S: EngineMut> Engine<S> {
     pub fn begin_read_only_as_of(&self, version: Version) -> crate::mvcc::Result<Transaction<S>> {
         Transaction::begin_read_only(self.storage.clone(), Some(version))
     }
-
-    /// Resumes a transaction from the given transaction state.
-    // pub fn resume(&self, state: TransactionState) -> Result<Transaction<S>> {
-    //     Transaction::resume(self.engine.clone(), state)
-    // }
 
     /// Fetches the value of an unversioned key.
     pub fn get_unversioned(&self, key: &[u8]) -> crate::mvcc::Result<Option<Vec<u8>>> {

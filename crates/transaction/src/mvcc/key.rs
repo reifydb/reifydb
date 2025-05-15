@@ -8,11 +8,12 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::mvcc::Version;
 use base::encoding;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Display, Formatter};
 
 /// MVCC keys, using the Keycode encoding which preserves the ordering and
 /// grouping of keys.

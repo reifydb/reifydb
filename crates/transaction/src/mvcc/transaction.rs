@@ -201,16 +201,6 @@ impl<S: EngineMut> Transaction<S> {
         Ok(Self { engine, state: TransactionState { version, read_only: true, active } })
     }
 
-    /// Resumes a transaction from the given state.
-    // fn resume(engine: Arc<Mutex<S>>, s: TransactionState) -> Result<Self> {
-    //     // For read-write transactions, verify that the transaction is still
-    //     // active before making further writes.
-    //     if !s.read_only && engine.lock()?.get(&Key::TxActive(s.version).encode())?.is_none() {
-    //         return errinput!("no active transaction at version {}", s.version);
-    //     }
-    //     Ok(Self { engine, state: s })
-    // }
-
     /// Fetches the set of currently active transactions.
     fn scan_active(session: &mut MutexGuard<S>) -> crate::mvcc::Result<BTreeSet<Version>> {
         let mut active = BTreeSet::new();

@@ -190,18 +190,6 @@ impl testscript::Runner for MVCCRunner {
                 tx.commit()?;
             }
 
-            // tx: resume JSON
-            "resume" => {
-                // let name = Self::tx_name(&command.prefix)?;
-                // let mut args = command.consume_args();
-                // let raw = &args.next_pos().ok_or("state not given")?.value;
-                // args.reject_rest()?;
-                // let state: TransactionState = serde_json::from_str(raw)?;
-                // let tx = self.mvcc.resume(state)?;
-                // self.txs.insert(name.to_string(), tx);
-                unimplemented!()
-            }
-
             // tx: rollback
             "rollback" => {
                 let name = Self::tx_name(&command.prefix)?;
