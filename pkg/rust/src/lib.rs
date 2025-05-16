@@ -33,20 +33,43 @@ pub use rql;
 /// The underlying key-value store responsible for persistence and data access.
 pub use storage;
 
+pub use transaction;
+
+use storage::{Memory, StorageEngineMut};
+use transaction::{TransactionEngineMut, mvcc, svl};
+
 mod embedded;
 mod error;
 
 pub struct ReifyDB {}
 
-pub trait DB: Sized {
+pub trait DB<'a>: Sized {
     /// runs tx
-    fn tx_execute(&self, rql: &str) -> Vec<ExecutionResult>;
+    fn tx_execute(&'a self, rql: &str) -> Vec<ExecutionResult>;
     /// runs rx
-    fn rx_execute(&self, rql: &str) -> Vec<ExecutionResult>;
+    fn rx_execute(&'a self, rql: &str) -> Vec<ExecutionResult>;
 }
 
 impl ReifyDB {
-    pub fn embedded() -> Embedded {
-        Embedded::new()
+    pub fn embedded<'a>() -> Embedded<'a, Memory, mvcc::Engine<Memory>> {
+        Embedded::new(mvcc(memory()))
     }
+
+    pub fn embedded_with<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>>(
+        transaction: T,
+    ) -> Embedded<'a, S, T> {
+        Embedded::new(transaction)
+    }
+}
+
+pub fn svl<S: StorageEngineMut>(storage: S) -> svl::Engine<S> {
+    svl::Engine::new(storage)
+}
+
+pub fn mvcc<S: StorageEngineMut>(storage: S) -> mvcc::Engine<S> {
+    mvcc::Engine::new(storage)
+}
+
+pub fn memory() -> Memory {
+    Memory::default()
 }

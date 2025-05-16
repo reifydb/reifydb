@@ -6,21 +6,21 @@ use engine::Engine;
 use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
 use rql::ast;
 use rql::plan::{plan, plan_mut};
-use storage::Memory;
-use transaction::{Transaction, TransactionMut};
+use storage::StorageEngineMut;
+use transaction::{Transaction, TransactionEngineMut, TransactionMut};
 
-pub struct Embedded {
-    engine: Engine<'static, Memory, transaction::mvcc::Engine<Memory>>,
+pub struct Embedded<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>> {
+    engine: Engine<'a, S, T>,
 }
 
-impl Embedded {
-    pub fn new() -> Self {
-        Self { engine: Engine::new(transaction::mvcc::Engine::new(Memory::default())) }
+impl<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>> Embedded<'a, S, T> {
+    pub fn new(transaction: T) -> Self {
+        Self { engine: Engine::new(transaction) }
     }
 }
 
-impl DB for Embedded {
-    fn tx_execute(&self, rql: &str) -> Vec<ExecutionResult> {
+impl<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>> DB<'a> for Embedded<'a, S, T> {
+    fn tx_execute(&'a self, rql: &str) -> Vec<ExecutionResult> {
         let mut result = vec![];
         let statements = ast::parse(rql);
 
@@ -37,7 +37,7 @@ impl DB for Embedded {
         result
     }
 
-    fn rx_execute(&self, rql: &str) -> Vec<ExecutionResult> {
+    fn rx_execute(&'a self, rql: &str) -> Vec<ExecutionResult> {
         let mut result = vec![];
         let statements = ast::parse(rql);
 

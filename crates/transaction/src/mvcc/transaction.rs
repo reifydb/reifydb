@@ -126,7 +126,26 @@ impl<S: StorageEngineMut> crate::TransactionMut for Transaction<S> {
     }
 
     fn commit(self) -> crate::Result<()> {
-        todo!()
+        if self.state.read_only {
+            return Ok(());
+        }
+        // FIXME
+        // let mut engine = self.engine.lock()?;
+        let mut engine = self.engine.lock().unwrap();
+
+        let mut remove = Vec::new();
+        for result in engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode()) {
+            let (k, _) = result?;
+            remove.push(k);
+        }
+        for key in remove {
+            engine.remove(&key)?;
+        }
+
+        // FIXME
+        // engine.remove(&Key::TxActive(self.state.version).encode())
+        engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
+        Ok(())
     }
 
     fn rollback(self) -> crate::Result<()> {

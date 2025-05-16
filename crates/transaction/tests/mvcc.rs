@@ -20,7 +20,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use storage::test::{Emit, Operation};
-use storage::{StorageEngine as StorageEngine, Memory};
+use storage::{Memory, StorageEngine};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
@@ -68,7 +68,7 @@ impl<E: storage::StorageEngineMut> MvccRunner<E> {
     }
 }
 
-impl<E: storage::StorageEngineMut> testscript::Runner for MvccRunner<E> {
+impl<'a, E: storage::StorageEngineMut> testscript::Runner for MvccRunner<E> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         let mut tags = command.tags.clone();
