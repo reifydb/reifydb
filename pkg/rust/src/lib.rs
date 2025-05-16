@@ -54,33 +54,30 @@ pub struct ReifyDB {}
 
 pub trait DB<'a>: Sized {
     /// runs tx
-    fn tx_execute_as(& self, principal: &Principal, rql: &str) -> Vec<ExecutionResult>;
+    fn tx_execute_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult>;
     /// runs rx
-    fn rx_execute_as(& self, principal: &Principal, rql: &str) -> Vec<ExecutionResult>;
+    fn rx_execute_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult>;
 
-    fn session_read_only(
-        & self,
-        into: impl IntoSessionRx<'a, Self>,
-    ) -> Result<SessionRx<'a, Self>>;
+    fn session_read_only(&self, into: impl IntoSessionRx<'a, Self>) -> Result<SessionRx<'a, Self>>;
 
-    fn session(& self, into: impl IntoSessionTx<'a, Self>) -> Result<SessionTx<'a, Self>>;
+    fn session(&self, into: impl IntoSessionTx<'a, Self>) -> Result<SessionTx<'a, Self>>;
 }
 
 impl ReifyDB {
-    pub fn embedded<'a>() -> (Embedded< Memory, mvcc::Engine<Memory>>, Principal) {
+    pub fn embedded<'a>() -> (Embedded<Memory, mvcc::Engine<Memory>>, Principal) {
         Embedded::new(mvcc(memory()))
     }
 
-    pub fn embedded_with<'a, S: StorageEngine, T: TransactionEngine< S>>(
+    pub fn embedded_with<'a, S: StorageEngine, T: TransactionEngine<S>>(
         transaction: T,
-    ) -> (Embedded< S, T>, Principal) {
+    ) -> (Embedded<S, T>, Principal) {
         Embedded::new(transaction)
     }
 }
 
-// pub fn svl<S: StorageEngine>(storage: S) -> svl::Engine<S> {
-//     svl::Engine::new(storage)
-// }
+pub fn svl<S: StorageEngine>(storage: S) -> svl::Engine<S> {
+    svl::Engine::new(storage)
+}
 
 pub fn mvcc<S: StorageEngine>(storage: S) -> mvcc::Engine<S> {
     mvcc::Engine::new(storage)

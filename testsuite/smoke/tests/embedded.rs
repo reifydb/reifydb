@@ -4,7 +4,7 @@
 use reifydb::embedded::Embedded;
 use reifydb::storage::StorageEngine;
 use reifydb::transaction::TransactionEngine;
-use reifydb::{DB, Principal, ReifyDB, memory, mvcc};
+use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl};
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
@@ -55,12 +55,12 @@ impl<S: StorageEngine, T: TransactionEngine<S>> testscript::Runner for EmbeddedR
     }
 }
 
-// test_each_path! { in "testsuite/smoke/tests/scripts" as svl_memory => test_embedded_svl_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as svl_memory => test_embedded_svl_memory }
 test_each_path! { in "testsuite/smoke/tests/scripts" as mvcc_memory => test_embedded_mvcc_memory }
 
-// fn test_embedded_svl_memory(path: &Path) {
-//     testscript::run_path(&mut EmbeddedRunner::new(svl(memory())), path).expect("test failed")
-// }
+fn test_embedded_svl_memory(path: &Path) {
+    testscript::run_path(&mut EmbeddedRunner::new(svl(memory())), path).expect("test failed")
+}
 
 fn test_embedded_mvcc_memory(path: &Path) {
     testscript::run_path(&mut EmbeddedRunner::new(mvcc(memory())), path).expect("test failed")

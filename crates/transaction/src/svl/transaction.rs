@@ -3,6 +3,7 @@
 
 use crate::svl::EngineInner;
 use crate::svl::catalog::Catalog;
+use crate::svl::lock::{ReadGuard, WriteGuard};
 use crate::svl::schema::Schema;
 use crate::{CatalogRx as _, CatalogTx, InsertResult};
 use base::encoding::{Value as OtherValue, bincode};
@@ -10,19 +11,18 @@ use base::expression::Expression;
 use base::{Key, Row, RowIter, key_prefix};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
-pub struct Transaction<'a, S: storage::StorageEngine> {
-    engine: RwLockReadGuard<'a, EngineInner<S>>,
+pub struct Transaction<S: storage::StorageEngine> {
+    engine: ReadGuard<EngineInner<S>>,
 }
 
-impl<S: storage::StorageEngine> Transaction<'a, S> {
-    pub fn new(engine: RwLockReadGuard<'a, EngineInner<S>>) -> Self {
+impl<S: storage::StorageEngine> Transaction<S> {
+    pub fn new(engine: ReadGuard<EngineInner<S>>) -> Self {
         Self { engine }
     }
 }
 
-impl<S: storage::StorageEngine> crate::Rx for Transaction<'a, S> {
+impl<S: storage::StorageEngine> crate::Rx for Transaction<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -50,18 +50,18 @@ impl<S: storage::StorageEngine> crate::Rx for Transaction<'a, S> {
     }
 }
 
-pub struct TransactionMut<'a, S: storage::StorageEngine> {
-    engine: RwLockWriteGuard<'a, EngineInner<S>>,
+pub struct TransactionMut<S: storage::StorageEngine> {
+    engine: WriteGuard<EngineInner<S>>,
     log: RefCell<HashMap<String, Vec<Row>>>,
 }
 
-impl<S: storage::StorageEngine> TransactionMut<'a, S> {
-    pub fn new(engine: RwLockWriteGuard<'a, EngineInner<S>>) -> Self {
+impl<S: storage::StorageEngine> TransactionMut<S> {
+    pub fn new(engine: WriteGuard<EngineInner<S>>) -> Self {
         Self { engine, log: RefCell::new(HashMap::new()) }
     }
 }
 
-impl<S: storage::StorageEngine> crate::Rx for TransactionMut<'a, S> {
+impl<S: storage::StorageEngine> crate::Rx for TransactionMut<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -82,7 +82,7 @@ impl<S: storage::StorageEngine> crate::Rx for TransactionMut<'a, S> {
     }
 }
 
-impl<S: storage::StorageEngine> crate::Tx for TransactionMut<'a, S> {
+impl<S: storage::StorageEngine> crate::Tx for TransactionMut<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

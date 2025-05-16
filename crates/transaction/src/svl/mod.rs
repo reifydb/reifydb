@@ -1,43 +1,44 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// use crate::svl::catalog::Catalog;
-// use crate::svl::transaction::{Transaction, TransactionMut};
+use crate::svl::catalog::Catalog;
+use crate::svl::lock::RwLock;
+use crate::svl::transaction::{Transaction, TransactionMut};
 pub use error::Error;
-// use std::sync::{Arc, RwLock};
 
-// mod catalog;
+mod catalog;
 mod error;
-// mod schema;
-// mod store;
-// mod transaction;
+mod lock;
+mod schema;
+mod store;
+mod transaction;
 
-// pub struct Engine<S: storage::StorageEngine> {
-//     inner: Arc<RwLock<EngineInner<S>>>,
-// }
-//
-// pub struct EngineInner<S: storage::StorageEngine> {
-//     pub storage: S,
-//     pub catalog: Catalog,
-// }
-//
-// impl<S: storage::StorageEngine> Engine<S> {
-//     pub fn new(storage: S) -> Self {
-//         Self { inner: Arc::new(RwLock::new(EngineInner { storage, catalog: Catalog::new() })) }
-//     }
-// }
-//
-// impl<S: storage::StorageEngine> crate::TransactionEngine< S> for Engine<S> {
-//     type Rx = Transaction<'a, S>;
-//     type Tx = TransactionMut<'a, S>;
-//
-//     fn begin_read_only(& self) -> crate::Result<Self::Rx> {
-//         let guard = self.inner.read().unwrap();
-//         Ok(Transaction::new(guard))
-//     }
-//
-//     fn begin(& self) -> crate::Result<Self::Tx> {
-//         let guard = self.inner.write().unwrap();
-//         Ok(TransactionMut::new(guard))
-//     }
-// }
+pub struct Engine<S: storage::StorageEngine> {
+    inner: RwLock<EngineInner<S>>,
+}
+
+pub struct EngineInner<S: storage::StorageEngine> {
+    pub storage: S,
+    pub catalog: Catalog,
+}
+
+impl<S: storage::StorageEngine> Engine<S> {
+    pub fn new(storage: S) -> Self {
+        Self { inner: RwLock::new(EngineInner { storage, catalog: Catalog::new() }) }
+    }
+}
+
+impl<S: storage::StorageEngine> crate::TransactionEngine<S> for Engine<S> {
+    type Rx = Transaction<S>;
+    type Tx = TransactionMut<S>;
+
+    fn begin_read_only(&self) -> crate::Result<Self::Rx> {
+        let guard = self.inner.read();
+        Ok(Transaction::new(guard))
+    }
+
+    fn begin(&self) -> crate::Result<Self::Tx> {
+        let guard = self.inner.write();
+        Ok(TransactionMut::new(guard))
+    }
+}
