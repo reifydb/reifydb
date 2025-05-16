@@ -14,7 +14,7 @@ use crate::mvcc::transaction::init;
 use crate::mvcc::{Status, Transaction, Version};
 use base::encoding::{Key as _, Value};
 use std::sync::{Arc, Mutex, OnceLock};
-use storage::StorageEngineMut;
+use storage::StorageEngine;
 
 /// An MVCC-based transactional key-value engine. It wraps an underlying storage
 /// engine that's used for raw key-value storage.
@@ -23,7 +23,7 @@ use storage::StorageEngineMut;
 /// write operations are executed sequentially, serialized via a mutex. There
 /// are two reasons for this: the storage engine itself is not thread-safe,
 /// requiring serialized access.
-pub struct Engine<S: StorageEngineMut> {
+pub struct Engine<S: StorageEngine> {
     // FIXME add concurrent safe MemPool module between Storage and transaction
     // idea - batch data and perform bulk insertions / update to underlying storage implementation
     // introduce ConfirmationLevel similar to Solana
@@ -33,8 +33,9 @@ pub struct Engine<S: StorageEngineMut> {
     pub storage: Arc<Mutex<S>>,
 }
 
-impl<'a, S: StorageEngineMut + 'a> crate::TransactionEngine<'a, S> for Engine<S> {
+impl<'a, S: StorageEngine + 'a> crate::TransactionEngine<'a, S> for Engine<S> {
     type Rx = Transaction<S>;
+    type Tx = Transaction<S>;
 
     fn begin_read_only(&'a self) -> crate::Result<Self::Rx> {
         // let guard = self.inner.read().unwrap();
@@ -42,11 +43,6 @@ impl<'a, S: StorageEngineMut + 'a> crate::TransactionEngine<'a, S> for Engine<S>
         // unimplemented!()
         Ok(Transaction::begin_read_only(self.storage.clone(), None).unwrap())
     }
-}
-
-impl<'a, S: StorageEngineMut + 'a> crate::TransactionEngineMut<'a, S> for Engine<S> {
-    // type Tx = TransactionMut<S>;
-    type Tx = Transaction<S>;
 
     fn begin(&'a self) -> crate::Result<Self::Tx> {
         // let guard = self.inner.write().unwrap();
@@ -57,7 +53,7 @@ impl<'a, S: StorageEngineMut + 'a> crate::TransactionEngineMut<'a, S> for Engine
 
 static CATALOG: OnceLock<()> = OnceLock::new();
 
-impl<S: StorageEngineMut> Engine<S> {
+impl<S: StorageEngine> Engine<S> {
     /// Creates a new MVCC engine with the given storage engine.
     pub fn new(engine: S) -> Self {
         CATALOG.get_or_init(|| {

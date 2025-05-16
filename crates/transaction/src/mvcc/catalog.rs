@@ -15,8 +15,8 @@ impl Catalog {
     }
 }
 
-impl crate::Catalog for Catalog {
-    type Schema = Schema;
+impl crate::CatalogRx for Catalog {
+    type SchemaRx = Schema;
     fn get(&self, schema: &str) -> crate::Result<&Schema> {
         Ok(self.schema.get(schema).unwrap())
     }
@@ -26,10 +26,10 @@ impl crate::Catalog for Catalog {
     }
 }
 
-impl crate::CatalogMut for Catalog {
-    type SchemaMut = Schema;
+impl crate::CatalogTx for Catalog {
+    type SchemaTx = Schema;
 
-    fn get_mut(&mut self, schema: &str) -> crate::Result<&mut Self::Schema> {
+    fn get_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaRx> {
         Ok(self.schema.get_mut(schema).unwrap())
     }
 

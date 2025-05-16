@@ -9,24 +9,24 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::{StorageEngine, StorageEngineMut, Key, Value};
+use crate::{Key, StorageEngine, Value};
 use std::ops::RangeBounds;
 
 /// An engine that wraps two others and mirrors operations across them,
 /// panicking if they produce different results. Engine implementations
 /// should not have any observable differences in behavior.
-pub struct Mirror<A: StorageEngineMut, B: StorageEngineMut> {
+pub struct Mirror<A: StorageEngine, B: StorageEngine> {
     pub a: A,
     pub b: B,
 }
 
-impl<A: StorageEngineMut, B: StorageEngineMut> Mirror<A, B> {
+impl<A: StorageEngine, B: StorageEngine> Mirror<A, B> {
     pub fn new(a: A, b: B) -> Self {
         Self { a, b }
     }
 }
 
-impl<A: StorageEngineMut, B: StorageEngineMut> StorageEngine for Mirror<A, B> {
+impl<A: StorageEngine, B: StorageEngine> StorageEngine for Mirror<A, B> {
     type ScanIter<'a>
         = MirrorIterator<'a, A, B>
     where
@@ -58,9 +58,7 @@ impl<A: StorageEngineMut, B: StorageEngineMut> StorageEngine for Mirror<A, B> {
     // 	assert_eq!(a.size, b.size);
     // 	Ok(a)
     // }
-}
 
-impl<A: StorageEngineMut, B: StorageEngineMut> StorageEngineMut for Mirror<A, B> {
     fn remove(&mut self, key: &Key) -> crate::Result<()> {
         self.a.remove(key)?;
         self.b.remove(key)
@@ -77,12 +75,12 @@ impl<A: StorageEngineMut, B: StorageEngineMut> StorageEngineMut for Mirror<A, B>
     }
 }
 
-pub struct MirrorIterator<'a, A: StorageEngineMut + 'a, B: StorageEngineMut + 'a> {
+pub struct MirrorIterator<'a, A: StorageEngine + 'a, B: StorageEngine + 'a> {
     a: A::ScanIter<'a>,
     b: B::ScanIter<'a>,
 }
 
-impl<A: StorageEngineMut, B: StorageEngineMut> Iterator for MirrorIterator<'_, A, B> {
+impl<A: StorageEngine, B: StorageEngine> Iterator for MirrorIterator<'_, A, B> {
     type Item = crate::Result<(Vec<u8>, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -93,7 +91,7 @@ impl<A: StorageEngineMut, B: StorageEngineMut> Iterator for MirrorIterator<'_, A
     }
 }
 
-impl<A: StorageEngineMut, B: StorageEngineMut> DoubleEndedIterator for MirrorIterator<'_, A, B> {
+impl<A: StorageEngine, B: StorageEngine> DoubleEndedIterator for MirrorIterator<'_, A, B> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let a = self.a.next_back();
         let b = self.b.next_back();

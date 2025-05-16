@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb::storage::StorageEngineMut;
-use reifydb::transaction::TransactionEngineMut;
+use reifydb::storage::StorageEngine;
+use reifydb::transaction::TransactionEngine;
 use reifydb::{DB, Embedded, ReifyDB, memory, mvcc, svl};
 use std::error::Error;
 use std::fmt::Write;
@@ -12,11 +12,11 @@ use test_each_file::test_each_path;
 use testing::testscript;
 use testing::testscript::Command;
 
-pub struct EmbeddedRunner<'a, S: StorageEngineMut + 'a, T: TransactionEngineMut<'a, S> + 'a> {
+pub struct EmbeddedRunner<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> {
     engine: NonNull<Embedded<'a, S, T>>,
 }
 
-impl<'a, S: StorageEngineMut + 'a, T: TransactionEngineMut<'a, S> + 'a> EmbeddedRunner<'a, S, T> {
+impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> EmbeddedRunner<'a, S, T> {
     // otherwise runs into lifetime issues with the runner
     pub fn new(transaction: T) -> Self {
         let boxed = Box::new(ReifyDB::embedded_with(transaction));
@@ -33,7 +33,7 @@ impl<'a, S: StorageEngineMut + 'a, T: TransactionEngineMut<'a, S> + 'a> Embedded
     }
 }
 
-impl<'a, S: StorageEngineMut + 'a, T: TransactionEngineMut<'a, S> + 'a> Drop
+impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> Drop
     for EmbeddedRunner<'a, S, T>
 {
     fn drop(&mut self) {
@@ -43,7 +43,7 @@ impl<'a, S: StorageEngineMut + 'a, T: TransactionEngineMut<'a, S> + 'a> Drop
     }
 }
 
-impl<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>> testscript::Runner
+impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> testscript::Runner
     for EmbeddedRunner<'a, S, T>
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {

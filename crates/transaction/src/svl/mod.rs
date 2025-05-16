@@ -12,32 +12,29 @@ mod schema;
 mod store;
 mod transaction;
 
-pub struct Engine<S: storage::StorageEngineMut> {
+pub struct Engine<S: storage::StorageEngine> {
     inner: Arc<RwLock<EngineInner<S>>>,
 }
 
-pub struct EngineInner<S: storage::StorageEngineMut> {
+pub struct EngineInner<S: storage::StorageEngine> {
     pub storage: S,
     pub catalog: Catalog,
 }
 
-impl<S: storage::StorageEngineMut> Engine<S> {
+impl<S: storage::StorageEngine> Engine<S> {
     pub fn new(storage: S) -> Self {
         Self { inner: Arc::new(RwLock::new(EngineInner { storage, catalog: Catalog::new() })) }
     }
 }
 
-impl<'a, S: storage::StorageEngineMut + 'a> crate::TransactionEngine<'a, S> for Engine<S> {
+impl<'a, S: storage::StorageEngine + 'a> crate::TransactionEngine<'a, S> for Engine<S> {
     type Rx = Transaction<'a, S>;
+    type Tx = TransactionMut<'a, S>;
 
     fn begin_read_only(&'a self) -> crate::Result<Self::Rx> {
         let guard = self.inner.read().unwrap();
         Ok(Transaction::new(guard))
     }
-}
-
-impl<'a, S: storage::StorageEngineMut + 'a> crate::TransactionEngineMut<'a, S> for Engine<S> {
-    type Tx = TransactionMut<'a, S>;
 
     fn begin(&'a self) -> crate::Result<Self::Tx> {
         let guard = self.inner.write().unwrap();

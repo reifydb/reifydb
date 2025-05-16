@@ -11,7 +11,7 @@ use std::ops::Deref;
 use base::expression::Expression;
 use base::{Value, ValueType};
 pub use error::Error;
-use transaction::{Catalog, ColumnToCreate, Schema, Store};
+use transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
 
 mod error;
 pub mod node;
@@ -60,7 +60,7 @@ pub enum QueryPlan {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan> {
+pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Plan> {
     for ast in statement.into_iter().rev() {
         match ast {
             Ast::Create(create) => {

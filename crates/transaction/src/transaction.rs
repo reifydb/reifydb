@@ -1,15 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Catalog, CatalogMut, Schema, SchemaMut};
+use crate::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
 use base::expression::Expression;
 use base::{Key, Row, RowIter};
 
-/// A Transaction executes transactional read operations on stores.
-/// Provides snapshot isolation.
-pub trait Transaction {
-    type Catalog: Catalog;
-    type Schema: Schema;
+/// A Rx executes transactional read operations on stores.
+pub trait Rx {
+    type Catalog: CatalogRx;
+    type Schema: SchemaRx;
 
     fn catalog(&self) -> crate::Result<&Self::Catalog>;
 
@@ -27,11 +26,10 @@ pub struct InsertResult {
     pub inserted: usize,
 }
 
-/// A TransactionMut executes transactional read & write operations on stores.
-/// Provides snapshot isolation.
-pub trait TransactionMut: Transaction {
-    type CatalogMut: CatalogMut;
-    type SchemaMut: SchemaMut;
+/// A Tx executes transactional read & write operations on stores.
+pub trait Tx: Rx {
+    type CatalogMut: CatalogTx;
+    type SchemaMut: SchemaTx;
 
     fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut>;
 

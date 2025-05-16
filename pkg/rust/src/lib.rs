@@ -35,8 +35,8 @@ pub use storage;
 
 pub use transaction;
 
-use storage::{Memory, StorageEngineMut};
-use transaction::{TransactionEngineMut, mvcc, svl};
+use storage::{Memory, StorageEngine};
+use transaction::{TransactionEngine, mvcc, svl};
 
 mod embedded;
 mod error;
@@ -55,18 +55,18 @@ impl ReifyDB {
         Embedded::new(mvcc(memory()))
     }
 
-    pub fn embedded_with<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>>(
+    pub fn embedded_with<'a, S: StorageEngine, T: TransactionEngine<'a, S>>(
         transaction: T,
     ) -> Embedded<'a, S, T> {
         Embedded::new(transaction)
     }
 }
 
-pub fn svl<S: StorageEngineMut>(storage: S) -> svl::Engine<S> {
+pub fn svl<S: StorageEngine>(storage: S) -> svl::Engine<S> {
     svl::Engine::new(storage)
 }
 
-pub fn mvcc<S: StorageEngineMut>(storage: S) -> mvcc::Engine<S> {
+pub fn mvcc<S: StorageEngine>(storage: S) -> mvcc::Engine<S> {
     mvcc::Engine::new(storage)
 }
 

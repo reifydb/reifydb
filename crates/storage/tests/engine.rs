@@ -18,7 +18,7 @@ use base::encoding::format::Formatter;
 use std::error::Error as StdError;
 use std::fmt::Write;
 use std::path::Path;
-use storage::{Memory, StorageEngineMut};
+use storage::{Memory, StorageEngine};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
@@ -30,17 +30,17 @@ fn test_memory(path: &Path) {
 }
 
 /// Runs engine tests.
-pub struct EngineRunner<S: StorageEngineMut> {
+pub struct EngineRunner<S: StorageEngine> {
     engine: S,
 }
 
-impl<S: StorageEngineMut> EngineRunner<S> {
+impl<S: StorageEngine> EngineRunner<S> {
     fn new(engine: S) -> Self {
         Self { engine }
     }
 }
 
-impl<S: StorageEngineMut> testscript::Runner for EngineRunner<S> {
+impl<S: StorageEngine> testscript::Runner for EngineRunner<S> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {

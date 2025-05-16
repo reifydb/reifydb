@@ -1,19 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::store::{Store, StoreMut};
+use crate::store::{StoreRx, StoreTx};
 use base::ValueType;
 use base::expression::Expression;
 
-pub trait Schema {
-    type Store: Store;
+pub trait SchemaRx {
+    type StoreRx: StoreRx;
     // returns most recent version
-    fn get(&self, store: impl AsRef<str>) -> crate::Result<&Self::Store>;
+    fn get(&self, store: impl AsRef<str>) -> crate::Result<&Self::StoreRx>;
 
     // returns the store as of the specified version
     // fn get_as_of(&self, name: impl AsRef<str>, version) -> Result<Option<Store>>;
 
-    fn list(&self) -> crate::Result<Vec<&Self::Store>>;
+    fn list(&self) -> crate::Result<Vec<&Self::StoreRx>>;
 }
 
 #[derive(Debug)]
@@ -27,8 +27,8 @@ pub enum StoreToCreate {
     Table { name: String, columns: Vec<ColumnToCreate> },
 }
 
-pub trait SchemaMut: Schema {
-    type StoreMut: StoreMut;
+pub trait SchemaTx: SchemaRx {
+    type StoreTx: StoreTx;
 
     fn create(&mut self, store: StoreToCreate) -> crate::Result<()>;
 

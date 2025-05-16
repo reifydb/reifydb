@@ -4,12 +4,12 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use catalog::{Catalog, CatalogMut};
-pub use engine::{TransactionEngine, TransactionEngineMut};
+pub use catalog::{CatalogRx, CatalogTx};
+pub use engine::TransactionEngine;
 pub use error::Error;
-pub use schema::{ColumnToCreate, Schema, SchemaMut, StoreToCreate};
-pub use store::{NopStore, Store, StoreMut};
-pub use transaction::{InsertResult, Transaction, TransactionMut};
+pub use schema::{ColumnToCreate, SchemaRx, SchemaTx, StoreToCreate};
+pub use store::{NopStore, StoreRx, StoreTx};
+pub use transaction::{InsertResult, Rx, Tx};
 
 mod catalog;
 mod engine;

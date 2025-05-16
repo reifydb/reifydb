@@ -33,13 +33,13 @@ fn test_memory(path: &Path) {
 }
 
 /// Runs MVCC tests.
-pub struct MvccRunner<E: storage::StorageEngineMut> {
+pub struct MvccRunner<E: storage::StorageEngine> {
     engine: Engine<Emit<E>>,
     txs: HashMap<String, Transaction<Emit<E>>>,
     operations: Receiver<Operation>,
 }
 
-impl<E: storage::StorageEngineMut> MvccRunner<E> {
+impl<E: storage::StorageEngine> MvccRunner<E> {
     fn new(storage: E) -> Self {
         let (tx, rx) = mpsc::channel();
         Self { engine: Engine::new(Emit::new(storage, tx)), txs: HashMap::new(), operations: rx }
@@ -68,7 +68,7 @@ impl<E: storage::StorageEngineMut> MvccRunner<E> {
     }
 }
 
-impl<'a, E: storage::StorageEngineMut> testscript::Runner for MvccRunner<E> {
+impl<'a, E: storage::StorageEngine> testscript::Runner for MvccRunner<E> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         let mut tags = command.tags.clone();

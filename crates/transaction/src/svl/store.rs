@@ -15,7 +15,7 @@ pub struct Store {
     pub columns: Vec<Column>,
 }
 
-impl crate::Store for Store {
+impl crate::StoreRx for Store {
     fn get_column(&self, column: impl AsRef<str>) -> crate::Result<Column> {
         let column_name = column.as_ref();
         for (idx, column) in self.columns.iter().enumerate() {
@@ -43,4 +43,4 @@ impl crate::Store for Store {
     }
 }
 
-impl crate::StoreMut for Store {}
+impl crate::StoreTx for Store {}

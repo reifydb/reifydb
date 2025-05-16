@@ -6,20 +6,20 @@ use engine::Engine;
 use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
 use rql::ast;
 use rql::plan::{plan, plan_mut};
-use storage::StorageEngineMut;
-use transaction::{Transaction, TransactionEngineMut, TransactionMut};
+use storage::StorageEngine;
+use transaction::{Rx, TransactionEngine, Tx};
 
-pub struct Embedded<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>> {
+pub struct Embedded<'a, S: StorageEngine, T: TransactionEngine<'a, S>> {
     engine: Engine<'a, S, T>,
 }
 
-impl<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>> Embedded<'a, S, T> {
+impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> Embedded<'a, S, T> {
     pub fn new(transaction: T) -> Self {
         Self { engine: Engine::new(transaction) }
     }
 }
 
-impl<'a, S: StorageEngineMut, T: TransactionEngineMut<'a, S>> DB<'a> for Embedded<'a, S, T> {
+impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> DB<'a> for Embedded<'a, S, T> {
     fn tx_execute(&'a self, rql: &str) -> Vec<ExecutionResult> {
         let mut result = vec![];
         let statements = ast::parse(rql);

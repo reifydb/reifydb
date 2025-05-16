@@ -9,7 +9,7 @@ use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
 use std::vec;
 use transaction::{
-    CatalogMut, NopStore, Schema, SchemaMut, Store, StoreToCreate, Transaction, TransactionMut,
+    CatalogTx, NopStore, SchemaRx, SchemaTx, StoreRx, StoreToCreate, Rx, Tx,
 };
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ pub enum ExecutionResult {
 
 pub fn execute_plan_mut(
     plan: Plan,
-    tx: &mut impl TransactionMut,
+    tx: &mut impl Tx,
 ) -> crate::Result<ExecutionResult> {
     Ok(match plan {
         Plan::CreateSchema { name, if_not_exists } => {
@@ -66,7 +66,7 @@ pub fn execute_plan_mut(
     })
 }
 
-pub fn execute_plan(plan: Plan, rx: &impl Transaction) -> crate::Result<ExecutionResult> {
+pub fn execute_plan(plan: Plan, rx: &impl Rx) -> crate::Result<ExecutionResult> {
     let plan = match plan {
         Plan::Query(query) => query,
         _ => unreachable!(), // FIXME
@@ -77,7 +77,7 @@ pub fn execute_plan(plan: Plan, rx: &impl Transaction) -> crate::Result<Executio
 
 fn execute_node<'a>(
     node: QueryPlan,
-    rx: &'a impl Transaction,
+    rx: &'a impl Rx,
     current_labels: Vec<Label>,
     current_schema: Option<String>,
     current_store: Option<String>,
@@ -168,7 +168,7 @@ fn execute_node<'a>(
     }
 }
 
-pub fn evaluate<S: Store>(
+pub fn evaluate<S: StoreRx>(
     expr: Expression,
     row: Option<&Row>,
     store: Option<&S>,

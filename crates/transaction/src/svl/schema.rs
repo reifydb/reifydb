@@ -18,8 +18,8 @@ impl Schema {
     }
 }
 
-impl crate::Schema for Schema {
-    type Store = Store;
+impl crate::SchemaRx for Schema {
+    type StoreRx = Store;
     fn get(&self, name: impl AsRef<str>) -> crate::Result<&Store> {
         let name = name.as_ref();
         Ok(self.stores.get(name).unwrap())
@@ -30,8 +30,8 @@ impl crate::Schema for Schema {
     }
 }
 
-impl crate::SchemaMut for Schema {
-    type StoreMut = Store;
+impl crate::SchemaTx for Schema {
+    type StoreTx = Store;
 
     fn create(&mut self, to_create: StoreToCreate) -> crate::Result<()> {
         match to_create {

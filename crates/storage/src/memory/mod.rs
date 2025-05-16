@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Result;
-use crate::engine::{StorageEngine, StorageEngineMut, Key, Value};
+use crate::engine::{Key, StorageEngine, Value};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Range;
 use std::ops::RangeBounds;
@@ -21,9 +21,7 @@ impl StorageEngine for Memory {
     fn scan(&self, range: impl RangeBounds<Key>) -> Self::ScanIter<'_> {
         MemoryScanIter(self.0.range(range))
     }
-}
 
-impl StorageEngineMut for Memory {
     fn set(&mut self, key: &Key, value: Value) -> Result<()> {
         self.0.insert(key.to_vec(), value);
         Ok(())

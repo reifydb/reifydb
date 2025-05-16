@@ -11,7 +11,7 @@ pub struct Column {
     pub default: Option<Expression>,
 }
 
-pub trait Store {
+pub trait StoreRx {
     fn get_column(&self, column: impl AsRef<str>) -> crate::Result<Column>;
 
     fn list_columns(&self) -> crate::Result<Vec<Column>>;
@@ -19,11 +19,11 @@ pub trait Store {
     fn get_column_index(&self, column: impl AsRef<str>) -> crate::Result<usize>;
 }
 
-pub trait StoreMut: Store {}
+pub trait StoreTx: StoreRx {}
 
 pub struct NopStore {}
 
-impl Store for NopStore {
+impl StoreRx for NopStore {
     fn get_column(&self, _column: impl AsRef<str>) -> crate::Result<Column> {
         unreachable!()
     }

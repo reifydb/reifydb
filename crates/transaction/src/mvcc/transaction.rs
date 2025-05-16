@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::{Error, Transaction, TransactionState, Version};
-use crate::{Catalog as _, CatalogMut, InsertResult};
+use crate::{CatalogRx as _, CatalogTx, InsertResult};
 use std::cell::UnsafeCell;
 
 use std::collections::BTreeSet;
@@ -24,10 +24,10 @@ use crate::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::expression::Expression;
 use base::{Row, RowIter, key_prefix};
-use storage::StorageEngineMut;
+use storage::StorageEngine;
 // FIXME remove this
 
-impl<S: StorageEngineMut> crate::Transaction for Transaction<S> {
+impl<S: StorageEngine> crate::Rx for Transaction<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -77,7 +77,7 @@ pub fn catalog_mut_singleton() -> &'static mut Catalog {
     unsafe { *CATALOG.get().unwrap().0.get() }
 }
 
-impl<S: StorageEngineMut> crate::TransactionMut for Transaction<S> {
+impl<S: StorageEngine> crate::Tx for Transaction<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
@@ -144,7 +144,7 @@ impl<S: StorageEngineMut> crate::TransactionMut for Transaction<S> {
     }
 }
 
-impl<S: StorageEngineMut> Transaction<S> {
+impl<S: StorageEngine> Transaction<S> {
     /// Begins a new transaction in read-write mode. This will allocate a new
     /// version that the transaction can write at, add it to the active set, and
     /// record its active snapshot for time-travel queries.
