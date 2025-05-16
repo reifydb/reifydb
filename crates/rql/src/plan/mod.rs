@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use base::expression::Expression;
-use base::schema::{ColumnName, SchemaName, StoreName};
 use base::{Value, ValueType};
 pub use error::Error;
 use transaction::{Catalog, ColumnToCreate, Schema, Store};
@@ -20,7 +19,7 @@ mod planner;
 
 #[derive(Debug)]
 pub struct ColumnToInsert {
-    pub name: ColumnName,
+    pub name: String,
     pub value: ValueType,
     pub default: Option<Expression>,
 }
@@ -30,18 +29,13 @@ pub type RowToInsert = Vec<Expression>;
 #[derive(Debug)]
 pub enum Plan {
     /// A CREATE SCHEMA plan. Creates a new schema.
-    CreateSchema { name: SchemaName, if_not_exists: bool },
+    CreateSchema { name: String, if_not_exists: bool },
     /// A CREATE TABLE plan. Creates a new table.
-    CreateTable {
-        schema: SchemaName,
-        name: StoreName,
-        if_not_exists: bool,
-        columns: Vec<ColumnToCreate>,
-    },
+    CreateTable { schema: String, name: String, if_not_exists: bool, columns: Vec<ColumnToCreate> },
     /// A INSERT INTO TABLE plan. Inserts values into the table
     InsertIntoTableValues {
-        schema: SchemaName,
-        store: StoreName,
+        schema: String,
+        store: String,
         columns: Vec<ColumnToInsert>,
         rows_to_insert: Vec<RowToInsert>,
     },
@@ -51,7 +45,7 @@ pub enum Plan {
 
 #[derive(Debug)]
 pub enum QueryPlan {
-    Scan { schema: SchemaName, store: StoreName, next: Option<Box<QueryPlan>> },
+    Scan { schema: String, store: String, next: Option<Box<QueryPlan>> },
     // Filter {
     //     condition: Expression,
     //     next: Option<Box<Plan>>,
@@ -72,7 +66,7 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
             Ast::Create(create) => {
                 return match create {
                     AstCreate::Schema { name, .. } => Ok(Plan::CreateSchema {
-                        name: SchemaName::new(name.value()),
+                        name: name.value().to_string(),
                         if_not_exists: false,
                     }),
                     AstCreate::Table { schema, name, definitions, .. } => {
@@ -85,7 +79,7 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
                                     let ty = ast.right.as_type();
 
                                     columns.push(ColumnToCreate {
-                                        name: ColumnName::new(name.value()),
+                                        name: name.value().to_string(),
                                         value: match ty {
                                             AstType::Boolean(_) => ValueType::Bool,
                                             AstType::Float4(_) => unimplemented!(),
@@ -111,8 +105,8 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
                         }
 
                         Ok(Plan::CreateTable {
-                            schema: SchemaName::new(schema.0.value()),
-                            name: StoreName::new(name.0.value()),
+                            schema: schema.value().to_string(),
+                            name: name.value().to_string(),
                             if_not_exists: false,
                             columns,
                         })
@@ -122,19 +116,19 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
             Ast::Insert(insert) => {
                 return match insert {
                     AstInsert { schema, store, columns, rows, .. } => {
-                        let schema = SchemaName::new(schema.0.value());
-                        let store = StoreName::new(store.0.value());
+                        let schema = schema.value().to_string();
+                        let store = store.value().to_string();
 
                         // Get the store schema from the catalog once
                         let store_schema =
-                            catalog.get(schema.as_ref()).unwrap().get(store.deref()).unwrap();
+                            catalog.get(&schema).unwrap().get(store.deref()).unwrap();
 
                         // Build the user-specified column name list
                         let insert_column_names: Vec<_> = columns
                             .nodes
                             .into_iter()
                             .map(|column| match column {
-                                Ast::Identifier(ast) => ColumnName::new(ast.value()),
+                                Ast::Identifier(ast) => ast.value().to_string(),
                                 _ => unimplemented!(),
                             })
                             .collect::<Vec<_>>();
@@ -149,7 +143,7 @@ pub fn plan_mut(catalog: &impl Catalog, statement: AstStatement) -> Result<Plan>
                         let insert_index_map: HashMap<_, _> = insert_column_names
                             .iter()
                             .enumerate()
-                            .map(|(i, name)| (name.clone(), i))
+                            .map(|(i, name)| (name.to_string(), i))
                             .collect();
 
                         // Now reorder the row expressions to match store_schema.column order
@@ -224,8 +218,8 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
                     AstFrom::Store { schema, store, .. } => {
                         QueryPlan::Scan {
                             // table: from.source.clone(),
-                            schema: SchemaName::from(schema.value()),
-                            store: StoreName::new(store.value()),
+                            schema: schema.value().to_string(),
+                            store: store.value().to_string(),
                             next: head,
                         }
                     }

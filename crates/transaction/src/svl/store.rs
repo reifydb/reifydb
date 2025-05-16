@@ -9,10 +9,9 @@
 // }
 
 use crate::store::Column;
-use base::schema::StoreName;
 
 pub struct Store {
-    pub name: StoreName,
+    pub name: String,
     pub columns: Vec<Column>,
 }
 

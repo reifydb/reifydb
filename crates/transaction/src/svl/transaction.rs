@@ -7,11 +7,9 @@ use crate::svl::schema::Schema;
 use crate::{Catalog as _, CatalogMut, InsertResult};
 use base::encoding::{Value as OtherValue, bincode};
 use base::expression::Expression;
-use base::schema::{SchemaName, StoreName};
 use base::{Key, Row, RowIter, key_prefix};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 pub struct Transaction<'a, S: storage::StorageEngineMut> {
@@ -32,24 +30,19 @@ impl<'a, S: storage::StorageEngineMut> crate::Transaction for Transaction<'a, S>
         Ok(&self.engine.catalog)
     }
 
-    fn schema(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Self::Schema> {
-        Ok(self.engine.catalog.get(schema.as_ref()).unwrap())
+    fn schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
+        Ok(self.engine.catalog.get(schema).unwrap())
     }
 
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>> {
         unreachable!()
     }
 
-    fn scan(
-        &self,
-        store: impl AsRef<StoreName>,
-        filter: Option<Expression>,
-    ) -> crate::Result<RowIter> {
-        let store = store.as_ref();
+    fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
                 .storage
-                .scan_prefix(key_prefix!("{}::row::", store.deref()))
+                .scan_prefix(key_prefix!("{}::row::", store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -76,19 +69,15 @@ impl<'a, S: storage::StorageEngineMut> crate::Transaction for TransactionMut<'a,
         Ok(&self.engine.catalog)
     }
 
-    fn schema(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Self::Schema> {
-        Ok(self.engine.catalog.get(schema.as_ref()).unwrap())
+    fn schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
+        Ok(self.engine.catalog.get(schema).unwrap())
     }
 
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>> {
         todo!()
     }
 
-    fn scan(
-        &self,
-        store: impl AsRef<StoreName>,
-        filter: Option<Expression>,
-    ) -> crate::Result<RowIter> {
+    fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter> {
         todo!()
     }
 }
@@ -101,13 +90,10 @@ impl<'a, S: storage::StorageEngineMut> crate::TransactionMut for TransactionMut<
         Ok(&mut self.engine.catalog)
     }
 
-    fn schema_mut(
-        &mut self,
-        schema: impl AsRef<SchemaName>,
-    ) -> crate::Result<&mut Self::SchemaMut> {
+    fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaMut> {
         // fixme has schema?!
         // Ok()
-        let schema = self.engine.catalog.get_mut(schema.as_ref()).unwrap();
+        let schema = self.engine.catalog.get_mut(schema).unwrap();
 
         Ok(schema)
     }

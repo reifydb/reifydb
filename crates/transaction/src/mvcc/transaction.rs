@@ -14,7 +14,7 @@ use crate::{Catalog as _, CatalogMut, InsertResult};
 use std::cell::UnsafeCell;
 
 use std::collections::BTreeSet;
-use std::ops::{Bound, Deref, RangeBounds};
+use std::ops::{Bound, RangeBounds};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use crate::mvcc::catalog::Catalog;
@@ -23,7 +23,6 @@ use crate::mvcc::scan::ScanIterator;
 use crate::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::expression::Expression;
-use base::schema::{SchemaName, StoreName};
 use base::{Row, RowIter, key_prefix};
 use storage::StorageEngineMut;
 // FIXME remove this
@@ -39,25 +38,20 @@ impl<S: StorageEngineMut> crate::Transaction for Transaction<S> {
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
-    fn schema(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Self::Schema> {
-        Ok(self.catalog().unwrap().get(schema.as_ref()).unwrap())
+    fn schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
+        Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
     fn get(&self, store: impl AsRef<str>, ids: &[base::Key]) -> crate::Result<Vec<Row>> {
         todo!()
     }
 
-    fn scan(
-        &self,
-        store: impl AsRef<StoreName>,
-        filter: Option<Expression>,
-    ) -> crate::Result<RowIter> {
-        let store = store.as_ref();
+    fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
                 .lock()
                 .unwrap()
-                .scan_prefix(key_prefix!("{}::row::", store.deref()))
+                .scan_prefix(key_prefix!("{}::row::", store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -92,11 +86,8 @@ impl<S: StorageEngineMut> crate::TransactionMut for Transaction<S> {
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
-    fn schema_mut(
-        &mut self,
-        schema: impl AsRef<SchemaName>,
-    ) -> crate::Result<&mut Self::SchemaMut> {
-        let schema = self.catalog_mut().unwrap().get_mut(schema.as_ref()).unwrap();
+    fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaMut> {
+        let schema = self.catalog_mut().unwrap().get_mut(schema).unwrap();
 
         Ok(schema)
     }

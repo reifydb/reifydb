@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ValueType;
-use crate::schema::{ColumnName, SchemaName, StoreName};
 use std::fmt::Display;
 
 /// A column label, used in query results and plans.
@@ -11,11 +10,11 @@ pub enum Label {
     /// A custom label
     Custom { value: ValueType, label: String },
     /// Just the column name
-    Column { value: ValueType, column: ColumnName },
+    Column { value: ValueType, column: String },
     /// Store and column name
-    StoreAndColumn { value: ValueType, store: StoreName, column: ColumnName },
+    StoreAndColumn { value: ValueType, store: String, column: String },
     /// Full name consisting of schema, store and column
-    Full { value: ValueType, schema: SchemaName, store: StoreName, column: ColumnName },
+    Full { value: ValueType, schema: String, store: String, column: String },
 }
 
 impl Display for Label {

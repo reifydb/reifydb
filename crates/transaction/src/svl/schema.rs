@@ -4,17 +4,16 @@
 use crate::StoreToCreate;
 use crate::store::Column;
 use crate::svl::store::Store;
-use base::schema::SchemaName;
 use std::collections::HashMap;
 use std::ops::Deref;
 
 pub struct Schema {
-    name: SchemaName,
+    name: String,
     stores: HashMap<String, Store>,
 }
 
 impl Schema {
-    pub fn new(name: SchemaName) -> Self {
+    pub fn new(name: String) -> Self {
         Self { name, stores: HashMap::new() }
     }
 }

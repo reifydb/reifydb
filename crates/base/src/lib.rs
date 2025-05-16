@@ -16,7 +16,6 @@ pub mod expression;
 mod key;
 mod label;
 mod row;
-pub mod schema;
 mod value;
 
 pub type Result<T> = std::result::Result<T, Error>;

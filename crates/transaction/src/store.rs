@@ -3,11 +3,10 @@
 
 use base::ValueType;
 use base::expression::Expression;
-use base::schema::ColumnName;
 
 #[derive(Debug, Clone)]
 pub struct Column {
-    pub name: ColumnName,
+    pub name: String,
     pub value: ValueType,
     pub default: Option<Expression>,
 }

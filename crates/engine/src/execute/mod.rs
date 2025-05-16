@@ -4,7 +4,6 @@
 mod display;
 
 use base::expression::Expression;
-use base::schema::{SchemaName, StoreName};
 use base::{Label, Row, Value, ValueType};
 use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
@@ -15,9 +14,9 @@ use transaction::{
 
 #[derive(Debug)]
 pub enum ExecutionResult {
-    CreateSchema { schema: SchemaName },
-    CreateTable { schema: SchemaName, table: StoreName },
-    InsertIntoTable { schema: SchemaName, table: StoreName, inserted: usize },
+    CreateSchema { schema: String },
+    CreateTable { schema: String, table: String },
+    InsertIntoTable { schema: String, table: String, inserted: usize },
     Query { labels: Vec<Label>, rows: Vec<Row> },
 }
 
@@ -80,20 +79,20 @@ fn execute_node<'a>(
     node: QueryPlan,
     rx: &'a impl Transaction,
     current_labels: Vec<Label>,
-    current_schema: Option<SchemaName>,
+    current_schema: Option<String>,
     current_store: Option<String>,
     input: Option<Box<dyn Iterator<Item = Vec<Value>> + 'a>>,
 ) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>> + 'a>)> {
     let (labels, result_iter, schema, store, next): (
         Vec<Label>,
         Box<dyn Iterator<Item = Vec<Value>> + 'a>,
-        Option<SchemaName>,
+        Option<String>,
         Option<String>,
         Option<Box<QueryPlan>>,
     ) = match node {
         QueryPlan::Scan { schema, store, next, .. } => (
             current_labels,
-            Box::new(rx.scan(store.clone(), None).unwrap()),
+            Box::new(rx.scan(&store, None).unwrap()),
             Some(schema),
             Some(store.to_string()),
             next,

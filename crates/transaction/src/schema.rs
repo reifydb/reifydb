@@ -4,7 +4,6 @@
 use crate::store::{Store, StoreMut};
 use base::ValueType;
 use base::expression::Expression;
-use base::schema::{ColumnName, StoreName};
 
 pub trait Schema {
     type Store: Store;
@@ -19,13 +18,13 @@ pub trait Schema {
 
 #[derive(Debug)]
 pub struct ColumnToCreate {
-    pub name: ColumnName,
+    pub name: String,
     pub value: ValueType,
     pub default: Option<Expression>,
 }
 
 pub enum StoreToCreate {
-    Table { name: StoreName, columns: Vec<ColumnToCreate> },
+    Table { name: String, columns: Vec<ColumnToCreate> },
 }
 
 pub trait SchemaMut: Schema {

@@ -2,12 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::mvcc::schema::Schema;
-use base::schema::SchemaName;
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Catalog {
-    schema: HashMap<SchemaName, Schema>,
+    schema: HashMap<String, Schema>,
 }
 
 impl Catalog {
@@ -18,8 +17,8 @@ impl Catalog {
 
 impl crate::Catalog for Catalog {
     type Schema = Schema;
-    fn get(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Schema> {
-        Ok(self.schema.get(schema.as_ref()).unwrap())
+    fn get(&self, schema: &str) -> crate::Result<&Schema> {
+        Ok(self.schema.get(schema).unwrap())
     }
 
     fn list(&self) -> crate::Result<Vec<&Schema>> {
@@ -30,22 +29,21 @@ impl crate::Catalog for Catalog {
 impl crate::CatalogMut for Catalog {
     type SchemaMut = Schema;
 
-    fn get_mut(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<&mut Self::Schema> {
-        Ok(self.schema.get_mut(schema.as_ref()).unwrap())
+    fn get_mut(&mut self, schema: &str) -> crate::Result<&mut Self::Schema> {
+        Ok(self.schema.get_mut(schema).unwrap())
     }
 
-    fn create(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<()> {
-        let schema = schema.as_ref().clone();
-        assert!(self.schema.get(schema.as_ref()).is_none()); // FIXME
-        self.schema.insert(schema.clone().into(), Schema::new(schema));
+    fn create(&mut self, schema: &str) -> crate::Result<()> {
+        assert!(self.schema.get(schema).is_none()); // FIXME
+        self.schema.insert(schema.clone().into(), Schema::new(schema.to_string()));
         Ok(())
     }
 
-    fn create_if_not_exists(&mut self, schema: impl AsRef<SchemaName>) -> crate::Result<()> {
+    fn create_if_not_exists(&mut self, schema: &str) -> crate::Result<()> {
         todo!()
     }
 
-    fn drop(&mut self, name: impl AsRef<SchemaName>) -> crate::Result<()> {
+    fn drop(&mut self, name: &str) -> crate::Result<()> {
         todo!()
     }
 }

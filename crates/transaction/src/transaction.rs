@@ -3,7 +3,6 @@
 
 use crate::{Catalog, CatalogMut, Schema, SchemaMut};
 use base::expression::Expression;
-use base::schema::{SchemaName, StoreName};
 use base::{Key, Row, RowIter};
 
 /// A Transaction executes transactional read operations on stores.
@@ -14,17 +13,13 @@ pub trait Transaction {
 
     fn catalog(&self) -> crate::Result<&Self::Catalog>;
 
-    fn schema(&self, schema: impl AsRef<SchemaName>) -> crate::Result<&Self::Schema>;
+    fn schema(&self, schema: &str) -> crate::Result<&Self::Schema>;
 
     /// Fetches store rows by primary key, if they exist.
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>>;
 
     /// Scans a store's rows, optionally applying the given filter.
-    fn scan(
-        &self,
-        store: impl AsRef<StoreName>,
-        filter: Option<Expression>,
-    ) -> crate::Result<RowIter>;
+    fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter>;
 }
 
 #[derive(Debug)]
@@ -40,7 +35,7 @@ pub trait TransactionMut: Transaction {
 
     fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut>;
 
-    fn schema_mut(&mut self, schema: impl AsRef<SchemaName>)-> crate::Result<&mut Self::SchemaMut>;
+    fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaMut>;
 
     fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<InsertResult>;
 
