@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::DB;
+use crate::{DB, IntoSessionRx, IntoSessionTx, SessionRx, SessionTx};
+use auth::Principal;
 use engine::Engine;
 use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
 use rql::ast;
@@ -14,13 +15,15 @@ pub struct Embedded<'a, S: StorageEngine, T: TransactionEngine<'a, S>> {
 }
 
 impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> Embedded<'a, S, T> {
-    pub fn new(transaction: T) -> Self {
-        Self { engine: Engine::new(transaction) }
+    pub fn new(transaction: T) -> (Self, Principal) {
+        let principal = Principal::User { id: 1, name: "root".to_string() };
+
+        (Self { engine: Engine::new(transaction) }, principal)
     }
 }
 
 impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> DB<'a> for Embedded<'a, S, T> {
-    fn tx_execute(&'a self, rql: &str) -> Vec<ExecutionResult> {
+    fn tx_execute_as(&'a self, _principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let mut result = vec![];
         let statements = ast::parse(rql);
 
@@ -37,7 +40,7 @@ impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> DB<'a> for Embedded<'a, 
         result
     }
 
-    fn rx_execute(&'a self, rql: &str) -> Vec<ExecutionResult> {
+    fn rx_execute_as(&'a self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let mut result = vec![];
         let statements = ast::parse(rql);
 
@@ -49,5 +52,16 @@ impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> DB<'a> for Embedded<'a, 
         }
 
         result
+    }
+
+    fn session_read_only(
+        &'a self,
+        into: impl IntoSessionRx<'a, Self>,
+    ) -> base::Result<SessionRx<'a, Self>> {
+        into.into_session_rx(&self)
+    }
+
+    fn session(&'a self, into: impl IntoSessionTx<'a, Self>) -> base::Result<SessionTx<'a, Self>> {
+        into.into_session_tx(&self)
     }
 }

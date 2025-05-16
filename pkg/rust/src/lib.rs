@@ -22,6 +22,8 @@
 #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+pub use auth::Principal;
+
 pub use base::*;
 pub use embedded::Embedded;
 /// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
@@ -30,6 +32,9 @@ use engine::execute::ExecutionResult;
 pub use error::Error;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use rql;
+
+pub use session::{IntoSessionRx, IntoSessionTx, SessionRx, SessionTx};
+
 /// The underlying key-value store responsible for persistence and data access.
 pub use storage;
 
@@ -40,24 +45,32 @@ use transaction::{TransactionEngine, mvcc, svl};
 
 mod embedded;
 mod error;
+mod session;
 
 pub struct ReifyDB {}
 
 pub trait DB<'a>: Sized {
     /// runs tx
-    fn tx_execute(&'a self, rql: &str) -> Vec<ExecutionResult>;
+    fn tx_execute_as(&'a self, principal: &Principal, rql: &str) -> Vec<ExecutionResult>;
     /// runs rx
-    fn rx_execute(&'a self, rql: &str) -> Vec<ExecutionResult>;
+    fn rx_execute_as(&'a self, principal: &Principal, rql: &str) -> Vec<ExecutionResult>;
+
+    fn session_read_only(
+        &'a self,
+        into: impl IntoSessionRx<'a, Self>,
+    ) -> Result<SessionRx<'a, Self>>;
+
+    fn session(&'a self, into: impl IntoSessionTx<'a, Self>) -> Result<SessionTx<'a, Self>>;
 }
 
 impl ReifyDB {
-    pub fn embedded<'a>() -> Embedded<'a, Memory, mvcc::Engine<Memory>> {
+    pub fn embedded<'a>() -> (Embedded<'a, Memory, mvcc::Engine<Memory>>, Principal) {
         Embedded::new(mvcc(memory()))
     }
 
     pub fn embedded_with<'a, S: StorageEngine, T: TransactionEngine<'a, S>>(
         transaction: T,
-    ) -> Embedded<'a, S, T> {
+    ) -> (Embedded<'a, S, T>, Principal) {
         Embedded::new(transaction)
     }
 }

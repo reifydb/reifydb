@@ -3,7 +3,7 @@
 
 use reifydb::storage::StorageEngine;
 use reifydb::transaction::TransactionEngine;
-use reifydb::{DB, Embedded, ReifyDB, memory, mvcc, svl};
+use reifydb::{DB, Embedded, Principal, ReifyDB, memory, mvcc, svl};
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
@@ -14,14 +14,16 @@ use testing::testscript::Command;
 
 pub struct EmbeddedRunner<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> {
     engine: NonNull<Embedded<'a, S, T>>,
+    root: Principal,
 }
 
 impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> EmbeddedRunner<'a, S, T> {
     // otherwise runs into lifetime issues with the runner
     pub fn new(transaction: T) -> Self {
-        let boxed = Box::new(ReifyDB::embedded_with(transaction));
+        let (db, root) = ReifyDB::embedded_with(transaction);
+        let boxed = Box::new(db);
         let ptr = NonNull::new(Box::into_raw(boxed)).expect("Box::into_raw returned null");
-        Self { engine: ptr }
+        Self { engine: ptr, root }
     }
 
     pub fn engine(&self) -> &'a Embedded<'a, S, T> {
@@ -55,7 +57,7 @@ impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> testscript::Ru
 
                 println!("tx: {query}");
 
-                for line in self.engine_mut().tx_execute(query.as_str()) {
+                for line in self.engine_mut().tx_execute_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -65,7 +67,7 @@ impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> testscript::Ru
 
                 println!("rx: {query}");
 
-                for line in self.engine().rx_execute(query.as_str()) {
+                for line in self.engine().rx_execute_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
             }
