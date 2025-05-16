@@ -13,7 +13,7 @@ pub type PrincipalId = u64;
 #[derive(Debug, Clone)]
 pub enum Principal {
     Anonymous {},
-    System {},
+    System { id: PrincipalId, name: String },
     User { id: PrincipalId, name: String },
 }
 

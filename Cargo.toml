@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 
-members = [
-    "bin/cli",
+members = ["bin/cli",
+    "bin/server",
     "crates/auth",
     "crates/base",
     "crates/engine",
@@ -14,8 +14,8 @@ members = [
     "testsuite/functional",
     "testsuite/smoke"]
 
-default-members = [
-    "bin/cli",
+default-members = ["bin/cli",
+    "bin/server",
     "crates/auth",
     "crates/base",
     "crates/engine",
@@ -44,7 +44,7 @@ opt-level = 0
 
 [workspace.dependencies]
 reifydb = { path = "pkg/rust", version = "0.0.1" }
-auth = { path = "crates/auth", version = "0.0.1"}
+auth = { path = "crates/auth", version = "0.0.1" }
 base = { path = "crates/base", version = "0.0.1" }
 engine = { path = "crates/engine", version = "0.0.1" }
 rql = { path = "crates/rql", version = "0.0.1" }

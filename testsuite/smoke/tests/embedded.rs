@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb::embedded::Embedded;
 use reifydb::storage::StorageEngine;
 use reifydb::transaction::TransactionEngine;
-use reifydb::{DB, Embedded, Principal, ReifyDB, memory, mvcc, svl};
+use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl};
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;

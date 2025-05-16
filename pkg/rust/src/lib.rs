@@ -25,7 +25,7 @@
 pub use auth::Principal;
 
 pub use base::*;
-pub use embedded::Embedded;
+// pub use embedded::Embedded;
 /// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
 pub use engine;
 use engine::execute::ExecutionResult;
@@ -40,11 +40,14 @@ pub use storage;
 
 pub use transaction;
 
+use crate::embedded::Embedded;
 use storage::{Memory, StorageEngine};
 use transaction::{TransactionEngine, mvcc, svl};
 
-mod embedded;
+pub mod client;
+pub mod embedded;
 mod error;
+pub mod server;
 mod session;
 
 pub struct ReifyDB {}

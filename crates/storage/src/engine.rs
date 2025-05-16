@@ -21,7 +21,7 @@ pub trait ScanIterator: DoubleEndedIterator<Item = Result<(Key, Value)>> {}
 /// Blanket implementation for all iterators that can act as a scan iterator.
 impl<I: DoubleEndedIterator<Item = Result<(Key, Value)>>> ScanIterator for I {}
 
-pub trait StorageEngine: Send {
+pub trait StorageEngine: Send + Sync {
     /// An associated type representing the iterator returned by `scan` and `scan_prefix`.
     ///
     /// The iterator yields ordered key-value pairs and must implement [`ScanIterator`].

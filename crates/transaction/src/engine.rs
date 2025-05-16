@@ -3,9 +3,9 @@
 
 use crate::{Rx, Tx};
 
-pub trait TransactionEngine<'a, S: storage::StorageEngine>: Sized {
-    type Rx: Rx;
-    type Tx: Tx;
+pub trait TransactionEngine<'a, S: storage::StorageEngine>: Send + Sync {
+    type Rx: Rx + 'a;
+    type Tx: Tx + 'a;
 
     /// Begins a read-only transaction.
     fn begin_read_only(&'a self) -> crate::Result<Self::Rx>;

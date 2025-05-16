@@ -16,7 +16,7 @@ pub struct Embedded<'a, S: StorageEngine, T: TransactionEngine<'a, S>> {
 
 impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> Embedded<'a, S, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
-        let principal = Principal::User { id: 1, name: "root".to_string() };
+        let principal = Principal::System { id: 1, name: "root".to_string() };
 
         (Self { engine: Engine::new(transaction) }, principal)
     }

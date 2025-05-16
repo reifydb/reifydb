@@ -1,5 +1,5 @@
 [package]
-name = "cli"
+name = "server"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -9,10 +9,9 @@ repository.workspace = true
 [dependencies]
 reifydb = { workspace = true }
 
-#tokio = { version = "1", features = ["full"] }
-#dashmap = "5"
-#rayon = "1.8"
-#anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+dashmap = "5"
+rayon = "1.8"
 
 
 [dev-dependencies]
