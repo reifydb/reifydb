@@ -16,6 +16,13 @@ async fn main() -> std::io::Result<()> {
         r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#,
     );
 
+    let result = server
+        .rx_execute_as(&root, r#"from test.arith select id + 1, 2 + num + 3, id + num, num + num"#);
+
+    for mut result in result {
+        println!("{}", result);
+    }
+
     server.serve().await;
 
     Ok(())
