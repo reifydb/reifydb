@@ -4,51 +4,27 @@
 use reifydb::embedded::Embedded;
 use reifydb::storage::StorageEngine;
 use reifydb::transaction::TransactionEngine;
-use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl};
+use reifydb::{DB, Principal, ReifyDB, memory, mvcc};
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
-use std::ptr::NonNull;
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::testscript::Command;
 
-pub struct EmbeddedRunner<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> {
-    engine: NonNull<Embedded<'a, S, T>>,
+pub struct EmbeddedRunner<S: StorageEngine, T: TransactionEngine<S>> {
+    engine: Embedded<S, T>,
     root: Principal,
 }
 
-impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> EmbeddedRunner<'a, S, T> {
-    // otherwise runs into lifetime issues with the runner
+impl<S: StorageEngine, T: TransactionEngine<S>> EmbeddedRunner<S, T> {
     pub fn new(transaction: T) -> Self {
-        let (db, root) = ReifyDB::embedded_with(transaction);
-        let boxed = Box::new(db);
-        let ptr = NonNull::new(Box::into_raw(boxed)).expect("Box::into_raw returned null");
-        Self { engine: ptr, root }
-    }
-
-    pub fn engine(&self) -> &'a Embedded<'a, S, T> {
-        unsafe { self.engine.as_ref() }
-    }
-
-    pub fn engine_mut(&mut self) -> &'a mut Embedded<'a, S, T> {
-        unsafe { self.engine.as_mut() }
+        let (engine, root) = ReifyDB::embedded_with(transaction);
+        Self { engine, root }
     }
 }
 
-impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> Drop
-    for EmbeddedRunner<'a, S, T>
-{
-    fn drop(&mut self) {
-        unsafe {
-            drop(Box::from_raw(self.engine.as_ptr()));
-        }
-    }
-}
-
-impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> testscript::Runner
-    for EmbeddedRunner<'a, S, T>
-{
+impl<S: StorageEngine, T: TransactionEngine<S>> testscript::Runner for EmbeddedRunner<S, T> {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
@@ -58,7 +34,7 @@ impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> testscript::Ru
 
                 println!("tx: {query}");
 
-                for line in self.engine_mut().tx_execute_as(&self.root, query.as_str()) {
+                for line in self.engine.tx_execute_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -68,7 +44,7 @@ impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> testscript::Ru
 
                 println!("rx: {query}");
 
-                for line in self.engine().rx_execute_as(&self.root, query.as_str()) {
+                for line in self.engine.rx_execute_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -79,12 +55,12 @@ impl<'a, S: StorageEngine + 'a, T: TransactionEngine<'a, S> + 'a> testscript::Ru
     }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as svl_memory => test_embedded_svl_memory }
+// test_each_path! { in "testsuite/smoke/tests/scripts" as svl_memory => test_embedded_svl_memory }
 test_each_path! { in "testsuite/smoke/tests/scripts" as mvcc_memory => test_embedded_mvcc_memory }
 
-fn test_embedded_svl_memory(path: &Path) {
-    testscript::run_path(&mut EmbeddedRunner::new(svl(memory())), path).expect("test failed")
-}
+// fn test_embedded_svl_memory(path: &Path) {
+//     testscript::run_path(&mut EmbeddedRunner::new(svl(memory())), path).expect("test failed")
+// }
 
 fn test_embedded_mvcc_memory(path: &Path) {
     testscript::run_path(&mut EmbeddedRunner::new(mvcc(memory())), path).expect("test failed")

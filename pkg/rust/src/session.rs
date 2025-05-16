@@ -13,12 +13,12 @@ pub struct SessionRx<'a, T: DB<'a>> {
 
 impl<'a, T: DB<'a>> SessionRx<'a, T> {
     /// runs tx
-    pub fn tx_execute_as(&'a self, rql: &str) -> Vec<ExecutionResult> {
+    pub fn tx_execute_as(&self, rql: &str) -> Vec<ExecutionResult> {
         todo!()
     }
 
     /// runs rx
-    pub fn execute(&'a self, rql: &str) -> Vec<ExecutionResult> {
+    pub fn execute(&self, rql: &str) -> Vec<ExecutionResult> {
         self.db.rx_execute_as(&self.principal, rql)
     }
 }
@@ -41,12 +41,12 @@ pub struct SessionTx<'a, T: DB<'a>> {
 
 impl<'a, T: DB<'a>> SessionTx<'a, T> {
     /// runs tx
-    pub fn execute(&'a self, rql: &str) -> Vec<ExecutionResult> {
+    pub fn execute(&self, rql: &str) -> Vec<ExecutionResult> {
         self.db.tx_execute_as(&self.principal, rql)
     }
 
     /// runs rx
-    pub fn rx_execute(&'a self, rql: &str) -> Vec<ExecutionResult> {
+    pub fn rx_execute(&self, rql: &str) -> Vec<ExecutionResult> {
         self.db.rx_execute_as(&self.principal, rql)
     }
 }

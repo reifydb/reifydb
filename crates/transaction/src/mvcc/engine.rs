@@ -33,18 +33,18 @@ pub struct Engine<S: StorageEngine> {
     pub storage: Arc<Mutex<S>>,
 }
 
-impl<'a, S: StorageEngine + 'a> crate::TransactionEngine<'a, S> for Engine<S> {
+impl<S: StorageEngine> crate::TransactionEngine<S> for Engine<S> {
     type Rx = Transaction<S>;
     type Tx = Transaction<S>;
 
-    fn begin_read_only(&'a self) -> crate::Result<Self::Rx> {
+    fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         // let guard = self.inner.read().unwrap();
         // Ok(Transaction::new(guard))
         // unimplemented!()
         Ok(Transaction::begin_read_only(self.storage.clone(), None).unwrap())
     }
 
-    fn begin(&'a self) -> crate::Result<Self::Tx> {
+    fn begin(&self) -> crate::Result<Self::Tx> {
         // let guard = self.inner.write().unwrap();
         // Ok(TransactionMut::new(guard))
         Ok(Transaction::begin(self.storage.clone()).unwrap())

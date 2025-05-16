@@ -7,9 +7,9 @@
 //
 // /// A client session. Executes raw RQL statements against an engine and
 // /// handles transaction control.
-// pub struct Session<'a, S: storage::Engine, T: transaction::Engine<'a, S>, E: Engine<'a, S, T>> {
+// pub struct Session<'a, S: storage::Engine, T: transaction::Engine< S>, E: Engine< S, T>> {
 //     /// The engine.
-//     engine: &'a E,
+//     engine: & E,
 //     /// The current read transaction, if any.
 //     rx: Option<E::Tx>,
 //     /// The current read-write transaction, if any.
@@ -17,7 +17,7 @@
 // }
 //
 // impl<'a, E: Engine<'a>> Session<'a, E> {
-//     pub fn new(engine: &'a E) -> Self {
+//     pub fn new(engine: & E) -> Self {
 //         Self { engine, rx: None, tx: None }
 //     }
 // }

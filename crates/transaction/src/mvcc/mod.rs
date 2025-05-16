@@ -195,7 +195,7 @@ pub struct Transaction<S: StorageEngine> {
 /// is separate from Transaction to allow it to be passed around independently
 /// of the engine. There are two main motivations for this:
 ///
-/// * It can be exported via Transaction.state(), (de)serialized, 
+/// * It can be exported via Transaction.state(), (de)serialized,
 ///
 /// * It can be borrowed independently of Engine, allowing references to it
 ///   in VisibleIterator, which would otherwise result in self-references.
@@ -248,6 +248,6 @@ impl From<TransactionState> for Cow<'_, TransactionState> {
 
 impl<'a> From<&'a TransactionState> for Cow<'a, TransactionState> {
     fn from(tx: &'a TransactionState) -> Self {
-        Cow::Borrowed(tx)
+        Cow::Borrowed(&tx)
     }
 }

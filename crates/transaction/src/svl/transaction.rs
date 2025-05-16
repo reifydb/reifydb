@@ -16,13 +16,13 @@ pub struct Transaction<'a, S: storage::StorageEngine> {
     engine: RwLockReadGuard<'a, EngineInner<S>>,
 }
 
-impl<'a, S: storage::StorageEngine> Transaction<'a, S> {
+impl<S: storage::StorageEngine> Transaction<'a, S> {
     pub fn new(engine: RwLockReadGuard<'a, EngineInner<S>>) -> Self {
         Self { engine }
     }
 }
 
-impl<'a, S: storage::StorageEngine> crate::Rx for Transaction<'a, S> {
+impl<S: storage::StorageEngine> crate::Rx for Transaction<'a, S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -55,13 +55,13 @@ pub struct TransactionMut<'a, S: storage::StorageEngine> {
     log: RefCell<HashMap<String, Vec<Row>>>,
 }
 
-impl<'a, S: storage::StorageEngine> TransactionMut<'a, S> {
+impl<S: storage::StorageEngine> TransactionMut<'a, S> {
     pub fn new(engine: RwLockWriteGuard<'a, EngineInner<S>>) -> Self {
         Self { engine, log: RefCell::new(HashMap::new()) }
     }
 }
 
-impl<'a, S: storage::StorageEngine> crate::Rx for TransactionMut<'a, S> {
+impl<S: storage::StorageEngine> crate::Rx for TransactionMut<'a, S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -82,7 +82,7 @@ impl<'a, S: storage::StorageEngine> crate::Rx for TransactionMut<'a, S> {
     }
 }
 
-impl<'a, S: storage::StorageEngine> crate::Tx for TransactionMut<'a, S> {
+impl<S: storage::StorageEngine> crate::Tx for TransactionMut<'a, S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

@@ -8,9 +8,7 @@ use base::{Label, Row, Value, ValueType};
 use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
 use std::vec;
-use transaction::{
-    CatalogTx, NopStore, SchemaRx, SchemaTx, StoreRx, StoreToCreate, Rx, Tx,
-};
+use transaction::{CatalogTx, NopStore, Rx, SchemaRx, SchemaTx, StoreRx, StoreToCreate, Tx};
 
 #[derive(Debug)]
 pub enum ExecutionResult {
@@ -20,10 +18,7 @@ pub enum ExecutionResult {
     Query { labels: Vec<Label>, rows: Vec<Row> },
 }
 
-pub fn execute_plan_mut(
-    plan: Plan,
-    tx: &mut impl Tx,
-) -> crate::Result<ExecutionResult> {
+pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<ExecutionResult> {
     Ok(match plan {
         Plan::CreateSchema { name, if_not_exists } => {
             if if_not_exists {
@@ -85,7 +80,7 @@ fn execute_node<'a>(
 ) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>> + 'a>)> {
     let (labels, result_iter, schema, store, next): (
         Vec<Label>,
-        Box<dyn Iterator<Item = Vec<Value>> + 'a>,
+        Box<dyn Iterator<Item = Vec<Value>>>,
         Option<String>,
         Option<String>,
         Option<Box<QueryPlan>>,

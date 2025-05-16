@@ -8,18 +8,17 @@ use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
 use rql::ast;
 use rql::plan::{plan, plan_mut};
 use std::io::{BufRead, BufReader, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::sync::Arc;
-use std::thread;
 use storage::StorageEngine;
 use tokio::task::spawn_blocking;
 use transaction::{Rx, TransactionEngine, Tx};
 
-pub struct Server<'a, S: StorageEngine, T: TransactionEngine<'a, S>> {
-    engine: Arc<Engine<'a, S, T>>,
+pub struct Server<S: StorageEngine, T: TransactionEngine<S>> {
+    engine: Arc<Engine<S, T>>,
 }
 
-impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> Server<'a, S, T> {
+impl<S: StorageEngine, T: TransactionEngine<S>> Server<S, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
 
@@ -27,29 +26,29 @@ impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> Server<'a, S, T> {
     }
 }
 
-impl<S: StorageEngine + 'static, T: TransactionEngine<'static, S> + 'static> Server<'static, S, T> {
+impl<S: StorageEngine, T: TransactionEngine<S>> Server<S, T> {
     pub async fn serve(&self) -> std::io::Result<()> {
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            let engine = engine.clone();
-            let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
-            // let db = Arc::new(DashMap::new());
-
-            println!("Server listening on 127.0.0.1:6379");
-
-            let engine = engine.clone();
-            for stream in listener.incoming() {
-                let engine = engine.clone();
-                // let db = db.clone();
-                let stream = stream.unwrap();
-
-                thread::spawn(move || Self::handle_client(stream, engine.clone()));
-            }
+            // let engine = engine.clone();
+            // let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+            // // let db = Arc::new(DashMap::new());
+            //
+            // println!("Server listening on 127.0.0.1:6379");
+            //
+            // let engine = engine.clone();
+            // for stream in listener.incoming() {
+            //     let engine = engine.clone();
+            //     // let db = db.clone();
+            //     let stream = stream.unwrap();
+            //
+            //     thread::spawn(move || Self::handle_client(stream, engine.clone()));
+            // }
         });
         Ok(())
     }
 
-    fn handle_client(stream: TcpStream, engine: Arc<Engine<'static, S, T>>) {
+    fn handle_client(stream: TcpStream, engine: Arc<Engine<S, T>>) {
         let reader = BufReader::new(&stream);
         let mut writer = stream.try_clone().unwrap();
 
@@ -64,7 +63,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<'static, S> + 'static> Ser
         }
     }
 
-    fn handle_command(line: &str, engine: Arc<Engine<'static, S, T>>) -> String {
+    fn handle_command(line: &str, engine: Arc<Engine<S, T>>) -> String {
         let tokens: Vec<&str> = line.trim().split_whitespace().collect();
         if tokens.is_empty() {
             return "-ERR Empty command\n".to_string();
@@ -73,19 +72,19 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<'static, S> + 'static> Ser
         match tokens[0].to_uppercase().as_str() {
             "GET" if tokens.len() == 2 => {
                 let mut result = vec![];
-                let statements = ast::parse("from users select id, name");
+                let mut statements = ast::parse("from users select id, name");
 
-                let mut rx = &engine.begin_read_only().unwrap();
+                let mut rx = engine.begin_read_only().unwrap();
 
-                for statement in statements {
-                    let plan = plan_mut(rx.catalog().unwrap(), statement).unwrap();
-                    let er = execute_plan(plan, rx).unwrap();
-                    result.push(er);
-                }
+                // for statement in statements {
+                let statement = statements.pop().unwrap();
+                let plan = plan_mut(rx.catalog().unwrap(), statement).unwrap();
+                let er = execute_plan(plan, &rx).unwrap();
+                result.push(er);
+                // }
 
                 dbg!(&result);
-                
-                
+
                 "$-1\n".to_string()
             }
             // db
@@ -125,10 +124,10 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<'static, S> + 'static> Ser
     }
 }
 
-impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> Server<'a, S, T> {}
+impl<S: StorageEngine, T: TransactionEngine<S>> Server<S, T> {}
 
-impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> DB<'a> for Server<'a, S, T> {
-    fn tx_execute_as(&'a self, _principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+impl<'a, S: StorageEngine, T: TransactionEngine<S>> DB<'a> for Server<S, T> {
+    fn tx_execute_as(&self, _principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let mut result = vec![];
         let statements = ast::parse(rql);
 
@@ -145,7 +144,7 @@ impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> DB<'a> for Server<'a, S,
         result
     }
 
-    fn rx_execute_as(&'a self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+    fn rx_execute_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let mut result = vec![];
         let statements = ast::parse(rql);
 
@@ -160,15 +159,15 @@ impl<'a, S: StorageEngine, T: TransactionEngine<'a, S>> DB<'a> for Server<'a, S,
     }
 
     fn session_read_only(
-        &'a self,
+        &self,
         into: impl IntoSessionRx<'a, Self>,
     ) -> base::Result<SessionRx<'a, Self>> {
-        into.into_session_rx(&self)
-        // todo!()
+        // into.into_session_rx(&self)
+        todo!()
     }
 
-    fn session(&'a self, into: impl IntoSessionTx<'a, Self>) -> base::Result<SessionTx<'a, Self>> {
-        into.into_session_tx(&self)
-        // todo!()
+    fn session(&self, into: impl IntoSessionTx<'a, Self>) -> base::Result<SessionTx<'a, Self>> {
+        // into.into_session_tx(&self)
+        todo!()
     }
 }

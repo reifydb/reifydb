@@ -3,13 +3,13 @@
 
 use crate::{Rx, Tx};
 
-pub trait TransactionEngine<'a, S: storage::StorageEngine>: Send + Sync {
-    type Rx: Rx + 'a;
-    type Tx: Tx + 'a;
+pub trait TransactionEngine<S: storage::StorageEngine>: Send + Sync {
+    type Rx: Rx;
+    type Tx: Tx;
 
     /// Begins a read-only transaction.
-    fn begin_read_only(&'a self) -> crate::Result<Self::Rx>;
+    fn begin_read_only(&self) -> crate::Result<Self::Rx>;
 
     /// Begins a read-write transaction.
-    fn begin(&'a self) -> crate::Result<Self::Tx>;
+    fn begin(&self) -> crate::Result<Self::Tx>;
 }

@@ -12,8 +12,8 @@ pub struct Span {
     pub fragment: String,
 }
 
-impl<'a> From<LocatedSpan<&'a str>> for Span {
-    fn from(value: LocatedSpan<&'a str>) -> Self {
+impl<'a> From<LocatedSpan<& str>> for Span {
+    fn from(value: LocatedSpan<& str>) -> Self {
         Self { offset: Offset(value.location_offset()), line: Line(value.location_line()), fragment: value.fragment().to_string() }
     }
 }
