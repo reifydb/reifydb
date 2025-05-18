@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package grpc_query;
+
+service Query {
+  rpc Query(QueryRequest) returns (stream QueryResult);
+}
+
+message QueryRequest {string query = 1;}
+
+message Column {
+  string name = 1;
+  uint32 value = 2;
+}
+
+message Int128 {
+  int64 high = 1;
+  int64 low = 2;
+  }
+
+message UInt128 {
+  uint64 high = 1;
+  uint64 low = 2;
+}
+
+message Value {
+  oneof kind {
+
+    bool bool_value = 1;
+
+    int32 int1_value = 2;
+    int32 int2_value = 3;
+    int32 int4_value = 4;
+    int64 int8_value = 5;
+    Int128 int16_value = 6;
+
+    uint32 uint1_value = 7;
+    uint32 uint2_value = 8;
+    uint32 uint4_value = 9;
+    uint64 uint8_value = 10;
+    UInt128 uint16_value = 11;
+
+    string text_value = 12;
+  }
+ }
+
+message Row {repeated Value values = 1;}
+
+message QueryResult {
+  oneof result {
+    ColumnHeader header = 1;
+    Row row = 2;
+    string error = 3;
+  }
+}
+
+message ColumnHeader {
+  repeated Column columns = 1;
+}

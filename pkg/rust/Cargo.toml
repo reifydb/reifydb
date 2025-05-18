@@ -14,9 +14,11 @@ rql = { workspace = true }
 storage = { workspace = true }
 transaction = { workspace = true }
 
+prost = { workspace = true }
 serde = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio-stream = { workspace = true }
+tonic = { workspace = true }
 
-
-tokio = { version = "1.45.0", features = ["full"] }
-dashmap = "5.5.3"
-rayon = "1.10.0"
+[build-dependencies]
+tonic-build = { workspace = true }

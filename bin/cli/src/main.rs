@@ -33,116 +33,37 @@
 //     // }
 // }
 
-use std::{
-    io::{BufRead, BufReader, Write},
-    net::TcpStream,
-    thread,
-    time::Instant,
-};
+use reifydb::Value;
+use reifydb::client::Client;
+use tonic::codegen::tokio_stream::StreamExt;
 
-// const THREADS: usize = 32;
-// const REQUESTS_PER_THREAD: usize = 10_000;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client {};
 
-fn main() {
-    let start = Instant::now();
+    let table = client.query("from users select id, name").await;
 
-    let mut handles = vec![];
+    println!("Columns:");
+    for col in &table.columns {
+        print!("{} ({}) | ", col.name, col.value);
+    }
+    println!();
 
-    // for i in 0..THREADS {
-    let handle = thread::spawn(move || {
-        let stream = TcpStream::connect("127.0.0.1:6379").expect("Failed to connect");
-        let mut reader = BufReader::new(stream.try_clone().unwrap());
-        let mut writer = stream;
+    let mut rows = table.rows;
 
-        // for j in 0..REQUESTS_PER_THREAD {
-        let key = format!("key_{}_{}", 0, 1);
-        let value = format!("val_{}", 1);
-
-        // SET
-        // let cmd = format!("SET {} {}\n", key, value);
-        // writer.write_all(cmd.as_bytes()).unwrap();
-
-        let mut line = String::new();
-        // reader.read_line(&mut line).unwrap();
-
-        // GET
-        let cmd = format!("GET {}\n", key);
-        writer.write_all(cmd.as_bytes()).unwrap();
-        line.clear();
-        reader.read_line(&mut line).unwrap();
-        println!("{line}");
-        assert!(line.starts_with('+') || line.starts_with('$')); // basic check
-        // }
-    });
-
-    handles.push(handle);
-    // }
-
-    for h in handles {
-        h.join().unwrap();
+    while let Some(row) = rows.next().await {
+        let row = row?;
+        let formatted: Vec<String> = row
+            .into_iter()
+            .map(|v| match v {
+                Value::Bool(v) => v.to_string(),
+                Value::Uint2(v) => v.to_string(),
+                Value::Text(v) => v.to_string(),
+                _ => "[unsupported]".to_string(),
+            })
+            .collect();
+        println!("{}", formatted.join(" | "));
     }
 
-    // let duration = start.elapsed();
-    // let total_requests = THREADS * REQUESTS_PER_THREAD * 2;
-    // let rps = total_requests as f64 / duration.as_secs_f64();
-    // 
-    // println!("Completed {} requests in {:.2?} ({:.2} req/s)", total_requests, duration, rps);
+    Ok(())
 }
-
-// use tokio::{
-//     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-//     net::TcpStream,
-//     time::Instant,
-// };
-//
-// const CLIENTS: usize = 128;
-//
-// #[tokio::main]
-// async fn main() {
-//     let start = Instant::now();
-//
-//     let mut handles = vec![];
-//
-//     for i in 0..CLIENTS {
-//         handles.push(tokio::spawn(run_client(i)));
-//     }
-//
-//     for handle in handles {
-//         handle.await.unwrap();
-//     }
-//
-//     let elapsed = start.elapsed();
-//     let total_requests = 100_000;
-//     let rps = total_requests as f64 / elapsed.as_secs_f64();
-//
-//     println!(
-//         "Completed {} requests in {:.2?} ({:.2} req/s)",
-//         total_requests, elapsed, rps
-//     );
-// }
-//
-// async fn run_client(client_id: usize) {
-//     let stream = TcpStream::connect("127.0.0.1:6379").await.unwrap();
-//     let (reader, mut writer) = stream.into_split();
-//     let mut reader = BufReader::new(reader).lines();
-//
-//     for i in 0..100_000 / CLIENTS {
-//         let key = format!("key_{}_{}", client_id, i);
-//         let val = format!("val_{}", i);
-//
-//         // SET
-//         writer
-//             .write_all(format!("SET {} {}\n", key, val).as_bytes())
-//             .await
-//             .unwrap();
-//         reader.next_line().await.unwrap().unwrap(); // discard +OK
-//
-//         // GET
-//         writer
-//             .write_all(format!("GET {}\n", key).as_bytes())
-//             .await
-//             .unwrap();
-//         let response = reader.next_line().await.unwrap().unwrap();
-//         assert!(response.starts_with('+') || response.starts_with('$'));
-//     }
-// }

@@ -59,8 +59,16 @@ hex = { version = "0.4.3" }
 log = { version = "0.4.27" }
 nom = { version = "8.0.0" }
 nom_locate = { version = "5.0.0" }
+prost = "0.13.5"
 regex = { version = "1.11.1" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = { version = "0.11.17" }
 test_each_file = { version = "0.3.4" }
+tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread"] }
+tokio-stream = "0.1.17"
+tonic = "0.13.1"
+tonic-build = "0.13.1"
 uuid = { version = "1.16.0", features = ["v4"] }
+
+
+
