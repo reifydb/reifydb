@@ -1,16 +1,17 @@
-use reifydb::server::grpc::auth::AuthInterceptor;
-use reifydb::server::grpc::query_service;
-use tonic::service::interceptor::InterceptorLayer;
-use tonic::transport::Server;
+use reifydb::ReifyDB;
+use reifydb::server::{DatabaseConfig, ServerConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let address = "[::1]:4321".parse().unwrap();
+    ReifyDB::server(ServerConfig {
+        database: DatabaseConfig { socket_addr: "[::1]:4321".parse().ok() },
+    })
+    .before_bootstrap(|ctx| async move {
+        ctx.info("test");
+    })
+    .serve()
+    .await
+    .unwrap();
 
-    Server::builder()
-        .layer(InterceptorLayer::new(AuthInterceptor {}))
-        .add_service(query_service())
-        .serve(address)
-        .await?;
     Ok(())
 }

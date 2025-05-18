@@ -1,181 +1,93 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub mod grpc;
-
-use crate::{IntoSessionRx, IntoSessionTx, SessionRx, SessionTx, DB};
-use auth::Principal;
-use engine::execute::{execute_plan, execute_plan_mut, ExecutionResult};
-use engine::Engine;
-use rql::ast;
-use rql::plan::{plan, plan_mut};
+use crate::server::grpc::query_service;
+use crate::{DB, IntoSessionRx, IntoSessionTx};
+pub use config::{DatabaseConfig, ServerConfig};
+use std::ops::Deref;
+use std::pin::Pin;
 use std::sync::Arc;
-use storage::StorageEngine;
-use tokio::io::BufReader;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::spawn;
-use transaction::{Rx, TransactionEngine, Tx};
+use tonic::service::InterceptorLayer;
+use tonic::transport::Error;
 
-pub struct Server<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
-    engine: Arc<Engine<S, T>>,
+mod config;
+mod grpc;
+
+pub struct Server {
+    pub(crate) config: ServerConfig,
+    pub(crate) grpc: tonic::transport::Server,
+    pub(crate) callback: Callback,
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> Server<S, T> {
-    pub fn new(transaction: T) -> (Self, Principal) {
-        let principal = Principal::System { id: 1, name: "root".to_string() };
+pub type CallbackType<T> = Box<dyn FnOnce(T) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-        (Self { engine: Arc::new(Engine::new(transaction)) }, principal)
-    }
+pub struct Callback {
+    before_bootstrap: Vec<CallbackType<BeforeBootstrap>>,
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> Server<S, T> {
-    pub async fn serve(&self) -> std::io::Result<()> {
-        let engine = self.engine.clone();
-        let listener = TcpListener::bind("127.0.0.1:6379").await?;
-        println!("Server listening on 127.0.0.1:6379");
+#[derive(Clone)]
+pub struct Context(Arc<ContextInner>);
 
-        loop {
-            let (stream, _) = listener.accept().await?;
-            let engine = engine.clone();
+impl Deref for Context {
+    type Target = ContextInner;
 
-            spawn(async move {
-                if let Err(e) = Self::handle_client(stream, engine).await {
-                    eprintln!("Error handling client: {:?}", e);
-                }
-            });
-        }
-    }
-
-    async fn handle_client(stream: TcpStream, engine: Arc<Engine<S, T>>) -> std::io::Result<()> {
-        let (reader, mut writer) = stream.into_split();
-        let mut lines = BufReader::new(reader).lines();
-
-        while let Some(line) = lines.next_line().await? {
-            let response = Self::handle_command(&line, engine.clone()).await;
-            writer.write_all(response.as_bytes()).await?;
-        }
-
-        Ok(())
-    }
-    async fn handle_command(line: &str, engine: Arc<Engine<S, T>>) -> String {
-        let tokens: Vec<&str> = line.trim().split_whitespace().collect();
-        if tokens.is_empty() {
-            return "-ERR Empty command\n".to_string();
-        }
-
-        match tokens[0].to_uppercase().as_str() {
-            "GET" if tokens.len() == 2 => {
-                // let mut result = vec![];
-                // let mut statements = ast::parse("from test.arith select id + 1, 2 + num + 3, id + num, num + num");
-                //
-                // let mut rx = engine.begin_read_only().unwrap();
-                //
-                // // for statement in statements {
-                // let statement = statements.pop().unwrap();
-                // let plan = plan_mut(rx.catalog().unwrap(), statement).unwrap();
-                // let er = execute_plan(plan, &rx).unwrap();
-                // result.push(er);
-                // // }
-
-                let mut result = vec![];
-                let statements =
-                    ast::parse("from test.arith select id + 1, 2 + num + 3, id + num, num + num");
-
-                let rx = engine.begin_read_only().unwrap();
-                for statement in statements {
-                    let plan = plan(statement).unwrap();
-                    let er = execute_plan(plan, &rx).unwrap();
-                    result.push(er);
-                }
-
-                // result
-
-                dbg!(&result);
-
-                "$-1\n".to_string()
-            }
-            // db
-            //     .get(tokens[1])
-            //     .map(|v| format!("+{}\n", v.value()))
-            //     .unwrap_or_else(|| ),
-            "SET" if tokens.len() == 3 => {
-                let key = tokens[1].to_string();
-                let value = tokens[2].to_string();
-                // rayon::spawn_fifo({
-                // 	let db = db.clone();
-                // 	move || {
-                // db.insert(key, value);
-                // }
-                // });
-                "+OK\n".to_string()
-            }
-
-            "BATCHSET" if tokens.len() >= 3 && tokens.len() % 2 == 1 => {
-                let kvs: Vec<(String, String)> = tokens[1..]
-                    .chunks(2)
-                    .map(|pair| (pair[0].to_string(), pair[1].to_string()))
-                    .collect();
-
-                // let db = db.clone();
-                // rayon::spawn_fifo(move || {
-                // kvs.into_par_iter().for_each(|(k, v)| {
-                //     db.insert(k, v);
-                // });
-                // });
-
-                "+OK\n".to_string()
-            }
-
-            _ => "-ERR Unknown or invalid command\n".to_string(),
-        }
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> Server<S, T> {}
+impl Context {
+    pub fn info(&self, str: &str) {
+        println!("info: {}", str);
+    }
+}
 
-impl<'a, S: StorageEngine, T: TransactionEngine<S>> DB<'a> for Server<S, T> {
-    fn tx_execute_as(&self, _principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        let mut result = vec![];
-        let statements = ast::parse(rql);
+pub struct ContextInner {}
 
-        let mut tx = self.engine.begin().unwrap();
+pub struct BeforeBootstrap {
+    ctx: Context,
+}
 
-        for statement in statements {
-            let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
-            let er = execute_plan_mut(plan, &mut tx).unwrap();
-            result.push(er);
+impl Deref for BeforeBootstrap {
+    type Target = Context;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+
+impl Server {
+    pub fn new(config: ServerConfig) -> Self {
+        Self {
+            config,
+            grpc: tonic::transport::Server::builder(),
+            callback: Callback { before_bootstrap: vec![] },
+        }
+    }
+
+    pub fn before_bootstrap<F, Fut>(mut self, func: F) -> Self
+    where
+        F: FnOnce(BeforeBootstrap) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.callback.before_bootstrap.push(Box::new(move |ctx| Box::pin(func(ctx))));
+        self
+    }
+
+    pub async fn serve(self) -> Result<(), Error> {
+        let ctx = Context(Arc::new(ContextInner {}));
+
+        for f in self.callback.before_bootstrap {
+            f(BeforeBootstrap { ctx: ctx.clone() }).await;
         }
 
-        tx.commit().unwrap();
+        let address =
+            self.config.database.socket_addr.unwrap_or_else(|| "[::1]:4321".parse().unwrap());
 
-        result
-    }
-
-    fn rx_execute_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        let mut result = vec![];
-        let statements = ast::parse(rql);
-
-        let rx = self.engine.begin_read_only().unwrap();
-        for statement in statements {
-            let plan = plan(statement).unwrap();
-            let er = execute_plan(plan, &rx).unwrap();
-            result.push(er);
-        }
-
-        result
-    }
-
-    fn session_read_only(
-        &self,
-        into: impl IntoSessionRx<'a, Self>,
-    ) -> base::Result<SessionRx<'a, Self>> {
-        // into.into_session_rx(&self)
-        todo!()
-    }
-
-    fn session(&self, into: impl IntoSessionTx<'a, Self>) -> base::Result<SessionTx<'a, Self>> {
-        // into.into_session_tx(&self)
-        todo!()
+        tonic::transport::Server::builder()
+            .layer(InterceptorLayer::new(grpc::auth::AuthInterceptor {}))
+            .add_service(query_service())
+            .serve(address)
+            .await
     }
 }

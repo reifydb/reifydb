@@ -41,6 +41,7 @@ pub use storage;
 pub use transaction;
 
 use crate::embedded::Embedded;
+use crate::server::{Server, ServerConfig};
 use storage::{Memory, StorageEngine};
 use transaction::{TransactionEngine, mvcc, svl};
 
@@ -72,6 +73,13 @@ impl ReifyDB {
         transaction: T,
     ) -> (Embedded<S, T>, Principal) {
         Embedded::new(transaction)
+    }
+
+    // pub fn client()
+    // pub fn server(config) -> ServerBuilder // allows to hook into everything / server.serve()
+
+    pub fn server(config: ServerConfig) -> Server {
+        Server::new(config)
     }
 }
 
