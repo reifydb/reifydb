@@ -5,25 +5,31 @@ use crate::server::grpc::grpc_query::query_server::Query;
 use crate::server::grpc::grpc_query::{Column, ColumnHeader, QueryRequest, QueryResult, Row};
 use crate::server::grpc::{AuthenticatedUser, grpc_query};
 use base::Value;
+use engine::Engine;
+use engine::execute::{ExecutionResult, execute_plan};
+use rql::ast;
+use rql::plan::plan;
 use std::pin::Pin;
+use storage::StorageEngine;
 use tokio_stream::Stream;
 use tokio_stream::{self as stream, StreamExt};
 use tonic::{Request, Response, Status};
+use transaction::TransactionEngine;
 
-#[derive(Debug)]
-pub struct QueryService {}
+pub struct QueryService<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
+    pub(crate) engine: Engine<S, T>,
+}
 
 type QueryResultStream = Pin<Box<dyn Stream<Item = Result<QueryResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl Query for QueryService {
+impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> Query for QueryService<S, T> {
     type QueryStream = QueryResultStream;
 
     async fn query(
         &self,
         request: Request<QueryRequest>,
     ) -> Result<Response<Self::QueryStream>, Status> {
-
         let user = request
             .extensions()
             .get::<AuthenticatedUser>()
@@ -35,31 +41,66 @@ impl Query for QueryService {
 
         println!("Received query: {}", query);
 
-        let columns = vec![
-            Column { name: "id".into(), value: 1u32 },
-            Column { name: "name".into(), value: 2u32 },
-        ];
+        let mut result = vec![];
+        let statements = ast::parse(query.as_str());
 
-        let rows: Vec<Vec<grpc_query::Value>> = vec![
-            vec![
-                value_to_query_value(&Value::Uint2(1)),
-                value_to_query_value(&Value::Text("Alice".to_string())),
-            ],
-            vec![
-                value_to_query_value(&Value::Uint2(2)),
-                value_to_query_value(&Value::Text("Bob".to_string())),
-            ],
-            vec![
-                value_to_query_value(&Value::Uint2(3)),
-                value_to_query_value(&Value::Text("Eve".to_string())),
-            ],
-        ];
+        let rx = self.engine.begin_read_only().unwrap();
+        for statement in statements {
+            let plan = plan(statement).unwrap();
+            let er = execute_plan(plan, &rx).unwrap();
+            result.push(er);
+        }
+
+        // result
+        let result = &result[0];
+
+        let mut columns = vec![];
+        let mut rs: Vec<Vec<grpc_query::Value>> = vec![];
+
+        match result {
+            ExecutionResult::Query { labels, rows } => {
+                for l in labels {
+                    columns.push(Column { name: l.to_string(), value: 1u32 })
+                }
+
+                for r in rows {
+                    let mut row = vec![];
+
+                    for v in r {
+                        row.push(value_to_query_value(v))
+                    }
+
+                    rs.push(row);
+                }
+            }
+            _ => unreachable!(),
+        }
+
+        // let columns = vec![
+        //     Column { name: "id".into(), value: 1u32 },
+        //     Column { name: "name".into(), value: 2u32 },
+        // ];
+
+        // let rows: Vec<Vec<grpc_query::Value>> = vec![
+        //     vec![
+        //         value_to_query_value(&Value::Uint2(1)),
+        //         value_to_query_value(&Value::Text("Alice".to_string())),
+        //     ],
+        //     vec![
+        //         value_to_query_value(&Value::Uint2(2)),
+        //         value_to_query_value(&Value::Text("Bob".to_string())),
+        //     ],
+        //     vec![
+        //         value_to_query_value(&Value::Uint2(3)),
+        //         value_to_query_value(&Value::Text("Eve".to_string())),
+        //     ],
+        // ];
 
         let header = QueryResult {
             result: Some(grpc_query::query_result::Result::Header(ColumnHeader { columns })),
         };
 
-        let row_messages = rows.into_iter().map(|values| {
+        let row_messages = rs.into_iter().map(|values| {
             Ok(QueryResult { result: Some(grpc_query::query_result::Result::Row(Row { values })) })
         });
 

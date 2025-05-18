@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-#![cfg_attr(not(debug_assertions), deny(missing_docs))]
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![cfg_attr(not(debug_assertions), deny(missing_docs))]
+// #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 // fn main() {
 //     let (db, root) = ReifyDB::embedded();
@@ -37,32 +37,45 @@ use reifydb::Value;
 use reifydb::client::Client;
 use tonic::codegen::tokio_stream::StreamExt;
 
+use tokio::io::{self, AsyncBufReadExt, BufReader};
+
+use std::env;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let query = env::args().nth(1).expect("Usage: program '<query>'");
+
     let client = Client {};
 
-    let table = client.query("from users select id, name").await;
+    let table = client.query(&query).await;
 
-    println!("Columns:");
+    // Print column headers
     for col in &table.columns {
         print!("{} ({}) | ", col.name, col.value);
     }
     println!();
 
+    // Print rows
     let mut rows = table.rows;
-
     while let Some(row) = rows.next().await {
-        let row = row?;
-        let formatted: Vec<String> = row
-            .into_iter()
-            .map(|v| match v {
-                Value::Bool(v) => v.to_string(),
-                Value::Uint2(v) => v.to_string(),
-                Value::Text(v) => v.to_string(),
-                _ => "[unsupported]".to_string(),
-            })
-            .collect();
-        println!("{}", formatted.join(" | "));
+        match row {
+            Ok(values) => {
+                let formatted: Vec<String> = values
+                    .into_iter()
+                    .map(|v| match v {
+                        Value::Bool(v) => v.to_string(),
+                        Value::Int2(v) => v.to_string(),
+                        Value::Uint2(v) => v.to_string(),
+                        Value::Text(v) => v,
+                        _ => "[unsupported]".to_string(),
+                    })
+                    .collect();
+                println!("{}", formatted.join(" | "));
+            }
+            Err(e) => {
+                eprintln!("❌ Row error: {e}");
+            }
+        }
     }
 
     Ok(())

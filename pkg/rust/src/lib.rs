@@ -19,8 +19,8 @@
 //!
 //! See also: [`testscript`] for running integration-style script tests.
 
-#![cfg_attr(not(debug_assertions), deny(missing_docs))]
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![cfg_attr(not(debug_assertions), deny(missing_docs))]
+// #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub use auth::Principal;
 
@@ -69,7 +69,7 @@ impl ReifyDB {
         Embedded::new(mvcc(memory()))
     }
 
-    pub fn embedded_with<'a, S: StorageEngine, T: TransactionEngine<S>>(
+    pub fn embedded_with<S: StorageEngine, T: TransactionEngine<S>>(
         transaction: T,
     ) -> (Embedded<S, T>, Principal) {
         Embedded::new(transaction)
@@ -78,8 +78,15 @@ impl ReifyDB {
     // pub fn client()
     // pub fn server(config) -> ServerBuilder // allows to hook into everything / server.serve()
 
-    pub fn server(config: ServerConfig) -> Server {
-        Server::new(config)
+    pub fn server(config: ServerConfig) -> Server<Memory, mvcc::Engine<Memory>> {
+        Server::new(config, mvcc(memory()))
+    }
+
+    pub fn server_with<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static>(
+        config: ServerConfig,
+        transaction: T,
+    ) -> Server<S, T> {
+        Server::new(config, transaction)
     }
 }
 

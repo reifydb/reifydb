@@ -39,6 +39,7 @@ impl Stream for RowStream {
                         .into_iter()
                         .map(|v| match v.kind.unwrap() {
                             Kind::BoolValue(v) => Value::Bool(v),
+                            Kind::Int2Value(v) => Value::Int2(v as i16),
                             Kind::Uint2Value(v) => Value::Uint2(v as u16),
                             Kind::TextValue(v) => Value::Text(v),
                             _ => unimplemented!(),

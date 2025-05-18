@@ -3,6 +3,9 @@
 
 use crate::server::grpc::grpc_query::query_server::QueryServer;
 use crate::server::grpc::query::QueryService;
+use engine::Engine;
+use storage::StorageEngine;
+use transaction::TransactionEngine;
 
 pub mod auth;
 mod query;
@@ -12,8 +15,10 @@ pub(crate) mod grpc_query {
 }
 
 // FIXME return result
-pub fn query_service() -> QueryServer<QueryService> {
-    QueryServer::new(QueryService {})
+pub fn query_service<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static>(
+    engine: Engine<S, T>,
+) -> QueryServer<QueryService<S, T>> {
+    QueryServer::new(QueryService { engine })
 }
 
 #[derive(Debug, Clone)]
