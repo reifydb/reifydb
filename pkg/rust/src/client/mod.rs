@@ -11,9 +11,11 @@ use crate::client::grpc_query::value::Kind;
 use base::Value;
 use grpc_query::{Column, QueryResult, Row};
 use std::pin::Pin;
+use std::str::FromStr;
 use std::task::{Context, Poll};
 use tonic::Streaming;
 use tonic::codegen::tokio_stream::{Stream, StreamExt};
+use tonic::metadata::MetadataValue;
 
 pub struct Table {
     pub columns: Vec<Column>,
@@ -77,7 +79,9 @@ impl Client {
     pub async fn query(&self, query: &str) -> Table {
         let mut client = QueryClient::connect("http://[::1]:4321").await.unwrap();
 
-        let request = tonic::Request::new(QueryRequest { query: query.into() });
+        let mut request = tonic::Request::new(QueryRequest { query: query.into() });
+        let token = MetadataValue::from_str("Bearer mysecrettoken").unwrap();
+        request.metadata_mut().insert("authorization", token);
 
         let stream = client.query(request).await.unwrap().into_inner();
         let table = parse_table(stream).await.unwrap();

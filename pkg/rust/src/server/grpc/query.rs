@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::server::service::grpc_query;
-use crate::server::service::grpc_query::query_server::Query;
-use crate::server::service::grpc_query::{Column, ColumnHeader, QueryRequest, QueryResult, Row};
+use crate::server::grpc::grpc_query::query_server::Query;
+use crate::server::grpc::grpc_query::{Column, ColumnHeader, QueryRequest, QueryResult, Row};
+use crate::server::grpc::{AuthenticatedUser, grpc_query};
 use base::Value;
 use std::pin::Pin;
 use tokio_stream::Stream;
@@ -23,6 +23,14 @@ impl Query for QueryService {
         &self,
         request: Request<QueryRequest>,
     ) -> Result<Response<Self::QueryStream>, Status> {
+
+        let user = request
+            .extensions()
+            .get::<AuthenticatedUser>()
+            .ok_or_else(|| tonic::Status::unauthenticated("No authenticated user found"))?;
+
+        println!("Authenticated as: {:?}", user);
+
         let query = request.into_inner().query;
 
         println!("Received query: {}", query);
