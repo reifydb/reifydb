@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+auth = { workspace = true }
 base = { workspace = true }
 rql = { workspace = true }
 storage = { workspace = true }

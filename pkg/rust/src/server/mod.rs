@@ -3,12 +3,10 @@
 
 use crate::server::grpc::query_service;
 use crate::{DB, IntoSessionRx, IntoSessionTx};
+use auth::Principal;
 pub use config::{DatabaseConfig, ServerConfig};
 use engine::Engine;
-use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
-use rql::ast;
-use rql::ast::Ast;
-use rql::plan::{plan, plan_mut};
+use engine::execute::ExecutionResult;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -84,44 +82,11 @@ pub struct OnCreate<S: StorageEngine, T: TransactionEngine<S>> {
 
 impl<S: StorageEngine, T: TransactionEngine<S>> OnCreate<S, T> {
     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
-        let mut result = vec![];
-        let statements = ast::parse(rql);
-
-        let mut tx = self.engine.begin().unwrap();
-
-        for statement in statements {
-            match &statement.0[0] {
-                Ast::From(_) | Ast::Select(_) => {
-                    let plan = plan(statement).unwrap();
-                    let er = execute_plan(plan, &mut tx).unwrap();
-                    result.push(er);
-                }
-                _ => {
-                    let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
-                    let er = execute_plan_mut(plan, &mut tx).unwrap();
-                    result.push(er);
-                }
-            }
-        }
-
-        tx.commit().unwrap();
-
-        result
+        self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
     }
 
     pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
-        let mut result = vec![];
-        let statements = ast::parse(rql);
-
-        let rx = self.engine.begin_read_only().unwrap();
-
-        for statement in statements {
-            let plan = plan(statement).unwrap();
-            let er = execute_plan(plan, &rx).unwrap();
-            result.push(er);
-        }
-
-        result
+        self.engine.rx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
     }
 }
 

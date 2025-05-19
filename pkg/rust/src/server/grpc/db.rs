@@ -5,18 +5,18 @@ use crate::server::grpc::grpc_db::{QueryResult, Row, RxRequest, RxResult, TxRequ
 use crate::server::grpc::{AuthenticatedUser, grpc_db};
 use base::Value;
 use engine::Engine;
-use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
+use engine::execute::{ExecutionResult, execute_plan};
 use rql::ast;
-use rql::plan::{plan, plan_mut};
+use rql::plan::plan;
 use std::pin::Pin;
 use storage::StorageEngine;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
-use transaction::{Rx, TransactionEngine, Tx};
+use transaction::{Rx, TransactionEngine};
 
 use crate::server::grpc::grpc_db::tx_result::Result::{CreateSchema, CreateTable, InsertIntoTable};
+use auth::Principal;
 use tokio_stream::once;
-use rql::ast::Ast;
 
 pub struct DbService<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
     pub(crate) engine: Engine<S, T>,
@@ -42,29 +42,10 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         let query = request.into_inner().query;
         println!("Received query: {}", query);
 
-        let mut result = vec![];
-        let statements = ast::parse(query.as_str());
-
-
-        let mut tx = self.engine.begin().unwrap();
-
-        for statement in statements {
-            match &statement.0[0] {
-                Ast::From(_) | Ast::Select(_) => {
-                    let plan = plan(statement).unwrap();
-                    let er = execute_plan(plan, &mut tx).unwrap();
-                    result.push(er);
-                }
-                _ => {
-                    let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
-                    let er = execute_plan_mut(plan, &mut tx).unwrap();
-                    result.push(er);
-                }
-            }
-        }
-
-        tx.commit().unwrap();
-
+        let result = self
+            .engine
+            .tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            .unwrap();
 
         let mut labels: Vec<grpc_db::Label> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];
@@ -131,16 +112,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         let query = request.into_inner().query;
         println!("Received query: {}", query);
 
-        let mut result = vec![];
-        let statements = ast::parse(query.as_str());
-
-        let rx = self.engine.begin_read_only().unwrap();
-        for statement in statements {
-            let plan = plan(statement).unwrap();
-            let er = execute_plan(plan, &rx).unwrap();
-            result.push(er);
-        }
-
+        let mut result =  self.engine.rx_as(&Principal::System { id: 1, name: "root".to_string() }, &query).unwrap();
         let mut labels: Vec<grpc_db::Label> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];
 
