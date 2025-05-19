@@ -62,6 +62,7 @@ pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<Execution
 }
 
 pub fn execute_plan(plan: Plan, rx: &impl Rx) -> crate::Result<ExecutionResult> {
+
     let plan = match plan {
         Plan::Query(query) => query,
         _ => unreachable!(), // FIXME
@@ -78,6 +79,7 @@ fn execute_node<'a>(
     current_store: Option<String>,
     input: Option<Box<dyn Iterator<Item = Vec<Value>> + 'a>>,
 ) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>> + 'a>)> {
+
     let (labels, result_iter, schema, store, next): (
         Vec<Label>,
         Box<dyn Iterator<Item = Vec<Value>>>,
@@ -139,6 +141,7 @@ fn execute_node<'a>(
                     }
                 })
                 .collect();
+
 
             let store_ref = store;
 

@@ -200,6 +200,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                     }
                 };
             }
+            Ast::From(from) => return Ok(Plan::Query(plan_from(from, None)?)),
             Ast::Select(select) => return Ok(Plan::Query(plan_select(select, None)?)),
             node => unreachable!("{node:?}"),
         };
@@ -213,19 +214,7 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
 
     for ast in statement.into_iter().rev() {
         head = Some(Box::new(match ast {
-            Ast::From(from) => {
-                match from {
-                    AstFrom::Store { schema, store, .. } => {
-                        QueryPlan::Scan {
-                            // table: from.source.clone(),
-                            schema: schema.value().to_string(),
-                            store: store.value().to_string(),
-                            next: head,
-                        }
-                    }
-                    AstFrom::Query { .. } => unimplemented!(),
-                }
-            }
+            Ast::From(from) => plan_from(from, head)?,
             // Ast::Where(where_clause) => Plan::Filter {
             //     condition: where_clause.condition.clone(),
             //     next: head,
@@ -241,6 +230,17 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
     }
 
     Ok(head.map(|boxed| Plan::Query(*boxed)).unwrap())
+}
+
+fn plan_from(from: AstFrom, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    match from {
+        AstFrom::Store { schema, store, .. } => Ok(QueryPlan::Scan {
+            schema: schema.value().to_string(),
+            next: head,
+            store: store.value().to_string(),
+        }),
+        AstFrom::Query { .. } => unimplemented!(),
+    }
 }
 
 fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {

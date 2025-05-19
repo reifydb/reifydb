@@ -6,6 +6,7 @@ use auth::Principal;
 use engine::Engine;
 use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
 use rql::ast;
+use rql::ast::Ast;
 use rql::plan::{plan, plan_mut};
 use storage::StorageEngine;
 use transaction::{Rx, TransactionEngine, Tx};
@@ -30,11 +31,19 @@ impl<'a, S: StorageEngine, T: TransactionEngine<S>> DB<'a> for Embedded<S, T> {
 		let mut tx = self.engine.begin().unwrap();
 
 		for statement in statements {
-			let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
-			let er = execute_plan_mut(plan, &mut tx).unwrap();
-			result.push(er);
+			match &statement.0[0] {
+				Ast::From(_) | Ast::Select(_) => {
+					let plan = plan(statement).unwrap();
+					let er = execute_plan(plan, &mut tx).unwrap();
+					result.push(er);
+				}
+				_ => {
+					let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
+					let er = execute_plan_mut(plan, &mut tx).unwrap();
+					result.push(er);
+				}
+			}
 		}
-
 		tx.commit().unwrap();
 
 		result

@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 4321)),
     };
 
-    let result = client.tx_execute(&query).await;
+    let result = client.rx_execute(&query).await;
 
     for l in &result {
         print!("{}", l.to_string());

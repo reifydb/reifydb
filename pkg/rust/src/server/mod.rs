@@ -5,13 +5,15 @@ use crate::server::grpc::query_service;
 use crate::{DB, IntoSessionRx, IntoSessionTx};
 pub use config::{DatabaseConfig, ServerConfig};
 use engine::Engine;
-use engine::execute::{ExecutionResult, execute_plan_mut};
+use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
 use rql::ast;
-use rql::plan::plan_mut;
+use rql::ast::Ast;
+use rql::plan::{plan, plan_mut};
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use storage::StorageEngine;
+use tokio::runtime::Runtime;
 use tonic::service::InterceptorLayer;
 use tonic::transport::Error;
 use transaction::{Rx, TransactionEngine, Tx};
@@ -88,12 +90,36 @@ impl<S: StorageEngine, T: TransactionEngine<S>> OnCreate<S, T> {
         let mut tx = self.engine.begin().unwrap();
 
         for statement in statements {
-            let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
-            let er = execute_plan_mut(plan, &mut tx).unwrap();
-            result.push(er);
+            match &statement.0[0] {
+                Ast::From(_) | Ast::Select(_) => {
+                    let plan = plan(statement).unwrap();
+                    let er = execute_plan(plan, &mut tx).unwrap();
+                    result.push(er);
+                }
+                _ => {
+                    let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
+                    let er = execute_plan_mut(plan, &mut tx).unwrap();
+                    result.push(er);
+                }
+            }
         }
 
         tx.commit().unwrap();
+
+        result
+    }
+
+    pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
+        let mut result = vec![];
+        let statements = ast::parse(rql);
+
+        let rx = self.engine.begin_read_only().unwrap();
+
+        for statement in statements {
+            let plan = plan(statement).unwrap();
+            let er = execute_plan(plan, &rx).unwrap();
+            result.push(er);
+        }
 
         result
     }
@@ -147,5 +173,54 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> Server<S, T>
             .add_service(query_service(self.engine))
             .serve(address)
             .await
+    }
+
+    pub fn serve_blocking(self) {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let ctx = Context(Arc::new(ContextInner {}));
+
+            for f in self.callbacks.before_bootstrap {
+                f(BeforeBootstrap { ctx: ctx.clone() }).await;
+            }
+
+            for f in self.callbacks.on_create {
+                f(OnCreate { engine: self.engine.clone() }).await;
+            }
+
+            let address =
+                self.config.database.socket_addr.unwrap_or_else(|| "[::1]:4321".parse().unwrap());
+
+            tonic::transport::Server::builder()
+                .layer(InterceptorLayer::new(grpc::auth::AuthInterceptor {}))
+                .add_service(query_service(self.engine))
+                .serve(address)
+                .await
+                .unwrap();
+        })
+    }
+
+    pub fn serve_blocking_with_runtime(self, rt: Runtime) {
+        rt.block_on(async {
+            let ctx = Context(Arc::new(ContextInner {}));
+
+            for f in self.callbacks.before_bootstrap {
+                f(BeforeBootstrap { ctx: ctx.clone() }).await;
+            }
+
+            for f in self.callbacks.on_create {
+                f(OnCreate { engine: self.engine.clone() }).await;
+            }
+
+            let address =
+                self.config.database.socket_addr.unwrap_or_else(|| "[::1]:4321".parse().unwrap());
+
+            tonic::transport::Server::builder()
+                .layer(InterceptorLayer::new(grpc::auth::AuthInterceptor {}))
+                .add_service(query_service(self.engine))
+                .serve(address)
+                .await
+                .unwrap();
+        })
     }
 }

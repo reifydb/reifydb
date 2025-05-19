@@ -65,7 +65,7 @@ impl Client {
 	pub async fn rx_execute(&self, query: &str) -> Vec<ExecutionResult> {
 		// FIXME this is quite expensive and should only used in tests
 		// add a server.on_ready(||{ signal_server_read() } and use it for tests instead
-		
+
 		wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await;
 		let uri = format!("http://{}", self.socket_addr);
 		let mut client = grpc_db::db_client::DbClient::connect(uri).await.unwrap();

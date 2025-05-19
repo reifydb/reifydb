@@ -78,7 +78,14 @@ impl<S: storage::StorageEngine> crate::Rx for TransactionMut<S> {
     }
 
     fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter> {
-        todo!()
+        Ok(Box::new(
+            self.engine
+                .storage
+                .scan_prefix(key_prefix!("{}::row::", store))
+                .map(|r| Row::decode(&r.unwrap().1).unwrap())
+                .collect::<Vec<_>>()
+                .into_iter(),
+        ))
     }
 }
 

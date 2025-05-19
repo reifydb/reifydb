@@ -16,6 +16,7 @@ use transaction::{Rx, TransactionEngine, Tx};
 
 use crate::server::grpc::grpc_db::tx_result::Result::{CreateSchema, CreateTable, InsertIntoTable};
 use tokio_stream::once;
+use rql::ast::Ast;
 
 pub struct DbService<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
     pub(crate) engine: Engine<S, T>,
@@ -44,15 +45,26 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         let mut result = vec![];
         let statements = ast::parse(query.as_str());
 
+
         let mut tx = self.engine.begin().unwrap();
+
         for statement in statements {
-            let catalog = tx.catalog().unwrap();
-            let plan = plan_mut(catalog, statement).unwrap();
-            let er = execute_plan_mut(plan, &mut tx).unwrap();
-            result.push(er);
+            match &statement.0[0] {
+                Ast::From(_) | Ast::Select(_) => {
+                    let plan = plan(statement).unwrap();
+                    let er = execute_plan(plan, &mut tx).unwrap();
+                    result.push(er);
+                }
+                _ => {
+                    let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
+                    let er = execute_plan_mut(plan, &mut tx).unwrap();
+                    result.push(er);
+                }
+            }
         }
 
         tx.commit().unwrap();
+
 
         let mut labels: Vec<grpc_db::Label> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];

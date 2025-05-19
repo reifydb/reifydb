@@ -12,6 +12,7 @@ members = ["bin/cli",
     "crates/transaction",
     "pkg/rust",
     "testsuite/functional",
+    "testsuite/regression",
     "testsuite/smoke"]
 
 default-members = ["bin/cli",
@@ -25,7 +26,9 @@ default-members = ["bin/cli",
     "crates/transaction",
     "pkg/rust",
     "testsuite/functional",
-    "testsuite/smoke"]
+    "testsuite/regression",
+    "testsuite/smoke"
+    ]
 
 [workspace.package]
 authors = ["Dev <dominique@reifydb.com>"]
@@ -39,7 +42,7 @@ rust-version = "1.85.1"
 edition = "2024"
 
 [profile.dev]
-opt-level = 1               # Slightly optimize for speed without sacrificing compile time
+opt-level = 0
 debug = true
 debug-assertions = true
 overflow-checks = true
