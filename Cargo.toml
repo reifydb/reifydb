@@ -1,8 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = [
-    "bin/cli",
+members = ["bin/cli",
     "bin/server",
     "crates/auth",
     "crates/base",
@@ -13,11 +12,9 @@ members = [
     "crates/transaction",
     "pkg/rust",
     "testsuite/functional",
-    "testsuite/smoke"
-]
+    "testsuite/smoke"]
 
-default-members = [
-    "bin/cli",
+default-members = ["bin/cli",
     "bin/server",
     "crates/auth",
     "crates/base",
@@ -28,8 +25,7 @@ default-members = [
     "crates/transaction",
     "pkg/rust",
     "testsuite/functional",
-    "testsuite/smoke"
-]
+    "testsuite/smoke"]
 
 [workspace.package]
 authors = ["Dev <dominique@reifydb.com>"]
@@ -43,8 +39,18 @@ rust-version = "1.85.1"
 edition = "2024"
 
 [profile.dev]
-lto = false
+opt-level = 1               # Slightly optimize for speed without sacrificing compile time
+debug = true
+debug-assertions = true
+overflow-checks = true
+incremental = true          # Enables incremental compilation
+codegen-units = 256         # More parallelism, faster builds
+lto = false                 # No link-time optimization for speed
+panic = "unwind"            # Default for easier debugging
+
+[profile.test]
 opt-level = 0
+lto = false
 
 [workspace.dependencies]
 reifydb = { path = "pkg/rust", version = "0.0.1" }

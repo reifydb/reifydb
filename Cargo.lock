@@ -322,6 +322,7 @@ dependencies = [
  "reifydb",
  "test_each_file",
  "testing",
+ "tokio",
 ]
 
 [[package]]

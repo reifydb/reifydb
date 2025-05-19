@@ -71,6 +71,9 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
                     }
                 });
             }
+            "list_schema" => {
+                writeln!(output, "test")?;
+            }
             name => return Err(format!("invalid command {name}").into()),
         }
 
@@ -105,8 +108,8 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
     }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_memory => test_svl_memory }
-test_each_path! { in "testsuite/smoke/tests/scripts" as client_mvcc_memory => test_mvcc_memory }
+test_each_path! { in "testsuite/functional/tests/scripts" as client_svl_memory => test_svl_memory }
+test_each_path! { in "testsuite/functional/tests/scripts" as client_mvcc_memory => test_mvcc_memory }
 
 fn test_svl_memory(path: &Path) {
     testscript::run_path(&mut ClientRunner::new(svl(memory())), path).expect("test failed")
