@@ -37,21 +37,24 @@
 
 use reifydb::client::Client;
 
+use reifydb::runtime::Runtime;
 use std::env;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let query = env::args().nth(1).expect("Usage: program '<query>'");
+fn main() {
+    let rt = Runtime::new().unwrap();
 
-    let client = Client {
-        socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 4321)),
-    };
+    rt.block_on(async {
+        let query = env::args().nth(1).expect("Usage: program '<query>'");
 
-    let result = client.rx_execute(&query).await;
+        let client = Client {
+            socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 4321)),
+        };
 
-    for l in &result {
-        print!("{}", l.to_string());
-    }
-    Ok(())
+        let result = client.rx_execute(&query).await;
+
+        for l in &result {
+            print!("{}", l.to_string());
+        }
+    });
 }

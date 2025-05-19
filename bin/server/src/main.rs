@@ -1,6 +1,6 @@
 use reifydb::ReifyDB;
+use reifydb::runtime::Runtime;
 use reifydb::server::{DatabaseConfig, ServerConfig};
-use tokio::runtime::Runtime;
 
 fn main() {
     let rt = Runtime::new().unwrap();

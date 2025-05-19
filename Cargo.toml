@@ -46,14 +46,16 @@ opt-level = 0
 debug = true
 debug-assertions = true
 overflow-checks = true
-incremental = true          # Enables incremental compilation
-codegen-units = 256         # More parallelism, faster builds
-lto = false                 # No link-time optimization for speed
-panic = "unwind"            # Default for easier debugging
+incremental = true
+lto = false
+panic = "unwind"
 
 [profile.test]
 opt-level = 0
+debug = true
 lto = false
+debug-assertions = true
+overflow-checks = true
 
 [workspace.dependencies]
 reifydb = { path = "pkg/rust", version = "0.0.1" }

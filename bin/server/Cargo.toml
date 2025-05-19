@@ -8,10 +8,3 @@ repository.workspace = true
 
 [dependencies]
 reifydb = { workspace = true }
-
-dashmap = "5"
-rayon = "1.8"
-
-tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread"] }
-tokio-stream = "0.1.17"
-tonic = "0.13.1"

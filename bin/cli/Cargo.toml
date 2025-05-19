@@ -8,7 +8,3 @@ repository.workspace = true
 
 [dependencies]
 reifydb = { workspace = true }
-
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-tokio-stream = { workspace = true }
-tonic = { workspace = true }

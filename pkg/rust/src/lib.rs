@@ -38,6 +38,8 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep};
 
+pub use tokio::*;
+
 pub use session::{IntoSessionRx, IntoSessionTx, SessionRx, SessionTx};
 
 /// The underlying key-value store responsible for persistence and data access.
