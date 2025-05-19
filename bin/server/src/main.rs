@@ -1,9 +1,9 @@
+use reifydb::ReifyDB;
 use reifydb::server::{DatabaseConfig, ServerConfig};
-use reifydb::{ReifyDB, memory, mvcc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ReifyDB::server_with(mvcc(memory()))
+    ReifyDB::server()
         .with_config(ServerConfig {
             database: DatabaseConfig { socket_addr: "127.0.0.1:4321".parse().ok() },
         })
