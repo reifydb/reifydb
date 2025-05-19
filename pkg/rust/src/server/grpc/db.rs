@@ -12,7 +12,7 @@ use std::pin::Pin;
 use storage::StorageEngine;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
-use transaction::{Rx, TransactionEngine};
+use transaction::{Rx, TransactionEngine, Tx};
 
 use crate::server::grpc::grpc_db::tx_result::Result::{CreateSchema, CreateTable, InsertIntoTable};
 use tokio_stream::once;
@@ -51,6 +51,8 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
             let er = execute_plan_mut(plan, &mut tx).unwrap();
             result.push(er);
         }
+
+        tx.commit().unwrap();
 
         let mut labels: Vec<grpc_db::Label> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];

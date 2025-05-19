@@ -108,7 +108,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
     }
 }
 
-// test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_memory => test_svl_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_memory => test_svl_memory }
 test_each_path! { in "testsuite/smoke/tests/scripts" as client_mvcc_memory => test_mvcc_memory }
 
 fn test_svl_memory(path: &Path) {
