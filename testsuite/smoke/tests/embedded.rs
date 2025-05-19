@@ -55,8 +55,8 @@ impl<S: StorageEngine, T: TransactionEngine<S>> testscript::Runner for Runner<S,
     }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as svl_memory => test_svl_memory }
-test_each_path! { in "testsuite/smoke/tests/scripts" as mvcc_memory => test_mvcc_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_svl_memory => test_svl_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_mvcc_memory => test_mvcc_memory }
 
 fn test_svl_memory(path: &Path) {
     testscript::run_path(&mut Runner::new(svl(memory())), path).expect("test failed")

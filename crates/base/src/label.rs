@@ -4,6 +4,8 @@
 use crate::ValueType;
 use std::fmt::Display;
 
+
+
 /// A column label, used in query results and plans.
 #[derive(Clone, Debug)]
 pub enum Label {

@@ -1,24 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::server::grpc::grpc_query::query_server::QueryServer;
-use crate::server::grpc::query::QueryService;
+use crate::server::grpc::db::DbService;
+use crate::server::grpc::grpc_db::db_server::DbServer;
 use engine::Engine;
 use storage::StorageEngine;
 use transaction::TransactionEngine;
 
 pub mod auth;
-mod query;
+mod db;
 
-pub(crate) mod grpc_query {
-    tonic::include_proto!("grpc_query");
+pub(crate) mod grpc_db {
+    tonic::include_proto!("grpc_db");
 }
 
 // FIXME return result
 pub fn query_service<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static>(
     engine: Engine<S, T>,
-) -> QueryServer<QueryService<S, T>> {
-    QueryServer::new(QueryService { engine })
+) -> DbServer<DbService<S, T>> {
+    DbServer::new(DbService { engine })
 }
 
 #[derive(Debug, Clone)]

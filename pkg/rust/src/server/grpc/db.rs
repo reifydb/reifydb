@@ -1,0 +1,179 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use crate::server::grpc::grpc_db::{QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult};
+use crate::server::grpc::{AuthenticatedUser, grpc_db};
+use base::Value;
+use engine::Engine;
+use engine::execute::{ExecutionResult, execute_plan, execute_plan_mut};
+use rql::ast;
+use rql::plan::{plan, plan_mut};
+use std::pin::Pin;
+use storage::StorageEngine;
+use tokio_stream::Stream;
+use tonic::{Request, Response, Status};
+use transaction::{Rx, TransactionEngine};
+
+use crate::server::grpc::grpc_db::tx_result::Result::{CreateSchema, CreateTable, InsertIntoTable};
+use tokio_stream::once;
+
+pub struct DbService<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
+    pub(crate) engine: Engine<S, T>,
+}
+
+pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::TxResult, Status>> + Send>>;
+pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::RxResult, Status>> + Send>>;
+
+#[tonic::async_trait]
+impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_server::Db
+    for DbService<S, T>
+{
+    type TxStream = TxResultStream;
+
+    async fn tx(&self, request: Request<TxRequest>) -> Result<Response<TxResultStream>, Status> {
+        let user = request
+            .extensions()
+            .get::<AuthenticatedUser>()
+            .ok_or_else(|| tonic::Status::unauthenticated("No authenticated user found"))?;
+
+        println!("Authenticated as: {:?}", user);
+
+        let query = request.into_inner().query;
+        println!("Received query: {}", query);
+
+        let mut result = vec![];
+        let statements = ast::parse(query.as_str());
+
+        let mut tx = self.engine.begin().unwrap();
+        for statement in statements {
+            let catalog = tx.catalog().unwrap();
+            let plan = plan_mut(catalog, statement).unwrap();
+            let er = execute_plan_mut(plan, &mut tx).unwrap();
+            result.push(er);
+        }
+
+        let mut labels: Vec<grpc_db::Label> = vec![];
+        let mut rows: Vec<grpc_db::Row> = vec![];
+
+        match &result[0] {
+            ExecutionResult::Query { labels: ls, rows: rs } => {
+                labels = ls
+                    .iter()
+                    .map(|l| grpc_db::Label {
+                        name: l.to_string(),
+                        value: 0, // or some ID if relevant
+                    })
+                    .collect();
+
+                rows = rs
+                    .iter()
+                    .map(|r| Row { values: r.iter().map(value_to_query_value).collect() })
+                    .collect();
+            }
+            ExecutionResult::CreateSchema { schema } => {
+                let msg = TxResult {
+                    result: Some(CreateSchema(grpc_db::CreateSchema { schema: schema.clone() })),
+                };
+                return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));
+            }
+            ExecutionResult::CreateTable { schema, table } => {
+                let msg = TxResult {
+                    result: Some(CreateTable(grpc_db::CreateTable {
+                        schema: schema.clone(),
+                        table: table.clone(),
+                    })),
+                };
+                return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));
+            }
+            ExecutionResult::InsertIntoTable { schema, table, inserted } => {
+                let msg = TxResult {
+                    result: Some(InsertIntoTable(grpc_db::InsertIntoTable {
+                        schema: schema.clone(),
+                        table: table.clone(),
+                        inserted: *inserted as u32,
+                    })),
+                };
+                return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));
+            }
+        }
+
+        let result = TxResult {
+            result: Some(grpc_db::tx_result::Result::Query(QueryResult { labels, rows })),
+        };
+
+        Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream))
+    }
+
+    type RxStream = RxResultStream;
+
+    async fn rx(&self, request: Request<RxRequest>) -> Result<Response<Self::RxStream>, Status> {
+        let user = request
+            .extensions()
+            .get::<AuthenticatedUser>()
+            .ok_or_else(|| tonic::Status::unauthenticated("No authenticated user found"))?;
+
+        println!("Authenticated as: {:?}", user);
+
+        let query = request.into_inner().query;
+        println!("Received query: {}", query);
+
+        let mut result = vec![];
+        let statements = ast::parse(query.as_str());
+
+        let rx = self.engine.begin_read_only().unwrap();
+        for statement in statements {
+            let plan = plan(statement).unwrap();
+            let er = execute_plan(plan, &rx).unwrap();
+            result.push(er);
+        }
+
+        let mut labels: Vec<grpc_db::Label> = vec![];
+        let mut rows: Vec<grpc_db::Row> = vec![];
+
+        match &result[0] {
+            ExecutionResult::Query { labels: ls, rows: rs } => {
+                labels = ls
+                    .iter()
+                    .map(|l| grpc_db::Label {
+                        name: l.to_string(),
+                        value: 0, // or some ID if relevant
+                    })
+                    .collect();
+
+                rows = rs
+                    .iter()
+                    .map(|r| Row { values: r.iter().map(value_to_query_value).collect() })
+                    .collect();
+            }
+            _ => {}
+        }
+
+        let result = RxResult {
+            result: Some(grpc_db::rx_result::Result::Query(QueryResult { labels, rows })),
+        };
+
+        Ok(Response::new(Box::pin(once(Ok(result))) as RxResultStream))
+    }
+}
+
+fn value_to_query_value(value: &Value) -> grpc_db::Value {
+    use grpc_db::value::Kind;
+
+    grpc_db::Value {
+        kind: Some(match value {
+            Value::Bool(v) => Kind::BoolValue(*v),
+            // Int1(v) => Kind::Int1Value(*v as i32),
+            Value::Int2(v) => Kind::Int2Value(*v as i32),
+            // Int4(v) => Kind::Int4Value(*v),
+            // Int8(v) => Kind::Int8Value(*v),
+            // Int16(v) => Kind::Int16Value(v.to_string()),
+            // Uint1(v) => Kind::Uint1Value(*v as u32),
+            Value::Uint2(v) => Kind::Uint2Value(*v as u32),
+            // Uint4(v) => Kind::Uint4Value(*v),
+            // Uint8(v) => Kind::Uint8Value(*v),
+            // Uint16(v) => Kind::Uint16Value(v.to_string()),
+            Value::Text(s) => Kind::TextValue(s.clone()),
+            Value::Undefined => unimplemented!(),
+        }),
+    }
+}

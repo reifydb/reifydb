@@ -3,6 +3,8 @@
 
 // #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![deny(clippy::unwrap_used)]
+// #![deny(clippy::expect_used)]
 
 pub use engine::Engine;
 pub use error::Error;

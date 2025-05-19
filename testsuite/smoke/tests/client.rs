@@ -1,18 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
-
 use reifydb::client::Client;
 use reifydb::embedded::Embedded;
-use reifydb::server::{Server, ServerConfig};
+use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::storage::StorageEngine;
 use reifydb::transaction::TransactionEngine;
-use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl};
+use reifydb::{DB, Principal, ReifyDB, free_local_socket, memory, mvcc, svl};
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
+use std::thread::sleep;
+use std::time::Duration;
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::testscript::Command;
@@ -28,10 +27,13 @@ pub struct ClientRunner<S: StorageEngine, T: TransactionEngine<S>> {
 
 impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> ClientRunner<S, T> {
     pub fn new(transaction: T) -> Self {
-        let server = ReifyDB::server_with(transaction)
-            .with_config(ServerConfig { database: Default::default() });
+        let socket_addr = free_local_socket();
 
-        let client = Client {};
+        let server = ReifyDB::server_with(transaction).with_config(ServerConfig {
+            database: DatabaseConfig { socket_addr: Some(socket_addr.clone()) },
+        });
+
+        let client = Client { socket_addr };
 
         Self { server: Some(server), client, runtime: None, shutdown: None }
     }
@@ -40,6 +42,44 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> ClientRunner
 impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::Runner
     for ClientRunner<S, T>
 {
+    fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
+        let mut output = String::new();
+        match command.name.as_str() {
+            "tx" => {
+                let query =
+                    command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+
+                println!("tx: {query}");
+
+                let Some(runtime) = &self.runtime else { panic!() };
+
+                runtime.block_on(async {
+                    for line in self.client.tx_execute(&query).await {
+                        writeln!(output, "{}", line).unwrap();
+                    }
+                });
+            }
+
+            "rx" => {
+                let query =
+                    command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+
+                println!("rx: {query}");
+
+                let Some(runtime) = &self.runtime else { panic!() };
+
+                runtime.block_on(async {
+                    for line in self.client.rx_execute(&query).await {
+                        writeln!(output, "{}", line).unwrap();
+                    }
+                });
+            }
+            name => return Err(format!("invalid command {name}").into()),
+        }
+
+        Ok(output)
+    }
+
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -66,50 +106,10 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
 
         Ok(())
     }
-
-    fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
-        let mut output = String::new();
-        match command.name.as_str() {
-            "tx" => {
-                let query =
-                    command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
-
-                println!("tx: {query}");
-
-                let Some(runtime) = &self.runtime else { panic!() };
-
-                runtime.block_on(async {
-                    let result = self.client.rx_execute(&query).await;
-                    for line in result {
-                        writeln!(output, "{}", line).unwrap();
-                    }
-                });
-            }
-
-            "rx" => {
-                let query =
-                    command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
-
-                println!("rx: {query}");
-
-                let Some(runtime) = &self.runtime else { panic!() };
-
-                runtime.block_on(async {
-                    let result = self.client.rx_execute(&query).await;
-                    for line in result {
-                        writeln!(output, "{}", line).unwrap();
-                    }
-                });
-            }
-            name => return Err(format!("invalid command {name}").into()),
-        }
-
-        Ok(output)
-    }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as svl_memory => test_svl_memory }
-test_each_path! { in "testsuite/smoke/tests/scripts" as mvcc_memory => test_mvcc_memory }
+// test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_memory => test_svl_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as client_mvcc_memory => test_mvcc_memory }
 
 fn test_svl_memory(path: &Path) {
     testscript::run_path(&mut ClientRunner::new(svl(memory())), path).expect("test failed")

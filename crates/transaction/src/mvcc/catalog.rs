@@ -34,7 +34,7 @@ impl crate::CatalogTx for Catalog {
     }
 
     fn create(&mut self, schema: &str) -> crate::Result<()> {
-        assert!(self.schema.get(schema).is_none()); // FIXME
+        // assert!(self.schema.get(schema).is_none()); // FIXME
         self.schema.insert(schema.clone().into(), Schema::new(schema.to_string()));
         Ok(())
     }

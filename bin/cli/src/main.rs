@@ -3,6 +3,8 @@
 
 // #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![deny(clippy::unwrap_used)]
+// #![deny(clippy::expect_used)]
 
 // fn main() {
 //     let (db, root) = ReifyDB::embedded();
@@ -33,39 +35,23 @@
 //     // }
 // }
 
-use reifydb::Value;
 use reifydb::client::Client;
-use tonic::codegen::tokio_stream::StreamExt;
 
 use std::env;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let query = env::args().nth(1).expect("Usage: program '<query>'");
 
-    let client = Client {};
+    let client = Client {
+        socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 4321)),
+    };
 
-    let table = client.internal_query(&query).await;
+    let result = client.tx_execute(&query).await;
 
-    for col in &table.columns {
-        print!("{} ({}) | ", col.name, col.value);
+    for l in &result {
+        print!("{}", l.to_string());
     }
-    println!();
-
-    let mut rows = table.rows;
-    while let Ok(Some(row)) = rows.next().await {
-        let formatted: Vec<String> = row
-            .into_iter()
-            .map(|v| match v {
-                Value::Bool(v) => v.to_string(),
-                Value::Int2(v) => v.to_string(),
-                Value::Uint2(v) => v.to_string(),
-                Value::Text(v) => v,
-                _ => "[unsupported]".to_string(),
-            })
-            .collect();
-        println!("{}", formatted.join(" | "));
-    }
-
     Ok(())
 }

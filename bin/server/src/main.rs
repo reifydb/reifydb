@@ -5,7 +5,7 @@ use reifydb::{ReifyDB, memory, mvcc};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ReifyDB::server_with(mvcc(memory()))
         .with_config(ServerConfig {
-            database: DatabaseConfig { socket_addr: "[::1]:4321".parse().ok() },
+            database: DatabaseConfig { socket_addr: "127.0.0.1:4321".parse().ok() },
         })
         .before_bootstrap(|ctx| async move {
             ctx.info("test");
