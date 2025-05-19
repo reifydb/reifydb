@@ -5,11 +5,12 @@ use reifydb::client::Client;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::storage::StorageEngine;
 use reifydb::transaction::TransactionEngine;
-use reifydb::{ReifyDB, free_local_socket, memory, mvcc, svl};
+use reifydb::{ReifyDB, memory, mvcc, svl};
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
+use testing::network::free_local_socket;
 use testing::testscript;
 use testing::testscript::Command;
 use tokio::runtime::Runtime;
@@ -79,7 +80,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
 
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let (shutdown_tx, _shutdown_rx) = oneshot::channel();
         let server = self.server.take().unwrap();
 
         runtime.spawn(async move {

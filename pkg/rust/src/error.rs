@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 use base::encoding;
+use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors that can occur within the ReifyDB system.
 ///
@@ -21,7 +20,7 @@ use base::encoding;
 /// - `Storage`: A low-level storage engine error was encountered.  
 ///   This includes I/O errors, key-value corruption, encoding issues at the storage level, or internal storage bugs.
 ///
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     /// encoding related error
     Encoding(encoding::Error),

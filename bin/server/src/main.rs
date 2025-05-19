@@ -7,7 +7,7 @@ fn main() {
 
     ReifyDB::server()
         .with_config(ServerConfig {
-            database: DatabaseConfig { socket_addr: "127.0.0.1:4321".parse().ok() },
+            database: DatabaseConfig { socket_addr: "127.0.0.1:54321".parse().ok() },
         })
         .before_bootstrap(|ctx| async move {
             ctx.info("test");
@@ -21,5 +21,5 @@ fn main() {
                 println!("{}", l)
             }
         })
-        .serve_blocking_with_runtime(rt);
+        .serve_blocking(rt);
 }

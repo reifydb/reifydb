@@ -11,7 +11,7 @@
 //     // returns (db, root)
 //     // let session = db.session(root)
 //     // session.tx_execute('')
-//     // db.tx_execute_as(&root, r#"create schema test"#);
+//     // db.tx_execute(&root, r#"create schema test"#);
 //
 //     let session = db.session(root.clone()).unwrap();
 //     for result in session.execute("select 2, 3, 4") {
@@ -23,12 +23,12 @@
 //         println!("{}", result);
 //     }
 //
-//     // db.tx_execute_as(&root, r#"create schema test"#);
-//     // db.tx_execute_as(&root, r#"create table test.arith(id: int2, num: int2)"#);
-//     // db.tx_execute_as(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#);
+//     // db.tx_execute(&root, r#"create schema test"#);
+//     // db.tx_execute(&root, r#"create table test.arith(id: int2, num: int2)"#);
+//     // db.tx_execute(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#);
 //     //
 //     // let result = db
-//     //     .rx_execute_as(&root, r#"from test.arith select id + 1, 2 + num + 3, id + num, num + num"#);
+//     //     .rx_execute(&root, r#"from test.arith select id + 1, 2 + num + 3, id + num, num + num"#);
 //     //
 //     // for mut result in result {
 //     //     println!("{}", result);
@@ -48,7 +48,7 @@ fn main() {
         let query = env::args().nth(1).expect("Usage: program '<query>'");
 
         let client = Client {
-            socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 4321)),
+            socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 54321)),
         };
 
         let result = client.rx_execute(&query).await;

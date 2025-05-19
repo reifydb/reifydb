@@ -795,7 +795,6 @@ dependencies = [
  "engine",
  "prost",
  "rql",
- "serde",
  "storage",
  "tokio",
  "tokio-stream",

@@ -5,11 +5,11 @@ use crate::server::grpc::grpc_db::{QueryResult, Row, RxRequest, RxResult, TxRequ
 use crate::server::grpc::{AuthenticatedUser, grpc_db};
 use base::Value;
 use engine::Engine;
-use engine::execute::{ExecutionResult, execute_plan};
-use rql::ast;
-use rql::plan::plan;
+use engine::execute::ExecutionResult;
 use std::pin::Pin;
+use std::sync::Arc;
 use storage::StorageEngine;
+use tokio::task::spawn_blocking;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 use transaction::{Rx, TransactionEngine};
@@ -19,7 +19,13 @@ use auth::Principal;
 use tokio_stream::once;
 
 pub struct DbService<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
-    pub(crate) engine: Engine<S, T>,
+    pub(crate) engine: Arc<Engine<S, T>>,
+}
+
+impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> DbService<S, T> {
+    pub fn new(engine: Engine<S, T>) -> Self {
+        Self { engine: Arc::new(engine) }
+    }
 }
 
 pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::TxResult, Status>> + Send>>;
@@ -42,10 +48,16 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         let query = request.into_inner().query;
         println!("Received query: {}", query);
 
-        let result = self
-            .engine
-            .tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
-            .unwrap();
+        let engine = self.engine.clone();
+        let result = spawn_blocking(move || {
+            let result = engine
+                .tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+                .unwrap();
+
+            result
+        })
+        .await
+        .unwrap();
 
         let mut labels: Vec<grpc_db::Label> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];
@@ -112,7 +124,16 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         let query = request.into_inner().query;
         println!("Received query: {}", query);
 
-        let mut result =  self.engine.rx_as(&Principal::System { id: 1, name: "root".to_string() }, &query).unwrap();
+        let engine = self.engine.clone();
+        let result = spawn_blocking(move || {
+            let result = engine
+                .rx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+                .unwrap();
+            result
+        })
+        .await
+        .unwrap();
+
         let mut labels: Vec<grpc_db::Label> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];
 

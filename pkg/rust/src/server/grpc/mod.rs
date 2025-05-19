@@ -15,10 +15,10 @@ pub(crate) mod grpc_db {
 }
 
 // FIXME return result
-pub fn query_service<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static>(
+pub fn db_service<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static>(
     engine: Engine<S, T>,
 ) -> DbServer<DbService<S, T>> {
-    DbServer::new(DbService { engine })
+    DbServer::new(DbService::new(engine))
 }
 
 #[derive(Debug, Clone)]

@@ -6,17 +6,33 @@ use engine::execute::ExecutionResult;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
+use tokio::net::TcpStream;
+use tokio::time::{sleep, Instant};
 use tonic::metadata::MetadataValue;
 use tonic::Streaming;
-use crate::wait_for_socket;
 
 pub(crate) mod grpc_db {
 	tonic::include_proto!("grpc_db");
 }
 
+// FIXME 1ms is a little bit little for production - only for testing for now
+async fn wait_for_socket(addr: &SocketAddr, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        match TcpStream::connect(addr).await {
+            // connection succeeded, server is ready
+            Ok(_) => return,
+            Err(_) => sleep(Duration::from_millis(1)).await,
+        }
+    }
+    panic!("Timed out waiting for server to start at {}", addr);
+}
+
+
 pub struct Client {
 	pub socket_addr: SocketAddr,
 }
+
 
 pub async fn parse_rx_query_result(
 	mut stream: Streaming<grpc_db::RxResult>,

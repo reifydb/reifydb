@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::server::grpc::query_service;
-use crate::{DB, IntoSessionRx, IntoSessionTx};
+use crate::server::grpc::db_service;
+// use crate::{IntoSessionRx, IntoSessionTx};
 use auth::Principal;
 pub use config::{DatabaseConfig, ServerConfig};
 use engine::Engine;
@@ -131,17 +131,16 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> Server<S, T>
         }
 
         let address =
-            self.config.database.socket_addr.unwrap_or_else(|| "[::1]:4321".parse().unwrap());
+            self.config.database.socket_addr.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
 
         tonic::transport::Server::builder()
             .layer(InterceptorLayer::new(grpc::auth::AuthInterceptor {}))
-            .add_service(query_service(self.engine))
+            .add_service(db_service(self.engine))
             .serve(address)
             .await
     }
 
-    pub fn serve_blocking(self) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+    pub fn serve_blocking(self, rt: Runtime) {
         rt.block_on(async {
             let ctx = Context(Arc::new(ContextInner {}));
 
@@ -154,35 +153,11 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> Server<S, T>
             }
 
             let address =
-                self.config.database.socket_addr.unwrap_or_else(|| "[::1]:4321".parse().unwrap());
+                self.config.database.socket_addr.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
 
             tonic::transport::Server::builder()
                 .layer(InterceptorLayer::new(grpc::auth::AuthInterceptor {}))
-                .add_service(query_service(self.engine))
-                .serve(address)
-                .await
-                .unwrap();
-        })
-    }
-
-    pub fn serve_blocking_with_runtime(self, rt: Runtime) {
-        rt.block_on(async {
-            let ctx = Context(Arc::new(ContextInner {}));
-
-            for f in self.callbacks.before_bootstrap {
-                f(BeforeBootstrap { ctx: ctx.clone() }).await;
-            }
-
-            for f in self.callbacks.on_create {
-                f(OnCreate { engine: self.engine.clone() }).await;
-            }
-
-            let address =
-                self.config.database.socket_addr.unwrap_or_else(|| "[::1]:4321".parse().unwrap());
-
-            tonic::transport::Server::builder()
-                .layer(InterceptorLayer::new(grpc::auth::AuthInterceptor {}))
-                .add_service(query_service(self.engine))
+                .add_service(db_service(self.engine))
                 .serve(address)
                 .await
                 .unwrap();

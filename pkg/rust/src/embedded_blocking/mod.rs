@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::DB;
 use auth::Principal;
 use engine::Engine;
 use engine::execute::ExecutionResult;
 use storage::StorageEngine;
-use tokio::task::spawn_blocking;
 use transaction::TransactionEngine;
 
 pub struct Embedded<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
@@ -31,30 +29,15 @@ impl<S: StorageEngine, T: TransactionEngine<S>> Embedded<S, T> {
     }
 }
 
-impl<'a, S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> DB<'a> for Embedded<S, T> {
-    async fn tx_execute(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        let rql = rql.to_string();
-        let principal = principal.clone();
-        let engine = self.engine.clone();
-        spawn_blocking(move || {
-            let result = engine.tx_as(&principal, &rql).unwrap();
-
-            result
-        })
-        .await
-        .unwrap()
+impl<'a, S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> Embedded<S, T> {
+    pub fn tx_execute(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+        let result = self.engine.tx_as(principal, rql).unwrap();
+        result
     }
 
-    async fn rx_execute(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        let rql = rql.to_string();
-        let principal = principal.clone();
-        let engine = self.engine.clone();
-        spawn_blocking(move || {
-            let result = engine.rx_as(&principal, &rql).unwrap();
-            result
-        })
-        .await
-        .unwrap()
+    pub fn rx_execute(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+        let result = self.engine.rx_as(&principal, &rql).unwrap();
+        result
     }
 
     // fn session_read_only(
