@@ -26,6 +26,18 @@ pub struct Server<S: StorageEngine, T: TransactionEngine<S>> {
     pub(crate) engine: Engine<S, T>,
 }
 
+impl<S: StorageEngine, T: TransactionEngine<S>> Server<S, T> {
+    pub fn with_config(mut self, config: ServerConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn with_engine(mut self, engine: Engine<S, T>) -> Self {
+        self.engine = engine;
+        self
+    }
+}
+
 pub type Callback<T> = Box<dyn FnOnce(T) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 pub struct Callbacks<S: StorageEngine, T: TransactionEngine<S>> {
@@ -88,9 +100,9 @@ impl<S: StorageEngine, T: TransactionEngine<S>> OnCreate<S, T> {
 }
 
 impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> Server<S, T> {
-    pub fn new(config: ServerConfig, transaction: T) -> Self {
+    pub fn new(transaction: T) -> Self {
         Self {
-            config,
+            config: ServerConfig::default(),
             grpc: tonic::transport::Server::builder(),
             callbacks: Callbacks { before_bootstrap: vec![], on_create: vec![] },
             engine: Engine::new(transaction),

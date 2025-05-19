@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
 
-members = ["bin/cli",
+members = [
+    "bin/cli",
     "bin/server",
     "crates/auth",
     "crates/base",
@@ -12,9 +13,11 @@ members = ["bin/cli",
     "crates/transaction",
     "pkg/rust",
     "testsuite/functional",
-    "testsuite/smoke"]
+    "testsuite/smoke"
+]
 
-default-members = ["bin/cli",
+default-members = [
+    "bin/cli",
     "bin/server",
     "crates/auth",
     "crates/base",
@@ -25,7 +28,8 @@ default-members = ["bin/cli",
     "crates/transaction",
     "pkg/rust",
     "testsuite/functional",
-    "testsuite/smoke"]
+    "testsuite/smoke"
+]
 
 [workspace.package]
 authors = ["Dev <dominique@reifydb.com>"]

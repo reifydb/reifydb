@@ -37,8 +37,6 @@ use reifydb::Value;
 use reifydb::client::Client;
 use tonic::codegen::tokio_stream::StreamExt;
 
-use tokio::io::{self, AsyncBufReadExt, BufReader};
-
 use std::env;
 
 #[tokio::main]
@@ -47,35 +45,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = Client {};
 
-    let table = client.query(&query).await;
+    let table = client.internal_query(&query).await;
 
-    // Print column headers
     for col in &table.columns {
         print!("{} ({}) | ", col.name, col.value);
     }
     println!();
 
-    // Print rows
     let mut rows = table.rows;
-    while let Some(row) = rows.next().await {
-        match row {
-            Ok(values) => {
-                let formatted: Vec<String> = values
-                    .into_iter()
-                    .map(|v| match v {
-                        Value::Bool(v) => v.to_string(),
-                        Value::Int2(v) => v.to_string(),
-                        Value::Uint2(v) => v.to_string(),
-                        Value::Text(v) => v,
-                        _ => "[unsupported]".to_string(),
-                    })
-                    .collect();
-                println!("{}", formatted.join(" | "));
-            }
-            Err(e) => {
-                eprintln!("❌ Row error: {e}");
-            }
-        }
+    while let Ok(Some(row)) = rows.next().await {
+        let formatted: Vec<String> = row
+            .into_iter()
+            .map(|v| match v {
+                Value::Bool(v) => v.to_string(),
+                Value::Int2(v) => v.to_string(),
+                Value::Uint2(v) => v.to_string(),
+                Value::Text(v) => v,
+                _ => "[unsupported]".to_string(),
+            })
+            .collect();
+        println!("{}", formatted.join(" | "));
     }
 
     Ok(())

@@ -9,9 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::env::temp_dir;
-use crate::testscript::parser::parse;
 use crate::testscript::Command;
+use crate::testscript::parser::parse;
+use std::env::temp_dir;
 
 use std::error::Error;
 use std::io::Write as _;
@@ -76,7 +76,10 @@ pub trait Runner {
 /// IO, parser, or runner failure. If the environment variable
 /// `UPDATE_TESTFILES=1` is set, the new output file will replace the input
 /// file.
-pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(runner: &mut R, path: P) -> std::io::Result<()> {
+pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(
+    runner: &mut R,
+    path: P,
+) -> std::io::Result<()> {
     let path = path.as_ref();
     let Some(dir) = path.parent() else {
         return Err(std::io::Error::new(
@@ -114,7 +117,6 @@ pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> std::io::R
     let output = generate(&mut runner, &input)?;
     goldenfile::Mint::new(dir).new_goldenfile(&file_name)?.write_all(output.as_bytes())
 }
-
 
 /// Generates output for a testscript input, without comparing them.
 pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<String> {
@@ -195,7 +197,7 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
                             "expected command '{}' to fail at line {}, succeeded with: {output}",
                             command.name, command.line_number
                         ),
-                    ))
+                    ));
                 }
 
                 // Expected success, output the result.
@@ -212,7 +214,7 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
                             "command '{}' failed at line {}: {e}",
                             command.name, command.line_number
                         ),
-                    ))
+                    ));
                 }
 
                 // Expected panic, output it.

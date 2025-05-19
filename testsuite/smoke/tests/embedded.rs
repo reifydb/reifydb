@@ -12,19 +12,19 @@ use test_each_file::test_each_path;
 use testing::testscript;
 use testing::testscript::Command;
 
-pub struct EmbeddedRunner<S: StorageEngine, T: TransactionEngine<S>> {
+pub struct Runner<S: StorageEngine, T: TransactionEngine<S>> {
     engine: Embedded<S, T>,
     root: Principal,
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> EmbeddedRunner<S, T> {
+impl<S: StorageEngine, T: TransactionEngine<S>> Runner<S, T> {
     pub fn new(transaction: T) -> Self {
         let (engine, root) = ReifyDB::embedded_with(transaction);
         Self { engine, root }
     }
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> testscript::Runner for EmbeddedRunner<S, T> {
+impl<S: StorageEngine, T: TransactionEngine<S>> testscript::Runner for Runner<S, T> {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
@@ -55,13 +55,13 @@ impl<S: StorageEngine, T: TransactionEngine<S>> testscript::Runner for EmbeddedR
     }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as svl_memory => test_embedded_svl_memory }
-test_each_path! { in "testsuite/smoke/tests/scripts" as mvcc_memory => test_embedded_mvcc_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as svl_memory => test_svl_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as mvcc_memory => test_mvcc_memory }
 
-fn test_embedded_svl_memory(path: &Path) {
-    testscript::run_path(&mut EmbeddedRunner::new(svl(memory())), path).expect("test failed")
+fn test_svl_memory(path: &Path) {
+    testscript::run_path(&mut Runner::new(svl(memory())), path).expect("test failed")
 }
 
-fn test_embedded_mvcc_memory(path: &Path) {
-    testscript::run_path(&mut EmbeddedRunner::new(mvcc(memory())), path).expect("test failed")
+fn test_mvcc_memory(path: &Path) {
+    testscript::run_path(&mut Runner::new(mvcc(memory())), path).expect("test failed")
 }
