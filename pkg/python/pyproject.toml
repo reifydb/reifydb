@@ -8,7 +8,7 @@ features = ["include-python-workspace"]
 
 [project]
 version = "0.0.1"
-name = "reifydb-py"
+name = "reifydb"
 requires-python = ">=3.10"
 description = "Data. Backend. Done"
 classifiers = ["Programming Language :: Rust",

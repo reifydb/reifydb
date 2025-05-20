@@ -39,6 +39,11 @@ maturin build --release --strip
 ```
 
 To publish the package to [PyPI](https://pypi.org/):
+                              
+make sure the pypi token is set
+```env
+MATURIN_PYPI_TOKEN=ABCD
+```
 
 ```bash
 maturin publish
