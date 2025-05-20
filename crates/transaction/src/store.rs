@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::ValueType;
+use base::ValueKind;
 use base::expression::Expression;
 
 #[derive(Debug, Clone)]
 pub struct Column {
     pub name: String,
-    pub value: ValueType,
+    pub value: ValueKind,
     pub default: Option<Expression>,
 }
 

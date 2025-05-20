@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::store::{StoreRx, StoreTx};
-use base::ValueType;
+use base::ValueKind;
 use base::expression::Expression;
 
 pub trait SchemaRx {
@@ -19,7 +19,7 @@ pub trait SchemaRx {
 #[derive(Debug)]
 pub struct ColumnToCreate {
     pub name: String,
-    pub value: ValueType,
+    pub value: ValueKind,
     pub default: Option<Expression>,
 }
 

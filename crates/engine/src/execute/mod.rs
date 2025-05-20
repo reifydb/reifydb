@@ -4,8 +4,10 @@
 mod call;
 mod display;
 
+use crate::function::math;
 use base::expression::{Expression, PrefixOperator};
-use base::{Label, Row, Value, ValueType};
+use base::function::{FunctionRegistry, FunctionResult};
+use base::{Label, Row, Value, ValueKind};
 use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
 use std::vec;
@@ -19,7 +21,9 @@ pub enum ExecutionResult {
     Query { labels: Vec<Label>, rows: Vec<Row> },
 }
 
-pub struct Executor {}
+pub struct Executor {
+    pub functions: FunctionRegistry,
+}
 
 pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<ExecutionResult> {
     Ok(match plan {
@@ -110,7 +114,7 @@ fn execute_node<'a>(
                 for (idx, expr) in expressions.into_iter().enumerate() {
                     let value = evaluate::<NopStore>(expr, None, None).unwrap();
                     labels.push(Label::Custom {
-                        value: ValueType::from(&value),
+                        value: ValueKind::from(&value),
                         label: format!("{}", idx + 1),
                     });
                     values.push(value);
@@ -134,11 +138,11 @@ fn execute_node<'a>(
                         .ok()
                         .map(|c| Label::Column { value: c.value, column: c.name })
                         .unwrap_or(Label::Custom {
-                            value: ValueType::Undefined,
+                            value: ValueKind::Undefined,
                             label: name.to_string(),
                         }),
                     _ => {
-                        Label::Custom { value: ValueType::Undefined, label: format!("{}", idx + 1) }
+                        Label::Custom { value: ValueKind::Undefined, label: format!("{}", idx + 1) }
                     }
                 })
                 .collect();
@@ -197,10 +201,13 @@ pub fn evaluate<S: StoreRx>(
         }
 
         Expression::Call(call) => {
-            let exec = Executor {};
-            let args =
-                call.args.into_iter().map(|a| evaluate(a, row, store).unwrap()).collect::<Vec<_>>();
-            exec.call_projection(&call.func.name, args)
+            let mut exec = Executor { functions: FunctionRegistry::new() };
+            exec.functions.register(math::AbsFunction {});
+
+            match exec.eval_function(&call.func.name, call.args, row, store).unwrap() {
+                FunctionResult::Scalar(value) => Ok(value),
+                FunctionResult::Rows(_) => unimplemented!(),
+            }
         }
 
         Expression::Add(left, right) => {

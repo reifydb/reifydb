@@ -12,7 +12,7 @@ use crate::ast;
 use base::expression::{
     CallExpression, Expression, IdentExpression, PrefixExpression, PrefixOperator, TupleExpression,
 };
-use base::{Value, ValueType};
+use base::{Value, ValueKind};
 pub use error::Error;
 use transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
 
@@ -23,7 +23,7 @@ mod planner;
 #[derive(Debug)]
 pub struct ColumnToInsert {
     pub name: String,
-    pub value: ValueType,
+    pub value: ValueKind,
     pub default: Option<Expression>,
 }
 
@@ -84,18 +84,18 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                     columns.push(ColumnToCreate {
                                         name: name.value().to_string(),
                                         value: match ty {
-                                            AstType::Boolean(_) => ValueType::Bool,
+                                            AstType::Boolean(_) => ValueKind::Bool,
                                             AstType::Float4(_) => unimplemented!(),
                                             AstType::Float8(_) => unimplemented!(),
                                             AstType::Int1(_) => unimplemented!(),
-                                            AstType::Int2(_) => ValueType::Int2,
+                                            AstType::Int2(_) => ValueKind::Int2,
                                             AstType::Int4(_) => unimplemented!(),
                                             AstType::Int8(_) => unimplemented!(),
                                             AstType::Int16(_) => unimplemented!(),
                                             AstType::Number(_) => unimplemented!(),
-                                            AstType::Text(_) => ValueType::Text,
+                                            AstType::Text(_) => ValueKind::Text,
                                             AstType::Uint1(_) => unimplemented!(),
-                                            AstType::Uint2(_) => ValueType::Uint2,
+                                            AstType::Uint2(_) => ValueKind::Uint2,
                                             AstType::Uint4(_) => unimplemented!(),
                                             AstType::Uint8(_) => unimplemented!(),
                                             AstType::Uint16(_) => unimplemented!(),

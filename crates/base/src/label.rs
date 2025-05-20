@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ValueType;
+use crate::ValueKind;
 use std::fmt::Display;
 
 
@@ -10,13 +10,13 @@ use std::fmt::Display;
 #[derive(Clone, Debug)]
 pub enum Label {
     /// A custom label
-    Custom { value: ValueType, label: String },
+    Custom { value: ValueKind, label: String },
     /// Just the column name
-    Column { value: ValueType, column: String },
+    Column { value: ValueKind, column: String },
     /// Store and column name
-    StoreAndColumn { value: ValueType, store: String, column: String },
+    StoreAndColumn { value: ValueKind, store: String, column: String },
     /// Full name consisting of schema, store and column
-    Full { value: ValueType, schema: String, store: String, column: String },
+    Full { value: ValueKind, schema: String, store: String, column: String },
 }
 
 impl Display for Label {

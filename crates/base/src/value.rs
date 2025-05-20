@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 
 /// All possible RQL value types
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Serialize, Deserialize)]
-pub enum ValueType {
+pub enum ValueKind {
     /// A boolean: true or false.
     Bool,
     /// A 2-byte signed integer
@@ -19,26 +19,27 @@ pub enum ValueType {
     Undefined,
 }
 
-impl Display for ValueType {
+
+impl Display for ValueKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValueType::Bool => f.write_str("BOOL"),
-            ValueType::Int2 => f.write_str("INT2"),
-            ValueType::Uint2 => f.write_str("UINT2"),
-            ValueType::Text => f.write_str("TEXT"),
-            ValueType::Undefined => f.write_str("UNDEFINED"),
+            ValueKind::Bool => f.write_str("BOOL"),
+            ValueKind::Int2 => f.write_str("INT2"),
+            ValueKind::Uint2 => f.write_str("UINT2"),
+            ValueKind::Text => f.write_str("TEXT"),
+            ValueKind::Undefined => f.write_str("UNDEFINED"),
         }
     }
 }
 
-impl From<&Value> for ValueType {
+impl From<&Value> for ValueKind {
     fn from(value: &Value) -> Self {
         match value {
-            Value::Undefined => ValueType::Undefined,
-            Value::Bool(_) => ValueType::Bool,
-            Value::Int2(_) => ValueType::Int2,
-            Value::Text(_) => ValueType::Text,
-            Value::Uint2(_) => ValueType::Uint2,
+            Value::Undefined => ValueKind::Undefined,
+            Value::Bool(_) => ValueKind::Bool,
+            Value::Int2(_) => ValueKind::Int2,
+            Value::Text(_) => ValueKind::Text,
+            Value::Uint2(_) => ValueKind::Uint2,
         }
     }
 }

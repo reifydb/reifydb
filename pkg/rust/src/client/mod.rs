@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::{Value, ValueType};
+use base::{Value, ValueKind};
 use engine::execute::ExecutionResult;
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -43,7 +43,7 @@ pub async fn parse_rx_query_result(
 				let labels = query
 					.labels
 					.into_iter()
-					.map(|l| base::Label::Custom { value: ValueType::Bool, label: l.name })
+					.map(|l| base::Label::Custom { value: ValueKind::Bool, label: l.name })
 					.collect();
 
 				let rows = query
@@ -131,7 +131,7 @@ impl Client {
 					let labels = query
 						.labels
 						.into_iter()
-						.map(|l| base::Label::Custom { label: l.name, value: ValueType::Bool })
+						.map(|l| base::Label::Custom { label: l.name, value: ValueKind::Bool })
 						.collect();
 
 					let rows = query
