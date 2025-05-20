@@ -6,7 +6,7 @@ mod display;
 
 use crate::function::math;
 use base::expression::{Expression, PrefixOperator};
-use base::function::{FunctionRegistry, FunctionResult};
+use base::function::{FunctionMode, FunctionRegistry, FunctionResult};
 use base::{Label, Row, Value, ValueKind};
 use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
@@ -203,8 +203,12 @@ pub fn evaluate<S: StoreRx>(
         Expression::Call(call) => {
             let mut exec = Executor { functions: FunctionRegistry::new() };
             exec.functions.register(math::AbsFunction {});
+            exec.functions.register(math::AvgFunction {});
 
-            match exec.eval_function(&call.func.name, call.args, row, store).unwrap() {
+            match exec
+                .eval_function(&call.func.name, FunctionMode::Scalar, call.args, row, store)
+                .unwrap()
+            {
                 FunctionResult::Scalar(value) => Ok(value),
                 FunctionResult::Rows(_) => unimplemented!(),
             }

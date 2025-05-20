@@ -7,12 +7,12 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::net::TcpStream;
-use tokio::time::{sleep, Instant};
-use tonic::metadata::MetadataValue;
+use tokio::time::{Instant, sleep};
 use tonic::Streaming;
+use tonic::metadata::MetadataValue;
 
 pub(crate) mod grpc_db {
-	tonic::include_proto!("grpc_db");
+    tonic::include_proto!("grpc_db");
 }
 
 // FIXME 1ms is a little bit little for production - only for testing for now
@@ -28,139 +28,139 @@ async fn wait_for_socket(addr: &SocketAddr, timeout: Duration) {
     panic!("Timed out waiting for server to start at {}", addr);
 }
 
-
 pub struct Client {
-	pub socket_addr: SocketAddr,
+    pub socket_addr: SocketAddr,
 }
 
-
 pub async fn parse_rx_query_result(
-	mut stream: Streaming<grpc_db::RxResult>,
+    mut stream: Streaming<grpc_db::RxResult>,
 ) -> Result<ExecutionResult, tonic::Status> {
-	while let Some(msg) = stream.message().await? {
-		match msg.result {
-			Some(grpc_db::rx_result::Result::Query(query)) => {
-				let labels = query
-					.labels
-					.into_iter()
-					.map(|l| base::Label::Custom { value: ValueKind::Bool, label: l.name })
-					.collect();
+    while let Some(msg) = stream.message().await? {
+        match msg.result {
+            Some(grpc_db::rx_result::Result::Query(query)) => {
+                let labels = query
+                    .labels
+                    .into_iter()
+                    .map(|l| base::Label::Custom { value: ValueKind::Bool, label: l.name })
+                    .collect();
 
-				let rows = query
-					.rows
-					.into_iter()
-					.map(|r| {
-						r.values
-							.into_iter()
-							.map(|v| match v.kind.unwrap() {
-								grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
-								grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
-								grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
-								grpc_db::value::Kind::TextValue(t) => Value::Text(t),
-								_ => unimplemented!("Value kind not yet supported"),
-							})
-							.collect()
-					})
-					.collect();
+                let rows = query
+                    .rows
+                    .into_iter()
+                    .map(|r| {
+                        r.values
+                            .into_iter()
+                            .map(|v| match v.kind.unwrap() {
+                                grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
+                                grpc_db::value::Kind::Float64Value(f) => Value::Float8(f),
+                                grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
+                                grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
+                                grpc_db::value::Kind::TextValue(t) => Value::Text(t),
+                                _ => unimplemented!("Value kind not yet supported"),
+                            })
+                            .collect()
+                    })
+                    .collect();
 
-				return Ok(ExecutionResult::Query { labels, rows });
-			}
-			Some(grpc_db::rx_result::Result::Error(e)) => {
-				return Err(tonic::Status::internal(e));
-			}
-			None => {
-				return Err(tonic::Status::internal("empty rx_result"));
-			}
-		}
-	}
+                return Ok(ExecutionResult::Query { labels, rows });
+            }
+            Some(grpc_db::rx_result::Result::Error(e)) => {
+                return Err(tonic::Status::internal(e));
+            }
+            None => {
+                return Err(tonic::Status::internal("empty rx_result"));
+            }
+        }
+    }
 
-	Err(tonic::Status::internal("no rx_result received"))
+    Err(tonic::Status::internal("no rx_result received"))
 }
 
 impl Client {
-	pub async fn rx_execute(&self, query: &str) -> Vec<ExecutionResult> {
-		// FIXME this is quite expensive and should only used in tests
-		// add a server.on_ready(||{ signal_server_read() } and use it for tests instead
+    pub async fn rx_execute(&self, query: &str) -> Vec<ExecutionResult> {
+        // FIXME this is quite expensive and should only used in tests
+        // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
 
-		wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await;
-		let uri = format!("http://{}", self.socket_addr);
-		let mut client = grpc_db::db_client::DbClient::connect(uri).await.unwrap();
+        wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await;
+        let uri = format!("http://{}", self.socket_addr);
+        let mut client = grpc_db::db_client::DbClient::connect(uri).await.unwrap();
 
-		let mut request = tonic::Request::new(grpc_db::RxRequest { query: query.into() });
+        let mut request = tonic::Request::new(grpc_db::RxRequest { query: query.into() });
 
-		request
-			.metadata_mut()
-			.insert("authorization", MetadataValue::from_str("Bearer mysecrettoken").unwrap());
+        request
+            .metadata_mut()
+            .insert("authorization", MetadataValue::from_str("Bearer mysecrettoken").unwrap());
 
-		let stream = client.rx(request).await.unwrap().into_inner();
-		let result = parse_rx_query_result(stream).await.unwrap();
-		vec![result]
-	}
+        let stream = client.rx(request).await.unwrap().into_inner();
+        let result = parse_rx_query_result(stream).await.unwrap();
+        vec![result]
+    }
 
-	pub async fn tx_execute(&self, query: &str) -> Vec<ExecutionResult> {
-		// FIXME this is quite expensive and should only used in tests
-		// add a server.on_ready(||{ signal_server_read() } and use it for tests instead
-		wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await;
-		let uri = format!("http://{}", self.socket_addr);
-		let mut client = grpc_db::db_client::DbClient::connect(uri).await.unwrap();
+    pub async fn tx_execute(&self, query: &str) -> Vec<ExecutionResult> {
+        // FIXME this is quite expensive and should only used in tests
+        // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
+        wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await;
+        let uri = format!("http://{}", self.socket_addr);
+        let mut client = grpc_db::db_client::DbClient::connect(uri).await.unwrap();
 
-		let mut request = tonic::Request::new(grpc_db::TxRequest { query: query.into() });
+        let mut request = tonic::Request::new(grpc_db::TxRequest { query: query.into() });
 
-		request
-			.metadata_mut()
-			.insert("authorization", MetadataValue::from_str("Bearer mysecrettoken").unwrap());
+        request
+            .metadata_mut()
+            .insert("authorization", MetadataValue::from_str("Bearer mysecrettoken").unwrap());
 
-		let mut stream = client.tx(request).await.unwrap().into_inner();
+        let mut stream = client.tx(request).await.unwrap().into_inner();
 
-		let mut results = vec![];
+        let mut results = vec![];
 
-		while let Some(msg) = stream.message().await.unwrap() {
-			use grpc_db::tx_result::Result::*;
+        while let Some(msg) = stream.message().await.unwrap() {
+            use grpc_db::tx_result::Result::*;
 
-			let result = match msg.result {
-				Some(CreateSchema(cs)) => ExecutionResult::CreateSchema { schema: cs.schema },
-				Some(CreateTable(ct)) => {
-					ExecutionResult::CreateTable { schema: ct.schema, table: ct.table }
-				}
-				Some(InsertIntoTable(insert)) => ExecutionResult::InsertIntoTable {
-					schema: insert.schema,
-					table: insert.table,
-					inserted: insert.inserted as usize,
-				},
-				Some(Query(query)) => {
-					let labels = query
-						.labels
-						.into_iter()
-						.map(|l| base::Label::Custom { label: l.name, value: ValueKind::Bool })
-						.collect();
+            let result = match msg.result {
+                Some(CreateSchema(cs)) => ExecutionResult::CreateSchema { schema: cs.schema },
+                Some(CreateTable(ct)) => {
+                    ExecutionResult::CreateTable { schema: ct.schema, table: ct.table }
+                }
+                Some(InsertIntoTable(insert)) => ExecutionResult::InsertIntoTable {
+                    schema: insert.schema,
+                    table: insert.table,
+                    inserted: insert.inserted as usize,
+                },
+                Some(Query(query)) => {
+                    let labels = query
+                        .labels
+                        .into_iter()
+                        .map(|l| base::Label::Custom { label: l.name, value: ValueKind::Bool })
+                        .collect();
 
-					let rows = query
-						.rows
-						.into_iter()
-						.map(|r| {
-							r.values
-								.into_iter()
-								.map(|v| match v.kind.unwrap() {
-									grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
-									grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
-									grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
-									grpc_db::value::Kind::TextValue(t) => Value::Text(t),
-									_ => unimplemented!("Unhandled value kind"),
-								})
-								.collect()
-						})
-						.collect();
+                    let rows = query
+                        .rows
+                        .into_iter()
+                        .map(|r| {
+                            r.values
+                                .into_iter()
+                                .map(|v| match v.kind.unwrap() {
+                                    grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
+									grpc_db::value::Kind::Float64Value(f) => Value::Float8(f),
+                                    grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
+                                    grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
+                                    grpc_db::value::Kind::TextValue(t) => Value::Text(t),
+                                    _ => unimplemented!("Unhandled value kind"),
+                                })
+                                .collect()
+                        })
+                        .collect();
 
-					ExecutionResult::Query { labels, rows }
-				}
-				// Some(Error(e)) => return Err(tonic::Status::internal(e)),
-				// None => return Err(tonic::Status::internal("empty tx_result")),
-				_ => unimplemented!("Unhandled value kind"),
-			};
+                    ExecutionResult::Query { labels, rows }
+                }
+                // Some(Error(e)) => return Err(tonic::Status::internal(e)),
+                // None => return Err(tonic::Status::internal("empty tx_result")),
+                _ => unimplemented!("Unhandled value kind"),
+            };
 
-			results.push(result);
-		}
+            results.push(result);
+        }
 
-		results
-	}
+        results
+    }
 }

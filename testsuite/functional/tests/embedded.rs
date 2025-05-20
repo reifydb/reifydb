@@ -41,7 +41,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
                     for line in engine.tx_execute(&self.root, query.as_str()).await {
-                        writeln!(output, "{}", line);
+                        writeln!(output, "{}", line).unwrap();
                     }
                 });
             }
@@ -54,7 +54,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
                     for line in engine.rx_execute(&self.root, query.as_str()).await {
-                        writeln!(output, "{}", line);
+                        writeln!(output, "{}", line).unwrap();
                     }
                 });
             }

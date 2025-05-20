@@ -206,6 +206,6 @@ mod tests {
         value_bool: Value::Bool(true) => "0101",
         // value_int: Value::Integer(-1) => "027fffffffffffffff",
         // value_float: Value::Float(PI) => "03c00921fb54442d18",
-        value_string: Value::Text("foo".to_string()) => "03666f6f0000",
+        value_string: Value::Text("foo".to_string()) => "05666f6f0000",
     }
 }

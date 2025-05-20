@@ -24,6 +24,7 @@ impl Executor {
     pub fn eval_function<S: StoreRx>(
         &self,
         function_name: &str,
+        mode: FunctionMode,
         args: Vec<Expression>,
         row: Option<&Row>,
         store: Option<&S>,
@@ -34,26 +35,35 @@ impl Executor {
             .ok_or(FunctionError::UnknownFunction(function_name.to_string()))?;
 
         let executor = func.prepare(&args)?;
-
-        match func.mode() {
-            FunctionMode::Scalar => {
-                let args = self.eval_args(args, row, store);
-                let value = executor.eval_scalar(&args)?;
-                Ok(FunctionResult::Scalar(value))
+    
+        let modes = func.modes();
+        if modes.contains(&mode) {
+            match mode {
+                FunctionMode::Scalar => {
+                    let args = self.eval_args(args, row, store);
+                    let value = executor.eval_scalar(&args)?;
+                    Ok(FunctionResult::Scalar(value))
+                }
+                FunctionMode::Generator => {
+                    let values = self.eval_args(args, row, store);
+                    let rows = executor.eval_generator(&values)?;
+                    Ok(FunctionResult::Rows(rows))
+                }
+                FunctionMode::Aggregate => {
+                    let input = row.ok_or(FunctionError::MissingInput {
+                        function: function_name.to_string(),
+                    })?;
+                    let mut exec = executor;
+                    exec.eval_aggregate(input)?;
+                    let result = exec.finalize_aggregate()?;
+                    Ok(FunctionResult::Scalar(result))
+                }
             }
-            FunctionMode::Generator => {
-                let values = self.eval_args(args, row, store);
-                let rows = executor.eval_generator(&values)?;
-                Ok(FunctionResult::Rows(rows))
-            }
-            FunctionMode::Aggregate => {
-                let input =
-                    row.ok_or(FunctionError::MissingInput { function: function_name.to_string() })?;
-                let mut exec = executor;
-                exec.eval_aggregate(input)?;
-                let result = exec.finalize_aggregate()?;
-                Ok(FunctionResult::Scalar(result))
-            }
+        } else {
+            Err(FunctionError::UnsupportedMode {
+                function: function_name.to_string(),
+                mode: mode.clone(),
+            })
         }
     }
 

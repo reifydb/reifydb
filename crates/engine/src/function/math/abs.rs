@@ -11,8 +11,9 @@ impl Function for AbsFunction {
     fn name(&self) -> &str {
         "abs"
     }
-    fn mode(&self) -> FunctionMode {
-        FunctionMode::Scalar
+
+    fn modes(&self) -> &'static [FunctionMode] {
+        &[FunctionMode::Scalar]
     }
 
     fn prepare(&self, _args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError> {

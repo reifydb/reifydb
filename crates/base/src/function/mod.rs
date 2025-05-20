@@ -40,7 +40,7 @@ pub enum FunctionResult {
 
 pub trait Function: Send + Sync {
     fn name(&self) -> &str;
-    fn mode(&self) -> FunctionMode;
+    fn modes(&self) -> &'static [FunctionMode];
 
     /// Called once to validate and prepare execution.
     fn prepare(&self, args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError>;

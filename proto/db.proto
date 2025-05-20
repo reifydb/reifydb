@@ -48,6 +48,10 @@ message Value {
     UInt128 uint16_value = 11;
 
     string text_value = 12;
+
+    float float32_value = 13;
+    double float64_value = 14;
+
   }
  }
 
