@@ -10,6 +10,7 @@ members = ["bin/cli",
     "crates/storage",
     "crates/testing",
     "crates/transaction",
+    "pkg/python",
     "pkg/rust",
     "testsuite/functional",
     "testsuite/regression",
@@ -24,6 +25,7 @@ default-members = ["bin/cli",
     "crates/storage",
     "crates/testing",
     "crates/transaction",
+    "pkg/python",
     "pkg/rust",
     "testsuite/functional",
     "testsuite/regression",
@@ -78,6 +80,7 @@ prost = "0.13.5"
 regex = { version = "1.11.1" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = { version = "0.11.17" }
+serde_json = { version = "1.0.140" }
 test_each_file = { version = "0.3.4" }
 tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread"] }
 tokio-stream = "0.1.17"

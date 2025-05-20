@@ -91,8 +91,19 @@ pub trait DB<'a>: Sized {
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded<'a>() -> (Embedded<Memory, mvcc::Engine<Memory>>, Principal) {
+    pub fn embedded() -> (Embedded<Memory, mvcc::Engine<Memory>>, Principal) {
         Embedded::new(mvcc(memory()))
+    }
+
+    #[cfg(feature = "embedded_blocking")]
+    pub fn embedded_blocking()
+    -> (embedded_blocking::Embedded<Memory, mvcc::Engine<Memory>>, Principal) {
+        embedded_blocking::Embedded::new(mvcc(memory()))
+    }
+
+    #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
+    pub fn embedded() -> (embedded_blocking::Embedded<Memory, mvcc::Engine<Memory>>, Principal) {
+        Self::embedded_blocking()
     }
 
     #[cfg(feature = "embedded")]
