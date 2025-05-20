@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+mod call;
 mod display;
 
-use base::expression::Expression;
+use base::expression::{Expression, PrefixOperator};
 use base::{Label, Row, Value, ValueType};
 use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
@@ -17,6 +18,8 @@ pub enum ExecutionResult {
     InsertIntoTable { schema: String, table: String, inserted: usize },
     Query { labels: Vec<Label>, rows: Vec<Row> },
 }
+
+pub struct Executor {}
 
 pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<ExecutionResult> {
     Ok(match plan {
@@ -62,7 +65,6 @@ pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<Execution
 }
 
 pub fn execute_plan(plan: Plan, rx: &impl Rx) -> crate::Result<ExecutionResult> {
-
     let plan = match plan {
         Plan::Query(query) => query,
         _ => unreachable!(), // FIXME
@@ -79,7 +81,6 @@ fn execute_node<'a>(
     current_store: Option<String>,
     input: Option<Box<dyn Iterator<Item = Vec<Value>> + 'a>>,
 ) -> crate::Result<(Vec<Label>, Box<dyn Iterator<Item = Vec<Value>> + 'a>)> {
-
     let (labels, result_iter, schema, store, next): (
         Vec<Label>,
         Box<dyn Iterator<Item = Vec<Value>>>,
@@ -142,7 +143,6 @@ fn execute_node<'a>(
                 })
                 .collect();
 
-
             let store_ref = store;
 
             let projected_rows = input_iter.map(move |row| {
@@ -181,6 +181,27 @@ pub fn evaluate<S: StoreRx>(
         }
 
         Expression::Constant(value) => Ok(value),
+
+        Expression::Prefix(prefix) => {
+            let value = evaluate::<S>(*prefix.expression, row, store).unwrap();
+            let result = match value {
+                Value::Int2(value) => match prefix.operator {
+                    PrefixOperator::Minus => Value::Int2(value * -1),
+                    PrefixOperator::Plus => Value::Int2(value),
+                },
+
+                _ => unimplemented!(),
+            };
+
+            Ok(result)
+        }
+
+        Expression::Call(call) => {
+            let exec = Executor {};
+            let args =
+                call.args.into_iter().map(|a| evaluate(a, row, store).unwrap()).collect::<Vec<_>>();
+            exec.call_projection(&call.func.name, args)
+        }
 
         Expression::Add(left, right) => {
             let left = evaluate::<S>(*left, row, store)?;

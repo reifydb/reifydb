@@ -8,7 +8,10 @@ use crate::ast::{
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use base::expression::Expression;
+use crate::ast;
+use base::expression::{
+    CallExpression, Expression, IdentExpression, PrefixExpression, PrefixOperator, TupleExpression,
+};
 use base::{Value, ValueType};
 pub use error::Error;
 use transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
@@ -280,6 +283,25 @@ fn expression(ast: Ast) -> Result<Expression> {
         },
         Ast::Identifier(identifier) => Ok(Expression::Identifier(identifier.value().to_string())),
         Ast::Infix(infix) => expression_infix(infix),
+        Ast::Tuple(tuple) => {
+            let mut expressions = Vec::with_capacity(tuple.len());
+
+            for ast in tuple.nodes {
+                expressions.push(expression(ast)?);
+            }
+
+            Ok(Expression::Tuple(TupleExpression { expressions }))
+        }
+        Ast::Prefix(prefix) => {
+            Ok(Expression::Prefix(PrefixExpression {
+                operator: match prefix.operator {
+                    ast::PrefixOperator::Plus(_) => PrefixOperator::Plus,
+                    ast::PrefixOperator::Negate(_) => PrefixOperator::Minus,
+                    ast::PrefixOperator::Not(_) => unimplemented!(),
+                }, // FIXME ast and expression share the same operator --> use the same enum
+                expression: Box::new(expression(*prefix.node)?),
+            }))
+        }
         _ => unimplemented!("{ast:#?}"),
     }
 }
@@ -291,12 +313,23 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
             let right = expression(*infix.right)?;
             Ok(Expression::Add(Box::new(left), Box::new(right)))
         }
-        _ => unimplemented!(),
+        InfixOperator::Call(_) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+
+            let Expression::Identifier(name) = left else { panic!() };
+            let Expression::Tuple(tuple) = right else { panic!() };
+
+            Ok(Expression::Call(CallExpression {
+                func: IdentExpression { name },
+                args: tuple.expressions,
+            }))
+        }
+        operator => unimplemented!("not implemented: {operator:?}"),
         // InfixOperator::Arrow(_) => {}
         // InfixOperator::AccessPackage(_) => {}
         // InfixOperator::AccessProperty(_) => {}
         // InfixOperator::Assign(_) => {}
-        // InfixOperator::Call(_) => {}
         // InfixOperator::Subtract(_) => {}
         // InfixOperator::Multiply(_) => {}
         // InfixOperator::Divide(_) => {}

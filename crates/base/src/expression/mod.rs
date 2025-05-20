@@ -16,6 +16,40 @@ pub enum Expression {
     Constant(Value),
 
     Identifier(String),
-    
+
     Add(Box<Expression>, Box<Expression>),
+
+    Call(CallExpression),
+
+    Tuple(TupleExpression),
+
+    Prefix(PrefixExpression),
+}
+
+#[derive(Debug, Clone)]
+pub struct CallExpression {
+    pub func: IdentExpression,
+    pub args: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IdentExpression {
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum PrefixOperator {
+    Minus,
+    Plus
+}
+
+#[derive(Debug, Clone)]
+pub struct PrefixExpression {
+    pub operator: PrefixOperator,
+    pub expression: Box<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TupleExpression {
+    pub expressions: Vec<Expression>,
 }
