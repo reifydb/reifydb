@@ -20,5 +20,6 @@ mod key;
 mod row_meta;
 mod row;
 mod value;
+mod ordered_float;
 
 pub type Result<T> = std::result::Result<T, Error>;

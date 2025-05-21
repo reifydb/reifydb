@@ -1,0 +1,119 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use crate::ordered_float::error::OrderedFloatError;
+use std::cmp::Ordering;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Default)]
+pub struct OrderedF64(pub f64);
+
+impl PartialEq for OrderedF64 {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits()
+    }
+}
+
+impl Eq for OrderedF64 {}
+
+impl PartialOrd for OrderedF64 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for OrderedF64 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let a = self.0.to_bits() ^ ((self.0.to_bits() >> 63) & 0x7fffffffffffffff);
+        let b = other.0.to_bits() ^ ((other.0.to_bits() >> 63) & 0x7fffffffffffffff);
+        a.cmp(&b)
+    }
+}
+
+impl Hash for OrderedF64 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state);
+    }
+}
+
+impl fmt::Debug for OrderedF64 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<OrderedF64> for f64 {
+    fn from(v: OrderedF64) -> Self {
+        v.0
+    }
+}
+
+impl TryFrom<f64> for OrderedF64 {
+    type Error = OrderedFloatError;
+
+    fn try_from(f: f64) -> Result<Self, Self::Error> {
+        // normalize -0.0 and +0.0
+        let normalized = if f == 0.0 { 0.0 } else { f };
+        if f.is_nan() { Err(OrderedFloatError) } else { Ok(OrderedF64(normalized)) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::collections::HashSet;
+    use std::convert::TryFrom;
+
+    #[test]
+    fn test_eq_and_ord() {
+        let a = OrderedF64::try_from(3.14).unwrap();
+        let b = OrderedF64::try_from(3.14).unwrap();
+        let c = OrderedF64::try_from(2.71).unwrap();
+
+        assert_eq!(a, b);
+        assert!(a > c);
+        assert!(c < a);
+    }
+
+    #[test]
+    fn test_sorting() {
+        let mut values = vec![
+            OrderedF64::try_from(10.0).unwrap(),
+            OrderedF64::try_from(2.0).unwrap(),
+            OrderedF64::try_from(5.0).unwrap(),
+        ];
+        values.sort();
+        let sorted: Vec<f64> = values.into_iter().map(|v| v.0).collect();
+        assert_eq!(sorted, vec![2.0, 5.0, 10.0]);
+    }
+
+    #[test]
+    fn test_hash_eq() {
+        let a = OrderedF64::try_from(1.0).unwrap();
+        let b = OrderedF64::try_from(1.0).unwrap();
+
+        let mut set = HashSet::new();
+        set.insert(a);
+        assert!(set.contains(&b));
+    }
+
+    #[test]
+    fn test_normalizes_zero() {
+        let pos_zero = OrderedF64::try_from(0.0).unwrap();
+        let neg_zero = OrderedF64::try_from(-0.0).unwrap();
+
+        assert_eq!(pos_zero, neg_zero);
+
+        let mut set = HashSet::new();
+        set.insert(pos_zero);
+        assert!(set.contains(&neg_zero));
+    }
+
+    #[test]
+    fn test_nan_fails() {
+        assert!(OrderedF64::try_from(f64::NAN).is_err());
+    }
+}
