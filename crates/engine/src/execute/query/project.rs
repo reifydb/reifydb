@@ -4,24 +4,21 @@
 use crate::execute::Executor;
 use crate::old_execute::evaluate;
 use base::expression::Expression;
-use base::{RowMeta, ValueKind};
+use dataframe::{Column, DataFrame};
 use transaction::NopStore;
 
 impl Executor {
     pub(crate) fn project(&mut self, expressions: Vec<Expression>) -> crate::Result<()> {
-        let mut meta = vec![];
-        let mut values = vec![];
+        if self.frame.is_empty() {
+            let mut columns = vec![];
 
-        for (idx, expr) in expressions.into_iter().enumerate() {
-            let value = evaluate::<NopStore>(expr, None, None).unwrap();
-            meta.push(RowMeta { value: ValueKind::from(&value), label: format!("{}", idx + 1) });
-            values.push(value);
+            for (idx, expr) in expressions.into_iter().enumerate() {
+                let value = evaluate::<NopStore>(expr, None, None).unwrap();
+                columns.push(Column { name: format!("{}", idx + 1), data: value.into() });
+            }
+
+            self.frame = DataFrame::new(columns);
         }
-
-        dbg!(&meta);
-        dbg!(&values);
-
-        // return Ok((labels, Box::new(vec![values].into_iter())));
 
         Ok(())
     }

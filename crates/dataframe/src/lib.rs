@@ -7,10 +7,13 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use column::{Column, ColumnValues};
+pub use error::Error;
 pub use frame::DataFrame;
 pub use reference::{RowRef, ValueRef};
+pub use transform::Append;
 
 mod column;
+mod error;
 mod frame;
 mod iterator;
 mod reference;
@@ -19,6 +22,8 @@ mod transform;
 use base::Value;
 use std::collections::HashMap;
 use std::time::Instant;
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub fn inner_join_indices(lhs: &DataFrame, rhs: &DataFrame, on: &str) -> Vec<(usize, usize)> {
     let mut rhs_index: HashMap<Value, Vec<usize>> = HashMap::new();

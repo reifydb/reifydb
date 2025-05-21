@@ -30,8 +30,7 @@ default-members = ["bin/cli",
     "pkg/rust",
     "testsuite/functional",
     "testsuite/regression",
-    "testsuite/smoke"
-    ]
+    "testsuite/smoke"]
 
 [workspace.package]
 authors = ["Dev <dominique@reifydb.com>"]
@@ -64,6 +63,7 @@ overflow-checks = true
 reifydb = { path = "pkg/rust", version = "0.0.1" }
 auth = { path = "crates/auth", version = "0.0.1" }
 base = { path = "crates/base", version = "0.0.1" }
+dataframe = { path = "crates/dataframe", version = "0.0.1" }
 engine = { path = "crates/engine", version = "0.0.1" }
 rql = { path = "crates/rql", version = "0.0.1" }
 storage = { path = "crates/storage", version = "0.0.1" }

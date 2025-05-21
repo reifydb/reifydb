@@ -26,6 +26,10 @@ impl DataFrame {
         (self.columns.get(0).map(|c| c.data.len()).unwrap_or(0), self.columns.len())
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.shape().0 == 0
+    }
+
     pub fn row(&self, i: usize) -> Vec<Value> {
         self.columns.iter().map(|c| c.data.get(i)).collect()
     }

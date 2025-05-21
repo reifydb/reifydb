@@ -59,15 +59,15 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         .await
         .unwrap();
 
-        let mut labels: Vec<grpc_db::Label> = vec![];
+        let mut columns: Vec<grpc_db::Column> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];
 
         match &result[0] {
-            ExecutionResult::Query { labels: ls, rows: rs } => {
-                labels = ls
+            ExecutionResult::Query { columns: ls, rows: rs } => {
+                columns = ls
                     .iter()
-                    .map(|l| grpc_db::Label {
-                        name: l.to_string(),
+                    .map(|c| grpc_db::Column {
+                        name: c.name.clone(),
                         value: 0, // or some ID if relevant
                     })
                     .collect();
@@ -105,7 +105,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         }
 
         let result = TxResult {
-            result: Some(grpc_db::tx_result::Result::Query(QueryResult { labels, rows })),
+            result: Some(grpc_db::tx_result::Result::Query(QueryResult { columns, rows })),
         };
 
         Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream))
@@ -134,15 +134,15 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         .await
         .unwrap();
 
-        let mut labels: Vec<grpc_db::Label> = vec![];
+        let mut columns: Vec<grpc_db::Column> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];
 
         match &result[0] {
-            ExecutionResult::Query { labels: ls, rows: rs } => {
-                labels = ls
+            ExecutionResult::Query { columns: ls, rows: rs } => {
+                columns = ls
                     .iter()
-                    .map(|l| grpc_db::Label {
-                        name: l.to_string(),
+                    .map(|c| grpc_db::Column {
+                        name: c.name.clone(),
                         value: 0, // or some ID if relevant
                     })
                     .collect();
@@ -156,7 +156,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
         }
 
         let result = RxResult {
-            result: Some(grpc_db::rx_result::Result::Query(QueryResult { labels, rows })),
+            result: Some(grpc_db::rx_result::Result::Query(QueryResult { columns, rows })),
         };
 
         Ok(Response::new(Box::pin(once(Ok(result))) as RxResultStream))

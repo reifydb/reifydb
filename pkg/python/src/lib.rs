@@ -54,7 +54,7 @@ impl PyEmbedded {
                     "table": table,
                     "inserted": inserted
                 }),
-                ExecutionResult::Query { labels, rows } => json!({
+                ExecutionResult::Query { columns: labels, rows } => json!({
                     "type": "Query",
                     "headers": labels.iter().map(|l| l.to_string()).collect::<Vec<_>>(),
                     "rows": rows.iter()

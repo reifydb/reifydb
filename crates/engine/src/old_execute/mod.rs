@@ -8,18 +8,83 @@ use crate::function::math;
 use crate::function::math::AvgFunction;
 use base::expression::{Expression, PrefixOperator};
 use base::function::FunctionRegistry;
-use base::{RowMeta, Row, Value, ValueKind};
+use base::{Row, RowMeta, Value, ValueKind};
+use dataframe::{ColumnValues, DataFrame};
 use rql::plan::{Plan, QueryPlan, SortDirection};
 use std::ops::Deref;
 use std::vec;
 use transaction::{CatalogTx, NopStore, Rx, SchemaRx, SchemaTx, StoreRx, StoreToCreate, Tx};
+
+#[derive(Clone, Debug)]
+pub struct Column {
+    pub name: String,
+    pub value: ValueKind,
+}
 
 #[derive(Debug)]
 pub enum ExecutionResult {
     CreateSchema { schema: String },
     CreateTable { schema: String, table: String },
     InsertIntoTable { schema: String, table: String, inserted: usize },
-    Query { labels: Vec<RowMeta>, rows: Vec<Row> },
+    Query { columns: Vec<Column>, rows: Vec<Row> },
+}
+
+impl From<DataFrame> for ExecutionResult {
+    fn from(value: DataFrame) -> Self {
+        let columns: Vec<Column> = value
+            .columns
+            .iter()
+            .map(|c| {
+                let value = match &c.data {
+                    ColumnValues::Int2(_, _) => ValueKind::Int2,
+                    ColumnValues::Text(_, _) => ValueKind::Text,
+                    ColumnValues::Bool(_, _) => ValueKind::Bool,
+                    ColumnValues::Undefined(_) => ValueKind::Undefined,
+                };
+
+                Column { name: c.name.clone(), value }
+            })
+            .collect();
+
+        let row_count = value.columns.first().map_or(0, |col| col.data.len());
+        let mut rows = Vec::with_capacity(row_count);
+
+        for row_idx in 0..row_count {
+            let mut row = Vec::with_capacity(value.columns.len());
+
+            for col in &value.columns {
+                let value = match &col.data {
+                    ColumnValues::Int2(vals, valid) => {
+                        if valid[row_idx] {
+                            Value::Int2(vals[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Text(vals, valid) => {
+                        if valid[row_idx] {
+                            Value::Text(vals[row_idx].clone())
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Bool(vals, valid) => {
+                        if valid[row_idx] {
+                            Value::Bool(vals[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Undefined(_) => Value::Undefined,
+                };
+                row.push(value);
+            }
+
+            rows.push(row);
+        }
+
+        ExecutionResult::Query { columns, rows }
+    }
 }
 
 pub struct Executor {
@@ -263,7 +328,7 @@ fn execute_node<'a>(
             // fn avg_values(args: &[Value]) -> Value {
             //     let mut sum = Value::Float8(0.0);
             //     let mut count = 0usize;
-            // 
+            //
             //     for arg in args {
             //         match arg {
             //             Value::Int2(a) => {
@@ -278,7 +343,7 @@ fn execute_node<'a>(
             //             _ => unimplemented!(),
             //         }
             //     }
-            // 
+            //
             //     if count == 0 {
             //         Value::Undefined
             //     } else {

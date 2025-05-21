@@ -15,7 +15,7 @@ message RxRequest{
   string query = 1;
 }
 
-message Label {
+message Column {
   string name = 1;
   uint32 value = 2;
 }
@@ -74,7 +74,7 @@ message InsertIntoTable {
 }
 
 message QueryResult {
-  repeated Label labels = 1;
+  repeated Column columns = 1;
   repeated Row rows = 2;
 }
 

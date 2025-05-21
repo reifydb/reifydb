@@ -243,6 +243,7 @@ version = "0.0.1"
 dependencies = [
  "auth",
  "base",
+ "dataframe",
  "log",
  "rql",
  "serde",

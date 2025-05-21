@@ -9,8 +9,7 @@ pub struct Column {
     pub data: ColumnValues,
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ColumnValues {
     Int2(Vec<i16>, Vec<bool>), // value, is_valid
     // Float(Vec<f64>, Vec<bool>),
@@ -18,6 +17,21 @@ pub enum ColumnValues {
     Bool(Vec<bool>, Vec<bool>),
     Undefined(usize), // special case: all undefined
 }
+
+impl From<Value> for ColumnValues {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Bool(v) => ColumnValues::Bool(vec![v], vec![true]),
+            Value::Float4(_) => unimplemented!(),
+            Value::Float8(_) => unimplemented!(),
+            Value::Int2(v) => ColumnValues::Int2(vec![v], vec![true]),
+            Value::Text(v) => ColumnValues::Text(vec![v], vec![true]),
+            Value::Uint2(_) => unimplemented!(),
+            Value::Undefined => ColumnValues::Undefined(1),
+        }
+    }
+}
+
 impl ColumnValues {
     pub fn get(&self, index: usize) -> Value {
         match self {

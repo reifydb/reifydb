@@ -3,7 +3,7 @@
 
 use base::ordered_float::OrderedF64;
 use base::{Value, ValueKind};
-use engine::old_execute::ExecutionResult;
+use engine::old_execute::{Column, ExecutionResult};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -40,9 +40,9 @@ pub async fn parse_rx_query_result(
         match msg.result {
             Some(grpc_db::rx_result::Result::Query(query)) => {
                 let labels = query
-                    .labels
+                    .columns
                     .into_iter()
-                    .map(|l| base::RowMeta { value: ValueKind::Bool, label: l.name })
+                    .map(|c| Column { value: ValueKind::Bool, name: c.name })
                     .collect();
 
                 let rows = query
@@ -66,7 +66,7 @@ pub async fn parse_rx_query_result(
                     })
                     .collect();
 
-                return Ok(ExecutionResult::Query { labels, rows });
+                return Ok(ExecutionResult::Query { columns: labels, rows });
             }
             Some(grpc_db::rx_result::Result::Error(e)) => {
                 return Err(tonic::Status::internal(e));
@@ -132,9 +132,9 @@ impl Client {
                 },
                 Some(Query(query)) => {
                     let labels = query
-                        .labels
+                        .columns
                         .into_iter()
-                        .map(|l| base::RowMeta { label: l.name, value: ValueKind::Bool })
+                        .map(|c| Column { name: c.name, value: ValueKind::Bool })
                         .collect();
 
                     let rows = query
@@ -160,7 +160,7 @@ impl Client {
                         })
                         .collect();
 
-                    ExecutionResult::Query { labels, rows }
+                    ExecutionResult::Query { columns: labels, rows }
                 }
                 // Some(Error(e)) => return Err(tonic::Status::internal(e)),
                 // None => return Err(tonic::Status::internal("empty tx_result")),

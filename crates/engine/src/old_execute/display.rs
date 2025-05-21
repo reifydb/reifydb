@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::old_execute::ExecutionResult;
-use base::{RowMeta, Row};
+use crate::old_execute::{Column, ExecutionResult};
+use base::Row;
 use std::fmt::{Display, Formatter};
 
 impl Display for ExecutionResult {
@@ -21,18 +21,18 @@ impl Display for ExecutionResult {
                     write!(f, "inserted 1 row into table {table} created in schema {schema}")
                 }
             }
-            ExecutionResult::Query { labels, rows } => print_query(labels, rows, f),
+            ExecutionResult::Query { columns, rows } => print_query(columns, rows, f),
         }
     }
 }
 
-fn print_query(labels: &Vec<RowMeta>, rows: &Vec<Row>, f: &mut Formatter<'_>) -> std::fmt::Result {
+fn print_query(labels: &Vec<Column>, rows: &Vec<Row>, f: &mut Formatter<'_>) -> std::fmt::Result {
     let num_cols = labels.len();
     let mut col_widths = vec![0; num_cols];
 
-    // Measure label widths
-    for (i, label) in labels.iter().enumerate() {
-        col_widths[i] = label.to_string().len();
+    // Measure column widths
+    for (i, column) in labels.iter().enumerate() {
+        col_widths[i] = column.name.len();
     }
 
     // Measure row value widths
@@ -50,7 +50,7 @@ fn print_query(labels: &Vec<RowMeta>, rows: &Vec<Row>, f: &mut Formatter<'_>) ->
     let separator =
         format!("+{}+", col_widths.iter().map(|w| "-".repeat(*w)).collect::<Vec<_>>().join("+"));
 
-    let print_header_row = |row: &[String]| {
+    let print_header_row = |row: &[&str]| {
         let cells = row.iter().enumerate().map(|(i, cell)| {
             let w = col_widths[i] - 2;
             let padding = w.saturating_sub(cell.len());
@@ -73,7 +73,11 @@ fn print_query(labels: &Vec<RowMeta>, rows: &Vec<Row>, f: &mut Formatter<'_>) ->
     };
 
     writeln!(f, "{}", separator)?;
-    writeln!(f, "{}", print_header_row(&labels.iter().map(|l| l.to_string()).collect::<Vec<_>>()))?;
+    writeln!(
+        f,
+        "{}",
+        print_header_row(&labels.iter().map(|column| column.name.as_str()).collect::<Vec<_>>())
+    )?;
     writeln!(f, "{}", separator)?;
     for row in rows {
         writeln!(f, "{}", print_row(&row.iter().map(|v| v.to_string()).collect::<Vec<_>>()))?;
