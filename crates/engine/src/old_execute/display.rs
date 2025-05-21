@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::ExecutionResult;
-use base::{Label, Row};
+use crate::old_execute::ExecutionResult;
+use base::{RowMeta, Row};
 use std::fmt::{Display, Formatter};
 
 impl Display for ExecutionResult {
@@ -26,7 +26,7 @@ impl Display for ExecutionResult {
     }
 }
 
-fn print_query(labels: &Vec<Label>, rows: &Vec<Row>, f: &mut Formatter<'_>) -> std::fmt::Result {
+fn print_query(labels: &Vec<RowMeta>, rows: &Vec<Row>, f: &mut Formatter<'_>) -> std::fmt::Result {
     let num_cols = labels.len();
     let mut col_widths = vec![0; num_cols];
 

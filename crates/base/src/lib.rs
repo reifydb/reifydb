@@ -8,7 +8,7 @@
 
 pub use error::Error;
 pub use key::{Key, KeyError};
-pub use label::Label;
+pub use row_meta::RowMeta;
 pub use row::{Row, RowIter, RowIterator};
 pub use value::{Value, ValueKind};
 
@@ -17,7 +17,7 @@ mod error;
 pub mod expression;
 pub mod function;
 mod key;
-mod label;
+mod row_meta;
 mod row;
 mod value;
 

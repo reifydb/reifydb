@@ -1,0 +1,31 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use crate::execute::Executor;
+use crate::old_execute::evaluate;
+use base::expression::Expression;
+use base::{RowMeta, ValueKind};
+use transaction::NopStore;
+
+impl Executor {
+    pub(crate) fn project(&mut self, expressions: Vec<Expression>) -> crate::Result<()> {
+        let mut meta = vec![];
+        let mut values = vec![];
+
+        for (idx, expr) in expressions.into_iter().enumerate() {
+            let value = evaluate::<NopStore>(expr, None, None).unwrap();
+            meta.push(RowMeta { value: ValueKind::from(&value), label: format!("{}", idx + 1) });
+            values.push(value);
+        }
+
+        dbg!(&meta);
+        dbg!(&values);
+
+        // return Ok((labels, Box::new(vec![values].into_iter())));
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {}

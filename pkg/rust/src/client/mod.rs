@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use base::{Value, ValueKind};
-use engine::execute::ExecutionResult;
+use engine::old_execute::ExecutionResult;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -41,7 +41,7 @@ pub async fn parse_rx_query_result(
                 let labels = query
                     .labels
                     .into_iter()
-                    .map(|l| base::Label::Custom { value: ValueKind::Bool, label: l.name })
+                    .map(|l| base::RowMeta { value: ValueKind::Bool, label: l.name })
                     .collect();
 
                 let rows = query
@@ -130,7 +130,7 @@ impl Client {
                     let labels = query
                         .labels
                         .into_iter()
-                        .map(|l| base::Label::Custom { label: l.name, value: ValueKind::Bool })
+                        .map(|l| base::RowMeta { label: l.name, value: ValueKind::Bool })
                         .collect();
 
                     let rows = query
@@ -141,7 +141,7 @@ impl Client {
                                 .into_iter()
                                 .map(|v| match v.kind.unwrap() {
                                     grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
-									grpc_db::value::Kind::Float64Value(f) => Value::Float8(f),
+                                    grpc_db::value::Kind::Float64Value(f) => Value::Float8(f),
                                     grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
                                     grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
                                     grpc_db::value::Kind::TextValue(t) => Value::Text(t),

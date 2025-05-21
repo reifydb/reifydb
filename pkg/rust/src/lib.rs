@@ -28,7 +28,7 @@ pub use auth::Principal;
 pub use base::*;
 /// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
 pub use engine;
-use engine::execute::ExecutionResult;
+use engine::old_execute::ExecutionResult;
 pub use error::Error;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use rql;

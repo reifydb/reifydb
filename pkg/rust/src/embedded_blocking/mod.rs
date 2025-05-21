@@ -3,7 +3,7 @@
 
 use auth::Principal;
 use engine::Engine;
-use engine::execute::ExecutionResult;
+use engine::old_execute::ExecutionResult;
 use storage::StorageEngine;
 use transaction::TransactionEngine;
 

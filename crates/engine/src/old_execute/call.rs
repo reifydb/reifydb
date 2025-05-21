@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::{Executor, evaluate};
+use crate::old_execute::{Executor, evaluate};
 use base::expression::Expression;
 use base::function::{FunctionError, FunctionMode};
 use base::{Row, Value};

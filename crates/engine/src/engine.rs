@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::{ExecutionResult, execute_plan, execute_plan_mut};
+use crate::old_execute::{ExecutionResult, execute_plan, execute_plan_mut};
 use auth::Principal;
 use rql::ast;
 use rql::ast::Ast;
