@@ -169,8 +169,8 @@ fn value_to_query_value(value: &Value) -> grpc_db::Value {
     grpc_db::Value {
         kind: Some(match value {
             Value::Bool(v) => Kind::BoolValue(*v),
-            Value::Float4(v) => Kind::Float32Value(*v),
-            Value::Float8(v) => Kind::Float64Value(*v),
+            Value::Float4(v) => Kind::Float32Value(v.value()),
+            Value::Float8(v) => Kind::Float64Value(v.value()),
             // Int1(v) => Kind::Int1Value(*v as i32),
             Value::Int2(v) => Kind::Int2Value(*v as i32),
             // Int4(v) => Kind::Int4Value(*v),

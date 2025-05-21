@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use base::ordered_float::OrderedF64;
 use base::{Value, ValueKind};
 use engine::old_execute::ExecutionResult;
 use std::net::SocketAddr;
@@ -52,7 +53,10 @@ pub async fn parse_rx_query_result(
                             .into_iter()
                             .map(|v| match v.kind.unwrap() {
                                 grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
-                                grpc_db::value::Kind::Float64Value(f) => Value::Float8(f),
+                                grpc_db::value::Kind::Float64Value(f) => OrderedF64::try_from(f)
+                                    .ok()
+                                    .map(|v| Value::Float8(v))
+                                    .unwrap_or(Value::Undefined),
                                 grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
                                 grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
                                 grpc_db::value::Kind::TextValue(t) => Value::Text(t),
@@ -141,7 +145,12 @@ impl Client {
                                 .into_iter()
                                 .map(|v| match v.kind.unwrap() {
                                     grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
-                                    grpc_db::value::Kind::Float64Value(f) => Value::Float8(f),
+                                    grpc_db::value::Kind::Float64Value(f) => {
+                                        OrderedF64::try_from(f)
+                                            .ok()
+                                            .map(|v| Value::Float8(v))
+                                            .unwrap_or(Value::Undefined)
+                                    }
                                     grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
                                     grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
                                     grpc_db::value::Kind::TextValue(t) => Value::Text(t),

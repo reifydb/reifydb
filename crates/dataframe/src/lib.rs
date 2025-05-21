@@ -6,19 +6,10 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
-pub enum Value {
-    Int(i64),
-    Float(OrderedF64),
-    Text(String),
-    Bool(bool),
-    Undefined,
-}
-
 #[derive(Debug, Clone)]
 pub enum ColumnValues {
-    Int(Vec<i64>, Vec<bool>), // value, is_valid
-    Float(Vec<f64>, Vec<bool>),
+    Int2(Vec<i16>, Vec<bool>), // value, is_valid
+    // Float(Vec<f64>, Vec<bool>),
     Text(Vec<String>, Vec<bool>),
     Bool(Vec<bool>, Vec<bool>),
     Undefined(usize), // special case: all undefined
@@ -26,20 +17,20 @@ pub enum ColumnValues {
 impl ColumnValues {
     pub fn get(&self, index: usize) -> Value {
         match self {
-            ColumnValues::Int(v, b) => {
+            ColumnValues::Int2(v, b) => {
                 if b[index] {
-                    Value::Int(v[index])
+                    Value::Int2(v[index])
                 } else {
                     Value::Undefined
                 }
             }
-            ColumnValues::Float(v, b) => {
-                if b[index] {
-                    Value::Float(OrderedF64(v[index]))
-                } else {
-                    Value::Undefined
-                }
-            }
+            // ColumnValues::Float(v, b) => {
+            //     if b[index] {
+            //         Value::Float(OrderedF64(v[index]))
+            //     } else {
+            //         Value::Undefined
+            //     }
+            // }
             ColumnValues::Text(v, b) => {
                 if b[index] {
                     Value::Text(v[index].clone())
@@ -60,14 +51,14 @@ impl ColumnValues {
 
     pub fn push(&mut self, value: Value) {
         match (self, value) {
-            (ColumnValues::Int(v, b), Value::Int(i)) => {
+            (ColumnValues::Int2(v, b), Value::Int2(i)) => {
                 v.push(i);
                 b.push(true);
             }
-            (ColumnValues::Float(v, b), Value::Float(f)) => {
-                v.push(f.0);
-                b.push(true);
-            }
+            // (ColumnValues::Float(v, b), Value::Float(f)) => {
+            //     v.push(f.0);
+            //     b.push(true);
+            // }
             (ColumnValues::Text(v, b), Value::Text(s)) => {
                 v.push(s);
                 b.push(true);
@@ -76,8 +67,8 @@ impl ColumnValues {
                 v.push(x);
                 b.push(true);
             }
-            (ColumnValues::Int(_, b), Value::Undefined)
-            | (ColumnValues::Float(_, b), Value::Undefined)
+            (ColumnValues::Int2(_, b), Value::Undefined)
+            // | (ColumnValues::Float(_, b), Value::Undefined)
             | (ColumnValues::Text(_, b), Value::Undefined)
             | (ColumnValues::Bool(_, b), Value::Undefined) => b.push(false),
             (ColumnValues::Undefined(n), Value::Undefined) => *n += 1,
@@ -87,8 +78,8 @@ impl ColumnValues {
 
     pub fn len(&self) -> usize {
         match self {
-            ColumnValues::Int(_, b) => b.len(),
-            ColumnValues::Float(_, b) => b.len(),
+            ColumnValues::Int2(_, b) => b.len(),
+            // ColumnValues::Float(_, b) => b.len(),
             ColumnValues::Text(_, b) => b.len(),
             ColumnValues::Bool(_, b) => b.len(),
             ColumnValues::Undefined(n) => *n,
@@ -97,8 +88,8 @@ impl ColumnValues {
 
     pub fn is_undefined(&self, index: usize) -> bool {
         match self {
-            ColumnValues::Int(_, b)
-            | ColumnValues::Float(_, b)
+            ColumnValues::Int2(_, b)
+            // | ColumnValues::Float(_, b)
             | ColumnValues::Text(_, b)
             | ColumnValues::Bool(_, b) => !b[index],
             ColumnValues::Undefined(_) => true,
@@ -107,8 +98,8 @@ impl ColumnValues {
 
     pub fn empty(&self) -> ColumnValues {
         match self {
-            ColumnValues::Int(_, _) => ColumnValues::Int(Vec::new(), Vec::new()),
-            ColumnValues::Float(_, _) => ColumnValues::Float(Vec::new(), Vec::new()),
+            ColumnValues::Int2(_, _) => ColumnValues::Int2(Vec::new(), Vec::new()),
+            // ColumnValues::Float(_, _) => ColumnValues::Float(Vec::new(), Vec::new()),
             ColumnValues::Text(_, _) => ColumnValues::Text(Vec::new(), Vec::new()),
             ColumnValues::Bool(_, _) => ColumnValues::Bool(Vec::new(), Vec::new()),
             ColumnValues::Undefined(_) => ColumnValues::Undefined(0),
@@ -116,7 +107,7 @@ impl ColumnValues {
     }
 }
 
-use base::ordered_float::OrderedF64;
+use base::Value;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::time::Instant;
@@ -194,7 +185,7 @@ impl DataFrame {
 
     pub fn iter(&self) -> DataFrameIter<'_> {
         let col_names = self.columns.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
-        DataFrameIter { df: self, row_index: 0, col_names }
+        DataFrameIter { df: self, row_index: 0, colum_names: col_names }
     }
 }
 
@@ -212,8 +203,8 @@ impl<'df, 'names> RowRef<'df, 'names> {
 
 #[derive(Debug, Clone)]
 pub enum ValueRef<'a> {
-    Int(&'a i64),
-    Float(&'a f64),
+    Int2(&'a i16),
+    // Float(&'a f64),
     Text(&'a str),
     Bool(&'a bool),
     Undefined,
@@ -222,8 +213,8 @@ pub enum ValueRef<'a> {
 impl<'a> ValueRef<'a> {
     pub fn as_value(&self) -> Value {
         match self {
-            ValueRef::Int(v) => Value::Int(**v),
-            ValueRef::Float(v) => Value::Float(OrderedF64(**v)),
+            ValueRef::Int2(v) => Value::Int2(**v),
+            // ValueRef::Float(v) => Value::Float(OrderedF64(**v)),
             ValueRef::Text(s) => Value::Text(s.to_string()),
             ValueRef::Bool(b) => Value::Bool(**b),
             ValueRef::Undefined => Value::Undefined,
@@ -234,11 +225,11 @@ impl<'a> ValueRef<'a> {
 pub struct DataFrameIter<'df> {
     df: &'df DataFrame,
     row_index: usize,
-    col_names: Vec<String>,
+    colum_names: Vec<String>,
 }
 
 impl<'df> Iterator for DataFrameIter<'df> {
-    type Item = RowRef<'df, 'df>; // fix: both lifetimes are 'df for simplicity
+    type Item = RowRef<'df, 'df>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.row_index >= self.df.row_index.len() {
@@ -253,20 +244,20 @@ impl<'df> Iterator for DataFrameIter<'df> {
             .columns
             .iter()
             .map(|col| match &col.data {
-                ColumnValues::Int(data, bitmap) => {
+                ColumnValues::Int2(data, bitmap) => {
                     if bitmap[i] {
-                        ValueRef::Int(&data[i])
+                        ValueRef::Int2(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
-                ColumnValues::Float(data, bitmap) => {
-                    if bitmap[i] {
-                        ValueRef::Float(&data[i])
-                    } else {
-                        ValueRef::Undefined
-                    }
-                }
+                // ColumnValues::Float(data, bitmap) => {
+                //     if bitmap[i] {
+                //         ValueRef::Float(&data[i])
+                //     } else {
+                //         ValueRef::Undefined
+                //     }
+                // }
                 ColumnValues::Text(data, bitmap) => {
                     if bitmap[i] {
                         ValueRef::Text(&data[i])
@@ -287,9 +278,8 @@ impl<'df> Iterator for DataFrameIter<'df> {
 
         // SAFETY: we trick the borrow checker here a bit with a cast.
         // Because `self.col_names` is owned by the iterator, we need to coerce its lifetime upward.
-        // For real safety and ergonomics, use Arc<Vec<String>> instead.
 
-        let col_names: &'df [String] = unsafe { std::mem::transmute(&self.col_names[..]) };
+        let col_names: &'df [String] = unsafe { std::mem::transmute(&self.colum_names[..]) };
 
         Some(RowRef { values, col_names, col_map: &self.df.column_index })
     }
@@ -326,12 +316,12 @@ pub fn inner_join_indices(lhs: &DataFrame, rhs: &DataFrame, on: &str) -> Vec<(us
 
 #[cfg(test)]
 mod tests {
-	use crate::{inner_join_indices, Column, ColumnValues, DataFrame, ValueRef};
-	use rand::rngs::StdRng;
-	use rand::{Rng, SeedableRng};
-	use std::time::Instant;
+    use crate::{Column, ColumnValues, DataFrame, inner_join_indices};
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+    use std::time::Instant;
 
-	fn generate_large_dataframe() -> DataFrame {
+    fn generate_large_dataframe() -> DataFrame {
         const N: usize = 1_000_000;
         let mut rng = StdRng::seed_from_u64(42); // deterministic for testing
 
@@ -347,7 +337,7 @@ mod tests {
         let mut index = Vec::with_capacity(N);
 
         for i in 0..N {
-            let id = (i + 1) as i64;
+            let id = (i + 1) as i16;
             let score = (id % 100) as f64 + rng.gen_range(0.0..1.0);
             let pass = score > 50.0;
 
@@ -365,8 +355,8 @@ mod tests {
 
         DataFrame::new(
             vec![
-                Column { name: "id".into(), data: ColumnValues::Int(ids, id_valids) },
-                Column { name: "score".into(), data: ColumnValues::Float(scores, score_valids) },
+                Column { name: "id".into(), data: ColumnValues::Int2(ids, id_valids) },
+                // Column { name: "score".into(), data: ColumnValues::Float(scores, score_valids) },
                 Column { name: "passed".into(), data: ColumnValues::Bool(passed, passed_valids) },
             ],
             index,
@@ -381,10 +371,10 @@ mod tests {
 
         let mut result = df
             .iter()
-            .filter(|row| match row.values[1] {
-                ValueRef::Float(f) if *f > 60.0 => true,
-                _ => false,
-            })
+            // .filter(|row| match row.values[1] {
+            //     ValueRef::Float(f) if *f > 60.0 => true,
+            //     _ => false,
+            // })
             .map(|row| {
                 // Project: (id, score)
                 (row.values[0].as_value(), row.values[1].as_value())
@@ -419,11 +409,14 @@ mod tests {
         // Define right table
         let right = DataFrame::new(
             vec![
-                Column { name: "id".into(), data: ColumnValues::Int(vec![2, 3, 4], vec![true; 3]) },
                 Column {
-                    name: "score".into(),
-                    data: ColumnValues::Float(vec![90.0, 75.5, 60.0], vec![true; 3]),
+                    name: "id".into(),
+                    data: ColumnValues::Int2(vec![2, 3, 4], vec![true; 3]),
                 },
+                // Column {
+                //     name: "score".into(),
+                //     data: ColumnValues::Float(vec![90.0, 75.5, 60.0], vec![true; 3]),
+                // },
             ],
             vec!["r0".into(), "r1".into(), "r2".into()],
         );
@@ -432,8 +425,6 @@ mod tests {
         // Join on "id"
         let joined_indices = inner_join_indices(&left, &right, "id");
 
-        dbg!(&joined_indices);
-
         println!("Join result:");
         for (li, ri) in joined_indices {
             let lrow = left.iter().nth(li).unwrap();
@@ -441,9 +432,9 @@ mod tests {
 
             let id = lrow.get("id").unwrap();
             let name = lrow.get("passed").unwrap();
-            let score = rrow.get("score").unwrap();
+            // let score = rrow.get("score").unwrap();
 
-            println!("id: {:?}, name: {:?}, score: {:?}", id, name, score);
+            // println!("id: {:?}, name: {:?}, score: {:?}", id, name, score);
         }
 
         println!("took {:?}", start.elapsed());

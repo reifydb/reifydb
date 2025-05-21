@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::ordered_float::{OrderedF32, OrderedF64};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
@@ -53,16 +54,16 @@ impl From<&Value> for ValueKind {
 }
 
 /// A RQL value, represented as a native Rust type.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Value {
     /// Value is not defined (think null in common programming languages)
     Undefined,
     /// A boolean: true or false.
     Bool(bool),
     /// A 4-byte floating point
-    Float4(f32),
+    Float4(OrderedF32),
     /// An 8-byte floating point
-    Float8(f64),
+    Float8(OrderedF64),
     /// A 2-byte signed integer
     Int2(i16),
     /// A UTF-8 encoded text.
@@ -70,8 +71,6 @@ pub enum Value {
     /// A 2-byte unsigned integer
     Uint2(u16),
 }
-
-impl Eq for Value {}
 
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {

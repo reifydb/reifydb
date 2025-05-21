@@ -260,34 +260,34 @@ fn execute_node<'a>(
                 groups.entry(key).or_default().push(row);
             }
 
-            fn avg_values(args: &[Value]) -> Value {
-                let mut sum = Value::Float8(0.0);
-                let mut count = 0usize;
-
-                for arg in args {
-                    match arg {
-                        Value::Int2(a) => {
-                            match &mut sum {
-                                Value::Float8(v) => {
-                                    *v += *a as f64;
-                                }
-                                _ => unimplemented!(),
-                            }
-                            count += 1;
-                        }
-                        _ => unimplemented!(),
-                    }
-                }
-
-                if count == 0 {
-                    Value::Undefined
-                } else {
-                    match sum {
-                        Value::Float8(sum) => Value::Float8(sum / count as f64),
-                        _ => unimplemented!(),
-                    }
-                }
-            }
+            // fn avg_values(args: &[Value]) -> Value {
+            //     let mut sum = Value::Float8(0.0);
+            //     let mut count = 0usize;
+            // 
+            //     for arg in args {
+            //         match arg {
+            //             Value::Int2(a) => {
+            //                 match &mut sum {
+            //                     Value::Float8(v) => {
+            //                         *v += *a as f64;
+            //                     }
+            //                     _ => unimplemented!(),
+            //                 }
+            //                 count += 1;
+            //             }
+            //             _ => unimplemented!(),
+            //         }
+            //     }
+            // 
+            //     if count == 0 {
+            //         Value::Undefined
+            //     } else {
+            //         match sum {
+            //             Value::Float8(sum) => Value::Float8(sum / count as f64),
+            //             _ => unimplemented!(),
+            //         }
+            //     }
+            // }
 
             let mut result_rows = Vec::new();
 

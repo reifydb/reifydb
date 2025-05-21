@@ -2,13 +2,36 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ordered_float::OrderedFloatError;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Default)]
-pub struct OrderedF32(pub f32);
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
+pub struct OrderedF32(f32);
+
+impl OrderedF32 {
+    pub fn value(&self) -> f32 {
+        self.0
+    }
+}
+
+impl Deref for OrderedF32 {
+    type Target = f32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for OrderedF32 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 impl PartialEq for OrderedF32 {
     fn eq(&self, other: &Self) -> bool {
@@ -34,13 +57,7 @@ impl Ord for OrderedF32 {
 
 impl Hash for OrderedF32 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-         self.0.to_bits().hash(state);
-    }
-}
-
-impl fmt::Debug for OrderedF32 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        self.0.to_bits().hash(state);
     }
 }
 

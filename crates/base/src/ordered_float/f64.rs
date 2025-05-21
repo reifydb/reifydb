@@ -2,13 +2,36 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ordered_float::error::OrderedFloatError;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Default)]
-pub struct OrderedF64(pub f64);
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
+pub struct OrderedF64(f64);
+
+impl OrderedF64 {
+    pub fn value(&self) -> f64 {
+        self.0
+    }
+}
+
+impl Deref for OrderedF64 {
+    type Target = f64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for OrderedF64 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 impl PartialEq for OrderedF64 {
     fn eq(&self, other: &Self) -> bool {
@@ -35,12 +58,6 @@ impl Ord for OrderedF64 {
 impl Hash for OrderedF64 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.to_bits().hash(state);
-    }
-}
-
-impl fmt::Debug for OrderedF64 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
     }
 }
 
