@@ -8,7 +8,7 @@ use crate::function::math;
 use base::expression::{Expression, PrefixOperator};
 use base::function::{FunctionMode, FunctionRegistry, FunctionResult};
 use base::{Label, Row, Value, ValueKind};
-use rql::plan::{Plan, QueryPlan};
+use rql::plan::{Plan, QueryPlan, SortDirection};
 use std::ops::Deref;
 use std::vec;
 use transaction::{CatalogTx, NopStore, Rx, SchemaRx, SchemaTx, StoreRx, StoreToCreate, Tx};
@@ -105,6 +105,54 @@ fn execute_node<'a>(
             (current_labels, Box::new(input_iter.take(count)), current_schema, current_store, next)
         }
 
+        QueryPlan::Sort { keys, next } => {
+            let input_iter = input.ok_or("Missing input for Sort").unwrap();
+
+            // Collect all rows
+            let mut rows: Vec<Vec<Value>> = input_iter.collect();
+
+            // Figure out the sort indices from current_labels
+            let indices: Vec<(usize, &SortDirection)> = keys
+                .iter()
+                .map(|key| {
+                    let idx = current_labels
+                        .iter()
+                        .position(|label| match label {
+                            Label::Column { column, .. } => column == &key.column,
+                            _ => false,
+                        })
+                        .unwrap_or_else(|| {
+                            panic!("Sort column '{}' not found in labels", key.column)
+                        });
+
+                    (idx, &key.direction)
+                })
+                .collect();
+
+            // Sort using stable sort with multiple keys
+            rows.sort_by(|a, b| {
+                for (idx, direction) in &indices {
+                    let left = &a[*idx];
+                    let right = &b[*idx];
+                    let ordering = left.cmp(right);
+                    match direction {
+                        SortDirection::Asc => {
+                            if ordering != std::cmp::Ordering::Equal {
+                                return ordering;
+                            }
+                        }
+                        SortDirection::Desc => {
+                            if ordering != std::cmp::Ordering::Equal {
+                                return ordering.reverse();
+                            }
+                        }
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
+
+            (current_labels, Box::new(rows.into_iter()), current_schema, current_store, next)
+        }
         QueryPlan::Project { expressions, next, .. } => {
             if input.is_none() {
                 // Free-standing projection like `SELECT 1`
@@ -243,12 +291,16 @@ fn execute_node<'a>(
             let mut result_rows = Vec::new();
 
             for (key, rows) in groups {
-                let mut row: Vec<Value> = key.0.iter().map(|part| match part {
-                    GroupPart::Int2(v) => Value::Int2(*v),
-                    GroupPart::Bool(v) => Value::Bool(*v),
-                    GroupPart::Text(v) => Value::Text(v.clone()),
-                    GroupPart::Undefined => Value::Undefined,
-                }).collect();
+                let mut row: Vec<Value> = key
+                    .0
+                    .iter()
+                    .map(|part| match part {
+                        GroupPart::Int2(v) => Value::Int2(*v),
+                        GroupPart::Bool(v) => Value::Bool(*v),
+                        GroupPart::Text(v) => Value::Text(v.clone()),
+                        GroupPart::Undefined => Value::Undefined,
+                    })
+                    .collect();
 
                 for agg in &project {
                     match agg {
@@ -282,30 +334,23 @@ fn execute_node<'a>(
             let mut labels: Vec<Label> = group_by
                 .iter()
                 .map(|expr| match expr {
-                    Expression::Identifier(name) => Label::Column {
-                        value: ValueKind::Undefined,
-                        column: name.clone(),
-                    },
-                    _ => Label::Custom {
-                        value: ValueKind::Undefined,
-                        label: "group".to_string(),
-                    },
+                    Expression::Identifier(name) => {
+                        Label::Column { value: ValueKind::Undefined, column: name.clone() }
+                    }
+                    _ => Label::Custom { value: ValueKind::Undefined, label: "group".to_string() },
                 })
                 .collect();
 
-            labels.extend(project.iter().filter_map(|agg| {
-                match agg {
-                    Expression::Call(call) => Some(Label::Custom {
-                        value: ValueKind::Undefined,
-                        label: format!("{}", call.func.name),
-                    }),
-                    _ => None,
-                }
+            labels.extend(project.iter().filter_map(|agg| match agg {
+                Expression::Call(call) => Some(Label::Custom {
+                    value: ValueKind::Undefined,
+                    label: format!("{}", call.func.name),
+                }),
+                _ => None,
             }));
 
             (labels, Box::new(result_rows.into_iter()), current_schema, current_store, next)
         }
-
     };
 
     if let Some(next_node) = next {

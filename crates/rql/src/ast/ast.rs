@@ -28,6 +28,7 @@ pub enum Ast {
     Limit(AstLimit),
     Literal(AstLiteral),
     Nop,
+    OrderBy(AstOrderBy),
     Prefix(AstPrefix),
     Select(AstSelect),
     Tuple(AstTuple),
@@ -52,6 +53,7 @@ impl Ast {
                 AstLiteral::Undefined(node) => &node.0,
             },
             Ast::Nop => unreachable!(),
+            Ast::OrderBy(node) => &node.token,
             Ast::Prefix(node) => &node.node.token(),
             Ast::Select(node) => &node.token,
             Ast::Tuple(node) => &node.token,
@@ -157,6 +159,13 @@ impl Ast {
         } else {
             panic!("not literal text")
         }
+    }
+
+    pub fn is_order_by(&self) -> bool {
+        matches!(self, Ast::OrderBy(_))
+    }
+    pub fn as_order_by(&self) -> &AstOrderBy {
+        if let Ast::OrderBy(result) = self { result } else { panic!("not order by") }
     }
 
     pub fn is_prefix(&self) -> bool {
@@ -334,6 +343,12 @@ impl AstLiteralUndefined {
     pub fn value(&self) -> &str {
         self.0.span.fragment.as_str()
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstOrderBy {
+    pub token: Token,
+    pub columns: Vec<Ast>,
 }
 
 #[derive(Debug, PartialEq)]

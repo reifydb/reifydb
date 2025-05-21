@@ -4,16 +4,17 @@
 mod create;
 mod error;
 mod from;
+mod group_by;
 mod identifier;
 mod infix;
 mod insert;
 mod limit;
 mod literal;
+mod order_by;
 mod primary;
 mod select;
 mod tuple;
 mod r#type;
-mod group_by;
 
 pub use error::*;
 

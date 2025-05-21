@@ -41,6 +41,7 @@ impl Parser {
                 Keyword::Group => Ok(Ast::GroupBy(self.parse_group_by()?)),
                 Keyword::Insert => Ok(Ast::Insert(self.parse_insert()?)),
                 Keyword::Limit => Ok(Ast::Limit(self.parse_limit()?)),
+                Keyword::Order => Ok(Ast::OrderBy(self.parse_order_by()?)),
                 Keyword::Select => Ok(Ast::Select(self.parse_select()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
             },

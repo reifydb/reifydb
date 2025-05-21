@@ -13,7 +13,7 @@ fn main() {
             ctx.tx("create schema test");
             ctx.tx("create table test.arith(id: int2, value: int2, num: int2)");
             ctx.tx("insert (1,1,5), (1,1,10), (1,2,15), (2,1,10), (2,1,30) into test.arith(id,value,num)");
-            for l in ctx.tx("from test.arith group by id, value select id, value, avg(num)") {
+            for l in ctx.tx("from test.arith select id, avg(num, value) group by id select id, avg(3)") {
                 println!("{}", l)
             }
         })

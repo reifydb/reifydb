@@ -47,18 +47,27 @@ pub enum Plan {
 }
 
 #[derive(Debug)]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug)]
+pub struct SortKey {
+    pub column: String,
+    pub direction: SortDirection,
+}
+
+#[derive(Debug)]
 pub enum QueryPlan {
     Aggregate { group_by: Vec<Expression>, project: Vec<Expression>, next: Option<Box<QueryPlan>> },
     Scan { schema: String, store: String, next: Option<Box<QueryPlan>> },
     // Filter {
     //     condition: Expression,
-    //     next: Option<Box<Plan>>,
+    //     next: Option<Box<QueryPlan>>,
     // },
     Project { expressions: Vec<Expression>, next: Option<Box<QueryPlan>> },
-    // OrderBy {
-    //     keys: Vec<String>,
-    //     next: Option<Box<Plan>>,
-    // },
+    Sort { keys: Vec<SortKey>, next: Option<Box<QueryPlan>> },
     Limit { limit: usize, next: Option<Box<QueryPlan>> },
 }
 
@@ -225,10 +234,19 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
             //     next: head,
             // },
             Ast::Select(select) => plan_select(select, head)?,
-            // Ast::OrderBy(order) => Plan::OrderBy {
-            //     keys: order.keys.clone(),
-            //     next: head,
-            // },
+            Ast::OrderBy(order) => QueryPlan::Sort {
+                keys: order
+                    .columns
+                    .into_iter()
+                    .map(|ast| match ast {
+                        Ast::Identifier(ident) => {
+                            SortKey { column: ident.name(), direction: SortDirection::Asc }
+                        }
+                        _ => unimplemented!(),
+                    })
+                    .collect(),
+                next: head,
+            },
             Ast::Limit(limit) => QueryPlan::Limit { limit: limit.limit, next: head },
             _ => unimplemented!("Unsupported AST node"),
         }));
@@ -259,7 +277,16 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
             _ => unimplemented!(),
         },
         None => {
-            unimplemented!()
+            let columns = group
+                .columns
+                .into_iter()
+                .map(|ast| match ast {
+                    Ast::Identifier(node) => Expression::Identifier(node.value().to_string()),
+                    ast => unimplemented!("{ast:?}"),
+                })
+                .collect::<Vec<_>>();
+
+            Ok(QueryPlan::Aggregate { group_by: columns.clone(), project: columns, next: None })
         }
     }
 }

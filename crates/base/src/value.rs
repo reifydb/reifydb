@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
 /// All possible RQL value types
@@ -70,6 +71,25 @@ pub enum Value {
     Uint2(u16),
 }
 
+impl Eq for Value {}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Value::Int2(a), Value::Int2(b)) => a.partial_cmp(b),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl Ord for Value {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Value::Int2(a), Value::Int2(b)) => a.cmp(b),
+            _ => unimplemented!(),
+        }
+    }
+}
 
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
