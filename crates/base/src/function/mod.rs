@@ -33,11 +33,6 @@ impl Display for FunctionMode {
     }
 }
 
-pub enum FunctionResult {
-    Scalar(Value),
-    Rows(RowIter),
-}
-
 pub trait Function: Send + Sync {
     fn name(&self) -> &str;
     fn modes(&self) -> &'static [FunctionMode];

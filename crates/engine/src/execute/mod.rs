@@ -5,8 +5,9 @@ mod call;
 mod display;
 
 use crate::function::math;
+use crate::function::math::AvgFunction;
 use base::expression::{Expression, PrefixOperator};
-use base::function::{FunctionMode, FunctionRegistry, FunctionResult};
+use base::function::FunctionRegistry;
 use base::{Label, Row, Value, ValueKind};
 use rql::plan::{Plan, QueryPlan, SortDirection};
 use std::ops::Deref;
@@ -305,18 +306,17 @@ fn execute_node<'a>(
                 for agg in &project {
                     match agg {
                         Expression::Call(call) => {
-                            let values: Vec<Value> = rows
-                                .iter()
-                                .map(|row| {
-                                    evaluate(call.args[0].clone(), Some(row), Some(store))
-                                        .unwrap_or(Value::Undefined)
-                                })
-                                .collect();
+                            let mut exec = Executor { functions: FunctionRegistry::new() };
+                            exec.functions.register(AvgFunction {});
 
-                            let result = match call.func.name.as_str() {
-                                "avg" => avg_values(&values),
-                                _ => unimplemented!(),
-                            };
+                            let result = exec
+                                .eval_function_aggregate(
+                                    "avg",
+                                    call.args.clone(),
+                                    rows.clone(),
+                                    Some(store),
+                                )
+                                .unwrap();
 
                             row.push(result);
                         }
@@ -395,13 +395,7 @@ pub fn evaluate<S: StoreRx>(
             exec.functions.register(math::AbsFunction {});
             exec.functions.register(math::AvgFunction {});
 
-            match exec
-                .eval_function(&call.func.name, FunctionMode::Scalar, call.args, row, store)
-                .unwrap()
-            {
-                FunctionResult::Scalar(value) => Ok(value),
-                FunctionResult::Rows(_) => unimplemented!(),
-            }
+            Ok(exec.eval_function_scalar(&call.func.name, call.args, row, store).unwrap())
         }
 
         Expression::Add(left, right) => {

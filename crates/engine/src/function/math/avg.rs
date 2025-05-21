@@ -59,16 +59,21 @@ impl FunctionExecutor for AvgExecutor {
         }
     }
 
-    fn eval_aggregate(&mut self, row: &[Value]) -> Result<(), FunctionError> {
-        if let Some(Value::Float8(f)) = row.get(0) {
-            match &mut self.sum {
-                Value::Float8(v) => {
-                    *v += *f;
+    fn eval_aggregate(&mut self, column: &[Value]) -> Result<(), FunctionError> {
+        for value in column {
+            match value {
+                Value::Int2(value) => {
+                    match &mut self.sum {
+                        Value::Float8(v) => {
+                            *v += *value as f64;
+                        }
+                        _ => unimplemented!(),
+                    }
+
+                    self.count += 1;
                 }
                 _ => unimplemented!(),
             }
-
-            self.count += 1;
         }
         Ok(())
     }
