@@ -11,9 +11,9 @@ fn main() {
         })
         .on_create(|ctx| async move {
             ctx.tx("create schema test");
-            ctx.tx("create table test.arith(id: int2, num: int2)");
-            ctx.tx("insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)");
-            for l in ctx.tx("from test.arith select avg(id, num)") {
+            ctx.tx("create table test.arith(id: int2, value: int2, num: int2)");
+            ctx.tx("insert (1,1,5), (1,1,10), (1,2,15), (2,1,10), (2,1,30) into test.arith(id,value,num)");
+            for l in ctx.tx("from test.arith group by id, value select id, value, avg(num)") {
                 println!("{}", l)
             }
         })

@@ -38,6 +38,7 @@ impl Parser {
             TokenKind::Keyword(keyword) => match keyword {
                 Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
                 Keyword::From => Ok(Ast::From(self.parse_from()?)),
+                Keyword::Group => Ok(Ast::GroupBy(self.parse_group_by()?)),
                 Keyword::Insert => Ok(Ast::Insert(self.parse_insert()?)),
                 Keyword::Limit => Ok(Ast::Limit(self.parse_limit()?)),
                 Keyword::Select => Ok(Ast::Select(self.parse_select()?)),

@@ -21,6 +21,7 @@ impl IntoIterator for AstStatement {
 pub enum Ast {
     Create(AstCreate),
     From(AstFrom),
+    GroupBy(AstGroupBy),
     Identifier(AstIdentifier),
     Infix(AstInfix),
     Insert(AstInsert),
@@ -39,6 +40,7 @@ impl Ast {
         match self {
             Ast::Create(node) => &node.token(),
             Ast::From(node) => &node.token(),
+            Ast::GroupBy(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
             Ast::Insert(node) => &node.token,
@@ -76,6 +78,13 @@ impl Ast {
     }
     pub fn as_from(&self) -> &AstFrom {
         if let Ast::From(result) = self { result } else { panic!("not from") }
+    }
+
+    pub fn is_group_by(&self) -> bool {
+        matches!(self, Ast::GroupBy(_))
+    }
+    pub fn as_group_by(&self) -> &AstGroupBy {
+        if let Ast::GroupBy(result) = self { result } else { panic!("not group by") }
     }
 
     pub fn is_identifier(&self) -> bool {
@@ -201,6 +210,12 @@ impl AstCreate {
 pub enum AstFrom {
     Store { token: Token, schema: AstIdentifier, store: AstIdentifier },
     Query { token: Token, query: AstTuple },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstGroupBy {
+    pub token: Token,
+    pub columns: Vec<Ast>,
 }
 
 impl AstFrom {

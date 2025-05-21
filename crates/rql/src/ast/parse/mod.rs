@@ -13,6 +13,7 @@ mod primary;
 mod select;
 mod tuple;
 mod r#type;
+mod group_by;
 
 pub use error::*;
 

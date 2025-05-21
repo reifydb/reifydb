@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{
-    Ast, AstCreate, AstFrom, AstInfix, AstInsert, AstLiteral, AstSelect, AstStatement, AstType,
-    InfixOperator,
+    Ast, AstCreate, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstSelect, AstStatement,
+    AstType, InfixOperator,
 };
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -48,6 +48,7 @@ pub enum Plan {
 
 #[derive(Debug)]
 pub enum QueryPlan {
+    Aggregate { group_by: Vec<Expression>, project: Vec<Expression>, next: Option<Box<QueryPlan>> },
     Scan { schema: String, store: String, next: Option<Box<QueryPlan>> },
     // Filter {
     //     condition: Expression,
@@ -218,6 +219,7 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
     for ast in statement.into_iter().rev() {
         head = Some(Box::new(match ast {
             Ast::From(from) => plan_from(from, head)?,
+            Ast::GroupBy(group) => plan_group_by(group, head)?,
             // Ast::Where(where_clause) => Plan::Filter {
             //     condition: where_clause.condition.clone(),
             //     next: head,
@@ -233,6 +235,33 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
     }
 
     Ok(head.map(|boxed| Plan::Query(*boxed)).unwrap())
+}
+
+fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    // if head is project - then use this
+    // if head is something else - unhandled for now probably an error
+    // if head is none -> just project with group by columns as is
+    match head {
+        Some(head) => match *head {
+            QueryPlan::Project { next, expressions } => Ok(QueryPlan::Aggregate {
+                group_by: group
+                    .columns
+                    .into_iter()
+                    .map(|ast| match ast {
+                        Ast::Identifier(node) => Expression::Identifier(node.value().to_string()),
+                        _ => unimplemented!(),
+                    })
+                    .collect(),
+
+                project: expressions,
+                next,
+            }),
+            _ => unimplemented!(),
+        },
+        None => {
+            unimplemented!()
+        }
+    }
 }
 
 fn plan_from(from: AstFrom, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
