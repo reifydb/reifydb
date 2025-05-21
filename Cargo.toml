@@ -5,6 +5,7 @@ members = ["bin/cli",
     "bin/server",
     "crates/auth",
     "crates/base",
+    "crates/dataframe",
     "crates/engine",
     "crates/rql",
     "crates/storage",
@@ -20,6 +21,7 @@ default-members = ["bin/cli",
     "bin/server",
     "crates/auth",
     "crates/base",
+    "crates/dataframe",
     "crates/engine",
     "crates/rql",
     "crates/storage",
@@ -76,6 +78,7 @@ log = { version = "0.4.27" }
 nom = { version = "8.0.0" }
 nom_locate = { version = "5.0.0" }
 prost = "0.13.5"
+rand = { version = "0.9.1" }
 regex = { version = "1.11.1" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = { version = "0.11.17" }

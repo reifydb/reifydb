@@ -3,8 +3,8 @@
 
 // #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
-// #![deny(clippy::unwrap_used)]
-// #![deny(clippy::expect_used)]
+// #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
+// #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use error::Error;
 pub use key::{Key, KeyError};
@@ -17,7 +17,7 @@ mod error;
 pub mod expression;
 pub mod function;
 mod key;
-mod ordered_float;
+pub mod ordered_float;
 mod row;
 mod row_meta;
 mod value;

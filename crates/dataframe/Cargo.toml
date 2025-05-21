@@ -1,5 +1,5 @@
 [package]
-name = "base"
+name = "dataframe"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -7,11 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-bincode = { workspace = true }
-dyn-clone = { workspace = true }
-hex = { workspace = true }
-serde = { workspace = true }
-serde_bytes = { workspace = true }
+base = { workspace = true }
 
 [dev-dependencies]
 rand = {workspace = true}
