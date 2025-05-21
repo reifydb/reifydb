@@ -8,8 +8,8 @@
 
 pub use error::Error;
 pub use key::{Key, KeyError};
-pub use row_meta::RowMeta;
 pub use row::{Row, RowIter, RowIterator};
+pub use row_meta::RowMeta;
 pub use value::{Value, ValueKind};
 
 pub mod encoding;
@@ -17,9 +17,9 @@ mod error;
 pub mod expression;
 pub mod function;
 mod key;
-mod row_meta;
-mod row;
-mod value;
 mod ordered_float;
+mod row;
+mod row_meta;
+mod value;
 
 pub type Result<T> = std::result::Result<T, Error>;
