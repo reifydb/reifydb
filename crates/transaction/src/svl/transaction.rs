@@ -7,7 +7,6 @@ use crate::svl::lock::{ReadGuard, WriteGuard};
 use crate::svl::schema::Schema;
 use crate::{CatalogRx as _, CatalogTx, InsertResult};
 use base::encoding::{Value as OtherValue, bincode};
-use base::expression::Expression;
 use base::{Key, Row, RowIter, key_prefix};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -38,7 +37,7 @@ impl<S: storage::StorageEngine> crate::Rx for Transaction<S> {
         unreachable!()
     }
 
-    fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter> {
+    fn scan(&self, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
                 .storage
@@ -77,7 +76,7 @@ impl<S: storage::StorageEngine> crate::Rx for TransactionMut<S> {
         todo!()
     }
 
-    fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter> {
+    fn scan(&self, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
                 .storage

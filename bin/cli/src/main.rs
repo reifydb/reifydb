@@ -13,7 +13,7 @@ fn main() {
     // returns (db, root)
     // let session = db.session(root)
     // session.tx_execute('')
-    // db.tx_execute(&root, r#"create schema test"#);
+    db.tx_execute(&root, r#"create schema test"#);
 
     // let session = db.session(root.clone()).unwrap();
     // for result in session.execute("select 2, 3, 4") {
@@ -25,11 +25,14 @@ fn main() {
     //     println!("{}", result);
     // }
 
-    for l in db.rx_execute(&root, r#"SELECT 23"#) {
+    db.tx_execute(&root, r#"create table test.arith(id: int2, num: int2)"#);
+    db.tx_execute(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#);
+
+    // for l in db.rx_execute(&root, r#"SELECT 1, 2 ,3 "#) {
+    for l in db.rx_execute(&root, r#"FROM test.arith SELECT id, id + 1000, num"#) {
         println!("{}", l);
     }
-    // db.tx_execute(&root, r#"create table test.arith(id: int2, num: int2)"#);
-    // db.tx_execute(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#);
+    
     //
     // let result = db
     //     .rx_execute(&root, r#"from test.arith select id + 1, 2 + num + 3, id + num, num + num"#);

@@ -3,14 +3,13 @@
 
 use crate::mvcc::{Key, Version};
 use base::encoding;
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 /// Represents all errors related to MVCC (Multi-Version Concurrency Control) in ReifyDB.
 ///
 /// This includes transactional failures, mempool coordination issues, version conflicts, and
 /// storage-layer faults encountered during MVCC operations.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     /// Encoding/Decoding related error
     Encoding(encoding::Error),
@@ -50,7 +49,9 @@ impl Display for Error {
                 write!(f, "no active transaction for version {}", version)
             }
             Error::ReadOnly => write!(f, "attempted mutation in a read-only transaction"),
-            Error::Serialization => write!(f, "transaction serialization conflict occurred, retry transaction"),
+            Error::Serialization => {
+                write!(f, "transaction serialization conflict occurred, retry transaction")
+            }
             Error::Storage(err) => write!(f, "storage error: {}", err),
             Error::VersionNotFound { version } => {
                 write!(f, "version not found: {}", version)

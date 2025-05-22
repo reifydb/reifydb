@@ -20,7 +20,7 @@ use std::fmt::{Display, Formatter};
 /// - `Storage`: A low-level storage engine error was encountered.  
 ///   This includes I/O errors, key-value corruption, encoding issues at the storage level, or internal storage bugs.
 ///
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     /// encoding related error
     Encoding(encoding::Error),

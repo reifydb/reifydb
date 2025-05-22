@@ -22,7 +22,6 @@ use crate::mvcc::key::{Key, KeyPrefix};
 use crate::mvcc::scan::ScanIterator;
 use crate::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
-use base::expression::Expression;
 use base::{Row, RowIter, key_prefix};
 use storage::StorageEngine;
 // FIXME remove this
@@ -46,7 +45,7 @@ impl<S: StorageEngine> crate::Rx for Transaction<S> {
         todo!()
     }
 
-    fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter> {
+    fn scan(&self, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
                 .lock()

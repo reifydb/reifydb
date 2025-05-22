@@ -14,16 +14,16 @@ impl Append<DataFrame> for DataFrame {
             return Err("mismatched column count".into());
         }
 
-        for (i, (lhs, rhs)) in self.columns.iter_mut().zip(other.columns.into_iter()).enumerate() {
-            if lhs.name != rhs.name {
+        for (i, (l, lr)) in self.columns.iter_mut().zip(other.columns.into_iter()).enumerate() {
+            if l.name != lr.name {
                 return Err(format!(
                     "column name mismatch at index {}: '{}' vs '{}'",
-                    i, lhs.name, rhs.name
+                    i, l.name, lr.name
                 )
                 .into());
             }
 
-            match (&mut lhs.data, rhs.data) {
+            match (&mut l.data, lr.data) {
                 (ColumnValues::Int2(l, l_valid), ColumnValues::Int2(r, r_valid)) => {
                     l.extend(r);
                     l_valid.extend(r_valid);
@@ -44,10 +44,10 @@ impl Append<DataFrame> for DataFrame {
                 }
 
                 // Promote Undefined → typed if needed
-                (ColumnValues::Undefined(l_len), typed_rhs) => match typed_rhs {
+                (ColumnValues::Undefined(l_len), typed_lr) => match typed_lr {
                     ColumnValues::Int2(r, r_valid) => {
-                        *lhs = Column {
-                            name: lhs.name.clone(),
+                        *l = Column {
+                            name: l.name.clone(),
                             data: ColumnValues::Int2(
                                 vec![0; *l_len].into_iter().chain(r.clone()).collect(),
                                 vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
@@ -55,8 +55,8 @@ impl Append<DataFrame> for DataFrame {
                         };
                     }
                     ColumnValues::Text(r, r_valid) => {
-                        *lhs = Column {
-                            name: lhs.name.clone(),
+                        *l = Column {
+                            name: l.name.clone(),
                             data: ColumnValues::Text(
                                 vec![String::new(); *l_len].into_iter().chain(r.clone()).collect(),
                                 vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
@@ -64,8 +64,8 @@ impl Append<DataFrame> for DataFrame {
                         };
                     }
                     ColumnValues::Bool(r, r_valid) => {
-                        *lhs = Column {
-                            name: lhs.name.clone(),
+                        *l = Column {
+                            name: l.name.clone(),
                             data: ColumnValues::Bool(
                                 vec![false; *l_len].into_iter().chain(r.clone()).collect(),
                                 vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
@@ -76,7 +76,7 @@ impl Append<DataFrame> for DataFrame {
                 },
 
                 // Prevent appending typed into Undefined
-                (typed_lhs, ColumnValues::Undefined(r_len)) => match typed_lhs {
+                (typed_l, ColumnValues::Undefined(r_len)) => match typed_l {
                     ColumnValues::Int2(l, l_valid) => {
                         l.extend(std::iter::repeat(0).take(r_len));
                         l_valid.extend(std::iter::repeat(false).take(r_len));
@@ -93,7 +93,7 @@ impl Append<DataFrame> for DataFrame {
                 },
 
                 (_, _) => {
-                    return Err(format!("column type mismatch for '{}'", lhs.name).into());
+                    return Err(format!("column type mismatch for '{}'", l.name).into());
                 }
             }
         }
@@ -239,7 +239,7 @@ mod tests {
         }
 
         #[test]
-        fn test_append_with_undefined_rhs_promotes_correctly() {
+        fn test_append_with_undefined_lr_promotes_correctly() {
             let mut test_instance1 = DataFrame::new(vec![col_int2("id", &[1, 2], &[true, false])]);
 
             let test_instance2 = DataFrame::new(vec![col_undefined("id", 2)]);
@@ -253,7 +253,7 @@ mod tests {
         }
 
         #[test]
-        fn test_append_with_undefined_lhs_promotes_correctly() {
+        fn test_append_with_undefined_l_promotes_correctly() {
             let mut test_instance1 = DataFrame::new(vec![col_undefined("score", 2)]);
 
             let test_instance2 = DataFrame::new(vec![col_int2("score", &[10, 20], &[true, false])]);

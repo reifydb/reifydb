@@ -18,6 +18,7 @@ mod frame;
 mod iterator;
 mod reference;
 mod transform;
+mod expression;
 
 use base::Value;
 use std::collections::HashMap;
@@ -25,13 +26,13 @@ use std::time::Instant;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn inner_join_indices(lhs: &DataFrame, rhs: &DataFrame, on: &str) -> Vec<(usize, usize)> {
-    let mut rhs_index: HashMap<Value, Vec<usize>> = HashMap::new();
+pub fn inner_join_indices(l: &DataFrame, lr: &DataFrame, on: &str) -> Vec<(usize, usize)> {
+    let mut lr_index: HashMap<Value, Vec<usize>> = HashMap::new();
 
     let start = Instant::now();
-    for (i, row) in rhs.iter().enumerate() {
+    for (i, row) in lr.iter().enumerate() {
         if let Some(k) = row.get(on) {
-            rhs_index.entry(k.as_value()).or_default().push(i);
+            lr_index.entry(k.as_value()).or_default().push(i);
         }
     }
     println!("1 took {:?}", start.elapsed());
@@ -39,9 +40,9 @@ pub fn inner_join_indices(lhs: &DataFrame, rhs: &DataFrame, on: &str) -> Vec<(us
     let mut joined = vec![];
 
     let start = Instant::now();
-    for (li, lrow) in lhs.iter().enumerate() {
+    for (li, lrow) in l.iter().enumerate() {
         if let Some(lkey) = lrow.get(on) {
-            if let Some(matches) = rhs_index.get(&lkey.as_value()) {
+            if let Some(matches) = lr_index.get(&lkey.as_value()) {
                 for &ri in matches {
                     joined.push((li, ri));
                 }

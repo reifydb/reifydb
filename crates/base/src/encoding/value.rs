@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use serde::de::DeserializeOwned;
 // This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -9,7 +10,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 use serde::Serialize;
-use serde::de::DeserializeOwned;
 use std::collections::{BTreeSet, HashSet};
 use std::hash::Hash;
 use std::io::{Read, Write};
@@ -47,7 +47,6 @@ pub trait Value: Serialize + DeserializeOwned {
 
 /// Blanket implementations for various types wrapping a value type.
 impl<V: Value> Value for Option<V> {}
-impl<V: Value> Value for crate::encoding::Result<V> {}
 impl<V: Value> Value for Vec<V> {}
 impl<V1: Value, V2: Value> Value for (V1, V2) {}
 impl<V: Value + Eq + Hash> Value for HashSet<V> {}

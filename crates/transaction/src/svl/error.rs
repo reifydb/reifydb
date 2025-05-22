@@ -1,14 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 /// Represents all errors related to the Single Version Locking (SVL) in ReifyDB.
 ///
 /// This includes transactional failures, mempool coordination issues and
 /// storage-layer faults encountered during SVL operations.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     /// A low-level storage error occurred.
     Storage(storage::Error),

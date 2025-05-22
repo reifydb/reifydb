@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 /// Represents all errors that can occur within the low-level storage layer of ReifyDB.
@@ -10,7 +9,7 @@ use std::fmt::{Display, Formatter};
 /// higher-level RQL engine operates. It is responsible for data persistence, consistency,
 /// and efficient access patterns. This error type encapsulates everything that can go wrong
 /// when interacting with the key-value store—whether in-memory or persisted to disk.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 pub enum Error {}
 
 impl Display for Error {

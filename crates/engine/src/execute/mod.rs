@@ -35,7 +35,10 @@ impl Executor {
     ) -> crate::Result<ExecutionResult> {
         let next = match plan {
             QueryPlan::Aggregate { .. } => unimplemented!(),
-            QueryPlan::Scan { .. } => unimplemented!(),
+            QueryPlan::Scan { schema, store, next } => {
+                self.scan(rx, &schema, &store)?;
+                next
+            }
             QueryPlan::Project { expressions, next } => {
                 self.project(expressions)?;
                 next

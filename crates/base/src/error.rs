@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors that can occur within the RQL (Reify Query Language) layer.
@@ -10,7 +9,7 @@ use std::fmt::{Display, Formatter};
 /// planning, optimizing, and executing queries over a low-level key-value store. This error type
 /// encapsulates issues encountered at any stage of query lifecycle—from malformed syntax to failed
 /// execution.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 pub enum Error {}
 
 impl Display for Error {

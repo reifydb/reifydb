@@ -26,10 +26,10 @@ impl PartialOrd for Key {
 impl Ord for Key {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (Key::Bytea(lhs), Key::Bytea(rhs)) => lhs.cmp(rhs),
-            (Key::Int2(lhs), Key::Int2(rhs)) => lhs.cmp(rhs),
-            (Key::Text(lhs), Key::Text(rhs)) => lhs.cmp(rhs),
-            (Key::Uint2(lhs), Key::Uint2(rhs)) => lhs.cmp(rhs),
+            (Key::Bytea(l), Key::Bytea(lr)) => l.cmp(lr),
+            (Key::Int2(l), Key::Int2(lr)) => l.cmp(lr),
+            (Key::Text(l), Key::Text(lr)) => l.cmp(lr),
+            (Key::Uint2(l), Key::Uint2(lr)) => l.cmp(lr),
             (Key::Undefined, _) => Ordering::Greater,
             (_, Key::Undefined) => Ordering::Less,
             (left, right) => unimplemented!("{left:?} {right:?}"),

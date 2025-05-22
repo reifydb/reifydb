@@ -12,7 +12,9 @@ pub struct DataFrame {
     pub index: HashMap<String, usize>,
 }
 
+
 impl DataFrame {
+
     pub fn new(columns: Vec<Column>) -> Self {
         let n = columns.first().map_or(0, |c| c.data.len());
         assert!(columns.iter().all(|c| c.data.len() == n));

@@ -11,11 +11,13 @@ pub struct Column {
 
 #[derive(Debug, PartialEq)]
 pub enum ColumnValues {
-    Int2(Vec<i16>, Vec<bool>), // value, is_valid
-    // Float(Vec<f64>, Vec<bool>),
+    // value, is_valid
+    Int2(Vec<i16>, Vec<bool>),
     Text(Vec<String>, Vec<bool>),
     Bool(Vec<bool>, Vec<bool>),
-    Undefined(usize), // special case: all undefined
+
+    // special case: all undefined
+    Undefined(usize),
 }
 
 impl From<Value> for ColumnValues {

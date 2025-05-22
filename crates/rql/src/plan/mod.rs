@@ -10,7 +10,8 @@ use std::ops::Deref;
 
 use crate::ast;
 use base::expression::{
-    CallExpression, Expression, IdentExpression, PrefixExpression, PrefixOperator, TupleExpression,
+    AliasExpression, CallExpression, Expression, IdentExpression, PrefixExpression, PrefixOperator,
+    TupleExpression,
 };
 use base::{Value, ValueKind};
 pub use error::Error;
@@ -60,15 +61,32 @@ pub struct SortKey {
 
 #[derive(Debug)]
 pub enum QueryPlan {
-    Aggregate { group_by: Vec<Expression>, project: Vec<Expression>, next: Option<Box<QueryPlan>> },
-    Scan { schema: String, store: String, next: Option<Box<QueryPlan>> },
+    Aggregate {
+        group_by: Vec<AliasExpression>,
+        project: Vec<AliasExpression>,
+        next: Option<Box<QueryPlan>>,
+    },
+    Scan {
+        schema: String,
+        store: String,
+        next: Option<Box<QueryPlan>>,
+    },
     // Filter {
     //     condition: Expression,
     //     next: Option<Box<QueryPlan>>,
     // },
-    Project { expressions: Vec<Expression>, next: Option<Box<QueryPlan>> },
-    Sort { keys: Vec<SortKey>, next: Option<Box<QueryPlan>> },
-    Limit { limit: usize, next: Option<Box<QueryPlan>> },
+    Project {
+        expressions: Vec<AliasExpression>,
+        next: Option<Box<QueryPlan>>,
+    },
+    Sort {
+        keys: Vec<SortKey>,
+        next: Option<Box<QueryPlan>>,
+    },
+    Limit {
+        limit: usize,
+        next: Option<Box<QueryPlan>>,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -266,7 +284,10 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                     .columns
                     .into_iter()
                     .map(|ast| match ast {
-                        Ast::Identifier(node) => Expression::Identifier(node.value().to_string()),
+                        Ast::Identifier(node) => AliasExpression {
+                            alias: Some(node.value().to_string()),
+                            expression: Expression::Column(node.value().to_string()),
+                        },
                         _ => unimplemented!(),
                     })
                     .collect(),
@@ -281,7 +302,10 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                 .columns
                 .into_iter()
                 .map(|ast| match ast {
-                    Ast::Identifier(node) => Expression::Identifier(node.value().to_string()),
+                    Ast::Identifier(node) => AliasExpression {
+                        alias: Some(node.value().to_string()),
+                        expression: Expression::Column(node.value().to_string()),
+                    },
                     ast => unimplemented!("{ast:?}"),
                 })
                 .collect::<Vec<_>>();
@@ -311,15 +335,30 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 // Ast::Block(_) => {}
                 // Ast::Create(_) => {}
                 // Ast::From(_) => {}
-                Ast::Identifier(node) => Expression::Identifier(node.value().to_string()),
-                Ast::Infix(node) => expression_infix(node).unwrap(),
+                Ast::Identifier(node) => AliasExpression {
+                    alias: Some(node.value().to_string()),
+                    expression: Expression::Column(node.value().to_string()),
+                },
+                Ast::Infix(node) => {
+                    AliasExpression { alias: None, expression: expression_infix(node).unwrap() }
+                }
                 Ast::Literal(node) => match node {
-                    AstLiteral::Boolean(node) => Expression::Constant(Value::Bool(node.value())),
-                    AstLiteral::Number(node) => Expression::Constant(node.try_into().unwrap()),
-                    AstLiteral::Text(node) => {
-                        Expression::Constant(Value::Text(node.value().to_string()))
-                    }
-                    AstLiteral::Undefined(_) => Expression::Constant(Value::Undefined),
+                    AstLiteral::Boolean(node) => AliasExpression {
+                        alias: None,
+                        expression: Expression::Constant(Value::Bool(node.value())),
+                    },
+                    AstLiteral::Number(node) => AliasExpression {
+                        alias: None,
+                        expression: Expression::Constant(node.try_into().unwrap()),
+                    },
+                    AstLiteral::Text(node) => AliasExpression {
+                        alias: None,
+                        expression: Expression::Constant(Value::Text(node.value().to_string())),
+                    },
+                    AstLiteral::Undefined(_) => AliasExpression {
+                        alias: None,
+                        expression: Expression::Constant(Value::Undefined),
+                    },
                 },
                 ast => unimplemented!("{:?}", ast),
             })
@@ -337,7 +376,7 @@ fn expression(ast: Ast) -> Result<Expression> {
             }
             _ => unimplemented!(),
         },
-        Ast::Identifier(identifier) => Ok(Expression::Identifier(identifier.value().to_string())),
+        Ast::Identifier(identifier) => Ok(Expression::Column(identifier.value().to_string())),
         Ast::Infix(infix) => expression_infix(infix),
         Ast::Tuple(tuple) => {
             let mut expressions = Vec::with_capacity(tuple.len());
@@ -373,7 +412,7 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
 
-            let Expression::Identifier(name) = left else { panic!() };
+            let Expression::Column(name) = left else { panic!() };
             let Expression::Tuple(tuple) = right else { panic!() };
 
             Ok(Expression::Call(CallExpression {

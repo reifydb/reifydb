@@ -162,7 +162,7 @@ fn execute_node<'a>(
     ) = match node {
         QueryPlan::Scan { schema, store, next, .. } => (
             current_labels,
-            Box::new(rx.scan(&store, None).unwrap()),
+            Box::new(rx.scan(&store).unwrap()),
             Some(schema),
             Some(store.to_string()),
             next,
@@ -228,7 +228,7 @@ fn execute_node<'a>(
                 let mut values = vec![];
 
                 for (idx, expr) in expressions.into_iter().enumerate() {
-                    let value = evaluate::<NopStore>(expr, None, None).unwrap();
+                    let value = evaluate::<NopStore>(expr.expression, None, None).unwrap();
                     labels.push(RowMeta {
                         value: ValueKind::from(&value),
                         label: format!("{}", idx + 1),
@@ -248,8 +248,8 @@ fn execute_node<'a>(
             let labels: Vec<RowMeta> = expressions
                 .iter()
                 .enumerate()
-                .map(|(idx, expr)| match expr {
-                    Expression::Identifier(name) => store
+                .map(|(idx, expr)| match &expr.expression {
+                    Expression::Column(name) => store
                         .get_column(name)
                         .ok()
                         .map(|c| RowMeta { value: c.value, label: c.name })
@@ -267,7 +267,7 @@ fn execute_node<'a>(
                 expressions
                     .iter()
                     .map(|expr| {
-                        evaluate(expr.clone(), Some(&row), Some(store_ref))
+                        evaluate(expr.expression.clone(), Some(&row), Some(store_ref))
                             .unwrap_or(Value::Undefined)
                     })
                     .collect::<Vec<Value>>()
@@ -295,35 +295,36 @@ fn execute_node<'a>(
                 Text(String),
                 Undefined,
             }
-
-            let group_columns: Vec<usize> = group_by
-                .iter()
-                .map(|expr| match expr {
-                    Expression::Identifier(name) => store.get_column_index(name).unwrap(),
-                    _ => panic!("Only identifier expressions are supported in GROUP BY"),
-                })
-                .collect();
-
-            let mut groups: HashMap<GroupKey, Vec<Vec<Value>>> = HashMap::new();
-
-            for row in input_iter {
-                let mut parts = Vec::with_capacity(group_columns.len());
-
-                for &index in &group_columns {
-                    let value = row.get(index).unwrap().clone();
-                    let part = match value {
-                        Value::Int2(v) => GroupPart::Int2(v),
-                        Value::Bool(v) => GroupPart::Bool(v),
-                        Value::Text(ref v) => GroupPart::Text(v.clone()),
-                        Value::Undefined => GroupPart::Undefined,
-                        _ => unimplemented!("Unsupported group key type"),
-                    };
-                    parts.push(part);
-                }
-
-                let key = GroupKey(parts);
-                groups.entry(key).or_default().push(row);
-            }
+            todo!();
+            // 
+            // let group_columns: Vec<usize> = group_by
+            //     .iter()
+            //     .map(|expr| match expr {
+            //         Expression::Column(name) => store.get_column_index(name).unwrap(),
+            //         _ => panic!("Only identifier expressions are supported in GROUP BY"),
+            //     })
+            //     .collect();
+            // 
+            // let mut groups: HashMap<GroupKey, Vec<Vec<Value>>> = HashMap::new();
+            // 
+            // for row in input_iter {
+            //     let mut parts = Vec::with_capacity(group_columns.len());
+            // 
+            //     for &index in &group_columns {
+            //         let value = row.get(index).unwrap().clone();
+            //         let part = match value {
+            //             Value::Int2(v) => GroupPart::Int2(v),
+            //             Value::Bool(v) => GroupPart::Bool(v),
+            //             Value::Text(ref v) => GroupPart::Text(v.clone()),
+            //             Value::Undefined => GroupPart::Undefined,
+            //             _ => unimplemented!("Unsupported group key type"),
+            //         };
+            //         parts.push(part);
+            //     }
+            // 
+            //     let key = GroupKey(parts);
+            //     groups.entry(key).or_default().push(row);
+            // }
 
             // fn avg_values(args: &[Value]) -> Value {
             //     let mut sum = Value::Float8(0.0);
@@ -353,68 +354,68 @@ fn execute_node<'a>(
             //         }
             //     }
             // }
-
-            let mut result_rows = Vec::new();
-
-            for (key, rows) in groups {
-                let mut row: Vec<Value> = key
-                    .0
-                    .iter()
-                    .map(|part| match part {
-                        GroupPart::Int2(v) => Value::Int2(*v),
-                        GroupPart::Bool(v) => Value::Bool(*v),
-                        GroupPart::Text(v) => Value::Text(v.clone()),
-                        GroupPart::Undefined => Value::Undefined,
-                    })
-                    .collect();
-
-                for agg in &project {
-                    match agg {
-                        Expression::Call(call) => {
-                            let mut exec = Executor { functions: FunctionRegistry::new() };
-                            exec.functions.register(AvgFunction {});
-
-                            let result = exec
-                                .eval_function_aggregate(
-                                    "avg",
-                                    call.args.clone(),
-                                    rows.clone(),
-                                    Some(store),
-                                )
-                                .unwrap();
-
-                            row.push(result);
-                        }
-                        Expression::Identifier(_) => {
-                            // already included via group key
-                        }
-                        _ => unimplemented!(),
-                    }
-                }
-
-                result_rows.push(row);
-            }
-
-            // Generate labels: group key labels + aggregate labels
-            let mut labels: Vec<RowMeta> = group_by
-                .iter()
-                .map(|expr| match expr {
-                    Expression::Identifier(name) => {
-                        RowMeta { value: ValueKind::Undefined, label: name.clone() }
-                    }
-                    _ => RowMeta { value: ValueKind::Undefined, label: "group".to_string() },
-                })
-                .collect();
-
-            labels.extend(project.iter().filter_map(|agg| match agg {
-                Expression::Call(call) => Some(RowMeta {
-                    value: ValueKind::Undefined,
-                    label: format!("{}", call.func.name),
-                }),
-                _ => None,
-            }));
-
-            (labels, Box::new(result_rows.into_iter()), current_schema, current_store, next)
+            // 
+            // let mut result_rows = Vec::new();
+            // 
+            // for (key, rows) in groups {
+            //     let mut row: Vec<Value> = key
+            //         .0
+            //         .iter()
+            //         .map(|part| match part {
+            //             GroupPart::Int2(v) => Value::Int2(*v),
+            //             GroupPart::Bool(v) => Value::Bool(*v),
+            //             GroupPart::Text(v) => Value::Text(v.clone()),
+            //             GroupPart::Undefined => Value::Undefined,
+            //         })
+            //         .collect();
+            // 
+            //     for agg in &project {
+            //         match agg {
+            //             Expression::Call(call) => {
+            //                 let mut exec = Executor { functions: FunctionRegistry::new() };
+            //                 exec.functions.register(AvgFunction {});
+            // 
+            //                 let result = exec
+            //                     .eval_function_aggregate(
+            //                         "avg",
+            //                         call.args.clone(),
+            //                         rows.clone(),
+            //                         Some(store),
+            //                     )
+            //                     .unwrap();
+            // 
+            //                 row.push(result);
+            //             }
+            //             Expression::Column(_) => {
+            //                 // already included via group key
+            //             }
+            //             _ => unimplemented!(),
+            //         }
+            //     }
+            // 
+            //     result_rows.push(row);
+            // }
+            // 
+            // // Generate labels: group key labels + aggregate labels
+            // let mut labels: Vec<RowMeta> = group_by
+            //     .iter()
+            //     .map(|expr| match expr {
+            //         Expression::Column(name) => {
+            //             RowMeta { value: ValueKind::Undefined, label: name.clone() }
+            //         }
+            //         _ => RowMeta { value: ValueKind::Undefined, label: "group".to_string() },
+            //     })
+            //     .collect();
+            // 
+            // labels.extend(project.iter().filter_map(|agg| match agg {
+            //     Expression::Call(call) => Some(RowMeta {
+            //         value: ValueKind::Undefined,
+            //         label: format!("{}", call.func.name),
+            //     }),
+            //     _ => None,
+            // }));
+            // 
+            // (labels, Box::new(result_rows.into_iter()), current_schema, current_store, next)
         }
     };
 
@@ -431,7 +432,7 @@ pub fn evaluate<S: StoreRx>(
     store: Option<&S>,
 ) -> Result<Value, String> {
     match expr {
-        Expression::Identifier(name) => {
+        Expression::Column(name) => {
             let store = store.ok_or("Store required for identifier evaluation")?;
             let row = row.ok_or("Row required for identifier evaluation")?;
             let index =

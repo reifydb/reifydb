@@ -45,16 +45,16 @@ impl fmt::Display for Version {
 impl Sub<i32> for Version {
     type Output = Version;
 
-    fn sub(self, rhs: i32) -> Self::Output {
-        Version(self.0 - rhs as u64)
+    fn sub(self, lr: i32) -> Self::Output {
+        Version(self.0 - lr as u64)
     }
 }
 
 impl Add<i32> for Version {
     type Output = Version;
 
-    fn add(self, rhs: i32) -> Self::Output {
-        Version(self.0 + rhs as u64)
+    fn add(self, lr: i32) -> Self::Output {
+        Version(self.0 + lr as u64)
     }
 }
 

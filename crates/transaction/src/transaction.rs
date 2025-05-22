@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
-use base::expression::Expression;
 use base::{Key, Row, RowIter};
 
 /// A Rx executes transactional read operations on stores.
@@ -17,8 +16,8 @@ pub trait Rx {
     /// Fetches store rows by primary key, if they exist.
     fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>>;
 
-    /// Scans a store's rows, optionally applying the given filter.
-    fn scan(&self, store: &str, filter: Option<Expression>) -> crate::Result<RowIter>;
+    /// Scans all store's rows
+    fn scan(&self, store: &str) -> crate::Result<RowIter>;
 }
 
 #[derive(Debug)]

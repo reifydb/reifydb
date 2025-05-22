@@ -10,7 +10,7 @@ use std::fmt::{Display, Formatter};
 /// planning, optimizing, and executing queries over a low-level key-value store. This error type
 /// encapsulates issues encountered at any stage of query lifecycle—from malformed syntax to failed
 /// execution.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 
 pub enum Error {}
 

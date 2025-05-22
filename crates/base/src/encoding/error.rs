@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use bincode::error::{DecodeError, EncodeError};
-use serde::{Deserialize, Serialize};
 use std::array::TryFromSliceError;
 use std::fmt::{Display, Formatter};
 use std::num::TryFromIntError;
@@ -14,7 +13,7 @@ use std::string::FromUtf8Error;
 /// This enum captures encoding-related failures such as malformed input,
 /// unsupported data formats, or internal encoding bugs. It is designed to provide
 /// precise error feedback for low-level serialization and deserialization logic.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 pub struct Error(pub String);
 
 #[macro_export]

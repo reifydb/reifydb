@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{mvcc, svl};
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors related to transactions, the mempool, or storage.
@@ -11,7 +10,7 @@ use std::fmt::{Display, Formatter};
 /// logic, coordination with the mempool, or access to the underlying storage engine. It provides
 /// a unified interface for handling failures across the execution, persistence, and coordination
 /// layers of the system.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     /// MVCC-related error
     Mvcc(mvcc::Error),
