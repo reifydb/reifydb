@@ -24,7 +24,7 @@ pub(crate) fn evaluate<'a>(
                 Ok(if valid[row] { Value::Bool(vals[row]) } else { Undefined })
             }
             Some(ColumnValues::Undefined(_)) => Ok(Undefined),
-            None => Err(format!("Unknown column '{}'", name).into()),
+            None => Err(format!("unknown column '{}'", name).into()),
         },
 
         Expression::Add(l, lr) => {
