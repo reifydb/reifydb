@@ -62,14 +62,14 @@ fn print_query(labels: &Vec<Column>, rows: &Vec<Row>, f: &mut Formatter<'_>) -> 
     };
 
     let print_row = |row: &[String]| {
-        format!(
-            "|{}|",
-            row.iter()
-                .enumerate()
-                .map(|(i, cell)| format!(" {:<width$} ", cell, width = col_widths[i] - 2))
-                .collect::<Vec<_>>()
-                .join("|")
-        )
+        let cells = row.iter().enumerate().map(|(i, cell)| {
+            let w = col_widths[i] - 2;
+            let padding = w.saturating_sub(cell.len());
+            let left = padding / 2;
+            let right = padding - left;
+            format!(" {:left$}{}{:right$} ", "", cell, "", left = left, right = right)
+        });
+        format!("|{}|", cells.collect::<Vec<_>>().join("|"))
     };
 
     writeln!(f, "{}", separator)?;

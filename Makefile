@@ -11,7 +11,7 @@ check:
 .PHONY: test
 test:
 	cargo nextest run -p smoke --all-targets
-	cargo nextest run --all-targets
+	cargo nextest run --all-targets --no-fail-fast
 
 .PHONY: test
 build:

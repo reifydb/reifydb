@@ -3,14 +3,15 @@
 
 use base::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 
-pub struct RowRef<'df, 'names> {
+pub struct RowRef<'df> {
     pub values: Vec<ValueRef<'df>>,
-    pub column_index: &'names [String],
+    pub column_index: Arc<Vec<String>>,
     pub columns: &'df HashMap<String, usize>,
 }
 
-impl<'df, 'names> RowRef<'df, 'names> {
+impl<'df> RowRef<'df> {
     pub fn get(&self, name: &str) -> Option<&ValueRef<'df>> {
         self.columns.get(name).and_then(|&i| self.values.get(i))
     }

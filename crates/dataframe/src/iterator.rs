@@ -2,16 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{ColumnValues, DataFrame, RowRef, ValueRef};
+use std::sync::Arc;
 
 pub struct DataFrameIter<'df> {
     pub(crate) df: &'df DataFrame,
     pub(crate) row_index: usize,
     pub(crate) row_total: usize,
-    pub(crate) colum_names: Vec<String>,
+    pub(crate) column_index: Arc<Vec<String>>,
 }
 
 impl<'df> Iterator for DataFrameIter<'df> {
-    type Item = RowRef<'df, 'df>;
+    type Item = RowRef<'df>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.row_index >= self.row_total {
@@ -58,11 +59,6 @@ impl<'df> Iterator for DataFrameIter<'df> {
             })
             .collect();
 
-        // SAFETY: we trick the borrow checker here a bit with a cast.
-        // Because `self.col_names` is owned by the iterator, we need to coerce its lifetime upward.
-
-        let col_names: &'df [String] = unsafe { std::mem::transmute(&self.colum_names[..]) };
-
-        Some(RowRef { values, column_index: col_names, columns: &self.df.index })
+        Some(RowRef { values, column_index: self.column_index.clone(), columns: &self.df.index })
     }
 }

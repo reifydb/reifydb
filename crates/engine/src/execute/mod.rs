@@ -44,7 +44,10 @@ impl Executor {
                 next
             }
             QueryPlan::Sort { .. } => unimplemented!(),
-            QueryPlan::Limit { .. } => unimplemented!(),
+            QueryPlan::Limit { limit, next } => {
+                self.limit(limit)?;
+                next
+            }
         };
 
         if let Some(next) = next { self.execute(*next, rx) } else { Ok(self.frame.into()) }

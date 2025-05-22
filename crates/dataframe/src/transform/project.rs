@@ -18,8 +18,8 @@ impl DataFrame {
         let mut new_columns = Vec::with_capacity(expressions.len());
 
         for expression in expressions {
-            let name = expression.alias;
             let expr = expression.expression;
+            let name = expression.alias.unwrap_or(expr.to_string());
 
             let mut values = Vec::with_capacity(row_count);
             let mut valid = Vec::with_capacity(row_count);
@@ -73,10 +73,18 @@ impl DataFrame {
                 _ => ColumnValues::Undefined(row_count),
             };
 
-            new_columns.push(Column { name: name.unwrap_or("".to_string()), data: column });
+            new_columns.push(Column { name, data: column });
         }
 
         self.columns = new_columns;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn implement() {
+        todo!()
     }
 }

@@ -29,7 +29,7 @@ fn main() {
     db.tx_execute(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#);
 
     // for l in db.rx_execute(&root, r#"SELECT 1, 2 ,3 "#) {
-    for l in db.rx_execute(&root, r#"FROM test.arith SELECT id, id + 1000, num"#) {
+    for l in db.rx_execute(&root, r#"FROM test.arith SELECT id, id + 1000, num LIMIT 2"#) {
         println!("{}", l);
     }
     
