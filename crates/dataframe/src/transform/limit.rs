@@ -9,6 +9,10 @@ impl DataFrame {
 
         for col in &self.columns {
             let data = match &col.data {
+                ColumnValues::Float8(values, valid) => ColumnValues::Float8(
+                    values[..n.min(values.len())].to_vec(),
+                    valid[..n.min(valid.len())].to_vec(),
+                ),
                 ColumnValues::Int2(values, valid) => ColumnValues::Int2(
                     values[..n.min(values.len())].to_vec(),
                     valid[..n.min(valid.len())].to_vec(),

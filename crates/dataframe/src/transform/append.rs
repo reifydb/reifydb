@@ -24,6 +24,11 @@ impl Append<DataFrame> for DataFrame {
             }
 
             match (&mut l.data, lr.data) {
+                (ColumnValues::Float8(l, l_valid), ColumnValues::Float8(r, r_valid)) => {
+                    l.extend(r);
+                    l_valid.extend(r_valid);
+                }
+
                 (ColumnValues::Int2(l, l_valid), ColumnValues::Int2(r, r_valid)) => {
                     l.extend(r);
                     l_valid.extend(r_valid);
@@ -45,6 +50,15 @@ impl Append<DataFrame> for DataFrame {
 
                 // Promote Undefined → typed if needed
                 (ColumnValues::Undefined(l_len), typed_lr) => match typed_lr {
+                    ColumnValues::Float8(r, r_valid) => {
+                        *l = Column {
+                            name: l.name.clone(),
+                            data: ColumnValues::Float8(
+                                vec![0.0f64; *l_len].into_iter().chain(r.clone()).collect(),
+                                vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
+                            ),
+                        };
+                    }
                     ColumnValues::Int2(r, r_valid) => {
                         *l = Column {
                             name: l.name.clone(),
@@ -77,6 +91,10 @@ impl Append<DataFrame> for DataFrame {
 
                 // Prevent appending typed into Undefined
                 (typed_l, ColumnValues::Undefined(r_len)) => match typed_l {
+                    ColumnValues::Float8(l, l_valid) => {
+                        l.extend(std::iter::repeat(0.0f64).take(r_len));
+                        l_valid.extend(std::iter::repeat(false).take(r_len));
+                    }
                     ColumnValues::Int2(l, l_valid) => {
                         l.extend(std::iter::repeat(0).take(r_len));
                         l_valid.extend(std::iter::repeat(false).take(r_len));

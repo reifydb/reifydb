@@ -17,6 +17,10 @@ impl OrderedF32 {
     pub fn value(&self) -> f32 {
         self.0
     }
+
+    pub fn zero() -> OrderedF32 {
+        OrderedF32(0.0f32)
+    }
 }
 
 impl Deref for OrderedF32 {

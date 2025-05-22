@@ -72,6 +72,12 @@ pub enum Value {
     Uint2(u16),
 }
 
+impl Value {
+    pub fn float8(v: impl Into<f64>) -> Self {
+        OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::Undefined)
+    }
+}
+
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {

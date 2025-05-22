@@ -19,6 +19,9 @@ mod frame;
 mod iterator;
 mod reference;
 mod transform;
+mod view;
+mod aggregate;
+mod display;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

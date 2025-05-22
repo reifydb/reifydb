@@ -5,7 +5,6 @@ mod call;
 mod display;
 
 use crate::function::math;
-use crate::function::math::AvgFunction;
 use base::expression::{Expression, PrefixOperator};
 use base::function::FunctionRegistry;
 use base::{Row, RowMeta, Value, ValueKind};
@@ -36,6 +35,7 @@ impl From<DataFrame> for ExecutionResult {
             .iter()
             .map(|c| {
                 let value = match &c.data {
+                    ColumnValues::Float8(_, _) => unimplemented!(),
                     ColumnValues::Int2(_, _) => ValueKind::Int2,
                     ColumnValues::Text(_, _) => ValueKind::Text,
                     ColumnValues::Bool(_, _) => ValueKind::Bool,
@@ -76,6 +76,7 @@ impl From<DataFrame> for ExecutionResult {
                         }
                     }
                     ColumnValues::Undefined(_) => Value::Undefined,
+                    ColumnValues::Float8(_, _) => unimplemented!(),
                 };
                 row.push(value);
             }
@@ -283,8 +284,6 @@ fn execute_node<'a>(
 
             let store = rx.schema(schema_name).unwrap().get(store_name.deref()).unwrap();
 
-            use std::collections::HashMap;
-
             #[derive(Debug, Clone, PartialEq, Eq, Hash)]
             pub struct GroupKey(Vec<GroupPart>);
 
@@ -296,7 +295,7 @@ fn execute_node<'a>(
                 Undefined,
             }
             todo!();
-            // 
+            //
             // let group_columns: Vec<usize> = group_by
             //     .iter()
             //     .map(|expr| match expr {
@@ -304,12 +303,12 @@ fn execute_node<'a>(
             //         _ => panic!("Only identifier expressions are supported in GROUP BY"),
             //     })
             //     .collect();
-            // 
+            //
             // let mut groups: HashMap<GroupKey, Vec<Vec<Value>>> = HashMap::new();
-            // 
+            //
             // for row in input_iter {
             //     let mut parts = Vec::with_capacity(group_columns.len());
-            // 
+            //
             //     for &index in &group_columns {
             //         let value = row.get(index).unwrap().clone();
             //         let part = match value {
@@ -321,7 +320,7 @@ fn execute_node<'a>(
             //         };
             //         parts.push(part);
             //     }
-            // 
+            //
             //     let key = GroupKey(parts);
             //     groups.entry(key).or_default().push(row);
             // }
@@ -354,9 +353,9 @@ fn execute_node<'a>(
             //         }
             //     }
             // }
-            // 
+            //
             // let mut result_rows = Vec::new();
-            // 
+            //
             // for (key, rows) in groups {
             //     let mut row: Vec<Value> = key
             //         .0
@@ -368,13 +367,13 @@ fn execute_node<'a>(
             //             GroupPart::Undefined => Value::Undefined,
             //         })
             //         .collect();
-            // 
+            //
             //     for agg in &project {
             //         match agg {
             //             Expression::Call(call) => {
             //                 let mut exec = Executor { functions: FunctionRegistry::new() };
             //                 exec.functions.register(AvgFunction {});
-            // 
+            //
             //                 let result = exec
             //                     .eval_function_aggregate(
             //                         "avg",
@@ -383,7 +382,7 @@ fn execute_node<'a>(
             //                         Some(store),
             //                     )
             //                     .unwrap();
-            // 
+            //
             //                 row.push(result);
             //             }
             //             Expression::Column(_) => {
@@ -392,10 +391,10 @@ fn execute_node<'a>(
             //             _ => unimplemented!(),
             //         }
             //     }
-            // 
+            //
             //     result_rows.push(row);
             // }
-            // 
+            //
             // // Generate labels: group key labels + aggregate labels
             // let mut labels: Vec<RowMeta> = group_by
             //     .iter()
@@ -406,7 +405,7 @@ fn execute_node<'a>(
             //         _ => RowMeta { value: ValueKind::Undefined, label: "group".to_string() },
             //     })
             //     .collect();
-            // 
+            //
             // labels.extend(project.iter().filter_map(|agg| match agg {
             //     Expression::Call(call) => Some(RowMeta {
             //         value: ValueKind::Undefined,
@@ -414,7 +413,7 @@ fn execute_node<'a>(
             //     }),
             //     _ => None,
             // }));
-            // 
+            //
             // (labels, Box::new(result_rows.into_iter()), current_schema, current_store, next)
         }
     };

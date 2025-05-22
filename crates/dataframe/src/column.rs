@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use base::Value;
+use base::ordered_float::OrderedF64;
 
 #[derive(Debug)]
 pub struct Column {
@@ -12,12 +13,62 @@ pub struct Column {
 #[derive(Debug, PartialEq)]
 pub enum ColumnValues {
     // value, is_valid
+    Float8(Vec<f64>, Vec<bool>),
     Int2(Vec<i16>, Vec<bool>),
     Text(Vec<String>, Vec<bool>),
     Bool(Vec<bool>, Vec<bool>),
 
     // special case: all undefined
     Undefined(usize),
+}
+
+impl ColumnValues {
+    pub fn from_values(values: Vec<Value>, valid: Vec<bool>) -> Self {
+        match values.get(0) {
+            Some(Value::Float8(_)) => ColumnValues::Float8(
+                values
+                    .into_iter()
+                    .map(|v| match v {
+                        Value::Float8(f) => f,
+                        _ => OrderedF64::zero(),
+                    })
+                    .map(|f| f.value())
+                    .collect(),
+                valid,
+            ),
+            Some(Value::Int2(_)) => ColumnValues::Int2(
+                values
+                    .into_iter()
+                    .map(|v| match v {
+                        Value::Int2(i) => i,
+                        _ => 0,
+                    })
+                    .collect(),
+                valid,
+            ),
+            Some(Value::Text(_)) => ColumnValues::Text(
+                values
+                    .into_iter()
+                    .map(|v| match v {
+                        Value::Text(s) => s,
+                        _ => String::new(),
+                    })
+                    .collect(),
+                valid,
+            ),
+            Some(Value::Bool(_)) => ColumnValues::Bool(
+                values
+                    .into_iter()
+                    .map(|v| match v {
+                        Value::Bool(b) => b,
+                        _ => false,
+                    })
+                    .collect(),
+                valid,
+            ),
+            _ => ColumnValues::Undefined(valid.len()),
+        }
+    }
 }
 
 impl From<Value> for ColumnValues {
@@ -37,6 +88,13 @@ impl From<Value> for ColumnValues {
 impl ColumnValues {
     pub fn get(&self, index: usize) -> Value {
         match self {
+            ColumnValues::Float8(v, b) => {
+                if b[index] {
+                    Value::Float8(v[index].try_into().unwrap())
+                } else {
+                    Value::Undefined
+                }
+            }
             ColumnValues::Int2(v, b) => {
                 if b[index] {
                     Value::Int2(v[index])
@@ -44,13 +102,6 @@ impl ColumnValues {
                     Value::Undefined
                 }
             }
-            // ColumnValues::Float(v, b) => {
-            //     if b[index] {
-            //         Value::Float(OrderedF64(v[index]))
-            //     } else {
-            //         Value::Undefined
-            //     }
-            // }
             ColumnValues::Text(v, b) => {
                 if b[index] {
                     Value::Text(v[index].clone())
@@ -98,6 +149,7 @@ impl ColumnValues {
 
     pub fn len(&self) -> usize {
         match self {
+            ColumnValues::Float8(_, b) => b.len(),
             ColumnValues::Int2(_, b) => b.len(),
             // ColumnValues::Float(_, b) => b.len(),
             ColumnValues::Text(_, b) => b.len(),
@@ -108,21 +160,29 @@ impl ColumnValues {
 
     pub fn is_undefined(&self, index: usize) -> bool {
         match self {
-			ColumnValues::Int2(_, b)
-			// | ColumnValues::Float(_, b)
-			| ColumnValues::Text(_, b)
-			| ColumnValues::Bool(_, b) => !b[index],
-			ColumnValues::Undefined(_) => true,
-		}
+            ColumnValues::Float8(_, b)
+            | ColumnValues::Int2(_, b)
+            | ColumnValues::Text(_, b)
+            | ColumnValues::Bool(_, b) => !b[index],
+            ColumnValues::Undefined(_) => true,
+        }
     }
 
     pub fn empty(&self) -> ColumnValues {
         match self {
+            ColumnValues::Float8(_, _) => ColumnValues::Float8(Vec::new(), Vec::new()),
             ColumnValues::Int2(_, _) => ColumnValues::Int2(Vec::new(), Vec::new()),
-            // ColumnValues::Float(_, _) => ColumnValues::Float(Vec::new(), Vec::new()),
             ColumnValues::Text(_, _) => ColumnValues::Text(Vec::new(), Vec::new()),
             ColumnValues::Bool(_, _) => ColumnValues::Bool(Vec::new(), Vec::new()),
             ColumnValues::Undefined(_) => ColumnValues::Undefined(0),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test() {
+        todo!()
     }
 }

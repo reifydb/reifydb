@@ -27,6 +27,13 @@ impl<'df> Iterator for DataFrameIter<'df> {
             .columns
             .iter()
             .map(|col| match &col.data {
+                ColumnValues::Float8(data, bitmap) => {
+                    if bitmap[i] {
+                        ValueRef::Float8(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
                 ColumnValues::Int2(data, bitmap) => {
                     if bitmap[i] {
                         ValueRef::Int2(&data[i])
@@ -34,13 +41,6 @@ impl<'df> Iterator for DataFrameIter<'df> {
                         ValueRef::Undefined
                     }
                 }
-                // ColumnValues::Float(data, bitmap) => {
-                //     if bitmap[i] {
-                //         ValueRef::Float(&data[i])
-                //     } else {
-                //         ValueRef::Undefined
-                //     }
-                // }
                 ColumnValues::Text(data, bitmap) => {
                     if bitmap[i] {
                         ValueRef::Text(&data[i])

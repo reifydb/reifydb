@@ -17,6 +17,10 @@ impl OrderedF64 {
     pub fn value(&self) -> f64 {
         self.0
     }
+
+    pub fn zero() -> OrderedF64 {
+        OrderedF64(0.0f64)
+    }
 }
 
 impl Deref for OrderedF64 {

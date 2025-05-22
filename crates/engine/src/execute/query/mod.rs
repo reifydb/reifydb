@@ -4,3 +4,4 @@
 mod project;
 mod scan;
 mod limit;
+mod aggregate;

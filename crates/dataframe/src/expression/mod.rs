@@ -5,6 +5,7 @@ use crate::ColumnValues;
 use base::Value;
 use base::Value::Undefined;
 use base::expression::Expression;
+use base::ordered_float::OrderedF64;
 use std::collections::HashMap;
 
 pub(crate) fn evaluate<'a>(
@@ -14,6 +15,11 @@ pub(crate) fn evaluate<'a>(
 ) -> crate::Result<Value> {
     match expression {
         Expression::Column(name) => match columns.get(name.as_str()) {
+            Some(ColumnValues::Float8(vals, valid)) => Ok(if valid[row] {
+                Value::Float8(OrderedF64::try_from(vals[row]).unwrap())
+            } else {
+                Undefined
+            }),
             Some(ColumnValues::Int2(vals, valid)) => {
                 Ok(if valid[row] { Value::Int2(vals[row]) } else { Undefined })
             }
@@ -42,5 +48,13 @@ pub(crate) fn evaluate<'a>(
         Expression::Call(_) => unimplemented!(),
         Expression::Tuple(_) => unimplemented!(),
         Expression::Prefix(_) => unimplemented!(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test() {
+        todo!()
     }
 }

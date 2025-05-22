@@ -26,10 +26,10 @@ fn main() {
     // }
 
     db.tx_execute(&root, r#"create table test.arith(id: int2, num: int2)"#);
-    db.tx_execute(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#);
+    db.tx_execute(&root, r#"insert (1,6), (1,8), (1,4), (2,2), (2,3) into test.arith(id,num)"#);
 
-    // for l in db.rx_execute(&root, r#"SELECT 1, 2 ,3 "#) {
-    for l in db.rx_execute(&root, r#"FROM test.arith SELECT id, id + 1000, num LIMIT 2"#) {
+    for l in db.rx_execute(&root, r#"SELECT 1, 2 ,3 "#) {
+    for l in db.rx_execute(&root, r#"FROM test.arith GROUP BY id"#) {
         println!("{}", l);
     }
     
@@ -64,4 +64,4 @@ fn main() {
 //             print!("{}", l.to_string());
 //         }
 //     });
-// }
+}
