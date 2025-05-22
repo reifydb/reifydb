@@ -10,7 +10,7 @@ pub struct Column {
     pub data: ColumnValues,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
     // value, is_valid
     Float8(Vec<f64>, Vec<bool>),

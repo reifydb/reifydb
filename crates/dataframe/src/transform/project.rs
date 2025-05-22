@@ -3,16 +3,13 @@
 
 use crate::expression::evaluate;
 use crate::{Column, ColumnValues, DataFrame};
-use base::Value;
-use base::Value::Undefined;
 use base::expression::AliasExpression;
 use std::collections::HashMap;
 
 impl DataFrame {
     pub fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {
         let row_count = self.columns.first().map_or(1, |col| col.data.len());
-
-        let col_map: HashMap<&str, &ColumnValues> =
+        let columns: HashMap<&str, &ColumnValues> =
             self.columns.iter().map(|c| (c.name.as_str(), &c.data)).collect();
 
         let mut new_columns = Vec::with_capacity(expressions.len());
@@ -21,70 +18,8 @@ impl DataFrame {
             let expr = expression.expression;
             let name = expression.alias.unwrap_or(expr.to_string());
 
-            let mut values = Vec::with_capacity(row_count);
-            let mut valid = Vec::with_capacity(row_count);
-
-            for row_idx in 0..row_count {
-                let value = evaluate(&expr, &col_map, row_idx)?;
-
-                match value {
-                    Undefined => {
-                        values.push(Undefined);
-                        valid.push(false);
-                    }
-                    value => {
-                        values.push(value);
-                        valid.push(true);
-                    }
-                }
-            }
-
-            let column = match values.get(0) {
-                Some(Value::Float8(_)) => {
-                    let v = values
-                        .into_iter()
-                        .map(|v| match v {
-                            Value::Float8(v) => v.value(),
-                            _ => 0.0,
-                        })
-                        .collect();
-                    ColumnValues::Float8(v, valid)
-                }
-
-                Some(Value::Int2(_)) => {
-                    let v = values
-                        .into_iter()
-                        .map(|v| match v {
-                            Value::Int2(i) => i,
-                            _ => 0,
-                        })
-                        .collect();
-                    ColumnValues::Int2(v, valid)
-                }
-                Some(Value::Text(_)) => {
-                    let v = values
-                        .into_iter()
-                        .map(|v| match v {
-                            Value::Text(s) => s,
-                            _ => "".to_string(),
-                        })
-                        .collect();
-                    ColumnValues::Text(v, valid)
-                }
-                Some(Value::Bool(_)) => {
-                    let v = values
-                        .into_iter()
-                        .map(|v| match v {
-                            Value::Bool(b) => b,
-                            _ => false,
-                        })
-                        .collect();
-                    ColumnValues::Bool(v, valid)
-                }
-                _ => ColumnValues::Undefined(row_count),
-            };
-
-            new_columns.push(Column { name, data: column });
+            let evaluated_column = evaluate(&expr, &columns, row_count)?;
+            new_columns.push(Column { name: name.into(), data: evaluated_column });
         }
 
         self.columns = new_columns;
@@ -95,6 +30,7 @@ impl DataFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base::Value;
     use base::expression::Expression;
 
     #[test]
