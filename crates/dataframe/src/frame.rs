@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Column;
 use crate::iterator::DataFrameIter;
-use base::{ColumnValues, Value};
+use crate::{Column, ColumnValues};
+use base::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -47,5 +47,14 @@ impl DataFrame {
             row_total: self.shape().0,
             column_index: Arc::new(col_names),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore]
+    fn implement() {
+        todo!()
     }
 }

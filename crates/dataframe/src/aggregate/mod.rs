@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, DataFrame, Error};
-use base::{ColumnValues, Value};
+use crate::{Column, ColumnValues, DataFrame, Error};
+use base::Value;
 
 pub enum Aggregate {
     Sum(String),

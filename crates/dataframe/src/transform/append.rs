@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, DataFrame};
-use base::{ColumnValues, Row, Value};
+use crate::{Column, ColumnValues, DataFrame};
+use base::{Row, Value};
 
 pub trait Append<T> {
     fn append(&mut self, other: T) -> crate::Result<()>;
@@ -203,14 +203,12 @@ impl Append<Row> for DataFrame {
 
 #[cfg(test)]
 mod tests {
-    use crate::Column;
-    use base::ColumnValues;
+    use crate::{Column, ColumnValues};
 
     mod dataframe {
         use crate::transform::append::Append;
         use crate::transform::append::tests::*;
         use crate::*;
-        use base::ColumnValues;
 
         #[test]
         fn test_append_boolean() {
@@ -321,8 +319,8 @@ mod tests {
     }
 
     mod row {
-        use crate::{Append, Column, DataFrame};
-        use base::{ColumnValues, Value};
+        use crate::{Append, Column, ColumnValues, DataFrame};
+        use base::Value;
 
         #[test]
         fn test_append_to_empty() {
@@ -442,7 +440,8 @@ mod tests {
     }
 
     fn col_int2(name: &str, vals: &[i16], valid: &[bool]) -> Column {
-        Column { name: name.to_string(), data: ColumnValues::Int2(vals.to_vec(), valid.to_vec()) }
+        Column { name: name.to_string(), data: 
+        ColumnValues::Int2(vals.to_vec(), valid.to_vec()) }
     }
 
     fn col_text(name: &str, vals: &[&str], valid: &[bool]) -> Column {

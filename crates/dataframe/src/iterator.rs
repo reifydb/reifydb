@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{DataFrame, RowRef, ValueRef};
-use base::ColumnValues;
+use crate::{ColumnValues, DataFrame, RowRef, ValueRef};
 use std::sync::Arc;
 
 pub struct DataFrameIter<'df> {

@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use base::Value;
 use base::Value::Undefined;
 use base::expression::Expression;
-use base::{ColumnValues, Value};
+use dataframe::ColumnValues;
 use std::collections::HashMap;
 
 pub mod function;

@@ -10,7 +10,7 @@ pub use error::Error;
 pub use key::{Key, KeyError, SortDirection, SortKey};
 pub use row::{Row, RowIter, RowIterator};
 pub use row_meta::RowMeta;
-pub use value::{ColumnValues, Value, ValueKind};
+pub use value::{Value, ValueKind};
 
 pub mod encoding;
 mod error;

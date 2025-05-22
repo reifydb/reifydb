@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, DataFrame};
-use base::ColumnValues;
+use crate::{Column, ColumnValues, DataFrame};
 use std::collections::HashMap;
 
 impl DataFrame {

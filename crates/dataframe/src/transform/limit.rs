@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, DataFrame};
-use base::ColumnValues;
+use crate::{Column, ColumnValues, DataFrame};
 
 impl DataFrame {
     pub fn limit(&mut self, n: usize) -> crate::Result<()> {
@@ -10,7 +9,6 @@ impl DataFrame {
 
         for col in &self.columns {
             let data = match &col.data {
-                
                 ColumnValues::Float8(values, valid) => ColumnValues::Float8(
                     values[..n.min(values.len())].to_vec(),
                     valid[..n.min(valid.len())].to_vec(),

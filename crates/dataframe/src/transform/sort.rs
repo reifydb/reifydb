@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{DataFrame, Error};
-use base::{ColumnValues, SortDirection, SortKey};
+use crate::{ColumnValues, DataFrame, Error};
+use base::{SortDirection, SortKey};
 
 impl DataFrame {
     pub fn sort(&mut self, keys: &[SortKey]) -> crate::Result<()> {
