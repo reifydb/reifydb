@@ -12,7 +12,9 @@ pub use frame::DataFrame;
 pub use reference::{RowRef, ValueRef};
 pub use transform::Append;
 
+pub mod aggregate;
 mod column;
+mod display;
 mod error;
 mod expression;
 mod frame;
@@ -20,8 +22,8 @@ mod iterator;
 mod reference;
 mod transform;
 mod view;
-mod aggregate;
-mod display;
+
+pub mod function; // FIXME remove from this crate
 
 pub type Result<T> = std::result::Result<T, Error>;
 

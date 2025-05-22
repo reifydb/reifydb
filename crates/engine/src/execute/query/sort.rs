@@ -2,10 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
+use base::SortKey;
 
 impl Executor {
-    pub(crate) fn limit(&mut self, limit: usize) -> crate::Result<()> {
-        self.frame.limit(limit)?;
+    pub(crate) fn sort(&mut self, sort_keys: &[SortKey]) -> crate::Result<()> {
+        self.frame.sort(sort_keys)?;
         Ok(())
     }
 }

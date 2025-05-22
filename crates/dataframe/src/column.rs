@@ -71,6 +71,40 @@ impl ColumnValues {
     }
 }
 
+impl ColumnValues {
+    pub fn reorder(&mut self, indices: &[usize]) {
+        match self {
+            ColumnValues::Float8(v, valid) => {
+                let new_v: Vec<_> = indices.iter().map(|&i| v[i]).collect();
+                let new_valid: Vec<_> = indices.iter().map(|&i| valid[i]).collect();
+                *v = new_v;
+                *valid = new_valid;
+            }
+            ColumnValues::Int2(v, valid) => {
+                let new_v: Vec<_> = indices.iter().map(|&i| v[i]).collect();
+                let new_valid: Vec<_> = indices.iter().map(|&i| valid[i]).collect();
+                *v = new_v;
+                *valid = new_valid;
+            }
+            ColumnValues::Text(v, valid) => {
+                let new_v: Vec<_> = indices.iter().map(|&i| v[i].clone()).collect();
+                let new_valid: Vec<_> = indices.iter().map(|&i| valid[i]).collect();
+                *v = new_v;
+                *valid = new_valid;
+            }
+            ColumnValues::Bool(v, valid) => {
+                let new_v: Vec<_> = indices.iter().map(|&i| v[i]).collect();
+                let new_valid: Vec<_> = indices.iter().map(|&i| valid[i]).collect();
+                *v = new_v;
+                *valid = new_valid;
+            }
+            ColumnValues::Undefined(len) => {
+                *len = indices.len();
+            }
+        }
+    }
+}
+
 impl From<Value> for ColumnValues {
     fn from(value: Value) -> Self {
         match value {
@@ -81,6 +115,42 @@ impl From<Value> for ColumnValues {
             Value::Text(v) => ColumnValues::Text(vec![v], vec![true]),
             Value::Uint2(_) => unimplemented!(),
             Value::Undefined => ColumnValues::Undefined(1),
+        }
+    }
+}
+
+impl ColumnValues {
+    pub fn get_as_value(&self, idx: usize) -> Value {
+        match self {
+            ColumnValues::Float8(v, valid) => {
+                if valid[idx] {
+                    Value::float8(v[idx])
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::Int2(v, valid) => {
+                if valid[idx] {
+                    Value::Int2(v[idx])
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::Text(v, valid) => {
+                if valid[idx] {
+                    Value::Text(v[idx].clone())
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::Bool(v, valid) => {
+                if valid[idx] {
+                    Value::Bool(v[idx])
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::Undefined(_) => Value::Undefined,
         }
     }
 }
@@ -182,7 +252,8 @@ impl ColumnValues {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test() {
+    #[ignore]
+    fn implement() {
         todo!()
     }
 }

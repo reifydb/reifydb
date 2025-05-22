@@ -7,9 +7,9 @@ mod display;
 use crate::function::math;
 use base::expression::{Expression, PrefixOperator};
 use base::function::FunctionRegistry;
-use base::{Row, RowMeta, Value, ValueKind};
+use base::{Row, RowMeta, SortDirection, Value, ValueKind};
 use dataframe::{ColumnValues, DataFrame};
-use rql::plan::{Plan, QueryPlan, SortDirection};
+use rql::plan::{Plan, QueryPlan};
 use std::ops::Deref;
 use std::vec;
 use transaction::{CatalogTx, NopStore, Rx, SchemaRx, SchemaTx, StoreRx, StoreToCreate, Tx};
@@ -35,7 +35,7 @@ impl From<DataFrame> for ExecutionResult {
             .iter()
             .map(|c| {
                 let value = match &c.data {
-                    ColumnValues::Float8(_, _) => unimplemented!(),
+                    ColumnValues::Float8(_, _) => ValueKind::Float8,
                     ColumnValues::Int2(_, _) => ValueKind::Int2,
                     ColumnValues::Text(_, _) => ValueKind::Text,
                     ColumnValues::Bool(_, _) => ValueKind::Bool,
@@ -54,6 +54,14 @@ impl From<DataFrame> for ExecutionResult {
 
             for col in &value.columns {
                 let value = match &col.data {
+                    ColumnValues::Float8(vals, valid) => {
+                        if valid[row_idx] {
+                            Value::float8(vals[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+
                     ColumnValues::Int2(vals, valid) => {
                         if valid[row_idx] {
                             Value::Int2(vals[row_idx])
@@ -76,7 +84,6 @@ impl From<DataFrame> for ExecutionResult {
                         }
                     }
                     ColumnValues::Undefined(_) => Value::Undefined,
-                    ColumnValues::Float8(_, _) => unimplemented!(),
                 };
                 row.push(value);
             }

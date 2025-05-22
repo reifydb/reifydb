@@ -3,6 +3,7 @@
 
 use crate::{Column, ColumnValues, DataFrame, Error};
 use base::Value;
+use base::expression::AliasExpression;
 
 pub enum Aggregate {
     Sum(String),
@@ -88,6 +89,7 @@ impl Aggregate {
 }
 
 impl DataFrame {
+
     pub fn aggregate(&mut self, keys: &[&str], aggregates: &[Aggregate]) -> crate::Result<()> {
         let groups = self.group_by_view(keys)?;
 
@@ -128,6 +130,7 @@ impl DataFrame {
 #[cfg(test)]
 mod tests {
     #[test]
+    #[ignore]
     fn test() {
         todo!()
     }

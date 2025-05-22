@@ -40,6 +40,17 @@ impl DataFrame {
             }
 
             let column = match values.get(0) {
+                Some(Value::Float8(_)) => {
+                    let v = values
+                        .into_iter()
+                        .map(|v| match v {
+                            Value::Float8(v) => v.value(),
+                            _ => 0.0,
+                        })
+                        .collect();
+                    ColumnValues::Float8(v, valid)
+                }
+
                 Some(Value::Int2(_)) => {
                     let v = values
                         .into_iter()

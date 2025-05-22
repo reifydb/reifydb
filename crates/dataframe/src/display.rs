@@ -135,7 +135,8 @@ impl Display for DataFrame {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test() {
+    #[ignore]
+    fn implement() {
         todo!()
     }
 }

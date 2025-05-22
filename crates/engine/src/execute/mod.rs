@@ -35,7 +35,7 @@ impl Executor {
     ) -> crate::Result<ExecutionResult> {
         let next = match plan {
             QueryPlan::Aggregate { group_by, project, next } => {
-                self.aggregate(rx, group_by, project)?;
+                self.aggregate(&group_by, &project)?;
                 next
             }
             QueryPlan::Scan { schema, store, next } => {
@@ -46,7 +46,10 @@ impl Executor {
                 self.project(expressions)?;
                 next
             }
-            QueryPlan::Sort { .. } => unimplemented!(),
+            QueryPlan::Sort { keys, next } => {
+                self.sort(&keys)?;
+                next
+            },
             QueryPlan::Limit { limit, next } => {
                 self.limit(limit)?;
                 next

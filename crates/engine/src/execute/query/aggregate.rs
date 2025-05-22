@@ -1,14 +1,58 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::expression::AliasExpression;
 use crate::execute::Executor;
-use transaction::Rx;
+use base::expression::{AliasExpression, Expression};
+use dataframe::aggregate::Aggregate;
 
 impl Executor {
-    pub(crate) fn aggregate(&mut self, rx: &impl Rx, group_by: Vec<AliasExpression>, project: Vec<AliasExpression> ) -> crate::Result<()> {
-    	
+    pub(crate) fn aggregate(
+        &mut self,
+        group_by: &[AliasExpression],
+        project: &[AliasExpression],
+    ) -> crate::Result<()> {
+        dbg!(&group_by);
+        dbg!(&project);
 
+        let mut keys = vec![];
+        let mut aggregates = vec![];
+
+        for gb in group_by {
+            match &gb.expression {
+                Expression::Column(c) => keys.push(c.as_str()),
+                _ => unimplemented!(),
+            }
+        }
+
+        for p in project {
+            match &p.expression {
+                Expression::Call(call) => {
+                    let func = call.func.name.as_str();
+
+                    match call.args.first().unwrap() {
+                        Expression::Column(c) => match func {
+                            "avg" => aggregates.push(Aggregate::Avg(c.to_string())),
+                            "sum" => aggregates.push(Aggregate::Sum(c.to_string())),
+                            "count" => aggregates.push(Aggregate::Count(c.to_string())),
+                            _ => unimplemented!(),
+                        },
+                        _ => unimplemented!(),
+                    }
+                }
+                expr => {}
+            }
+        }
+
+        self.frame.aggregate(&keys, &aggregates)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore]
+    fn implement() {
+        todo!()
     }
 }

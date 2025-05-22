@@ -7,7 +7,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use error::Error;
-pub use key::{Key, KeyError};
+pub use key::{Key, KeyError, SortDirection, SortKey};
 pub use row::{Row, RowIter, RowIterator};
 pub use row_meta::RowMeta;
 pub use value::{Value, ValueKind};

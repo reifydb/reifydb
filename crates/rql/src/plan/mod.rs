@@ -13,7 +13,7 @@ use base::expression::{
     AliasExpression, CallExpression, Expression, IdentExpression, PrefixExpression, PrefixOperator,
     TupleExpression,
 };
-use base::{Value, ValueKind};
+use base::{SortDirection, SortKey, Value, ValueKind};
 pub use error::Error;
 use transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
 
@@ -45,18 +45,6 @@ pub enum Plan {
     },
     /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
     Query(QueryPlan),
-}
-
-#[derive(Debug)]
-pub enum SortDirection {
-    Asc,
-    Desc,
-}
-
-#[derive(Debug)]
-pub struct SortKey {
-    pub column: String,
-    pub direction: SortDirection,
 }
 
 #[derive(Debug)]

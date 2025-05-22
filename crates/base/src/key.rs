@@ -5,6 +5,18 @@ use crate::Value;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
+#[derive(Debug)]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug)]
+pub struct SortKey {
+    pub column: String,
+    pub direction: SortDirection,
+}
+
 pub enum KeyError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
