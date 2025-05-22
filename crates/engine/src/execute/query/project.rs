@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use crate::old_execute::evaluate;
+use crate::evaluate::evaluate;
+use crate::old_execute;
 use base::expression::AliasExpression;
 use dataframe::{Column, DataFrame};
 use transaction::NopStore;
@@ -13,7 +14,7 @@ impl Executor {
             let mut columns = vec![];
 
             for (idx, expr) in expressions.into_iter().enumerate() {
-                let value = evaluate::<NopStore>(expr.expression, None, None).unwrap();
+                let value = old_execute::evaluate::<NopStore>(expr.expression, None, None).unwrap();
                 columns.push(Column { name: format!("{}", idx + 1), data: value.into() });
             }
 
@@ -21,7 +22,20 @@ impl Executor {
             return Ok(());
         }
 
-        self.frame.project(expressions)?;
+        self.frame.project(|row_count, columns| {
+            let mut new_columns = Vec::with_capacity(expressions.len());
+
+            for expression in expressions {
+                let expr = expression.expression;
+                let name = expression.alias.unwrap_or(expr.to_string());
+
+                let evaluated_column = evaluate(&expr, &columns, row_count)?;
+                new_columns.push(Column { name: name.into(), data: evaluated_column });
+            }
+
+            Ok(new_columns)
+        })?;
+
         Ok(())
     }
 }

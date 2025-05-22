@@ -30,7 +30,8 @@ impl DataFrame {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Column, ColumnValues, DataFrame};
+    use crate::{Column, DataFrame};
+    use base::ColumnValues;
 
     #[test]
     fn test_select_subset_of_columns() {

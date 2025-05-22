@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::Column;
 use crate::iterator::DataFrameIter;
-use crate::{Column, ColumnValues};
-use base::Value;
+use base::{ColumnValues, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 

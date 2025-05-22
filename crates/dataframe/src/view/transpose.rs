@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, ColumnValues, DataFrame, ValueRef};
+use crate::{Column, DataFrame, ValueRef};
+use base::ColumnValues;
 
 pub struct TransposedRow<'a> {
     pub row_idx: usize,

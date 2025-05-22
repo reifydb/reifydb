@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{ColumnValues, DataFrame};
-use base::Value;
+use crate::DataFrame;
+use base::{ColumnValues, Value};
 use std::collections::HashMap;
 use std::collections::hash_map::Iter;
 use std::ops::Deref;
@@ -94,8 +94,6 @@ impl DataFrame {
         Ok(result)
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

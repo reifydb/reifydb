@@ -11,8 +11,9 @@ pub use error::Error;
 
 mod engine;
 mod error;
+mod execute;
+pub mod evaluate;
 mod function;
 pub mod old_execute;
-mod execute;
 
 pub type Result<T> = std::result::Result<T, Error>;

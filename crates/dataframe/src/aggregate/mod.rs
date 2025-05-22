@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, ColumnValues, DataFrame, Error};
-use base::Value;
-use base::expression::AliasExpression;
+use crate::{Column, DataFrame, Error};
+use base::{ColumnValues, Value};
 
 pub enum Aggregate {
     Sum(String),
@@ -89,7 +88,6 @@ impl Aggregate {
 }
 
 impl DataFrame {
-
     pub fn aggregate(&mut self, keys: &[&str], aggregates: &[Aggregate]) -> crate::Result<()> {
         let groups = self.group_by_view(keys)?;
 

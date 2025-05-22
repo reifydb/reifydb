@@ -1,17 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ColumnValues;
-use base::Value;
 use base::Value::Undefined;
 use base::expression::Expression;
+use base::{ColumnValues, Value};
 use std::collections::HashMap;
 
-pub(crate) fn evaluate<'a>(
+pub mod function;
+
+pub fn evaluate<'a>(
     expr: &Expression,
     columns: &HashMap<&'a str, &'a ColumnValues>,
     row_count: usize,
-) -> crate::Result<ColumnValues> {
+) -> dataframe::Result<ColumnValues> {
     match expr {
         // FIXME this might be very expensive
         Expression::Column(name) => columns

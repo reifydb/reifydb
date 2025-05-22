@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use base::ValueKind;
-use dataframe::{Append, Column, ColumnValues, DataFrame};
+use base::{ColumnValues, ValueKind};
+use dataframe::{Append, Column, DataFrame};
 use transaction::{Rx, SchemaRx, StoreRx};
 
 impl Executor {
@@ -33,7 +33,6 @@ impl Executor {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

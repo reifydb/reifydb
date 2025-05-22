@@ -6,7 +6,7 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use column::{Column, ColumnValues};
+pub use column::Column;
 pub use error::Error;
 pub use frame::DataFrame;
 pub use reference::{RowRef, ValueRef};
@@ -16,14 +16,13 @@ pub mod aggregate;
 mod column;
 mod display;
 mod error;
-mod expression;
 mod frame;
 mod iterator;
 mod reference;
 mod transform;
 mod view;
 
-pub mod function; // FIXME remove from this crate
+// FIXME remove from this crate
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, ColumnValues, DataFrame};
-use base::{Row, Value};
+use crate::{Column, DataFrame};
+use base::{ColumnValues, Row, Value};
 
 pub trait Append<T> {
     fn append(&mut self, other: T) -> crate::Result<()>;
@@ -203,12 +203,14 @@ impl Append<Row> for DataFrame {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Column, ColumnValues};
+    use crate::Column;
+    use base::ColumnValues;
 
     mod dataframe {
         use crate::transform::append::Append;
         use crate::transform::append::tests::*;
         use crate::*;
+        use base::ColumnValues;
 
         #[test]
         fn test_append_boolean() {
@@ -319,8 +321,8 @@ mod tests {
     }
 
     mod row {
-        use crate::{Append, Column, ColumnValues, DataFrame};
-        use base::Value;
+        use crate::{Append, Column, DataFrame};
+        use base::{ColumnValues, Value};
 
         #[test]
         fn test_append_to_empty() {

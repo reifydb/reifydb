@@ -1,6 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+pub use column::ColumnValues;
+
+mod column;
+
 use crate::ordered_float::{OrderedF32, OrderedF64};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
