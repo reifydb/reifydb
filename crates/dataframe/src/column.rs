@@ -1,13 +1,67 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::ordered_float::OrderedF64;
 use base::Value;
+use base::ordered_float::OrderedF64;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Column {
     pub name: String,
     pub data: ColumnValues,
+}
+
+impl Column {
+    pub fn bool(name: &str, values: impl IntoIterator<Item = bool>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::bool(values) }
+    }
+
+    pub fn bool_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = bool>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::bool_with_validity(values, validity) }
+    }
+
+    pub fn float8(name: &str, values: impl IntoIterator<Item = f64>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::float8(values) }
+    }
+
+    pub fn float8_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = f64>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::float8_with_validity(values, validity) }
+    }
+
+    pub fn int2(name: &str, values: impl IntoIterator<Item = i16>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int2(values) }
+    }
+
+    pub fn int2_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = i16>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int2_with_validity(values, validity) }
+    }
+
+    pub fn text<'a>(name: &str, values: impl IntoIterator<Item = &'a str>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::text(values) }
+    }
+
+    pub fn text_with_validity<'a>(
+        name: &str,
+        values: impl IntoIterator<Item = &'a str>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::text_with_validity(values, validity) }
+    }
+
+    pub fn undefined(name: &str, len: usize) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::undefined(len) }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,6 +74,76 @@ pub enum ColumnValues {
 
     // special case: all undefined
     Undefined(usize),
+}
+
+impl ColumnValues {
+    pub fn bool(values: impl IntoIterator<Item = bool>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Bool(values, vec![true; len])
+    }
+
+    pub fn bool_with_validity(
+        values: impl IntoIterator<Item = bool>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let validity = validity.into_iter().collect::<Vec<_>>();
+        debug_assert_eq!(validity.len(), values.len());
+        ColumnValues::Bool(values, validity)
+    }
+
+    pub fn float8(values: impl IntoIterator<Item = f64>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Float8(values, vec![true; len])
+    }
+
+    pub fn float8_with_validity(
+        values: impl IntoIterator<Item = f64>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let validity = validity.into_iter().collect::<Vec<_>>();
+        debug_assert_eq!(validity.len(), values.len());
+        ColumnValues::Float8(values, validity)
+    }
+
+    pub fn int2(values: impl IntoIterator<Item = i16>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Int2(values, vec![true; len])
+    }
+
+    pub fn int2_with_validity(
+        values: impl IntoIterator<Item = i16>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let validity = validity.into_iter().collect::<Vec<_>>();
+        debug_assert_eq!(validity.len(), values.len());
+        ColumnValues::Int2(values, validity)
+    }
+
+    pub fn text<'a>(values: impl IntoIterator<Item = &'a str>) -> Self {
+        let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Text(values, vec![true; len])
+    }
+
+    pub fn text_with_validity<'a>(
+        values: impl IntoIterator<Item = &'a str>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
+        let validity = validity.into_iter().collect::<Vec<_>>();
+        debug_assert_eq!(validity.len(), values.len());
+        ColumnValues::Text(values, validity)
+    }
+
+    pub fn undefined(len: usize) -> Self {
+        ColumnValues::Undefined(len)
+    }
 }
 
 impl ColumnValues {

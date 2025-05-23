@@ -31,7 +31,7 @@ impl Aggregate {
                         .fold((0, 0), |(a, b), (v, c)| (a + v, b + c));
 
                     if count > 0 {
-                        Ok(Value::float8((sum as f64 / count as f64)))
+                        Ok(Value::float8(sum as f64 / count as f64))
                     } else {
                         Ok(Value::Undefined)
                     }

@@ -30,7 +30,7 @@ impl DataFrame {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Column, ColumnValues, DataFrame};
+    use crate::{Column, DataFrame};
 
     #[test]
     fn test_select_subset_of_columns() {
@@ -90,15 +90,9 @@ mod tests {
 
     fn make_test_instance() -> DataFrame {
         DataFrame::new(vec![
-            Column { name: "id".into(), data: ColumnValues::Int2(vec![1, 2], vec![true; 2]) },
-            Column {
-                name: "name".into(),
-                data: ColumnValues::Text(
-                    vec!["Alice".to_string(), "Bob".to_string()],
-                    vec![true; 2],
-                ),
-            },
-            Column { name: "score".into(), data: ColumnValues::Int2(vec![23, 32], vec![true; 2]) },
+            Column::int2("id", [1, 2]),
+            Column::text("name", ["Alice", "Bob"]),
+            Column::int2("score", [23, 32]),
         ])
     }
 }

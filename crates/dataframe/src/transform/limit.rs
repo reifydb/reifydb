@@ -43,8 +43,11 @@ mod tests {
 
     #[test]
     fn test_truncates_int2_column() {
-        let mut test_instance =
-            DataFrame::new(vec![col_int2("a", &[1, 2, 3, 4], &[true, true, false, true])]);
+        let mut test_instance = DataFrame::new(vec![Column::int2_with_validity(
+            "a",
+            [1, 2, 3, 4],
+            [true, true, false, true],
+        )]);
 
         test_instance.limit(2).unwrap();
 
@@ -59,8 +62,11 @@ mod tests {
 
     #[test]
     fn test_limit_truncates_text_column() {
-        let mut test_instance =
-            DataFrame::new(vec![col_text("t", &["a", "b", "c"], &[true, false, true])]);
+        let mut test_instance = DataFrame::new(vec![Column::text_with_validity(
+            "t",
+            ["a", "b", "c"],
+            [true, false, true],
+        )]);
 
         test_instance.limit(1).unwrap();
 
@@ -75,8 +81,11 @@ mod tests {
 
     #[test]
     fn test_limit_truncates_bool_column() {
-        let mut test_instance =
-            DataFrame::new(vec![col_bool("flag", &[true, true, false], &[false, true, true])]);
+        let mut test_instance = DataFrame::new(vec![Column::bool_with_validity(
+            "flag",
+            [true, true, false],
+            [false, true, true],
+        )]);
 
         test_instance.limit(1).unwrap();
 
@@ -91,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_limit_truncates_undefined_column() {
-        let mut test_instance = DataFrame::new(vec![col_undef("u", 3)]);
+        let mut test_instance = DataFrame::new(vec![Column::undefined("u", 3)]);
 
         test_instance.limit(2).unwrap();
 
@@ -105,7 +114,7 @@ mod tests {
 
     #[test]
     fn test_limit_handles_undefined() {
-        let mut test_instance = DataFrame::new(vec![col_undef("u", 5)]);
+        let mut test_instance = DataFrame::new(vec![Column::undefined("u", 5)]);
 
         test_instance.limit(3).unwrap();
 
@@ -117,7 +126,8 @@ mod tests {
 
     #[test]
     fn test_limit_n_larger_than_len_is_safe() {
-        let mut test_instance = DataFrame::new(vec![col_int2("a", &[10, 20], &[true, false])]);
+        let mut test_instance =
+            DataFrame::new(vec![Column::int2_with_validity("a", [10, 20], [true, false])]);
 
         test_instance.limit(10).unwrap();
 
@@ -128,24 +138,5 @@ mod tests {
             }
             _ => panic!("Expected Int2 column"),
         }
-    }
-
-    fn col_int2(name: &str, vals: &[i16], valid: &[bool]) -> Column {
-        Column { name: name.into(), data: ColumnValues::Int2(vals.to_vec(), valid.to_vec()) }
-    }
-
-    fn col_text(name: &str, vals: &[&str], valid: &[bool]) -> Column {
-        Column {
-            name: name.into(),
-            data: ColumnValues::Text(vals.iter().map(|s| s.to_string()).collect(), valid.to_vec()),
-        }
-    }
-
-    fn col_bool(name: &str, vals: &[bool], valid: &[bool]) -> Column {
-        Column { name: name.into(), data: ColumnValues::Bool(vals.to_vec(), valid.to_vec()) }
-    }
-
-    fn col_undef(name: &str, len: usize) -> Column {
-        Column { name: name.into(), data: ColumnValues::Undefined(len) }
     }
 }
