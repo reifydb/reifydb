@@ -29,7 +29,7 @@ impl Executor {
                 let expr = expression.expression;
                 let name = expression.alias.unwrap_or(expr.to_string());
 
-                let evaluated_column = evaluate(&expr, &columns, row_count)?;
+                let evaluated_column = evaluate(expr, &columns, row_count)?;
                 new_columns.push(Column { name: name.into(), data: evaluated_column });
             }
 

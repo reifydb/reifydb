@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::function::{FunctionError, FunctionMode};
 use crate::old_execute::{Executor, evaluate};
 use base::expression::Expression;
-use base::function::{FunctionError, FunctionMode};
 use base::{Row, Value};
 use transaction::StoreRx;
 
@@ -79,7 +79,8 @@ impl Executor {
             .get(function_name)
             .ok_or(FunctionError::UnknownFunction(function_name.to_string()))?;
 
-        let executor = func.prepare(&args)?;
+        // let executor = func.prepare(&args)?;
+        let executor = func.prepare()?;
 
         let modes = func.modes();
         if modes.contains(&FunctionMode::Scalar) {
@@ -106,7 +107,8 @@ impl Executor {
             .get(function_name)
             .ok_or(FunctionError::UnknownFunction(function_name.to_string()))?;
 
-        let executor = func.prepare(&args)?;
+        // let executor = func.prepare(&args)?;
+        let executor = func.prepare()?;
 
         if func.modes().contains(&FunctionMode::Aggregate) {
             let values: Vec<Value> = rows

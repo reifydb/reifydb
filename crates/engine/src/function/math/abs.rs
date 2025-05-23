@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
 use base::expression::Expression;
-use base::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
 use base::{Value, ValueKind};
 
 pub struct AbsFunction;
@@ -16,7 +16,8 @@ impl Function for AbsFunction {
         &[FunctionMode::Scalar]
     }
 
-    fn prepare(&self, _args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
+    // fn prepare(&self, _args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
+    fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
         Ok(Box::new(AbsExecutor))
     }
 }

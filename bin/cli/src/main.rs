@@ -6,10 +6,11 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{DB, ReifyDB};
+use reifydb::{DB, ReifyDB, svl, memory, mvcc};
+use std::time::Instant;
 
 fn main() {
-    let (db, root) = ReifyDB::embedded_blocking();
+    let (db, root) = ReifyDB::embedded_blocking_with(mvcc(memory()));
     // returns (db, root)
     // let session = db.session(root)
     // session.tx_execute('')
@@ -26,14 +27,43 @@ fn main() {
     // }
 
     db.tx_execute(&root, r#"create table test.arith(id: int2, num: int2)"#);
-    db.tx_execute(&root, r#"insert (1,6), (1,8), (1,4), (2,2), (2,3), (3,0) into test.arith(id,num)"#);
+    // db.tx_execute(
+    //     &root,
+    //     r#"insert (1,6), (2,8), (3,4), (4,2), (5,3), (6,0) into test.arith(id,num)"#,
+    // );
+
+    let mut query = String::with_capacity(20_000_000); // preallocate for performance
+
+    query.push_str("insert ");
+
+    let start = Instant::now();
+    const max: usize = 32_000;
+
+    for i in 1..=max {
+        let num = i % 10; // example logic for `num` value
+        query.push_str(&format!("({}, {})", i, num));
+        if i != max {
+            query.push_str(", ");
+        }
+    }
+
+    query.push_str(" into test.arith(id, num)");
+
+
+    db.tx_execute(&root, &query);
+    println!("took: {:?}", start.elapsed());
+
+
     // db.tx_execute(&root, r#"insert (3,0) into test.arith(id,num)"#);
 
     // for l in db.rx_execute(&root, r#"SELECT 1, 2 ,3 "#) {
     // for l in db.rx_execute(&root, r#"from test.arith group by id select id, avg(num)"#) {
-        for l in db.rx_execute(&root, r#"from test.arith select id, avg(id, num)"#) {
-        println!("{}", l);
+    let start = Instant::now();
+    for l in db.rx_execute(&root, r#"from test.arith select id, avg(id, num, 20 + 12)"#) {
+
+        // println!("{}", l);
     }
+    println!("took: {:?}", start.elapsed());
 
     //
     // let result = db

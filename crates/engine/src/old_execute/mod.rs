@@ -4,9 +4,8 @@
 mod call;
 mod display;
 
-use crate::function::math;
+use crate::function::{FunctionRegistry, math};
 use base::expression::{Expression, PrefixOperator};
-use base::function::FunctionRegistry;
 use base::{Row, RowMeta, SortDirection, Value, ValueKind};
 use dataframe::{ColumnValues, DataFrame};
 use rql::plan::{Plan, QueryPlan};

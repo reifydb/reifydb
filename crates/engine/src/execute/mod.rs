@@ -3,9 +3,8 @@
 
 mod query;
 
-use crate::function::math;
+use crate::function::{FunctionRegistry, math};
 use crate::old_execute::ExecutionResult;
-use base::function::FunctionRegistry;
 use dataframe::DataFrame;
 use rql::plan::QueryPlan;
 use transaction::Rx;
@@ -49,7 +48,7 @@ impl Executor {
             QueryPlan::Sort { keys, next } => {
                 self.sort(&keys)?;
                 next
-            },
+            }
             QueryPlan::Limit { limit, next } => {
                 self.limit(limit)?;
                 next

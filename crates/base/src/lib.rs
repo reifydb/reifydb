@@ -15,7 +15,6 @@ pub use value::{Value, ValueKind};
 pub mod encoding;
 mod error;
 pub mod expression;
-pub mod function;
 mod key;
 pub mod ordered_float;
 mod row;

@@ -1,8 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ValueKind;
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 use crate::function::FunctionMode;
+use base::ValueKind;
 use std::fmt;
 use std::fmt::Display;
 
@@ -40,7 +43,6 @@ pub enum FunctionError {
     /// Generic internal error.
     Internal { function: String, details: String },
 }
-
 
 impl Display for FunctionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -133,7 +135,7 @@ impl std::error::Error for FunctionError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ValueKind, function::FunctionMode};
+    use crate::function::FunctionMode;
 
     #[test]
     fn test_unknown_function_display() {

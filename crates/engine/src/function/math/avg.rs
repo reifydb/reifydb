@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::Value;
-use base::expression::Expression;
-use base::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
+use crate::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
+use dataframe::{Column, ColumnValues};
 
 pub struct AvgFunction;
 
@@ -15,81 +14,62 @@ impl Function for AvgFunction {
         &[FunctionMode::Scalar, FunctionMode::Aggregate]
     }
 
-    fn prepare(&self, _args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
-        // Ok(Box::new(AvgExecutor { sum: Value::Float8(OrderedF64(0.0)), count: 0 }))
-        todo!()
+    // probably want to be able to pass in some context for the function execution
+    fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
+        Ok(Box::new(AvgExecutor {}))
     }
 }
 
-struct AvgExecutor {
-    sum: Value,
-    count: usize,
-}
+struct AvgExecutor {}
 
 impl FunctionExecutor for AvgExecutor {
     fn name(&self) -> &str {
         "avg"
     }
 
-    fn old_eval_scalar(&self, args: &[Value]) -> Result<Value, FunctionError> {
-        // let mut sum = Value::Float8(OrderedF64(0.0));
-        // let mut count = 0usize;
-        // for arg in args {
-        //     match arg {
-        //         Value::Int2(a) => {
-        //             match &mut sum {
-        //                 Value::Float8(v) => {
-        //                     *v += *a as f64;
-        //                 }
-        //                 _ => unimplemented!(),
-        //             }
-        //
-        //             count += 1;
-        //         }
-        //         _ => unimplemented!(),
-        //     }
-        // }
-        //
-        // if count == 0 {
-        //     Ok(Value::Undefined)
-        // } else {
-        //     match sum {
-        //         Value::Float8(sum) => Ok(Value::Float8(OrderedF64(sum.0 / count as f64))),
-        //         _ => unimplemented!(),
-        //     }
-        // }
-        todo!()
-    }
+    fn eval_scalar(
+        &self,
+        columns: &[Column],
+        row_count: usize,
+    ) -> Result<ColumnValues, FunctionError> {
+        let mut sum = vec![0.0f64; row_count];
+        let mut count = vec![0u32; row_count];
 
-    fn eval_aggregate(&mut self, column: &[Value]) -> Result<(), FunctionError> {
-        // for value in column {
-        //     match value {
-        //         Value::Int2(value) => {
-        //             match &mut self.sum {
-        //                 Value::Float8(v) => {
-        //                     v.0 += *value as f64;
-        //                 }
-        //                 _ => unimplemented!(),
-        //             }
-        //
-        //             self.count += 1;
-        //         }
-        //         _ => unimplemented!(),
-        //     }
-        // }
-        // Ok(())
-        todo!()
-    }
+        for col in columns {
+            match &col.data {
+                ColumnValues::Int2(vals, valid) => {
+                    for i in 0..row_count {
+                        if valid.get(i).copied().unwrap_or(false) {
+                            sum[i] += vals[i] as f64;
+                            count[i] += 1;
+                        }
+                    }
+                }
+                ColumnValues::Float8(vals, valid) => {
+                    for i in 0..row_count {
+                        if valid.get(i).copied().unwrap_or(false) {
+                            sum[i] += vals[i];
+                            count[i] += 1;
+                        }
+                    }
+                }
+                _ => unimplemented!(),
+            }
+        }
 
-    fn finalize_aggregate(&self) -> Result<Value, FunctionError> {
-        // if self.count == 0 {
-        //     Ok(Value::Undefined)
-        // } else {
-        //     match self.sum {
-        //         Value::Float8(sum) => Ok(Value::Float8(sum / self.count as f64)),
-        //         _ => unimplemented!(),
-        //     }
-        // }
-        todo!()
+        let mut values = Vec::with_capacity(row_count);
+        let mut valids = Vec::with_capacity(row_count);
+
+        for i in 0..row_count {
+            if count[i] > 0 {
+                values.push(sum[i] / count[i] as f64);
+                valids.push(true);
+            } else {
+                values.push(0.0);
+                valids.push(false);
+            }
+        }
+
+        Ok(ColumnValues::float8_with_validity(values, valids))
     }
 }
