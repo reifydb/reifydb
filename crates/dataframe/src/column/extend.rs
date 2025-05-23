@@ -4,9 +4,14 @@
 use crate::{Column, ColumnValues};
 
 impl Column {
+    pub fn extend(&mut self, other: Column) -> crate::Result<()> {
+        self.data.extend(other.data)
+    }
+}
 
-    pub fn merge(&mut self, other: Column) -> crate::Result<()> {
-        match (&mut self.data, other.data) {
+impl ColumnValues {
+    pub fn extend(&mut self, other: ColumnValues) -> crate::Result<()> {
+        match (&mut *self, other) {
             (ColumnValues::Float8(l, l_valid), ColumnValues::Float8(r, r_valid)) => {
                 l.extend(r);
                 l_valid.extend(r_valid);
@@ -31,43 +36,31 @@ impl Column {
                 *l_len += r_len;
             }
 
-            // Promote Undefined → typed if needed
+            // Promote Undefined
             (ColumnValues::Undefined(l_len), typed_lr) => match typed_lr {
                 ColumnValues::Float8(r, r_valid) => {
-                    *self = Column {
-                        name: self.name.clone(),
-                        data: ColumnValues::Float8(
-                            vec![0.0f64; *l_len].into_iter().chain(r.clone()).collect(),
-                            vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                        ),
-                    };
+                    *self = ColumnValues::Float8(
+                        vec![0.0f64; *l_len].into_iter().chain(r.clone()).collect(),
+                        vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
+                    )
                 }
                 ColumnValues::Int2(r, r_valid) => {
-                    *self = Column {
-                        name: self.name.clone(),
-                        data: ColumnValues::Int2(
-                            vec![0; *l_len].into_iter().chain(r.clone()).collect(),
-                            vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                        ),
-                    };
+                    *self = ColumnValues::Int2(
+                        vec![0; *l_len].into_iter().chain(r.clone()).collect(),
+                        vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
+                    )
                 }
                 ColumnValues::Text(r, r_valid) => {
-                    *self = Column {
-                        name: self.name.clone(),
-                        data: ColumnValues::Text(
-                            vec![String::new(); *l_len].into_iter().chain(r.clone()).collect(),
-                            vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                        ),
-                    };
+                    *self = ColumnValues::Text(
+                        vec![String::new(); *l_len].into_iter().chain(r.clone()).collect(),
+                        vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
+                    )
                 }
                 ColumnValues::Bool(r, r_valid) => {
-                    *self = Column {
-                        name: self.name.clone(),
-                        data: ColumnValues::Bool(
-                            vec![false; *l_len].into_iter().chain(r.clone()).collect(),
-                            vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                        ),
-                    };
+                    *self = ColumnValues::Bool(
+                        vec![false; *l_len].into_iter().chain(r.clone()).collect(),
+                        vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
+                    )
                 }
                 ColumnValues::Undefined(_) => {}
             },
@@ -94,7 +87,7 @@ impl Column {
             },
 
             (_, _) => {
-                return Err(format!("column type mismatch for '{}'", self.name).into());
+                return Err("column type mismatch".to_string().into());
             }
         }
 

@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ValueRef;
-use base::ordered_float::OrderedF64;
 use base::Value;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -84,55 +83,6 @@ impl ColumnValues {
 
     pub fn undefined(len: usize) -> Self {
         ColumnValues::Undefined(len)
-    }
-}
-
-impl ColumnValues {
-    pub fn from_values(values: Vec<Value>, valid: Vec<bool>) -> Self {
-        match values.get(0) {
-            Some(Value::Float8(_)) => ColumnValues::Float8(
-                values
-                    .into_iter()
-                    .map(|v| match v {
-                        Value::Float8(f) => f,
-                        _ => OrderedF64::zero(),
-                    })
-                    .map(|f| f.value())
-                    .collect(),
-                valid,
-            ),
-            Some(Value::Int2(_)) => ColumnValues::Int2(
-                values
-                    .into_iter()
-                    .map(|v| match v {
-                        Value::Int2(i) => i,
-                        _ => 0,
-                    })
-                    .collect(),
-                valid,
-            ),
-            Some(Value::Text(_)) => ColumnValues::Text(
-                values
-                    .into_iter()
-                    .map(|v| match v {
-                        Value::Text(s) => s,
-                        _ => String::new(),
-                    })
-                    .collect(),
-                valid,
-            ),
-            Some(Value::Bool(_)) => ColumnValues::Bool(
-                values
-                    .into_iter()
-                    .map(|v| match v {
-                        Value::Bool(b) => b,
-                        _ => false,
-                    })
-                    .collect(),
-                valid,
-            ),
-            _ => ColumnValues::Undefined(valid.len()),
-        }
     }
 }
 
@@ -227,6 +177,32 @@ impl ColumnValues {
             ColumnValues::Text(_, b) => b.len(),
             ColumnValues::Bool(_, b) => b.len(),
             ColumnValues::Undefined(n) => *n,
+        }
+    }
+}
+
+impl ColumnValues {
+    pub fn push(&mut self, value: Value) {
+        match self {
+            ColumnValues::Float8(values, validity) => match value {
+                Value::Float8(v) => {
+                    values.push(v.value());
+                    validity.push(true);
+                }
+                _ => unimplemented!(),
+            },
+            ColumnValues::Int2(values, validity) => match value {
+                Value::Int2(v) => {
+                    values.push(v);
+                    validity.push(true);
+                }
+                _ => unimplemented!(),
+            },
+            ColumnValues::Undefined(_) => match value {
+                Value::Float8(v) => *self = ColumnValues::float8([v.value()]),
+                _ => unimplemented!(),
+            },
+            v => unimplemented!("{v:?}"),
         }
     }
 }

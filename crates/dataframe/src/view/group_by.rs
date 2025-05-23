@@ -4,41 +4,16 @@
 use crate::{ColumnValues, DataFrame};
 use base::Value;
 use std::collections::HashMap;
-use std::collections::hash_map::Iter;
-use std::ops::Deref;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct GroupByKey(pub Vec<Value>);
+pub type GroupByKey = Vec<Value>;
 
-#[derive(Debug)]
-pub struct GroupByView(pub HashMap<GroupByKey, Vec<usize>>);
-
-impl Deref for GroupByView {
-    type Target = HashMap<GroupByKey, Vec<usize>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl GroupByView {
-    pub fn iter(&self) -> Iter<'_, GroupByKey, Vec<usize>> {
-        self.0.iter()
-    }
-}
-
-impl GroupByView {
-    fn new() -> Self {
-        Self(HashMap::new())
-    }
-}
+pub type GroupByView = HashMap<GroupByKey, Vec<usize>>;
 
 impl DataFrame {
     pub fn group_by_view(&self, keys: &[&str]) -> crate::Result<GroupByView> {
         let row_count = self.columns.first().map_or(0, |c| c.data.len());
 
-        let mut key_columns: Vec<&
-        ColumnValues> = Vec::with_capacity(keys.len());
+        let mut key_columns: Vec<&ColumnValues> = Vec::with_capacity(keys.len());
 
         for &key in keys {
             let column = self
@@ -89,7 +64,7 @@ impl DataFrame {
                 values.push(value);
             }
 
-            result.0.entry(GroupByKey(values)).or_default().push(row_idx);
+            result.entry(values).or_default().push(row_idx);
         }
 
         Ok(result)

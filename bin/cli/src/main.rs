@@ -26,11 +26,12 @@ fn main() {
     // }
 
     db.tx_execute(&root, r#"create table test.arith(id: int2, num: int2)"#);
-    db.tx_execute(&root, r#"insert (1,6), (1,8), (1,4), (2,2), (2,3) into test.arith(id,num)"#);
+    // db.tx_execute(&root, r#"insert (1,6), (1,8), (1,4), (2,2), (2,3), (3,0) into test.arith(id,num)"#);
+    db.tx_execute(&root, r#"insert (3,0) into test.arith(id,num)"#);
 
     // for l in db.rx_execute(&root, r#"SELECT 1, 2 ,3 "#) {
-    // for l in db.rx_execute(&root, r#"from test.arith group by id select id, avg(num)"#) {
-    for l in db.rx_execute(&root, r#"from test.arith select avg(id, num)"#) {
+    for l in db.rx_execute(&root, r#"from test.arith group by id select id, avg(num)"#) {
+        // for l in db.rx_execute(&root, r#"from test.arith select avg(id, num)"#) {
         println!("{}", l);
     }
 

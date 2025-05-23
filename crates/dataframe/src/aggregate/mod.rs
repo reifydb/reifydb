@@ -13,7 +13,8 @@ pub enum Aggregate {
 }
 
 impl Aggregate {
-    pub fn evaluate(&self, df: &DataFrame, indices: &[usize]) -> crate::Result<Value> {
+
+    pub fn evaluate(&self, df: &DataFrame, indices: &[usize]) -> crate::Result<ColumnValues> {
         let col = |name: &str| {
             df.columns
                 .iter()
@@ -30,51 +31,129 @@ impl Aggregate {
                         .map(|&i| (vals[i] as i32, 1))
                         .fold((0, 0), |(a, b), (v, c)| (a + v, b + c));
 
-                    if count > 0 {
-                        Ok(Value::float8(sum as f64 / count as f64))
+                    let (v, is_valid) = if count > 0 {
+                        ((sum as f64 / count as f64), true)
                     } else {
-                        Ok(Value::Undefined)
-                    }
+                        (0.0, false)
+                    };
+
+                    Ok(ColumnValues::Float8(vec![v], vec![is_valid]))
                 }
                 _ => Err("AVG only supports Int2 columns".into()),
             },
 
-            Aggregate::Sum(col_name) => match &col(col_name.as_str())?.data {
-                ColumnValues::Int2(vals, valid) => Ok(Value::Int2(
-                    indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i] as i32).sum::<i32>()
-                        as i16,
-                )),
+            Aggregate::Sum(col_name) => match &col(col_name)?.data {
+                ColumnValues::Int2(vals, valid) => {
+                    let sum: i32 = indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i] as i32).sum();
+                    Ok(ColumnValues::Int2(vec![sum as i16], vec![true]))
+                }
                 _ => Err("SUM only supports Int2".into()),
             },
+
             Aggregate::Count(col_name) => {
-                if col_name == &"*" {
-                    Ok(Value::Int2(indices.len() as i16))
+                let count = if col_name == "*" {
+                    indices.len()
                 } else {
                     match &col(col_name)?.data {
                         ColumnValues::Float8(_, valid)
                         | ColumnValues::Int2(_, valid)
                         | ColumnValues::Bool(_, valid)
                         | ColumnValues::Text(_, valid) => {
-                            Ok(Value::Int2(indices.iter().filter(|&&i| valid[i]).count() as i16))
+                            indices.iter().filter(|&&i| valid[i]).count()
                         }
-                        ColumnValues::Undefined(_) => Ok(Value::Int2(0)),
+                        ColumnValues::Undefined(_) => 0,
+                    }
+                };
+                Ok(ColumnValues::Int2(vec![count as i16], vec![true]))
+            }
+
+            Aggregate::Min(col_name) => match &col(col_name)?.data {
+                ColumnValues::Int2(vals, valid) => {
+                    let min = indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).min();
+                    match min {
+                        Some(v) => Ok(ColumnValues::Int2(vec![v], vec![true])),
+                        None => Ok(ColumnValues::Int2(vec![0], vec![false])),
                     }
                 }
-            }
-            Aggregate::Min(col_name) => match &col(col_name)?.data {
-                ColumnValues::Int2(vals, valid) => Ok(Value::Int2(
-                    indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).min().unwrap_or(0),
-                )),
                 _ => Err("MIN only supports Int2".into()),
             },
+
             Aggregate::Max(col_name) => match &col(col_name)?.data {
-                ColumnValues::Int2(vals, valid) => Ok(Value::Int2(
-                    indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).max().unwrap_or(0),
-                )),
+                ColumnValues::Int2(vals, valid) => {
+                    let max = indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).max();
+                    match max {
+                        Some(v) => Ok(ColumnValues::Int2(vec![v], vec![true])),
+                        None => Ok(ColumnValues::Int2(vec![0], vec![false])),
+                    }
+                }
                 _ => Err("MAX only supports Int2".into()),
             },
         }
     }
+
+
+    // pub fn evaluate(&self, df: &DataFrame, indices: &[usize]) -> crate::Result<Value> {
+    //     let col = |name: &str| {
+    //         df.columns
+    //             .iter()
+    //             .find(|c| c.name == name)
+    //             .ok_or_else(|| Error(format!("column '{}' not found", name)))
+    //     };
+    // 
+    //     match self {
+    //         Aggregate::Avg(col_name) => match &col(col_name)?.data {
+    //             ColumnValues::Int2(vals, valid) => {
+    //                 let (sum, count): (i32, usize) = indices
+    //                     .iter()
+    //                     .filter(|&&i| valid[i])
+    //                     .map(|&i| (vals[i] as i32, 1))
+    //                     .fold((0, 0), |(a, b), (v, c)| (a + v, b + c));
+    // 
+    //                 if count > 0 {
+    //                     Ok(Value::float8(sum as f64 / count as f64))
+    //                 } else {
+    //                     Ok(Value::Undefined)
+    //                 }
+    //             }
+    //             _ => Err("AVG only supports Int2 columns".into()),
+    //         },
+    // 
+    //         Aggregate::Sum(col_name) => match &col(col_name.as_str())?.data {
+    //             ColumnValues::Int2(vals, valid) => Ok(Value::Int2(
+    //                 indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i] as i32).sum::<i32>()
+    //                     as i16,
+    //             )),
+    //             _ => Err("SUM only supports Int2".into()),
+    //         },
+    //         Aggregate::Count(col_name) => {
+    //             if col_name == &"*" {
+    //                 Ok(Value::Int2(indices.len() as i16))
+    //             } else {
+    //                 match &col(col_name)?.data {
+    //                     ColumnValues::Float8(_, valid)
+    //                     | ColumnValues::Int2(_, valid)
+    //                     | ColumnValues::Bool(_, valid)
+    //                     | ColumnValues::Text(_, valid) => {
+    //                         Ok(Value::Int2(indices.iter().filter(|&&i| valid[i]).count() as i16))
+    //                     }
+    //                     ColumnValues::Undefined(_) => Ok(Value::Int2(0)),
+    //                 }
+    //             }
+    //         }
+    //         Aggregate::Min(col_name) => match &col(col_name)?.data {
+    //             ColumnValues::Int2(vals, valid) => Ok(Value::Int2(
+    //                 indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).min().unwrap_or(0),
+    //             )),
+    //             _ => Err("MIN only supports Int2".into()),
+    //         },
+    //         Aggregate::Max(col_name) => match &col(col_name)?.data {
+    //             ColumnValues::Int2(vals, valid) => Ok(Value::Int2(
+    //                 indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).max().unwrap_or(0),
+    //             )),
+    //             _ => Err("MAX only supports Int2".into()),
+    //         },
+    //     }
+    // }
 
     pub fn display_name(&self) -> String {
         match self {

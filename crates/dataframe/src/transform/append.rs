@@ -23,7 +23,7 @@ impl Append<DataFrame> for DataFrame {
                 .into());
             }
 
-            l.merge(r)?;
+            l.extend(r)?;
         }
 
         Ok(())

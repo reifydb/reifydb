@@ -4,7 +4,7 @@
 pub use values::ColumnValues;
 
 mod values;
-mod merge;
+mod extend;
 
 #[derive(Debug, PartialEq)]
 pub struct Column {

@@ -11,9 +11,6 @@ impl Executor {
         group_by: &[AliasExpression],
         project: &[AliasExpression],
     ) -> crate::Result<()> {
-        dbg!(&group_by);
-        dbg!(&project);
-
         let mut keys = vec![];
         let mut aggregates = vec![];
 

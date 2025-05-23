@@ -3,41 +3,36 @@
 
 use crate::aggregate::Aggregate;
 use crate::{Column, ColumnValues, DataFrame};
-use base::Value;
 
 impl DataFrame {
     pub fn aggregate(&mut self, keys: &[&str], aggregates: &[Aggregate]) -> crate::Result<()> {
         let groups = self.group_by_view(keys)?;
 
-        let mut key_columns: Vec<(String, Vec<Value>, Vec<bool>)> =
-            keys.iter().map(|&k| (k.to_string(), Vec::new(), Vec::new())).collect();
+        let mut key_columns: Vec<Column> = keys
+            .iter()
+            .map(|&k| Column { name: k.to_string(), data: ColumnValues::int2([]) })
+            .collect();
 
-        let mut agg_columns: Vec<(String, Vec<Value>, Vec<bool>)> =
-            aggregates.iter().map(|agg| (agg.display_name(), Vec::new(), Vec::new())).collect();
+        let mut aggregate_columns: Vec<Column> = aggregates
+            .iter()
+            .map(|agg| Column { name: agg.display_name(), data: ColumnValues::undefined(0) })
+            .collect();
 
-        for (group_key, indices) in groups.iter() {
+        for (group_key, indices) in groups {
             // Populate key column values
-            for (i, val) in group_key.0.iter().enumerate() {
-                key_columns[i].1.push(val.clone());
-                key_columns[i].2.push(!matches!(val, Value::Undefined));
+            for (i, value) in group_key.into_iter().enumerate() {
+                let column = &mut key_columns.get_mut(i).unwrap().data;
+                column.push(value);
             }
 
             // Populate aggregation results
             for (j, agg) in aggregates.iter().enumerate() {
-                let value = agg.evaluate(self, &indices)?;
-                agg_columns[j].1.push(value.clone());
-                agg_columns[j].2.push(!matches!(value, Value::Undefined));
+                let column = aggregate_columns.get_mut(j).unwrap();
+                column.data.extend(agg.evaluate(self, &indices)?)?;
             }
         }
 
-        let mut new_columns = Vec::with_capacity(key_columns.len() + agg_columns.len());
-
-        for (name, values, valid) in key_columns.into_iter().chain(agg_columns) {
-            let col = Column { name, data: ColumnValues::from_values(values, valid) };
-            new_columns.push(col);
-        }
-
-        self.columns = new_columns;
+        self.columns = key_columns.into_iter().chain(aggregate_columns).collect();
 
         Ok(())
     }
