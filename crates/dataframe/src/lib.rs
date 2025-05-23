@@ -22,8 +22,6 @@ mod reference;
 mod transform;
 mod view;
 
-// FIXME remove from this crate
-
 pub type Result<T> = std::result::Result<T, Error>;
 
 // pub fn inner_join_indices(l: &DataFrame, lr: &DataFrame, on: &str) -> Vec<(usize, usize)> {

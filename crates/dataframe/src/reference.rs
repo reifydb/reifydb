@@ -17,7 +17,7 @@ impl<'df> RowRef<'df> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum ValueRef<'a> {
     Float8(&'a f64),
     Int2(&'a i16),

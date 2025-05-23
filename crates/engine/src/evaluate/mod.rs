@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::Value;
 use base::Value::Undefined;
 use base::expression::Expression;
-use dataframe::ColumnValues;
+use base::{ Value};
 use std::collections::HashMap;
+use dataframe::ColumnValues;
 
 pub mod function;
 
@@ -70,7 +70,11 @@ pub fn evaluate<'a>(
 
             let mut values = Vec::with_capacity(row_count);
             let mut valid = Vec::with_capacity(row_count);
+            
+            
+            // FIXME this is pretty bad 
             for row in 0..row_count {
+            
                 let val = avg_row(&args, row);
                 match val {
                     Undefined => {

@@ -27,8 +27,8 @@ impl DataFrame {
         // 3. Sort the indices using comparator
         indices.sort_unstable_by(|&a, &b| {
             for (col, dir) in &key_refs {
-                let va = col.get_as_value(a);
-                let vb = col.get_as_value(b);
+                let va = col.get(a);
+                let vb = col.get(b);
                 let ord = va.partial_cmp(&vb).unwrap_or(std::cmp::Ordering::Equal);
                 let ord = match dir {
                     SortDirection::Asc => ord,

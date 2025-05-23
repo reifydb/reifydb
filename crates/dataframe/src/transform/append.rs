@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, ColumnValues, DataFrame};
+use crate::{ColumnValues, DataFrame};
 use base::{Row, Value};
 
 pub trait Append<T> {
@@ -14,106 +14,16 @@ impl Append<DataFrame> for DataFrame {
             return Err("mismatched column count".into());
         }
 
-        for (i, (l, lr)) in self.columns.iter_mut().zip(other.columns.into_iter()).enumerate() {
-            if l.name != lr.name {
+        for (i, (l, r)) in self.columns.iter_mut().zip(other.columns.into_iter()).enumerate() {
+            if l.name != r.name {
                 return Err(format!(
                     "column name mismatch at index {}: '{}' vs '{}'",
-                    i, l.name, lr.name
+                    i, l.name, r.name
                 )
                 .into());
             }
 
-            match (&mut l.data, lr.data) {
-                (ColumnValues::Float8(l, l_valid), ColumnValues::Float8(r, r_valid)) => {
-                    l.extend(r);
-                    l_valid.extend(r_valid);
-                }
-
-                (ColumnValues::Int2(l, l_valid), ColumnValues::Int2(r, r_valid)) => {
-                    l.extend(r);
-                    l_valid.extend(r_valid);
-                }
-
-                (ColumnValues::Text(l, l_valid), ColumnValues::Text(r, r_valid)) => {
-                    l.extend(r);
-                    l_valid.extend(r_valid);
-                }
-
-                (ColumnValues::Bool(l, l_valid), ColumnValues::Bool(r, r_valid)) => {
-                    l.extend(r);
-                    l_valid.extend(r_valid);
-                }
-
-                (ColumnValues::Undefined(l_len), ColumnValues::Undefined(r_len)) => {
-                    *l_len += r_len;
-                }
-
-                // Promote Undefined → typed if needed
-                (ColumnValues::Undefined(l_len), typed_lr) => match typed_lr {
-                    ColumnValues::Float8(r, r_valid) => {
-                        *l = Column {
-                            name: l.name.clone(),
-                            data: ColumnValues::Float8(
-                                vec![0.0f64; *l_len].into_iter().chain(r.clone()).collect(),
-                                vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                            ),
-                        };
-                    }
-                    ColumnValues::Int2(r, r_valid) => {
-                        *l = Column {
-                            name: l.name.clone(),
-                            data: ColumnValues::Int2(
-                                vec![0; *l_len].into_iter().chain(r.clone()).collect(),
-                                vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                            ),
-                        };
-                    }
-                    ColumnValues::Text(r, r_valid) => {
-                        *l = Column {
-                            name: l.name.clone(),
-                            data: ColumnValues::Text(
-                                vec![String::new(); *l_len].into_iter().chain(r.clone()).collect(),
-                                vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                            ),
-                        };
-                    }
-                    ColumnValues::Bool(r, r_valid) => {
-                        *l = Column {
-                            name: l.name.clone(),
-                            data: ColumnValues::Bool(
-                                vec![false; *l_len].into_iter().chain(r.clone()).collect(),
-                                vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                            ),
-                        };
-                    }
-                    ColumnValues::Undefined(_) => {}
-                },
-
-                // Prevent appending typed into Undefined
-                (typed_l, ColumnValues::Undefined(r_len)) => match typed_l {
-                    ColumnValues::Float8(l, l_valid) => {
-                        l.extend(std::iter::repeat(0.0f64).take(r_len));
-                        l_valid.extend(std::iter::repeat(false).take(r_len));
-                    }
-                    ColumnValues::Int2(l, l_valid) => {
-                        l.extend(std::iter::repeat(0).take(r_len));
-                        l_valid.extend(std::iter::repeat(false).take(r_len));
-                    }
-                    ColumnValues::Text(l, l_valid) => {
-                        l.extend(std::iter::repeat(String::new()).take(r_len));
-                        l_valid.extend(std::iter::repeat(false).take(r_len));
-                    }
-                    ColumnValues::Bool(l, l_valid) => {
-                        l.extend(std::iter::repeat(false).take(r_len));
-                        l_valid.extend(std::iter::repeat(false).take(r_len));
-                    }
-                    ColumnValues::Undefined(_) => unreachable!(),
-                },
-
-                (_, _) => {
-                    return Err(format!("column type mismatch for '{}'", l.name).into());
-                }
-            }
+            l.merge(r)?;
         }
 
         Ok(())

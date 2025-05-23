@@ -5,25 +5,6 @@ use crate::{Column, ColumnValues, DataFrame};
 use std::collections::HashMap;
 
 impl DataFrame {
-    // pub fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {
-    //     let row_count = self.columns.first().map_or(1, |col| col.data.len());
-    //     let columns: HashMap<&str, &ColumnValues> =
-    //         self.columns.iter().map(|c| (c.name.as_str(), &c.data)).collect();
-    //
-    //     let mut new_columns = Vec::with_capacity(expressions.len());
-    //
-    //     for expression in expressions {
-    //         let expr = expression.expression;
-    //         let name = expression.alias.unwrap_or(expr.to_string());
-    //
-    //         let evaluated_column = evaluate(&expr, &columns, row_count)?;
-    //         new_columns.push(Column { name: name.into(), data: evaluated_column });
-    //     }
-    //
-    //     self.columns = new_columns;
-    //     Ok(())
-    // }
-
     pub fn project<F>(&mut self, f: F) -> crate::Result<()>
     where
         F: FnOnce(usize, &HashMap<&str, &ColumnValues>) -> crate::Result<Vec<Column>>,
@@ -48,8 +29,6 @@ mod tests {
     }
 }
 
-//             _ => panic!("Expected Int2 column"),
-//         }
 //     }
 //
 //     #[test]

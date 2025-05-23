@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::iterator::DataFrameIter;
-use crate::{Column, ColumnValues};
+use crate::{Column, ColumnValues, ValueRef};
 use base::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ impl DataFrame {
         self.shape().0 == 0
     }
 
-    pub fn row(&self, i: usize) -> Vec<Value> {
+    pub fn row(&self, i: usize) -> Vec<ValueRef> {
         self.columns.iter().map(|c| c.data.get(i)).collect()
     }
 
