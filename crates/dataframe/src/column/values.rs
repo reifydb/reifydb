@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ValueRef;
-use base::Value;
 use base::ordered_float::OrderedF64;
+use base::Value;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
