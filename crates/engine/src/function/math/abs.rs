@@ -28,7 +28,7 @@ impl FunctionExecutor for AbsExecutor {
         "abs"
     }
 
-    fn eval_scalar(&self, args: &[Value]) -> Result<Value, FunctionError> {
+    fn old_eval_scalar(&self, args: &[Value]) -> Result<Value, FunctionError> {
         match args.get(0) {
             Some(Value::Int2(n)) => Ok(Value::Int2(n.abs())),
             Some(value) => Err(FunctionError::InvalidArgumentType {

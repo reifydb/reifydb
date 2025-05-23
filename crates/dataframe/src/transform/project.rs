@@ -1,20 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, ColumnValues, DataFrame};
-use std::collections::HashMap;
+use crate::{Column, DataFrame};
 
 impl DataFrame {
     pub fn project<F>(&mut self, f: F) -> crate::Result<()>
     where
-        F: FnOnce(usize, &HashMap<&str, &ColumnValues>) -> crate::Result<Vec<Column>>,
+        F: FnOnce(&[&Column], usize) -> crate::Result<Vec<Column>>,
     {
         let row_count = self.columns.first().map_or(0, |col| col.data.len());
-        let columns: HashMap<&str, &ColumnValues> =
-            self.columns.iter().map(|c| (c.name.as_str(), &c.data)).collect();
 
-        let new_columns = f(row_count, &columns)?;
-        self.columns = new_columns;
+        let columns: Vec<&Column> = self.columns.iter().map(|c| c).collect();
+        self.columns = f(&columns, row_count)?;
 
         Ok(())
     }

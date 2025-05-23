@@ -31,7 +31,7 @@ impl FunctionExecutor for AvgExecutor {
         "avg"
     }
 
-    fn eval_scalar(&self, args: &[Value]) -> Result<Value, FunctionError> {
+    fn old_eval_scalar(&self, args: &[Value]) -> Result<Value, FunctionError> {
         // let mut sum = Value::Float8(OrderedF64(0.0));
         // let mut count = 0usize;
         // for arg in args {

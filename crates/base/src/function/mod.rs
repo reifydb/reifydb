@@ -45,7 +45,15 @@ pub trait FunctionExecutor: Send + Sync {
     fn name(&self) -> &str;
 
     /// For scalar input → scalar output
-    fn eval_scalar(&self, _args: &[Value]) -> Result<Value, FunctionError> {
+    // fn eval_scalar(&self, &[&ColumnValues], row_count: usize) -> Result<Value, FunctionError> {
+    //     Err(FunctionError::UnsupportedMode {
+    //         function: self.name().to_string(),
+    //         mode: FunctionMode::Scalar,
+    //     })
+    // }
+
+    /// For scalar input → scalar output
+    fn old_eval_scalar(&self, _args: &[Value]) -> Result<Value, FunctionError> {
         Err(FunctionError::UnsupportedMode {
             function: self.name().to_string(),
             mode: FunctionMode::Scalar,

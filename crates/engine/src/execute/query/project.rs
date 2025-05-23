@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::Executor;
 use crate::evaluate::evaluate;
+use crate::execute::Executor;
 use crate::old_execute;
 use base::expression::AliasExpression;
 use dataframe::{Column, DataFrame};
@@ -22,7 +22,7 @@ impl Executor {
             return Ok(());
         }
 
-        self.frame.project(|row_count, columns| {
+        self.frame.project(|columns, row_count| {
             let mut new_columns = Vec::with_capacity(expressions.len());
 
             for expression in expressions {

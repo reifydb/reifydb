@@ -4,22 +4,21 @@
 use base::Value;
 use base::Value::Undefined;
 use base::expression::Expression;
-use dataframe::ColumnValues;
-use std::collections::HashMap;
-
-pub mod function;
+use dataframe::{Column, ColumnValues};
 
 pub fn evaluate<'a>(
     expr: &Expression,
-    columns: &HashMap<&'a str, &'a ColumnValues>,
+    columns: &[&'a Column],
     row_count: usize,
 ) -> dataframe::Result<ColumnValues> {
     match expr {
         // FIXME this might be very expensive
         Expression::Column(name) => columns
-            .get(name.as_str())
+            .iter()
+            .find(|c| c.name == *name)
             .cloned()
             .cloned()
+            .map(|c| c.data)
             .ok_or_else(|| format!("unknown column '{}'", name).into()),
 
         Expression::Add(left, right) => {
@@ -62,7 +61,9 @@ pub fn evaluate<'a>(
             for arg in &call.args {
                 match arg {
                     Expression::Column(col_name) => {
-                        args.push(columns[col_name.as_str()]);
+                        args.push(
+                            columns.iter().find(|c| c.name == *col_name).map(|c| *c).unwrap(),
+                        );
                     }
                     _ => return Err("only column arguments supported for now".into()),
                 }
@@ -75,7 +76,7 @@ pub fn evaluate<'a>(
     }
 }
 
-pub fn avg(arg_columns: &[&ColumnValues], row_count: usize) -> ColumnValues {
+pub fn avg(arg_columns: &[&Column], row_count: usize) -> ColumnValues {
     let mut values = Vec::with_capacity(row_count);
     let mut valids = Vec::with_capacity(row_count);
 
@@ -84,7 +85,7 @@ pub fn avg(arg_columns: &[&ColumnValues], row_count: usize) -> ColumnValues {
         let mut count = 0;
 
         for col in arg_columns {
-            match col {
+            match &col.data {
                 ColumnValues::Int2(vals, validity) => {
                     if validity.get(row).copied().unwrap_or(false) {
                         sum += vals[row] as f64;

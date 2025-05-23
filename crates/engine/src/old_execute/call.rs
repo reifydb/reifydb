@@ -84,7 +84,7 @@ impl Executor {
         let modes = func.modes();
         if modes.contains(&FunctionMode::Scalar) {
             let args = self.eval_args(args, row, store);
-            let value = executor.eval_scalar(&args)?;
+            let value = executor.old_eval_scalar(&args)?;
             Ok(value)
         } else {
             Err(FunctionError::UnsupportedMode {

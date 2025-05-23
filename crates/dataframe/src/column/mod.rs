@@ -6,7 +6,7 @@ pub use values::ColumnValues;
 mod values;
 mod extend;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Column {
     pub name: String,
     pub data: ColumnValues,
