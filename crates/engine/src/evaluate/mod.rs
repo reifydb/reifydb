@@ -13,7 +13,6 @@ pub fn evaluate(
     row_count: usize,
 ) -> dataframe::Result<ColumnValues> {
     match expr {
-        // FIXME this might be very expensive
         Expression::Column(name) => columns
             .iter()
             .find(|c| c.name == *name)
@@ -55,17 +54,6 @@ pub fn evaluate(
             Undefined => ColumnValues::Undefined(row_count),
         }),
 
-        // Expression::Column(column) => {
-        //     Ok(columns.iter().find(|c| c.name == *column).cloned().cloned().unwrap().data)
-        // }
-        // Expression::Constant(v) => match v {
-        //     // Value::Int2(v) => result.push(Column {
-        //     //     name: "constant".to_string(),
-        //     //     data: ColumnValues::Int2(vec![v; row_count], vec![true; row_count]),
-        //     // }),
-        //     Value::Int2(v) => Ok(ColumnValues::Int2(vec![v; row_count], vec![true; row_count])),
-        //     _ => unimplemented!(),
-        // },
         Expression::Call(call) => {
             let virtual_columns = evaluate_virtual_column(call.args, &columns, row_count).unwrap();
 
