@@ -15,9 +15,9 @@ impl Executor {
             .map(|col| {
                 let name = col.name.clone();
                 let data = match col.value {
-                    ValueKind::Int2 => ColumnValues::Int2(vec![], vec![]),
-                    ValueKind::Text => ColumnValues::Text(vec![], vec![]),
-                    ValueKind::Bool => ColumnValues::Bool(vec![], vec![]),
+                    ValueKind::Int2 => ColumnValues::int2(vec![]),
+                    ValueKind::Text => ColumnValues::text(vec![]),
+                    ValueKind::Bool => ColumnValues::bool(vec![]),
                     _ => ColumnValues::Undefined(0),
                 };
                 Column { name, data }

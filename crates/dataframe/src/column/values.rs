@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use std::any::TypeId;
 use crate::ValueRef;
 use base::{CowVec, Value};
 
@@ -8,9 +9,9 @@ use base::{CowVec, Value};
 pub enum ColumnValues {
     // value, is_valid
     Float8(CowVec<f64>, CowVec<bool>),
-    Int2(Vec<i16>, Vec<bool>),
-    Text(Vec<String>, Vec<bool>),
-    Bool(Vec<bool>, Vec<bool>),
+    Int2(CowVec<i16>, CowVec<bool>),
+    Text(CowVec<String>, CowVec<bool>),
+    Bool(CowVec<bool>, CowVec<bool>),
 
     // special case: all undefined
     Undefined(usize),
@@ -20,7 +21,7 @@ impl ColumnValues {
     pub fn bool(values: impl IntoIterator<Item = bool>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Bool(values, vec![true; len])
+        ColumnValues::Bool(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
     pub fn bool_with_validity(
@@ -30,7 +31,7 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
         debug_assert_eq!(validity.len(), values.len());
-        ColumnValues::Bool(values, validity)
+        ColumnValues::Bool(CowVec::new(values), CowVec::new(validity))
     }
 
     pub fn float8(values: impl IntoIterator<Item = f64>) -> Self {
@@ -52,7 +53,7 @@ impl ColumnValues {
     pub fn int2(values: impl IntoIterator<Item = i16>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int2(values, vec![true; len])
+        ColumnValues::Int2(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
     pub fn int2_with_validity(
@@ -62,23 +63,23 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
         debug_assert_eq!(validity.len(), values.len());
-        ColumnValues::Int2(values, validity)
+        ColumnValues::Int2(CowVec::new(values), CowVec::new(validity))
     }
 
-    pub fn text<'a>(values: impl IntoIterator<Item = impl ToString>) -> Self {
+    pub fn text<'a>(values: impl IntoIterator<Item = String>) -> Self {
         let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Text(values, vec![true; len])
+        ColumnValues::Text(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
     pub fn text_with_validity<'a>(
-        values: impl IntoIterator<Item = &'a str>,
+        values: impl IntoIterator<Item = String>,
         validity: impl IntoIterator<Item = bool>,
     ) -> Self {
         let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
         debug_assert_eq!(validity.len(), values.len());
-        ColumnValues::Text(values, validity)
+        ColumnValues::Text(CowVec::new(values), CowVec::new(validity))
     }
 
     pub fn undefined(len: usize) -> Self {
@@ -94,22 +95,16 @@ impl ColumnValues {
                 valid.reorder(indices);
             }
             ColumnValues::Int2(v, valid) => {
-                let new_v: Vec<_> = indices.iter().map(|&i| v[i]).collect();
-                let new_valid: Vec<_> = indices.iter().map(|&i| valid[i]).collect();
-                *v = new_v;
-                *valid = new_valid;
+                v.reorder(indices);
+                valid.reorder(indices);
             }
             ColumnValues::Text(v, valid) => {
-                let new_v: Vec<_> = indices.iter().map(|&i| v[i].clone()).collect();
-                let new_valid: Vec<_> = indices.iter().map(|&i| valid[i]).collect();
-                *v = new_v;
-                *valid = new_valid;
+                v.reorder(indices);
+                valid.reorder(indices);
             }
             ColumnValues::Bool(v, valid) => {
-                let new_v: Vec<_> = indices.iter().map(|&i| v[i]).collect();
-                let new_valid: Vec<_> = indices.iter().map(|&i| valid[i]).collect();
-                *v = new_v;
-                *valid = new_valid;
+                v.reorder(indices);
+                valid.reorder(indices);
             }
             ColumnValues::Undefined(len) => {
                 *len = indices.len();

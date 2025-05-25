@@ -41,7 +41,7 @@ impl Aggregate {
                 ColumnValues::Int2(vals, valid) => {
                     let sum: i32 =
                         indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i] as i32).sum();
-                    Ok(ColumnValues::Int2(vec![sum as i16], vec![true]))
+                    Ok(ColumnValues::int2(vec![sum as i16]))
                 }
                 _ => Err("SUM only supports Int2".into()),
             },
@@ -62,15 +62,15 @@ impl Aggregate {
                         ColumnValues::Undefined(_) => 0,
                     }
                 };
-                Ok(ColumnValues::Int2(vec![count as i16], vec![true]))
+                Ok(ColumnValues::int2(vec![count as i16]))
             }
 
             Aggregate::Min(col_name) => match &col(col_name)?.data {
                 ColumnValues::Int2(vals, valid) => {
                     let min = indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).min();
                     match min {
-                        Some(v) => Ok(ColumnValues::Int2(vec![v], vec![true])),
-                        None => Ok(ColumnValues::Int2(vec![0], vec![false])),
+                        Some(v) => Ok(ColumnValues::int2(vec![v])),
+                        None => Ok(ColumnValues::int2_with_validity(vec![0], vec![false])),
                     }
                 }
                 _ => Err("MIN only supports Int2".into()),
@@ -80,8 +80,8 @@ impl Aggregate {
                 ColumnValues::Int2(vals, valid) => {
                     let max = indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).max();
                     match max {
-                        Some(v) => Ok(ColumnValues::Int2(vec![v], vec![true])),
-                        None => Ok(ColumnValues::Int2(vec![0], vec![false])),
+                        Some(v) => Ok(ColumnValues::int2(vec![v])),
+                        None => Ok(ColumnValues::int2_with_validity(vec![0], vec![false])),
                     }
                 }
                 _ => Err("MAX only supports Int2".into()),

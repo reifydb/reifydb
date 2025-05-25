@@ -15,16 +15,16 @@ impl DataFrame {
                     CowVec::new(valid[..n.min(valid.len())].to_vec()),
                 ),
                 ColumnValues::Int2(values, valid) => ColumnValues::Int2(
-                    values[..n.min(values.len())].to_vec(),
-                    valid[..n.min(valid.len())].to_vec(),
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
                 ),
                 ColumnValues::Text(values, valid) => ColumnValues::Text(
-                    values[..n.min(values.len())].to_vec(),
-                    valid[..n.min(valid.len())].to_vec(),
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
                 ),
                 ColumnValues::Bool(values, valid) => ColumnValues::Bool(
-                    values[..n.min(values.len())].to_vec(),
-                    valid[..n.min(valid.len())].to_vec(),
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
                 ),
                 ColumnValues::Undefined(len) => ColumnValues::Undefined(n.min(*len)),
             };
@@ -43,6 +43,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_truncates_float8_column() {
+        let mut test_instance = DataFrame::new(vec![Column::float8_with_validity(
+            "a",
+            [1f64, 2.0, 3.0, 4.0],
+            [true, true, false, true],
+        )]);
+
+        test_instance.limit(2).unwrap();
+
+        assert_eq!(test_instance.columns[0].data, ColumnValues::float8([1.0, 2.0]));
+    }
+
+    #[test]
     fn test_truncates_int2_column() {
         let mut test_instance = DataFrame::new(vec![Column::int2_with_validity(
             "a",
@@ -52,13 +65,7 @@ mod tests {
 
         test_instance.limit(2).unwrap();
 
-        match &test_instance.columns[0].data {
-            ColumnValues::Int2(vals, valid) => {
-                assert_eq!(vals, &[1, 2]);
-                assert_eq!(valid, &[true, true]);
-            }
-            _ => panic!("Expected Int2 column"),
-        }
+        assert_eq!(test_instance.columns[0].data, ColumnValues::int2([1, 2]));
     }
 
     #[test]
@@ -69,15 +76,12 @@ mod tests {
             [true, false, true],
         )]);
 
-        test_instance.limit(1).unwrap();
+        test_instance.limit(2).unwrap();
 
-        match &test_instance.columns[0].data {
-            ColumnValues::Text(vals, valid) => {
-                assert_eq!(vals, &["a"]);
-                assert_eq!(valid, &[true]);
-            }
-            _ => panic!("Expected Text column"),
-        }
+        assert_eq!(
+            test_instance.columns[0].data,
+            ColumnValues::text_with_validity(["a".to_string(), "b".to_string()], [true, false])
+        );
     }
 
     #[test]
@@ -90,13 +94,10 @@ mod tests {
 
         test_instance.limit(1).unwrap();
 
-        match &test_instance.columns[0].data {
-            ColumnValues::Bool(vals, valid) => {
-                assert_eq!(vals, &[true]);
-                assert_eq!(valid, &[false]);
-            }
-            _ => panic!("Expected Bool column"),
-        }
+        assert_eq!(
+            test_instance.columns[0].data,
+            ColumnValues::bool_with_validity([true], [false])
+        );
     }
 
     #[test]
@@ -132,12 +133,9 @@ mod tests {
 
         test_instance.limit(10).unwrap();
 
-        match &test_instance.columns[0].data {
-            ColumnValues::Int2(vals, valid) => {
-                assert_eq!(vals, &[10, 20]);
-                assert_eq!(valid, &[true, false]);
-            }
-            _ => panic!("Expected Int2 column"),
-        }
+        assert_eq!(
+            test_instance.columns[0].data,
+            ColumnValues::int2_with_validity([10, 20], [true, false])
+        );
     }
 }

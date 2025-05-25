@@ -38,18 +38,18 @@ pub fn evaluate(
                             valid.push(false);
                         }
                     }
-                    Ok(ColumnValues::Int2(values, valid))
+                    Ok(ColumnValues::int2_with_validity(values, valid))
                 }
                 _ => Ok(ColumnValues::Undefined(row_count)),
             }
         }
 
         Expression::Constant(v) => Ok(match v {
-            Value::Bool(v) => ColumnValues::Bool(vec![v.clone(); row_count], vec![true; row_count]),
+            Value::Bool(v) => ColumnValues::bool(vec![v.clone(); row_count]),
             Value::Float4(v) => unimplemented!(),
             Value::Float8(v) => ColumnValues::float8(vec![v.value(); row_count]),
-            Value::Int2(v) => ColumnValues::Int2(vec![v.clone(); row_count], vec![true; row_count]),
-            Value::Text(v) => ColumnValues::Text(vec![v.clone(); row_count], vec![true; row_count]),
+            Value::Int2(v) => ColumnValues::int2(vec![v.clone(); row_count]),
+            Value::Text(v) => ColumnValues::text(vec![v.clone(); row_count]),
             Value::Uint2(v) => unimplemented!(),
             Undefined => ColumnValues::Undefined(row_count),
         }),

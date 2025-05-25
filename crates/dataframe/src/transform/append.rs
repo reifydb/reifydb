@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{ColumnValues, DataFrame};
-use base::{Row, Value};
+use base::{CowVec, Row, Value};
 
 pub trait Append<T> {
     fn append(&mut self, other: T) -> crate::Result<()>;
@@ -76,18 +76,33 @@ impl Append<Row> for DataFrame {
 
                 (ColumnValues::Undefined(n), v) => {
                     let mut new_column = match v {
-                        Value::Int2(i) => ColumnValues::Int2(
-                            vec![0; *n].into_iter().chain([i]).collect(),
-                            vec![false; *n].into_iter().chain([true]).collect(),
-                        ),
-                        Value::Text(s) => ColumnValues::Text(
-                            vec![String::new(); *n].into_iter().chain([s]).collect(),
-                            vec![false; *n].into_iter().chain([true]).collect(),
-                        ),
-                        Value::Bool(b) => ColumnValues::Bool(
-                            vec![false; *n].into_iter().chain([b]).collect(),
-                            vec![false; *n].into_iter().chain([true]).collect(),
-                        ),
+                        Value::Int2(i) => {
+                            let mut values = CowVec::new(vec![0i16; *n]);
+                            values.extend(vec![i]);
+
+                            let mut validity = CowVec::new(vec![false; *n]);
+                            validity.extend([true]);
+
+                            ColumnValues::int2_with_validity(values, validity)
+                        }
+                        Value::Text(s) => {
+                            let mut values = CowVec::new(vec!["".to_string(); *n]);
+                            values.extend(vec![s]);
+
+                            let mut validity = CowVec::new(vec![false; *n]);
+                            validity.extend([true]);
+
+                            ColumnValues::text_with_validity(values, validity)
+                        }
+                        Value::Bool(b) => {
+                            let mut values = CowVec::new(vec![false; *n]);
+                            values.extend(vec![b]);
+
+                            let mut validity = CowVec::new(vec![false; *n]);
+                            validity.extend([true]);
+
+                            ColumnValues::bool_with_validity(values, validity)
+                        }
                         Value::Float4(_) => unimplemented!(),
                         Value::Float8(_) => unimplemented!(),
                         Value::Uint2(_) => unimplemented!(),
@@ -249,7 +264,10 @@ mod tests {
             test_instance.append(row).unwrap();
 
             assert_eq!(test_instance.columns[0].data, ColumnValues::int2([1, 2]));
-            assert_eq!(test_instance.columns[1].data, ColumnValues::text(["Alice", "Bob"]));
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::text(["Alice".to_string(), "Bob".to_string()])
+            );
             assert_eq!(test_instance.columns[2].data, ColumnValues::bool([true, false]));
         }
 
@@ -267,7 +285,10 @@ mod tests {
             );
             assert_eq!(
                 test_instance.columns[1].data,
-                ColumnValues::text_with_validity(["Alice", "Karen"], [true, true])
+                ColumnValues::text_with_validity(
+                    ["Alice".to_string(), "Karen".to_string()],
+                    [true, true]
+                )
             );
             assert_eq!(
                 test_instance.columns[2].data,
@@ -318,22 +339,22 @@ mod tests {
 
             assert_eq!(
                 test_instance.columns[0].data,
-                ColumnValues::Int2(vec![0, 30], vec![false, true])
+                ColumnValues::int2_with_validity(vec![0, 30], vec![false, true])
             );
             assert_eq!(
                 test_instance.columns[1].data,
-                ColumnValues::Text(vec!["".into(), "Zoe".into()], vec![false, true])
+                ColumnValues::text_with_validity(
+                    vec!["".to_string(), "Zoe".to_string()],
+                    vec![false, true]
+                )
             );
         }
 
         fn test_instance_with_columns() -> DataFrame {
             DataFrame::new(vec![
-                Column { name: "int2".into(), data: ColumnValues::Int2(vec![1], vec![true]) },
-                Column {
-                    name: "text".into(),
-                    data: ColumnValues::Text(vec!["Alice".into()], vec![true]),
-                },
-                Column { name: "bool".into(), data: ColumnValues::Bool(vec![true], vec![true]) },
+                Column { name: "int2".into(), data: ColumnValues::int2(vec![1]) },
+                Column { name: "text".into(), data: ColumnValues::text(vec!["Alice".to_string()]) },
+                Column { name: "bool".into(), data: ColumnValues::bool(vec![true]) },
             ])
         }
     }

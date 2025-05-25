@@ -5,17 +5,39 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 #[derive(Debug, PartialOrd, PartialEq)]
-pub struct CowVec<T> {
+pub struct CowVec<T>
+where
+    T: Clone + PartialEq,
+{
     inner: Rc<Vec<T>>,
 }
 
-impl<T: Clone> Clone for CowVec<T> {
+impl<T: Clone + PartialEq> PartialEq<[T]> for &CowVec<T> {
+    fn eq(&self, other: &[T]) -> bool {
+        self.inner.as_slice() == other
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq<[T]> for CowVec<T> {
+    fn eq(&self, other: &[T]) -> bool {
+        self.inner.as_slice() == other
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq<CowVec<T>> for [T] {
+    fn eq(&self, other: &CowVec<T>) -> bool {
+        self == other.inner.as_slice()
+    }
+}
+
+
+impl<T: Clone + PartialEq> Clone for CowVec<T> {
     fn clone(&self) -> Self {
         CowVec { inner: Rc::clone(&self.inner) }
     }
 }
 
-impl<T: Clone> CowVec<T> {
+impl<T: Clone + PartialEq> CowVec<T> {
     pub fn new(vec: Vec<T>) -> Self {
         CowVec { inner: Rc::new(vec) }
     }
@@ -85,7 +107,7 @@ impl<T: Clone> CowVec<T> {
     }
 }
 
-impl<T: Clone> IntoIterator for CowVec<T> {
+impl<T: Clone + PartialEq> IntoIterator for CowVec<T> {
     type Item = T;
     type IntoIter = std::vec::IntoIter<T>;
 
@@ -94,7 +116,7 @@ impl<T: Clone> IntoIterator for CowVec<T> {
     }
 }
 
-impl<T: Clone> Deref for CowVec<T> {
+impl<T: Clone + PartialEq> Deref for CowVec<T> {
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {

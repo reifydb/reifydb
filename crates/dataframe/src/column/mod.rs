@@ -3,14 +3,15 @@
 
 pub use values::ColumnValues;
 
-mod values;
 mod extend;
+mod values;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Column {
     pub name: String,
     pub data: ColumnValues,
 }
+
 
 impl Column {
     pub fn bool(name: &str, values: impl IntoIterator<Item = bool>) -> Self {
@@ -50,7 +51,10 @@ impl Column {
     }
 
     pub fn text<'a>(name: &str, values: impl IntoIterator<Item = &'a str>) -> Self {
-        Self { name: name.to_string(), data: ColumnValues::text(values) }
+        Self {
+            name: name.to_string(),
+            data: ColumnValues::text(values.into_iter().map(|s| s.to_string())),
+        }
     }
 
     pub fn text_with_validity<'a>(
@@ -58,7 +62,13 @@ impl Column {
         values: impl IntoIterator<Item = &'a str>,
         validity: impl IntoIterator<Item = bool>,
     ) -> Self {
-        Self { name: name.to_string(), data: ColumnValues::text_with_validity(values, validity) }
+        Self {
+            name: name.to_string(),
+            data: ColumnValues::text_with_validity(
+                values.into_iter().map(|s| s.to_string()),
+                validity,
+            ),
+        }
     }
 
     pub fn undefined(name: &str, len: usize) -> Self {

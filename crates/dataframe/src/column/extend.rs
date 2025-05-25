@@ -49,22 +49,31 @@ impl ColumnValues {
                     *self = ColumnValues::float8_with_validity(values, validity);
                 }
                 ColumnValues::Int2(r, r_valid) => {
-                    *self = ColumnValues::Int2(
-                        vec![0; *l_len].into_iter().chain(r.clone()).collect(),
-                        vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                    )
+                    let mut values = CowVec::new(vec![0i16; *l_len]);
+                    values.extend(r);
+
+                    let mut validity = CowVec::new(vec![false; *l_len]);
+                    validity.extend(r_valid);
+
+                    *self = ColumnValues::int2_with_validity(values, validity);
                 }
                 ColumnValues::Text(r, r_valid) => {
-                    *self = ColumnValues::Text(
-                        vec![String::new(); *l_len].into_iter().chain(r.clone()).collect(),
-                        vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                    )
+                    let mut values = CowVec::new(vec!["".to_string(); *l_len]);
+                    values.extend(r);
+
+                    let mut validity = CowVec::new(vec![false; *l_len]);
+                    validity.extend(r_valid);
+
+                    *self = ColumnValues::text_with_validity(values, validity);
                 }
                 ColumnValues::Bool(r, r_valid) => {
-                    *self = ColumnValues::Bool(
-                        vec![false; *l_len].into_iter().chain(r.clone()).collect(),
-                        vec![false; *l_len].into_iter().chain(r_valid.clone()).collect(),
-                    )
+                    let mut values = CowVec::new(vec![false; *l_len]);
+                    values.extend(r);
+
+                    let mut validity = CowVec::new(vec![false; *l_len]);
+                    validity.extend(r_valid);
+
+                    *self = ColumnValues::bool_with_validity(values, validity);
                 }
                 ColumnValues::Undefined(_) => {}
             },
