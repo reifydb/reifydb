@@ -6,7 +6,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{DB, ReifyDB, svl, memory, mvcc};
+use reifydb::{DB, ReifyDB, memory, mvcc};
 use std::time::Instant;
 
 fn main() {
@@ -37,7 +37,7 @@ fn main() {
     query.push_str("insert ");
 
     let start = Instant::now();
-    const max: usize = 32_000;
+    const max: usize = 1_000;
 
     for i in 1..=max {
         let num = i % 10; // example logic for `num` value
@@ -49,10 +49,8 @@ fn main() {
 
     query.push_str(" into test.arith(id, num)");
 
-
     db.tx_execute(&root, &query);
     println!("took: {:?}", start.elapsed());
-
 
     // db.tx_execute(&root, r#"insert (3,0) into test.arith(id,num)"#);
 

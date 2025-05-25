@@ -48,9 +48,7 @@ pub fn evaluate(
         Expression::Constant(v) => Ok(match v {
             Value::Bool(v) => ColumnValues::Bool(vec![v.clone(); row_count], vec![true; row_count]),
             Value::Float4(v) => unimplemented!(),
-            Value::Float8(v) => {
-                ColumnValues::Float8(vec![v.value(); row_count], vec![true; row_count])
-            }
+            Value::Float8(v) => ColumnValues::float8(vec![v.value(); row_count]),
             Value::Int2(v) => ColumnValues::Int2(vec![v.clone(); row_count], vec![true; row_count]),
             Value::Text(v) => ColumnValues::Text(vec![v.clone(); row_count], vec![true; row_count]),
             Value::Uint2(v) => unimplemented!(),
@@ -68,7 +66,6 @@ pub fn evaluate(
         //     Value::Int2(v) => Ok(ColumnValues::Int2(vec![v; row_count], vec![true; row_count])),
         //     _ => unimplemented!(),
         // },
-
         Expression::Call(call) => {
             let virtual_columns = evaluate_virtual_column(call.args, &columns, row_count).unwrap();
 

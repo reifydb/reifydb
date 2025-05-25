@@ -6,12 +6,14 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
+pub use cowvec::CowVec;
 pub use error::Error;
 pub use key::{Key, KeyError, SortDirection, SortKey};
 pub use row::{Row, RowIter, RowIterator};
 pub use row_meta::RowMeta;
 pub use value::{Value, ValueKind};
 
+mod cowvec;
 pub mod encoding;
 mod error;
 pub mod expression;

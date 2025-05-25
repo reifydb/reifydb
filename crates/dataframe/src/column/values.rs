@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ValueRef;
-use base::Value;
+use base::{CowVec, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
     // value, is_valid
-    Float8(Vec<f64>, Vec<bool>),
+    Float8(CowVec<f64>, CowVec<bool>),
     Int2(Vec<i16>, Vec<bool>),
     Text(Vec<String>, Vec<bool>),
     Bool(Vec<bool>, Vec<bool>),
@@ -36,7 +36,7 @@ impl ColumnValues {
     pub fn float8(values: impl IntoIterator<Item = f64>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Float8(values, vec![true; len])
+        ColumnValues::Float8(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
     pub fn float8_with_validity(
@@ -46,7 +46,7 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
         debug_assert_eq!(validity.len(), values.len());
-        ColumnValues::Float8(values, validity)
+        ColumnValues::Float8(CowVec::new(values), CowVec::new(validity))
     }
 
     pub fn int2(values: impl IntoIterator<Item = i16>) -> Self {
@@ -90,10 +90,8 @@ impl ColumnValues {
     pub fn reorder(&mut self, indices: &[usize]) {
         match self {
             ColumnValues::Float8(v, valid) => {
-                let new_v: Vec<_> = indices.iter().map(|&i| v[i]).collect();
-                let new_valid: Vec<_> = indices.iter().map(|&i| valid[i]).collect();
-                *v = new_v;
-                *valid = new_valid;
+                v.reorder(indices);
+                valid.reorder(indices);
             }
             ColumnValues::Int2(v, valid) => {
                 let new_v: Vec<_> = indices.iter().map(|&i| v[i]).collect();

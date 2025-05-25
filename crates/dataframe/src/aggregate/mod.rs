@@ -32,7 +32,7 @@ impl Aggregate {
                     let (v, is_valid) =
                         if count > 0 { ((sum as f64 / count as f64), true) } else { (0.0, false) };
 
-                    Ok(ColumnValues::Float8(vec![v], vec![is_valid]))
+                    Ok(ColumnValues::float8_with_validity(vec![v], vec![is_valid]))
                 }
                 _ => Err("AVG only supports Int2 columns".into()),
             },
@@ -51,8 +51,10 @@ impl Aggregate {
                     indices.len()
                 } else {
                     match &col(col_name)?.data {
-                        ColumnValues::Float8(_, valid)
-                        | ColumnValues::Int2(_, valid)
+                        ColumnValues::Float8(_, valid) => {
+                            indices.iter().filter(|&&i| valid[i]).count()
+                        }
+                        ColumnValues::Int2(_, valid)
                         | ColumnValues::Bool(_, valid)
                         | ColumnValues::Text(_, valid) => {
                             indices.iter().filter(|&&i| valid[i]).count()
