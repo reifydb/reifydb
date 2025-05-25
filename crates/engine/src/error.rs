@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::evaluate;
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors that can occur within the RQL (Reify Query Language) layer.
@@ -11,6 +12,7 @@ use std::fmt::{Display, Formatter};
 /// execution.
 #[derive(Debug, PartialEq)]
 pub enum Error {
+    Evaluation(evaluate::Error),
     Dataframe(dataframe::Error),
     Transaction(transaction::Error),
 }
@@ -18,6 +20,12 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
+    }
+}
+
+impl From<evaluate::Error> for Error {
+    fn from(value: evaluate::Error) -> Self {
+        Self::Evaluation(value)
     }
 }
 

@@ -11,8 +11,8 @@ pub use error::Error;
 
 mod engine;
 mod error;
+mod evaluate;
 mod execute;
-pub mod evaluate;
 mod function;
 pub mod old_execute;
 

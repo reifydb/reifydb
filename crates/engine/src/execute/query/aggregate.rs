@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use base::expression::{AliasExpression, Expression};
+use base::expression::{AliasExpression, ColumnExpression, Expression};
 use dataframe::aggregate::Aggregate;
 
 impl Executor {
@@ -16,7 +16,7 @@ impl Executor {
 
         for gb in group_by {
             match &gb.expression {
-                Expression::Column(c) => keys.push(c.as_str()),
+                Expression::Column(ColumnExpression(c)) => keys.push(c.as_str()),
                 _ => unimplemented!(),
             }
         }
@@ -27,7 +27,7 @@ impl Executor {
                     let func = call.func.name.as_str();
 
                     match call.args.first().unwrap() {
-                        Expression::Column(c) => match func {
+                        Expression::Column(ColumnExpression(c)) => match func {
                             "avg" => aggregates.push(Aggregate::Avg(c.to_string())),
                             "sum" => aggregates.push(Aggregate::Sum(c.to_string())),
                             "count" => aggregates.push(Aggregate::Count(c.to_string())),

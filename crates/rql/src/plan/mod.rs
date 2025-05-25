@@ -10,8 +10,8 @@ use std::ops::Deref;
 
 use crate::ast;
 use base::expression::{
-    AliasExpression, CallExpression, Expression, IdentExpression, PrefixExpression, PrefixOperator,
-    TupleExpression,
+    AddExpression, AliasExpression, CallExpression, ColumnExpression, Expression, IdentExpression,
+    PrefixExpression, PrefixOperator, TupleExpression,
 };
 use base::{SortDirection, SortKey, Value, ValueKind};
 pub use error::Error;
@@ -274,7 +274,9 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                     .map(|ast| match ast {
                         Ast::Identifier(node) => AliasExpression {
                             alias: Some(node.value().to_string()),
-                            expression: Expression::Column(node.value().to_string()),
+                            expression: Expression::Column(ColumnExpression(
+                                node.value().to_string(),
+                            )),
                         },
                         _ => unimplemented!(),
                     })
@@ -292,7 +294,7 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                 .map(|ast| match ast {
                     Ast::Identifier(node) => AliasExpression {
                         alias: Some(node.value().to_string()),
-                        expression: Expression::Column(node.value().to_string()),
+                        expression: Expression::Column(ColumnExpression(node.value().to_string())),
                     },
                     ast => unimplemented!("{ast:?}"),
                 })
@@ -325,7 +327,7 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 // Ast::From(_) => {}
                 Ast::Identifier(node) => AliasExpression {
                     alias: Some(node.value().to_string()),
-                    expression: Expression::Column(node.value().to_string()),
+                    expression: Expression::Column(ColumnExpression(node.value().to_string())),
                 },
                 Ast::Infix(node) => {
                     AliasExpression { alias: None, expression: expression_infix(node).unwrap() }
@@ -348,6 +350,17 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                         expression: Expression::Constant(Value::Undefined),
                     },
                 },
+                Ast::Prefix(node) => AliasExpression {
+                    alias: None,
+                    expression: Expression::Prefix(PrefixExpression {
+                        operator: match node.operator {
+                            ast::PrefixOperator::Plus(_) => PrefixOperator::Plus,
+                            ast::PrefixOperator::Negate(_) => PrefixOperator::Minus,
+                            ast::PrefixOperator::Not(_) => unimplemented!(),
+                        },
+                        expression: Box::new(expression(*node.node).unwrap()), //FIXME
+                    }),
+                },
                 ast => unimplemented!("{:?}", ast),
             })
             .collect(),
@@ -364,7 +377,9 @@ fn expression(ast: Ast) -> Result<Expression> {
             }
             _ => unimplemented!(),
         },
-        Ast::Identifier(identifier) => Ok(Expression::Column(identifier.value().to_string())),
+        Ast::Identifier(identifier) => {
+            Ok(Expression::Column(ColumnExpression(identifier.value().to_string())))
+        }
         Ast::Infix(infix) => expression_infix(infix),
         Ast::Tuple(tuple) => {
             let mut expressions = Vec::with_capacity(tuple.len());
@@ -394,13 +409,13 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
         InfixOperator::Add(_) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
-            Ok(Expression::Add(Box::new(left), Box::new(right)))
+            Ok(Expression::Add(AddExpression { left: Box::new(left), right: Box::new(right) }))
         }
         InfixOperator::Call(_) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
 
-            let Expression::Column(name) = left else { panic!() };
+            let Expression::Column(ColumnExpression(name)) = left else { panic!() };
             let Expression::Tuple(tuple) = right else { panic!() };
 
             Ok(Expression::Call(CallExpression {

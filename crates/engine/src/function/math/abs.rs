@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
-use base::expression::Expression;
-use base::{Value, ValueKind};
+use dataframe::{Column, ColumnValues};
 
 pub struct AbsFunction;
 
@@ -29,20 +28,26 @@ impl FunctionExecutor for AbsExecutor {
         "abs"
     }
 
-    fn old_eval_scalar(&self, args: &[Value]) -> Result<Value, FunctionError> {
-        match args.get(0) {
-            Some(Value::Int2(n)) => Ok(Value::Int2(n.abs())),
-            Some(value) => Err(FunctionError::InvalidArgumentType {
-                function: self.name().to_string(),
-                index: 0,
-                expected_one_of: vec![ValueKind::Int2],
-                actual: value.into(),
-            }),
-            None => Err(FunctionError::ArityMismatch {
-                function: self.name().to_string(),
-                expected: 1,
-                actual: 0,
-            }),
+    fn eval_scalar(
+        &self,
+        columns: &[Column],
+        row_count: usize,
+    ) -> Result<ColumnValues, FunctionError> {
+        let column = columns.get(0).unwrap();
+
+        match &column.data {
+            ColumnValues::Int2(vals, valid) => {
+                let mut values = Vec::with_capacity(vals.len());
+
+                for i in 0..row_count {
+                    if valid.get(i).copied().unwrap_or(false) {
+                        values.push(if vals[i] < 0 { vals[i] * -1 } else { vals[i] });
+                    }
+                }
+
+                Ok(ColumnValues::int2_with_validity(values, valid.clone()))
+            }
+            _ => unimplemented!(),
         }
     }
 }

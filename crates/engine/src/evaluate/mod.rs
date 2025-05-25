@@ -1,87 +1,50 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::function::{Function, math};
-use base::Value;
-use base::Value::Undefined;
 use base::expression::Expression;
 use dataframe::{Column, ColumnValues};
 
-pub fn evaluate(
-    expr: Expression,
-    columns: &[&Column],
-    row_count: usize,
-) -> dataframe::Result<ColumnValues> {
-    match expr {
-        Expression::Column(name) => columns
-            .iter()
-            .find(|c| c.name == *name)
-            .cloned()
-            .cloned()
-            .map(|c| c.data)
-            .ok_or_else(|| format!("unknown column '{}'", name).into()),
+use crate::function::{FunctionRegistry, math};
+pub use error::Error;
 
-        Expression::Add(left, right) => {
-            let left = evaluate(*left, columns, row_count)?;
-            let right = evaluate(*right, columns, row_count)?;
+mod call;
+mod column;
+mod constant;
+mod error;
+mod operator;
+mod prefix;
 
-            match (&left, &right) {
-                (ColumnValues::Int2(a_vals, a_valid), ColumnValues::Int2(b_vals, b_valid)) => {
-                    let mut values = Vec::with_capacity(row_count);
-                    let mut valid = Vec::with_capacity(row_count);
-                    for i in 0..row_count {
-                        if a_valid[i] && b_valid[i] {
-                            values.push(a_vals[i] + b_vals[i]);
-                            valid.push(true);
-                        } else {
-                            values.push(0); // Placeholder
-                            valid.push(false);
-                        }
-                    }
-                    Ok(ColumnValues::int2_with_validity(values, valid))
-                }
-                _ => Ok(ColumnValues::Undefined(row_count)),
-            }
+pub(crate) type Result<T> = std::result::Result<T, Error>;
+
+pub(crate) struct Evaluator {
+    functions: FunctionRegistry,
+}
+
+impl Evaluator {
+    pub(crate) fn evaluate(
+        &mut self,
+        expr: Expression,
+        columns: &[&Column],
+        row_count: usize,
+    ) -> Result<ColumnValues> {
+        match expr {
+            Expression::Add(expr) => self.add(expr, columns, row_count),
+            Expression::Call(expr) => self.call(expr, columns, row_count),
+            Expression::Column(expr) => self.column(expr, columns, row_count),
+            Expression::Constant(v) => self.constant(v, row_count),
+            Expression::Prefix(expr) => self.prefix(expr, columns, row_count),
+            expr => unimplemented!("{expr:?}"),
         }
-
-        Expression::Constant(v) => Ok(match v {
-            Value::Bool(v) => ColumnValues::bool(vec![v.clone(); row_count]),
-            Value::Float4(v) => unimplemented!(),
-            Value::Float8(v) => ColumnValues::float8(vec![v.value(); row_count]),
-            Value::Int2(v) => ColumnValues::int2(vec![v.clone(); row_count]),
-            Value::Text(v) => ColumnValues::text(vec![v.clone(); row_count]),
-            Value::Uint2(v) => unimplemented!(),
-            Undefined => ColumnValues::Undefined(row_count),
-        }),
-
-        Expression::Call(call) => {
-            let virtual_columns = evaluate_virtual_column(call.args, &columns, row_count).unwrap();
-
-            let functor = math::AvgFunction {};
-            let exec = functor.prepare().unwrap();
-
-            Ok(exec.eval_scalar(&virtual_columns, row_count).unwrap())
-        }
-
-        _ => unimplemented!(),
     }
 }
 
-fn evaluate_virtual_column<'a>(
-    expressions: Vec<Expression>,
-    columns: &[&Column],
-    row_count: usize,
-) -> crate::Result<Vec<Column>> {
-    let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
+pub fn evaluate(expr: Expression, columns: &[&Column], row_count: usize) -> Result<ColumnValues> {
+    let mut evaluator = Evaluator { functions: FunctionRegistry::new() };
 
-    for expression in expressions {
-        result.push(Column {
-            name: expression.to_string(),
-            data: evaluate(expression, columns, row_count)?,
-        })
-    }
+    evaluator.functions.register(math::AbsFunction {});
+    evaluator.functions.register(math::AvgFunction {});
 
-    Ok(result)
+    evaluator.evaluate(expr, columns, row_count)
 }
 
 #[cfg(test)]

@@ -14,7 +14,6 @@ impl Function for AvgFunction {
         &[FunctionMode::Scalar, FunctionMode::Aggregate]
     }
 
-    // probably want to be able to pass in some context for the function execution
     fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
         Ok(Box::new(AvgExecutor {}))
     }

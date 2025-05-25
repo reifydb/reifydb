@@ -32,36 +32,37 @@ fn main() {
     //     r#"insert (1,6), (2,8), (3,4), (4,2), (5,3), (6,0) into test.arith(id,num)"#,
     // );
 
-    let mut query = String::with_capacity(20_000_000); // preallocate for performance
-
-    query.push_str("insert ");
-
-    let start = Instant::now();
-    const max: usize = 1_000;
-
-    for i in 1..=max {
-        let num = i % 10; // example logic for `num` value
-        query.push_str(&format!("({}, {})", i, num));
-        if i != max {
-            query.push_str(", ");
-        }
+    // let mut query = String::with_capacity(20_000_000); // preallocate for performance
+    // 
+    // query.push_str("insert ");
+    // 
+    // let start = Instant::now();
+    // const max: usize = 1_000;
+    // 
+    // for i in 1..=max {
+    //     let num = i % 10; // example logic for `num` value
+    //     query.push_str(&format!("({}, {})", i, num));
+    //     if i != max {
+    //         query.push_str(", ");
+    //     }
+    // }
+    // 
+    // query.push_str(" into test.arith(id, num)");
+    // 
+    // db.tx_execute(&root, &query);
+    // println!("took: {:?}", start.elapsed());
+    // 
+    // // db.tx_execute(&root, r#"insert (3,0) into test.arith(id,num)"#);
+    // 
+    // // for l in db.rx_execute(&root, r#"SELECT 1, 2 ,3 "#) {
+    // // for l in db.rx_execute(&root, r#"from test.arith group by id select id, avg(num)"#) {
+    // let start = Instant::now();
+    // for l in db.rx_execute(&root, r#"from test.arith select id, avg(id, num, 20 + 12)"#) {
+    // for l in db.rx_execute(&root, r#"select abs(-1), abs(1), abs(+1)"#) {
+    for l in db.rx_execute(&root, r#"select 1, 'test', true, false"#) {
+        println!("{}", l);
     }
-
-    query.push_str(" into test.arith(id, num)");
-
-    db.tx_execute(&root, &query);
-    println!("took: {:?}", start.elapsed());
-
-    // db.tx_execute(&root, r#"insert (3,0) into test.arith(id,num)"#);
-
-    // for l in db.rx_execute(&root, r#"SELECT 1, 2 ,3 "#) {
-    // for l in db.rx_execute(&root, r#"from test.arith group by id select id, avg(num)"#) {
-    let start = Instant::now();
-    for l in db.rx_execute(&root, r#"from test.arith select id, avg(id, num, 20 + 12)"#) {
-
-        // println!("{}", l);
-    }
-    println!("took: {:?}", start.elapsed());
+    // println!("took: {:?}", start.elapsed());
 
     //
     // let result = db

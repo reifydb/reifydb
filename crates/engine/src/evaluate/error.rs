@@ -12,12 +12,6 @@ impl Display for Error {
     }
 }
 
-impl From<Box<dyn std::error::Error>> for Error {
-    fn from(err: Box<dyn std::error::Error>) -> Self {
-        Self(err.to_string())
-    }
-}
-
 impl From<&str> for Error {
     fn from(value: &str) -> Self {
         Self(String::from(value))

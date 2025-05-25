@@ -3,10 +3,8 @@
 
 use crate::evaluate::evaluate;
 use crate::execute::Executor;
-use crate::old_execute;
 use base::expression::AliasExpression;
 use dataframe::{Column, DataFrame};
-use transaction::NopStore;
 
 impl Executor {
     pub(crate) fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {
@@ -14,8 +12,10 @@ impl Executor {
             let mut columns = vec![];
 
             for (idx, expr) in expressions.into_iter().enumerate() {
-                let value = old_execute::evaluate::<NopStore>(expr.expression, None, None).unwrap();
-                columns.push(Column { name: format!("{}", idx + 1), data: value.into() });
+                let expr = expr.expression;
+
+                let value = evaluate(expr, &[], 1)?;
+                columns.push(Column { name: format!("{}", idx + 1), data: value });
             }
 
             self.frame = DataFrame::new(columns);

@@ -6,7 +6,7 @@ use crate::{Column, DataFrame};
 impl DataFrame {
     pub fn project<F>(&mut self, f: F) -> crate::Result<()>
     where
-        F: FnOnce(&[&Column], usize) -> crate::Result<Vec<Column>>,
+        F: FnOnce(&[&Column], usize) -> Result<Vec<Column>, Box<dyn std::error::Error>>,
     {
         let row_count = self.columns.first().map_or(0, |col| col.data.len());
 

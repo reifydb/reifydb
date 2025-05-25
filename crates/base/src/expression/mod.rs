@@ -23,19 +23,12 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
-    /// l AND lr: logical AND of two booleans
-    And(Box<Expression>, Box<Expression>),
-    /// a OR b: logical OR of two booleans
-    Or(Box<Expression>, Box<Expression>),
-    /// NOT a: logical NOT of a boolean
-    Not(Box<Expression>),
-
     /// A constant value.
     Constant(Value),
 
-    Column(String),
+    Column(ColumnExpression),
 
-    Add(Box<Expression>, Box<Expression>),
+    Add(AddExpression),
 
     Call(CallExpression),
 
@@ -44,15 +37,21 @@ pub enum Expression {
     Prefix(PrefixExpression),
 }
 
+#[derive(Debug, Clone)]
+pub struct AddExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ColumnExpression(pub String);
+
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::And(lhs, rhs) => write!(f, "({} AND {})", lhs, rhs),
-            Expression::Or(lhs, rhs) => write!(f, "({} OR {})", lhs, rhs),
-            Expression::Not(expr) => write!(f, "(NOT {})", expr),
             Expression::Constant(val) => write!(f, "{}", val),
-            Expression::Column(name) => write!(f, "{}", name),
-            Expression::Add(lhs, rhs) => write!(f, "({} + {})", lhs, rhs),
+            Expression::Column(ColumnExpression(name)) => write!(f, "{}", name),
+            Expression::Add(AddExpression { left, right }) => write!(f, "({} + {})", left, right),
             Expression::Call(call) => write!(f, "{}", call),
             Expression::Tuple(tuple) => write!(f, "({})", tuple),
             Expression::Prefix(prefix) => write!(f, "{}", prefix),
@@ -118,7 +117,8 @@ pub struct TupleExpression {
 
 impl Display for TupleExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let items = self.expressions.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(", ");
+        let items =
+            self.expressions.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(", ");
         write!(f, "({})", items)
     }
 }

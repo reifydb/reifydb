@@ -7,7 +7,6 @@ pub use error::FunctionError;
 
 mod error;
 
-use base::expression::Expression;
 use base::{RowIter, Value};
 use dataframe::{Column, ColumnValues};
 use std::collections::HashMap;
@@ -50,17 +49,9 @@ pub trait FunctionExecutor: Send + Sync {
     /// For scalar input → scalar output
     fn eval_scalar(
         &self,
-        columns: &[Column],
-        row_count: usize,
+        _columns: &[Column],
+        _row_count: usize,
     ) -> Result<ColumnValues, FunctionError> {
-        Err(FunctionError::UnsupportedMode {
-            function: self.name().to_string(),
-            mode: FunctionMode::Scalar,
-        })
-    }
-
-    /// For scalar input → scalar output
-    fn old_eval_scalar(&self, _args: &[Value]) -> Result<Value, FunctionError> {
         Err(FunctionError::UnsupportedMode {
             function: self.name().to_string(),
             mode: FunctionMode::Scalar,
