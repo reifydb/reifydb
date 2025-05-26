@@ -6,19 +6,18 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use catalog::{CatalogRx, CatalogTx};
+pub use catalog::{
+    CatalogRx, CatalogTx, ColumnToCreate, NopStore, SchemaRx, SchemaTx, StoreRx, StoreToCreate,
+    StoreTx,
+};
 pub use engine::Transaction;
 pub use error::Error;
-pub use schema::{ColumnToCreate, SchemaRx, SchemaTx, StoreToCreate};
-pub use store::{NopStore, StoreRx, StoreTx};
 pub use transaction::{InsertResult, Rx, Tx};
 
 mod catalog;
 mod engine;
 mod error;
 pub mod mvcc;
-mod schema;
-mod store;
 pub mod svl;
 mod transaction;
 

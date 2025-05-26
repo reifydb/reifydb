@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::store::{StoreRx, StoreTx};
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use crate::catalog::store::{StoreRx, StoreTx};
 use base::ValueKind;
 use base::expression::Expression;
 

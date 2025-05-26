@@ -8,7 +8,7 @@
 //     pub default: Option<Expression>,
 // }
 
-use crate::store::Column;
+use crate::catalog::Column;
 
 pub struct Store {
     pub name: String,

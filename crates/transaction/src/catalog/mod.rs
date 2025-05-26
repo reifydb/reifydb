@@ -1,7 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::schema::{SchemaRx, SchemaTx};
+pub use schema::*;
+pub use store::*;
+
+mod schema;
+mod store;
 
 pub trait CatalogRx {
     type SchemaRx: SchemaRx;

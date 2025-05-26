@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::StoreToCreate;
-use crate::store::Column;
+use crate::catalog::Column;
 use crate::svl::store::Store;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -46,9 +46,9 @@ impl crate::SchemaTx for Schema {
                             .map(|c| Column { name: c.name, value: c.value, default: c.default })
                             .collect::<Vec<_>>(),
                     },
-                );            
+                );
             }
-        
+
             StoreToCreate::Table { name, columns } => {
                 assert!(self.stores.get(name.deref()).is_none());
                 self.stores.insert(

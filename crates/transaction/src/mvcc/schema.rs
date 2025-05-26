@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::StoreToCreate;
+use crate::catalog::Column;
 use crate::mvcc::store::Store;
-use crate::store::Column;
 use std::collections::HashMap;
 use std::ops::Deref;
 
