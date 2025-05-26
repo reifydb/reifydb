@@ -10,8 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::mvcc::{Error, Transaction, TransactionState, Version};
-use crate::{CatalogRx as _, CatalogTx, InsertResult};
-use std::cell::UnsafeCell;
+use crate::{CatalogRx as _, CatalogTx, InsertResult, CATALOG};
 
 use std::collections::BTreeSet;
 use std::ops::{Bound, RangeBounds};
@@ -30,9 +29,7 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
     type Schema = Schema;
 
     fn catalog(&self) -> crate::Result<&'static Self::Catalog> {
-        // Ok(*CATALOG.get().expect("Catalog not initialized"))
-        // todo!()
-        // SAFETY: Caller guarantees exclusive access
+        // FIXME replace me
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
@@ -57,30 +54,13 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
     }
 }
 
-#[derive(Debug)]
-pub struct CatalogCell(UnsafeCell<&'static mut Catalog>);
-
-unsafe impl Sync for CatalogCell {} // ⚠️ only safe in single-threaded context
-
-static CATALOG: OnceLock<CatalogCell> = OnceLock::new();
-
-pub fn init() {
-    let boxed = Box::new(Catalog::new());
-    let leaked = Box::leak(boxed);
-    CATALOG.set(CatalogCell(UnsafeCell::new(leaked))).unwrap();
-}
-
-pub fn catalog_mut_singleton() -> &'static mut Catalog {
-    // SAFETY: Caller guarantees exclusive access
-    unsafe { *CATALOG.get().unwrap().0.get() }
-}
 
 impl<P: Persistence> crate::Tx for Transaction<P> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
     fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut> {
-        // SAFETY: Caller guarantees exclusive access
+        // FIXME replace this
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 

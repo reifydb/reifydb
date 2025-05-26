@@ -23,21 +23,21 @@ use testing::util::parse_key_range;
 test_each_path! { in "crates/persistence/tests/engine" as memory => test_memory }
 
 fn test_memory(path: &Path) {
-    testscript::run_path(&mut EngineRunner::new(Memory::default()), path).expect("test failed")
+    testscript::run_path(&mut PersistenceRunner::new(Memory::default()), path).expect("test failed")
 }
 
 /// Runs engine tests.
-pub struct EngineRunner<P: Persistence> {
-    engine: P,
+pub struct PersistenceRunner<P: Persistence> {
+    persistence: P,
 }
 
-impl<P: Persistence> EngineRunner<P> {
-    fn new(engine: P) -> Self {
-        Self { engine }
+impl<P: Persistence> PersistenceRunner<P> {
+    fn new(persistence: P) -> Self {
+        Self { persistence }
     }
 }
 
-impl<P: Persistence> testscript::Runner for EngineRunner<P> {
+impl<P: Persistence> testscript::Runner for PersistenceRunner<P> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {
@@ -47,7 +47,7 @@ impl<P: Persistence> testscript::Runner for EngineRunner<P> {
                 let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
                 args.reject_rest()?;
 
-                self.engine.remove(&key)?;
+                self.persistence.remove(&key)?;
             }
 
             // // get KEY
@@ -55,7 +55,7 @@ impl<P: Persistence> testscript::Runner for EngineRunner<P> {
                 let mut args = command.consume_args();
                 let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
                 args.reject_rest()?;
-                let value = self.engine.get(&key)?;
+                let value = self.persistence.get(&key)?;
                 writeln!(output, "{}", format::Raw::key_maybe_value(&key, value.as_deref()))?;
             }
 
@@ -68,7 +68,7 @@ impl<P: Persistence> testscript::Runner for EngineRunner<P> {
                 args.reject_rest()?;
 
                 let mut kvs = Vec::new();
-                for item in self.engine.scan(range) {
+                for item in self.persistence.scan(range) {
                     let (key, value) = item?;
                     kvs.push((key, value));
                 }
@@ -88,7 +88,7 @@ impl<P: Persistence> testscript::Runner for EngineRunner<P> {
                 let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
                 args.reject_rest()?;
 
-                let mut scan = self.engine.scan_prefix(&prefix);
+                let mut scan = self.persistence.scan_prefix(&prefix);
                 while let Some((key, value)) = scan.next().transpose()? {
                     let fmtkv = format::Raw::key_value(&key, &value);
                     writeln!(output, "{fmtkv}")?;
@@ -103,7 +103,7 @@ impl<P: Persistence> testscript::Runner for EngineRunner<P> {
                 let value = decode_binary(&kv.value);
                 args.reject_rest()?;
 
-                self.engine.set(&key, value)?;
+                self.persistence.set(&key, value)?;
             }
 
             // status

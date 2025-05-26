@@ -9,12 +9,12 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::catalog_init;
 use crate::transaction::mvcc::key::{Key, KeyPrefix};
-use crate::transaction::mvcc::transaction::init;
 use crate::transaction::mvcc::{Status, Transaction, Version};
 use base::encoding::{Key as _, Value};
 use persistence::Persistence;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 /// An MVCC-based transactional key-value engine. It wraps an underlying store
 /// engine that's used for raw key-value store.
@@ -51,14 +51,10 @@ impl<P: Persistence> crate::Transaction<P> for Mvcc<P> {
     }
 }
 
-static CATALOG: OnceLock<()> = OnceLock::new();
-
 impl<P: Persistence> Mvcc<P> {
     /// Creates a new MVCC engine with the given store engine.
     pub fn new(engine: P) -> Self {
-        CATALOG.get_or_init(|| {
-            init();
-        });
+        catalog_init();
         Self { store: Arc::new(Mutex::new(engine)) }
     }
 

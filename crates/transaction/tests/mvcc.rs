@@ -23,19 +23,19 @@ use std::sync::mpsc::Receiver;
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
-use transaction::Tx;
 use transaction::mvcc::format::MVCC;
-use transaction::mvcc::{Mvcc, Transaction, Version, format};
+use transaction::mvcc::{format, Mvcc, Transaction, Version};
+use transaction::{MemStage, Tx};
 
 test_each_path! { in "crates/transaction/tests/mvcc" as memory => test_memory }
 
 fn test_memory(path: &Path) {
-    testscript::run_path(&mut MvccRunner::new(Memory::default()), path).expect("test failed")
+    testscript::run_path(&mut MvccRunner::new(MemStage::new(Memory::default())), path).expect("test failed")
 }
 
 /// Runs MVCC tests.
 pub struct MvccRunner<P: Persistence> {
-    engine: Mvcc<Emit<P>>,
+    mvcc: Mvcc<Emit<P>>,
     txs: HashMap<String, Transaction<Emit<P>>>,
     operations: Receiver<Operation>,
 }
@@ -43,7 +43,7 @@ pub struct MvccRunner<P: Persistence> {
 impl<P: Persistence> MvccRunner<P> {
     fn new(store: P) -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { engine: Mvcc::new(Emit::new(store, tx)), txs: HashMap::new(), operations: rx }
+        Self { mvcc: Mvcc::new(Emit::new(store, tx)), txs: HashMap::new(), operations: rx }
     }
 
     /// Fetches the named transaction from a command prefix.
@@ -90,9 +90,9 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
                 let as_of: Option<Version> = args.lookup_parse("as_of")?;
                 args.reject_rest()?;
                 let tx = match (readonly, as_of) {
-                    (false, None) => self.engine.begin()?,
-                    (true, None) => self.engine.begin_read_only()?,
-                    (true, Some(v)) => self.engine.begin_read_only_as_of(v)?,
+                    (false, None) => self.mvcc.begin()?,
+                    (true, None) => self.mvcc.begin_read_only()?,
+                    (true, Some(v)) => self.mvcc.begin_read_only_as_of(v)?,
                     (false, Some(_)) => return Err("as_of only valid for read-only tx".into()),
                 };
                 self.txs.insert(name.to_string(), tx);
@@ -120,7 +120,7 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
             // dump
             "dump" => {
                 command.consume_args().reject_rest()?;
-                let mut engine = self.engine.store.lock().unwrap();
+                let mut engine = self.mvcc.store.lock().unwrap();
                 let mut scan = engine.scan(..);
                 while let Some((key, value)) = scan.next().transpose()? {
                     let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
@@ -148,7 +148,7 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
                 let mut args = command.consume_args();
                 for arg in args.rest_pos() {
                     let key = decode_binary(&arg.value);
-                    let value = self.engine.get_unversioned(&key)?;
+                    let value = self.mvcc.get_unversioned(&key)?;
                     let fmtkv = format::Raw::key_maybe_value(&key, value.as_deref());
                     writeln!(output, "{fmtkv}")?;
                 }
@@ -160,13 +160,13 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
                 Self::no_tx(command)?;
                 let mut args = command.consume_args();
                 let version = args.next_pos().map(|a| a.parse()).transpose()?;
-                let mut tx = self.engine.begin()?;
+                let mut tx = self.mvcc.begin()?;
                 if let Some(version) = version {
                     if tx.version() > version {
                         return Err(format!("version {version} already used").into());
                     }
                     while tx.version() < version {
-                        tx = self.engine.begin()?;
+                        tx = self.mvcc.begin()?;
                     }
                 }
                 for kv in args.rest_key() {
@@ -246,7 +246,7 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
                     let value = decode_binary(&kv.value);
-                    self.engine.set_unversioned(&key, value)?;
+                    self.mvcc.set_unversioned(&key, value)?;
                 }
                 args.reject_rest()?;
             }
@@ -271,7 +271,7 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
             }
 
             // status
-            "status" => writeln!(output, "{:#?}", self.engine.status()?)?,
+            "status" => writeln!(output, "{:#?}", self.mvcc.status()?)?,
 
             name => return Err(format!("invalid command {name}").into()),
         }

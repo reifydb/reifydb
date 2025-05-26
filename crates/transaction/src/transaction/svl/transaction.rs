@@ -4,7 +4,7 @@
 use crate::catalog::{Catalog, Schema};
 use crate::transaction::svl::SvlInner;
 use crate::transaction::svl::lock::{ReadGuard, WriteGuard};
-use crate::{CatalogRx as _, CatalogTx, InsertResult};
+use crate::{CATALOG, CatalogRx as _, CatalogTx, InsertResult};
 use base::encoding::{Value as OtherValue, bincode};
 use base::{Key, Row, RowIter, key_prefix};
 use persistence::Persistence;
@@ -25,12 +25,13 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
     type Catalog = Catalog;
     type Schema = Schema;
 
-    fn catalog(&self) -> crate::Result<&Self::Catalog> {
-        Ok(&self.engine.catalog)
+    fn catalog(&self) -> crate::Result<&'static Self::Catalog> {
+        // FIXME replace me
+        unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
     fn schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
-        Ok(self.engine.catalog.get(schema).unwrap())
+        Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
     fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>> {
@@ -64,12 +65,13 @@ impl<P: Persistence> crate::Rx for TransactionMut<P> {
     type Catalog = Catalog;
     type Schema = Schema;
 
-    fn catalog(&self) -> crate::Result<&Self::Catalog> {
-        Ok(&self.svl.catalog)
+    fn catalog(&self) -> crate::Result<&'static Self::Catalog> {
+        // FIXME replace me
+        unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
     fn schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
-        Ok(self.svl.catalog.get(schema).unwrap())
+        Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
     fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>> {
@@ -93,13 +95,12 @@ impl<P: Persistence> crate::Tx for TransactionMut<P> {
     type SchemaMut = Schema;
 
     fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut> {
-        Ok(&mut self.svl.catalog)
+        // FIXME replace this
+        unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
     fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaMut> {
-        // fixme has schema?!
-        // Ok()
-        let schema = self.svl.catalog.get_mut(schema).unwrap();
+        let schema = self.catalog_mut().unwrap().get_mut(schema).unwrap();
 
         Ok(schema)
     }

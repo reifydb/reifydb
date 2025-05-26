@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::catalog::Catalog;
+use crate::{catalog_init, CATALOG};
 use crate::transaction::svl::lock::RwLock;
 use crate::transaction::svl::transaction::{Transaction, TransactionMut};
 pub use error::Error;
@@ -16,12 +16,12 @@ pub struct Svl<P: ::persistence::Persistence> {
 
 pub struct SvlInner<P: ::persistence::Persistence> {
     pub persistence: P,
-    pub catalog: Catalog,
 }
 
 impl<P: ::persistence::Persistence> Svl<P> {
     pub fn new(persistence: P) -> Self {
-        Self { inner: RwLock::new(SvlInner { persistence, catalog: Catalog::new() }) }
+        catalog_init();
+        Self { inner: RwLock::new(SvlInner { persistence }) }
     }
 }
 
