@@ -33,7 +33,7 @@ impl<S: store::Store> crate::Rx for Transaction<S> {
         Ok(self.engine.catalog.get(schema).unwrap())
     }
 
-    fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>> {
+    fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>> {
         unreachable!()
     }
 
@@ -72,7 +72,7 @@ impl<S: store::Store> crate::Rx for TransactionMut<S> {
         Ok(self.engine.catalog.get(schema).unwrap())
     }
 
-    fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>> {
+    fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>> {
         todo!()
     }
 
@@ -104,9 +104,8 @@ impl<S: store::Store> crate::Tx for TransactionMut<S> {
         Ok(schema)
     }
 
-    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<InsertResult> {
+    fn insert(&mut self, store: &str, rows: Vec<Row>) -> crate::Result<InsertResult> {
         let inserted = rows.len();
-        let store = store.as_ref();
         self.log.borrow_mut().insert(store.to_string(), rows);
         Ok(InsertResult { inserted })
     }

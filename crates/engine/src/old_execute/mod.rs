@@ -130,7 +130,7 @@ pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<Execution
             ExecutionResult::CreateTable { schema, table: name }
         }
         Plan::InsertIntoTableValues { schema, store: name, columns, rows_to_insert } => {
-            let mut values = Vec::with_capacity(rows_to_insert.len());
+            let mut rows = Vec::with_capacity(rows_to_insert.len());
 
             for row in rows_to_insert {
                 let mut row_values = Vec::with_capacity(row.len());
@@ -140,10 +140,10 @@ pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<Execution
                         _ => unimplemented!(),
                     }
                 }
-                values.push(row_values);
+                rows.push(row_values);
             }
 
-            let result = tx.insert(name.deref(), values).unwrap();
+            let result = tx.insert(name.deref(), rows).unwrap();
 
             ExecutionResult::InsertIntoTable { schema, table: name, inserted: result.inserted }
         }

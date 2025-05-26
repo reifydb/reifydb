@@ -21,8 +21,7 @@ impl Schema {
 
 impl crate::SchemaRx for Schema {
     type StoreRx = Store;
-    fn get(&self, name: impl AsRef<str>) -> crate::Result<&Store> {
-        let name = name.as_ref();
+    fn get(&self, name: &str) -> crate::Result<&Store> {
         Ok(self.stores.get(name).unwrap())
     }
 
@@ -71,7 +70,7 @@ impl crate::SchemaTx for Schema {
         todo!()
     }
 
-    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()> {
+    fn drop(&mut self, name: &str) -> crate::Result<()> {
         todo!()
     }
 }

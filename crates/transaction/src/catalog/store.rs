@@ -12,11 +12,11 @@ pub struct Column {
 }
 
 pub trait StoreRx {
-    fn get_column(&self, column: impl AsRef<str>) -> crate::Result<Column>;
+    fn get_column(&self, column: &str) -> crate::Result<Column>;
 
     fn list_columns(&self) -> crate::Result<Vec<Column>>;
 
-    fn get_column_index(&self, column: impl AsRef<str>) -> crate::Result<usize>;
+    fn get_column_index(&self, column: &str) -> crate::Result<usize>;
 }
 
 pub trait StoreTx: StoreRx {}
@@ -24,7 +24,7 @@ pub trait StoreTx: StoreRx {}
 pub struct NopStore {}
 
 impl StoreRx for NopStore {
-    fn get_column(&self, _column: impl AsRef<str>) -> crate::Result<Column> {
+    fn get_column(&self, _column: &str) -> crate::Result<Column> {
         unreachable!()
     }
 
@@ -32,7 +32,7 @@ impl StoreRx for NopStore {
         unreachable!()
     }
 
-    fn get_column_index(&self, _column: impl AsRef<str>) -> crate::Result<usize> {
+    fn get_column_index(&self, _column: &str) -> crate::Result<usize> {
         unreachable!()
     }
 }

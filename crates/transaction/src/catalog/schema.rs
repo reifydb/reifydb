@@ -11,10 +11,10 @@ use base::expression::Expression;
 pub trait SchemaRx {
     type StoreRx: StoreRx;
     // returns most recent version
-    fn get(&self, store: impl AsRef<str>) -> crate::Result<&Self::StoreRx>;
+    fn get(&self, store: &str) -> crate::Result<&Self::StoreRx>;
 
     // returns the store as of the specified version
-    // fn get_as_of(&self, name: impl AsRef<str>, version) -> Result<Option<Store>>;
+    // fn get_as_of(&self, name: &str, version) -> Result<Option<Store>>;
 
     fn list(&self) -> crate::Result<Vec<&Self::StoreRx>>;
 }
@@ -38,5 +38,5 @@ pub trait SchemaTx: SchemaRx {
 
     fn create_if_not_exists(&mut self, store: StoreToCreate) -> crate::Result<()>;
 
-    fn drop(&mut self, name: impl AsRef<str>) -> crate::Result<()>;
+    fn drop(&mut self, name: &str) -> crate::Result<()>;
 }

@@ -30,7 +30,7 @@ pub trait Rx {
 	fn schema(&self, schema: &str) -> crate::Result<&Self::Schema>;
 
 	/// Fetches store rows by primary key, if they exist.
-	fn get(&self, store: impl AsRef<str>, ids: &[Key]) -> crate::Result<Vec<Row>>;
+	fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>>;
 
 	/// Scans all store's rows
 	fn scan(&self, store: &str) -> crate::Result<RowIter>;
@@ -50,7 +50,7 @@ pub trait Tx: Rx {
 
 	fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaMut>;
 
-	fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<InsertResult>;
+	fn insert(&mut self, store: &str, rows: Vec<Row>) -> crate::Result<InsertResult>;
 
 	/// Commits the transaction.
 	fn commit(self) -> crate::Result<()>;

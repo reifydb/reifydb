@@ -23,8 +23,9 @@ use store::{Memory, Store};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
-use transaction::mvcc::{format, Mvcc, Transaction, Version};
+use transaction::Tx;
 use transaction::mvcc::format::MVCC;
+use transaction::mvcc::{Mvcc, Transaction, Version, format};
 
 test_each_path! { in "crates/transaction/tests/mvcc" as memory => test_memory }
 

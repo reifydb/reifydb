@@ -41,7 +41,7 @@ impl<S: Store> crate::Rx for Transaction<S> {
         Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
-    fn get(&self, store: impl AsRef<str>, ids: &[base::Key]) -> crate::Result<Vec<Row>> {
+    fn get(&self, store: &str, ids: &[base::Key]) -> crate::Result<Vec<Row>> {
         todo!()
     }
 
@@ -91,9 +91,7 @@ impl<S: Store> crate::Tx for Transaction<S> {
         Ok(schema)
     }
 
-    fn insert(&mut self, store: impl AsRef<str>, rows: Vec<Row>) -> crate::Result<InsertResult> {
-        let store = store.as_ref();
-
+    fn insert(&mut self, store: &str, rows: Vec<Row>) -> crate::Result<InsertResult> {
         let last_id =
             self.engine.lock().unwrap().scan_prefix(&key_prefix!("{}::row::", store)).count();
 
@@ -138,8 +136,37 @@ impl<S: Store> crate::Tx for Transaction<S> {
         Ok(())
     }
 
+    /// Rolls back the transaction, by undoing all written versions and removing
+    /// it from the active set. The active set snapshot is left behind, since
+    /// this is needed for time travel queries at this version.
     fn rollback(self) -> crate::Result<()> {
-        todo!()
+        if self.state.read_only {
+            return Ok(());
+        }
+        // FIXME
+        // let mut engine = self.engine.lock()?;
+        let mut engine = self.engine.lock().unwrap();
+        let mut rollback = Vec::new();
+        let mut scan = engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode());
+        while let Some((key, _)) = scan.next().transpose()? {
+            match Key::decode(&key).unwrap() {
+                Key::TxWrite(_, key) => {
+                    rollback.push(Key::Version(key, self.state.version).encode())
+                    // the version
+                }
+                // key => return errdata!("expected TxWrite, got {key:?}"),
+                key => return Err(Error::unexpected_key("TxWrite", key).into()),
+            };
+            rollback.push(key); // the TxWrite record
+        }
+        drop(scan);
+        for key in rollback.into_iter() {
+            engine.remove(&key)?;
+        }
+        // FIXME
+        // engine.remove(&Key::TxActive(self.state.version).encode()) // remove from active set
+        engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
+        Ok(())
     }
 }
 
@@ -211,7 +238,9 @@ impl<S: Store> Transaction<S> {
     }
 
     /// Fetches the set of currently active transactions.
-    fn scan_active(session: &mut MutexGuard<S>) -> crate::transaction::mvcc::Result<BTreeSet<Version>> {
+    fn scan_active(
+        session: &mut MutexGuard<S>,
+    ) -> crate::transaction::mvcc::Result<BTreeSet<Version>> {
         let mut active = BTreeSet::new();
         let mut scan = session.scan_prefix(&KeyPrefix::TxActive.encode());
         while let Some((key, _)) = scan.next().transpose()? {
@@ -239,68 +268,6 @@ impl<S: Store> Transaction<S> {
         &self.state
     }
 
-    /// Commits the transaction, by removing it from the active set. This will
-    /// immediately make its writes visible to subsequent transactions. Also
-    /// removes its TxWrite records, which are no longer needed.
-    ///
-    /// NB: commit does not flush writes to durable store, since we rely on
-    /// the Raft log for persistence.
-    pub fn commit(self) -> crate::transaction::mvcc::Result<()> {
-        if self.state.read_only {
-            return Ok(());
-        }
-        // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
-
-        let mut remove = Vec::new();
-        for result in engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode()) {
-            let (k, _) = result?;
-            remove.push(k);
-        }
-        for key in remove {
-            engine.remove(&key)?;
-        }
-
-        // FIXME
-        // engine.remove(&Key::TxActive(self.state.version).encode())
-        engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
-        Ok(())
-    }
-
-    /// Rolls back the transaction, by undoing all written versions and removing
-    /// it from the active set. The active set snapshot is left behind, since
-    /// this is needed for time travel queries at this version.
-    pub fn rollback(self) -> crate::transaction::mvcc::Result<()> {
-        if self.state.read_only {
-            return Ok(());
-        }
-        // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
-        let mut rollback = Vec::new();
-        let mut scan = engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode());
-        while let Some((key, _)) = scan.next().transpose()? {
-            match Key::decode(&key)? {
-                Key::TxWrite(_, key) => {
-                    rollback.push(Key::Version(key, self.state.version).encode())
-                    // the version
-                }
-                // key => return errdata!("expected TxWrite, got {key:?}"),
-                key => return Err(Error::unexpected_key("TxWrite", key)),
-            };
-            rollback.push(key); // the TxWrite record
-        }
-        drop(scan);
-        for key in rollback.into_iter() {
-            engine.remove(&key)?;
-        }
-        // FIXME
-        // engine.remove(&Key::TxActive(self.state.version).encode()) // remove from active set
-        engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
-        Ok(())
-    }
-
     /// Removes a key.
     pub fn remove(&self, key: &[u8]) -> crate::transaction::mvcc::Result<()> {
         self.write_version(key, None)
@@ -315,7 +282,11 @@ impl<S: Store> Transaction<S> {
     /// a deletion tombstone. If a write conflict is found (either a newer or
     /// uncommitted version), a serialization error is returned.  Replacing our
     /// own uncommitted write is fine.
-    fn write_version(&self, key: &[u8], value: Option<Vec<u8>>) -> crate::transaction::mvcc::Result<()> {
+    fn write_version(
+        &self,
+        key: &[u8],
+        value: Option<Vec<u8>>,
+    ) -> crate::transaction::mvcc::Result<()> {
         if self.state.read_only {
             return Err(Error::ReadOnly);
         }

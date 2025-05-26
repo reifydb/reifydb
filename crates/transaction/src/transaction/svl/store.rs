@@ -16,8 +16,8 @@ pub struct Store {
 }
 
 impl crate::StoreRx for Store {
-    fn get_column(&self, column: impl AsRef<str>) -> crate::Result<Column> {
-        let column_name = column.as_ref();
+    fn get_column(&self, column: &str) -> crate::Result<Column> {
+        let column_name = column;
         for (idx, column) in self.columns.iter().enumerate() {
             if &column.name == column_name {
                 return Ok(column.clone());
@@ -31,8 +31,8 @@ impl crate::StoreRx for Store {
         Ok(self.columns.clone())
     }
 
-    fn get_column_index(&self, column: impl AsRef<str>) -> crate::Result<usize> {
-        let column_name = column.as_ref();
+    fn get_column_index(&self, column: &str) -> crate::Result<usize> {
+        let column_name = column;
         for (idx, column) in self.columns.iter().enumerate() {
             if &column.name == column_name {
                 return Ok(idx);
