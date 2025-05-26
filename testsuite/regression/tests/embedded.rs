@@ -40,7 +40,7 @@ for Runner<S, T>
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.tx_execute(&self.root, query.as_str()).await {
+                    for line in engine.tx_as(&self.root, query.as_str()).await {
                         writeln!(output, "{}", line);
                     }
                 });
@@ -53,7 +53,7 @@ for Runner<S, T>
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.rx_execute(&self.root, query.as_str()).await {
+                    for line in engine.rx_as(&self.root, query.as_str()).await {
                         writeln!(output, "{}", line);
                     }
                 });

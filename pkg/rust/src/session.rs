@@ -12,13 +12,13 @@
 //
 // impl<'a, T: DB<'a>> SessionRx<'a, T> {
 //     /// runs tx
-//     pub fn tx_execute(&self, rql: &str) -> Vec<ExecutionResult> {
+//     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
 //         todo!()
 //     }
 //
 //     /// runs rx
 //     pub fn execute(&self, rql: &str) -> Vec<ExecutionResult> {
-//         // self.db.rx_execute(&self.principal, rql)
+//         // self.db.rx(&self.principal, rql)
 //         todo!()
 //     }
 // }
@@ -42,13 +42,13 @@
 // impl<'a, T: DB<'a>> SessionTx<'a, T> {
 //     /// runs tx
 //     pub fn execute(&self, rql: &str) -> Vec<ExecutionResult> {
-//         // self.db.tx_execute(&self.principal, rql)
+//         // self.db.tx(&self.principal, rql)
 //         todo!()
 //     }
 //
 //     /// runs rx
-//     pub fn rx_execute(&self, rql: &str) -> Vec<ExecutionResult> {
-//         // self.db.rx_execute(&self.principal, rql)
+//     pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
+//         // self.db.rx(&self.principal, rql)
 //         todo!()
 //     }
 // }

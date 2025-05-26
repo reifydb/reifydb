@@ -32,7 +32,7 @@ impl<S: StorageEngine, T: TransactionEngine<S>> Embedded<S, T> {
 }
 
 impl<'a, S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> DB<'a> for Embedded<S, T> {
-    async fn tx_execute(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+    async fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();
         let engine = self.engine.clone();
@@ -45,7 +45,7 @@ impl<'a, S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> DB<'a> f
         .unwrap()
     }
 
-    async fn rx_execute(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+    async fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();
         let engine = self.engine.clone();

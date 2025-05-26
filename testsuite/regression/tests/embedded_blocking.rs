@@ -36,7 +36,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
 
                 println!("tx: {query}");
 
-                for line in self.engine.tx_execute(&self.root, query.as_str()) {
+                for line in self.engine.tx_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line);
                 }
             }
@@ -46,7 +46,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
 
                 println!("rx: {query}");
 
-                for line in self.engine.rx_execute(&self.root, query.as_str()) {
+                for line in self.engine.rx_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line);
                 }
             }

@@ -36,7 +36,7 @@ impl PyEmbedded {
     pub fn tx(&self, py: Python<'_>, rql: &str) -> PyResult<PyObject> {
         let result = self
             .embedded
-            .tx_execute(&self.root, &rql)
+            .tx(&self.root, &rql)
             .into_iter()
             .map(|r| match r {
                 ExecutionResult::CreateSchema { schema } => json!({

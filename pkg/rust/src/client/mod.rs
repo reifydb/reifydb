@@ -81,7 +81,7 @@ pub async fn parse_rx_query_result(
 }
 
 impl Client {
-    pub async fn rx_execute(&self, query: &str) -> Vec<ExecutionResult> {
+    pub async fn rx(&self, query: &str) -> Vec<ExecutionResult> {
         // FIXME this is quite expensive and should only used in tests
         // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
 
@@ -100,7 +100,7 @@ impl Client {
         vec![result]
     }
 
-    pub async fn tx_execute(&self, query: &str) -> Vec<ExecutionResult> {
+    pub async fn tx(&self, query: &str) -> Vec<ExecutionResult> {
         // FIXME this is quite expensive and should only used in tests
         // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
         wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await;

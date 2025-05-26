@@ -30,12 +30,12 @@ impl<S: StorageEngine, T: TransactionEngine<S>> Embedded<S, T> {
 }
 
 impl<'a, S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> Embedded<S, T> {
-    pub fn tx_execute(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+    pub fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let result = self.engine.tx_as(principal, rql).unwrap();
         result
     }
 
-    pub fn rx_execute(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+    pub fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let result = self.engine.rx_as(&principal, &rql).unwrap();
         result
     }

@@ -52,7 +52,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.tx_execute(&query).await {
+                    for line in self.client.tx(&query).await {
                         writeln!(output, "{}", line).unwrap();
                     }
                 });
@@ -67,7 +67,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.rx_execute(&query).await {
+                    for line in self.client.rx(&query).await {
                         writeln!(output, "{}", line).unwrap();
                     }
                 });

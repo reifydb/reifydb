@@ -71,14 +71,14 @@ pub struct ReifyDB {}
 
 pub trait DB<'a>: Sized {
     /// runs tx
-    fn tx_execute(
+    fn tx_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Vec<ExecutionResult>> + Send;
 
     /// runs rx
-    fn rx_execute(
+    fn rx_as(
         &self,
         principal: &Principal,
         rql: &str,
