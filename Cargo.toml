@@ -73,6 +73,7 @@ transaction = { path = "crates/transaction", version = "0.0.1" }
 bincode = { version = "2.0.1", features = ["serde"] }
 dyn-clone = { version = "1.0.19" }
 goldenfile = { version = "1.8.0" }
+heed = { version = "0.22.0", features = ["preserve_order"] }
 hex = { version = "0.4.3" }
 log = { version = "0.4.27" }
 nom = { version = "8.0.0" }

@@ -4,12 +4,12 @@
 mod scan;
 
 pub use crate::buffer::scan::BufferScanIter;
-use crate::{Key, Persistence, Value};
+use crate::{BeginBatch, Key, Persistence, PersistenceBatch, Value};
 use std::collections::BTreeMap;
 use std::ops::RangeBounds;
 
 #[derive(Default)]
-pub struct Buffer<P: Persistence> {
+pub struct Buffer<P: Persistence + BeginBatch> {
     // data read from underlying persistence
     cache: BTreeMap<Key, Value>,
 
@@ -21,14 +21,14 @@ pub struct Buffer<P: Persistence> {
     underlying: P,
 }
 
-impl<P: Persistence> Buffer<P> {
+impl<P: Persistence + BeginBatch> Buffer<P> {
     pub fn new(underlying: P) -> Self {
         // Self { cache: RefCell::new(BTreeMap::new()), staging: BTreeMap::new(), underlying }
         Self { cache: BTreeMap::new(), staging: BTreeMap::new(), underlying }
     }
 }
 
-impl<P: Persistence> Persistence for Buffer<P> {
+impl<P: Persistence + BeginBatch> Persistence for Buffer<P> {
     type ScanIter<'a>
         = BufferScanIter<'a, P>
     where
@@ -67,6 +67,38 @@ impl<P: Persistence> Persistence for Buffer<P> {
     }
 
     fn sync(&mut self) -> crate::Result<()> {
+        let staging = std::mem::take(&mut self.staging);
+
+        let mut batch = self.underlying.begin_batch().unwrap();
+        for (k, v) in staging {
+            if let Some(v) = v { batch.set(&k, v).unwrap() } else { batch.remove(&k).unwrap() }
+        }
+
+        batch.complete().unwrap();
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::lmdb::Lmdb;
+    use crate::{Buffer, Persistence};
+    use std::path::Path;
+
+    #[test]
+    fn test() {
+        let path = Path::new("/tmp/test");
+
+        let lmdb = Lmdb::new(path).unwrap();
+
+        let mut buffer =
+            Buffer { cache: Default::default(), staging: Default::default(), underlying: lmdb };
+
+        buffer.set(&b"alpha".to_vec(), b"one".to_vec()).unwrap();
+        buffer.set(&b"beta".to_vec(), b"two".to_vec()).unwrap();
+        buffer.set(&b"gamma".to_vec(), b"three".to_vec()).unwrap();
+
+        buffer.sync().unwrap();
     }
 }

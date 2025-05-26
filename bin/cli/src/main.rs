@@ -6,10 +6,11 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{DB, ReifyDB, memory, svl};
+use reifydb::{DB, ReifyDB, lmdb, svl};
+use std::path::Path;
 
 fn main() {
-    let (db, root) = ReifyDB::embedded_blocking_with(svl(memory()));
+    let (db, root) = ReifyDB::embedded_blocking_with(svl(lmdb(&Path::new("/tmp/db"))));
     db.tx_as(&root, r#"create schema test"#);
     db.tx_as(&root, r#"create series test.test(timestamp: int2, value: int2)"#);
     db.tx_as(

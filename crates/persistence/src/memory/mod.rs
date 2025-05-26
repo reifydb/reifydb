@@ -1,15 +1,46 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Result;
-use crate::{Key, Persistence, Value};
-use std::collections::BTreeMap;
+use crate::{BeginBatch, Key, Persistence, Value};
+use crate::{PersistenceBatch, Result};
 use std::collections::btree_map::Range;
+use std::collections::BTreeMap;
 use std::ops::RangeBounds;
 
 /// An in-memory key-value store engine
 #[derive(Default)]
 pub struct Memory(BTreeMap<Key, Value>);
+
+impl BeginBatch for Memory {
+    type Batch<'a>
+        = MemoryBatch
+    where
+        Self: 'a;
+
+    fn begin_batch(&self) -> Result<Self::Batch<'_>> {
+        Ok(MemoryBatch{})
+    }
+}
+
+pub struct MemoryBatch {}
+
+impl PersistenceBatch for MemoryBatch {
+    fn set(&mut self, key: &Key, value: Value) -> Result<()> {
+        todo!()
+    }
+
+    fn remove(&mut self, key: &Key) -> Result<()> {
+        todo!()
+    }
+
+    fn complete(self) -> Result<()> {
+        todo!()
+    }
+
+    fn abort(self) -> Result<()> {
+        todo!()
+    }
+}
 
 impl Persistence for Memory {
     type ScanIter<'a> = MemoryScanIter<'a>;
@@ -34,6 +65,24 @@ impl Persistence for Memory {
 
     fn sync(&mut self) -> Result<()> {
         Ok(())
+    }
+}
+
+impl PersistenceBatch for Memory {
+    fn set(&mut self, key: &Key, value: Value) -> Result<()> {
+        todo!()
+    }
+
+    fn remove(&mut self, key: &Key) -> Result<()> {
+        todo!()
+    }
+
+    fn complete(self) -> Result<()> {
+        todo!()
+    }
+
+    fn abort(self) -> Result<()> {
+        todo!()
     }
 }
 

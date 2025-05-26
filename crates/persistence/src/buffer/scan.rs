@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Buffer, Key, Persistence, Value};
+use crate::{BeginBatch, Buffer, Key, Persistence, Value};
 use std::collections::btree_map::Range;
 use std::ops::RangeBounds;
 
@@ -17,7 +17,7 @@ where
     next_underlying: Option<crate::Result<(Key, Value)>>,
 }
 
-impl<'a, P: Persistence> BufferScanIter<'a, P> {
+impl<'a, P: Persistence + BeginBatch> BufferScanIter<'a, P> {
     pub fn new<R>(buffer: &'a Buffer<P>, range: R) -> Self
     where
         R: RangeBounds<Key> + Clone,

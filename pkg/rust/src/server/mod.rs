@@ -2,15 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::server::grpc::db_service;
-// use crate::{IntoSessionRx, IntoSessionTx};
 use auth::Principal;
 pub use config::{DatabaseConfig, ServerConfig};
 use engine::Engine;
 use engine::old_execute::ExecutionResult;
+use persistence::Persistence;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
-use persistence::Persistence;
 use tokio::runtime::Runtime;
 use tonic::service::InterceptorLayer;
 use tonic::transport::Error;

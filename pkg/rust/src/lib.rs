@@ -32,6 +32,7 @@ use engine::old_execute::ExecutionResult;
 pub use error::Error;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use rql;
+use std::path::Path;
 
 #[cfg(any(feature = "server", feature = "client"))]
 pub use tokio::*;
@@ -47,7 +48,7 @@ use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
 
-use persistence::{Memory, Persistence};
+use persistence::{Lmdb, Memory, Persistence};
 use transaction::Transaction;
 
 #[cfg(feature = "client")]
@@ -149,4 +150,8 @@ pub fn mvcc<P: Persistence>(persistence: P) -> ::transaction::mvcc::Mvcc<P> {
 
 pub fn memory() -> Memory {
     Memory::default()
+}
+
+pub fn lmdb(path: &Path) -> Lmdb {
+    Lmdb::new(path).unwrap()
 }
