@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc;
+use crate::transaction::mvcc;
 pub use base::encoding::format::{Formatter, Raw};
 use base::encoding::{Key, bincode};
 use std::collections::BTreeSet;

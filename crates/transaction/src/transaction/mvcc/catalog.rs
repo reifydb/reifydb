@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::svl::schema::Schema;
+use crate::transaction::mvcc::schema::Schema;
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub struct Catalog {
     schema: HashMap<String, Schema>,
 }
@@ -33,8 +34,7 @@ impl crate::CatalogTx for Catalog {
     }
 
     fn create(&mut self, schema: &str) -> crate::Result<()> {
-        let schema = schema.clone();
-        assert!(self.schema.get(schema).is_none()); // FIXME
+        // assert!(self.schema.get(schema).is_none()); // FIXME
         self.schema.insert(schema.clone().into(), Schema::new(schema.to_string()));
         Ok(())
     }

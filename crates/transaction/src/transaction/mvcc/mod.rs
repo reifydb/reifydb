@@ -143,13 +143,13 @@
 //! GARBAGE COLLECTION // FIXME add to mempool
 //! ==================
 
-pub use engine::Engine;
+pub use mvcc::Mvcc;
 pub use error::Error;
 pub use key::{Key, KeyPrefix};
 pub use version::Version;
 
 mod catalog;
-mod engine;
+mod mvcc;
 mod error;
 pub mod format;
 mod key;

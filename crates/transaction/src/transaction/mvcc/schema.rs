@@ -3,10 +3,11 @@
 
 use crate::StoreToCreate;
 use crate::catalog::Column;
-use crate::svl::store::Store;
+use crate::transaction::mvcc::store::Store;
 use std::collections::HashMap;
 use std::ops::Deref;
 
+#[derive(Debug)]
 pub struct Schema {
     name: String,
     stores: HashMap<String, Store>,

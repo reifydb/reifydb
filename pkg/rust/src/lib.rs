@@ -50,7 +50,7 @@ use crate::embedded::Embedded;
 use crate::server::Server;
 
 use store::{Memory, Store};
-use transaction::{Transaction, mvcc, svl};
+use transaction::Transaction;
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -91,18 +91,18 @@ pub trait DB<'a>: Sized {
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> (Embedded<Memory, mvcc::Engine<Memory>>, Principal) {
+    pub fn embedded() -> (Embedded<Memory, ::transaction::mvcc::Mvcc<Memory>>, Principal) {
         Embedded::new(mvcc(memory()))
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking()
-    -> (embedded_blocking::Embedded<Memory, mvcc::Engine<Memory>>, Principal) {
+    -> (embedded_blocking::Embedded<Memory, ::transaction::mvcc::Mvcc<Memory>>, Principal) {
         embedded_blocking::Embedded::new(mvcc(memory()))
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded() -> (embedded_blocking::Embedded<Memory, mvcc::Engine<Memory>>, Principal) {
+    pub fn embedded() -> (embedded_blocking::Embedded<Memory, ::Engine<Memory>>, Principal) {
         Self::embedded_blocking()
     }
 
@@ -128,7 +128,7 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "server")]
-    pub fn server() -> Server<Memory, mvcc::Engine<Memory>> {
+    pub fn server() -> Server<Memory, ::transaction::mvcc::Mvcc<Memory>> {
         Server::new(mvcc(memory()))
     }
 
@@ -140,12 +140,12 @@ impl ReifyDB {
     }
 }
 
-pub fn svl<S: Store>(store: S) -> svl::Engine<S> {
-    svl::Engine::new(store)
+pub fn svl<S: Store>(store: S) -> ::transaction::svl::Svl<S> {
+    ::transaction::svl::Svl::new(store)
 }
 
-pub fn mvcc<S: Store>(store: S) -> mvcc::Engine<S> {
-    mvcc::Engine::new(store)
+pub fn mvcc<S: Store>(store: S) -> ::transaction::mvcc::Mvcc<S> {
+    ::transaction::mvcc::Mvcc::new(store)
 }
 
 pub fn memory() -> Memory {

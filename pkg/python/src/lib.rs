@@ -11,17 +11,16 @@ extern crate serde_json;
 
 use rdb::embedded_blocking::Embedded;
 use rdb::store::Memory;
-use rdb::transaction::mvcc;
 use rdb::{Principal, ReifyDB};
 
 use pyo3::prelude::*;
 use pythonize::pythonize;
 use rdb::engine::execute::ExecutionResult;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[pyclass(name = "Embedded")]
 pub struct PyEmbedded {
-    embedded: Embedded<Memory, mvcc::Engine<Memory>>,
+    embedded: Embedded<Memory, ::Engine<Memory>>,
     root: Principal,
 }
 

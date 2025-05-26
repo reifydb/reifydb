@@ -10,15 +10,11 @@ pub use catalog::{
     CatalogRx, CatalogTx, ColumnToCreate, NopStore, SchemaRx, SchemaTx, StoreRx, StoreToCreate,
     StoreTx,
 };
-pub use engine::Transaction;
 pub use error::Error;
-pub use transaction::{InsertResult, Rx, Tx};
+pub use transaction::{InsertResult, Rx, Transaction, Tx, mvcc, svl};
 
 mod catalog;
-mod engine;
 mod error;
-pub mod mvcc;
-pub mod svl;
 mod transaction;
 
 pub type Result<T> = std::result::Result<T, Error>;

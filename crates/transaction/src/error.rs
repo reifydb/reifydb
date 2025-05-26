@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{mvcc, svl};
 use std::fmt::{Display, Formatter};
+use crate::transaction::{mvcc, svl};
 
 /// Represents all possible errors related to transactions, the mempool, or store.
 ///

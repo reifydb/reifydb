@@ -9,9 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::key::{Key, KeyPrefix};
-use crate::mvcc::transaction::init;
-use crate::mvcc::{Status, Transaction, Version};
+use crate::transaction::mvcc::key::{Key, KeyPrefix};
+use crate::transaction::mvcc::transaction::init;
+use crate::transaction::mvcc::{Status, Transaction, Version};
 use base::encoding::{Key as _, Value};
 use std::sync::{Arc, Mutex, OnceLock};
 use store::Store;
@@ -23,7 +23,7 @@ use store::Store;
 /// write operations are executed sequentially, serialized via a mutex. There
 /// are two reasons for this: the store engine itself is not thread-safe,
 /// requiring serialized access.
-pub struct Engine<S: Store> {
+pub struct Mvcc<S: Store> {
     // FIXME add concurrent safe MemPool module between Store and transaction
     // idea - batch data and perform bulk insertions / update to underlying store implementation
     // introduce ConfirmationLevel similar to Solana
@@ -33,7 +33,7 @@ pub struct Engine<S: Store> {
     pub store: Arc<Mutex<S>>,
 }
 
-impl<S: Store> crate::Transaction<S> for Engine<S> {
+impl<S: Store> crate::Transaction<S> for Mvcc<S> {
     type Rx = Transaction<S>;
     type Tx = Transaction<S>;
 
@@ -53,7 +53,7 @@ impl<S: Store> crate::Transaction<S> for Engine<S> {
 
 static CATALOG: OnceLock<()> = OnceLock::new();
 
-impl<S: Store> Engine<S> {
+impl<S: Store> Mvcc<S> {
     /// Creates a new MVCC engine with the given store engine.
     pub fn new(engine: S) -> Self {
         CATALOG.get_or_init(|| {
@@ -63,36 +63,43 @@ impl<S: Store> Engine<S> {
     }
 
     /// Begins a new read-write transaction.
-    pub fn begin(&self) -> crate::mvcc::Result<Transaction<S>> {
+    pub fn begin(&self) -> crate::transaction::mvcc::Result<Transaction<S>> {
         Transaction::begin(self.store.clone())
     }
 
     /// Begins a new read-only transaction at the latest version.
-    pub fn begin_read_only(&self) -> crate::mvcc::Result<Transaction<S>> {
+    pub fn begin_read_only(&self) -> crate::transaction::mvcc::Result<Transaction<S>> {
         Transaction::begin_read_only(self.store.clone(), None)
     }
 
     /// Begins a new read-only transaction as of the given version.
-    pub fn begin_read_only_as_of(&self, version: Version) -> crate::mvcc::Result<Transaction<S>> {
+    pub fn begin_read_only_as_of(
+        &self,
+        version: Version,
+    ) -> crate::transaction::mvcc::Result<Transaction<S>> {
         Transaction::begin_read_only(self.store.clone(), Some(version))
     }
 
     /// Fetches the value of an unversioned key.
-    pub fn get_unversioned(&self, key: &[u8]) -> crate::mvcc::Result<Option<Vec<u8>>> {
+    pub fn get_unversioned(&self, key: &[u8]) -> crate::transaction::mvcc::Result<Option<Vec<u8>>> {
         // self.engine.lock()?.get(&Key::Unversioned(key.into()).encode())
         // FIXME
         Ok(self.store.lock().unwrap().get(&Key::Unversioned(key.into()).encode()).unwrap())
     }
 
     /// Sets the value of an unversioned key.
-    pub fn set_unversioned(&self, key: &[u8], value: Vec<u8>) -> crate::mvcc::Result<()> {
+    pub fn set_unversioned(
+        &self,
+        key: &[u8],
+        value: Vec<u8>,
+    ) -> crate::transaction::mvcc::Result<()> {
         // self.engine.lock()?.set(&Key::Unversioned(key.into()).encode(), value)
         // FIXME
         Ok(self.store.lock().unwrap().set(&Key::Unversioned(key.into()).encode(), value).unwrap())
     }
 
     /// Returns the status of the MVCC and store engines.
-    pub fn status(&self) -> crate::mvcc::Result<Status> {
+    pub fn status(&self) -> crate::transaction::mvcc::Result<Status> {
         // FIXME
         // let mut engine = self.engine.lock()?;
         let mut engine = self.store.lock().unwrap();

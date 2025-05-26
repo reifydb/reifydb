@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::svl::catalog::Catalog;
-use crate::svl::lock::RwLock;
-use crate::svl::transaction::{Transaction, TransactionMut};
+use crate::transaction::svl::catalog::Catalog;
+use crate::transaction::svl::lock::RwLock;
+use crate::transaction::svl::transaction::{Transaction, TransactionMut};
 pub use error::Error;
 
 mod catalog;
@@ -13,7 +13,7 @@ mod schema;
 mod store;
 mod transaction;
 
-pub struct Engine<S: ::store::Store> {
+pub struct Svl<S: ::store::Store> {
     inner: RwLock<EngineInner<S>>,
 }
 
@@ -22,13 +22,13 @@ pub struct EngineInner<S: ::store::Store> {
     pub catalog: Catalog,
 }
 
-impl<S: ::store::Store> Engine<S> {
+impl<S: ::store::Store> Svl<S> {
     pub fn new(store: S) -> Self {
         Self { inner: RwLock::new(EngineInner { store, catalog: Catalog::new() }) }
     }
 }
 
-impl<S: ::store::Store> crate::Transaction<S> for Engine<S> {
+impl<S: ::store::Store> crate::Transaction<S> for Svl<S> {
     type Rx = Transaction<S>;
     type Tx = TransactionMut<S>;
 

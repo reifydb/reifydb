@@ -11,7 +11,6 @@
 
 use base::encoding::binary::decode_binary;
 use base::encoding::format::Formatter;
-use format::MVCC;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
@@ -24,7 +23,8 @@ use store::{Memory, Store};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
-use transaction::mvcc::{Engine, Key, KeyPrefix, Transaction, TransactionState, Version, format};
+use transaction::mvcc::{format, Mvcc, Transaction, Version};
+use transaction::mvcc::format::MVCC;
 
 test_each_path! { in "crates/transaction/tests/mvcc" as memory => test_memory }
 
@@ -34,7 +34,7 @@ fn test_memory(path: &Path) {
 
 /// Runs MVCC tests.
 pub struct MvccRunner<E: store::Store> {
-    engine: Engine<Emit<E>>,
+    engine: Mvcc<Emit<E>>,
     txs: HashMap<String, Transaction<Emit<E>>>,
     operations: Receiver<Operation>,
 }
@@ -42,7 +42,7 @@ pub struct MvccRunner<E: store::Store> {
 impl<E: store::Store> MvccRunner<E> {
     fn new(store: E) -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { engine: Engine::new(Emit::new(store, tx)), txs: HashMap::new(), operations: rx }
+        Self { engine: Mvcc::new(Emit::new(store, tx)), txs: HashMap::new(), operations: rx }
     }
 
     /// Fetches the named transaction from a command prefix.

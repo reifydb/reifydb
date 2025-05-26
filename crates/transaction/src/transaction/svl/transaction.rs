@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::svl::EngineInner;
-use crate::svl::catalog::Catalog;
-use crate::svl::lock::{ReadGuard, WriteGuard};
-use crate::svl::schema::Schema;
+use crate::transaction::svl::EngineInner;
+use crate::transaction::svl::catalog::Catalog;
+use crate::transaction::svl::lock::{ReadGuard, WriteGuard};
+use crate::transaction::svl::schema::Schema;
 use crate::{CatalogRx as _, CatalogTx, InsertResult};
 use base::encoding::{Value as OtherValue, bincode};
 use base::{Key, Row, RowIter, key_prefix};

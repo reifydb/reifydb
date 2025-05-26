@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::{Error, Transaction, TransactionState, Version};
+use crate::transaction::mvcc::{Error, Transaction, TransactionState, Version};
 use crate::{CatalogRx as _, CatalogTx, InsertResult};
 use std::cell::UnsafeCell;
 
@@ -17,10 +17,10 @@ use std::collections::BTreeSet;
 use std::ops::{Bound, RangeBounds};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use crate::mvcc::catalog::Catalog;
-use crate::mvcc::key::{Key, KeyPrefix};
-use crate::mvcc::scan::ScanIterator;
-use crate::mvcc::schema::Schema;
+use crate::transaction::mvcc::catalog::Catalog;
+use crate::transaction::mvcc::key::{Key, KeyPrefix};
+use crate::transaction::mvcc::scan::ScanIterator;
+use crate::transaction::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::{Row, RowIter, key_prefix};
 use store::Store;
@@ -147,7 +147,7 @@ impl<S: Store> Transaction<S> {
     /// Begins a new transaction in read-write mode. This will allocate a new
     /// version that the transaction can write at, add it to the active set, and
     /// record its active snapshot for time-travel queries.
-    pub(crate) fn begin(engine: Arc<Mutex<S>>) -> crate::mvcc::Result<Self> {
+    pub(crate) fn begin(engine: Arc<Mutex<S>>) -> crate::transaction::mvcc::Result<Self> {
         // FIXME
         // let mut session = engine.lock()?;
         let mut session = engine.lock().unwrap();
@@ -178,7 +178,7 @@ impl<S: Store> Transaction<S> {
     pub(crate) fn begin_read_only(
         engine: Arc<Mutex<S>>,
         as_of: Option<Version>,
-    ) -> crate::mvcc::Result<Self> {
+    ) -> crate::transaction::mvcc::Result<Self> {
         // FIXME
         // let mut session = engine.lock()?;
         let mut session = engine.lock().unwrap();
@@ -211,7 +211,7 @@ impl<S: Store> Transaction<S> {
     }
 
     /// Fetches the set of currently active transactions.
-    fn scan_active(session: &mut MutexGuard<S>) -> crate::mvcc::Result<BTreeSet<Version>> {
+    fn scan_active(session: &mut MutexGuard<S>) -> crate::transaction::mvcc::Result<BTreeSet<Version>> {
         let mut active = BTreeSet::new();
         let mut scan = session.scan_prefix(&KeyPrefix::TxActive.encode());
         while let Some((key, _)) = scan.next().transpose()? {
@@ -245,7 +245,7 @@ impl<S: Store> Transaction<S> {
     ///
     /// NB: commit does not flush writes to durable store, since we rely on
     /// the Raft log for persistence.
-    pub fn commit(self) -> crate::mvcc::Result<()> {
+    pub fn commit(self) -> crate::transaction::mvcc::Result<()> {
         if self.state.read_only {
             return Ok(());
         }
@@ -271,7 +271,7 @@ impl<S: Store> Transaction<S> {
     /// Rolls back the transaction, by undoing all written versions and removing
     /// it from the active set. The active set snapshot is left behind, since
     /// this is needed for time travel queries at this version.
-    pub fn rollback(self) -> crate::mvcc::Result<()> {
+    pub fn rollback(self) -> crate::transaction::mvcc::Result<()> {
         if self.state.read_only {
             return Ok(());
         }
@@ -302,12 +302,12 @@ impl<S: Store> Transaction<S> {
     }
 
     /// Removes a key.
-    pub fn remove(&self, key: &[u8]) -> crate::mvcc::Result<()> {
+    pub fn remove(&self, key: &[u8]) -> crate::transaction::mvcc::Result<()> {
         self.write_version(key, None)
     }
 
     /// Sets a value for a key.
-    pub fn set(&self, key: &[u8], value: Vec<u8>) -> crate::mvcc::Result<()> {
+    pub fn set(&self, key: &[u8], value: Vec<u8>) -> crate::transaction::mvcc::Result<()> {
         self.write_version(key, Some(value))
     }
 
@@ -315,7 +315,7 @@ impl<S: Store> Transaction<S> {
     /// a deletion tombstone. If a write conflict is found (either a newer or
     /// uncommitted version), a serialization error is returned.  Replacing our
     /// own uncommitted write is fine.
-    fn write_version(&self, key: &[u8], value: Option<Vec<u8>>) -> crate::mvcc::Result<()> {
+    fn write_version(&self, key: &[u8], value: Option<Vec<u8>>) -> crate::transaction::mvcc::Result<()> {
         if self.state.read_only {
             return Err(Error::ReadOnly);
         }
@@ -358,7 +358,7 @@ impl<S: Store> Transaction<S> {
     }
 
     /// Fetches a key's value, or None if it does not exist.
-    pub fn get(&self, key: &[u8]) -> crate::mvcc::Result<Option<Vec<u8>>> {
+    pub fn get(&self, key: &[u8]) -> crate::transaction::mvcc::Result<Option<Vec<u8>>> {
         // FIXME
         // let mut engine = self.engine.lock()?;
         let mut engine = self.engine.lock().unwrap();
