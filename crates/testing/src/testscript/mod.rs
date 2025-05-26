@@ -56,7 +56,7 @@
 //!
 //! * [toyDB Raft](https://github.com/erikgrinaker/toydb/tree/master/src/raft/testscripts/node):
 //!   distributed consensus cluster.
-//! * [toyDB MVCC](https://github.com/erikgrinaker/toydb/tree/master/src/storage/testscripts/mvcc):
+//! * [toyDB MVCC](https://github.com/erikgrinaker/toydb/tree/master/src/store/testscripts/mvcc):
 //!   ACID transactions.
 //! * [testscript parser](https://github.com/erikgrinaker/testscript/tree/main/tests/scripts):
 //!   testscript uses itself to test its parser and runner.

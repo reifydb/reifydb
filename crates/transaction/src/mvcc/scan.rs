@@ -13,7 +13,7 @@ use crate::mvcc::{Error, Key, TransactionState, Version};
 use base::encoding::{Key as _, bincode};
 use std::collections::{Bound, VecDeque};
 use std::sync::{Arc, Mutex};
-use storage::StorageEngine;
+use store::StoreEngine;
 
 /// An iterator over the latest live and visible key-value pairs for the tx.
 ///
@@ -24,7 +24,7 @@ use storage::StorageEngine;
 ///
 /// This does not implement DoubleEndedIterator (reverse scans), since the SQL
 /// layer doesn't currently need it.
-pub struct ScanIterator<S: StorageEngine> {
+pub struct ScanIterator<S: StoreEngine> {
     /// The engine.
     engine: Arc<Mutex<S>>,
     /// The transaction state.
@@ -38,7 +38,7 @@ pub struct ScanIterator<S: StorageEngine> {
 /// Implement [`Clone`] manually. `derive(Clone)` isn't smart enough to figure
 /// out that we don't need `Engine: Clone` when it's in an [`Arc`]. See:
 /// <https://github.com/rust-lang/rust/issues/26925>.
-impl<S: StorageEngine> Clone for ScanIterator<S> {
+impl<S: StoreEngine> Clone for ScanIterator<S> {
     fn clone(&self) -> Self {
         Self {
             engine: self.engine.clone(),
@@ -49,7 +49,7 @@ impl<S: StorageEngine> Clone for ScanIterator<S> {
     }
 }
 
-impl<S: StorageEngine> ScanIterator<S> {
+impl<S: StoreEngine> ScanIterator<S> {
     /// The number of live key-value pairs to pull from the engine each time we
     /// lock it. Uses 2 in tests to exercise the buffering code.
     const BUFFER_SIZE: usize = if cfg!(test) { 2 } else { 32 };
@@ -110,7 +110,7 @@ impl<S: StorageEngine> ScanIterator<S> {
     }
 }
 
-impl<S: StorageEngine> Iterator for ScanIterator<S> {
+impl<S: StoreEngine> Iterator for ScanIterator<S> {
     type Item = crate::mvcc::Result<(Vec<u8>, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -125,14 +125,14 @@ impl<S: StorageEngine> Iterator for ScanIterator<S> {
 
 /// An iterator that decodes raw engine key-value pairs into MVCC key-value
 /// versions, and skips invisible versions. Helper for ScanIterator.
-struct VersionIterator<'a, I: storage::ScanIterator> {
+struct VersionIterator<'a, I: store::ScanIterator> {
     /// The transaction the scan is running in.
     tx: &'a TransactionState,
     /// The inner engine scan iterator.
     inner: I,
 }
 
-impl<'a, I: storage::ScanIterator> VersionIterator<'a, I> {
+impl<'a, I: store::ScanIterator> VersionIterator<'a, I> {
     /// Creates a new MVCC version iterator for the given engine iterator.
     fn new(tx: &'a TransactionState, inner: I) -> Self {
         Self { tx: tx, inner }
@@ -154,7 +154,7 @@ impl<'a, I: storage::ScanIterator> VersionIterator<'a, I> {
     }
 }
 
-impl<I: storage::ScanIterator> Iterator for VersionIterator<'_, I> {
+impl<I: store::ScanIterator> Iterator for VersionIterator<'_, I> {
     type Item = crate::mvcc::Result<(Vec<u8>, Version, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {

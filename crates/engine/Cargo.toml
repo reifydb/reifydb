@@ -11,7 +11,7 @@ auth = { workspace = true }
 base = { workspace = true }
 dataframe = { workspace = true }
 rql = { workspace = true }
-storage = { workspace = true }
+store = { workspace = true }
 transaction = { workspace = true }
 
 log = { workspace = true }

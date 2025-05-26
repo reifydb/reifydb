@@ -6,7 +6,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use engine::{Key, ScanIterator, StorageEngine, Value};
+pub use engine::{Key, ScanIterator, StoreEngine, Value};
 pub use error::Error;
 pub use memory::{Memory, MemoryScanIter};
 use std::result;

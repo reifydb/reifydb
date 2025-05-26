@@ -88,7 +88,7 @@ mod tests {
         let create = result.as_create();
 
         match create {
-            AstCreate::Table { name, schema, definitions, .. } => {
+            AstCreate::Series { name, schema, definitions, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "metrics");
 
@@ -102,7 +102,7 @@ mod tests {
                     assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
 
                     let ty = id.right.as_type();
-                    assert_eq!(ty.value(), "int2")
+                    assert_eq!(ty.value(), "Int2")
                 }
             }
             _ => unreachable!(),

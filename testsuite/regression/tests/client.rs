@@ -3,7 +3,7 @@
 
 use reifydb::client::Client;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::storage::StorageEngine;
+use reifydb::store::StoreEngine;
 use reifydb::transaction::TransactionEngine;
 use reifydb::{ReifyDB, memory, mvcc, svl};
 use std::error::Error;
@@ -16,14 +16,14 @@ use testing::testscript::Command;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct ClientRunner<S: StorageEngine, T: TransactionEngine<S>> {
+pub struct ClientRunner<S: StoreEngine, T: TransactionEngine<S>> {
     server: Option<Server<S, T>>,
     client: Client,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> ClientRunner<S, T> {
+impl<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static> ClientRunner<S, T> {
     pub fn new(transaction: T) -> Self {
         let socket_addr = free_local_socket();
 
@@ -37,7 +37,7 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> ClientRunner
     }
 }
 
-impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> testscript::Runner
+impl<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static> testscript::Runner
     for ClientRunner<S, T>
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {

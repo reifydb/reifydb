@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Result;
-use crate::engine::{Key, StorageEngine, Value};
+use crate::engine::{Key, StoreEngine, Value};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Range;
 use std::ops::RangeBounds;
 
-/// An in-memory key-value storage engine
+/// An in-memory key-value store engine
 #[derive(Default)]
 pub struct Memory(BTreeMap<Key, Value>);
 
-impl StorageEngine for Memory {
+impl StoreEngine for Memory {
     type ScanIter<'a> = MemoryScanIter<'a>;
 
     fn get(&self, key: &Key) -> Result<Option<Value>> {

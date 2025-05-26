@@ -1,5 +1,5 @@
 [package]
-name = "storage"
+name = "store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,9 +7,6 @@ repository.workspace = true
 
 [dependencies]
 base = { workspace = true }
-
-regex = {workspace = true}
-serde = { workspace = true }
 
 [dev-dependencies]
 testing = { workspace = true }

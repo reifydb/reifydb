@@ -9,14 +9,14 @@ use rql::plan::{plan, plan_mut};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
-use storage::StorageEngine;
+use store::StoreEngine;
 use transaction::{Rx, TransactionEngine, Tx};
 
-pub struct Engine<S: StorageEngine, T: TransactionEngine<S>>(Arc<EngineInner<S, T>>);
+pub struct Engine<S: StoreEngine, T: TransactionEngine<S>>(Arc<EngineInner<S, T>>);
 
 impl<S, T> Clone for Engine<S, T>
 where
-    S: StorageEngine,
+    S: StoreEngine,
     T: TransactionEngine<S>,
 {
     fn clone(&self) -> Self {
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> Deref for Engine<S, T> {
+impl<S: StoreEngine, T: TransactionEngine<S>> Deref for Engine<S, T> {
     type Target = EngineInner<S, T>;
 
     fn deref(&self) -> &Self::Target {
@@ -32,18 +32,18 @@ impl<S: StorageEngine, T: TransactionEngine<S>> Deref for Engine<S, T> {
     }
 }
 
-pub struct EngineInner<S: StorageEngine, T: TransactionEngine<S>> {
+pub struct EngineInner<S: StoreEngine, T: TransactionEngine<S>> {
     transaction: T,
     _marker: PhantomData<S>,
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> Engine<S, T> {
+impl<S: StoreEngine, T: TransactionEngine<S>> Engine<S, T> {
     pub fn new(transaction: T) -> Self {
         Self(Arc::new(EngineInner { transaction, _marker: PhantomData }))
     }
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> Engine<S, T> {
+impl<S: StoreEngine, T: TransactionEngine<S>> Engine<S, T> {
     fn begin(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin().unwrap())
     }

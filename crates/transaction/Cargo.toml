@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 base = { workspace = true }
-storage = { workspace = true }
+store = { workspace = true }
 
 serde = { workspace = true }
 serde_bytes = { workspace = true }

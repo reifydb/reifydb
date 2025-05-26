@@ -8,7 +8,7 @@ use engine::Engine;
 use engine::old_execute::ExecutionResult;
 use std::pin::Pin;
 use std::sync::Arc;
-use storage::StorageEngine;
+use store::StoreEngine;
 use tokio::task::spawn_blocking;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
@@ -18,11 +18,11 @@ use crate::server::grpc::grpc_db::tx_result::Result::{CreateSchema, CreateTable,
 use auth::Principal;
 use tokio_stream::once;
 
-pub struct DbService<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
+pub struct DbService<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static> {
     pub(crate) engine: Arc<Engine<S, T>>,
 }
 
-impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> DbService<S, T> {
+impl<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static> DbService<S, T> {
     pub fn new(engine: Engine<S, T>) -> Self {
         Self { engine: Arc::new(engine) }
     }
@@ -32,7 +32,7 @@ pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::TxResult, St
 pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::RxResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_server::Db
+impl<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_server::Db
     for DbService<S, T>
 {
     type TxStream = TxResultStream;

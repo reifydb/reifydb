@@ -10,7 +10,7 @@ extern crate reifydb as rdb;
 extern crate serde_json;
 
 use rdb::embedded_blocking::Embedded;
-use rdb::storage::Memory;
+use rdb::store::Memory;
 use rdb::transaction::mvcc;
 use rdb::{Principal, ReifyDB};
 

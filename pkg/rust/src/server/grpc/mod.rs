@@ -4,7 +4,7 @@
 use crate::server::grpc::db::DbService;
 use crate::server::grpc::grpc_db::db_server::DbServer;
 use engine::Engine;
-use storage::StorageEngine;
+use store::StoreEngine;
 use transaction::TransactionEngine;
 
 pub mod auth;
@@ -15,7 +15,7 @@ pub(crate) mod grpc_db {
 }
 
 // FIXME return result
-pub fn db_service<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static>(
+pub fn db_service<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static>(
     engine: Engine<S, T>,
 ) -> DbServer<DbService<S, T>> {
     DbServer::new(DbService::new(engine))

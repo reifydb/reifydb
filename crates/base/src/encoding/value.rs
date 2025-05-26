@@ -15,7 +15,7 @@ use std::hash::Hash;
 use std::io::{Read, Write};
 
 /// Adds automatic Bincode encode-decode methods to value types. These are used
-/// for values in key-value storage engines, and also for e.g. network protocol
+/// for values in key-value store engines, and also for e.g. network protocol
 /// messages and other values.
 pub trait Value: Serialize + DeserializeOwned {
     /// Decodes a value from a byte slice using Bincode.

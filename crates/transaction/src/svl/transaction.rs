@@ -11,17 +11,17 @@ use base::{Key, Row, RowIter, key_prefix};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-pub struct Transaction<S: storage::StorageEngine> {
+pub struct Transaction<S: store::StoreEngine> {
     engine: ReadGuard<EngineInner<S>>,
 }
 
-impl<S: storage::StorageEngine> Transaction<S> {
+impl<S: store::StoreEngine> Transaction<S> {
     pub fn new(engine: ReadGuard<EngineInner<S>>) -> Self {
         Self { engine }
     }
 }
 
-impl<S: storage::StorageEngine> crate::Rx for Transaction<S> {
+impl<S: store::StoreEngine> crate::Rx for Transaction<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -40,7 +40,7 @@ impl<S: storage::StorageEngine> crate::Rx for Transaction<S> {
     fn scan(&self, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
-                .storage
+                .store
                 .scan_prefix(key_prefix!("{}::row::", store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
@@ -49,18 +49,18 @@ impl<S: storage::StorageEngine> crate::Rx for Transaction<S> {
     }
 }
 
-pub struct TransactionMut<S: storage::StorageEngine> {
+pub struct TransactionMut<S: store::StoreEngine> {
     engine: WriteGuard<EngineInner<S>>,
     log: RefCell<HashMap<String, Vec<Row>>>,
 }
 
-impl<S: storage::StorageEngine> TransactionMut<S> {
+impl<S: store::StoreEngine> TransactionMut<S> {
     pub fn new(engine: WriteGuard<EngineInner<S>>) -> Self {
         Self { engine, log: RefCell::new(HashMap::new()) }
     }
 }
 
-impl<S: storage::StorageEngine> crate::Rx for TransactionMut<S> {
+impl<S: store::StoreEngine> crate::Rx for TransactionMut<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -79,7 +79,7 @@ impl<S: storage::StorageEngine> crate::Rx for TransactionMut<S> {
     fn scan(&self, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
-                .storage
+                .store
                 .scan_prefix(key_prefix!("{}::row::", store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
@@ -88,7 +88,7 @@ impl<S: storage::StorageEngine> crate::Rx for TransactionMut<S> {
     }
 }
 
-impl<S: storage::StorageEngine> crate::Tx for TransactionMut<S> {
+impl<S: store::StoreEngine> crate::Tx for TransactionMut<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
@@ -117,11 +117,11 @@ impl<S: storage::StorageEngine> crate::Tx for TransactionMut<S> {
         for (store, rows) in log.iter() {
             // FIXME store this information in KV
 
-            let last_id = self.engine.storage.scan_prefix(&key_prefix!("{}::row::", store)).count();
+            let last_id = self.engine.store.scan_prefix(&key_prefix!("{}::row::", store)).count();
 
             for (id, row) in rows.iter().enumerate() {
                 self.engine
-                    .storage
+                    .store
                     .set(
                         // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
                         key_prefix!("{}::row::{}", store, (last_id + id + 1)),

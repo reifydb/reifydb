@@ -23,10 +23,10 @@ use crate::mvcc::scan::ScanIterator;
 use crate::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::{Row, RowIter, key_prefix};
-use storage::StorageEngine;
+use store::StoreEngine;
 // FIXME remove this
 
-impl<S: StorageEngine> crate::Rx for Transaction<S> {
+impl<S: StoreEngine> crate::Rx for Transaction<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -76,7 +76,7 @@ pub fn catalog_mut_singleton() -> &'static mut Catalog {
     unsafe { *CATALOG.get().unwrap().0.get() }
 }
 
-impl<S: StorageEngine> crate::Tx for Transaction<S> {
+impl<S: StoreEngine> crate::Tx for Transaction<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
@@ -143,7 +143,7 @@ impl<S: StorageEngine> crate::Tx for Transaction<S> {
     }
 }
 
-impl<S: StorageEngine> Transaction<S> {
+impl<S: StoreEngine> Transaction<S> {
     /// Begins a new transaction in read-write mode. This will allocate a new
     /// version that the transaction can write at, add it to the active set, and
     /// record its active snapshot for time-travel queries.
@@ -243,7 +243,7 @@ impl<S: StorageEngine> Transaction<S> {
     /// immediately make its writes visible to subsequent transactions. Also
     /// removes its TxWrite records, which are no longer needed.
     ///
-    /// NB: commit does not flush writes to durable storage, since we rely on
+    /// NB: commit does not flush writes to durable store, since we rely on
     /// the Raft log for persistence.
     pub fn commit(self) -> crate::mvcc::Result<()> {
         if self.state.read_only {

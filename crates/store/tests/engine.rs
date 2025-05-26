@@ -15,29 +15,29 @@ use base::encoding::format::Formatter;
 use std::error::Error as StdError;
 use std::fmt::Write;
 use std::path::Path;
-use storage::{Memory, StorageEngine};
+use store::{Memory, StoreEngine};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
 
-test_each_path! { in "crates/storage/tests/engine" as memory => test_memory }
+test_each_path! { in "crates/store/tests/engine" as memory => test_memory }
 
 fn test_memory(path: &Path) {
     testscript::run_path(&mut EngineRunner::new(Memory::default()), path).expect("test failed")
 }
 
 /// Runs engine tests.
-pub struct EngineRunner<S: StorageEngine> {
+pub struct EngineRunner<S: StoreEngine> {
     engine: S,
 }
 
-impl<S: StorageEngine> EngineRunner<S> {
+impl<S: StoreEngine> EngineRunner<S> {
     fn new(engine: S) -> Self {
         Self { engine }
     }
 }
 
-impl<S: StorageEngine> testscript::Runner for EngineRunner<S> {
+impl<S: StoreEngine> testscript::Runner for EngineRunner<S> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {

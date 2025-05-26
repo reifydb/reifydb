@@ -3,7 +3,7 @@
 
 use crate::{Rx, Tx};
 
-pub trait TransactionEngine<S: storage::StorageEngine>: Send + Sync {
+pub trait TransactionEngine<S: store::StoreEngine>: Send + Sync {
     type Rx: Rx;
     type Tx: Tx;
 

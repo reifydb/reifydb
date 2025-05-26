@@ -8,7 +8,7 @@ use std::fmt::{Display, Formatter};
 /// Represents all errors related to MVCC (Multi-Version Concurrency Control) in ReifyDB.
 ///
 /// This includes transactional failures, mempool coordination issues, version conflicts, and
-/// storage-layer faults encountered during MVCC operations.
+/// store-layer faults encountered during MVCC operations.
 #[derive(Debug, PartialEq)]
 pub enum Error {
     /// Encoding/Decoding related error
@@ -23,8 +23,8 @@ pub enum Error {
     /// Transaction failed due to a serialization conflict. The operation should be retried.
     Serialization,
 
-    /// A low-level storage error occurred during MVCC operations.
-    Storage(storage::Error),
+    /// A low-level store error occurred during MVCC operations.
+    Store(store::Error),
 
     /// The requested version could not be found in the version history.
     VersionNotFound { version: Version },
@@ -52,7 +52,7 @@ impl Display for Error {
             Error::Serialization => {
                 write!(f, "transaction serialization conflict occurred, retry transaction")
             }
-            Error::Storage(err) => write!(f, "storage error: {}", err),
+            Error::Store(err) => write!(f, "store error: {}", err),
             Error::VersionNotFound { version } => {
                 write!(f, "version not found: {}", version)
             }
@@ -66,7 +66,7 @@ impl Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Storage(err) => Some(err),
+            Error::Store(err) => Some(err),
             _ => None,
         }
     }
@@ -78,8 +78,8 @@ impl From<encoding::Error> for Error {
     }
 }
 
-impl From<storage::Error> for Error {
-    fn from(err: storage::Error) -> Self {
-        Self::Storage(err)
+impl From<store::Error> for Error {
+    fn from(err: store::Error) -> Self {
+        Self::Store(err)
     }
 }

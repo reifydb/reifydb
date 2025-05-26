@@ -12,7 +12,7 @@
 //! used method for ACID transactions and concurrency control. It allows
 //! multiple concurrent transactions to access and modify the same dataset,
 //! isolates them from each other, detects and handles conflicts, and commits
-//! their writes atomically as a single unit. It uses an underlying storage
+//! their writes atomically as a single unit. It uses an underlying store
 //! engine to store raw keys and values.
 //!
 //! VERSIONS
@@ -119,7 +119,7 @@
 //! version consistency.
 //!
 //! To achieve this, every read-write transaction stores its active set snapshot
-//! in the storage engine as well, as Key::TxActiveSnapshot, such that later
+//! in the store engine as well, as Key::TxActiveSnapshot, such that later
 //! time-travel queries can restore its original snapshot. Furthermore, a
 //! time-travel query can only see versions below the snapshot version, otherwise
 //! it could see spurious in-progress or since-committed versions.
@@ -163,10 +163,10 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
+use ::store::StoreEngine;
 use base::encoding;
 use base::encoding::Value;
 use serde::{Deserialize, Serialize};
-use storage::StorageEngine;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -177,14 +177,14 @@ pub struct Status {
     pub version: Version,
     /// Number of currently active transactions.
     pub active_txs: u64,
-    // ///The storage engine.
-    // pub storage: super::engine::Status,
+    // ///The store engine.
+    // pub store: super::engine::Status,
 }
 
 impl encoding::Value for Status {}
 
 /// An MVCC transaction.
-pub struct Transaction<S: StorageEngine> {
+pub struct Transaction<S: StoreEngine> {
     /// The underlying engine, shared by all transactions.
     engine: Arc<Mutex<S>>,
     /// The transaction state.

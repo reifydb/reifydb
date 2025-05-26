@@ -22,7 +22,7 @@ pub trait Key<'de>: Serialize + Deserialize<'de> {
 
     /// Encodes a key to a byte vector using Keycode.
     ///
-    /// In the common case, the encoded key is borrowed for a storage engine
+    /// In the common case, the encoded key is borrowed for a store engine
     /// call and then thrown away. We could avoid a bunch of allocations by
     /// taking a reusable byte vector to encode into and return a reference to
     /// it, but we keep it simple.

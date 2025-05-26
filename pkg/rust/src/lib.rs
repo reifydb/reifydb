@@ -4,7 +4,7 @@
 //! # ReifyDB
 //!
 //! ReifyDB is an embeddable application backend engine that blends a high-level query language
-//! (RQL – Reify Query Language) with a low-level key-value storage system.
+//! (RQL – Reify Query Language) with a low-level key-value store system.
 //!
 //! It is designed for rapid prototyping, persistent data manipulation, and embedding powerful
 //! logic directly into your app — without the need for a traditional database server.
@@ -13,7 +13,7 @@
 //!
 //! - [`encoding`]: Handles serialization and deserialization of data types.
 //! - [`rql`]: The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
-//! - [`storage`]: The underlying key-value store responsible for persistence and data access.
+//! - [`store`]: The underlying key-value store responsible for persistence and data access.
 //!
 //! ReifyDB aims to be minimal, developer-first, and flexible enough to power backends, embedded analytics, and local-first systems.
 //!
@@ -39,7 +39,7 @@ pub use tokio::*;
 // pub use session::{IntoSessionRx, IntoSessionTx, SessionRx, SessionTx};
 
 /// The underlying key-value store responsible for persistence and data access.
-pub use storage;
+pub use store;
 
 pub use transaction;
 
@@ -49,7 +49,7 @@ use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
 
-use storage::{Memory, StorageEngine};
+use store::{Memory, StoreEngine};
 use transaction::{TransactionEngine, mvcc, svl};
 
 #[cfg(feature = "client")]
@@ -107,21 +107,21 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<S: StorageEngine, T: TransactionEngine<S>>(
+    pub fn embedded_with<S: StoreEngine, T: TransactionEngine<S>>(
         transaction: T,
     ) -> (Embedded<S, T>, Principal) {
         Embedded::new(transaction)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<S: StorageEngine, T: TransactionEngine<S>>(
+    pub fn embedded_with<S: StoreEngine, T: TransactionEngine<S>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<S, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<S: StorageEngine, T: TransactionEngine<S>>(
+    pub fn embedded_blocking_with<S: StoreEngine, T: TransactionEngine<S>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<S, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
@@ -133,19 +133,19 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static>(
+    pub fn server_with<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static>(
         transaction: T,
     ) -> Server<S, T> {
         Server::new(transaction)
     }
 }
 
-pub fn svl<S: StorageEngine>(storage: S) -> svl::Engine<S> {
-    svl::Engine::new(storage)
+pub fn svl<S: StoreEngine>(store: S) -> svl::Engine<S> {
+    svl::Engine::new(store)
 }
 
-pub fn mvcc<S: StorageEngine>(storage: S) -> mvcc::Engine<S> {
-    mvcc::Engine::new(storage)
+pub fn mvcc<S: StoreEngine>(store: S) -> mvcc::Engine<S> {
+    mvcc::Engine::new(store)
 }
 
 pub fn memory() -> Memory {

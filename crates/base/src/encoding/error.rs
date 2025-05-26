@@ -8,7 +8,7 @@ use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 
 /// Represents errors that may occur during encoding or decoding operations
-/// within key-value storage or network protocol contexts.
+/// within key-value store or network protocol contexts.
 ///
 /// This enum captures encoding-related failures such as malformed input,
 /// unsupported data formats, or internal encoding bugs. It is designed to provide

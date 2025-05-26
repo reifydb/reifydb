@@ -247,7 +247,7 @@ dependencies = [
  "log",
  "rql",
  "serde",
- "storage",
+ "store",
  "transaction",
 ]
 
@@ -937,7 +937,7 @@ dependencies = [
  "engine",
  "prost",
  "rql",
- "storage",
+ "store",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -1107,12 +1107,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "storage"
+name = "store"
 version = "0.0.1"
 dependencies = [
  "base",
- "regex",
- "serde",
  "test_each_file",
  "testing",
 ]
@@ -1341,7 +1339,7 @@ dependencies = [
  "base",
  "serde",
  "serde_bytes",
- "storage",
+ "store",
  "test_each_file",
  "testing",
 ]

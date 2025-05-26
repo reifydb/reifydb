@@ -19,8 +19,8 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
-use storage::test::{Emit, Operation};
-use storage::{Memory, StorageEngine};
+use store::test::{Emit, Operation};
+use store::{Memory, StoreEngine};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
@@ -33,16 +33,16 @@ fn test_memory(path: &Path) {
 }
 
 /// Runs MVCC tests.
-pub struct MvccRunner<E: storage::StorageEngine> {
+pub struct MvccRunner<E: store::StoreEngine> {
     engine: Engine<Emit<E>>,
     txs: HashMap<String, Transaction<Emit<E>>>,
     operations: Receiver<Operation>,
 }
 
-impl<E: storage::StorageEngine> MvccRunner<E> {
-    fn new(storage: E) -> Self {
+impl<E: store::StoreEngine> MvccRunner<E> {
+    fn new(store: E) -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { engine: Engine::new(Emit::new(storage, tx)), txs: HashMap::new(), operations: rx }
+        Self { engine: Engine::new(Emit::new(store, tx)), txs: HashMap::new(), operations: rx }
     }
 
     /// Fetches the named transaction from a command prefix.
@@ -68,7 +68,7 @@ impl<E: storage::StorageEngine> MvccRunner<E> {
     }
 }
 
-impl<'a, E: storage::StorageEngine> testscript::Runner for MvccRunner<E> {
+impl<'a, E: store::StoreEngine> testscript::Runner for MvccRunner<E> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         let mut tags = command.tags.clone();
@@ -119,7 +119,7 @@ impl<'a, E: storage::StorageEngine> testscript::Runner for MvccRunner<E> {
             // dump
             "dump" => {
                 command.consume_args().reject_rest()?;
-                let mut engine = self.engine.storage.lock().unwrap();
+                let mut engine = self.engine.store.lock().unwrap();
                 let mut scan = engine.scan(..);
                 while let Some((key, value)) = scan.next().transpose()? {
                     let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);

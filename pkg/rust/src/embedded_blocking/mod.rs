@@ -4,16 +4,16 @@
 use auth::Principal;
 use engine::Engine;
 use engine::old_execute::ExecutionResult;
-use storage::StorageEngine;
+use store::StoreEngine;
 use transaction::TransactionEngine;
 
-pub struct Embedded<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> {
+pub struct Embedded<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static> {
     engine: Engine<S, T>,
 }
 
 impl<S, T> Clone for Embedded<S, T>
 where
-    S: StorageEngine,
+    S: StoreEngine,
     T: TransactionEngine<S>,
 {
     fn clone(&self) -> Self {
@@ -21,7 +21,7 @@ where
     }
 }
 
-impl<S: StorageEngine, T: TransactionEngine<S>> Embedded<S, T> {
+impl<S: StoreEngine, T: TransactionEngine<S>> Embedded<S, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
 
@@ -29,7 +29,7 @@ impl<S: StorageEngine, T: TransactionEngine<S>> Embedded<S, T> {
     }
 }
 
-impl<'a, S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> Embedded<S, T> {
+impl<'a, S: StoreEngine + 'static, T: TransactionEngine<S> + 'static> Embedded<S, T> {
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let result = self.engine.tx_as(principal, rql).unwrap();
         result

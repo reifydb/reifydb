@@ -7,7 +7,7 @@ use std::fmt::{Display, Formatter};
 /// Represents all possible errors that can occur within the ReifyDB system.
 ///
 /// This unified error type aggregates failures across the different layers of the system,
-/// including encoding, query processing (RQL), and low-level storage. It enables consistent
+/// including encoding, query processing (RQL), and low-level store. It enables consistent
 /// error propagation and simplifies error handling across subsystems.
 ///
 /// # Variants
@@ -17,8 +17,8 @@ use std::fmt::{Display, Formatter};
 /// - `RQL`: A failure occurred in the Reify Query Language layer.  
 ///   This can include parsing errors, logical plan issues, optimization failures, or runtime execution faults.
 ///
-/// - `Storage`: A low-level storage engine error was encountered.  
-///   This includes I/O errors, key-value corruption, encoding issues at the storage level, or internal storage bugs.
+/// - `Store`: A low-level store engine error was encountered.
+///   This includes I/O errors, key-value corruption, encoding issues at the store level, or internal store bugs.
 ///
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -26,8 +26,8 @@ pub enum Error {
     Encoding(encoding::Error),
     /// RQL related error
     RQL(rql::Error),
-    /// storage related error
-    Storage(storage::Error),
+    /// store related error
+    Store(store::Error),
 }
 
 impl Display for Error {
@@ -35,7 +35,7 @@ impl Display for Error {
         match self {
             Error::Encoding(err) => f.write_fmt(format_args!("encoding error: {}", err)),
             Error::RQL(err) => f.write_fmt(format_args!("rql error: {}", err)),
-            Error::Storage(err) => f.write_fmt(format_args!("storage error: {}", err)),
+            Error::Store(err) => f.write_fmt(format_args!("store error: {}", err)),
         }
     }
 }
@@ -54,8 +54,8 @@ impl From<rql::Error> for Error {
     }
 }
 
-impl From<storage::Error> for Error {
-    fn from(value: storage::Error) -> Self {
-        Self::Storage(value)
+impl From<store::Error> for Error {
+    fn from(value: store::Error) -> Self {
+        Self::Store(value)
     }
 }

@@ -15,13 +15,13 @@ use std::ops::RangeBounds;
 pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
 
-/// A scan iterator over key-value pairs, returned by [`StorageEngine::scan()`].
+/// A scan iterator over key-value pairs, returned by [`StoreEngine::scan()`].
 pub trait ScanIterator: DoubleEndedIterator<Item = Result<(Key, Value)>> {}
 
 /// Blanket implementation for all iterators that can act as a scan iterator.
 impl<I: DoubleEndedIterator<Item = Result<(Key, Value)>>> ScanIterator for I {}
 
-pub trait StorageEngine: Send + Sync {
+pub trait StoreEngine: Send + Sync {
     /// An associated type representing the iterator returned by `scan` and `scan_prefix`.
     ///
     /// The iterator yields ordered key-value pairs and must implement [`ScanIterator`].
@@ -69,7 +69,7 @@ pub trait StorageEngine: Send + Sync {
     /// Returns an error if the operation fails.
     fn remove(&mut self, key: &Key) -> Result<()>;
 
-    /// Flushes all pending writes to durable storage, if applicable.
+    /// Flushes all pending writes to durable store, if applicable.
     ///
     /// This may be a no-op for in-memory engines.
     ///
