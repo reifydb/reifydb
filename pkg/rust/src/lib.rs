@@ -100,7 +100,8 @@ impl ReifyDB {
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded() -> (embedded_blocking::Embedded<Memory, ::Engine<Memory>>, Principal) {
+    pub fn embedded()
+    -> (embedded_blocking::Embedded<Memory, ::transaction::mvcc::Mvcc<Memory>>, Principal) {
         Self::embedded_blocking()
     }
 

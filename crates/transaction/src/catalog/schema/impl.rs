@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::StoreToCreate;
-use crate::catalog::Column;
-use crate::transaction::svl::store::Store;
+use crate::catalog::{Column, Store};
 use std::collections::HashMap;
 use std::ops::Deref;
 
+#[derive(Debug)]
 pub struct Schema {
     name: String,
     stores: HashMap<String, Store>,

@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+pub use catalog::Catalog;
 pub use schema::*;
 pub use store::*;
 
+mod catalog;
 mod schema;
 mod store;
 

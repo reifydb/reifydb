@@ -129,7 +129,7 @@ pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<Execution
 
             ExecutionResult::CreateTable { schema, table: name }
         }
-        Plan::InsertIntoTableValues { schema, store: name, columns, rows_to_insert } => {
+        Plan::InsertIntoTableValues { schema, table: name, columns, rows_to_insert } => {
             let mut rows = Vec::with_capacity(rows_to_insert.len());
 
             for row in rows_to_insert {

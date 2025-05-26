@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
+pub use r#impl::Schema;
+
+mod r#impl;
 
 use crate::catalog::store::{StoreRx, StoreTx};
 use base::ValueKind;

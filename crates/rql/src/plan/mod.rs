@@ -41,7 +41,7 @@ pub enum Plan {
     /// A INSERT INTO TABLE plan. Inserts values into the table
     InsertIntoTableValues {
         schema: String,
-        store: String,
+        table: String,
         columns: Vec<ColumnToInsert>,
         rows_to_insert: Vec<RowToInsert>,
     },
@@ -248,7 +248,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
 
                         Ok(Plan::InsertIntoTableValues {
                             schema,
-                            store,
+                            table: store,
                             columns: columns
                                 .into_iter()
                                 .map(|c| ColumnToInsert {

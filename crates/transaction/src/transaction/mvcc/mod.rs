@@ -148,14 +148,11 @@ pub use key::{Key, KeyPrefix};
 pub use mvcc::Mvcc;
 pub use version::Version;
 
-mod catalog;
 mod error;
 pub mod format;
 mod key;
 mod mvcc;
 mod scan;
-mod schema;
-mod store;
 mod transaction;
 mod version;
 
@@ -186,7 +183,7 @@ impl encoding::Value for Status {}
 /// An MVCC transaction.
 pub struct Transaction<P: Persistence> {
     /// The underlying engine, shared by all transactions.
-    engine: Arc<Mutex<P>>,
+    persistence: Arc<Mutex<P>>,
     /// The transaction state.
     state: TransactionState,
 }

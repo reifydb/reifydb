@@ -17,10 +17,9 @@ use std::collections::BTreeSet;
 use std::ops::{Bound, RangeBounds};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use crate::transaction::mvcc::catalog::Catalog;
+use crate::catalog::{Catalog, Schema};
 use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::scan::ScanIterator;
-use crate::transaction::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::{Row, RowIter, key_prefix};
 use persistence::Persistence;
@@ -47,7 +46,7 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
 
     fn scan(&self, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.engine
+            self.persistence
                 .lock()
                 .unwrap()
                 .scan_prefix(key_prefix!("{}::row::", store))
@@ -93,13 +92,13 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
 
     fn insert(&mut self, store: &str, rows: Vec<Row>) -> crate::Result<InsertResult> {
         let last_id =
-            self.engine.lock().unwrap().scan_prefix(&key_prefix!("{}::row::", store)).count();
+            self.persistence.lock().unwrap().scan_prefix(&key_prefix!("{}::row::", store)).count();
 
         // FIXME assumes every row gets inserted - not updated etc..
         let inserted = rows.len();
 
         for (id, row) in rows.iter().enumerate() {
-            self.engine
+            self.persistence
                 .lock()
                 .unwrap()
                 .set(
@@ -119,7 +118,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         }
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
+        let mut engine = self.persistence.lock().unwrap();
 
         let mut remove = Vec::new();
         for result in engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode()) {
@@ -145,7 +144,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         }
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
+        let mut engine = self.persistence.lock().unwrap();
         let mut rollback = Vec::new();
         let mut scan = engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode());
         while let Some((key, _)) = scan.next().transpose()? {
@@ -195,7 +194,10 @@ impl<P: Persistence> Transaction<P> {
         session.set(&Key::TxActive(version).encode(), vec![])?;
         drop(session);
 
-        Ok(Self { engine, state: TransactionState { version, read_only: false, active } })
+        Ok(Self {
+            persistence: engine,
+            state: TransactionState { version, read_only: false, active },
+        })
     }
 
     /// Begins a new read-only transaction. If version is given it will see the
@@ -234,7 +236,10 @@ impl<P: Persistence> Transaction<P> {
 
         drop(session);
 
-        Ok(Self { engine, state: TransactionState { version, read_only: true, active } })
+        Ok(Self {
+            persistence: engine,
+            state: TransactionState { version, read_only: true, active },
+        })
     }
 
     /// Fetches the set of currently active transactions.
@@ -292,7 +297,7 @@ impl<P: Persistence> Transaction<P> {
         }
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
+        let mut engine = self.persistence.lock().unwrap();
 
         // Check for write conflicts, i.e. if the latest key is invisible to us
         // (either a newer version, or an uncommitted version in our past). We
@@ -332,7 +337,7 @@ impl<P: Persistence> Transaction<P> {
     pub fn get(&self, key: &[u8]) -> crate::transaction::mvcc::Result<Option<Vec<u8>>> {
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
+        let mut engine = self.persistence.lock().unwrap();
 
         let from = Key::Version(key.into(), Version(0)).encode();
         let to = Key::Version(key.into(), self.state.version).encode();
@@ -369,7 +374,7 @@ impl<P: Persistence> Transaction<P> {
             }
             Bound::Unbounded => Bound::Excluded(KeyPrefix::Unversioned.encode()),
         };
-        ScanIterator::new(self.engine.clone(), self.state().clone(), (start, end))
+        ScanIterator::new(self.persistence.clone(), self.state().clone(), (start, end))
     }
 
     /// Scans keys under a given prefix.
@@ -380,6 +385,6 @@ impl<P: Persistence> Transaction<P> {
         let mut prefix = KeyPrefix::Version(prefix.into()).encode();
         prefix.truncate(prefix.len() - 2);
         let range = keycode::prefix_range(&prefix);
-        ScanIterator::new(self.engine.clone(), self.state().clone(), range)
+        ScanIterator::new(self.persistence.clone(), self.state().clone(), range)
     }
 }

@@ -133,7 +133,7 @@ struct VersionIterator<'a, I: persistence::ScanIterator> {
 }
 
 impl<'a, I: persistence::ScanIterator> VersionIterator<'a, I> {
-    /// Creates a new MVCC version iterator for the given engine iterator.
+    /// Creates a new MVCC version iterator for the given iterator.
     fn new(tx: &'a TransactionState, inner: I) -> Self {
         Self { tx: tx, inner }
     }

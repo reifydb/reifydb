@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Result;
-use crate::engine::{Key, Persistence, Value};
+use crate::{Key, Persistence, Value};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Range;
 use std::ops::RangeBounds;
