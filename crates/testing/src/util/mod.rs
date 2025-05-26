@@ -15,7 +15,7 @@ use std::error::Error;
 use std::ops::{Bound, RangeBounds};
 
 /// Parses an binary key range, using Rust range syntax.
-pub fn parse_key_range(s: &str) -> Result<impl RangeBounds<Vec<u8>>, Box<dyn Error>> {
+pub fn parse_key_range(s: &str) -> Result<impl RangeBounds<Vec<u8>> + Clone, Box<dyn Error>> {
     let mut bound = (Bound::<Vec<u8>>::Unbounded, Bound::<Vec<u8>>::Unbounded);
     let re = Regex::new(r"^(\S+)?\.\.(=)?(\S+)?").expect("invalid regex");
     let groups = re.captures(s).ok_or_else(|| format!("invalid range {s}"))?;

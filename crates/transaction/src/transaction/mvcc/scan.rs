@@ -25,8 +25,8 @@ use std::sync::{Arc, Mutex};
 /// This does not implement DoubleEndedIterator (reverse scans), since the SQL
 /// layer doesn't currently need it.
 pub struct ScanIterator<P: Persistence> {
-    /// The engine.
-    engine: Arc<Mutex<P>>,
+    /// The persistence layer - most likely buffered
+    persistence: Arc<Mutex<P>>,
     /// The transaction state.
     tx: TransactionState,
     /// A buffer of live and visible key-value pairs to emit.
@@ -41,7 +41,7 @@ pub struct ScanIterator<P: Persistence> {
 impl<P: Persistence> Clone for ScanIterator<P> {
     fn clone(&self) -> Self {
         Self {
-            engine: self.engine.clone(),
+            persistence: self.persistence.clone(),
             tx: self.tx.clone(),
             buffer: self.buffer.clone(),
             remainder: self.remainder.clone(),
@@ -56,12 +56,12 @@ impl<P: Persistence> ScanIterator<P> {
 
     /// Creates a new scan iterator.
     pub(crate) fn new(
-        engine: Arc<Mutex<P>>,
+        persistence: Arc<Mutex<P>>,
         tx: TransactionState,
         range: (Bound<Vec<u8>>, Bound<Vec<u8>>),
     ) -> Self {
         let buffer = VecDeque::with_capacity(Self::BUFFER_SIZE);
-        Self { engine, tx, buffer, remainder: Some(range) }
+        Self { persistence, tx, buffer, remainder: Some(range) }
     }
 
     /// Fills the buffer, if there's any pending items.
@@ -77,7 +77,7 @@ impl<P: Persistence> ScanIterator<P> {
 
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.engine.lock().unwrap();
+        let mut engine = self.persistence.lock().unwrap();
         let mut iter = VersionIterator::new(&self.tx, engine.scan(range)).peekable();
 
         while let Some((key, _, value)) = iter.next().transpose()? {

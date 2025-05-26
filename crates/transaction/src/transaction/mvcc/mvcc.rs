@@ -16,21 +16,12 @@ use base::encoding::{Key as _, Value};
 use persistence::Persistence;
 use std::sync::{Arc, Mutex};
 
-/// An MVCC-based transactional key-value engine. It wraps an underlying store
-/// engine that's used for raw key-value store.
+/// An MVCC-based transactional key-value engine. It wraps an underlying persistence that's used for raw key-value storage.
 ///
 /// While it supports any number of concurrent transactions, individual read or
-/// write operations are executed sequentially, serialized via a mutex. There
-/// are two reasons for this: the store engine itself is not thread-safe,
-/// requiring serialized access.
+/// write operations are executed sequentially, serialized via a mutex
 pub struct Mvcc<P: Persistence> {
-    // FIXME add concurrent safe MemPool module between Store and transaction
-    // idea - batch data and perform bulk insertions / update to underlying store implementation
-    // introduce ConfirmationLevel similar to Solana
-    // Processed - a transaction was processed successful and the change is in the mempool
-    // Confirmed - data written to file and synced
-    // Finalized - majority of nodes accepted this data
-    pub store: Arc<Mutex<P>>,
+    pub persistence: Arc<Mutex<P>>,
 }
 
 impl<P: Persistence> crate::Transaction<P> for Mvcc<P> {
@@ -38,34 +29,29 @@ impl<P: Persistence> crate::Transaction<P> for Mvcc<P> {
     type Tx = Transaction<P>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
-        // let guard = self.inner.read().unwrap();
-        // Ok(Transaction::new(guard))
-        // unimplemented!()
-        Ok(Transaction::begin_read_only(self.store.clone(), None).unwrap())
+        Ok(Transaction::begin_read_only(self.persistence.clone(), None)?)
     }
 
     fn begin(&self) -> crate::Result<Self::Tx> {
-        // let guard = self.inner.write().unwrap();
-        // Ok(TransactionMut::new(guard))
-        Ok(Transaction::begin(self.store.clone()).unwrap())
+        Ok(Transaction::begin(self.persistence.clone())?)
     }
 }
 
 impl<P: Persistence> Mvcc<P> {
     /// Creates a new MVCC engine with the given store engine.
-    pub fn new(engine: P) -> Self {
+    pub fn new(persistence: P) -> Self {
         catalog_init();
-        Self { store: Arc::new(Mutex::new(engine)) }
+        Self { persistence: Arc::new(Mutex::new(persistence)) }
     }
 
     /// Begins a new read-write transaction.
     pub fn begin(&self) -> crate::transaction::mvcc::Result<Transaction<P>> {
-        Transaction::begin(self.store.clone())
+        Transaction::begin(self.persistence.clone())
     }
 
     /// Begins a new read-only transaction at the latest version.
     pub fn begin_read_only(&self) -> crate::transaction::mvcc::Result<Transaction<P>> {
-        Transaction::begin_read_only(self.store.clone(), None)
+        Transaction::begin_read_only(self.persistence.clone(), None)
     }
 
     /// Begins a new read-only transaction as of the given version.
@@ -73,14 +59,14 @@ impl<P: Persistence> Mvcc<P> {
         &self,
         version: Version,
     ) -> crate::transaction::mvcc::Result<Transaction<P>> {
-        Transaction::begin_read_only(self.store.clone(), Some(version))
+        Transaction::begin_read_only(self.persistence.clone(), Some(version))
     }
 
     /// Fetches the value of an unversioned key.
     pub fn get_unversioned(&self, key: &[u8]) -> crate::transaction::mvcc::Result<Option<Vec<u8>>> {
         // self.engine.lock()?.get(&Key::Unversioned(key.into()).encode())
         // FIXME
-        Ok(self.store.lock().unwrap().get(&Key::Unversioned(key.into()).encode()).unwrap())
+        Ok(self.persistence.lock().unwrap().get(&Key::Unversioned(key.into()).encode()).unwrap())
     }
 
     /// Sets the value of an unversioned key.
@@ -91,14 +77,19 @@ impl<P: Persistence> Mvcc<P> {
     ) -> crate::transaction::mvcc::Result<()> {
         // self.engine.lock()?.set(&Key::Unversioned(key.into()).encode(), value)
         // FIXME
-        Ok(self.store.lock().unwrap().set(&Key::Unversioned(key.into()).encode(), value).unwrap())
+        Ok(self
+            .persistence
+            .lock()
+            .unwrap()
+            .set(&Key::Unversioned(key.into()).encode(), value)
+            .unwrap())
     }
 
     /// Returns the status of the MVCC and store engines.
     pub fn status(&self) -> crate::transaction::mvcc::Result<Status> {
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.store.lock().unwrap();
+        let mut engine = self.persistence.lock().unwrap();
         let versions = match engine.get(&Key::NextVersion.encode())? {
             Some(ref v) => Version::decode(v)? - 1,
             None => Version(0),

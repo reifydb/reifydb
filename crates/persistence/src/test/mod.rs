@@ -14,10 +14,3 @@ pub use mirror::{Mirror, MirrorIterator};
 
 mod emit;
 mod mirror;
-
-/// An engine operation emitted by the Emit engine.
-pub enum Operation {
-    Remove { key: Vec<u8> },
-    Sync,
-    Set { key: Vec<u8>, value: Vec<u8> },
-}

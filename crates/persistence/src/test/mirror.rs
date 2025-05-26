@@ -41,7 +41,7 @@ impl<A: Persistence, B: Persistence> Persistence for Mirror<A, B> {
         Ok(a)
     }
 
-    fn scan(&self, range: impl RangeBounds<Vec<u8>>) -> Self::ScanIter<'_>
+    fn scan(&self, range: impl RangeBounds<Vec<u8>> + Clone) -> Self::ScanIter<'_>
     where
         Self: Sized,
     {

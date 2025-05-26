@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::{Key, Persistence, Value};
+use crate::{Key, Operation, Persistence, Value};
 use std::ops::RangeBounds;
 use std::sync::mpsc::Sender;
 
@@ -18,11 +18,11 @@ pub struct Emit<E: Persistence> {
     /// The wrapped engine.
     inner: E,
     /// Sends operation events.
-    tx: Sender<crate::test::Operation>,
+    tx: Sender<Operation>,
 }
 
 impl<E: Persistence> crate::test::Emit<E> {
-    pub fn new(inner: E, tx: Sender<crate::test::Operation>) -> Self {
+    pub fn new(inner: E, tx: Sender<Operation>) -> Self {
         Self { inner, tx }
     }
 }
@@ -37,7 +37,7 @@ impl<E: Persistence> Persistence for Emit<E> {
         self.inner.get(key)
     }
 
-    fn scan(&self, range: impl RangeBounds<Key>) -> Self::ScanIter<'_> {
+    fn scan(&self, range: impl RangeBounds<Key> + Clone) -> Self::ScanIter<'_> {
         self.inner.scan(range)
     }
 
@@ -47,19 +47,19 @@ impl<E: Persistence> Persistence for Emit<E> {
 
     fn sync(&mut self) -> crate::Result<()> {
         self.inner.sync()?;
-        self.tx.send(crate::test::Operation::Sync).unwrap();
+        // self.tx.send(Operation::Sync).unwrap();
         Ok(())
     }
 
     fn remove(&mut self, key: &Key) -> crate::Result<()> {
         self.inner.remove(key)?;
-        self.tx.send(crate::test::Operation::Remove { key: key.to_vec() }).unwrap();
+        self.tx.send(Operation::Remove { key: key.to_vec() }).unwrap();
         Ok(())
     }
 
     fn set(&mut self, key: &Key, value: Value) -> crate::Result<()> {
         self.inner.set(key, value.clone())?;
-        self.tx.send(crate::test::Operation::Set { key: key.to_vec(), value }).unwrap();
+        self.tx.send(Operation::Set { key: key.to_vec(), value }).unwrap();
         Ok(())
     }
 }

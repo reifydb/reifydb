@@ -12,14 +12,12 @@ pub use catalog::{
     StoreTx,
 };
 pub use error::Error;
-pub use memstage::{MemStage, MemStageScan};
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
 pub use transaction::{InsertResult, Rx, Transaction, Tx, mvcc, svl};
 
 mod catalog;
 mod error;
-mod memstage;
 mod transaction;
 
 pub type Result<T> = std::result::Result<T, Error>;

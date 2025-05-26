@@ -15,25 +15,30 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
 
-use persistence::test::{Emit, Operation};
-use persistence::{Memory, Persistence};
+use persistence::test::Emit;
+use persistence::{Buffer, Memory, Operation, Persistence};
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
+use transaction::Tx;
 use transaction::mvcc::format::MVCC;
-use transaction::mvcc::{format, Mvcc, Transaction, Version};
-use transaction::{MemStage, Tx};
+use transaction::mvcc::{Mvcc, Transaction, Version, format};
 
 test_each_path! { in "crates/transaction/tests/mvcc" as memory => test_memory }
+test_each_path! { in "crates/transaction/tests/mvcc" as buffered_memory => test_buffered_memory }
 
 fn test_memory(path: &Path) {
-    testscript::run_path(&mut MvccRunner::new(MemStage::new(Memory::default())), path).expect("test failed")
+    testscript::run_path(&mut MvccRunner::new(Memory::default()), path).expect("test failed")
 }
 
-/// Runs MVCC tests.
+fn test_buffered_memory(path: &Path) {
+    testscript::run_path(&mut MvccRunner::new(Buffer::new(Memory::default())), path)
+        .expect("test failed")
+}
+
 pub struct MvccRunner<P: Persistence> {
     mvcc: Mvcc<Emit<P>>,
     txs: HashMap<String, Transaction<Emit<P>>>,
@@ -120,8 +125,8 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
             // dump
             "dump" => {
                 command.consume_args().reject_rest()?;
-                let mut engine = self.mvcc.store.lock().unwrap();
-                let mut scan = engine.scan(..);
+                let mut persistence = self.mvcc.persistence.lock().unwrap();
+                let mut scan = persistence.scan(..);
                 while let Some((key, value)) = scan.next().transpose()? {
                     let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
                     let rawkv = format::Raw::key_value(&key, &value);
@@ -285,7 +290,6 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
                         let rawkey = format::Raw::key(&key);
                         writeln!(output, "engine remove {fmtkey} [{rawkey}]")?
                     }
-                    Operation::Sync => writeln!(output, "engine sync")?,
                     Operation::Set { key, value } => {
                         let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
                         let rawkv = format::Raw::key_value(&key, &value);

@@ -7,11 +7,13 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 use base::encoding::keycode;
+pub use buffer::{Buffer, BufferScanIter};
 pub use error::Error;
 pub use memory::{Memory, MemoryScanIter};
 use std::ops::RangeBounds;
 use std::result;
 
+mod buffer;
 mod error;
 mod memory;
 pub mod test;
@@ -20,6 +22,12 @@ pub type Result<T> = result::Result<T, Error>;
 
 pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
+
+/// An engine operation emitted by the Emit engine.
+pub enum Operation {
+    Set { key: Key, value: Value },
+    Remove { key: Key },
+}
 
 /// A scan iterator over key-value pairs, returned by [`Persistence::scan()`].
 pub trait ScanIterator: DoubleEndedIterator<Item = Result<(Key, Value)>> {}
@@ -50,7 +58,7 @@ pub trait Persistence: Send + Sync {
     ///
     /// # Returns
     /// A [`ScanIter`] that yields `Result<(Key, Value)>` in sorted order.
-    fn scan(&self, range: impl RangeBounds<Key>) -> Self::ScanIter<'_>;
+    fn scan(&self, range: impl RangeBounds<Key> + Clone) -> Self::ScanIter<'_>;
 
     /// Iterates over all key-value pairs that begin with the given `prefix`.
     ///

@@ -10,11 +10,11 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::mvcc::{Error, Transaction, TransactionState, Version};
-use crate::{CatalogRx as _, CatalogTx, InsertResult, CATALOG};
+use crate::{CATALOG, CatalogRx as _, CatalogTx, InsertResult};
 
 use std::collections::BTreeSet;
 use std::ops::{Bound, RangeBounds};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::catalog::{Catalog, Schema};
 use crate::transaction::mvcc::key::{Key, KeyPrefix};
@@ -53,7 +53,6 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
         ))
     }
 }
-
 
 impl<P: Persistence> crate::Tx for Transaction<P> {
     type CatalogMut = Catalog;
@@ -153,10 +152,10 @@ impl<P: Persistence> Transaction<P> {
     /// Begins a new transaction in read-write mode. This will allocate a new
     /// version that the transaction can write at, add it to the active set, and
     /// record its active snapshot for time-travel queries.
-    pub(crate) fn begin(engine: Arc<Mutex<P>>) -> crate::transaction::mvcc::Result<Self> {
+    pub(crate) fn begin(persistence: Arc<Mutex<P>>) -> crate::transaction::mvcc::Result<Self> {
         // FIXME
         // let mut session = engine.lock()?;
-        let mut session = engine.lock().unwrap();
+        let mut session = persistence.lock().unwrap();
 
         // Allocate a new version to write at.
         let version = match session.get(&Key::NextVersion.encode())? {
@@ -174,10 +173,7 @@ impl<P: Persistence> Transaction<P> {
         session.set(&Key::TxActive(version).encode(), vec![])?;
         drop(session);
 
-        Ok(Self {
-            persistence: engine,
-            state: TransactionState { version, read_only: false, active },
-        })
+        Ok(Self { persistence, state: TransactionState { version, read_only: false, active } })
     }
 
     /// Begins a new read-only transaction. If version is given it will see the
@@ -185,12 +181,12 @@ impl<P: Persistence> Transaction<P> {
     /// version). In other words, it sees the same state as the read-write
     /// transaction at that version saw when it began.
     pub(crate) fn begin_read_only(
-        engine: Arc<Mutex<P>>,
+        persistence: Arc<Mutex<P>>,
         as_of: Option<Version>,
     ) -> crate::transaction::mvcc::Result<Self> {
         // FIXME
         // let mut session = engine.lock()?;
-        let mut session = engine.lock().unwrap();
+        let mut session = persistence.lock().unwrap();
 
         // Fetch the latest version.
         let mut version = match session.get(&Key::NextVersion.encode())? {
@@ -216,10 +212,7 @@ impl<P: Persistence> Transaction<P> {
 
         drop(session);
 
-        Ok(Self {
-            persistence: engine,
-            state: TransactionState { version, read_only: true, active },
-        })
+        Ok(Self { persistence, state: TransactionState { version, read_only: true, active } })
     }
 
     /// Fetches the set of currently active transactions.

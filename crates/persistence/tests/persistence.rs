@@ -20,7 +20,7 @@ use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
 
-test_each_path! { in "crates/persistence/tests/engine" as memory => test_memory }
+test_each_path! { in "crates/persistence/tests/persistence" as memory => test_memory }
 
 fn test_memory(path: &Path) {
     testscript::run_path(&mut PersistenceRunner::new(Memory::default()), path).expect("test failed")
