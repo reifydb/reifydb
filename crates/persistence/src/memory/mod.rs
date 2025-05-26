@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Result;
-use crate::engine::{Key, Store, Value};
+use crate::engine::{Key, Persistence, Value};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Range;
 use std::ops::RangeBounds;
@@ -11,7 +11,7 @@ use std::ops::RangeBounds;
 #[derive(Default)]
 pub struct Memory(BTreeMap<Key, Value>);
 
-impl Store for Memory {
+impl Persistence for Memory {
     type ScanIter<'a> = MemoryScanIter<'a>;
 
     fn get(&self, key: &Key) -> Result<Option<Value>> {

@@ -12,32 +12,32 @@
 use base::encoding::binary::decode_binary;
 use base::encoding::format;
 use base::encoding::format::Formatter;
+use persistence::{Memory, Persistence};
 use std::error::Error as StdError;
 use std::fmt::Write;
 use std::path::Path;
-use store::{Memory, Store};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
 
-test_each_path! { in "crates/store/tests/engine" as memory => test_memory }
+test_each_path! { in "crates/persistence/tests/engine" as memory => test_memory }
 
 fn test_memory(path: &Path) {
     testscript::run_path(&mut EngineRunner::new(Memory::default()), path).expect("test failed")
 }
 
 /// Runs engine tests.
-pub struct EngineRunner<S: Store> {
-    engine: S,
+pub struct EngineRunner<P: Persistence> {
+    engine: P,
 }
 
-impl<S: Store> EngineRunner<S> {
-    fn new(engine: S) -> Self {
+impl<P: Persistence> EngineRunner<P> {
+    fn new(engine: P) -> Self {
         Self { engine }
     }
 }
 
-impl<S: Store> testscript::Runner for EngineRunner<S> {
+impl<P: Persistence> testscript::Runner for EngineRunner<P> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {

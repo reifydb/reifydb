@@ -15,11 +15,11 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
 
+use persistence::test::{Emit, Operation};
+use persistence::{Memory, Persistence};
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
-use store::test::{Emit, Operation};
-use store::{Memory, Store};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
@@ -34,14 +34,14 @@ fn test_memory(path: &Path) {
 }
 
 /// Runs MVCC tests.
-pub struct MvccRunner<E: store::Store> {
-    engine: Mvcc<Emit<E>>,
-    txs: HashMap<String, Transaction<Emit<E>>>,
+pub struct MvccRunner<P: Persistence> {
+    engine: Mvcc<Emit<P>>,
+    txs: HashMap<String, Transaction<Emit<P>>>,
     operations: Receiver<Operation>,
 }
 
-impl<E: store::Store> MvccRunner<E> {
-    fn new(store: E) -> Self {
+impl<P: Persistence> MvccRunner<P> {
+    fn new(store: P) -> Self {
         let (tx, rx) = mpsc::channel();
         Self { engine: Mvcc::new(Emit::new(store, tx)), txs: HashMap::new(), operations: rx }
     }
@@ -50,7 +50,7 @@ impl<E: store::Store> MvccRunner<E> {
     fn get_tx(
         &mut self,
         prefix: &Option<String>,
-    ) -> Result<&'_ mut Transaction<Emit<E>>, Box<dyn StdError>> {
+    ) -> Result<&'_ mut Transaction<Emit<P>>, Box<dyn StdError>> {
         let name = Self::tx_name(prefix)?;
         self.txs.get_mut(name).ok_or(format!("unknown tx {name}").into())
     }
@@ -69,7 +69,7 @@ impl<E: store::Store> MvccRunner<E> {
     }
 }
 
-impl<'a, E: store::Store> testscript::Runner for MvccRunner<E> {
+impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         let mut tags = command.tags.clone();

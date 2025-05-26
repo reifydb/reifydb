@@ -10,7 +10,7 @@ use engine::old_execute::ExecutionResult;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
-use store::Store;
+use persistence::Persistence;
 use tokio::runtime::Runtime;
 use tonic::service::InterceptorLayer;
 use tonic::transport::Error;
@@ -19,20 +19,20 @@ use transaction::{Rx, Transaction, Tx};
 mod config;
 mod grpc;
 
-pub struct Server<S: Store, T: Transaction<S>> {
+pub struct Server<P: Persistence, T: Transaction<P>> {
     pub(crate) config: ServerConfig,
     pub(crate) grpc: tonic::transport::Server,
-    pub(crate) callbacks: Callbacks<S, T>,
-    pub(crate) engine: Engine<S, T>,
+    pub(crate) callbacks: Callbacks<P, T>,
+    pub(crate) engine: Engine<P, T>,
 }
 
-impl<S: Store, T: Transaction<S>> Server<S, T> {
+impl<P: Persistence, T: Transaction<P>> Server<P, T> {
     pub fn with_config(mut self, config: ServerConfig) -> Self {
         self.config = config;
         self
     }
 
-    pub fn with_engine(mut self, engine: Engine<S, T>) -> Self {
+    pub fn with_engine(mut self, engine: Engine<P, T>) -> Self {
         self.engine = engine;
         self
     }
@@ -40,9 +40,9 @@ impl<S: Store, T: Transaction<S>> Server<S, T> {
 
 pub type Callback<T> = Box<dyn FnOnce(T) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-pub struct Callbacks<S: Store, T: Transaction<S>> {
+pub struct Callbacks<P: Persistence, T: Transaction<P>> {
     before_bootstrap: Vec<Callback<BeforeBootstrap>>,
-    on_create: Vec<Callback<OnCreate<S, T>>>,
+    on_create: Vec<Callback<OnCreate<P, T>>>,
 }
 
 #[derive(Clone)]
@@ -76,11 +76,11 @@ impl Deref for BeforeBootstrap {
     }
 }
 
-pub struct OnCreate<S: Store, T: Transaction<S>> {
-    engine: Engine<S, T>,
+pub struct OnCreate<P: Persistence, T: Transaction<P>> {
+    engine: Engine<P, T>,
 }
 
-impl<S: Store, T: Transaction<S>> OnCreate<S, T> {
+impl<P: Persistence, T: Transaction<P>> OnCreate<P, T> {
     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
         self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
     }
@@ -90,7 +90,7 @@ impl<S: Store, T: Transaction<S>> OnCreate<S, T> {
     }
 }
 
-impl<S: Store + 'static, T: Transaction<S> + 'static> Server<S, T> {
+impl<P: Persistence + 'static, T: Transaction<P> + 'static> Server<P, T> {
     pub fn new(transaction: T) -> Self {
         Self {
             config: ServerConfig::default(),
@@ -112,7 +112,7 @@ impl<S: Store + 'static, T: Transaction<S> + 'static> Server<S, T> {
     /// will only be invoked when a new database gets created
     pub fn on_create<F, Fut>(mut self, func: F) -> Self
     where
-        F: FnOnce(OnCreate<S, T>) -> Fut + Send + 'static,
+        F: FnOnce(OnCreate<P, T>) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.callbacks.on_create.push(Box::new(move |ctx| Box::pin(func(ctx))));

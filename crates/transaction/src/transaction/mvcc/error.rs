@@ -23,8 +23,8 @@ pub enum Error {
     /// Transaction failed due to a serialization conflict. The operation should be retried.
     Serialization,
 
-    /// A low-level store error occurred during MVCC operations.
-    Store(store::Error),
+    /// A low-level persistence error occurred during MVCC operations.
+    Persistence(persistence::Error),
 
     /// The requested version could not be found in the version history.
     VersionNotFound { version: Version },
@@ -52,7 +52,7 @@ impl Display for Error {
             Error::Serialization => {
                 write!(f, "transaction serialization conflict occurred, retry transaction")
             }
-            Error::Store(err) => write!(f, "store error: {}", err),
+            Error::Persistence(err) => write!(f, "persistence error: {}", err),
             Error::VersionNotFound { version } => {
                 write!(f, "version not found: {}", version)
             }
@@ -66,7 +66,7 @@ impl Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Store(err) => Some(err),
+            Error::Persistence(err) => Some(err),
             _ => None,
         }
     }
@@ -78,8 +78,8 @@ impl From<encoding::Error> for Error {
     }
 }
 
-impl From<store::Error> for Error {
-    fn from(err: store::Error) -> Self {
-        Self::Store(err)
+impl From<persistence::Error> for Error {
+    fn from(err: persistence::Error) -> Self {
+        Self::Persistence(err)
     }
 }

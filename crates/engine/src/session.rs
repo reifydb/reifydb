@@ -7,7 +7,7 @@
 //
 // /// A client session. Executes raw RQL statements against an engine and
 // /// handles transaction control.
-// pub struct Session<'a, S: store::Engine, T: transaction::Engine< S>, E: Engine< S, T>> {
+// pub struct Session<'a, P: Persistence::Engine, T: transaction::Engine< S>, E: Engine< S, T>> {
 //     /// The engine.
 //     engine: & E,
 //     /// The current read transaction, if any.

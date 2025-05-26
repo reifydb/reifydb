@@ -13,8 +13,8 @@ use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::transaction::init;
 use crate::transaction::mvcc::{Status, Transaction, Version};
 use base::encoding::{Key as _, Value};
+use persistence::Persistence;
 use std::sync::{Arc, Mutex, OnceLock};
-use store::Store;
 
 /// An MVCC-based transactional key-value engine. It wraps an underlying store
 /// engine that's used for raw key-value store.
@@ -23,19 +23,19 @@ use store::Store;
 /// write operations are executed sequentially, serialized via a mutex. There
 /// are two reasons for this: the store engine itself is not thread-safe,
 /// requiring serialized access.
-pub struct Mvcc<S: Store> {
+pub struct Mvcc<P: Persistence> {
     // FIXME add concurrent safe MemPool module between Store and transaction
     // idea - batch data and perform bulk insertions / update to underlying store implementation
     // introduce ConfirmationLevel similar to Solana
     // Processed - a transaction was processed successful and the change is in the mempool
     // Confirmed - data written to file and synced
     // Finalized - majority of nodes accepted this data
-    pub store: Arc<Mutex<S>>,
+    pub store: Arc<Mutex<P>>,
 }
 
-impl<S: Store> crate::Transaction<S> for Mvcc<S> {
-    type Rx = Transaction<S>;
-    type Tx = Transaction<S>;
+impl<P: Persistence> crate::Transaction<P> for Mvcc<P> {
+    type Rx = Transaction<P>;
+    type Tx = Transaction<P>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         // let guard = self.inner.read().unwrap();
@@ -53,9 +53,9 @@ impl<S: Store> crate::Transaction<S> for Mvcc<S> {
 
 static CATALOG: OnceLock<()> = OnceLock::new();
 
-impl<S: Store> Mvcc<S> {
+impl<P: Persistence> Mvcc<P> {
     /// Creates a new MVCC engine with the given store engine.
-    pub fn new(engine: S) -> Self {
+    pub fn new(engine: P) -> Self {
         CATALOG.get_or_init(|| {
             init();
         });
@@ -63,12 +63,12 @@ impl<S: Store> Mvcc<S> {
     }
 
     /// Begins a new read-write transaction.
-    pub fn begin(&self) -> crate::transaction::mvcc::Result<Transaction<S>> {
+    pub fn begin(&self) -> crate::transaction::mvcc::Result<Transaction<P>> {
         Transaction::begin(self.store.clone())
     }
 
     /// Begins a new read-only transaction at the latest version.
-    pub fn begin_read_only(&self) -> crate::transaction::mvcc::Result<Transaction<S>> {
+    pub fn begin_read_only(&self) -> crate::transaction::mvcc::Result<Transaction<P>> {
         Transaction::begin_read_only(self.store.clone(), None)
     }
 
@@ -76,7 +76,7 @@ impl<S: Store> Mvcc<S> {
     pub fn begin_read_only_as_of(
         &self,
         version: Version,
-    ) -> crate::transaction::mvcc::Result<Transaction<S>> {
+    ) -> crate::transaction::mvcc::Result<Transaction<P>> {
         Transaction::begin_read_only(self.store.clone(), Some(version))
     }
 

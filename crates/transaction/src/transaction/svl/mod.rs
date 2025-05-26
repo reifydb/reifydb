@@ -13,24 +13,24 @@ mod schema;
 mod store;
 mod transaction;
 
-pub struct Svl<S: ::store::Store> {
-    inner: RwLock<EngineInner<S>>,
+pub struct Svl<P: ::persistence::Persistence> {
+    inner: RwLock<EngineInner<P>>,
 }
 
-pub struct EngineInner<S: ::store::Store> {
-    pub store: S,
+pub struct EngineInner<P: ::persistence::Persistence> {
+    pub store: P,
     pub catalog: Catalog,
 }
 
-impl<S: ::store::Store> Svl<S> {
-    pub fn new(store: S) -> Self {
+impl<P: ::persistence::Persistence> Svl<P> {
+    pub fn new(store: P) -> Self {
         Self { inner: RwLock::new(EngineInner { store, catalog: Catalog::new() }) }
     }
 }
 
-impl<S: ::store::Store> crate::Transaction<S> for Svl<S> {
-    type Rx = Transaction<S>;
-    type Tx = TransactionMut<S>;
+impl<P: persistence::Persistence> crate::Transaction<P> for Svl<P> {
+    type Rx = Transaction<P>;
+    type Tx = TransactionMut<P>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         let guard = self.inner.read();

@@ -3,7 +3,7 @@
 
 use reifydb::client::Client;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::store::Store;
+use reifydb::persistence::Persistence;
 use reifydb::transaction::Transaction;
 use reifydb::{ReifyDB, memory, mvcc, svl};
 use std::error::Error;
@@ -16,14 +16,14 @@ use testing::testscript::Command;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct ClientRunner<S: Store, T: Transaction<S>> {
-    server: Option<Server<S, T>>,
+pub struct ClientRunner<P: Persistence, T: Transaction<P>> {
+    server: Option<Server<P, T>>,
     client: Client,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<S: Store + 'static, T: Transaction<S> + 'static> ClientRunner<S, T> {
+impl<P: Persistence + 'static, T: Transaction<P> + 'static> ClientRunner<P, T> {
     pub fn new(transaction: T) -> Self {
         let socket_addr = free_local_socket();
 
@@ -37,8 +37,8 @@ impl<S: Store + 'static, T: Transaction<S> + 'static> ClientRunner<S, T> {
     }
 }
 
-impl<S: Store + 'static, T: Transaction<S> + 'static> testscript::Runner
-    for ClientRunner<S, T>
+impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner
+    for ClientRunner<P, T>
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();

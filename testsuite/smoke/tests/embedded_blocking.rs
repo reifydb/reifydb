@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::embedded_blocking::Embedded;
-use reifydb::store::Store;
+use reifydb::persistence::Persistence;
 use reifydb::transaction::Transaction;
 use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl};
 use std::error::Error;
@@ -12,20 +12,20 @@ use test_each_file::test_each_path;
 use testing::testscript;
 use testing::testscript::Command;
 
-pub struct Runner<S: Store + 'static, T: Transaction<S> + 'static> {
-    engine: Embedded<S, T>,
+pub struct Runner<P: Persistence + 'static, T: Transaction<P> + 'static> {
+    engine: Embedded<P, T>,
     root: Principal,
 }
 
-impl<S: Store + 'static, T: Transaction<S> + 'static> Runner<S, T> {
+impl<P: Persistence + 'static, T: Transaction<P> + 'static> Runner<P, T> {
     pub fn new(transaction: T) -> Self {
         let (engine, root) = ReifyDB::embedded_blocking_with(transaction);
         Self { engine, root }
     }
 }
 
-impl<S: Store + 'static, T: Transaction<S> + 'static> testscript::Runner
-    for Runner<S, T>
+impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner
+    for Runner<P, T>
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();

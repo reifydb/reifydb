@@ -8,6 +8,7 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::Result;
 use base::encoding::keycode;
 use std::ops::RangeBounds;
@@ -15,13 +16,13 @@ use std::ops::RangeBounds;
 pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
 
-/// A scan iterator over key-value pairs, returned by [`Store::scan()`].
+/// A scan iterator over key-value pairs, returned by [`Persistence::scan()`].
 pub trait ScanIterator: DoubleEndedIterator<Item = Result<(Key, Value)>> {}
 
 /// Blanket implementation for all iterators that can act as a scan iterator.
 impl<I: DoubleEndedIterator<Item = Result<(Key, Value)>>> ScanIterator for I {}
 
-pub trait Store: Send + Sync {
+pub trait Persistence: Send + Sync {
     /// An associated type representing the iterator returned by `scan` and `scan_prefix`.
     ///
     /// The iterator yields ordered key-value pairs and must implement [`ScanIterator`].

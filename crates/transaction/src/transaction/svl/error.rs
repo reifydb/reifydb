@@ -9,14 +9,14 @@ use std::fmt::{Display, Formatter};
 /// store-layer faults encountered during SVL operations.
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    /// A low-level store error occurred.
-    Store(store::Error),
+    /// A low-level persistence error occurred.
+    Persistence(persistence::Error),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Store(err) => write!(f, "store error: {}", err),
+            Error::Persistence(err) => write!(f, "persistence error: {}", err),
         }
     }
 }
@@ -24,13 +24,13 @@ impl Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Store(err) => Some(err),
+            Error::Persistence(err) => Some(err),
         }
     }
 }
 
-impl From<store::Error> for Error {
-    fn from(err: store::Error) -> Self {
-        Self::Store(err)
+impl From<persistence::Error> for Error {
+    fn from(err: persistence::Error) -> Self {
+        Self::Persistence(err)
     }
 }

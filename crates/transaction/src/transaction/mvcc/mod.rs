@@ -143,16 +143,16 @@
 //! GARBAGE COLLECTION // FIXME add to mempool
 //! ==================
 
-pub use mvcc::Mvcc;
 pub use error::Error;
 pub use key::{Key, KeyPrefix};
+pub use mvcc::Mvcc;
 pub use version::Version;
 
 mod catalog;
-mod mvcc;
 mod error;
 pub mod format;
 mod key;
+mod mvcc;
 mod scan;
 mod schema;
 mod store;
@@ -163,7 +163,7 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use ::store::Store;
+use ::persistence::Persistence;
 use base::encoding;
 use base::encoding::Value;
 use serde::{Deserialize, Serialize};
@@ -184,9 +184,9 @@ pub struct Status {
 impl encoding::Value for Status {}
 
 /// An MVCC transaction.
-pub struct Transaction<S: Store> {
+pub struct Transaction<P: Persistence> {
     /// The underlying engine, shared by all transactions.
-    engine: Arc<Mutex<S>>,
+    engine: Arc<Mutex<P>>,
     /// The transaction state.
     state: TransactionState,
 }

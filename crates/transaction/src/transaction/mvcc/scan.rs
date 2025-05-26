@@ -11,9 +11,9 @@
 
 use crate::transaction::mvcc::{Error, Key, TransactionState, Version};
 use base::encoding::{Key as _, bincode};
+use persistence::Persistence;
 use std::collections::{Bound, VecDeque};
 use std::sync::{Arc, Mutex};
-use store::Store;
 
 /// An iterator over the latest live and visible key-value pairs for the tx.
 ///
@@ -24,9 +24,9 @@ use store::Store;
 ///
 /// This does not implement DoubleEndedIterator (reverse scans), since the SQL
 /// layer doesn't currently need it.
-pub struct ScanIterator<S: Store> {
+pub struct ScanIterator<P: Persistence> {
     /// The engine.
-    engine: Arc<Mutex<S>>,
+    engine: Arc<Mutex<P>>,
     /// The transaction state.
     tx: TransactionState,
     /// A buffer of live and visible key-value pairs to emit.
@@ -38,7 +38,7 @@ pub struct ScanIterator<S: Store> {
 /// Implement [`Clone`] manually. `derive(Clone)` isn't smart enough to figure
 /// out that we don't need `Engine: Clone` when it's in an [`Arc`]. See:
 /// <https://github.com/rust-lang/rust/issues/26925>.
-impl<S: Store> Clone for ScanIterator<S> {
+impl<P: Persistence> Clone for ScanIterator<P> {
     fn clone(&self) -> Self {
         Self {
             engine: self.engine.clone(),
@@ -49,19 +49,19 @@ impl<S: Store> Clone for ScanIterator<S> {
     }
 }
 
-impl<S: Store> ScanIterator<S> {
+impl<P: Persistence> ScanIterator<P> {
     /// The number of live key-value pairs to pull from the engine each time we
     /// lock it. Uses 2 in tests to exercise the buffering code.
     const BUFFER_SIZE: usize = if cfg!(test) { 2 } else { 32 };
 
     /// Creates a new scan iterator.
     pub(crate) fn new(
-        engine: Arc<Mutex<S>>,
+        engine: Arc<Mutex<P>>,
         tx: TransactionState,
         range: (Bound<Vec<u8>>, Bound<Vec<u8>>),
     ) -> Self {
         let buffer = VecDeque::with_capacity(Self::BUFFER_SIZE);
-        Self { engine, tx: tx, buffer, remainder: Some(range) }
+        Self { engine, tx, buffer, remainder: Some(range) }
     }
 
     /// Fills the buffer, if there's any pending items.
@@ -110,7 +110,7 @@ impl<S: Store> ScanIterator<S> {
     }
 }
 
-impl<S: Store> Iterator for ScanIterator<S> {
+impl<P: Persistence> Iterator for ScanIterator<P> {
     type Item = crate::transaction::mvcc::Result<(Vec<u8>, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -125,21 +125,23 @@ impl<S: Store> Iterator for ScanIterator<S> {
 
 /// An iterator that decodes raw engine key-value pairs into MVCC key-value
 /// versions, and skips invisible versions. Helper for ScanIterator.
-struct VersionIterator<'a, I: store::ScanIterator> {
+struct VersionIterator<'a, I: persistence::ScanIterator> {
     /// The transaction the scan is running in.
     tx: &'a TransactionState,
     /// The inner engine scan iterator.
     inner: I,
 }
 
-impl<'a, I: store::ScanIterator> VersionIterator<'a, I> {
+impl<'a, I: persistence::ScanIterator> VersionIterator<'a, I> {
     /// Creates a new MVCC version iterator for the given engine iterator.
     fn new(tx: &'a TransactionState, inner: I) -> Self {
         Self { tx: tx, inner }
     }
 
     // Fallible next(). Returns the next visible key/version/value tuple.
-    fn try_next(&mut self) -> crate::transaction::mvcc::Result<Option<(Vec<u8>, Version, Vec<u8>)>> {
+    fn try_next(
+        &mut self,
+    ) -> crate::transaction::mvcc::Result<Option<(Vec<u8>, Version, Vec<u8>)>> {
         while let Some((key, value)) = self.inner.next().transpose()? {
             let decoded_key = Key::decode(&key)?;
             let Key::Version(key, version) = decoded_key else {
@@ -154,7 +156,7 @@ impl<'a, I: store::ScanIterator> VersionIterator<'a, I> {
     }
 }
 
-impl<I: store::ScanIterator> Iterator for VersionIterator<'_, I> {
+impl<I: persistence::ScanIterator> Iterator for VersionIterator<'_, I> {
     type Item = crate::transaction::mvcc::Result<(Vec<u8>, Version, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {

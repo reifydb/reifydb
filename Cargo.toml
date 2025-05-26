@@ -8,7 +8,7 @@ members = ["bin/cli",
     "crates/dataframe",
     "crates/engine",
     "crates/rql",
-    "crates/store",
+    "crates/persistence",
     "crates/testing",
     "crates/transaction",
     "pkg/python",
@@ -24,7 +24,7 @@ default-members = ["bin/cli",
     "crates/dataframe",
     "crates/engine",
     "crates/rql",
-    "crates/store",
+    "crates/persistence",
     "crates/testing",
     "crates/transaction",
     "pkg/rust",
@@ -65,8 +65,8 @@ auth = { path = "crates/auth", version = "0.0.1" }
 base = { path = "crates/base", version = "0.0.1" }
 dataframe = { path = "crates/dataframe", version = "0.0.1" }
 engine = { path = "crates/engine", version = "0.0.1" }
+persistence = { path = "crates/persistence", version = "0.0.1" }
 rql = { path = "crates/rql", version = "0.0.1" }
-store = { path = "crates/store", version = "0.0.1" }
 testing = { path = "crates/testing", version = "0.0.1" }
 transaction = { path = "crates/transaction", version = "0.0.1" }
 

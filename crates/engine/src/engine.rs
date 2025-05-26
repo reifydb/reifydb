@@ -1,49 +1,49 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::old_execute::{ExecutionResult, execute_plan, execute_plan_mut};
+use crate::old_execute::{execute_plan, execute_plan_mut, ExecutionResult};
 use auth::Principal;
+use persistence::Persistence;
 use rql::ast;
 use rql::ast::Ast;
 use rql::plan::{plan, plan_mut};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
-use store::Store;
 use transaction::{Rx, Transaction, Tx};
 
-pub struct Engine<S: Store, T: Transaction<S>>(Arc<EngineInner<S, T>>);
+pub struct Engine<P: Persistence, T: Transaction<P>>(Arc<EngineInner<P, T>>);
 
-impl<S, T> Clone for Engine<S, T>
+impl<P, T> Clone for Engine<P, T>
 where
-    S: Store,
-    T: Transaction<S>,
+    P: Persistence,
+    T: Transaction<P>,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<S: Store, T: Transaction<S>> Deref for Engine<S, T> {
-    type Target = EngineInner<S, T>;
+impl<P: Persistence, T: Transaction<P>> Deref for Engine<P, T> {
+    type Target = EngineInner<P, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct EngineInner<S: Store, T: Transaction<S>> {
+pub struct EngineInner<P: Persistence, T: Transaction<P>> {
     transaction: T,
-    _marker: PhantomData<S>,
+    _marker: PhantomData<P>,
 }
 
-impl<S: Store, T: Transaction<S>> Engine<S, T> {
+impl<P: Persistence, T: Transaction<P>> Engine<P, T> {
     pub fn new(transaction: T) -> Self {
         Self(Arc::new(EngineInner { transaction, _marker: PhantomData }))
     }
 }
 
-impl<S: Store, T: Transaction<S>> Engine<S, T> {
+impl<P: Persistence, T: Transaction<P>> Engine<P, T> {
     fn begin(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin().unwrap())
     }

@@ -26,8 +26,8 @@ pub enum Error {
     Encoding(encoding::Error),
     /// RQL related error
     RQL(rql::Error),
-    /// store related error
-    Store(store::Error),
+    /// Persistence related error
+    Persistence(persistence::Error),
 }
 
 impl Display for Error {
@@ -35,7 +35,7 @@ impl Display for Error {
         match self {
             Error::Encoding(err) => f.write_fmt(format_args!("encoding error: {}", err)),
             Error::RQL(err) => f.write_fmt(format_args!("rql error: {}", err)),
-            Error::Store(err) => f.write_fmt(format_args!("store error: {}", err)),
+            Error::Persistence(err) => f.write_fmt(format_args!("persistence error: {}", err)),
         }
     }
 }
@@ -54,8 +54,8 @@ impl From<rql::Error> for Error {
     }
 }
 
-impl From<store::Error> for Error {
-    fn from(value: store::Error) -> Self {
-        Self::Store(value)
+impl From<persistence::Error> for Error {
+    fn from(value: persistence::Error) -> Self {
+        Self::Persistence(value)
     }
 }

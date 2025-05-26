@@ -245,9 +245,9 @@ dependencies = [
  "base",
  "dataframe",
  "log",
+ "persistence",
  "rql",
  "serde",
- "store",
  "transaction",
 ]
 
@@ -645,6 +645,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
+name = "persistence"
+version = "0.0.1"
+dependencies = [
+ "base",
+ "test_each_file",
+ "testing",
+]
+
+[[package]]
 name = "petgraph"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -935,9 +944,9 @@ dependencies = [
  "auth",
  "base",
  "engine",
+ "persistence",
  "prost",
  "rql",
- "store",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -1104,15 +1113,6 @@ checksum = "4f5fd57c80058a56cf5c777ab8a126398ece8e442983605d280a44ce79d0edef"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "store"
-version = "0.0.1"
-dependencies = [
- "base",
- "test_each_file",
- "testing",
 ]
 
 [[package]]
@@ -1337,9 +1337,9 @@ name = "transaction"
 version = "0.0.1"
 dependencies = [
  "base",
+ "persistence",
  "serde",
  "serde_bytes",
- "store",
  "test_each_file",
  "testing",
 ]

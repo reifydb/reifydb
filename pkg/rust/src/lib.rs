@@ -36,10 +36,8 @@ pub use rql;
 #[cfg(any(feature = "server", feature = "client"))]
 pub use tokio::*;
 
-// pub use session::{IntoSessionRx, IntoSessionTx, SessionRx, SessionTx};
-
-/// The underlying key-value store responsible for persistence and data access.
-pub use store;
+/// The underlying persistence responsible for data access.
+pub use persistence;
 
 pub use transaction;
 
@@ -49,7 +47,7 @@ use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
 
-use store::{Memory, Store};
+use persistence::{Memory, Persistence};
 use transaction::Transaction;
 
 #[cfg(feature = "client")]
@@ -107,23 +105,23 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<S: Store, T: Transaction<S>>(
+    pub fn embedded_with<P: Persistence, T: Transaction<P>>(
         transaction: T,
-    ) -> (Embedded<S, T>, Principal) {
+    ) -> (Embedded<P, T>, Principal) {
         Embedded::new(transaction)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<S: Store, T: Transaction<S>>(
+    pub fn embedded_with<P: Persistence, T: Transaction<P>>(
         transaction: T,
-    ) -> (embedded_blocking::Embedded<S, T>, Principal) {
+    ) -> (embedded_blocking::Embedded<P, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<S: Store, T: Transaction<S>>(
+    pub fn embedded_blocking_with<P: Persistence, T: Transaction<P>>(
         transaction: T,
-    ) -> (embedded_blocking::Embedded<S, T>, Principal) {
+    ) -> (embedded_blocking::Embedded<P, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
@@ -133,19 +131,19 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<S: Store + 'static, T: Transaction<S> + 'static>(
+    pub fn server_with<P: Persistence + 'static, T: Transaction<P> + 'static>(
         transaction: T,
-    ) -> Server<S, T> {
+    ) -> Server<P, T> {
         Server::new(transaction)
     }
 }
 
-pub fn svl<S: Store>(store: S) -> ::transaction::svl::Svl<S> {
-    ::transaction::svl::Svl::new(store)
+pub fn svl<P: Persistence>(persistence: P) -> ::transaction::svl::Svl<P> {
+    ::transaction::svl::Svl::new(persistence)
 }
 
-pub fn mvcc<S: Store>(store: S) -> ::transaction::mvcc::Mvcc<S> {
-    ::transaction::mvcc::Mvcc::new(store)
+pub fn mvcc<P: Persistence>(persistence: P) -> ::transaction::mvcc::Mvcc<P> {
+    ::transaction::mvcc::Mvcc::new(persistence)
 }
 
 pub fn memory() -> Memory {

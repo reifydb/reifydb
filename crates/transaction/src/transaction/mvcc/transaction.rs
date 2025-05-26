@@ -23,10 +23,10 @@ use crate::transaction::mvcc::scan::ScanIterator;
 use crate::transaction::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::{Row, RowIter, key_prefix};
-use store::Store;
+use persistence::Persistence;
 // FIXME remove this
 
-impl<S: Store> crate::Rx for Transaction<S> {
+impl<P: Persistence> crate::Rx for Transaction<P> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -76,7 +76,7 @@ pub fn catalog_mut_singleton() -> &'static mut Catalog {
     unsafe { *CATALOG.get().unwrap().0.get() }
 }
 
-impl<S: Store> crate::Tx for Transaction<S> {
+impl<P: Persistence> crate::Tx for Transaction<P> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
@@ -170,11 +170,11 @@ impl<S: Store> crate::Tx for Transaction<S> {
     }
 }
 
-impl<S: Store> Transaction<S> {
+impl<P: Persistence> Transaction<P> {
     /// Begins a new transaction in read-write mode. This will allocate a new
     /// version that the transaction can write at, add it to the active set, and
     /// record its active snapshot for time-travel queries.
-    pub(crate) fn begin(engine: Arc<Mutex<S>>) -> crate::transaction::mvcc::Result<Self> {
+    pub(crate) fn begin(engine: Arc<Mutex<P>>) -> crate::transaction::mvcc::Result<Self> {
         // FIXME
         // let mut session = engine.lock()?;
         let mut session = engine.lock().unwrap();
@@ -203,7 +203,7 @@ impl<S: Store> Transaction<S> {
     /// version). In other words, it sees the same state as the read-write
     /// transaction at that version saw when it began.
     pub(crate) fn begin_read_only(
-        engine: Arc<Mutex<S>>,
+        engine: Arc<Mutex<P>>,
         as_of: Option<Version>,
     ) -> crate::transaction::mvcc::Result<Self> {
         // FIXME
@@ -239,7 +239,7 @@ impl<S: Store> Transaction<S> {
 
     /// Fetches the set of currently active transactions.
     fn scan_active(
-        session: &mut MutexGuard<S>,
+        session: &mut MutexGuard<P>,
     ) -> crate::transaction::mvcc::Result<BTreeSet<Version>> {
         let mut active = BTreeSet::new();
         let mut scan = session.scan_prefix(&KeyPrefix::TxActive.encode());
@@ -354,7 +354,7 @@ impl<S: Store> Transaction<S> {
 
     /// Returns an iterator over the latest visible key/value pairs at the
     /// transaction's version.
-    pub fn scan(&self, range: impl RangeBounds<Vec<u8>>) -> ScanIterator<S> {
+    pub fn scan(&self, range: impl RangeBounds<Vec<u8>>) -> ScanIterator<P> {
         let start = match range.start_bound() {
             Bound::Excluded(k) => {
                 Bound::Excluded(Key::Version(k.into(), Version(u64::MAX)).encode())
@@ -373,7 +373,7 @@ impl<S: Store> Transaction<S> {
     }
 
     /// Scans keys under a given prefix.
-    pub fn scan_prefix(&self, prefix: &[u8]) -> ScanIterator<S> {
+    pub fn scan_prefix(&self, prefix: &[u8]) -> ScanIterator<P> {
         // Normally, KeyPrefix::Version will only match all versions of the
         // exact given key. We want all keys maching the prefix, so we chop off
         // the Keycode byte slice terminator 0x0000 at the end.

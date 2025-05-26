@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use std::fmt::{Display, Formatter};
 use crate::transaction::{mvcc, svl};
+use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors related to transactions, the mempool, or store.
 ///
@@ -15,8 +15,8 @@ pub enum Error {
     /// MVCC-related error
     Mvcc(mvcc::Error),
 
-    /// Store-layer error
-    Store(store::Error),
+    /// Persistence-layer error
+    Persistence(persistence::Error),
 
     /// SVL concurrency error
     Svl(svl::Error),
@@ -26,7 +26,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Mvcc(err) => write!(f, "mvcc error: {}", err),
-            Error::Store(err) => write!(f, "store error: {}", err),
+            Error::Persistence(err) => write!(f, "store error: {}", err),
             Error::Svl(err) => write!(f, "svl error: {}", err),
         }
     }
@@ -37,22 +37,22 @@ impl std::error::Error for Error {}
 impl From<mvcc::Error> for Error {
     fn from(err: mvcc::Error) -> Self {
         match err {
-            mvcc::Error::Store(err) => Self::Store(err),
+            mvcc::Error::Persistence(err) => Self::Persistence(err),
             _ => Self::Mvcc(err),
         }
     }
 }
 
-impl From<store::Error> for Error {
-    fn from(err: store::Error) -> Self {
-        Error::Store(err)
+impl From<persistence::Error> for Error {
+    fn from(err: persistence::Error) -> Self {
+        Error::Persistence(err)
     }
 }
 
 impl From<svl::Error> for Error {
     fn from(err: svl::Error) -> Self {
         match err {
-            svl::Error::Store(err) => Self::Store(err),
+            svl::Error::Persistence(err) => Self::Persistence(err),
             _ => Self::Svl(err),
         }
     }

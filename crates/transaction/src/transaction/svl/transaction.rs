@@ -8,20 +8,21 @@ use crate::transaction::svl::schema::Schema;
 use crate::{CatalogRx as _, CatalogTx, InsertResult};
 use base::encoding::{Value as OtherValue, bincode};
 use base::{Key, Row, RowIter, key_prefix};
+use persistence::Persistence;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-pub struct Transaction<S: store::Store> {
-    engine: ReadGuard<EngineInner<S>>,
+pub struct Transaction<P: Persistence> {
+    engine: ReadGuard<EngineInner<P>>,
 }
 
-impl<S: store::Store> Transaction<S> {
-    pub fn new(engine: ReadGuard<EngineInner<S>>) -> Self {
+impl<P: Persistence> Transaction<P> {
+    pub fn new(engine: ReadGuard<EngineInner<P>>) -> Self {
         Self { engine }
     }
 }
 
-impl<S: store::Store> crate::Rx for Transaction<S> {
+impl<P: Persistence> crate::Rx for Transaction<P> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -49,18 +50,18 @@ impl<S: store::Store> crate::Rx for Transaction<S> {
     }
 }
 
-pub struct TransactionMut<S: store::Store> {
-    engine: WriteGuard<EngineInner<S>>,
+pub struct TransactionMut<P: Persistence> {
+    engine: WriteGuard<EngineInner<P>>,
     log: RefCell<HashMap<String, Vec<Row>>>,
 }
 
-impl<S: store::Store> TransactionMut<S> {
-    pub fn new(engine: WriteGuard<EngineInner<S>>) -> Self {
+impl<P: Persistence> TransactionMut<P> {
+    pub fn new(engine: WriteGuard<EngineInner<P>>) -> Self {
         Self { engine, log: RefCell::new(HashMap::new()) }
     }
 }
 
-impl<S: store::Store> crate::Rx for TransactionMut<S> {
+impl<P: Persistence> crate::Rx for TransactionMut<P> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -88,7 +89,7 @@ impl<S: store::Store> crate::Rx for TransactionMut<S> {
     }
 }
 
-impl<S: store::Store> crate::Tx for TransactionMut<S> {
+impl<P: Persistence> crate::Tx for TransactionMut<P> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

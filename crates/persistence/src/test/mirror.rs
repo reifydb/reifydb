@@ -9,24 +9,24 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::{Key, Store, Value};
+use crate::{Key, Persistence, Value};
 use std::ops::RangeBounds;
 
 /// An engine that wraps two others and mirrors operations across them,
 /// panicking if they produce different results. Engine implementations
 /// should not have any observable differences in behavior.
-pub struct Mirror<A: Store, B: Store> {
+pub struct Mirror<A: Persistence, B: Persistence> {
     pub a: A,
     pub b: B,
 }
 
-impl<A: Store, B: Store> Mirror<A, B> {
+impl<A: Persistence, B: Persistence> Mirror<A, B> {
     pub fn new(a: A, b: B) -> Self {
         Self { a, b }
     }
 }
 
-impl<A: Store, B: Store> Store for Mirror<A, B> {
+impl<A: Persistence, B: Persistence> Persistence for Mirror<A, B> {
     type ScanIter<'a>
         = MirrorIterator<'a, A, B>
     where
@@ -75,12 +75,12 @@ impl<A: Store, B: Store> Store for Mirror<A, B> {
     }
 }
 
-pub struct MirrorIterator<'a, A: Store + 'a, B: Store + 'a> {
+pub struct MirrorIterator<'a, A: Persistence + 'a, B: Persistence + 'a> {
     a: A::ScanIter<'a>,
     b: B::ScanIter<'a>,
 }
 
-impl<A: Store, B: Store> Iterator for MirrorIterator<'_, A, B> {
+impl<A: Persistence, B: Persistence> Iterator for MirrorIterator<'_, A, B> {
     type Item = crate::Result<(Vec<u8>, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -91,7 +91,7 @@ impl<A: Store, B: Store> Iterator for MirrorIterator<'_, A, B> {
     }
 }
 
-impl<A: Store, B: Store> DoubleEndedIterator for MirrorIterator<'_, A, B> {
+impl<A: Persistence, B: Persistence> DoubleEndedIterator for MirrorIterator<'_, A, B> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let a = self.a.next_back();
         let b = self.b.next_back();

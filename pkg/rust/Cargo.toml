@@ -18,7 +18,7 @@ auth = { workspace = true }
 base = { workspace = true }
 engine = { workspace = true }
 rql = { workspace = true }
-store = { workspace = true }
+persistence = { workspace = true }
 transaction = { workspace = true }
 
 prost = { workspace = true, optional = true }
