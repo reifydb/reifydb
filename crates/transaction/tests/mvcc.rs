@@ -20,7 +20,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use store::test::{Emit, Operation};
-use store::{Memory, StoreEngine};
+use store::{Memory, Store};
 use test_each_file::test_each_path;
 use testing::testscript;
 use testing::util::parse_key_range;
@@ -33,13 +33,13 @@ fn test_memory(path: &Path) {
 }
 
 /// Runs MVCC tests.
-pub struct MvccRunner<E: store::StoreEngine> {
+pub struct MvccRunner<E: store::Store> {
     engine: Engine<Emit<E>>,
     txs: HashMap<String, Transaction<Emit<E>>>,
     operations: Receiver<Operation>,
 }
 
-impl<E: store::StoreEngine> MvccRunner<E> {
+impl<E: store::Store> MvccRunner<E> {
     fn new(store: E) -> Self {
         let (tx, rx) = mpsc::channel();
         Self { engine: Engine::new(Emit::new(store, tx)), txs: HashMap::new(), operations: rx }
@@ -68,7 +68,7 @@ impl<E: store::StoreEngine> MvccRunner<E> {
     }
 }
 
-impl<'a, E: store::StoreEngine> testscript::Runner for MvccRunner<E> {
+impl<'a, E: store::Store> testscript::Runner for MvccRunner<E> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         let mut tags = command.tags.clone();

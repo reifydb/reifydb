@@ -23,10 +23,10 @@ use crate::mvcc::scan::ScanIterator;
 use crate::mvcc::schema::Schema;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::{Row, RowIter, key_prefix};
-use store::StoreEngine;
+use store::Store;
 // FIXME remove this
 
-impl<S: StoreEngine> crate::Rx for Transaction<S> {
+impl<S: Store> crate::Rx for Transaction<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -76,7 +76,7 @@ pub fn catalog_mut_singleton() -> &'static mut Catalog {
     unsafe { *CATALOG.get().unwrap().0.get() }
 }
 
-impl<S: StoreEngine> crate::Tx for Transaction<S> {
+impl<S: Store> crate::Tx for Transaction<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
@@ -143,7 +143,7 @@ impl<S: StoreEngine> crate::Tx for Transaction<S> {
     }
 }
 
-impl<S: StoreEngine> Transaction<S> {
+impl<S: Store> Transaction<S> {
     /// Begins a new transaction in read-write mode. This will allocate a new
     /// version that the transaction can write at, add it to the active set, and
     /// record its active snapshot for time-travel queries.

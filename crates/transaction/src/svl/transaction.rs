@@ -11,17 +11,17 @@ use base::{Key, Row, RowIter, key_prefix};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-pub struct Transaction<S: store::StoreEngine> {
+pub struct Transaction<S: store::Store> {
     engine: ReadGuard<EngineInner<S>>,
 }
 
-impl<S: store::StoreEngine> Transaction<S> {
+impl<S: store::Store> Transaction<S> {
     pub fn new(engine: ReadGuard<EngineInner<S>>) -> Self {
         Self { engine }
     }
 }
 
-impl<S: store::StoreEngine> crate::Rx for Transaction<S> {
+impl<S: store::Store> crate::Rx for Transaction<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -49,18 +49,18 @@ impl<S: store::StoreEngine> crate::Rx for Transaction<S> {
     }
 }
 
-pub struct TransactionMut<S: store::StoreEngine> {
+pub struct TransactionMut<S: store::Store> {
     engine: WriteGuard<EngineInner<S>>,
     log: RefCell<HashMap<String, Vec<Row>>>,
 }
 
-impl<S: store::StoreEngine> TransactionMut<S> {
+impl<S: store::Store> TransactionMut<S> {
     pub fn new(engine: WriteGuard<EngineInner<S>>) -> Self {
         Self { engine, log: RefCell::new(HashMap::new()) }
     }
 }
 
-impl<S: store::StoreEngine> crate::Rx for TransactionMut<S> {
+impl<S: store::Store> crate::Rx for TransactionMut<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -88,7 +88,7 @@ impl<S: store::StoreEngine> crate::Rx for TransactionMut<S> {
     }
 }
 
-impl<S: store::StoreEngine> crate::Tx for TransactionMut<S> {
+impl<S: store::Store> crate::Tx for TransactionMut<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

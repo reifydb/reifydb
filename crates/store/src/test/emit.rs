@@ -9,25 +9,25 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::{Key, StoreEngine, Value};
+use crate::{Key, Store, Value};
 use std::ops::RangeBounds;
 use std::sync::mpsc::Sender;
 
 /// Wraps another engine and emits write events to the given channel.
-pub struct Emit<E: StoreEngine> {
+pub struct Emit<E: Store> {
     /// The wrapped engine.
     inner: E,
     /// Sends operation events.
     tx: Sender<crate::test::Operation>,
 }
 
-impl<E: StoreEngine> crate::test::Emit<E> {
+impl<E: Store> crate::test::Emit<E> {
     pub fn new(inner: E, tx: Sender<crate::test::Operation>) -> Self {
         Self { inner, tx }
     }
 }
 
-impl<E: StoreEngine> StoreEngine for Emit<E> {
+impl<E: Store> Store for Emit<E> {
     type ScanIter<'a>
         = E::ScanIter<'a>
     where

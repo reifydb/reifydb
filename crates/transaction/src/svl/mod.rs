@@ -13,22 +13,22 @@ mod schema;
 mod store;
 mod transaction;
 
-pub struct Engine<S: ::store::StoreEngine> {
+pub struct Engine<S: ::store::Store> {
     inner: RwLock<EngineInner<S>>,
 }
 
-pub struct EngineInner<S: ::store::StoreEngine> {
+pub struct EngineInner<S: ::store::Store> {
     pub store: S,
     pub catalog: Catalog,
 }
 
-impl<S: ::store::StoreEngine> Engine<S> {
+impl<S: ::store::Store> Engine<S> {
     pub fn new(store: S) -> Self {
         Self { inner: RwLock::new(EngineInner { store, catalog: Catalog::new() }) }
     }
 }
 
-impl<S: ::store::StoreEngine> crate::TransactionEngine<S> for Engine<S> {
+impl<S: ::store::Store> crate::TransactionEngine<S> for Engine<S> {
     type Rx = Transaction<S>;
     type Tx = TransactionMut<S>;
 

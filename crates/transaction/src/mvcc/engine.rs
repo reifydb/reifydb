@@ -14,7 +14,7 @@ use crate::mvcc::transaction::init;
 use crate::mvcc::{Status, Transaction, Version};
 use base::encoding::{Key as _, Value};
 use std::sync::{Arc, Mutex, OnceLock};
-use store::StoreEngine;
+use store::Store;
 
 /// An MVCC-based transactional key-value engine. It wraps an underlying store
 /// engine that's used for raw key-value store.
@@ -23,7 +23,7 @@ use store::StoreEngine;
 /// write operations are executed sequentially, serialized via a mutex. There
 /// are two reasons for this: the store engine itself is not thread-safe,
 /// requiring serialized access.
-pub struct Engine<S: StoreEngine> {
+pub struct Engine<S: Store> {
     // FIXME add concurrent safe MemPool module between Store and transaction
     // idea - batch data and perform bulk insertions / update to underlying store implementation
     // introduce ConfirmationLevel similar to Solana
@@ -33,7 +33,7 @@ pub struct Engine<S: StoreEngine> {
     pub store: Arc<Mutex<S>>,
 }
 
-impl<S: StoreEngine> crate::TransactionEngine<S> for Engine<S> {
+impl<S: Store> crate::TransactionEngine<S> for Engine<S> {
     type Rx = Transaction<S>;
     type Tx = Transaction<S>;
 
@@ -53,7 +53,7 @@ impl<S: StoreEngine> crate::TransactionEngine<S> for Engine<S> {
 
 static CATALOG: OnceLock<()> = OnceLock::new();
 
-impl<S: StoreEngine> Engine<S> {
+impl<S: Store> Engine<S> {
     /// Creates a new MVCC engine with the given store engine.
     pub fn new(engine: S) -> Self {
         CATALOG.get_or_init(|| {

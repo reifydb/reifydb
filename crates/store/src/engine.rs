@@ -15,13 +15,13 @@ use std::ops::RangeBounds;
 pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
 
-/// A scan iterator over key-value pairs, returned by [`StoreEngine::scan()`].
+/// A scan iterator over key-value pairs, returned by [`Store::scan()`].
 pub trait ScanIterator: DoubleEndedIterator<Item = Result<(Key, Value)>> {}
 
 /// Blanket implementation for all iterators that can act as a scan iterator.
 impl<I: DoubleEndedIterator<Item = Result<(Key, Value)>>> ScanIterator for I {}
 
-pub trait StoreEngine: Send + Sync {
+pub trait Store: Send + Sync {
     /// An associated type representing the iterator returned by `scan` and `scan_prefix`.
     ///
     /// The iterator yields ordered key-value pairs and must implement [`ScanIterator`].

@@ -163,7 +163,7 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use ::store::StoreEngine;
+use ::store::Store;
 use base::encoding;
 use base::encoding::Value;
 use serde::{Deserialize, Serialize};
@@ -184,7 +184,7 @@ pub struct Status {
 impl encoding::Value for Status {}
 
 /// An MVCC transaction.
-pub struct Transaction<S: StoreEngine> {
+pub struct Transaction<S: Store> {
     /// The underlying engine, shared by all transactions.
     engine: Arc<Mutex<S>>,
     /// The transaction state.

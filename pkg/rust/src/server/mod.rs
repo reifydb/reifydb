@@ -10,7 +10,7 @@ use engine::old_execute::ExecutionResult;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
-use store::StoreEngine;
+use store::Store;
 use tokio::runtime::Runtime;
 use tonic::service::InterceptorLayer;
 use tonic::transport::Error;
@@ -19,14 +19,14 @@ use transaction::{Rx, TransactionEngine, Tx};
 mod config;
 mod grpc;
 
-pub struct Server<S: StoreEngine, T: TransactionEngine<S>> {
+pub struct Server<S: Store, T: TransactionEngine<S>> {
     pub(crate) config: ServerConfig,
     pub(crate) grpc: tonic::transport::Server,
     pub(crate) callbacks: Callbacks<S, T>,
     pub(crate) engine: Engine<S, T>,
 }
 
-impl<S: StoreEngine, T: TransactionEngine<S>> Server<S, T> {
+impl<S: Store, T: TransactionEngine<S>> Server<S, T> {
     pub fn with_config(mut self, config: ServerConfig) -> Self {
         self.config = config;
         self
@@ -40,7 +40,7 @@ impl<S: StoreEngine, T: TransactionEngine<S>> Server<S, T> {
 
 pub type Callback<T> = Box<dyn FnOnce(T) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-pub struct Callbacks<S: StoreEngine, T: TransactionEngine<S>> {
+pub struct Callbacks<S: Store, T: TransactionEngine<S>> {
     before_bootstrap: Vec<Callback<BeforeBootstrap>>,
     on_create: Vec<Callback<OnCreate<S, T>>>,
 }
@@ -76,11 +76,11 @@ impl Deref for BeforeBootstrap {
     }
 }
 
-pub struct OnCreate<S: StoreEngine, T: TransactionEngine<S>> {
+pub struct OnCreate<S: Store, T: TransactionEngine<S>> {
     engine: Engine<S, T>,
 }
 
-impl<S: StoreEngine, T: TransactionEngine<S>> OnCreate<S, T> {
+impl<S: Store, T: TransactionEngine<S>> OnCreate<S, T> {
     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
         self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
     }
@@ -90,7 +90,7 @@ impl<S: StoreEngine, T: TransactionEngine<S>> OnCreate<S, T> {
     }
 }
 
-impl<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static> Server<S, T> {
+impl<S: Store + 'static, T: TransactionEngine<S> + 'static> Server<S, T> {
     pub fn new(transaction: T) -> Self {
         Self {
             config: ServerConfig::default(),

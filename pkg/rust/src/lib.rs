@@ -49,7 +49,7 @@ use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
 
-use store::{Memory, StoreEngine};
+use store::{Memory, Store};
 use transaction::{TransactionEngine, mvcc, svl};
 
 #[cfg(feature = "client")]
@@ -107,21 +107,21 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<S: StoreEngine, T: TransactionEngine<S>>(
+    pub fn embedded_with<S: Store, T: TransactionEngine<S>>(
         transaction: T,
     ) -> (Embedded<S, T>, Principal) {
         Embedded::new(transaction)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<S: StoreEngine, T: TransactionEngine<S>>(
+    pub fn embedded_with<S: Store, T: TransactionEngine<S>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<S, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<S: StoreEngine, T: TransactionEngine<S>>(
+    pub fn embedded_blocking_with<S: Store, T: TransactionEngine<S>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<S, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
@@ -133,18 +133,18 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<S: StoreEngine + 'static, T: TransactionEngine<S> + 'static>(
+    pub fn server_with<S: Store + 'static, T: TransactionEngine<S> + 'static>(
         transaction: T,
     ) -> Server<S, T> {
         Server::new(transaction)
     }
 }
 
-pub fn svl<S: StoreEngine>(store: S) -> svl::Engine<S> {
+pub fn svl<S: Store>(store: S) -> svl::Engine<S> {
     svl::Engine::new(store)
 }
 
-pub fn mvcc<S: StoreEngine>(store: S) -> mvcc::Engine<S> {
+pub fn mvcc<S: Store>(store: S) -> mvcc::Engine<S> {
     mvcc::Engine::new(store)
 }
 
