@@ -21,6 +21,7 @@ pub struct Column {
 #[derive(Debug)]
 pub enum ExecutionResult {
     CreateSchema { schema: String },
+    CreateSeries { schema: String, series: String },
     CreateTable { schema: String, table: String },
     InsertIntoTable { schema: String, table: String, inserted: usize },
     Query { columns: Vec<Column>, rows: Vec<Row> },
@@ -106,6 +107,16 @@ pub fn execute_plan_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<Execution
                 tx.catalog_mut().unwrap().create(&name).unwrap();
             }
             ExecutionResult::CreateSchema { schema: name }
+        }
+        Plan::CreateSeries { schema, name, if_not_exists, columns } => {
+            if if_not_exists {
+                unimplemented!()
+            } else {
+                tx.schema_mut(&schema)
+                    .unwrap()
+                    .create(StoreToCreate::Series { name: name.clone(), columns });
+            }
+            ExecutionResult::CreateSeries { schema, series: name }
         }
         Plan::CreateTable { schema, name, if_not_exists, columns } => {
             if if_not_exists {

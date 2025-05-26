@@ -83,6 +83,16 @@ impl<S: StorageEngine + 'static, T: TransactionEngine<S> + 'static> grpc_db::db_
                 };
                 return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));
             }
+            ExecutionResult::CreateSeries { schema, series } => {
+                // let msg = TxResult {
+                //     result: Some(CreateSeries(grpc_db::CreateSeries {
+                //         schema: schema.clone(),
+                //         series: series.clone(),
+                //     })),
+                // };
+                // return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));
+                unimplemented!()
+            }
             ExecutionResult::CreateTable { schema, table } => {
                 let msg = TxResult {
                     result: Some(CreateTable(grpc_db::CreateTable {

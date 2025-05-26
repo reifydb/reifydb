@@ -94,6 +94,7 @@ keyword! {
     Is         => "IS",
 
     Schema => "SCHEMA",
+    Series  => "SERIES",
     Table  => "TABLE",
 }
 
@@ -168,7 +169,11 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Like, "LIKE"),
             keyword_tag(Keyword::Is, "IS"),
         )),
-        alt((keyword_tag(Keyword::Schema, "SCHEMA"), keyword_tag(Keyword::Table, "TABLE"))),
+        alt((
+            keyword_tag(Keyword::Schema, "SCHEMA"),
+            keyword_tag(Keyword::Series, "SERIES"),
+            keyword_tag(Keyword::Table, "TABLE"),
+        )),
     ));
 
     parser
@@ -269,6 +274,7 @@ mod tests {
         test_keyword_like => (Like, "LIKE"),
         test_keyword_is => (Is, "IS"),
         test_keyword_schema => (Schema, "SCHEMA"),
+        test_keyword_series => (Series, "SERIES"),
         test_keyword_table => (Table, "TABLE"),
     }
 
@@ -343,6 +349,7 @@ mod tests {
         test_not_keyword_like => ( "like"),
         test_not_keyword_is => ( "is"),
         test_not_keyword_schema => ( "schema"),
+        test_not_keyword_series => ( "series"),
         test_not_keyword_table => ( "table"),
     }
 }

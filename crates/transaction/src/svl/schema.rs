@@ -35,6 +35,20 @@ impl crate::SchemaTx for Schema {
 
     fn create(&mut self, to_create: StoreToCreate) -> crate::Result<()> {
         match to_create {
+            StoreToCreate::Series { name, columns } => {
+                assert!(self.stores.get(name.deref()).is_none());
+                self.stores.insert(
+                    name.deref().to_string(),
+                    Store {
+                        name,
+                        columns: columns
+                            .into_iter()
+                            .map(|c| Column { name: c.name, value: c.value, default: c.default })
+                            .collect::<Vec<_>>(),
+                    },
+                );            
+            }
+        
             StoreToCreate::Table { name, columns } => {
                 assert!(self.stores.get(name.deref()).is_none());
                 self.stores.insert(

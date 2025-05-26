@@ -6,71 +6,25 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{DB, ReifyDB, memory, mvcc};
-use std::time::Instant;
+use reifydb::{DB, ReifyDB, memory, svl};
 
 fn main() {
-    let (db, root) = ReifyDB::embedded_blocking_with(mvcc(memory()));
-    // returns (db, root)
-    // let session = db.session(root)
-    // session.tx('')
+    let (db, root) = ReifyDB::embedded_blocking_with(svl(memory()));
     db.tx_as(&root, r#"create schema test"#);
+    db.tx_as(&root, r#"create series test.test(timestamp: int2, value: int2)"#);
+    db.tx_as(
+        &root,
+        r#"
+        insert
+            (1,1),
+            (2,2),
+            (3,3)
+        into test.test(timestamp, value)"#,
+    );
 
-    // let session = db.session(root.clone()).unwrap();
-    // for result in session.execute("select 2, 3, 4") {
-    //     println!("{}", result);
-    // }
-    //
-    // let session = db.session_read_only(root.clone()).unwrap();
-    // for result in session.execute("select 5, 6, 7, 8") {
-    //     println!("{}", result);
-    // }
-
-    db.tx_as(&root, r#"create table test.arith(id: int2, num: int2)"#);
-    // db.tx(
-    //     &root,
-    //     r#"insert (1,6), (2,8), (3,4), (4,2), (5,3), (6,0) into test.arith(id,num)"#,
-    // );
-
-    // let mut query = String::with_capacity(20_000_000); // preallocate for performance
-    //
-    // query.push_str("insert ");
-    //
-    // let start = Instant::now();
-    // const max: usize = 1_000;
-    //
-    // for i in 1..=max {
-    //     let num = i % 10; // example logic for `num` value
-    //     query.push_str(&format!("({}, {})", i, num));
-    //     if i != max {
-    //         query.push_str(", ");
-    //     }
-    // }
-    //
-    // query.push_str(" into test.arith(id, num)");
-    //
-    // db.tx(&root, &query);
-    // println!("took: {:?}", start.elapsed());
-    //
-    // // db.tx(&root, r#"insert (3,0) into test.arith(id,num)"#);
-    //
-    // // for l in db.rx(&root, r#"SELECT 1, 2 ,3 "#) {
-    // // for l in db.rx(&root, r#"from test.arith group by id select id, avg(num)"#) {
-    // let start = Instant::now();
-    // for l in db.rx(&root, r#"from test.arith select id, avg(id, num, 20 + 12)"#) {
-    // for l in db.rx(&root, r#"select abs(-1), abs(1), abs(+1)"#) {
-    for l in db.rx_as(&root, r#"select 1, 'test', true, false"#) {
+    for l in db.rx_as(&root, r#"from test.test"#) {
         println!("{}", l);
     }
-    // println!("took: {:?}", start.elapsed());
-
-    //
-    // let result = db
-    //     .rx(&root, r#"from test.arith select id + 1, 2 + num + 3, id + num, num + num"#);
-    //
-    // for mut result in result {
-    //     println!("{}", result);
-    // }
 }
 
 // use reifydb::client::Client;

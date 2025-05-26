@@ -24,6 +24,7 @@ pub struct ColumnToCreate {
 }
 
 pub enum StoreToCreate {
+    Series { name: String, columns: Vec<ColumnToCreate> },
     Table { name: String, columns: Vec<ColumnToCreate> },
 }
 

@@ -203,6 +203,7 @@ impl Ast {
 #[derive(Debug, PartialEq)]
 pub enum AstCreate {
     Schema { token: Token, name: AstIdentifier },
+    Series { token: Token, schema: AstIdentifier, name: AstIdentifier, definitions: AstTuple },
     Table { token: Token, schema: AstIdentifier, name: AstIdentifier, definitions: AstTuple },
 }
 
@@ -210,6 +211,7 @@ impl AstCreate {
     pub fn token(&self) -> &Token {
         match self {
             AstCreate::Schema { token, .. } => token,
+            AstCreate::Series { token, .. } => token,
             AstCreate::Table { token, .. } => token,
         }
     }

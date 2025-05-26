@@ -34,6 +34,8 @@ pub type RowToInsert = Vec<Expression>;
 pub enum Plan {
     /// A CREATE SCHEMA plan. Creates a new schema.
     CreateSchema { name: String, if_not_exists: bool },
+    /// A CREATE SERIES plan. Creates a new series.
+    CreateSeries { schema: String, name: String, if_not_exists: bool, columns: Vec<ColumnToCreate> },
     /// A CREATE TABLE plan. Creates a new table.
     CreateTable { schema: String, name: String, if_not_exists: bool, columns: Vec<ColumnToCreate> },
     /// A INSERT INTO TABLE plan. Inserts values into the table
@@ -88,6 +90,48 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                         name: name.value().to_string(),
                         if_not_exists: false,
                     }),
+                    AstCreate::Series { schema, name, definitions, .. } => {
+                        let mut columns: Vec<ColumnToCreate> = vec![];
+
+                        for definition in &definitions.nodes {
+                            match definition {
+                                Ast::Infix(ast) => {
+                                    let name = ast.left.as_identifier();
+                                    let ty = ast.right.as_type();
+
+                                    columns.push(ColumnToCreate {
+                                        name: name.value().to_string(),
+                                        value: match ty {
+                                            AstType::Boolean(_) => ValueKind::Bool,
+                                            AstType::Float4(_) => unimplemented!(),
+                                            AstType::Float8(_) => unimplemented!(),
+                                            AstType::Int1(_) => unimplemented!(),
+                                            AstType::Int2(_) => ValueKind::Int2,
+                                            AstType::Int4(_) => unimplemented!(),
+                                            AstType::Int8(_) => unimplemented!(),
+                                            AstType::Int16(_) => unimplemented!(),
+                                            AstType::Number(_) => unimplemented!(),
+                                            AstType::Text(_) => ValueKind::Text,
+                                            AstType::Uint1(_) => unimplemented!(),
+                                            AstType::Uint2(_) => ValueKind::Uint2,
+                                            AstType::Uint4(_) => unimplemented!(),
+                                            AstType::Uint8(_) => unimplemented!(),
+                                            AstType::Uint16(_) => unimplemented!(),
+                                        },
+                                        default: None,
+                                    })
+                                }
+                                _ => unimplemented!(),
+                            }
+                        }
+
+                        Ok(Plan::CreateSeries {
+                            schema: schema.value().to_string(),
+                            name: name.value().to_string(),
+                            if_not_exists: false,
+                            columns,
+                        })
+                    }
                     AstCreate::Table { schema, name, definitions, .. } => {
                         let mut columns: Vec<ColumnToCreate> = vec![];
 

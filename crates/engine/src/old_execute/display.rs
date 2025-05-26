@@ -11,6 +11,9 @@ impl Display for ExecutionResult {
             ExecutionResult::CreateSchema { schema } => {
                 write!(f, "schema {schema} created")
             }
+            ExecutionResult::CreateSeries { schema, series, .. } => {
+                write!(f, "series {series} created in schema {schema}")
+            }
             ExecutionResult::CreateTable { schema, table, .. } => {
                 write!(f, "table {table} created in schema {schema}")
             }

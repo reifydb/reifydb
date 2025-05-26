@@ -62,6 +62,11 @@ message CreateSchema {
   string schema = 1;
 }
 
+message CreateSeries {
+  string schema = 1;
+  string series = 2;
+}
+
 message CreateTable {
   string schema = 1;
   string table = 2;

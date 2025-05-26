@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::Keyword::Table;
+use crate::ast::lex::Keyword::{Series, Table};
 use crate::ast::lex::{Keyword, Operator, Token, TokenKind};
 use crate::ast::parse::Parser;
 use crate::ast::{AstCreate, parse};
@@ -19,11 +19,24 @@ impl Parser {
             return self.parse_table(token);
         }
 
+        if let Some(_) = self.consume_if(TokenKind::Keyword(Series))? {
+            return self.parse_series(token);
+        }
+
         unimplemented!();
     }
 
     fn parse_schema(&mut self, token: Token) -> parse::Result<AstCreate> {
         Ok(AstCreate::Schema { token, name: self.parse_identifier()? })
+    }
+
+    fn parse_series(&mut self, token: Token) -> parse::Result<AstCreate> {
+        let schema = self.parse_identifier()?;
+        self.consume_operator(Operator::Dot)?;
+        let name = self.parse_identifier()?;
+        let definition = self.parse_tuple()?;
+
+        Ok(AstCreate::Series { token, name, schema, definitions: definition })
     }
 
     fn parse_table(&mut self, token: Token) -> parse::Result<AstCreate> {
@@ -56,6 +69,41 @@ mod tests {
         match create {
             AstCreate::Schema { name, .. } => {
                 assert_eq!(name.value(), "REIFYDB");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_create_series() {
+        let tokens = lex(r#"
+            create series test.metrics(value: Int2)
+        "#)
+        .unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let create = result.as_create();
+
+        match create {
+            AstCreate::Table { name, schema, definitions, .. } => {
+                assert_eq!(schema.value(), "test");
+                assert_eq!(name.value(), "metrics");
+
+                assert_eq!(definitions.nodes.len(), 1);
+
+                {
+                    let id = definitions.nodes[0].as_infix();
+                    let identifier = id.left.as_identifier();
+                    assert_eq!(identifier.value(), "value");
+
+                    assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
+
+                    let ty = id.right.as_type();
+                    assert_eq!(ty.value(), "int2")
+                }
             }
             _ => unreachable!(),
         }
