@@ -7,7 +7,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use catalog::{CatalogRx, CatalogTx};
-pub use engine::TransactionEngine;
+pub use engine::Transaction;
 pub use error::Error;
 pub use schema::{ColumnToCreate, SchemaRx, SchemaTx, StoreToCreate};
 pub use store::{NopStore, StoreRx, StoreTx};

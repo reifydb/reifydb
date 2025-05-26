@@ -3,7 +3,7 @@
 
 use reifydb::embedded::Embedded;
 use reifydb::store::Store;
-use reifydb::transaction::TransactionEngine;
+use reifydb::transaction::Transaction;
 use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl};
 use std::error::Error;
 use std::fmt::Write;
@@ -13,20 +13,20 @@ use testing::testscript;
 use testing::testscript::Command;
 use tokio::runtime::Runtime;
 
-pub struct Runner<S: Store + 'static, T: TransactionEngine<S> + 'static> {
+pub struct Runner<S: Store + 'static, T: Transaction<S> + 'static> {
     engine: Embedded<S, T>,
     root: Principal,
     runtime: Runtime,
 }
 
-impl<S: Store + 'static, T: TransactionEngine<S> + 'static> Runner<S, T> {
+impl<S: Store + 'static, T: Transaction<S> + 'static> Runner<S, T> {
     pub fn new(transaction: T) -> Self {
         let (engine, root) = ReifyDB::embedded_with(transaction);
         Self { engine, root, runtime: Runtime::new().unwrap() }
     }
 }
 
-impl<S: Store + 'static, T: TransactionEngine<S> + 'static> testscript::Runner
+impl<S: Store + 'static, T: Transaction<S> + 'static> testscript::Runner
 for Runner<S, T>
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {

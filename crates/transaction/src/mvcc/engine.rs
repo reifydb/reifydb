@@ -33,7 +33,7 @@ pub struct Engine<S: Store> {
     pub store: Arc<Mutex<S>>,
 }
 
-impl<S: Store> crate::TransactionEngine<S> for Engine<S> {
+impl<S: Store> crate::Transaction<S> for Engine<S> {
     type Rx = Transaction<S>;
     type Tx = Transaction<S>;
 

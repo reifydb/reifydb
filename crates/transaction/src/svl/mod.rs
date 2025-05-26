@@ -28,7 +28,7 @@ impl<S: ::store::Store> Engine<S> {
     }
 }
 
-impl<S: ::store::Store> crate::TransactionEngine<S> for Engine<S> {
+impl<S: ::store::Store> crate::Transaction<S> for Engine<S> {
     type Rx = Transaction<S>;
     type Tx = TransactionMut<S>;
 

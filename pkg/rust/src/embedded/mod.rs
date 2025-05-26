@@ -7,23 +7,23 @@ use engine::Engine;
 use engine::old_execute::ExecutionResult;
 use store::Store;
 use tokio::task::spawn_blocking;
-use transaction::TransactionEngine;
+use transaction::Transaction;
 
-pub struct Embedded<S: Store + 'static, T: TransactionEngine<S> + 'static> {
+pub struct Embedded<S: Store + 'static, T: Transaction<S> + 'static> {
     engine: Engine<S, T>,
 }
 
 impl<S, T> Clone for Embedded<S, T>
 where
     S: Store,
-    T: TransactionEngine<S>,
+    T: Transaction<S>,
 {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
 
-impl<S: Store, T: TransactionEngine<S>> Embedded<S, T> {
+impl<S: Store, T: Transaction<S>> Embedded<S, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
 
@@ -31,7 +31,7 @@ impl<S: Store, T: TransactionEngine<S>> Embedded<S, T> {
     }
 }
 
-impl<'a, S: Store + 'static, T: TransactionEngine<S> + 'static> DB<'a> for Embedded<S, T> {
+impl<'a, S: Store + 'static, T: Transaction<S> + 'static> DB<'a> for Embedded<S, T> {
     async fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();

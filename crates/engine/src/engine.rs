@@ -10,21 +10,21 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 use store::Store;
-use transaction::{Rx, TransactionEngine, Tx};
+use transaction::{Rx, Transaction, Tx};
 
-pub struct Engine<S: Store, T: TransactionEngine<S>>(Arc<EngineInner<S, T>>);
+pub struct Engine<S: Store, T: Transaction<S>>(Arc<EngineInner<S, T>>);
 
 impl<S, T> Clone for Engine<S, T>
 where
     S: Store,
-    T: TransactionEngine<S>,
+    T: Transaction<S>,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<S: Store, T: TransactionEngine<S>> Deref for Engine<S, T> {
+impl<S: Store, T: Transaction<S>> Deref for Engine<S, T> {
     type Target = EngineInner<S, T>;
 
     fn deref(&self) -> &Self::Target {
@@ -32,18 +32,18 @@ impl<S: Store, T: TransactionEngine<S>> Deref for Engine<S, T> {
     }
 }
 
-pub struct EngineInner<S: Store, T: TransactionEngine<S>> {
+pub struct EngineInner<S: Store, T: Transaction<S>> {
     transaction: T,
     _marker: PhantomData<S>,
 }
 
-impl<S: Store, T: TransactionEngine<S>> Engine<S, T> {
+impl<S: Store, T: Transaction<S>> Engine<S, T> {
     pub fn new(transaction: T) -> Self {
         Self(Arc::new(EngineInner { transaction, _marker: PhantomData }))
     }
 }
 
-impl<S: Store, T: TransactionEngine<S>> Engine<S, T> {
+impl<S: Store, T: Transaction<S>> Engine<S, T> {
     fn begin(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin().unwrap())
     }
