@@ -6,7 +6,7 @@ use crate::transaction::svl::SvlInner;
 use crate::transaction::svl::lock::{ReadGuard, WriteGuard};
 use crate::{CATALOG, CatalogRx as _, CatalogTx, InsertResult};
 use base::encoding::{Value as OtherValue, bincode};
-use base::{Key, Row, RowIter, key_prefix};
+use base::{Key, Row, RowIter, Value, key_prefix};
 use persistence::Persistence;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -108,11 +108,22 @@ impl<P: Persistence> crate::Tx for TransactionMut<P> {
     fn insert_into_table(
         &mut self,
         schema: &str,
-        store: &str,
+        table: &str,
         rows: Vec<Row>,
     ) -> crate::Result<InsertResult> {
         let inserted = rows.len();
-        self.log.borrow_mut().insert((schema.to_string(), store.to_string()), rows);
+        self.log.borrow_mut().insert((schema.to_string(), table.to_string()), rows);
+        Ok(InsertResult { inserted })
+    }
+
+    fn insert_into_series(
+        &mut self,
+        schema: &str,
+        series: &str,
+        rows: Vec<Vec<Value>>,
+    ) -> crate::Result<InsertResult> {
+        let inserted = rows.len();
+        self.log.borrow_mut().insert((schema.to_string(), series.to_string()), rows);
         Ok(InsertResult { inserted })
     }
 

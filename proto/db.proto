@@ -72,6 +72,12 @@ message CreateTable {
   string table = 2;
 }
 
+message InsertIntoSeries {
+  string schema = 1;
+  string series = 2;
+  uint32 inserted = 3;
+}
+
 message InsertIntoTable {
   string schema = 1;
   string table = 2;
@@ -88,9 +94,10 @@ message TxResult {
   oneof result {
     CreateSchema create_schema = 1;
     CreateTable create_table = 2;
-    InsertIntoTable insert_into_table = 3;
-    QueryResult query = 4;
-    string error = 5;
+    InsertIntoSeries insert_into_series = 3;
+    InsertIntoTable insert_into_table = 4;
+    QueryResult query = 5;
+    string error = 6;
   }
 }
 

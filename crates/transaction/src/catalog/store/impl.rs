@@ -9,39 +9,45 @@
 // }
 
 use crate::catalog::Column;
+use base::StoreKind;
 
 #[derive(Debug)]
 pub struct Store {
-	pub name: String,
-	pub columns: Vec<Column>,
+    pub name: String,
+    pub kind: StoreKind,
+    pub columns: Vec<Column>,
 }
 
 impl crate::StoreRx for Store {
-	fn get_column(&self, column: &str) -> crate::Result<Column> {
-		let column_name = column;
-		for (idx, column) in self.columns.iter().enumerate() {
-			if &column.name == column_name {
-				return Ok(column.clone());
-			}
-		}
-		// None
-		todo!()
-	}
+    fn kind(&self) -> crate::Result<StoreKind> {
+        Ok(self.kind)
+    }
 
-	fn list_columns(&self) -> crate::Result<Vec<Column>> {
-		Ok(self.columns.clone())
-	}
+    fn get_column(&self, column: &str) -> crate::Result<Column> {
+        let column_name = column;
+        for (idx, column) in self.columns.iter().enumerate() {
+            if &column.name == column_name {
+                return Ok(column.clone());
+            }
+        }
+        // None
+        todo!()
+    }
 
-	fn get_column_index(&self, column: &str) -> crate::Result<usize> {
-		let column_name = column;
-		for (idx, column) in self.columns.iter().enumerate() {
-			if &column.name == column_name {
-				return Ok(idx);
-			}
-		}
-		// None
-		todo!()
-	}
+    fn list_columns(&self) -> crate::Result<Vec<Column>> {
+        Ok(self.columns.clone())
+    }
+
+    fn get_column_index(&self, column: &str) -> crate::Result<usize> {
+        let column_name = column;
+        for (idx, column) in self.columns.iter().enumerate() {
+            if &column.name == column_name {
+                return Ok(idx);
+            }
+        }
+        // None
+        todo!()
+    }
 }
 
 impl crate::StoreTx for Store {}

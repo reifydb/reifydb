@@ -14,7 +14,9 @@ use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 use transaction::{Rx, Transaction};
 
-use crate::server::grpc::grpc_db::tx_result::Result::{CreateSchema, CreateTable, InsertIntoTable};
+use crate::server::grpc::grpc_db::tx_result::Result::{
+    CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
+};
 use auth::Principal;
 use tokio_stream::once;
 
@@ -98,6 +100,16 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> grpc_db::db_server::
                     result: Some(CreateTable(grpc_db::CreateTable {
                         schema: schema.clone(),
                         table: table.clone(),
+                    })),
+                };
+                return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));
+            }
+            ExecutionResult::InsertIntoSeries { schema, series, inserted } => {
+                let msg = TxResult {
+                    result: Some(InsertIntoSeries(grpc_db::InsertIntoSeries {
+                        schema: schema.clone(),
+                        series: series.clone(),
+                        inserted: *inserted as u32,
                     })),
                 };
                 return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));

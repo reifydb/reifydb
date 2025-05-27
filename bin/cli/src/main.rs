@@ -29,12 +29,12 @@ fn main() {
         into test.test(timestamp, value)"#,
     );
 
-    let start = Instant::now();
-    for l in db.rx_as(&root, r#"from test.test"#) {
-    // for l in db.rx_as(&root, r#"from test.test group by timestamp select timestamp, avg(value)"#) {
+    // let start = Instant::now();
+    // for l in db.rx_as(&root, r#"from test.test"#) {
+    for l in db.rx_as(&root, r#"from test.test group by timestamp select timestamp, avg(value)"#) {
         println!("{}", l);
     }
-    println!("took {:?}", start.elapsed());
+    // println!("took {:?}", start.elapsed());
 }
 
 // use reifydb::client::Client;

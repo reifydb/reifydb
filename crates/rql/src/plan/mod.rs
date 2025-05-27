@@ -13,7 +13,7 @@ use base::expression::{
     AddExpression, AliasExpression, CallExpression, ColumnExpression, Expression, IdentExpression,
     PrefixExpression, PrefixOperator, TupleExpression,
 };
-use base::{SortDirection, SortKey, Value, ValueKind};
+use base::{SortDirection, SortKey, StoreKind, Value, ValueKind};
 pub use error::Error;
 use transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
 
@@ -40,6 +40,8 @@ pub enum Plan {
     CreateTable(CreateTablePlan),
     /// A INSERT INTO TABLE plan. Inserts values into the table
     InsertIntoTable(InsertIntoTablePlan),
+    /// A INSERT INTO SERIES plan. Inserts values into the table
+    InsertIntoSeries(InsertIntoSeriesPlan),
     /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
     Query(QueryPlan),
 }
@@ -71,6 +73,16 @@ pub enum InsertIntoTablePlan {
     Values {
         schema: String,
         table: String,
+        columns: Vec<ColumnToInsert>,
+        rows_to_insert: Vec<RowToInsert>,
+    },
+}
+
+#[derive(Debug)]
+pub enum InsertIntoSeriesPlan {
+    Values {
+        schema: String,
+        series: String,
         columns: Vec<ColumnToInsert>,
         rows_to_insert: Vec<RowToInsert>,
     },
@@ -273,19 +285,41 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                             })
                             .collect::<Vec<_>>();
 
-                        Ok(Plan::InsertIntoTable(InsertIntoTablePlan::Values {
-                            schema,
-                            table: store,
-                            columns: columns
-                                .into_iter()
-                                .map(|c| ColumnToInsert {
-                                    name: c.name,
-                                    value: c.value,
-                                    default: c.default,
-                                })
-                                .collect(),
-                            rows_to_insert,
-                        }))
+                        let s = catalog.get(&schema).unwrap().get(&store).unwrap();
+
+                        match s.kind().unwrap() {
+                            StoreKind::Series => {
+                                Ok(Plan::InsertIntoSeries(InsertIntoSeriesPlan::Values {
+                                    schema,
+                                    series: store,
+                                    columns: columns
+                                        .into_iter()
+                                        .map(|c| ColumnToInsert {
+                                            name: c.name,
+                                            value: c.value,
+                                            default: c.default,
+                                        })
+                                        .collect(),
+                                    rows_to_insert,
+                                }))
+                            }
+                            StoreKind::Table => {
+                                Ok(Plan::InsertIntoTable(InsertIntoTablePlan::Values {
+                                    schema,
+                                    table: store,
+                                    columns: columns
+                                        .into_iter()
+                                        .map(|c| ColumnToInsert {
+                                            name: c.name,
+                                            value: c.value,
+                                            default: c.default,
+                                        })
+                                        .collect(),
+                                    rows_to_insert,
+                                }))
+                            }
+                        }
+
                         // FIXME validate
                     }
                 };

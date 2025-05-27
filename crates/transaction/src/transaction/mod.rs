@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
-use base::{Key, Row, RowIter};
+use base::{Key, Row, RowIter, Value};
 
 pub mod mvcc;
 pub mod svl;
@@ -53,6 +53,13 @@ pub trait Tx: Rx {
         schema: &str,
         table: &str,
         rows: Vec<Row>,
+    ) -> crate::Result<InsertResult>;
+
+    fn insert_into_series(
+        &mut self,
+        schema: &str,
+        series: &str,
+        rows: Vec<Vec<Value>>,
     ) -> crate::Result<InsertResult>;
 
     /// Commits the transaction.

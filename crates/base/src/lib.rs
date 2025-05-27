@@ -24,3 +24,9 @@ mod row_meta;
 mod value;
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Copy, Clone, Debug)]
+pub enum StoreKind {
+    Series,
+    Table,
+}

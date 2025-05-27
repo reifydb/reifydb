@@ -3,6 +3,7 @@
 
 use crate::StoreToCreate;
 use crate::catalog::{Column, Store};
+use base::StoreKind;
 use std::collections::HashMap;
 use std::ops::Deref;
 
@@ -40,6 +41,7 @@ impl crate::SchemaTx for Schema {
                     name.deref().to_string(),
                     Store {
                         name,
+                        kind: StoreKind::Series,
                         columns: columns
                             .into_iter()
                             .map(|c| Column { name: c.name, value: c.value, default: c.default })
@@ -54,6 +56,7 @@ impl crate::SchemaTx for Schema {
                     name.deref().to_string(),
                     Store {
                         name,
+                        kind: StoreKind::Table,
                         columns: columns
                             .into_iter()
                             .map(|c| Column { name: c.name, value: c.value, default: c.default })

@@ -102,6 +102,12 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         Ok(InsertResult { inserted })
     }
 
+    fn insert_into_series(&mut self, schema: &str, series: &str, rows: Vec<Vec<base::Value>>) -> crate::Result<InsertResult> {
+        let mut persistence = self.persistence.lock().unwrap();
+        let inserted = persistence.table_append_rows(schema, series, &rows).unwrap();
+        Ok(InsertResult { inserted })
+    }
+
     fn commit(self) -> crate::Result<()> {
         if self.state.read_only {
             return Ok(());

@@ -17,6 +17,13 @@ impl Display for ExecutionResult {
             ExecutionResult::CreateTable { schema, table, .. } => {
                 write!(f, "table {table} created in schema {schema}")
             }
+            ExecutionResult::InsertIntoSeries { schema, series, inserted } => {
+                if *inserted != 1 {
+                    write!(f, "inserted {inserted} rows into series {series} in schema {schema}")
+                } else {
+                    write!(f, "inserted 1 row into series {series} created in schema {schema}")
+                }
+            }
             ExecutionResult::InsertIntoTable { schema, table, inserted } => {
                 if *inserted != 1 {
                     write!(f, "inserted {inserted} rows into table {table} in schema {schema}")

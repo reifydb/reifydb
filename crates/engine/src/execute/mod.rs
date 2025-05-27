@@ -24,6 +24,7 @@ pub enum ExecutionResult {
     CreateSeries { schema: String, series: String },
     CreateTable { schema: String, table: String },
     InsertIntoTable { schema: String, table: String, inserted: usize },
+    InsertIntoSeries { schema: String, series: String, inserted: usize },
     Query { columns: Vec<Column>, rows: Vec<Row> },
 }
 
@@ -164,6 +165,7 @@ impl Executor {
             Plan::CreateSchema(plan) => self.create_schema(tx, plan),
             Plan::CreateSeries(plan) => self.create_series(tx, plan),
             Plan::CreateTable(plan) => self.create_table(tx, plan),
+            Plan::InsertIntoSeries(plan) => self.insert_into_series(tx, plan),
             Plan::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
             Plan::Query(plan) => self.execute(plan, tx),
         }

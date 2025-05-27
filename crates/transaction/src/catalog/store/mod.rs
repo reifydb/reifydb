@@ -5,8 +5,8 @@ pub use r#impl::Store;
 
 mod r#impl;
 
-use base::ValueKind;
 use base::expression::Expression;
+use base::{StoreKind, ValueKind};
 
 #[derive(Debug, Clone)]
 pub struct Column {
@@ -16,6 +16,8 @@ pub struct Column {
 }
 
 pub trait StoreRx {
+    fn kind(&self) -> crate::Result<StoreKind>;
+
     fn get_column(&self, column: &str) -> crate::Result<Column>;
 
     fn list_columns(&self) -> crate::Result<Vec<Column>>;
@@ -28,6 +30,10 @@ pub trait StoreTx: StoreRx {}
 pub struct NopStore {}
 
 impl StoreRx for NopStore {
+    fn kind(&self) -> crate::Result<StoreKind> {
+        todo!()
+    }
+
     fn get_column(&self, _column: &str) -> crate::Result<Column> {
         unreachable!()
     }
