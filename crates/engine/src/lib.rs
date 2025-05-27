@@ -8,12 +8,12 @@
 
 pub use engine::Engine;
 pub use error::Error;
+pub use execute::{Column, ExecutionResult};
 
 mod engine;
 mod error;
 mod evaluate;
-mod execute;
+pub(crate) mod execute;
 mod function;
-pub mod old_execute;
 
 pub type Result<T> = std::result::Result<T, Error>;

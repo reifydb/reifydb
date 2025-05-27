@@ -33,20 +33,47 @@ pub type RowToInsert = Vec<Expression>;
 #[derive(Debug)]
 pub enum Plan {
     /// A CREATE SCHEMA plan. Creates a new schema.
-    CreateSchema { name: String, if_not_exists: bool },
+    CreateSchema(CreateSchemaPlan),
     /// A CREATE SERIES plan. Creates a new series.
-    CreateSeries { schema: String, name: String, if_not_exists: bool, columns: Vec<ColumnToCreate> },
+    CreateSeries(CreateSeriesPlan),
     /// A CREATE TABLE plan. Creates a new table.
-    CreateTable { schema: String, name: String, if_not_exists: bool, columns: Vec<ColumnToCreate> },
+    CreateTable(CreateTablePlan),
     /// A INSERT INTO TABLE plan. Inserts values into the table
-    InsertIntoTableValues {
+    InsertIntoTable(InsertIntoTablePlan),
+    /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
+    Query(QueryPlan),
+}
+
+#[derive(Debug)]
+pub struct CreateSchemaPlan {
+    pub schema: String,
+    pub if_not_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateSeriesPlan {
+    pub schema: String,
+    pub series: String,
+    pub if_not_exists: bool,
+    pub columns: Vec<ColumnToCreate>,
+}
+
+#[derive(Debug)]
+pub struct CreateTablePlan {
+    pub schema: String,
+    pub table: String,
+    pub if_not_exists: bool,
+    pub columns: Vec<ColumnToCreate>,
+}
+
+#[derive(Debug)]
+pub enum InsertIntoTablePlan {
+    Values {
         schema: String,
         table: String,
         columns: Vec<ColumnToInsert>,
         rows_to_insert: Vec<RowToInsert>,
     },
-    /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
-    Query(QueryPlan),
 }
 
 #[derive(Debug)]
@@ -86,10 +113,10 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
         match ast {
             Ast::Create(create) => {
                 return match create {
-                    AstCreate::Schema { name, .. } => Ok(Plan::CreateSchema {
-                        name: name.value().to_string(),
+                    AstCreate::Schema { name, .. } => Ok(Plan::CreateSchema(CreateSchemaPlan {
+                        schema: name.value().to_string(),
                         if_not_exists: false,
-                    }),
+                    })),
                     AstCreate::Series { schema, name, definitions, .. } => {
                         let mut columns: Vec<ColumnToCreate> = vec![];
 
@@ -125,12 +152,12 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                             }
                         }
 
-                        Ok(Plan::CreateSeries {
+                        Ok(Plan::CreateSeries(CreateSeriesPlan {
                             schema: schema.value().to_string(),
-                            name: name.value().to_string(),
+                            series: name.value().to_string(),
                             if_not_exists: false,
                             columns,
-                        })
+                        }))
                     }
                     AstCreate::Table { schema, name, definitions, .. } => {
                         let mut columns: Vec<ColumnToCreate> = vec![];
@@ -167,12 +194,12 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                             }
                         }
 
-                        Ok(Plan::CreateTable {
+                        Ok(Plan::CreateTable(CreateTablePlan {
                             schema: schema.value().to_string(),
-                            name: name.value().to_string(),
+                            table: name.value().to_string(),
                             if_not_exists: false,
                             columns,
-                        })
+                        }))
                     }
                 };
             }
@@ -246,7 +273,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                             })
                             .collect::<Vec<_>>();
 
-                        Ok(Plan::InsertIntoTableValues {
+                        Ok(Plan::InsertIntoTable(InsertIntoTablePlan::Values {
                             schema,
                             table: store,
                             columns: columns
@@ -258,7 +285,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                 })
                                 .collect(),
                             rows_to_insert,
-                        })
+                        }))
                         // FIXME validate
                     }
                 };

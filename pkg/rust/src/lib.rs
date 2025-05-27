@@ -28,17 +28,16 @@ pub use auth::Principal;
 pub use base::*;
 /// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
 pub use engine;
-use engine::old_execute::ExecutionResult;
 pub use error::Error;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use rql;
 use std::path::Path;
 
-#[cfg(any(feature = "server", feature = "client"))]
-pub use tokio::*;
-
+use engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 pub use persistence;
+#[cfg(any(feature = "server", feature = "client"))]
+pub use tokio::*;
 
 pub use transaction;
 

@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::old_execute::{execute_plan, execute_plan_mut, ExecutionResult};
+use crate::ExecutionResult;
+use crate::execute::{execute, execute_mut};
 use auth::Principal;
 use persistence::Persistence;
 use rql::ast;
 use rql::ast::Ast;
-use rql::plan::{plan, plan_mut};
+use rql::plan::{Plan, plan, plan_mut};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -62,12 +63,12 @@ impl<P: Persistence, T: Transaction<P>> Engine<P, T> {
             match &statement.0[0] {
                 Ast::From(_) | Ast::Select(_) => {
                     let plan = plan(statement).unwrap();
-                    let er = execute_plan(plan, &mut tx).unwrap();
+                    let er = execute_mut(plan, &mut tx).unwrap();
                     result.push(er);
                 }
                 _ => {
                     let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
-                    let er = execute_plan_mut(plan, &mut tx).unwrap();
+                    let er = execute_mut(plan, &mut tx).unwrap();
                     result.push(er);
                 }
             }
@@ -85,8 +86,13 @@ impl<P: Persistence, T: Transaction<P>> Engine<P, T> {
         let rx = self.begin_read_only().unwrap();
         for statement in statements {
             let plan = plan(statement).unwrap();
-            let er = execute_plan(plan, &rx).unwrap();
-            result.push(er);
+            match plan {
+                Plan::Query(plan) => {
+                    let er = execute(plan, &rx).unwrap();
+                    result.push(er);
+                }
+                _ => unimplemented!(),
+            }
         }
 
         Ok(result)

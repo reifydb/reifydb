@@ -5,7 +5,7 @@ use crate::server::grpc::db_service;
 use auth::Principal;
 pub use config::{DatabaseConfig, ServerConfig};
 use engine::Engine;
-use engine::old_execute::ExecutionResult;
+use engine::ExecutionResult;
 use persistence::Persistence;
 use std::ops::Deref;
 use std::pin::Pin;

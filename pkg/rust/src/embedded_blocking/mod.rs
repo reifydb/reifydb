@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use auth::Principal;
-use engine::Engine;
-use engine::old_execute::ExecutionResult;
+use engine::{Engine, ExecutionResult};
 use persistence::Persistence;
 use transaction::Transaction;
 

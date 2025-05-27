@@ -28,8 +28,8 @@ pub struct ColumnToCreate {
 }
 
 pub enum StoreToCreate {
-    Series { name: String, columns: Vec<ColumnToCreate> },
-    Table { name: String, columns: Vec<ColumnToCreate> },
+    Series { series: String, columns: Vec<ColumnToCreate> },
+    Table { table: String, columns: Vec<ColumnToCreate> },
 }
 
 pub trait SchemaTx: SchemaRx {

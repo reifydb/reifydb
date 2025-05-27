@@ -3,7 +3,6 @@
 
 use base::ordered_float::OrderedF64;
 use base::{Value, ValueKind};
-use engine::old_execute::{Column, ExecutionResult};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -11,6 +10,7 @@ use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep};
 use tonic::Streaming;
 use tonic::metadata::MetadataValue;
+use engine::{Column, ExecutionResult};
 
 pub(crate) mod grpc_db {
     tonic::include_proto!("grpc_db");
