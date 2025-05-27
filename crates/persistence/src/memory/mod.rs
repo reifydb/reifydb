@@ -95,9 +95,3 @@ impl Iterator for MemoryScanIter<'_> {
         self.0.next().map(|(k, v)| Ok((k.clone(), v.clone())))
     }
 }
-
-impl DoubleEndedIterator for MemoryScanIter<'_> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.0.next_back().map(|(k, v)| Ok((k.clone(), v.clone())))
-    }
-}

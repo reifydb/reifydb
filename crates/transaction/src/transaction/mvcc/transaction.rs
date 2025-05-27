@@ -314,19 +314,29 @@ impl<P: Persistence> Transaction<P> {
 
         let from = Key::Version(key.into(), Version(0)).encode();
         let to = Key::Version(key.into(), self.state.version).encode();
-        let mut scan = engine.scan(from..=to).rev();
-        while let Some((key, value)) = scan.next().transpose()? {
-            match Key::decode(&key)? {
+
+        let scan = engine.scan(from..=to);
+
+        let mut entries = Vec::new();
+        for result in scan {
+            let (key, value) = result?;
+            entries.push((key.to_vec(), value.to_vec()));
+        }
+
+        // Iterate in reverse order manually using indexing
+        for i in (0..entries.len()).rev() {
+            let (key_bytes, value_bytes) = &entries[i];
+            match Key::decode(key_bytes)? {
                 Key::Version(_, version) => {
                     if self.state.is_visible(version) {
-                        // FIXME
-                        // return bincode::deserialize(&value);
-                        return Ok(bincode::deserialize(&value).unwrap());
+                        // FIXME: unwrap should be replaced with proper error handling
+                        return Ok(bincode::deserialize(value_bytes).unwrap());
                     }
                 }
                 key => return Err(Error::unexpected_key("Key::Version", key)),
-            };
+            }
         }
+
         Ok(None)
     }
 

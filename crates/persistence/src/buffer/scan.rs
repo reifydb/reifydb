@@ -101,13 +101,3 @@ impl<'a, P: Persistence> Iterator for BufferScanIter<'a, P> {
         )
     }
 }
-
-impl<P: Persistence> DoubleEndedIterator for BufferScanIter<'_, P> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.next_item(
-            |s| s.staging.next_back().map(|(k, v)| (k.clone(), v.clone())),
-            |s| s.cache.next_back().map(|(k, v)| (k.clone(), v.clone())),
-            |s| s.underlying.next_back(),
-        )
-    }
-}

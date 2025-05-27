@@ -90,12 +90,3 @@ impl<A: Persistence, B: Persistence> Iterator for MirrorIterator<'_, A, B> {
         a
     }
 }
-
-impl<A: Persistence, B: Persistence> DoubleEndedIterator for MirrorIterator<'_, A, B> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let a = self.a.next_back();
-        let b = self.b.next_back();
-        assert_eq!(a, b);
-        a
-    }
-}

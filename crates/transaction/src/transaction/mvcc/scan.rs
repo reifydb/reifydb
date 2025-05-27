@@ -11,7 +11,7 @@
 
 use crate::transaction::mvcc::{Error, Key, TransactionState, Version};
 use base::encoding::{Key as _, bincode};
-use persistence::Persistence;
+use persistence::{Persistence, Value};
 use std::collections::{Bound, VecDeque};
 use std::sync::{Arc, Mutex};
 
@@ -21,9 +21,7 @@ use std::sync::{Arc, Mutex};
 /// the lifetime of the iterator can cause deadlocks (e.g. when the local SQL
 /// engine pulls from two tables concurrently during a join). Instead, we pull
 /// and buffer a batch of rows at a time, and release the mutex in between.
-///
-/// This does not implement DoubleEndedIterator (reverse scans), since the SQL
-/// layer doesn't currently need it.
+
 pub struct ScanIterator<P: Persistence> {
     /// The persistence layer - most likely buffered
     persistence: Arc<Mutex<P>>,

@@ -32,10 +32,9 @@ pub enum Operation {
 }
 
 /// A scan iterator over key-value pairs, returned by [`Persistence::scan()`].
-pub trait ScanIterator: DoubleEndedIterator<Item = Result<(Key, Value)>> {}
+pub trait ScanIterator: Iterator<Item = Result<(Key, Value)>> {}
 
-/// Blanket implementation for all iterators that can act as a scan iterator.
-impl<I: DoubleEndedIterator<Item = Result<(Key, Value)>>> ScanIterator for I {}
+impl<T> ScanIterator for T where T: Iterator<Item = Result<(Key, Value)>> {}
 
 pub trait BeginBatch {
     type Batch<'a>: PersistenceBatch + 'a
@@ -50,7 +49,7 @@ pub trait Persistence: Send + Sync {
     ///
     /// The iterator yields ordered key-value pairs and must implement [`ScanIterator`].
     /// The lifetime `'a` ensures the iterator does not outlive the engine reference.
-    type ScanIter<'a>: ScanIterator + 'a
+    type ScanIter<'a>: Iterator<Item = Result<(Key, Value)>> + 'a
     where
         Self: 'a;
 

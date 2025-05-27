@@ -3,57 +3,63 @@
 
 use crate::{Key, Value};
 use heed::types::Bytes;
-use heed::{Database, RoIter, RoTxn, WithTls};
-use std::collections::Bound;
-use std::ops::RangeBounds;
+use heed::{Database, Env};
+use std::collections::{Bound, VecDeque};
+use std::sync::Arc;
 
-pub struct LmdbScanIter<'a> {
-    iter: RoIter<'a, Bytes, Bytes>,
-    txn: &'a RoTxn<'a, WithTls>, // borrow txn
-    range: Box<dyn Fn(&[u8]) -> bool + 'a>,
+pub struct LmdbScanIter {
+    env: Arc<Env>,
+    db: Database<Bytes, Bytes>,
+    buffer: VecDeque<crate::Result<(Key, Value)>>,
+    last_key: Option<Key>,
+    batch_size: usize,
 }
 
-impl<'a> LmdbScanIter<'a> {
-    pub fn new(
-        txn: &'a RoTxn<'a, WithTls>,
-        db: Database<Bytes, Bytes>,
-        range: impl RangeBounds<Key> + 'a,
-    ) -> Self {
-        let iter = db.iter(txn).unwrap();
+impl LmdbScanIter {
+    pub fn new(env: Arc<Env>, db: Database<Bytes, Bytes>, batch_size: usize) -> Self {
+        Self { env, db, buffer: VecDeque::new(), last_key: None, batch_size }
+    }
 
-        let start = match range.start_bound() {
-            Bound::Included(start) => Some(start.clone()),
-            Bound::Excluded(start) => Some(start.clone()),
-            Bound::Unbounded => None,
+    fn refill_buffer(&mut self) -> crate::Result<()> {
+        let txn = self.env.read_txn().unwrap();
+
+        let start_bound = match &self.last_key {
+            Some(key) => Bound::Excluded(&key[..]),
+            None => Bound::Unbounded,
         };
 
-        let end = match range.end_bound() {
-            Bound::Included(end) => Some(end.clone()),
-            Bound::Excluded(end) => Some(end.clone()),
-            Bound::Unbounded => None,
-        };
+        let range = (start_bound, Bound::Unbounded);
+        let iter = self.db.range(&txn, &range).unwrap();
 
-        let range_fn = move |k: &[u8]| {
-            (start.as_ref().map(|s| k >= &s[..]).unwrap_or(true))
-                && (end.as_ref().map(|e| k <= &e[..]).unwrap_or(true))
-        };
+        self.buffer.clear();
 
-        Self { iter, txn, range: Box::new(range_fn) }
+        for result in iter.take(self.batch_size) {
+            match result {
+                Ok((k, v)) => {
+                    self.last_key = Some(k.to_vec());
+                    self.buffer.push_back(Ok((k.to_vec(), v.to_vec())));
+                }
+                Err(e) => {
+                    // self.buffer.push_back(Err(e));
+                    panic!("Failed to refill the batch: {}", e);
+                    break;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
-impl<'a> Iterator for LmdbScanIter<'a> {
-	type Item = crate::Result<(Key, Value)>;
+impl Iterator for LmdbScanIter {
+    type Item = crate::Result<(Key, Value)>;
 
-	fn next(&mut self) -> Option<Self::Item> {
-		while let Some(result) = self.iter.next() {
-			match result {
-				Ok((k, v)) if (self.range)(k) => return Some(Ok((k.to_vec(), v.to_vec()))),
-				Ok(_) => continue,
-				// Err(e) => return Some(Err(Box::new(e))),
-				Err(e) => panic!("unexpected error: {}", e),
-			}
-		}
-		None
-	}
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer.is_empty() {
+            if let Err(e) = self.refill_buffer() {
+                return Some(Err(e));
+            }
+        }
+        self.buffer.pop_front()
+    }
 }
