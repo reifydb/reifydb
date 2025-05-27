@@ -73,7 +73,6 @@ impl<P: Persistence + BeginBatch> Persistence for Buffer<P> {
         for (k, v) in staging {
             if let Some(v) = v { batch.set(&k, v).unwrap() } else { batch.remove(&k).unwrap() }
         }
-
         batch.complete().unwrap();
 
         Ok(())

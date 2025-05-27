@@ -5,32 +5,52 @@ use crate::{Key, Value};
 use heed::types::Bytes;
 use heed::{Database, Env};
 use std::collections::{Bound, VecDeque};
+use std::ops::RangeBounds;
 use std::sync::Arc;
 
 pub struct LmdbScanIter {
     env: Arc<Env>,
     db: Database<Bytes, Bytes>,
+    start: Bound<Key>,
+    end: Bound<Key>,
     buffer: VecDeque<crate::Result<(Key, Value)>>,
     last_key: Option<Key>,
     batch_size: usize,
 }
 
 impl LmdbScanIter {
-    pub fn new(env: Arc<Env>, db: Database<Bytes, Bytes>, batch_size: usize) -> Self {
-        Self { env, db, buffer: VecDeque::new(), last_key: None, batch_size }
+    pub fn new(
+        env: Arc<Env>,
+        db: Database<Bytes, Bytes>,
+        range: impl RangeBounds<Key>,
+        batch_size: usize,
+    ) -> Self {
+        let start = range.start_bound().cloned();
+        let end = range.end_bound().cloned();
+
+        Self { env, db, buffer: VecDeque::new(), last_key: None, start, end, batch_size }
     }
 
     fn refill_buffer(&mut self) -> crate::Result<()> {
-        let txn = self.env.read_txn().unwrap();
+        let txn = self.env.read_txn().unwrap(); // FIXME
 
-        let start_bound = match &self.last_key {
-            Some(key) => Bound::Excluded(&key[..]),
-            None => Bound::Unbounded,
+        let start_bound: Bound<&[u8]> = match &self.last_key {
+            Some(k) => Bound::Excluded(&k[..]),
+            None => match &self.start {
+                Bound::Included(k) => Bound::Included(&k[..]),
+                Bound::Excluded(k) => Bound::Excluded(&k[..]),
+                Bound::Unbounded => Bound::Unbounded,
+            },
         };
 
-        let range = (start_bound, Bound::Unbounded);
-        let iter = self.db.range(&txn, &range).unwrap();
+        let end_bound: Bound<&[u8]> = match &self.end {
+            Bound::Included(k) => Bound::Included(&k[..]),
+            Bound::Excluded(k) => Bound::Excluded(&k[..]),
+            Bound::Unbounded => Bound::Unbounded,
+        };
 
+        let effective_range = (start_bound, end_bound);
+        let iter = self.db.range(&txn, &effective_range).unwrap();
         self.buffer.clear();
 
         for result in iter.take(self.batch_size) {
@@ -40,9 +60,9 @@ impl LmdbScanIter {
                     self.buffer.push_back(Ok((k.to_vec(), v.to_vec())));
                 }
                 Err(e) => {
-                    // self.buffer.push_back(Err(e));
-                    panic!("Failed to refill the batch: {}", e);
-                    break;
+                    // FIXME
+                    // return Err(crate::Error::Persistence(e.into()));
+                    return panic!("");
                 }
             }
         }

@@ -20,10 +20,9 @@ impl Lmdb {
     pub fn new(path: &Path) -> crate::Result<Self> {
         let env = unsafe { EnvOpenOptions::new().max_dbs(1).open(path).unwrap() };
 
-        // dummy txn just to create DB
-        let mut txn = env.write_txn().unwrap();
-        let db = env.create_database::<Bytes, Bytes>(&mut txn, None).unwrap();
-        txn.commit().unwrap();
+        let mut tx = env.write_txn().unwrap();
+        let db = env.create_database::<Bytes, Bytes>(&mut tx, None).unwrap();
+        tx.commit().unwrap();
 
         Ok(Self { env: Arc::new(env), db })
     }
@@ -70,7 +69,7 @@ impl Persistence for Lmdb {
     }
 
     fn scan(&self, range: impl RangeBounds<Key> + Clone) -> Self::ScanIter<'_> {
-        LmdbScanIter::new(self.env.clone(), self.db.clone(), 1000)
+        LmdbScanIter::new(self.env.clone(), self.db.clone(), range, 1000)
     }
 
     fn set(&mut self, key: &Key, value: Value) -> crate::Result<()> {
@@ -88,7 +87,7 @@ impl Persistence for Lmdb {
     }
 
     fn sync(&mut self) -> crate::Result<()> {
-        unreachable!()
+        Ok(())
     }
 }
 impl PersistenceBatch for LmdbBatch<'_> {
@@ -117,40 +116,3 @@ impl PersistenceBatch for LmdbBatch<'_> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::lmdb::Lmdb;
-    use crate::{BeginBatch, Persistence, PersistenceBatch};
-    use std::path::Path;
-    use std::time::Instant;
-
-    #[test]
-    fn test() {
-        let path = Path::new("/tmp/test");
-
-        let lmdb = Lmdb::new(path).unwrap();
-
-        let batch_data = vec![
-            (b"alpha".to_vec(), b"one".to_vec()),
-            (b"beta".to_vec(), b"two".to_vec()),
-            (b"gamma".to_vec(), b"three".to_vec()),
-        ];
-
-        let start = Instant::now();
-        let mut batch = lmdb.begin_batch().unwrap();
-
-        for (key, value) in batch_data {
-            batch.set(&key, value).unwrap();
-        }
-
-        batch.complete().unwrap();
-
-        println!("Batch inserted and committed.");
-        println!("Time: {} ms", start.elapsed().as_millis());
-
-        // Verify values
-        let reader = lmdb.env.read_txn().unwrap();
-        let val = lmdb.db.get(&reader, b"beta").unwrap().unwrap();
-        assert_eq!(val, b"two");
-    }
-}

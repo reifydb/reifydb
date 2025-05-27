@@ -97,20 +97,20 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         }
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.persistence.lock().unwrap();
+        let mut persistence = self.persistence.lock().unwrap();
 
         let mut remove = Vec::new();
-        for result in engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode()) {
+        for result in persistence.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode()) {
             let (k, _) = result?;
             remove.push(k);
         }
         for key in remove {
-            engine.remove(&key)?;
+            persistence.remove(&key)?;
         }
 
         // FIXME
         // engine.remove(&Key::TxActive(self.state.version).encode())
-        engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
+        persistence.remove(&Key::TxActive(self.state.version).encode()).unwrap();
         Ok(())
     }
 
@@ -270,7 +270,7 @@ impl<P: Persistence> Transaction<P> {
         }
         // FIXME
         // let mut engine = self.engine.lock()?;
-        let mut engine = self.persistence.lock().unwrap();
+        let mut persistence = self.persistence.lock().unwrap();
 
         // Check for write conflicts, i.e. if the latest key is invisible to us
         // (either a newer version, or an uncommitted version in our past). We
@@ -282,7 +282,7 @@ impl<P: Persistence> Transaction<P> {
         )
         .encode();
         let to = Key::Version(key.into(), Version(u64::MAX)).encode();
-        if let Some((key, _)) = engine.scan(from..=to).last().transpose()? {
+        if let Some((key, _)) = persistence.scan(from..=to).last().transpose()? {
             match Key::decode(&key)? {
                 Key::Version(_, version) => {
                     if !self.state.is_visible(version) {
@@ -297,10 +297,10 @@ impl<P: Persistence> Transaction<P> {
         //
         // NB: TxWrite contains the provided user key, not the encoded engine
         // key, since we can construct the engine key using the version.
-        engine.set(&Key::TxWrite(self.state.version, key.into()).encode(), vec![])?;
+        persistence.set(&Key::TxWrite(self.state.version, key.into()).encode(), vec![])?;
         //FIXME
         // engine.set(&Key::Version(key.into(), self.state.version).encode(), bincode::serialize(&value))
-        engine
+        persistence
             .set(&Key::Version(key.into(), self.state.version).encode(), bincode::serialize(&value))
             .unwrap();
         Ok(())

@@ -16,11 +16,12 @@ use std::error::Error as StdError;
 use std::fmt::Write as _;
 
 use persistence::test::Emit;
-use persistence::{Buffer, Memory, Operation, Persistence};
+use persistence::{Buffer, Lmdb, Memory, Operation, Persistence};
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use test_each_file::test_each_path;
+use testing::tempdir::temp_dir;
 use testing::testscript;
 use testing::util::parse_key_range;
 use transaction::Tx;
@@ -29,6 +30,10 @@ use transaction::mvcc::{Mvcc, Transaction, Version, format};
 
 test_each_path! { in "crates/transaction/tests/mvcc" as memory => test_memory }
 test_each_path! { in "crates/transaction/tests/mvcc" as buffered_memory => test_buffered_memory }
+
+test_each_path! { in "crates/transaction/tests/mvcc" as lmdb => test_lmdb }
+test_each_path! { in "crates/transaction/tests/mvcc" as buffered_lmdb => test_buffered_lmdb }
+
 
 fn test_memory(path: &Path) {
     testscript::run_path(&mut MvccRunner::new(Memory::default()), path).expect("test failed")
@@ -39,6 +44,20 @@ fn test_buffered_memory(path: &Path) {
         .expect("test failed")
 }
 
+fn test_lmdb(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut MvccRunner::new(Lmdb::new(db_path).unwrap()), path)
+            .expect("test failed")
+    })
+}
+
+fn test_buffered_lmdb(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut MvccRunner::new(Buffer::new(Lmdb::new(db_path).unwrap())), path)
+            .expect("test failed")
+    })
+}
+
 pub struct MvccRunner<P: Persistence> {
     mvcc: Mvcc<Emit<P>>,
     txs: HashMap<String, Transaction<Emit<P>>>,
@@ -46,9 +65,9 @@ pub struct MvccRunner<P: Persistence> {
 }
 
 impl<P: Persistence> MvccRunner<P> {
-    fn new(store: P) -> Self {
+    fn new(persistence: P) -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { mvcc: Mvcc::new(Emit::new(store, tx)), txs: HashMap::new(), operations: rx }
+        Self { mvcc: Mvcc::new(Emit::new(persistence, tx)), txs: HashMap::new(), operations: rx }
     }
 
     /// Fetches the named transaction from a command prefix.

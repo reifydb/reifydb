@@ -7,5 +7,6 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub mod network;
+pub mod tempdir;
 pub mod testscript;
 pub mod util;
