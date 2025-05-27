@@ -9,7 +9,7 @@
 pub use error::Error;
 pub use lmdb::{Lmdb, LmdbBatch};
 pub use memory::{Memory, MemoryScanIter};
-pub use persistence::{BeginBatch, Persistence, PersistenceBatch, TableExtension};
+pub use persistence::{BeginBatch, Persistence, PersistenceBatch};
 use std::ops::RangeBounds;
 use std::result;
 

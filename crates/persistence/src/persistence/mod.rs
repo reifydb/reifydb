@@ -1,9 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-mod table;
-
-pub use table::TableExtension;
 use crate::{Key, Value};
 use base::encoding::keycode;
 use std::ops::RangeBounds;
@@ -92,5 +89,3 @@ pub trait PersistenceBatch {
 
     fn abort(self) -> crate::Result<()>;
 }
-
-impl<P: Persistence> TableExtension for P {}

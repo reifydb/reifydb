@@ -21,7 +21,7 @@ use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::scan::ScanIterator;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::{Row, RowIter, key_prefix};
-use persistence::{Persistence, TableExtension};
+use persistence::Persistence;
 // FIXME remove this
 
 impl<P: Persistence> crate::Rx for Transaction<P> {
@@ -80,31 +80,61 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         table: &str,
         rows: Vec<Row>,
     ) -> crate::Result<InsertResult> {
-        // let last_id =
-        //     self.persistence.lock().unwrap().scan_prefix(&key_prefix!("{}::row::", table)).count();
-        //
-        // // FIXME assumes every row gets inserted - not updated etc..
-        // let inserted = rows.len();
-        //
-        // for (id, row) in rows.iter().enumerate() {
-        //     self.persistence
-        //         .lock()
-        //         .unwrap()
-        //         .set(
-        //             // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
-        //             key_prefix!("{}::row::{}", table, (last_id + id + 1)),
-        //             bincode::serialize(row),
-        //         )
-        //         .unwrap();
-        // }
-        let mut persistence = self.persistence.lock().unwrap();
-        let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
+        let last_id = self
+            .persistence
+            .lock()
+            .unwrap()
+            .scan_prefix(&key_prefix!("{}::{}::row::", schema, table))
+            .count();
+
+        // FIXME assumes every row gets inserted - not updated etc..
+        let inserted = rows.len();
+
+        for (id, row) in rows.iter().enumerate() {
+            self.persistence
+                .lock()
+                .unwrap()
+                .set(
+                    // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
+                    key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)),
+                    bincode::serialize(row),
+                )
+                .unwrap();
+        }
+        // let mut persistence = self.persistence.lock().unwrap();
+        // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
         Ok(InsertResult { inserted })
     }
 
-    fn insert_into_series(&mut self, schema: &str, series: &str, rows: Vec<Vec<base::Value>>) -> crate::Result<InsertResult> {
-        let mut persistence = self.persistence.lock().unwrap();
-        let inserted = persistence.table_append_rows(schema, series, &rows).unwrap();
+    fn insert_into_series(
+        &mut self,
+        schema: &str,
+        series: &str,
+        rows: Vec<Vec<base::Value>>,
+    ) -> crate::Result<InsertResult> {
+        let last_id = self
+            .persistence
+            .lock()
+            .unwrap()
+            .scan_prefix(&key_prefix!("{}::{}::row::", schema, series))
+            .count();
+
+        // FIXME assumes every row gets inserted - not updated etc..
+        let inserted = rows.len();
+
+        for (id, row) in rows.iter().enumerate() {
+            self.persistence
+                .lock()
+                .unwrap()
+                .set(
+                    // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
+                    key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)),
+                    bincode::serialize(row),
+                )
+                .unwrap();
+        }
+        // let mut persistence = self.persistence.lock().unwrap();
+        // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
         Ok(InsertResult { inserted })
     }
 
