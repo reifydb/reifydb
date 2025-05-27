@@ -7,14 +7,12 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 use base::encoding::keycode;
-pub use buffer::{Buffer, BufferScanIter};
 pub use error::Error;
 pub use lmdb::{Lmdb, LmdbBatch};
 pub use memory::{Memory, MemoryScanIter};
 use std::ops::RangeBounds;
 use std::result;
 
-mod buffer;
 mod error;
 mod lmdb;
 mod memory;

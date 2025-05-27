@@ -111,6 +111,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         // FIXME
         // engine.remove(&Key::TxActive(self.state.version).encode())
         persistence.remove(&Key::TxActive(self.state.version).encode()).unwrap();
+        persistence.sync().unwrap();
         Ok(())
     }
 
@@ -144,6 +145,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         // FIXME
         // engine.remove(&Key::TxActive(self.state.version).encode()) // remove from active set
         engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
+        
         Ok(())
     }
 }
@@ -171,6 +173,9 @@ impl<P: Persistence> Transaction<P> {
             session.set(&Key::TxActiveSnapshot(version).encode(), active.encode())?
         }
         session.set(&Key::TxActive(version).encode(), vec![])?;
+        session.sync().unwrap();
+        
+        
         drop(session);
 
         Ok(Self { persistence, state: TransactionState { version, read_only: false, active } })

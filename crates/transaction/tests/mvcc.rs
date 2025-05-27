@@ -16,7 +16,7 @@ use std::error::Error as StdError;
 use std::fmt::Write as _;
 
 use persistence::test::Emit;
-use persistence::{Buffer, Lmdb, Memory, Operation, Persistence};
+use persistence::{Lmdb, Memory, Operation, Persistence};
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
@@ -29,31 +29,15 @@ use transaction::mvcc::format::MVCC;
 use transaction::mvcc::{Mvcc, Transaction, Version, format};
 
 test_each_path! { in "crates/transaction/tests/mvcc" as memory => test_memory }
-test_each_path! { in "crates/transaction/tests/mvcc" as buffered_memory => test_buffered_memory }
-
 test_each_path! { in "crates/transaction/tests/mvcc" as lmdb => test_lmdb }
-test_each_path! { in "crates/transaction/tests/mvcc" as buffered_lmdb => test_buffered_lmdb }
-
 
 fn test_memory(path: &Path) {
     testscript::run_path(&mut MvccRunner::new(Memory::default()), path).expect("test failed")
 }
 
-fn test_buffered_memory(path: &Path) {
-    testscript::run_path(&mut MvccRunner::new(Buffer::new(Memory::default())), path)
-        .expect("test failed")
-}
-
 fn test_lmdb(path: &Path) {
     temp_dir(|db_path| {
         testscript::run_path(&mut MvccRunner::new(Lmdb::new(db_path).unwrap()), path)
-            .expect("test failed")
-    })
-}
-
-fn test_buffered_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut MvccRunner::new(Buffer::new(Lmdb::new(db_path).unwrap())), path)
             .expect("test failed")
     })
 }
