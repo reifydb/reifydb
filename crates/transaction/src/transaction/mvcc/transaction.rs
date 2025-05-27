@@ -21,7 +21,7 @@ use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::scan::ScanIterator;
 use base::encoding::{Key as _, Value, bincode, keycode};
 use base::{Row, RowIter, key_prefix};
-use persistence::Persistence;
+use persistence::{Persistence, TableExtension};
 // FIXME remove this
 
 impl<P: Persistence> crate::Rx for Transaction<P> {
@@ -41,12 +41,17 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
         todo!()
     }
 
-    fn scan(&self, store: &str) -> crate::Result<RowIter> {
+    fn scan_table(&self, schema: &str, table: &str) -> crate::Result<RowIter> {
+        // let prefix = format!("{}::{}::row::", schema, table);
+        // let start_key = key_prefix!("{}{:020}", prefix, 10);
+        // let end_key = key_prefix!("{}{:020}", prefix, 12);
+
         Ok(Box::new(
             self.persistence
                 .lock()
                 .unwrap()
-                .scan_prefix(key_prefix!("{}::row::", store))
+                .scan_prefix(key_prefix!("{}::{}::row::", schema, table))
+                // .scan(start_key..end_key) // range is [start_key, end_key)
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -69,25 +74,31 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         Ok(schema)
     }
 
-    fn insert(&mut self, store: &str, rows: Vec<Row>) -> crate::Result<InsertResult> {
-        let last_id =
-            self.persistence.lock().unwrap().scan_prefix(&key_prefix!("{}::row::", store)).count();
-
-        // FIXME assumes every row gets inserted - not updated etc..
-        let inserted = rows.len();
-
-        for (id, row) in rows.iter().enumerate() {
-            self.persistence
-                .lock()
-                .unwrap()
-                .set(
-                    // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
-                    key_prefix!("{}::row::{}", store, (last_id + id + 1)),
-                    bincode::serialize(row),
-                )
-                .unwrap();
-        }
-
+    fn insert_into_table(
+        &mut self,
+        schema: &str,
+        table: &str,
+        rows: Vec<Row>,
+    ) -> crate::Result<InsertResult> {
+        // let last_id =
+        //     self.persistence.lock().unwrap().scan_prefix(&key_prefix!("{}::row::", table)).count();
+        //
+        // // FIXME assumes every row gets inserted - not updated etc..
+        // let inserted = rows.len();
+        //
+        // for (id, row) in rows.iter().enumerate() {
+        //     self.persistence
+        //         .lock()
+        //         .unwrap()
+        //         .set(
+        //             // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
+        //             key_prefix!("{}::row::{}", table, (last_id + id + 1)),
+        //             bincode::serialize(row),
+        //         )
+        //         .unwrap();
+        // }
+        let mut persistence = self.persistence.lock().unwrap();
+        let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
         Ok(InsertResult { inserted })
     }
 
@@ -111,7 +122,6 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         // FIXME
         // engine.remove(&Key::TxActive(self.state.version).encode())
         persistence.remove(&Key::TxActive(self.state.version).encode()).unwrap();
-        persistence.sync().unwrap();
         Ok(())
     }
 
@@ -145,7 +155,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         // FIXME
         // engine.remove(&Key::TxActive(self.state.version).encode()) // remove from active set
         engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
-        
+
         Ok(())
     }
 }
@@ -173,9 +183,7 @@ impl<P: Persistence> Transaction<P> {
             session.set(&Key::TxActiveSnapshot(version).encode(), active.encode())?
         }
         session.set(&Key::TxActive(version).encode(), vec![])?;
-        session.sync().unwrap();
-        
-        
+
         drop(session);
 
         Ok(Self { persistence, state: TransactionState { version, read_only: false, active } })

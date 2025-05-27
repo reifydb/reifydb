@@ -8,6 +8,7 @@
 
 use reifydb::{DB, ReifyDB, lmdb, svl, mvcc};
 use std::path::Path;
+use reifydb::time::Instant;
 
 fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(mvcc(lmdb(&Path::new("/tmp/db"))));
@@ -19,13 +20,21 @@ fn main() {
         insert
             (1,1),
             (2,2),
-            (3,3)
+            (3,3),
+            (4,4),
+            (5,5),
+            (6,6),
+            (7,7),
+            (8,8)
         into test.test(timestamp, value)"#,
     );
 
+    let start = Instant::now();
     for l in db.rx_as(&root, r#"from test.test"#) {
+    // for l in db.rx_as(&root, r#"from test.test group by timestamp select timestamp, avg(value)"#) {
         println!("{}", l);
     }
+    println!("took {:?}", start.elapsed());
 }
 
 // use reifydb::client::Client;

@@ -13,7 +13,7 @@ use crate::catalog_init;
 use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::{Status, Transaction, Version};
 use base::encoding::{Key as _, Value};
-use persistence::Persistence;
+use persistence::{Persistence, TableExtension};
 use std::sync::{Arc, Mutex};
 
 /// An MVCC-based transactional key-value engine. It wraps an underlying persistence that's used for raw key-value storage.
@@ -76,6 +76,7 @@ impl<P: Persistence> Mvcc<P> {
         value: Vec<u8>,
     ) -> crate::transaction::mvcc::Result<()> {
         // self.engine.lock()?.set(&Key::Unversioned(key.into()).encode(), value)
+
         // FIXME
         Ok(self
             .persistence

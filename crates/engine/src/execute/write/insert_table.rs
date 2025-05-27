@@ -28,7 +28,7 @@ impl Executor {
                     rows.push(row_values);
                 }
 
-                let result = tx.insert(table.as_str(), rows).unwrap();
+                let result = tx.insert_into_table(schema.as_str(), table.as_str(), rows).unwrap();
 
                 Ok(ExecutionResult::InsertIntoTable { schema, table, inserted: result.inserted })
             }

@@ -25,7 +25,7 @@ impl Executor {
             .collect();
 
         let mut frame = DataFrame::new(columns);
-        for row in rx.scan(store)?.into_iter() {
+        for row in rx.scan_table(schema, store)?.into_iter() {
             frame.append(row)?;
         }
 

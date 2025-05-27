@@ -38,11 +38,11 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
         unreachable!()
     }
 
-    fn scan(&self, store: &str) -> crate::Result<RowIter> {
+    fn scan_table(&self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.engine
                 .persistence
-                .scan_prefix(key_prefix!("{}::row::", store))
+                .scan_prefix(key_prefix!("{}::{}::row::", schema, store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -52,7 +52,7 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
 
 pub struct TransactionMut<P: Persistence> {
     svl: WriteGuard<SvlInner<P>>,
-    log: RefCell<HashMap<String, Vec<Row>>>,
+    log: RefCell<HashMap<(String, String), Vec<Row>>>,
 }
 
 impl<P: Persistence> TransactionMut<P> {
@@ -78,11 +78,11 @@ impl<P: Persistence> crate::Rx for TransactionMut<P> {
         todo!()
     }
 
-    fn scan(&self, store: &str) -> crate::Result<RowIter> {
+    fn scan_table(&self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.svl
                 .persistence
-                .scan_prefix(key_prefix!("{}::row::", store))
+                .scan_prefix(key_prefix!("{}::{}::row::", schema, store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -105,27 +105,35 @@ impl<P: Persistence> crate::Tx for TransactionMut<P> {
         Ok(schema)
     }
 
-    fn insert(&mut self, store: &str, rows: Vec<Row>) -> crate::Result<InsertResult> {
+    fn insert_into_table(
+        &mut self,
+        schema: &str,
+        store: &str,
+        rows: Vec<Row>,
+    ) -> crate::Result<InsertResult> {
         let inserted = rows.len();
-        self.log.borrow_mut().insert(store.to_string(), rows);
+        self.log.borrow_mut().insert((schema.to_string(), store.to_string()), rows);
         Ok(InsertResult { inserted })
     }
 
     fn commit(mut self) -> crate::Result<()> {
         let log = self.log.borrow_mut();
 
-        for (store, rows) in log.iter() {
+        for ((schema, table), rows) in log.iter() {
             // FIXME store this information in KV
 
-            let last_id =
-                self.svl.persistence.scan_prefix(&key_prefix!("{}::row::", store)).count();
+            let last_id = self
+                .svl
+                .persistence
+                .scan_prefix(&key_prefix!("{}::{}::row::", schema, table))
+                .count();
 
             for (id, row) in rows.iter().enumerate() {
                 self.svl
                     .persistence
                     .set(
                         // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
-                        key_prefix!("{}::row::{}", store, (last_id + id + 1)),
+                        key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)),
                         bincode::serialize(row),
                     )
                     .unwrap();

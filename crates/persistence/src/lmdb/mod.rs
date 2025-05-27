@@ -115,4 +115,3 @@ impl PersistenceBatch for LmdbBatch<'_> {
         Ok(())
     }
 }
-

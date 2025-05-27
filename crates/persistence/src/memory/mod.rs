@@ -3,8 +3,8 @@
 
 use crate::{BeginBatch, Key, Persistence, Value};
 use crate::{PersistenceBatch, Result};
-use std::collections::btree_map::Range;
 use std::collections::BTreeMap;
+use std::collections::btree_map::Range;
 use std::ops::RangeBounds;
 
 /// An in-memory key-value store engine
@@ -18,7 +18,7 @@ impl BeginBatch for Memory {
         Self: 'a;
 
     fn begin_batch(&self) -> Result<Self::Batch<'_>> {
-        Ok(MemoryBatch{})
+        Ok(MemoryBatch {})
     }
 }
 

@@ -31,7 +31,7 @@ pub trait Rx {
     fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>>;
 
     /// Scans all store's rows
-    fn scan(&self, store: &str) -> crate::Result<RowIter>;
+    fn scan_table(&self, schema: &str, store: &str) -> crate::Result<RowIter>;
 }
 
 #[derive(Debug)]
@@ -48,7 +48,12 @@ pub trait Tx: Rx {
 
     fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaMut>;
 
-    fn insert(&mut self, store: &str, rows: Vec<Row>) -> crate::Result<InsertResult>;
+    fn insert_into_table(
+        &mut self,
+        schema: &str,
+        table: &str,
+        rows: Vec<Row>,
+    ) -> crate::Result<InsertResult>;
 
     /// Commits the transaction.
     fn commit(self) -> crate::Result<()>;
