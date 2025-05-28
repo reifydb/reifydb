@@ -13,6 +13,22 @@ reifydb_persistence = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 
+
+
+cheap-clone = "0.1"
+crossbeam-skiplist = { version = "0.1" }
+crossbeam-channel = { version = "0.5" }
+crossbeam-utils = { version = "0.8" }
+either = "1"
+indexmap = { version = "2" }
+rand = "0.8"
+smallvec-wrapper = { version = "0.1", features = ["const_new"] }
+scopeguard = { version = "1" }
+tracing = "0.1"
+wg = { version = "0.9" }
+
+
+
 [dev-dependencies]
 reifydb_testing = { workspace = true }
 test_each_file = { workspace = true }
