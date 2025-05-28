@@ -9,8 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-
-use cheap_clone::CheapClone;
 use core::ops::Bound;
 use smallvec_wrapper::MediumVec;
 use std::collections::BTreeSet;
@@ -39,7 +37,7 @@ impl<K: Clone> Clone for BTreeCm<K> {
 
 impl<K> Cm for BTreeCm<K>
 where
-    K: CheapClone + Ord,
+    K: Clone + Ord,
 {
     type Error = core::convert::Infallible;
     type Key = K;
@@ -52,12 +50,12 @@ where
 
     #[inline]
     fn mark_read(&mut self, key: &K) {
-        self.reads.push(Read::Single(key.cheap_clone()));
+        self.reads.push(Read::Single(key.clone()));
     }
 
     #[inline]
     fn mark_conflict(&mut self, key: &Self::Key) {
-        self.conflict_keys.insert(key.cheap_clone());
+        self.conflict_keys.insert(key.clone());
     }
 
     #[inline]
@@ -173,18 +171,18 @@ where
 
 impl<K> CmRange for BTreeCm<K>
 where
-    K: CheapClone + Ord,
+    K: Clone + Ord,
 {
     fn mark_range(&mut self, range: impl RangeBounds<<Self as Cm>::Key>) {
         let start = match range.start_bound() {
-            Bound::Included(k) => Bound::Included(k.cheap_clone()),
-            Bound::Excluded(k) => Bound::Excluded(k.cheap_clone()),
+            Bound::Included(k) => Bound::Included(k.clone()),
+            Bound::Excluded(k) => Bound::Excluded(k.clone()),
             Bound::Unbounded => Bound::Unbounded,
         };
 
         let end = match range.end_bound() {
-            Bound::Included(k) => Bound::Included(k.cheap_clone()),
-            Bound::Excluded(k) => Bound::Excluded(k.cheap_clone()),
+            Bound::Included(k) => Bound::Included(k.clone()),
+            Bound::Excluded(k) => Bound::Excluded(k.clone()),
             Bound::Unbounded => Bound::Unbounded,
         };
 

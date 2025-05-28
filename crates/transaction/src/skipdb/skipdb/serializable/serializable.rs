@@ -26,7 +26,7 @@ pub struct SerializableTransaction<K, V> {
 
 impl<K, V> SerializableTransaction<K, V>
 where
-    K: CheapClone + Ord,
+    K: Clone + Ord,
 {
     #[inline]
     pub(super) fn new(db: SerializableDb<K, V>) -> Self {
@@ -37,7 +37,7 @@ where
 
 impl<K, V> SerializableTransaction<K, V>
 where
-    K: CheapClone + Ord,
+    K: Clone + Ord,
     V: Send + 'static,
 {
     /// Commits the transaction, following these steps:
@@ -66,7 +66,7 @@ where
 
 impl<K, V> SerializableTransaction<K, V>
 where
-    K: CheapClone + Ord + Send + Sync + 'static,
+    K: Clone + Ord + Send + Sync + 'static,
     V: Send + Sync + 'static,
 {
     /// Acts like [`commit`](WriteTransaction::commit), but takes a callback, which gets run via a
@@ -107,7 +107,7 @@ where
 
 impl<K, V> SerializableTransaction<K, V>
 where
-    K: CheapClone + Ord,
+    K: Clone + Ord,
 {
     /// Returns the read version of the transaction.
     #[inline]

@@ -48,7 +48,7 @@ use crate::embedded::Embedded;
 use crate::server::Server;
 
 use reifydb_persistence::{Lmdb, Memory, Persistence};
-use reifydb_transaction::{catalog_init, Transaction};
+use reifydb_transaction::{Transaction, catalog_init};
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -125,7 +125,6 @@ impl ReifyDB {
     pub fn embedded_blocking_with<P: Persistence, T: Transaction<P>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<P, T>, Principal) {
-        catalog_init();
         embedded_blocking::Embedded::new(transaction)
     }
 
@@ -148,6 +147,10 @@ pub fn svl<P: Persistence>(persistence: P) -> ::reifydb_transaction::svl::Svl<P>
 
 pub fn mvcc<P: Persistence>(persistence: P) -> ::reifydb_transaction::mvcc::Mvcc<P> {
     ::reifydb_transaction::mvcc::Mvcc::new(persistence)
+}
+
+pub fn serializable() -> ::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb<Vec<u8>, Vec<u8>> {
+    ::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb::new()
 }
 
 pub fn optimistic()

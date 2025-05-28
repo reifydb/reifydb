@@ -9,10 +9,14 @@
 use reifydb::reifydb_persistence::Memory;
 use reifydb::reifydb_transaction::skipdb::skipdb::optimistic::OptimisticDb;
 use reifydb::{DB, ReifyDB, optimistic};
+use reifydb::reifydb_transaction::catalog_init;
 
 fn main() {
+    catalog_init();
+
     let (db, root) =
         ReifyDB::embedded_blocking_with::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>(optimistic());
+    // ReifyDB::embedded_blocking_with::<Memory, SerializableDb<Vec<u8>, Vec<u8>>>(serializable());
     db.tx_as(&root, r#"create schema test"#);
     db.tx_as(&root, r#"create series test.test(timestamp: int2, value: int2)"#);
     db.tx_as(

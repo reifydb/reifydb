@@ -6,6 +6,8 @@ use reifydb_core::{Key, Row, RowIter, Value};
 
 pub mod mvcc;
 pub mod svl;
+mod optimistic;
+mod serializable;
 
 pub trait Transaction<P: reifydb_persistence::Persistence>: Send + Sync {
     type Rx: Rx;

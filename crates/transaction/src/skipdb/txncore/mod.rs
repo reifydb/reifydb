@@ -17,13 +17,11 @@
 extern crate alloc;
 extern crate std;
 
-
 /// Default hasher.
 pub type DefaultHasher = std::collections::hash_map::RandomState;
 
 /// Types
 pub mod types {
-    use cheap_clone::CheapClone;
     use core::cmp::{self, Reverse};
 
     /// The reference of the [`Entry`].
@@ -94,7 +92,7 @@ pub mod types {
     impl<K, V> Copy for EntryDataRef<'_, K, V> {}
 
     /// The data of the [`Entry`].
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, PartialEq, Eq, Hash)]
     pub enum EntryData<K, V> {
         /// Insert the key and the value.
         Insert {
@@ -141,17 +139,17 @@ pub mod types {
         }
     }
 
-    impl<K, V> CheapClone for EntryData<K, V>
+    impl<K, V> Clone for EntryData<K, V>
     where
-        K: CheapClone,
-        V: CheapClone,
+        K: Clone,
+        V: Clone,
     {
-        fn cheap_clone(&self) -> Self {
+        fn clone(&self) -> Self {
             match self {
                 Self::Insert { key, value } => {
-                    Self::Insert { key: key.cheap_clone(), value: value.cheap_clone() }
+                    Self::Insert { key: key.clone(), value: value.clone() }
                 }
-                Self::Remove(key) => Self::Remove(key.cheap_clone()),
+                Self::Remove(key) => Self::Remove(key.clone()),
             }
         }
     }
@@ -189,16 +187,6 @@ pub mod types {
     {
         fn clone(&self) -> Self {
             Self { version: self.version, data: self.data.clone() }
-        }
-    }
-
-    impl<K, V> CheapClone for Entry<K, V>
-    where
-        K: CheapClone,
-        V: CheapClone,
-    {
-        fn cheap_clone(&self) -> Self {
-            Self { version: self.version, data: self.data.cheap_clone() }
         }
     }
 
@@ -269,15 +257,6 @@ pub mod types {
     {
         fn clone(&self) -> Self {
             Self { version: self.version, value: self.value.clone() }
-        }
-    }
-
-    impl<V> CheapClone for EntryValue<V>
-    where
-        V: CheapClone,
-    {
-        fn cheap_clone(&self) -> Self {
-            Self { version: self.version, value: self.value.cheap_clone() }
         }
     }
 }

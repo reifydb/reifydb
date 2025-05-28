@@ -11,7 +11,6 @@
 
 use crate::skipdb::skipdbcore::types::Values;
 use crate::skipdb::txn::BTreeCm;
-pub use cheap_clone::CheapClone;
 
 use super::*;
 
@@ -40,8 +39,8 @@ impl<K, V> Inner<K, V> {
 
 /// A concurrent MVCC in-memory key-value database.
 ///
-/// `SerializableDb` requires key to be [`Ord`] and [`CheapClone`].
-/// The [`CheapClone`] bound here hints the user that the key should be cheap to clone,
+/// `SerializableDb` requires key to be [`Ord`] and [`Clone`].
+/// The [`Clone`] bound here hints the user that the key should be cheap to clone,
 /// because it will be cloned at least one time during the write transaction.
 ///
 /// Comparing to [`OptimisticDb`](crate::optimistic::OptimisticDb):
@@ -100,7 +99,7 @@ impl<K, V> SerializableDb<K, V> {
 
 impl<K, V> SerializableDb<K, V>
 where
-    K: CheapClone + Ord + 'static,
+    K: Clone + Ord + 'static,
     V: 'static,
 {
     /// Create a optimistic write transaction.
@@ -129,7 +128,7 @@ where
 
 impl<K, V> SerializableDb<K, V>
 where
-    K: CheapClone + Ord + Send + 'static,
+    K: Clone + Ord + Send + 'static,
     V: Send + 'static,
     Values<V>: Send,
 {

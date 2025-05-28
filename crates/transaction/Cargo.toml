@@ -15,7 +15,6 @@ serde_bytes = { workspace = true }
 
 
 
-cheap-clone = "0.1"
 crossbeam-skiplist = { version = "0.1" }
 crossbeam-channel = { version = "0.5" }
 crossbeam-utils = { version = "0.8" }
