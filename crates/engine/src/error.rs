@@ -13,7 +13,7 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, PartialEq)]
 pub enum Error {
     Evaluation(evaluate::Error),
-    Dataframe(dataframe::Error),
+    Frame(frame::Error),
     Transaction(transaction::Error),
 }
 
@@ -29,9 +29,9 @@ impl From<evaluate::Error> for Error {
     }
 }
 
-impl From<dataframe::Error> for Error {
-    fn from(value: dataframe::Error) -> Self {
-        Self::Dataframe(value)
+impl From<frame::Error> for Error {
+    fn from(value: frame::Error) -> Self {
+        Self::Frame(value)
     }
 }
 

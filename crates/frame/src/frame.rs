@@ -1,19 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::iterator::DataFrameIter;
+use crate::iterator::FrameIter;
 use crate::{Column, ColumnValues, ValueRef};
 use base::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct DataFrame {
+pub struct Frame {
     pub columns: Vec<Column>,
     pub index: HashMap<String, usize>,
 }
 
-impl DataFrame {
+impl Frame {
     pub fn new(columns: Vec<Column>) -> Self {
         let n = columns.first().map_or(0, |c| c.data.len());
         assert!(columns.iter().all(|c| c.data.len() == n));
@@ -39,9 +39,9 @@ impl DataFrame {
         self.index.get(name).map(|&i| &self.columns[i].data)
     }
 
-    pub fn iter(&self) -> DataFrameIter<'_> {
+    pub fn iter(&self) -> FrameIter<'_> {
         let col_names = self.columns.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
-        DataFrameIter {
+        FrameIter {
             df: self,
             row_index: 0,
             row_total: self.shape().0,

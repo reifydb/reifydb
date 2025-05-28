@@ -5,7 +5,7 @@ use crate::evaluate;
 use crate::evaluate::Evaluator;
 use base::Value;
 use base::Value::Undefined;
-use dataframe::ColumnValues;
+use frame::ColumnValues;
 
 impl Evaluator {
     pub(crate) fn constant(

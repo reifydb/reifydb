@@ -4,7 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::{Evaluator, evaluate};
 use base::expression::{PrefixExpression, PrefixOperator};
-use dataframe::{Column, ColumnValues};
+use frame::{Column, ColumnValues};
 
 impl Evaluator {
     pub(crate) fn prefix(

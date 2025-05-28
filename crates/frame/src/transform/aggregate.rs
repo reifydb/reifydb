@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::aggregate::Aggregate;
-use crate::{Column, ColumnValues, DataFrame};
+use crate::{Column, ColumnValues, Frame};
 
-impl DataFrame {
+impl Frame {
     pub fn aggregate(&mut self, keys: &[&str], aggregates: &[Aggregate]) -> crate::Result<()> {
         let groups = self.group_by_view(keys)?;
 

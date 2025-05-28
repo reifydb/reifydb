@@ -8,7 +8,7 @@ mod write;
 
 use crate::function::{FunctionRegistry, math};
 use base::{Row, Value, ValueKind};
-use dataframe::{ColumnValues, DataFrame};
+use frame::{ColumnValues, Frame};
 use rql::plan::{Plan, QueryPlan};
 use transaction::{Rx, Tx};
 
@@ -28,8 +28,8 @@ pub enum ExecutionResult {
     Query { columns: Vec<Column>, rows: Vec<Row> },
 }
 
-impl From<DataFrame> for ExecutionResult {
-    fn from(value: DataFrame) -> Self {
+impl From<Frame> for ExecutionResult {
+    fn from(value: Frame) -> Self {
         let columns: Vec<Column> = value
             .columns
             .iter()
@@ -97,13 +97,13 @@ impl From<DataFrame> for ExecutionResult {
 
 pub(crate) struct Executor {
     functions: FunctionRegistry,
-    frame: DataFrame,
+    frame: Frame,
 }
 
 pub fn execute(plan: QueryPlan, rx: &impl Rx) -> crate::Result<ExecutionResult> {
     let mut executor = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from RX
-        frame: DataFrame::new(vec![]),
+        frame: Frame::new(vec![]),
     };
 
     executor.functions.register(math::AbsFunction {});
@@ -115,7 +115,7 @@ pub fn execute(plan: QueryPlan, rx: &impl Rx) -> crate::Result<ExecutionResult> 
 pub fn execute_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<ExecutionResult> {
     let mut executor = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from TX
-        frame: DataFrame::new(vec![]),
+        frame: Frame::new(vec![]),
     };
 
     executor.functions.register(math::AbsFunction {});

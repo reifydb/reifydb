@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use base::expression::Expression;
-use dataframe::{Column, ColumnValues};
+use frame::{Column, ColumnValues};
 
 use crate::function::{FunctionRegistry, math};
 pub use error::Error;

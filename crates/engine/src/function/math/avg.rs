@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
-use dataframe::{Column, ColumnValues};
+use frame::{Column, ColumnValues};
 
 pub struct AvgFunction;
 

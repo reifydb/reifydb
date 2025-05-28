@@ -3,7 +3,7 @@
 
 use crate::evaluate::Evaluator;
 use base::expression::AddExpression;
-use dataframe::{Column, ColumnValues};
+use frame::{Column, ColumnValues};
 
 impl Evaluator {
     pub(crate) fn add(

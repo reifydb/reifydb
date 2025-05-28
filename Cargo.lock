@@ -254,14 +254,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
-name = "dataframe"
-version = "0.0.1"
-dependencies = [
- "base",
- "rand 0.9.1",
-]
-
-[[package]]
 name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -305,7 +297,7 @@ version = "0.0.1"
 dependencies = [
  "auth",
  "base",
- "dataframe",
+ "frame",
  "log",
  "persistence",
  "rql",
@@ -354,6 +346,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "frame"
+version = "0.0.1"
+dependencies = [
+ "base",
+ "rand 0.9.1",
 ]
 
 [[package]]

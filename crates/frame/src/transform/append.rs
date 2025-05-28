@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{ColumnValues, DataFrame};
+use crate::{ColumnValues, Frame};
 use base::{CowVec, Row, Value};
 
 pub trait Append<T> {
     fn append(&mut self, other: T) -> crate::Result<()>;
 }
 
-impl Append<DataFrame> for DataFrame {
-    fn append(&mut self, other: DataFrame) -> crate::Result<()> {
+impl Append<Frame> for Frame {
+    fn append(&mut self, other: Frame) -> crate::Result<()> {
         if self.columns.len() != other.columns.len() {
             return Err("mismatched column count".into());
         }
@@ -30,7 +30,7 @@ impl Append<DataFrame> for DataFrame {
     }
 }
 
-impl Append<Row> for DataFrame {
+impl Append<Row> for Frame {
     fn append(&mut self, other: Row) -> crate::Result<()> {
         if self.columns.len() != other.len() {
             return Err(format!(
@@ -128,17 +128,17 @@ impl Append<Row> for DataFrame {
 
 #[cfg(test)]
 mod tests {
-    mod dataframe {
+    mod frame {
         use crate::transform::append::Append;
         use crate::*;
 
         #[test]
         fn test_append_boolean() {
             let mut test_instance1 =
-                DataFrame::new(vec![Column::bool_with_validity("id", [true], [false])]);
+                Frame::new(vec![Column::bool_with_validity("id", [true], [false])]);
 
             let test_instance2 =
-                DataFrame::new(vec![Column::bool_with_validity("id", [false], [true])]);
+                Frame::new(vec![Column::bool_with_validity("id", [false], [true])]);
 
             test_instance1.append(test_instance2).unwrap();
 
@@ -150,10 +150,10 @@ mod tests {
 
         #[test]
         fn test_append_int2() {
-            let mut test_instance1 = DataFrame::new(vec![Column::int2("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![Column::int2("id", [1, 2])]);
 
             let test_instance2 =
-                DataFrame::new(vec![Column::int2_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![Column::int2_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append(test_instance2).unwrap();
 
@@ -166,10 +166,10 @@ mod tests {
         #[test]
         fn test_append_text() {
             let mut test_instance1 =
-                DataFrame::new(vec![Column::text_with_validity("id", ["a", "b"], [true, true])]);
+                Frame::new(vec![Column::text_with_validity("id", ["a", "b"], [true, true])]);
 
             let test_instance2 =
-                DataFrame::new(vec![Column::text_with_validity("id", ["c", "d"], [true, false])]);
+                Frame::new(vec![Column::text_with_validity("id", ["c", "d"], [true, false])]);
 
             test_instance1.append(test_instance2).unwrap();
 
@@ -182,9 +182,9 @@ mod tests {
         #[test]
         fn test_append_with_undefined_lr_promotes_correctly() {
             let mut test_instance1 =
-                DataFrame::new(vec![Column::int2_with_validity("id", [1, 2], [true, false])]);
+                Frame::new(vec![Column::int2_with_validity("id", [1, 2], [true, false])]);
 
-            let test_instance2 = DataFrame::new(vec![Column::undefined("id", 2)]);
+            let test_instance2 = Frame::new(vec![Column::undefined("id", 2)]);
 
             test_instance1.append(test_instance2).unwrap();
 
@@ -196,10 +196,10 @@ mod tests {
 
         #[test]
         fn test_append_with_undefined_l_promotes_correctly() {
-            let mut test_instance1 = DataFrame::new(vec![Column::undefined("score", 2)]);
+            let mut test_instance1 = Frame::new(vec![Column::undefined("score", 2)]);
 
             let test_instance2 =
-                DataFrame::new(vec![Column::int2_with_validity("score", [10, 20], [true, false])]);
+                Frame::new(vec![Column::int2_with_validity("score", [10, 20], [true, false])]);
 
             test_instance1.append(test_instance2).unwrap();
 
@@ -211,10 +211,10 @@ mod tests {
 
         #[test]
         fn test_append_fails_on_column_count_mismatch() {
-            let mut test_instance1 = DataFrame::new(vec![Column::int2("id", [1])]);
+            let mut test_instance1 = Frame::new(vec![Column::int2("id", [1])]);
 
             let test_instance2 =
-                DataFrame::new(vec![Column::int2("id", [2]), Column::text("name", ["Bob"])]);
+                Frame::new(vec![Column::int2("id", [2]), Column::text("name", ["Bob"])]);
 
             let result = test_instance1.append(test_instance2);
             assert!(result.is_err());
@@ -222,9 +222,9 @@ mod tests {
 
         #[test]
         fn test_append_fails_on_column_name_mismatch() {
-            let mut test_instance1 = DataFrame::new(vec![Column::int2("id", [1])]);
+            let mut test_instance1 = Frame::new(vec![Column::int2("id", [1])]);
 
-            let test_instance2 = DataFrame::new(vec![Column::int2("wrong", [2])]);
+            let test_instance2 = Frame::new(vec![Column::int2("wrong", [2])]);
 
             let result = test_instance1.append(test_instance2);
             assert!(result.is_err());
@@ -232,9 +232,9 @@ mod tests {
 
         #[test]
         fn test_append_fails_on_type_mismatch() {
-            let mut test_instance1 = DataFrame::new(vec![Column::int2("id", [1])]);
+            let mut test_instance1 = Frame::new(vec![Column::int2("id", [1])]);
 
-            let test_instance2 = DataFrame::new(vec![Column::text("id", ["A"])]);
+            let test_instance2 = Frame::new(vec![Column::text("id", ["A"])]);
 
             let result = test_instance1.append(test_instance2);
             assert!(result.is_err());
@@ -242,12 +242,12 @@ mod tests {
     }
 
     mod row {
-        use crate::{Append, Column, ColumnValues, DataFrame};
+        use crate::{Append, Column, ColumnValues, Frame};
         use base::Value;
 
         #[test]
         fn test_append_to_empty() {
-            let mut test_instance = DataFrame::new(vec![]);
+            let mut test_instance = Frame::new(vec![]);
 
             let row = vec![Value::Int2(2), Value::Text("Bob".into()), Value::Bool(false)];
 
@@ -329,7 +329,7 @@ mod tests {
 
         #[test]
         fn test_append_row_to_undefined_columns_promotes() {
-            let mut test_instance = DataFrame::new(vec![
+            let mut test_instance = Frame::new(vec![
                 Column { name: "age".into(), data: ColumnValues::Undefined(1) },
                 Column { name: "name".into(), data: ColumnValues::Undefined(1) },
             ]);
@@ -350,8 +350,8 @@ mod tests {
             );
         }
 
-        fn test_instance_with_columns() -> DataFrame {
-            DataFrame::new(vec![
+        fn test_instance_with_columns() -> Frame {
+            Frame::new(vec![
                 Column { name: "int2".into(), data: ColumnValues::int2(vec![1]) },
                 Column { name: "text".into(), data: ColumnValues::text(vec!["Alice".to_string()]) },
                 Column { name: "bool".into(), data: ColumnValues::bool(vec![true]) },

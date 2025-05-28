@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{ColumnValues, DataFrame};
+use crate::{ColumnValues, Frame};
 use std::fmt::{self, Display, Formatter};
 
-impl Display for DataFrame {
+impl Display for Frame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let row_count = self.columns.first().map_or(0, |c| c.data.len());
         let col_count = self.columns.len();

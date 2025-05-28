@@ -5,7 +5,7 @@ members = ["bin/cli",
     "bin/server",
     "crates/auth",
     "crates/base",
-    "crates/dataframe",
+    "crates/frame",
     "crates/engine",
     "crates/rql",
     "crates/persistence",
@@ -21,7 +21,7 @@ default-members = ["bin/cli",
     "bin/server",
     "crates/auth",
     "crates/base",
-    "crates/dataframe",
+    "crates/frame",
     "crates/engine",
     "crates/rql",
     "crates/persistence",
@@ -63,7 +63,7 @@ overflow-checks = true
 reifydb = { path = "pkg/rust", version = "0.0.1" }
 auth = { path = "crates/auth", version = "0.0.1" }
 base = { path = "crates/base", version = "0.0.1" }
-dataframe = { path = "crates/dataframe", version = "0.0.1" }
+frame = { path = "crates/frame", version = "0.0.1" }
 engine = { path = "crates/engine", version = "0.0.1" }
 persistence = { path = "crates/persistence", version = "0.0.1" }
 rql = { path = "crates/rql", version = "0.0.1" }

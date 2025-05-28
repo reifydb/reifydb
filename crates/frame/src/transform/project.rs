@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, DataFrame};
+use crate::{Column, Frame};
 
-impl DataFrame {
+impl Frame {
     pub fn project<F>(&mut self, f: F) -> crate::Result<()>
     where
         F: FnOnce(&[&Column], usize) -> Result<Vec<Column>, Box<dyn std::error::Error>>,

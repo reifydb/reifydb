@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{ColumnValues, DataFrame};
+use crate::{ColumnValues, Frame};
 use base::Value;
 use std::collections::HashMap;
 
@@ -9,7 +9,7 @@ pub type GroupByKey = Vec<Value>;
 
 pub type GroupByView = HashMap<GroupByKey, Vec<usize>>;
 
-impl DataFrame {
+impl Frame {
     pub fn group_by_view(&self, keys: &[&str]) -> crate::Result<GroupByView> {
         let row_count = self.columns.first().map_or(0, |c| c.data.len());
 

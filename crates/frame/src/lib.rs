@@ -8,7 +8,7 @@
 
 pub use column::{Column, ColumnValues};
 pub use error::Error;
-pub use frame::DataFrame;
+pub use frame::Frame;
 pub use reference::{RowRef, ValueRef};
 pub use transform::Append;
 
@@ -24,7 +24,7 @@ mod view;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-// pub fn inner_join_indices(l: &DataFrame, lr: &DataFrame, on: &str) -> Vec<(usize, usize)> {
+// pub fn inner_join_indices(l: &Frame, lr: &Frame, on: &str) -> Vec<(usize, usize)> {
 //     let mut lr_index: HashMap<Value, Vec<usize>> = HashMap::new();
 //
 //     let start = Instant::now();
@@ -55,12 +55,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 //
 // #[cfg(test)]
 // mod tests {
-//     use crate::{Column, ColumnValues, DataFrame, inner_join_indices};
+//     use crate::{Column, ColumnValues, Frame, inner_join_indices};
 //     use rand::rngs::StdRng;
 //     use rand::{Rng, SeedableRng};
 //     use std::time::Instant;
 //
-//     fn generate_large_dataframe() -> DataFrame {
+//     fn generate_large_frame() -> Frame {
 //         const N: usize = 1_000_000;
 //         let mut rng = StdRng::seed_from_u64(42); // deterministic for testing
 //
@@ -88,7 +88,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 //             passed_valids.push(true);
 //         }
 //
-//         DataFrame::new(vec![
+//         Frame::new(vec![
 //             Column { name: "id".into(), data: ColumnValues::Int2(ids, id_valids) },
 //             // Column { name: "score".into(), data: ColumnValues::Float(scores, score_valids) },
 //             Column { name: "passed".into(), data: ColumnValues::Bool(passed, passed_valids) },
@@ -97,7 +97,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 //
 //     #[test]
 //     fn test() {
-//         let df = generate_large_dataframe();
+//         let df = generate_large_frame();
 //
 //         let start = Instant::now();
 //
@@ -123,7 +123,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 //     #[test]
 //     fn join() {
 //         // Define left table
-//         // let left = DataFrame::new(
+//         // let left = Frame::new(
 //         //     vec![
 //         //         Column { name: "id".into(), data: ColumnData::Int(vec![1, 2, 3], vec![true; 3]) },
 //         //         Column {
@@ -136,10 +136,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 //         //     ],
 //         //     vec!["row0".into(), "row1".into(), "row2".into()],
 //         // );
-//         let left = generate_large_dataframe();
+//         let left = generate_large_frame();
 //
 //         // Define right table
-//         let right = DataFrame::new(vec![
+//         let right = Frame::new(vec![
 //             Column { name: "id".into(), data: ColumnValues::Int2(vec![2, 3, 4], vec![true; 3]) },
 //             // Column {
 //             //     name: "score".into(),

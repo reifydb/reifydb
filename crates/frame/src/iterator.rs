@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{ColumnValues, DataFrame, RowRef, ValueRef};
+use crate::{ColumnValues, Frame, RowRef, ValueRef};
 use std::sync::Arc;
 
-pub struct DataFrameIter<'df> {
-    pub(crate) df: &'df DataFrame,
+pub struct FrameIter<'df> {
+    pub(crate) df: &'df Frame,
     pub(crate) row_index: usize,
     pub(crate) row_total: usize,
     pub(crate) column_index: Arc<Vec<String>>,
 }
 
-impl<'df> Iterator for DataFrameIter<'df> {
+impl<'df> Iterator for FrameIter<'df> {
     type Item = RowRef<'df>;
 
     fn next(&mut self) -> Option<Self::Item> {

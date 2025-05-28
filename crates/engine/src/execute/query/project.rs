@@ -4,7 +4,7 @@
 use crate::evaluate::evaluate;
 use crate::execute::Executor;
 use base::expression::AliasExpression;
-use dataframe::{Column, DataFrame};
+use frame::{Column, Frame};
 
 impl Executor {
     pub(crate) fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {
@@ -18,7 +18,7 @@ impl Executor {
                 columns.push(Column { name: format!("{}", idx + 1), data: value });
             }
 
-            self.frame = DataFrame::new(columns);
+            self.frame = Frame::new(columns);
             return Ok(());
         }
 

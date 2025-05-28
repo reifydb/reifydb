@@ -4,7 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::Evaluator;
 use base::expression::{CallExpression, Expression};
-use dataframe::{Column, ColumnValues};
+use frame::{Column, ColumnValues};
 
 impl Evaluator {
     pub(crate) fn call(

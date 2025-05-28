@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{ColumnValues, DataFrame, Error};
+use crate::{ColumnValues, Frame, Error};
 use base::{SortDirection, SortKey};
 
-impl DataFrame {
+impl Frame {
     pub fn sort(&mut self, keys: &[SortKey]) -> crate::Result<()> {
         let row_count = self.columns.first().map_or(0, |c| c.data.len());
 

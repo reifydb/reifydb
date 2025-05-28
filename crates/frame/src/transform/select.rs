@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::DataFrame;
+use crate::Frame;
 
-impl DataFrame {
+impl Frame {
     pub fn select(&mut self, names: &[&str]) -> crate::Result<()> {
         let mut selected: Vec<usize> =
             names.into_iter().filter_map(|&name| self.index.get(name).cloned()).collect();
@@ -30,7 +30,7 @@ impl DataFrame {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Column, DataFrame};
+    use crate::{Column, Frame};
 
     #[test]
     fn test_select_subset_of_columns() {
@@ -88,8 +88,8 @@ mod tests {
         assert_eq!(test_instance.columns[1].name, "score");
     }
 
-    fn make_test_instance() -> DataFrame {
-        DataFrame::new(vec![
+    fn make_test_instance() -> Frame {
+        Frame::new(vec![
             Column::int2("id", [1, 2]),
             Column::text("name", ["Alice", "Bob"]),
             Column::int2("score", [23, 32]),

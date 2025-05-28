@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{ColumnValues, DataFrame, Error};
+use crate::{ColumnValues, Frame, Error};
 
 pub enum Aggregate {
     Sum(String),
@@ -12,7 +12,7 @@ pub enum Aggregate {
 }
 
 impl Aggregate {
-    pub fn evaluate(&self, df: &DataFrame, indices: &[usize]) -> crate::Result<ColumnValues> {
+    pub fn evaluate(&self, df: &Frame, indices: &[usize]) -> crate::Result<ColumnValues> {
         let col = |name: &str| {
             df.columns
                 .iter()

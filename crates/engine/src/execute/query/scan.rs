@@ -3,7 +3,7 @@
 
 use crate::execute::Executor;
 use base::ValueKind;
-use dataframe::{Append, Column, ColumnValues, DataFrame};
+use frame::{Append, Column, ColumnValues, Frame};
 use transaction::{Rx, SchemaRx, StoreRx};
 
 impl Executor {
@@ -24,7 +24,7 @@ impl Executor {
             })
             .collect();
 
-        let mut frame = DataFrame::new(columns);
+        let mut frame = Frame::new(columns);
         for row in rx.scan_table(schema, store)?.into_iter() {
             frame.append(row)?;
         }

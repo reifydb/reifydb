@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, ColumnValues, DataFrame, ValueRef};
+use crate::{Column, ColumnValues, Frame, ValueRef};
 
 pub struct TransposedRow<'a> {
     pub row_idx: usize,
@@ -44,7 +44,7 @@ impl<'a> TransposedRow<'a> {
     }
 }
 
-impl DataFrame {
+impl Frame {
     pub fn transpose_view(&self) -> impl Iterator<Item = TransposedRow<'_>> {
         let row_count = self.columns.first().map_or(0, |c| c.data.len());
         (0..row_count).map(move |row_idx| TransposedRow { row_idx, columns: &self.columns })

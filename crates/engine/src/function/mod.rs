@@ -8,7 +8,7 @@ pub use error::FunctionError;
 mod error;
 
 use base::{RowIter, Value};
-use dataframe::{Column, ColumnValues};
+use frame::{Column, ColumnValues};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;

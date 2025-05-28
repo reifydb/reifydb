@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, ColumnValues, DataFrame};
+use crate::{Column, ColumnValues, Frame};
 use base::CowVec;
 
-impl DataFrame {
+impl Frame {
     pub fn limit(&mut self, n: usize) -> crate::Result<()> {
         let mut columns = Vec::with_capacity(self.columns.len());
 
@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn test_truncates_float8_column() {
-        let mut test_instance = DataFrame::new(vec![Column::float8_with_validity(
+        let mut test_instance = Frame::new(vec![Column::float8_with_validity(
             "a",
             [1f64, 2.0, 3.0, 4.0],
             [true, true, false, true],
@@ -57,7 +57,7 @@ mod tests {
 
     #[test]
     fn test_truncates_int2_column() {
-        let mut test_instance = DataFrame::new(vec![Column::int2_with_validity(
+        let mut test_instance = Frame::new(vec![Column::int2_with_validity(
             "a",
             [1, 2, 3, 4],
             [true, true, false, true],
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_limit_truncates_text_column() {
-        let mut test_instance = DataFrame::new(vec![Column::text_with_validity(
+        let mut test_instance = Frame::new(vec![Column::text_with_validity(
             "t",
             ["a", "b", "c"],
             [true, false, true],
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn test_limit_truncates_bool_column() {
-        let mut test_instance = DataFrame::new(vec![Column::bool_with_validity(
+        let mut test_instance = Frame::new(vec![Column::bool_with_validity(
             "flag",
             [true, true, false],
             [false, true, true],
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn test_limit_truncates_undefined_column() {
-        let mut test_instance = DataFrame::new(vec![Column::undefined("u", 3)]);
+        let mut test_instance = Frame::new(vec![Column::undefined("u", 3)]);
 
         test_instance.limit(2).unwrap();
 
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_limit_handles_undefined() {
-        let mut test_instance = DataFrame::new(vec![Column::undefined("u", 5)]);
+        let mut test_instance = Frame::new(vec![Column::undefined("u", 5)]);
 
         test_instance.limit(3).unwrap();
 
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_limit_n_larger_than_len_is_safe() {
         let mut test_instance =
-            DataFrame::new(vec![Column::int2_with_validity("a", [10, 20], [true, false])]);
+            Frame::new(vec![Column::int2_with_validity("a", [10, 20], [true, false])]);
 
         test_instance.limit(10).unwrap();
 

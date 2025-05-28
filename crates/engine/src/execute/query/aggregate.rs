@@ -3,7 +3,7 @@
 
 use crate::execute::Executor;
 use base::expression::{AliasExpression, ColumnExpression, Expression};
-use dataframe::aggregate::Aggregate;
+use frame::aggregate::Aggregate;
 
 impl Executor {
     pub(crate) fn aggregate(
