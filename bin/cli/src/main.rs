@@ -6,12 +6,13 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{DB, ReifyDB, lmdb, svl, mvcc};
-use std::path::Path;
-use reifydb::time::Instant;
+use reifydb::reifydb_persistence::Memory;
+use reifydb::reifydb_transaction::skipdb::skipdb::optimistic::OptimisticDb;
+use reifydb::{DB, ReifyDB, optimistic};
 
 fn main() {
-    let (db, root) = ReifyDB::embedded_blocking_with(mvcc(lmdb(&Path::new("/tmp/db"))));
+    let (db, root) =
+        ReifyDB::embedded_blocking_with::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>(optimistic());
     db.tx_as(&root, r#"create schema test"#);
     db.tx_as(&root, r#"create series test.test(timestamp: int2, value: int2)"#);
     db.tx_as(
@@ -31,7 +32,7 @@ fn main() {
 
     // let start = Instant::now();
     // for l in db.rx_as(&root, r#"from test.test"#) {
-    for l in db.rx_as(&root, r#"from test.test group by timestamp select timestamp, avg(value)"#) {
+    for l in db.tx_as(&root, r#"from test.test group by timestamp select timestamp, avg(value)"#) {
         println!("{}", l);
     }
     // println!("took {:?}", start.elapsed());

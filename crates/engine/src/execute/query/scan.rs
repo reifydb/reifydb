@@ -7,7 +7,7 @@ use reifydb_frame::{Append, Column, ColumnValues, Frame};
 use reifydb_transaction::{Rx, SchemaRx, StoreRx};
 
 impl Executor {
-    pub(crate) fn scan(&mut self, rx: &impl Rx, schema: &str, store: &str) -> crate::Result<()> {
+    pub(crate) fn scan(&mut self, rx: &mut impl Rx, schema: &str, store: &str) -> crate::Result<()> {
         let columns = rx.schema(schema)?.get(store)?.list_columns()?;
 
         let columns: Vec<Column> = columns

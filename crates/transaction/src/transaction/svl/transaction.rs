@@ -38,7 +38,7 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
         unreachable!()
     }
 
-    fn scan_table(&self, schema: &str, store: &str) -> crate::Result<RowIter> {
+    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.reifydb_engine
                 .persistence
@@ -78,7 +78,7 @@ impl<P: Persistence> crate::Rx for TransactionMut<P> {
         todo!()
     }
 
-    fn scan_table(&self, schema: &str, store: &str) -> crate::Result<RowIter> {
+    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.svl
                 .persistence

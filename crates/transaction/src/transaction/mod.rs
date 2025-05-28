@@ -31,7 +31,7 @@ pub trait Rx {
     fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>>;
 
     /// Scans all store's rows
-    fn scan_table(&self, schema: &str, store: &str) -> crate::Result<RowIter>;
+    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter>;
 }
 
 #[derive(Debug)]

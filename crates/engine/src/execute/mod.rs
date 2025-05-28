@@ -100,7 +100,7 @@ pub(crate) struct Executor {
     frame: Frame,
 }
 
-pub fn execute(plan: QueryPlan, rx: &impl Rx) -> crate::Result<ExecutionResult> {
+pub fn execute(plan: QueryPlan, rx: &mut impl Rx) -> crate::Result<ExecutionResult> {
     let mut executor = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from RX
         frame: Frame::new(vec![]),
@@ -128,7 +128,7 @@ impl Executor {
     pub(crate) fn execute(
         mut self,
         plan: QueryPlan,
-        rx: &impl Rx,
+        rx: &mut impl Rx,
     ) -> crate::Result<ExecutionResult> {
         let next = match plan {
             QueryPlan::Aggregate { group_by, project, next } => {

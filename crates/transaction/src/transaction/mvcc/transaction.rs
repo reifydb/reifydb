@@ -41,7 +41,7 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
         todo!()
     }
 
-    fn scan_table(&self, schema: &str, table: &str) -> crate::Result<RowIter> {
+    fn scan_table(&mut self, schema: &str, table: &str) -> crate::Result<RowIter> {
         // let prefix = format!("{}::{}::row::", schema, table);
         // let start_key = key_prefix!("{}{:020}", prefix, 10);
         // let end_key = key_prefix!("{}{:020}", prefix, 12);
