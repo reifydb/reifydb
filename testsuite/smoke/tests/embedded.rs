@@ -15,15 +15,15 @@ use tokio::runtime::Runtime;
 use testing::tempdir::temp_dir;
 
 pub struct Runner<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    engine: Embedded<P, T>,
+    reifydb_engine: Embedded<P, T>,
     root: Principal,
     runtime: Runtime,
 }
 
 impl<P: Persistence + 'static, T: Transaction<P> + 'static> Runner<P, T> {
     pub fn new(transaction: T) -> Self {
-        let (engine, root) = ReifyDB::embedded_with(transaction);
-        Self { engine, root, runtime: Runtime::new().unwrap() }
+        let (reifydb_engine, root) = ReifyDB::embedded_with(transaction);
+        Self { reifydb_engine, root, runtime: Runtime::new().unwrap() }
     }
 }
 
@@ -39,9 +39,9 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner
 
                 println!("tx: {query}");
 
-                let engine = self.engine.clone();
+                let reifydb_engine = self.reifydb_engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.tx_as(&self.root, query.as_str()).await {
+                    for line in reifydb_engine.tx_as(&self.root, query.as_str()).await {
                         writeln!(output, "{}", line);
                     }
                 });
@@ -52,9 +52,9 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner
 
                 println!("rx: {query}");
 
-                let engine = self.engine.clone();
+                let reifydb_engine = self.reifydb_engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.rx_as(&self.root, query.as_str()).await {
+                    for line in reifydb_engine.rx_as(&self.root, query.as_str()).await {
                         writeln!(output, "{}", line);
                     }
                 });

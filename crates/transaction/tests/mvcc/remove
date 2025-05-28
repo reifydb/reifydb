@@ -15,16 +15,16 @@ import 1 a=1 b=1 x=
 ---
 ok
 
-# Remove an existing, missing, and removed key. Show engine operations.
+# Remove an existing, missing, and removed key. Show reifydb_engine operations.
 t1: begin
 t1: remove a m x [ops]
 ---
-t1: engine set mvcc:TxWrite(2, "a") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02a\x00\x00" → ""]
-t1: engine set mvcc:Version("a", 2) → None ["\x04a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
-t1: engine set mvcc:TxWrite(2, "m") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02m\x00\x00" → ""]
-t1: engine set mvcc:Version("m", 2) → None ["\x04m\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
-t1: engine set mvcc:TxWrite(2, "x") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02x\x00\x00" → ""]
-t1: engine set mvcc:Version("x", 2) → None ["\x04x\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
+t1: reifydb_engine set mvcc:TxWrite(2, "a") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02a\x00\x00" → ""]
+t1: reifydb_engine set mvcc:Version("a", 2) → None ["\x04a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
+t1: reifydb_engine set mvcc:TxWrite(2, "m") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02m\x00\x00" → ""]
+t1: reifydb_engine set mvcc:Version("m", 2) → None ["\x04m\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
+t1: reifydb_engine set mvcc:TxWrite(2, "x") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02x\x00\x00" → ""]
+t1: reifydb_engine set mvcc:Version("x", 2) → None ["\x04x\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
 
 t1: scan
 ---
@@ -33,10 +33,10 @@ t1: "b" → "1"
 # Set and then remove a key, both an existing an missing one.
 t1: set b=2 c=2 [ops]
 ---
-t1: engine set mvcc:TxWrite(2, "b") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02b\x00\x00" → ""]
-t1: engine set mvcc:Version("b", 2) → "2" ["\x04b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x01\x012"]
-t1: engine set mvcc:TxWrite(2, "c") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02c\x00\x00" → ""]
-t1: engine set mvcc:Version("c", 2) → "2" ["\x04c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x01\x012"]
+t1: reifydb_engine set mvcc:TxWrite(2, "b") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02b\x00\x00" → ""]
+t1: reifydb_engine set mvcc:Version("b", 2) → "2" ["\x04b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x01\x012"]
+t1: reifydb_engine set mvcc:TxWrite(2, "c") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02c\x00\x00" → ""]
+t1: reifydb_engine set mvcc:Version("c", 2) → "2" ["\x04c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x01\x012"]
 
 t1: scan
 ---
@@ -45,10 +45,10 @@ t1: "c" → "2"
 
 t1: remove b c [ops]
 ---
-t1: engine set mvcc:TxWrite(2, "b") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02b\x00\x00" → ""]
-t1: engine set mvcc:Version("b", 2) → None ["\x04b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
-t1: engine set mvcc:TxWrite(2, "c") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02c\x00\x00" → ""]
-t1: engine set mvcc:Version("c", 2) → None ["\x04c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
+t1: reifydb_engine set mvcc:TxWrite(2, "b") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02b\x00\x00" → ""]
+t1: reifydb_engine set mvcc:Version("b", 2) → None ["\x04b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
+t1: reifydb_engine set mvcc:TxWrite(2, "c") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x02c\x00\x00" → ""]
+t1: reifydb_engine set mvcc:Version("c", 2) → None ["\x04c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x00"]
 
 t1: scan
 ---

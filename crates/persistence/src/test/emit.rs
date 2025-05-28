@@ -13,9 +13,9 @@ use crate::{Key, Operation, Persistence, Value};
 use std::ops::RangeBounds;
 use std::sync::mpsc::Sender;
 
-/// Wraps another engine and emits write events to the given channel.
+/// Wraps another reifydb_engine and emits write events to the given channel.
 pub struct Emit<E: Persistence> {
-    /// The wrapped engine.
+    /// The wrapped reifydb_engine.
     inner: E,
     /// Sends operation events.
     tx: Sender<Operation>,

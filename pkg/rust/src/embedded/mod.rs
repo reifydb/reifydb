@@ -3,14 +3,13 @@
 
 use crate::DB;
 use auth::Principal;
-use engine::Engine;
-use engine::ExecutionResult;
 use persistence::Persistence;
+use reifydb_engine::{Engine, ExecutionResult};
 use tokio::task::spawn_blocking;
 use transaction::Transaction;
 
 pub struct Embedded<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    engine: Engine<P, T>,
+    reifydb_engine: Engine<P, T>,
 }
 
 impl<P, T> Clone for Embedded<P, T>
@@ -19,7 +18,7 @@ where
     T: Transaction<P>,
 {
     fn clone(&self) -> Self {
-        Self { engine: self.engine.clone() }
+        Self { reifydb_engine: self.reifydb_engine.clone() }
     }
 }
 
@@ -27,7 +26,7 @@ impl<P: Persistence, T: Transaction<P>> Embedded<P, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
 
-        (Self { engine: Engine::new(transaction) }, principal)
+        (Self { reifydb_engine: Engine::new(transaction) }, principal)
     }
 }
 
@@ -35,9 +34,9 @@ impl<'a, P: Persistence + 'static, T: Transaction<P> + 'static> DB<'a> for Embed
     async fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();
-        let engine = self.engine.clone();
+        let reifydb_engine = self.reifydb_engine.clone();
         spawn_blocking(move || {
-            let result = engine.tx_as(&principal, &rql).unwrap();
+            let result = reifydb_engine.tx_as(&principal, &rql).unwrap();
 
             result
         })
@@ -48,9 +47,9 @@ impl<'a, P: Persistence + 'static, T: Transaction<P> + 'static> DB<'a> for Embed
     async fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();
-        let engine = self.engine.clone();
+        let reifydb_engine = self.reifydb_engine.clone();
         spawn_blocking(move || {
-            let result = engine.rx_as(&principal, &rql).unwrap();
+            let result = reifydb_engine.rx_as(&principal, &rql).unwrap();
             result
         })
         .await

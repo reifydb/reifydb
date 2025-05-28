@@ -7,7 +7,7 @@ These tests are meant to catch critical failures early in the development cycle.
 
 Smoke tests focus on the most essential operations:
 
-- Bootstrapping the engine
+- Bootstrapping the reifydb_engine
 - Creating schemas and tables
 - Inserting minimal data
 - Executing basic queries

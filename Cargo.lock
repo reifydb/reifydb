@@ -280,20 +280,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
-name = "engine"
-version = "0.0.1"
-dependencies = [
- "auth",
- "frame",
- "log",
- "persistence",
- "reifydb_core",
- "rql",
- "serde",
- "transaction",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1240,10 +1226,10 @@ name = "reifydb"
 version = "0.0.1"
 dependencies = [
  "auth",
- "engine",
  "persistence",
  "prost",
  "reifydb_core",
+ "reifydb_engine",
  "rql",
  "tokio",
  "tokio-stream",
@@ -1272,6 +1258,20 @@ dependencies = [
  "rand 0.9.1",
  "serde",
  "serde_bytes",
+]
+
+[[package]]
+name = "reifydb_engine"
+version = "0.0.1"
+dependencies = [
+ "auth",
+ "frame",
+ "log",
+ "persistence",
+ "reifydb_core",
+ "rql",
+ "serde",
+ "transaction",
 ]
 
 [[package]]

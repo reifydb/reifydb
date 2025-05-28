@@ -15,12 +15,12 @@ use rdb::{Principal, ReifyDB};
 
 use pyo3::prelude::*;
 use pythonize::pythonize;
-use rdb::engine::execute::ExecutionResult;
+use rdb::reifydb_engine::execute::ExecutionResult;
 use serde_json::{Value, json};
 
 #[pyclass(name = "Embedded")]
 pub struct PyEmbedded {
-    embedded: Embedded<Memory, ::Engine<Memory>>,
+    embedded: Embedded<Memory, ::reifydb_engine<Memory>>,
     root: Principal,
 }
 

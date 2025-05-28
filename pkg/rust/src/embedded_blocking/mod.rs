@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use auth::Principal;
-use engine::{Engine, ExecutionResult};
 use persistence::Persistence;
+use reifydb_engine::{Engine, ExecutionResult};
 use transaction::Transaction;
 
 pub struct Embedded<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    engine: Engine<P, T>,
+    reifydb_engine: Engine<P, T>,
 }
 
 impl<P, T> Clone for Embedded<P, T>
@@ -16,7 +16,7 @@ where
     T: Transaction<P>,
 {
     fn clone(&self) -> Self {
-        Self { engine: self.engine.clone() }
+        Self { reifydb_engine: self.reifydb_engine.clone() }
     }
 }
 
@@ -24,18 +24,18 @@ impl<P: Persistence, T: Transaction<P>> Embedded<P, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
 
-        (Self { engine: Engine::new(transaction) }, principal)
+        (Self { reifydb_engine: Engine::new(transaction) }, principal)
     }
 }
 
 impl<'a, P: Persistence + 'static, T: Transaction<P> + 'static> Embedded<P, T> {
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        let result = self.engine.tx_as(principal, rql).unwrap();
+        let result = self.reifydb_engine.tx_as(principal, rql).unwrap();
         result
     }
 
     pub fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        let result = self.engine.rx_as(&principal, &rql).unwrap();
+        let result = self.reifydb_engine.rx_as(&principal, &rql).unwrap();
         result
     }
 

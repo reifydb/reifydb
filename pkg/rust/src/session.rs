@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 // use auth::Principal;
-// use engine::execute::ExecutionResult;
+// use reifydb_engine::execute::ExecutionResult;
 //
 // #[derive(Debug, Clone)]
 // pub struct SessionRx<'a, T: DB<'a>> {

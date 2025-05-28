@@ -3,7 +3,7 @@
 
 //! # ReifyDB
 //!
-//! ReifyDB is an embeddable application backend engine that blends a high-level query language
+//! ReifyDB is an embeddable application backend reifydb_engine that blends a high-level query language
 //! (RQL – Reify Query Language) with a low-level key-value store system.
 //!
 //! It is designed for rapid prototyping, persistent data manipulation, and embedding powerful
@@ -26,14 +26,14 @@
 
 pub use auth::Principal;
 pub use reifydb_core::*;
-/// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
-pub use engine;
+/// The execution reifydb_engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
+pub use reifydb_engine;
 pub use error::Error;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use rql;
 use std::path::Path;
 
-use engine::ExecutionResult;
+use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 pub use persistence;
 #[cfg(any(feature = "server", feature = "client"))]

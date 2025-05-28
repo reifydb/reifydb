@@ -14,14 +14,14 @@ use testing::testscript;
 use testing::testscript::Command;
 
 pub struct Runner<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    engine: Embedded<P, T>,
+    reifydb_engine: Embedded<P, T>,
     root: Principal,
 }
 
 impl<P: Persistence + 'static, T: Transaction<P> + 'static> Runner<P, T> {
     pub fn new(transaction: T) -> Self {
-        let (engine, root) = ReifyDB::embedded_blocking_with(transaction);
-        Self { engine, root }
+        let (reifydb_engine, root) = ReifyDB::embedded_blocking_with(transaction);
+        Self { reifydb_engine, root }
     }
 }
 
@@ -35,7 +35,7 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner f
 
                 println!("tx: {query}");
 
-                for line in self.engine.tx_as(&self.root, query.as_str()) {
+                for line in self.reifydb_engine.tx_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line);
                 }
             }
@@ -45,7 +45,7 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner f
 
                 println!("rx: {query}");
 
-                for line in self.engine.rx_as(&self.root, query.as_str()) {
+                for line in self.reifydb_engine.rx_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line);
                 }
             }

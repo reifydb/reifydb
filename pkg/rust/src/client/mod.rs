@@ -10,7 +10,7 @@ use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep};
 use tonic::Streaming;
 use tonic::metadata::MetadataValue;
-use engine::{Column, ExecutionResult};
+use reifydb_engine::{Column, ExecutionResult};
 
 pub(crate) mod grpc_db {
     tonic::include_proto!("grpc_db");

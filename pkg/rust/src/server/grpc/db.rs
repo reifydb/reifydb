@@ -3,10 +3,8 @@
 
 use crate::server::grpc::grpc_db::{QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult};
 use crate::server::grpc::{AuthenticatedUser, grpc_db};
-use reifydb_core::Value;
-use engine::Engine;
-use engine::ExecutionResult;
 use persistence::Persistence;
+use reifydb_core::Value;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::task::spawn_blocking;
@@ -18,15 +16,16 @@ use crate::server::grpc::grpc_db::tx_result::Result::{
     CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
 };
 use auth::Principal;
+use reifydb_engine::{Engine, ExecutionResult};
 use tokio_stream::once;
 
 pub struct DbService<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    pub(crate) engine: Arc<Engine<P, T>>,
+    pub(crate) reifydb_engine: Arc<Engine<P, T>>,
 }
 
 impl<P: Persistence + 'static, T: Transaction<P> + 'static> DbService<P, T> {
-    pub fn new(engine: Engine<P, T>) -> Self {
-        Self { engine: Arc::new(engine) }
+    pub fn new(reifydb_engine: Engine<P, T>) -> Self {
+        Self { reifydb_engine: Arc::new(reifydb_engine) }
     }
 }
 
@@ -50,9 +49,9 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> grpc_db::db_server::
         let query = request.into_inner().query;
         println!("Received query: {}", query);
 
-        let engine = self.engine.clone();
+        let reifydb_engine = self.reifydb_engine.clone();
         let result = spawn_blocking(move || {
-            let result = engine
+            let result = reifydb_engine
                 .tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
                 .unwrap();
 
@@ -146,9 +145,9 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> grpc_db::db_server::
         let query = request.into_inner().query;
         println!("Received query: {}", query);
 
-        let engine = self.engine.clone();
+        let reifydb_engine = self.reifydb_engine.clone();
         let result = spawn_blocking(move || {
-            let result = engine
+            let result = reifydb_engine
                 .rx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
                 .unwrap();
             result

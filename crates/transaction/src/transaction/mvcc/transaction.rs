@@ -143,7 +143,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
             return Ok(());
         }
         // FIXME
-        // let mut engine = self.engine.lock()?;
+        // let mut reifydb_engine = self.reifydb_engine.lock()?;
         let mut persistence = self.persistence.lock().unwrap();
 
         let mut remove = Vec::new();
@@ -156,7 +156,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         }
 
         // FIXME
-        // engine.remove(&Key::TxActive(self.state.version).encode())
+        // reifydb_engine.remove(&Key::TxActive(self.state.version).encode())
         persistence.remove(&Key::TxActive(self.state.version).encode()).unwrap();
         Ok(())
     }
@@ -169,10 +169,10 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
             return Ok(());
         }
         // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.persistence.lock().unwrap();
+        // let mut reifydb_engine = self.reifydb_engine.lock()?;
+        let mut reifydb_engine = self.persistence.lock().unwrap();
         let mut rollback = Vec::new();
-        let mut scan = engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode());
+        let mut scan = reifydb_engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode());
         while let Some((key, _)) = scan.next().transpose()? {
             match Key::decode(&key).unwrap() {
                 Key::TxWrite(_, key) => {
@@ -186,11 +186,11 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         }
         drop(scan);
         for key in rollback.into_iter() {
-            engine.remove(&key)?;
+            reifydb_engine.remove(&key)?;
         }
         // FIXME
-        // engine.remove(&Key::TxActive(self.state.version).encode()) // remove from active set
-        engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
+        // reifydb_engine.remove(&Key::TxActive(self.state.version).encode()) // remove from active set
+        reifydb_engine.remove(&Key::TxActive(self.state.version).encode()).unwrap();
 
         Ok(())
     }
@@ -202,7 +202,7 @@ impl<P: Persistence> Transaction<P> {
     /// record its active snapshot for time-travel queries.
     pub(crate) fn begin(persistence: Arc<Mutex<P>>) -> crate::transaction::mvcc::Result<Self> {
         // FIXME
-        // let mut session = engine.lock()?;
+        // let mut session = reifydb_engine.lock()?;
         let mut session = persistence.lock().unwrap();
 
         // Allocate a new version to write at.
@@ -234,7 +234,7 @@ impl<P: Persistence> Transaction<P> {
         as_of: Option<Version>,
     ) -> crate::transaction::mvcc::Result<Self> {
         // FIXME
-        // let mut session = engine.lock()?;
+        // let mut session = reifydb_engine.lock()?;
         let mut session = persistence.lock().unwrap();
 
         // Fetch the latest version.
@@ -318,7 +318,7 @@ impl<P: Persistence> Transaction<P> {
             return Err(Error::ReadOnly);
         }
         // FIXME
-        // let mut engine = self.engine.lock()?;
+        // let mut reifydb_engine = self.reifydb_engine.lock()?;
         let mut persistence = self.persistence.lock().unwrap();
 
         // Check for write conflicts, i.e. if the latest key is invisible to us
@@ -344,11 +344,11 @@ impl<P: Persistence> Transaction<P> {
 
         // Write the new version and its write record.
         //
-        // NB: TxWrite contains the provided user key, not the encoded engine
-        // key, since we can construct the engine key using the version.
+        // NB: TxWrite contains the provided user key, not the encoded reifydb_engine
+        // key, since we can construct the reifydb_engine key using the version.
         persistence.set(&Key::TxWrite(self.state.version, key.into()).encode(), vec![])?;
         //FIXME
-        // engine.set(&Key::Version(key.into(), self.state.version).encode(), bincode::serialize(&value))
+        // reifydb_engine.set(&Key::Version(key.into(), self.state.version).encode(), bincode::serialize(&value))
         persistence
             .set(&Key::Version(key.into(), self.state.version).encode(), bincode::serialize(&value))
             .unwrap();
@@ -358,13 +358,13 @@ impl<P: Persistence> Transaction<P> {
     /// Fetches a key's value, or None if it does not exist.
     pub fn get(&self, key: &[u8]) -> crate::transaction::mvcc::Result<Option<Vec<u8>>> {
         // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.persistence.lock().unwrap();
+        // let mut reifydb_engine = self.reifydb_engine.lock()?;
+        let mut reifydb_engine = self.persistence.lock().unwrap();
 
         let from = Key::Version(key.into(), Version(0)).encode();
         let to = Key::Version(key.into(), self.state.version).encode();
 
-        let scan = engine.scan(from..=to);
+        let scan = reifydb_engine.scan(from..=to);
 
         let mut entries = Vec::new();
         for result in scan {

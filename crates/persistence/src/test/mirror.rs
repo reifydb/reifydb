@@ -12,8 +12,8 @@
 use crate::{Key, Persistence, Value};
 use std::ops::RangeBounds;
 
-/// An engine that wraps two others and mirrors operations across them,
-/// panicking if they produce different results. Engine implementations
+/// An reifydb_engine that wraps two others and mirrors operations across them,
+/// panicking if they produce different results. reifydb_engine implementations
 /// should not have any observable differences in behavior.
 pub struct Mirror<A: Persistence, B: Persistence> {
     pub a: A,

@@ -62,11 +62,11 @@ t3: Error: transaction serialization conflict occurred, retry transaction
 # perform their writes and successfully commit.
 t2: rollback [ops]
 ---
-t2: engine remove mvcc:Version("b", 3) ["\x04b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03"]
-t2: engine remove mvcc:TxWrite(3, "b") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03b\x00\x00"]
-t2: engine remove mvcc:Version("c", 3) ["\x04c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03"]
-t2: engine remove mvcc:TxWrite(3, "c") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03c\x00\x00"]
-t2: engine remove mvcc:TxActive(3) ["\x01\x00\x00\x00\x00\x00\x00\x00\x03"]
+t2: reifydb_engine remove mvcc:Version("b", 3) ["\x04b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03"]
+t2: reifydb_engine remove mvcc:TxWrite(3, "b") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03b\x00\x00"]
+t2: reifydb_engine remove mvcc:Version("c", 3) ["\x04c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03"]
+t2: reifydb_engine remove mvcc:TxWrite(3, "c") ["\x03\x00\x00\x00\x00\x00\x00\x00\x03c\x00\x00"]
+t2: reifydb_engine remove mvcc:TxActive(3) ["\x01\x00\x00\x00\x00\x00\x00\x00\x03"]
 
 t4: begin readonly
 t4: scan

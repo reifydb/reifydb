@@ -284,19 +284,19 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
             name => return Err(format!("invalid command {name}").into()),
         }
 
-        // If requested, output engine operations.
+        // If requested, output reifydb_engine operations.
         if tags.remove("ops") {
             while let Ok(op) = self.operations.try_recv() {
                 match op {
                     Operation::Remove { key } => {
                         let fmtkey = MVCC::<format::Raw>::key(&key);
                         let rawkey = format::Raw::key(&key);
-                        writeln!(output, "engine remove {fmtkey} [{rawkey}]")?
+                        writeln!(output, "reifydb_engine remove {fmtkey} [{rawkey}]")?
                     }
                     Operation::Set { key, value } => {
                         let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
                         let rawkv = format::Raw::key_value(&key, &value);
-                        writeln!(output, "engine set {fmtkv} [{rawkv}]")?
+                        writeln!(output, "reifydb_engine set {fmtkv} [{rawkv}]")?
                     }
                 }
             }
@@ -309,7 +309,7 @@ impl<'a, E: Persistence> testscript::Runner for MvccRunner<E> {
         Ok(output)
     }
 
-    // Drain unhandled engine operations.
+    // Drain unhandled reifydb_engine operations.
     fn end_command(&mut self, _: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         while self.operations.try_recv().is_ok() {}
         Ok(String::new())

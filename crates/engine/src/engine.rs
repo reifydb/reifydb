@@ -13,7 +13,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use transaction::{Rx, Transaction, Tx};
 
-pub struct Engine<P: Persistence, T: Transaction<P>>(Arc<EngineInner<P, T>>);
+pub struct Engine<P: Persistence, T: Transaction<P>>(Arc<reifydb_engineInner<P, T>>);
 
 impl<P, T> Clone for Engine<P, T>
 where
@@ -26,21 +26,21 @@ where
 }
 
 impl<P: Persistence, T: Transaction<P>> Deref for Engine<P, T> {
-    type Target = EngineInner<P, T>;
+    type Target = reifydb_engineInner<P, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct EngineInner<P: Persistence, T: Transaction<P>> {
+pub struct reifydb_engineInner<P: Persistence, T: Transaction<P>> {
     transaction: T,
     _marker: PhantomData<P>,
 }
 
 impl<P: Persistence, T: Transaction<P>> Engine<P, T> {
     pub fn new(transaction: T) -> Self {
-        Self(Arc::new(EngineInner { transaction, _marker: PhantomData }))
+        Self(Arc::new(reifydb_engineInner { transaction, _marker: PhantomData }))
     }
 }
 

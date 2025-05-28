@@ -68,7 +68,7 @@ macro_rules! key_prefix {
 
 /// Serializes a key to a binary Keycode representation.
 ///
-/// In the common case, the encoded key is borrowed for a store engine call
+/// In the common case, the encoded key is borrowed for a store reifydb_engine call
 /// and then thrown away. We could avoid a bunch of allocations by taking a
 /// reusable byte vector to encode into and return a reference to it, but we
 /// keep it simple.

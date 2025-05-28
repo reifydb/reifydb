@@ -17,9 +17,9 @@ use std::sync::{Arc, Mutex};
 
 /// An iterator over the latest live and visible key-value pairs for the tx.
 ///
-/// The (single-threaded) engine is shared via mutex, and holding the mutex for
+/// The (single-threaded) reifydb_engine is shared via mutex, and holding the mutex for
 /// the lifetime of the iterator can cause deadlocks (e.g. when the local SQL
-/// engine pulls from two tables concurrently during a join). Instead, we pull
+/// reifydb_engine pulls from two tables concurrently during a join). Instead, we pull
 /// and buffer a batch of rows at a time, and release the mutex in between.
 
 pub struct ScanIterator<P: Persistence> {
@@ -34,7 +34,7 @@ pub struct ScanIterator<P: Persistence> {
 }
 
 /// Implement [`Clone`] manually. `derive(Clone)` isn't smart enough to figure
-/// out that we don't need `Engine: Clone` when it's in an [`Arc`]. See:
+/// out that we don't need `reifydb_engine: Clone` when it's in an [`Arc`]. See:
 /// <https://github.com/rust-lang/rust/issues/26925>.
 impl<P: Persistence> Clone for ScanIterator<P> {
     fn clone(&self) -> Self {
@@ -48,7 +48,7 @@ impl<P: Persistence> Clone for ScanIterator<P> {
 }
 
 impl<P: Persistence> ScanIterator<P> {
-    /// The number of live key-value pairs to pull from the engine each time we
+    /// The number of live key-value pairs to pull from the reifydb_engine each time we
     /// lock it. Uses 2 in tests to exercise the buffering code.
     const BUFFER_SIZE: usize = if cfg!(test) { 2 } else { 32 };
 
@@ -74,9 +74,9 @@ impl<P: Persistence> ScanIterator<P> {
         let range_end = range.1.clone();
 
         // FIXME
-        // let mut engine = self.engine.lock()?;
-        let mut engine = self.persistence.lock().unwrap();
-        let mut iter = VersionIterator::new(&self.tx, engine.scan(range)).peekable();
+        // let mut reifydb_engine = self.reifydb_engine.lock()?;
+        let mut reifydb_engine = self.persistence.lock().unwrap();
+        let mut iter = VersionIterator::new(&self.tx, reifydb_engine.scan(range)).peekable();
 
         while let Some((key, _, value)) = iter.next().transpose()? {
             // If the next key equals this one, we're not at the latest version.
@@ -96,7 +96,7 @@ impl<P: Persistence> ScanIterator<P> {
             // return. peek() has already buffered next(), so pull it.
             if self.buffer.len() == Self::BUFFER_SIZE {
                 if let Some((next, version, _)) = iter.next().transpose()? {
-                    // We have to re-encode it as a raw engine key, since we
+                    // We have to re-encode it as a raw reifydb_engine key, since we
                     // only have access to the decoded MVCC user key.
                     let range_start = Bound::Included(Key::Version(next.into(), version).encode());
                     self.remainder = Some((range_start, range_end));
@@ -121,12 +121,12 @@ impl<P: Persistence> Iterator for ScanIterator<P> {
     }
 }
 
-/// An iterator that decodes raw engine key-value pairs into MVCC key-value
+/// An iterator that decodes raw reifydb_engine key-value pairs into MVCC key-value
 /// versions, and skips invisible versions. Helper for ScanIterator.
 struct VersionIterator<'a, I: persistence::ScanIterator> {
     /// The transaction the scan is running in.
     tx: &'a TransactionState,
-    /// The inner engine scan iterator.
+    /// The inner reifydb_engine scan iterator.
     inner: I,
 }
 

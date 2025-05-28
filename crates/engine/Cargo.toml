@@ -1,5 +1,5 @@
 [package]
-name = "engine"
+name = "reifydb_engine"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true

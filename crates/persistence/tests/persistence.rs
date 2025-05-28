@@ -26,7 +26,7 @@ fn test_memory(path: &Path) {
     testscript::run_path(&mut PersistenceRunner::new(Memory::default()), path).expect("test failed")
 }
 
-/// Runs engine tests.
+/// Runs reifydb_engine tests.
 pub struct PersistenceRunner<P: Persistence> {
     persistence: P,
 }
@@ -109,7 +109,7 @@ impl<P: Persistence> testscript::Runner for PersistenceRunner<P> {
             // status
             // "status" => {
             //     command.consume_args().reject_rest()?;
-            //     writeln!(output, "{:#?}", self.engine.status()?)?;
+            //     writeln!(output, "{:#?}", self.reifydb_engine.status()?)?;
             // }
             name => return Err(format!("invalid command {name}").into()),
         }

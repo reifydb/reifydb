@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Range;
 use std::ops::RangeBounds;
 
-/// An in-memory key-value store engine
+/// An in-memory key-value store reifydb_engine
 #[derive(Default)]
 pub struct Memory(BTreeMap<Key, Value>);
 
