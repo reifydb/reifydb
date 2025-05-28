@@ -1,3 +1,14 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
+// originally licensed under the Apache License, Version 2.0.
+// Original copyright:
+//   Copyright (c) 2024 Al Liu
+//
+// The original Apache License can be found at:
+//   http://www.apache.org/licenses/LICENSE-2.0
+
 use super::*;
 use crate::catalog::{Catalog, Schema};
 use crate::skipdb::skipdbcore::iter::TransactionIter;
@@ -11,6 +22,7 @@ use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
 use std::convert::Infallible;
+use std::fmt::Debug;
 
 /// A optimistic concurrency control transaction over the [`OptimisticDb`].
 pub struct OptimisticTransaction<K, V, S = RandomState> {
@@ -142,8 +154,8 @@ where
 
 impl<K, V, S> OptimisticTransaction<K, V, S>
 where
-    K: Ord + Hash + Eq,
-    V: Send + 'static,
+    K: Ord + Hash + Eq + Debug,
+    V: Send + 'static + Debug,
     S: BuildHasher,
 {
     /// Commits the transaction, following these steps:
@@ -163,8 +175,8 @@ where
     ///    background upon successful completion of writes or any error during write.
     #[inline]
     pub fn commit(&mut self) -> Result<(), WtmError<Infallible, Infallible, Infallible>> {
-        self.wtm.commit(|ents| {
-            self.db.inner.map.apply(ents);
+        self.wtm.commit(|operations| {
+            self.db.inner.map.apply(operations);
             Ok(())
         })
     }
