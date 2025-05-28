@@ -7,12 +7,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-auth = { workspace = true }
+reifydb_auth = { workspace = true }
 reifydb_core = { workspace = true }
-frame = { workspace = true }
-rql = { workspace = true }
-persistence = { workspace = true }
-transaction = { workspace = true }
+reifydb_frame = { workspace = true }
+reifydb_rql = { workspace = true }
+reifydb_persistence = { workspace = true }
+reifydb_transaction = { workspace = true }
 
 log = { workspace = true }
 serde = { workspace = true }

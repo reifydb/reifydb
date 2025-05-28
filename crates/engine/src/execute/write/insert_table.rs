@@ -4,8 +4,8 @@
 use crate::ExecutionResult;
 use crate::execute::Executor;
 use reifydb_core::expression::Expression;
-use rql::plan::InsertIntoTablePlan;
-use transaction::Tx;
+use reifydb_rql::plan::InsertIntoTablePlan;
+use reifydb_transaction::Tx;
 
 impl Executor {
     pub(crate) fn insert_into_table(

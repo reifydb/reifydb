@@ -25,9 +25,9 @@ pub enum Error {
     /// encoding related error
     Encoding(encoding::Error),
     /// RQL related error
-    RQL(rql::Error),
+    RQL(reifydb_rql::Error),
     /// Persistence related error
-    Persistence(persistence::Error),
+    Persistence(reifydb_persistence::Error),
 }
 
 impl Display for Error {
@@ -48,14 +48,14 @@ impl From<encoding::Error> for Error {
     }
 }
 
-impl From<rql::Error> for Error {
-    fn from(value: rql::Error) -> Self {
+impl From<reifydb_rql::Error> for Error {
+    fn from(value: reifydb_rql::Error) -> Self {
         Self::RQL(value)
     }
 }
 
-impl From<persistence::Error> for Error {
-    fn from(value: persistence::Error) -> Self {
+impl From<reifydb_persistence::Error> for Error {
+    fn from(value: reifydb_persistence::Error) -> Self {
         Self::Persistence(value)
     }
 }

@@ -24,7 +24,7 @@ pub enum Error {
     Serialization,
 
     /// A low-level persistence error occurred during MVCC operations.
-    Persistence(persistence::Error),
+    Persistence(reifydb_persistence::Error),
 
     /// The requested version could not be found in the version history.
     VersionNotFound { version: Version },
@@ -78,8 +78,8 @@ impl From<encoding::Error> for Error {
     }
 }
 
-impl From<persistence::Error> for Error {
-    fn from(err: persistence::Error) -> Self {
+impl From<reifydb_persistence::Error> for Error {
+    fn from(err: reifydb_persistence::Error) -> Self {
         Self::Persistence(err)
     }
 }

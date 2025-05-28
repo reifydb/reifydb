@@ -7,7 +7,7 @@ use crate::transaction::svl::lock::{ReadGuard, WriteGuard};
 use crate::{CATALOG, CatalogRx as _, CatalogTx, InsertResult};
 use reifydb_core::encoding::{Value as OtherValue, bincode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
-use persistence::Persistence;
+use reifydb_persistence::Persistence;
 use std::cell::RefCell;
 use std::collections::HashMap;
 

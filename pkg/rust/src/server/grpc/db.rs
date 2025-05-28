@@ -3,19 +3,19 @@
 
 use crate::server::grpc::grpc_db::{QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult};
 use crate::server::grpc::{AuthenticatedUser, grpc_db};
-use persistence::Persistence;
 use reifydb_core::Value;
+use reifydb_persistence::Persistence;
+use reifydb_transaction::{Rx, Transaction};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::task::spawn_blocking;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
-use transaction::{Rx, Transaction};
 
 use crate::server::grpc::grpc_db::tx_result::Result::{
     CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
 };
-use auth::Principal;
+use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
 use tokio_stream::once;
 

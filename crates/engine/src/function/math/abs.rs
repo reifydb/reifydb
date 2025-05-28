@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
-use frame::{Column, ColumnValues};
+use reifydb_frame::{Column, ColumnValues};
 
 pub struct AbsFunction;
 

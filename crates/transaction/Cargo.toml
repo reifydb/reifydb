@@ -1,5 +1,5 @@
 [package]
-name = "transaction"
+name = "reifydb_transaction"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -8,11 +8,11 @@ repository.workspace = true
 
 [dependencies]
 reifydb_core = { workspace = true }
-persistence = { workspace = true }
+reifydb_persistence = { workspace = true }
 
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 
 [dev-dependencies]
-testing = { workspace = true }
+reifydb_testing = { workspace = true }
 test_each_file = { workspace = true }

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_core::expression::Expression;
-use frame::{Column, ColumnValues};
+use reifydb_frame::{Column, ColumnValues};
 
 use crate::function::{FunctionRegistry, math};
 pub use error::Error;

@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::embedded_blocking::Embedded;
-use reifydb::persistence::{Lmdb, Persistence};
-use reifydb::transaction::{Transaction, mvcc};
+use reifydb::reifydb_persistence::{Lmdb, Persistence};
+use reifydb::reifydb_transaction::{Transaction, mvcc};
 use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl};
+use reifydb_testing::tempdir::temp_dir;
+use reifydb_testing::testscript;
+use reifydb_testing::testscript::Command;
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
-use testing::tempdir::temp_dir;
-use testing::testscript;
-use testing::testscript::Command;
 
 pub struct Runner<P: Persistence + 'static, T: Transaction<P> + 'static> {
     reifydb_engine: Embedded<P, T>,

@@ -15,18 +15,18 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
 
-use persistence::test::Emit;
-use persistence::{Lmdb, Memory, Operation, Persistence};
+use reifydb_persistence::test::Emit;
+use reifydb_persistence::{Lmdb, Memory, Operation, Persistence};
+use reifydb_testing::tempdir::temp_dir;
+use reifydb_testing::testscript;
+use reifydb_testing::util::parse_key_range;
+use reifydb_transaction::Tx;
+use reifydb_transaction::mvcc::format::MVCC;
+use reifydb_transaction::mvcc::{Mvcc, Transaction, Version, format};
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use test_each_file::test_each_path;
-use testing::tempdir::temp_dir;
-use testing::testscript;
-use testing::util::parse_key_range;
-use transaction::Tx;
-use transaction::mvcc::format::MVCC;
-use transaction::mvcc::{Mvcc, Transaction, Version, format};
 
 test_each_path! { in "crates/transaction/tests/mvcc" as memory => test_memory }
 test_each_path! { in "crates/transaction/tests/mvcc" as lmdb => test_lmdb }

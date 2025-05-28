@@ -1,5 +1,5 @@
 [package]
-name = "persistence"
+name = "reifydb_persistence"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,5 +10,5 @@ reifydb_core = { workspace = true }
 heed = { workspace = true }
 
 [dev-dependencies]
-testing = { workspace = true }
+reifydb_testing = { workspace = true }
 test_each_file = { workspace = true }

@@ -13,8 +13,8 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, PartialEq)]
 pub enum Error {
     Evaluation(evaluate::Error),
-    Frame(frame::Error),
-    Transaction(transaction::Error),
+    Frame(reifydb_frame::Error),
+    Transaction(reifydb_transaction::Error),
 }
 
 impl Display for Error {
@@ -29,14 +29,14 @@ impl From<evaluate::Error> for Error {
     }
 }
 
-impl From<frame::Error> for Error {
-    fn from(value: frame::Error) -> Self {
+impl From<reifydb_frame::Error> for Error {
+    fn from(value: reifydb_frame::Error) -> Self {
         Self::Frame(value)
     }
 }
 
-impl From<transaction::Error> for Error {
-    fn from(value: transaction::Error) -> Self {
+impl From<reifydb_transaction::Error> for Error {
+    fn from(value: reifydb_transaction::Error) -> Self {
         Self::Transaction(value)
     }
 }

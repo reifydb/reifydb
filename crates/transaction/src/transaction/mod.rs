@@ -7,7 +7,7 @@ use reifydb_core::{Key, Row, RowIter, Value};
 pub mod mvcc;
 pub mod svl;
 
-pub trait Transaction<P: persistence::Persistence>: Send + Sync {
+pub trait Transaction<P: reifydb_persistence::Persistence>: Send + Sync {
     type Rx: Rx;
     type Tx: Tx;
 

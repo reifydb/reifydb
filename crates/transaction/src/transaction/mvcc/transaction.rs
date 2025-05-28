@@ -21,7 +21,7 @@ use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::scan::ScanIterator;
 use reifydb_core::encoding::{Key as _, Value, bincode, keycode};
 use reifydb_core::{Row, RowIter, key_prefix};
-use persistence::Persistence;
+use reifydb_persistence::Persistence;
 // FIXME remove this
 
 impl<P: Persistence> crate::Rx for Transaction<P> {

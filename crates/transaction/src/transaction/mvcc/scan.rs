@@ -11,7 +11,7 @@
 
 use crate::transaction::mvcc::{Error, Key, TransactionState, Version};
 use reifydb_core::encoding::{Key as _, bincode};
-use persistence::{Persistence, Value};
+use reifydb_persistence::{Persistence, Value};
 use std::collections::{Bound, VecDeque};
 use std::sync::{Arc, Mutex};
 
@@ -123,14 +123,14 @@ impl<P: Persistence> Iterator for ScanIterator<P> {
 
 /// An iterator that decodes raw reifydb_engine key-value pairs into MVCC key-value
 /// versions, and skips invisible versions. Helper for ScanIterator.
-struct VersionIterator<'a, I: persistence::ScanIterator> {
+struct VersionIterator<'a, I: reifydb_persistence::ScanIterator> {
     /// The transaction the scan is running in.
     tx: &'a TransactionState,
     /// The inner reifydb_engine scan iterator.
     inner: I,
 }
 
-impl<'a, I: persistence::ScanIterator> VersionIterator<'a, I> {
+impl<'a, I: reifydb_persistence::ScanIterator> VersionIterator<'a, I> {
     /// Creates a new MVCC version iterator for the given iterator.
     fn new(tx: &'a TransactionState, inner: I) -> Self {
         Self { tx: tx, inner }
@@ -154,7 +154,7 @@ impl<'a, I: persistence::ScanIterator> VersionIterator<'a, I> {
     }
 }
 
-impl<I: persistence::ScanIterator> Iterator for VersionIterator<'_, I> {
+impl<I: reifydb_persistence::ScanIterator> Iterator for VersionIterator<'_, I> {
     type Item = crate::transaction::mvcc::Result<(Vec<u8>, Version, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {

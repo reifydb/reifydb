@@ -3,9 +3,9 @@
 
 use crate::server::grpc::db::DbService;
 use crate::server::grpc::grpc_db::db_server::DbServer;
-use persistence::Persistence;
+use reifydb_persistence::Persistence;
 use reifydb_engine::Engine;
-use transaction::Transaction;
+use reifydb_transaction::Transaction;
 
 pub mod auth;
 mod db;

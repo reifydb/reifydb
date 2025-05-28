@@ -12,13 +12,13 @@
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use persistence::{Memory, Persistence};
+use reifydb_persistence::{Memory, Persistence};
+use reifydb_testing::testscript;
+use reifydb_testing::util::parse_key_range;
 use std::error::Error as StdError;
 use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
-use testing::testscript;
-use testing::util::parse_key_range;
 
 test_each_path! { in "crates/persistence/tests/persistence" as memory => test_memory }
 

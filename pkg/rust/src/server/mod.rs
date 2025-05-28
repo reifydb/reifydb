@@ -2,17 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::server::grpc::db_service;
-use auth::Principal;
 pub use config::{DatabaseConfig, ServerConfig};
-use persistence::Persistence;
+use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
+use reifydb_persistence::Persistence;
+use reifydb_transaction::{Rx, Transaction, Tx};
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tonic::service::InterceptorLayer;
 use tonic::transport::Error;
-use transaction::{Rx, Transaction, Tx};
 
 mod config;
 mod grpc;

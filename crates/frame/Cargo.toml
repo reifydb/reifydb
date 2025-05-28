@@ -1,5 +1,5 @@
 [package]
-name = "frame"
+name = "reifydb_frame"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true

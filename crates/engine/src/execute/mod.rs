@@ -8,9 +8,9 @@ mod write;
 
 use crate::function::{FunctionRegistry, math};
 use reifydb_core::{Row, Value, ValueKind};
-use frame::{ColumnValues, Frame};
-use rql::plan::{Plan, QueryPlan};
-use transaction::{Rx, Tx};
+use reifydb_frame::{ColumnValues, Frame};
+use reifydb_rql::plan::{Plan, QueryPlan};
+use reifydb_transaction::{Rx, Tx};
 
 #[derive(Clone, Debug)]
 pub struct Column {

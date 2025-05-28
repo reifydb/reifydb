@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "reifydb_server"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true

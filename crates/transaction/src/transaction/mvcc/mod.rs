@@ -160,7 +160,7 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use ::persistence::Persistence;
+use ::reifydb_persistence::Persistence;
 use reifydb_core::encoding;
 use reifydb_core::encoding::Value;
 use serde::{Deserialize, Serialize};

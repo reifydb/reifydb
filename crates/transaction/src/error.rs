@@ -16,7 +16,7 @@ pub enum Error {
     Mvcc(mvcc::Error),
 
     /// Persistence-layer error
-    Persistence(persistence::Error),
+    Persistence(reifydb_persistence::Error),
 
     /// SVL concurrency error
     Svl(svl::Error),
@@ -43,8 +43,8 @@ impl From<mvcc::Error> for Error {
     }
 }
 
-impl From<persistence::Error> for Error {
-    fn from(err: persistence::Error) -> Self {
+impl From<reifydb_persistence::Error> for Error {
+    fn from(err: reifydb_persistence::Error) -> Self {
         Error::Persistence(err)
     }
 }

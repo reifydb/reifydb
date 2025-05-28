@@ -1,5 +1,5 @@
 [package]
-name = "testing"
+name = "reifydb_testing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

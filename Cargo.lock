@@ -50,10 +50,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
-name = "auth"
-version = "0.0.1"
-
-[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -208,13 +204,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "cli"
-version = "0.0.1"
-dependencies = [
- "reifydb",
-]
-
-[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -323,20 +312,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "frame"
-version = "0.0.1"
-dependencies = [
- "rand 0.9.1",
- "reifydb_core",
-]
-
-[[package]]
 name = "functional"
 version = "0.0.1"
 dependencies = [
  "reifydb",
+ "reifydb_testing",
  "test_each_file",
- "testing",
  "tokio",
 ]
 
@@ -862,16 +843,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
-name = "persistence"
-version = "0.0.1"
-dependencies = [
- "heed",
- "reifydb_core",
- "test_each_file",
- "testing",
-]
-
-[[package]]
 name = "petgraph"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1216,8 +1187,8 @@ name = "regression"
 version = "0.0.1"
 dependencies = [
  "reifydb",
+ "reifydb_testing",
  "test_each_file",
- "testing",
  "tokio",
 ]
 
@@ -1225,17 +1196,17 @@ dependencies = [
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
- "auth",
- "persistence",
  "prost",
+ "reifydb_auth",
  "reifydb_core",
  "reifydb_engine",
- "rql",
+ "reifydb_persistence",
+ "reifydb_rql",
+ "reifydb_transaction",
  "tokio",
  "tokio-stream",
  "tonic",
  "tonic-build",
- "transaction",
 ]
 
 [[package]]
@@ -1246,6 +1217,17 @@ dependencies = [
  "pythonize",
  "reifydb",
  "serde_json",
+]
+
+[[package]]
+name = "reifydb_auth"
+version = "0.0.1"
+
+[[package]]
+name = "reifydb_cli"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
 ]
 
 [[package]]
@@ -1264,25 +1246,75 @@ dependencies = [
 name = "reifydb_engine"
 version = "0.0.1"
 dependencies = [
- "auth",
- "frame",
  "log",
- "persistence",
+ "reifydb_auth",
  "reifydb_core",
- "rql",
+ "reifydb_frame",
+ "reifydb_persistence",
+ "reifydb_rql",
+ "reifydb_transaction",
  "serde",
- "transaction",
 ]
 
 [[package]]
-name = "rql"
+name = "reifydb_frame"
+version = "0.0.1"
+dependencies = [
+ "rand 0.9.1",
+ "reifydb_core",
+]
+
+[[package]]
+name = "reifydb_persistence"
+version = "0.0.1"
+dependencies = [
+ "heed",
+ "reifydb_core",
+ "reifydb_testing",
+ "test_each_file",
+]
+
+[[package]]
+name = "reifydb_rql"
 version = "0.0.1"
 dependencies = [
  "nom",
  "nom_locate",
  "reifydb_core",
+ "reifydb_transaction",
  "serde",
- "transaction",
+]
+
+[[package]]
+name = "reifydb_server"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
+]
+
+[[package]]
+name = "reifydb_testing"
+version = "0.0.1"
+dependencies = [
+ "goldenfile",
+ "nom",
+ "nom_locate",
+ "regex",
+ "reifydb_core",
+ "test_each_file",
+ "uuid",
+]
+
+[[package]]
+name = "reifydb_transaction"
+version = "0.0.1"
+dependencies = [
+ "reifydb_core",
+ "reifydb_persistence",
+ "reifydb_testing",
+ "serde",
+ "serde_bytes",
+ "test_each_file",
 ]
 
 [[package]]
@@ -1365,13 +1397,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "server"
-version = "0.0.1"
-dependencies = [
- "reifydb",
-]
-
-[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1423,8 +1448,8 @@ name = "smoke"
 version = "0.0.1"
 dependencies = [
  "reifydb",
+ "reifydb_testing",
  "test_each_file",
- "testing",
  "tokio",
 ]
 
@@ -1510,19 +1535,6 @@ dependencies = [
  "quote",
  "syn",
  "unicode-ident",
-]
-
-[[package]]
-name = "testing"
-version = "0.0.1"
-dependencies = [
- "goldenfile",
- "nom",
- "nom_locate",
- "regex",
- "reifydb_core",
- "test_each_file",
- "uuid",
 ]
 
 [[package]]
@@ -1689,18 +1701,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e672c95779cf947c5311f83787af4fa8fffd12fb27e4993211a84bdfd9610f9c"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "transaction"
-version = "0.0.1"
-dependencies = [
- "persistence",
- "reifydb_core",
- "serde",
- "serde_bytes",
- "test_each_file",
- "testing",
 ]
 
 [[package]]

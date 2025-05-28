@@ -3,15 +3,15 @@
 
 use crate::ExecutionResult;
 use crate::execute::{execute, execute_mut};
-use auth::Principal;
-use persistence::Persistence;
-use rql::ast;
-use rql::ast::Ast;
-use rql::plan::{Plan, plan, plan_mut};
+use reifydb_auth::Principal;
+use reifydb_persistence::Persistence;
+use reifydb_rql::ast;
+use reifydb_rql::ast::Ast;
+use reifydb_rql::plan::{Plan, plan, plan_mut};
+use reifydb_transaction::{Rx, Transaction, Tx};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
-use transaction::{Rx, Transaction, Tx};
 
 pub struct Engine<P: Persistence, T: Transaction<P>>(Arc<reifydb_engineInner<P, T>>);
 

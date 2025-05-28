@@ -10,7 +10,6 @@ pub use error::Error;
 pub use lmdb::{Lmdb, LmdbBatch};
 pub use memory::{Memory, MemoryScanIter};
 pub use persistence::{BeginBatch, Persistence, PersistenceBatch};
-use std::ops::RangeBounds;
 use std::result;
 
 mod error;
@@ -30,7 +29,7 @@ pub enum Operation {
     Remove { key: Key },
 }
 
-/// A scan iterator over key-value pairs, returned by [`Persistence::scan()`].
+/// A scan iterator over key-value pairs, returned by [`reifydb_persistence::scan()`].
 pub trait ScanIterator: Iterator<Item = Result<(Key, Value)>> {}
 
 impl<T> ScanIterator for T where T: Iterator<Item = Result<(Key, Value)>> {}

@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{ExecutionResult, Executor};
-use rql::plan::CreateTablePlan;
-use transaction::{SchemaTx, StoreToCreate, Tx};
+use reifydb_rql::plan::CreateTablePlan;
+use reifydb_transaction::{SchemaTx, StoreToCreate, Tx};
 
 impl Executor {
     pub(crate) fn create_table(

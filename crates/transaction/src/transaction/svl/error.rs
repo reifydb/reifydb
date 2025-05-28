@@ -10,7 +10,7 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, PartialEq)]
 pub enum Error {
     /// A low-level persistence error occurred.
-    Persistence(persistence::Error),
+    Persistence(reifydb_persistence::Error),
 }
 
 impl Display for Error {
@@ -29,8 +29,8 @@ impl std::error::Error for Error {
     }
 }
 
-impl From<persistence::Error> for Error {
-    fn from(err: persistence::Error) -> Self {
+impl From<reifydb_persistence::Error> for Error {
+    fn from(err: reifydb_persistence::Error) -> Self {
         Self::Persistence(err)
     }
 }

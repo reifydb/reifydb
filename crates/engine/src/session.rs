@@ -3,11 +3,11 @@
 //
 // use crate::reifydb_engine::reifydb_engine;
 // use log::error;
-// use transaction::TransactionMut;
+// use reifydb_transaction::TransactionMut;
 //
 // /// A client session. Executes raw RQL statements against an reifydb_engine and
 // /// handles transaction control.
-// pub struct Session<'a, P: Persistence::reifydb_engine, T: transaction::reifydb_engine< S>, E: reifydb_engine< S, T>> {
+// pub struct Session<'a, P: reifydb_persistence::reifydb_engine, T: reifydb_transaction::reifydb_engine< S>, E: reifydb_engine< S, T>> {
 //     /// The reifydb_engine.
 //     reifydb_engine: & E,
 //     /// The current read transaction, if any.

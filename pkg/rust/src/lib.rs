@@ -24,22 +24,22 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use auth::Principal;
+pub use error::Error;
+pub use reifydb_auth::Principal;
 pub use reifydb_core::*;
 /// The execution reifydb_engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
 pub use reifydb_engine;
-pub use error::Error;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
-pub use rql;
+pub use reifydb_rql;
 use std::path::Path;
 
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
-pub use persistence;
+pub use reifydb_persistence;
 #[cfg(any(feature = "server", feature = "client"))]
 pub use tokio::*;
 
-pub use transaction;
+pub use reifydb_transaction;
 
 #[cfg(feature = "embedded")]
 use crate::embedded::Embedded;
@@ -47,8 +47,8 @@ use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
 
-use persistence::{Lmdb, Memory, Persistence};
-use transaction::Transaction;
+use reifydb_persistence::{Lmdb, Memory, Persistence};
+use reifydb_transaction::Transaction;
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -89,19 +89,21 @@ pub trait DB<'a>: Sized {
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> (Embedded<Memory, ::transaction::mvcc::Mvcc<Memory>>, Principal) {
+    pub fn embedded() -> (Embedded<Memory, ::reifydb_transaction::mvcc::Mvcc<Memory>>, Principal) {
         Embedded::new(mvcc(memory()))
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking()
-    -> (embedded_blocking::Embedded<Memory, ::transaction::mvcc::Mvcc<Memory>>, Principal) {
+    -> (embedded_blocking::Embedded<Memory, ::reifydb_transaction::mvcc::Mvcc<Memory>>, Principal)
+    {
         embedded_blocking::Embedded::new(mvcc(memory()))
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
     pub fn embedded()
-    -> (embedded_blocking::Embedded<Memory, ::transaction::mvcc::Mvcc<Memory>>, Principal) {
+    -> (embedded_blocking::Embedded<Memory, ::reifydb_transaction::mvcc::Mvcc<Memory>>, Principal)
+    {
         Self::embedded_blocking()
     }
 
@@ -127,7 +129,7 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "server")]
-    pub fn server() -> Server<Memory, ::transaction::mvcc::Mvcc<Memory>> {
+    pub fn server() -> Server<Memory, ::reifydb_transaction::mvcc::Mvcc<Memory>> {
         Server::new(mvcc(memory()))
     }
 
@@ -139,12 +141,12 @@ impl ReifyDB {
     }
 }
 
-pub fn svl<P: Persistence>(persistence: P) -> ::transaction::svl::Svl<P> {
-    ::transaction::svl::Svl::new(persistence)
+pub fn svl<P: Persistence>(persistence: P) -> ::reifydb_transaction::svl::Svl<P> {
+    ::reifydb_transaction::svl::Svl::new(persistence)
 }
 
-pub fn mvcc<P: Persistence>(persistence: P) -> ::transaction::mvcc::Mvcc<P> {
-    ::transaction::mvcc::Mvcc::new(persistence)
+pub fn mvcc<P: Persistence>(persistence: P) -> ::reifydb_transaction::mvcc::Mvcc<P> {
+    ::reifydb_transaction::mvcc::Mvcc::new(persistence)
 }
 
 pub fn memory() -> Memory {

@@ -5,7 +5,7 @@ use crate::evaluate;
 use crate::evaluate::Evaluator;
 use reifydb_core::Value;
 use reifydb_core::Value::Undefined;
-use frame::ColumnValues;
+use reifydb_frame::ColumnValues;
 
 impl Evaluator {
     pub(crate) fn constant(

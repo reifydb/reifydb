@@ -4,7 +4,7 @@
 use crate::evaluate::evaluate;
 use crate::execute::Executor;
 use reifydb_core::expression::AliasExpression;
-use frame::{Column, Frame};
+use reifydb_frame::{Column, Frame};
 
 impl Executor {
     pub(crate) fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {

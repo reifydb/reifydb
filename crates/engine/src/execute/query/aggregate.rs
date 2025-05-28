@@ -3,7 +3,7 @@
 
 use crate::execute::Executor;
 use reifydb_core::expression::{AliasExpression, ColumnExpression, Expression};
-use frame::aggregate::Aggregate;
+use reifydb_frame::aggregate::Aggregate;
 
 impl Executor {
     pub(crate) fn aggregate(

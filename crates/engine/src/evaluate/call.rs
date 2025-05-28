@@ -4,7 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::Evaluator;
 use reifydb_core::expression::{CallExpression, Expression};
-use frame::{Column, ColumnValues};
+use reifydb_frame::{Column, ColumnValues};
 
 impl Evaluator {
     pub(crate) fn call(

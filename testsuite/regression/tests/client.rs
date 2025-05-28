@@ -2,18 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::persistence::{Lmdb, Persistence};
+use reifydb::reifydb_persistence::{Lmdb, Persistence};
+use reifydb::reifydb_transaction::Transaction;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::transaction::Transaction;
 use reifydb::{ReifyDB, memory, mvcc, svl};
+use reifydb_testing::network::free_local_socket;
+use reifydb_testing::tempdir::temp_dir;
+use reifydb_testing::testscript;
+use reifydb_testing::testscript::Command;
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
-use testing::network::free_local_socket;
-use testing::tempdir::temp_dir;
-use testing::testscript;
-use testing::testscript::Command;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 

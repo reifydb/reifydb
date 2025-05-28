@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use auth::Principal;
-use persistence::Persistence;
+use reifydb_persistence::Persistence;
+use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
-use transaction::Transaction;
+use reifydb_transaction::Transaction;
 
 pub struct Embedded<P: Persistence + 'static, T: Transaction<P> + 'static> {
     reifydb_engine: Engine<P, T>,

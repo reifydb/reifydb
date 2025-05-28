@@ -9,13 +9,13 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use crate::ast;
+pub use error::Error;
 use reifydb_core::expression::{
     AddExpression, AliasExpression, CallExpression, ColumnExpression, Expression, IdentExpression,
     PrefixExpression, PrefixOperator, TupleExpression,
 };
 use reifydb_core::{SortDirection, SortKey, StoreKind, Value, ValueKind};
-pub use error::Error;
-use transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
+use reifydb_transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
 
 mod error;
 pub mod node;
