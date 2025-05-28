@@ -2,19 +2,21 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::catalog::{Catalog, Schema};
+use crate::skipdb::skipdb::ReadTransaction;
 use crate::skipdb::skipdb::serializable::{SerializableDb, SerializableTransaction};
+use crate::skipdb::txn::BTreeCm;
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
 
 impl<P: Persistence> Transaction<P> for SerializableDb<Vec<u8>, Vec<u8>> {
-    type Rx = SerializableTransaction<Vec<u8>, Vec<u8>>;
+    type Rx = ReadTransaction<Vec<u8>, Vec<u8>, SerializableDb<Vec<u8>, Vec<u8>>, BTreeCm<Vec<u8>>>;
     type Tx = SerializableTransaction<Vec<u8>, Vec<u8>>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
-        // Ok(self.db.read())
-        todo!()
+        Ok(self.read())
+        // todo!()
     }
 
     fn begin(&self) -> crate::Result<Self::Tx> {
@@ -22,6 +24,34 @@ impl<P: Persistence> Transaction<P> for SerializableDb<Vec<u8>, Vec<u8>> {
     }
 }
 
+impl crate::Rx
+    for ReadTransaction<Vec<u8>, Vec<u8>, SerializableDb<Vec<u8>, Vec<u8>>, BTreeCm<Vec<u8>>>
+{
+    type Catalog = Catalog;
+    type Schema = Schema;
+
+    fn catalog(&self) -> crate::Result<&Self::Catalog> {
+        // FIXME replace this
+        unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
+    }
+
+    fn schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
+        Ok(self.catalog().unwrap().get(schema).unwrap())
+    }
+
+    fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>> {
+        todo!()
+    }
+
+    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
+        Ok(Box::new(
+            self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)))
+                .map(|r| Row::decode(&r.value()).unwrap())
+                .collect::<Vec<_>>()
+                .into_iter(),
+        ))
+    }
+}
 
 impl crate::Rx for SerializableTransaction<Vec<u8>, Vec<u8>> {
     type Catalog = Catalog;

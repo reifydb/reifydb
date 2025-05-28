@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 pub mod skipdb;
-mod skipdbcore;
-mod txn;
-mod txncore;
-mod wmark;
+pub mod skipdbcore;
+pub mod txn;
+pub mod txncore;
+pub mod wmark;
