@@ -5,7 +5,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::function::FunctionMode;
-use base::ValueKind;
+use reifydb_core::ValueKind;
 use std::fmt;
 use std::fmt::Display;
 

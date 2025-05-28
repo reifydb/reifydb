@@ -161,8 +161,8 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use ::persistence::Persistence;
-use base::encoding;
-use base::encoding::Value;
+use reifydb_core::encoding;
+use reifydb_core::encoding::Value;
 use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, Error>;

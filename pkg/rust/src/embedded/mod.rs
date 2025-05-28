@@ -60,12 +60,12 @@ impl<'a, P: Persistence + 'static, T: Transaction<P> + 'static> DB<'a> for Embed
     // fn session_read_only(
     //     &self,
     //     into: impl IntoSessionRx<'a, Self>,
-    // ) -> base::Result<SessionRx<'a, Self>> {
+    // ) -> reifydb_core::Result<SessionRx<'a, Self>> {
     //     // into.into_session_rx(&self)
     //     todo!()
     // }
     //
-    // fn session(&self, into: impl IntoSessionTx<'a, Self>) -> base::Result<SessionTx<'a, Self>> {
+    // fn session(&self, into: impl IntoSessionTx<'a, Self>) -> reifydb_core::Result<SessionTx<'a, Self>> {
     //     // into.into_session_tx(&self)
     //     todo!()
     // }

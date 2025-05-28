@@ -3,7 +3,7 @@
 
 use crate::ExecutionResult;
 use crate::execute::Executor;
-use base::expression::Expression;
+use reifydb_core::expression::Expression;
 use rql::plan::InsertIntoSeriesPlan;
 use transaction::Tx;
 

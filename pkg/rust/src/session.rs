@@ -24,11 +24,11 @@
 // }
 //
 // pub trait IntoSessionRx<'a, T: DB<'a>> {
-//     fn into_session_rx(self, db: &'a T) -> base::Result<SessionRx<'a, T>>;
+//     fn into_session_rx(self, db: &'a T) -> reifydb_core::Result<SessionRx<'a, T>>;
 // }
 //
 // impl<'a, T: DB<'a>> IntoSessionRx<'a, T> for Principal {
-//     fn into_session_rx(self, db: &'a T) -> base::Result<SessionRx<'a, T>> {
+//     fn into_session_rx(self, db: &'a T) -> reifydb_core::Result<SessionRx<'a, T>> {
 //         Ok(SessionRx { principal: self, db })
 //     }
 // }
@@ -54,11 +54,11 @@
 // }
 //
 // pub trait IntoSessionTx<'a, T: DB<'a>> {
-//     fn into_session_tx(self, db: &'a T) -> base::Result<SessionTx<'a, T>>;
+//     fn into_session_tx(self, db: &'a T) -> reifydb_core::Result<SessionTx<'a, T>>;
 // }
 //
 // impl<'a, T: DB<'a>> IntoSessionTx<'a, T> for Principal {
-//     fn into_session_tx(self, db: &'a T) -> base::Result<SessionTx<'a, T>> {
+//     fn into_session_tx(self, db: &'a T) -> reifydb_core::Result<SessionTx<'a, T>> {
 //         Ok(SessionTx { principal: self, db })
 //     }
 // }

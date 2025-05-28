@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 auth = { workspace = true }
-base = { workspace = true }
+reifydb_core = { workspace = true }
 frame = { workspace = true }
 rql = { workspace = true }
 persistence = { workspace = true }

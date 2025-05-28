@@ -9,8 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use base::encoding::binary::decode_binary;
-use base::encoding::format::Formatter;
+use reifydb_core::encoding::binary::decode_binary;
+use reifydb_core::encoding::format::Formatter;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;

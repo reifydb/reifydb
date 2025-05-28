@@ -3,7 +3,7 @@
 
 use crate::evaluate;
 use crate::evaluate::Evaluator;
-use base::expression::{CallExpression, Expression};
+use reifydb_core::expression::{CallExpression, Expression};
 use frame::{Column, ColumnValues};
 
 impl Evaluator {

@@ -9,7 +9,7 @@
 // }
 
 use crate::catalog::Column;
-use base::StoreKind;
+use reifydb_core::StoreKind;
 
 #[derive(Debug)]
 pub struct Store {

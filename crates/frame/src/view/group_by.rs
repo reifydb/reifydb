@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{ColumnValues, Frame};
-use base::Value;
+use reifydb_core::Value;
 use std::collections::HashMap;
 
 pub type GroupByKey = Vec<Value>;

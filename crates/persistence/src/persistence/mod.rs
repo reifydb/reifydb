@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{Key, Value};
-use base::encoding::keycode;
+use reifydb_core::encoding::keycode;
 use std::ops::RangeBounds;
 
 pub trait BeginBatch {

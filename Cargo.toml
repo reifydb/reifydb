@@ -4,7 +4,7 @@ resolver = "2"
 members = ["bin/cli",
     "bin/server",
     "crates/auth",
-    "crates/base",
+    "crates/core",
     "crates/frame",
     "crates/engine",
     "crates/rql",
@@ -20,7 +20,7 @@ members = ["bin/cli",
 default-members = ["bin/cli",
     "bin/server",
     "crates/auth",
-    "crates/base",
+    "crates/core",
     "crates/frame",
     "crates/engine",
     "crates/rql",
@@ -62,7 +62,7 @@ overflow-checks = true
 [workspace.dependencies]
 reifydb = { path = "pkg/rust", version = "0.0.1" }
 auth = { path = "crates/auth", version = "0.0.1" }
-base = { path = "crates/base", version = "0.0.1" }
+reifydb_core = { path = "crates/core", version = "0.0.1" }
 frame = { path = "crates/frame", version = "0.0.1" }
 engine = { path = "crates/engine", version = "0.0.1" }
 persistence = { path = "crates/persistence", version = "0.0.1" }

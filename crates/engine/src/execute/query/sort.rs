@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use base::SortKey;
+use reifydb_core::SortKey;
 
 impl Executor {
     pub(crate) fn sort(&mut self, sort_keys: &[SortKey]) -> crate::Result<()> {

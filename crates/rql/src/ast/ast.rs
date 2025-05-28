@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use base::Value;
+use reifydb_core::Value;
 use std::ops::Index;
 
 #[derive(Debug)]

@@ -3,7 +3,7 @@
 
 use std::any::TypeId;
 use crate::ValueRef;
-use base::{CowVec, Value};
+use reifydb_core::{CowVec, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {

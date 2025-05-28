@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::Evaluator;
-use base::expression::AddExpression;
+use reifydb_core::expression::AddExpression;
 use frame::{Column, ColumnValues};
 
 impl Evaluator {

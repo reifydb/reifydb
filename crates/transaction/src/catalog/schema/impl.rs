@@ -3,7 +3,7 @@
 
 use crate::StoreToCreate;
 use crate::catalog::{Column, Store};
-use base::StoreKind;
+use reifydb_core::StoreKind;
 use std::collections::HashMap;
 use std::ops::Deref;
 

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::encoding;
+use reifydb_core::encoding;
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors that can occur within the ReifyDB system.

@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::ordered_float::OrderedF64;
-use base::{Value, ValueKind};
+use reifydb_core::ordered_float::OrderedF64;
+use reifydb_core::{Value, ValueKind};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;

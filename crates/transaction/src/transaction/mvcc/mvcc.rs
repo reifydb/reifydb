@@ -12,7 +12,7 @@
 use crate::catalog_init;
 use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::{Status, Transaction, Version};
-use base::encoding::{Key as _, Value};
+use reifydb_core::encoding::{Key as _, Value};
 use persistence::Persistence;
 use std::sync::{Arc, Mutex};
 

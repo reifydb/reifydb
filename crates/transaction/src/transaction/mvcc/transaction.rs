@@ -19,8 +19,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use crate::catalog::{Catalog, Schema};
 use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::scan::ScanIterator;
-use base::encoding::{Key as _, Value, bincode, keycode};
-use base::{Row, RowIter, key_prefix};
+use reifydb_core::encoding::{Key as _, Value, bincode, keycode};
+use reifydb_core::{Row, RowIter, key_prefix};
 use persistence::Persistence;
 // FIXME remove this
 
@@ -37,7 +37,7 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
         Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
-    fn get(&self, store: &str, ids: &[base::Key]) -> crate::Result<Vec<Row>> {
+    fn get(&self, store: &str, ids: &[reifydb_core::Key]) -> crate::Result<Vec<Row>> {
         todo!()
     }
 
@@ -110,7 +110,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         &mut self,
         schema: &str,
         series: &str,
-        rows: Vec<Vec<base::Value>>,
+        rows: Vec<Vec<reifydb_core::Value>>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
             .persistence

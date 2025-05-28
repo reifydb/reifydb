@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use base::ValueKind;
+use reifydb_core::ValueKind;
 use frame::{Append, Column, ColumnValues, Frame};
 use transaction::{Rx, SchemaRx, StoreRx};
 

@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-base = { workspace = true }
+reifydb_core = { workspace = true }
 persistence = { workspace = true }
 
 serde = { workspace = true }

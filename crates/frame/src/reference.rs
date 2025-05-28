@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use base::Value;
+use reifydb_core::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 

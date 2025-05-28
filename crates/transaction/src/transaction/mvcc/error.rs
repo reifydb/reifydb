@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::transaction::mvcc::{Key, Version};
-use base::encoding;
+use reifydb_core::encoding;
 use std::fmt::{Display, Formatter};
 
 /// Represents all errors related to MVCC (Multi-Version Concurrency Control) in ReifyDB.

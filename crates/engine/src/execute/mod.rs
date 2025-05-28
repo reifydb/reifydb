@@ -7,7 +7,7 @@ mod query;
 mod write;
 
 use crate::function::{FunctionRegistry, math};
-use base::{Row, Value, ValueKind};
+use reifydb_core::{Row, Value, ValueKind};
 use frame::{ColumnValues, Frame};
 use rql::plan::{Plan, QueryPlan};
 use transaction::{Rx, Tx};

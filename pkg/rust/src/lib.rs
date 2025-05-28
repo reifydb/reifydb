@@ -25,7 +25,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use auth::Principal;
-pub use base::*;
+pub use reifydb_core::*;
 /// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
 pub use engine;
 pub use error::Error;

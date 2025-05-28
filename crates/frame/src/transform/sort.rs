@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{ColumnValues, Frame, Error};
-use base::{SortDirection, SortKey};
+use reifydb_core::{SortDirection, SortKey};
 
 impl Frame {
     pub fn sort(&mut self, keys: &[SortKey]) -> crate::Result<()> {

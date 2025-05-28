@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::mvcc::{Error, Key, TransactionState, Version};
-use base::encoding::{Key as _, bincode};
+use reifydb_core::encoding::{Key as _, bincode};
 use persistence::{Persistence, Value};
 use std::collections::{Bound, VecDeque};
 use std::sync::{Arc, Mutex};

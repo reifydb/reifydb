@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{Column, ExecutionResult};
-use base::Row;
+use reifydb_core::Row;
 use std::fmt::{Display, Formatter};
 
 impl Display for ExecutionResult {

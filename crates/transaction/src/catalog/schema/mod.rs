@@ -6,8 +6,8 @@ pub use r#impl::Schema;
 mod r#impl;
 
 use crate::catalog::store::{StoreRx, StoreTx};
-use base::ValueKind;
-use base::expression::Expression;
+use reifydb_core::ValueKind;
+use reifydb_core::expression::Expression;
 
 pub trait SchemaRx {
     type StoreRx: StoreRx;

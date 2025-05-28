@@ -3,8 +3,8 @@
 
 use crate::evaluate;
 use crate::evaluate::Evaluator;
-use base::Value;
-use base::Value::Undefined;
+use reifydb_core::Value;
+use reifydb_core::Value::Undefined;
 use frame::ColumnValues;
 
 impl Evaluator {

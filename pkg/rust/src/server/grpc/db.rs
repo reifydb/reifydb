@@ -3,7 +3,7 @@
 
 use crate::server::grpc::grpc_db::{QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult};
 use crate::server::grpc::{AuthenticatedUser, grpc_db};
-use base::Value;
+use reifydb_core::Value;
 use engine::Engine;
 use engine::ExecutionResult;
 use persistence::Persistence;

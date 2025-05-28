@@ -120,18 +120,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "base"
-version = "0.0.1"
-dependencies = [
- "bincode 2.0.1",
- "dyn-clone",
- "hex",
- "rand 0.9.1",
- "serde",
- "serde_bytes",
-]
-
-[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -296,10 +284,10 @@ name = "engine"
 version = "0.0.1"
 dependencies = [
  "auth",
- "base",
  "frame",
  "log",
  "persistence",
+ "reifydb_core",
  "rql",
  "serde",
  "transaction",
@@ -352,8 +340,8 @@ dependencies = [
 name = "frame"
 version = "0.0.1"
 dependencies = [
- "base",
  "rand 0.9.1",
+ "reifydb_core",
 ]
 
 [[package]]
@@ -891,8 +879,8 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 name = "persistence"
 version = "0.0.1"
 dependencies = [
- "base",
  "heed",
+ "reifydb_core",
  "test_each_file",
  "testing",
 ]
@@ -1252,10 +1240,10 @@ name = "reifydb"
 version = "0.0.1"
 dependencies = [
  "auth",
- "base",
  "engine",
  "persistence",
  "prost",
+ "reifydb_core",
  "rql",
  "tokio",
  "tokio-stream",
@@ -1275,12 +1263,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb_core"
+version = "0.0.1"
+dependencies = [
+ "bincode 2.0.1",
+ "dyn-clone",
+ "hex",
+ "rand 0.9.1",
+ "serde",
+ "serde_bytes",
+]
+
+[[package]]
 name = "rql"
 version = "0.0.1"
 dependencies = [
- "base",
  "nom",
  "nom_locate",
+ "reifydb_core",
  "serde",
  "transaction",
 ]
@@ -1516,11 +1516,11 @@ dependencies = [
 name = "testing"
 version = "0.0.1"
 dependencies = [
- "base",
  "goldenfile",
  "nom",
  "nom_locate",
  "regex",
+ "reifydb_core",
  "test_each_file",
  "uuid",
 ]
@@ -1695,8 +1695,8 @@ dependencies = [
 name = "transaction"
 version = "0.0.1"
 dependencies = [
- "base",
  "persistence",
+ "reifydb_core",
  "serde",
  "serde_bytes",
  "test_each_file",

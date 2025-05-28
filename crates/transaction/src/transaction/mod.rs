@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
-use base::{Key, Row, RowIter, Value};
+use reifydb_core::{Key, Row, RowIter, Value};
 
 pub mod mvcc;
 pub mod svl;

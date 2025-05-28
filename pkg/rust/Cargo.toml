@@ -15,7 +15,7 @@ embedded_blocking = []
 
 [dependencies]
 auth = { workspace = true }
-base = { workspace = true }
+reifydb_core = { workspace = true }
 engine = { workspace = true }
 rql = { workspace = true }
 persistence = { workspace = true }

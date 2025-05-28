@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{Column, ColumnValues};
-use base::CowVec;
+use reifydb_core::CowVec;
 
 impl Column {
     pub fn extend(&mut self, other: Column) -> crate::Result<()> {

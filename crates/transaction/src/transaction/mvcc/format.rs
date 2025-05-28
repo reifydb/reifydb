@@ -10,8 +10,8 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::mvcc;
-pub use base::encoding::format::{Formatter, Raw};
-use base::encoding::{Key, bincode};
+pub use reifydb_core::encoding::format::{Formatter, Raw};
+use reifydb_core::encoding::{Key, bincode};
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 

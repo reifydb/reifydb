@@ -3,7 +3,7 @@
 
 use crate::evaluate::evaluate;
 use crate::execute::Executor;
-use base::expression::AliasExpression;
+use reifydb_core::expression::AliasExpression;
 use frame::{Column, Frame};
 
 impl Executor {

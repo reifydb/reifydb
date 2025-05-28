@@ -9,11 +9,11 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use crate::ast;
-use base::expression::{
+use reifydb_core::expression::{
     AddExpression, AliasExpression, CallExpression, ColumnExpression, Expression, IdentExpression,
     PrefixExpression, PrefixOperator, TupleExpression,
 };
-use base::{SortDirection, SortKey, StoreKind, Value, ValueKind};
+use reifydb_core::{SortDirection, SortKey, StoreKind, Value, ValueKind};
 pub use error::Error;
 use transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
 

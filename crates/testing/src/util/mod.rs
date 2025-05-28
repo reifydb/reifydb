@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use base::encoding::binary::decode_binary;
+use reifydb_core::encoding::binary::decode_binary;
 use regex::Regex;
 use std::error::Error;
 use std::ops::{Bound, RangeBounds};

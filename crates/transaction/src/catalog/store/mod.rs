@@ -5,8 +5,8 @@ pub use r#impl::Store;
 
 mod r#impl;
 
-use base::expression::Expression;
-use base::{StoreKind, ValueKind};
+use reifydb_core::expression::Expression;
+use reifydb_core::{StoreKind, ValueKind};
 
 #[derive(Debug, Clone)]
 pub struct Column {

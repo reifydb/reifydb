@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-base = { workspace = true }
+reifydb_core = { workspace = true }
 heed = { workspace = true }
 
 [dev-dependencies]

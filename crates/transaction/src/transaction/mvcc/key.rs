@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::mvcc::Version;
-use base::encoding;
+use reifydb_core::encoding;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
@@ -89,7 +89,7 @@ impl<'a> encoding::Key<'a> for KeyPrefix<'a> {}
 #[cfg(test)]
 mod tests {
     use crate::transaction::mvcc::{Key, KeyPrefix, Version};
-    use base::encoding::Key as _;
+    use reifydb_core::encoding::Key as _;
 
     #[test]
     fn key_prefix_next_version() {

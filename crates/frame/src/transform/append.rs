@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{ColumnValues, Frame};
-use base::{CowVec, Row, Value};
+use reifydb_core::{CowVec, Row, Value};
 
 pub trait Append<T> {
     fn append(&mut self, other: T) -> crate::Result<()>;
@@ -243,7 +243,7 @@ mod tests {
 
     mod row {
         use crate::{Append, Column, ColumnValues, Frame};
-        use base::Value;
+        use reifydb_core::Value;
 
         #[test]
         fn test_append_to_empty() {

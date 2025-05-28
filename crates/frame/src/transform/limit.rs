@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{Column, ColumnValues, Frame};
-use base::CowVec;
+use reifydb_core::CowVec;
 
 impl Frame {
     pub fn limit(&mut self, n: usize) -> crate::Result<()> {

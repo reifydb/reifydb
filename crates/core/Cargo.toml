@@ -1,5 +1,5 @@
 [package]
-name = "base"
+name = "reifydb_core"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
