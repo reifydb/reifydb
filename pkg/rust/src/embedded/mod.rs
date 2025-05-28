@@ -9,7 +9,7 @@ use reifydb_transaction::Transaction;
 use tokio::task::spawn_blocking;
 
 pub struct Embedded<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    reifydb_engine: Engine<P, T>,
+    engine: Engine<P, T>,
 }
 
 impl<P, T> Clone for Embedded<P, T>
@@ -18,7 +18,7 @@ where
     T: Transaction<P>,
 {
     fn clone(&self) -> Self {
-        Self { reifydb_engine: self.reifydb_engine.clone() }
+        Self { engine: self.engine.clone() }
     }
 }
 
@@ -26,7 +26,7 @@ impl<P: Persistence, T: Transaction<P>> Embedded<P, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
 
-        (Self { reifydb_engine: Engine::new(transaction) }, principal)
+        (Self { engine: Engine::new(transaction) }, principal)
     }
 }
 
@@ -34,7 +34,7 @@ impl<'a, P: Persistence + 'static, T: Transaction<P> + 'static> DB<'a> for Embed
     async fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();
-        let reifydb_engine = self.reifydb_engine.clone();
+        let reifydb_engine = self.engine.clone();
         spawn_blocking(move || {
             let result = reifydb_engine.tx_as(&principal, &rql).unwrap();
 
@@ -47,7 +47,7 @@ impl<'a, P: Persistence + 'static, T: Transaction<P> + 'static> DB<'a> for Embed
     async fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();
-        let reifydb_engine = self.reifydb_engine.clone();
+        let reifydb_engine = self.engine.clone();
         spawn_blocking(move || {
             let result = reifydb_engine.rx_as(&principal, &rql).unwrap();
             result
