@@ -4,8 +4,8 @@
 use reifydb::client::Client;
 use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb;
-use reifydb::reifydb_transaction::skipdb::transaction::serializable::SerializableDb;
+use reifydb::reifydb_transaction::mvcc::transaction::optimistic::OptimisticDb;
+use reifydb::reifydb_transaction::mvcc::transaction::serializable::SerializableDb;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::{ReifyDB, memory, mvcc, optimistic, serializable, svl};
 use reifydb_testing::network::free_local_socket;

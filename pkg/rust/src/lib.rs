@@ -150,13 +150,13 @@ pub fn mvcc<P: Persistence>(persistence: P) -> ::reifydb_transaction::old_mvcc::
 }
 
 pub fn serializable()
--> ::reifydb_transaction::skipdb::transaction::serializable::SerializableDb<Vec<u8>, Vec<u8>> {
-    ::reifydb_transaction::skipdb::transaction::serializable::SerializableDb::new()
+-> ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb<Vec<u8>, Vec<u8>> {
+    ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb::new()
 }
 
 pub fn optimistic()
--> ::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb<Vec<u8>, Vec<u8>> {
-    ::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb::new()
+-> ::reifydb_transaction::mvcc::transaction::optimistic::OptimisticDb<Vec<u8>, Vec<u8>> {
+    ::reifydb_transaction::mvcc::transaction::optimistic::OptimisticDb::new()
 }
 
 pub fn memory() -> Memory {

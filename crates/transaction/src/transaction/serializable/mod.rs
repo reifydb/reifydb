@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::catalog::{Catalog, Schema};
-use crate::skipdb::conflict::BTreeCm;
-use crate::skipdb::transaction::ReadTransaction;
-use crate::skipdb::transaction::serializable::{SerializableDb, SerializableTransaction};
+use crate::mvcc::conflict::BTreeCm;
+use crate::mvcc::transaction::ReadTransaction;
+use crate::mvcc::transaction::serializable::{SerializableDb, SerializableTransaction};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};

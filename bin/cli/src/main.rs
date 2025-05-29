@@ -7,7 +7,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 use reifydb::reifydb_persistence::Memory;
-use reifydb::reifydb_transaction::skipdb::transaction::serializable::SerializableDb;
+use reifydb::reifydb_transaction::mvcc::transaction::serializable::SerializableDb;
 use reifydb::{DB, ReifyDB, serializable};
 
 fn main() {

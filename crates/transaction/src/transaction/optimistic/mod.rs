@@ -2,14 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::catalog::{Catalog, Schema};
-use crate::skipdb::conflict::HashCm;
-use crate::skipdb::transaction::ReadTransaction;
+use crate::mvcc::conflict::HashCm;
+use crate::mvcc::transaction::ReadTransaction;
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
 use std::hash::RandomState;
-use crate::skipdb::transaction::optimistic::{OptimisticDb, OptimisticTransaction};
+use crate::mvcc::transaction::optimistic::{OptimisticDb, OptimisticTransaction};
 
 impl<P: Persistence> Transaction<P> for OptimisticDb<Vec<u8>, Vec<u8>, RandomState> {
     type Rx = ReadTransaction<Vec<u8>, Vec<u8>, OptimisticDb<Vec<u8>, Vec<u8>>, HashCm<Vec<u8>>>;

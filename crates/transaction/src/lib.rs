@@ -18,7 +18,7 @@ pub use transaction::{InsertResult, Rx, Transaction, Tx, old_mvcc, svl};
 
 mod catalog;
 mod error;
-pub mod skipdb;
+pub mod mvcc;
 mod transaction;
 
 pub type Result<T> = std::result::Result<T, Error>;

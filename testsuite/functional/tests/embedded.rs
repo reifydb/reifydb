@@ -13,8 +13,8 @@ use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
-use reifydb::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb;
-use reifydb::reifydb_transaction::skipdb::transaction::serializable::SerializableDb;
+use reifydb::reifydb_transaction::mvcc::transaction::optimistic::OptimisticDb;
+use reifydb::reifydb_transaction::mvcc::transaction::serializable::SerializableDb;
 
 pub struct Runner<P: Persistence + 'static, T: Transaction<P> + 'static> {
     reifydb_engine: Embedded<P, T>,
