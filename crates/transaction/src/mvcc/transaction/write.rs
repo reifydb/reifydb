@@ -94,8 +94,12 @@ where
     C: Conflict<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
 {
-    /// Insert a key-value pair to the transaction.
-    pub fn insert(&mut self, key: K, value: V) -> Result<(), TransactionError> {
+    /// Set a key-value pair to the transaction.
+    pub fn set(&mut self, key: K, value: V) -> Result<(), TransactionError> {
+        if self.discarded {
+            return Err(TransactionError::Discarded);
+        }
+
         self.insert_with_in(key, value)
     }
 
@@ -105,6 +109,9 @@ where
     /// reads happening before this timestamp would be unaffected. Any reads after
     /// this commit would see the deletion.
     pub fn remove(&mut self, key: K) -> Result<(), TransactionError> {
+        if self.discarded {
+            return Err(TransactionError::Discarded);
+        }
         self.modify(Entry { data: EntryData::Remove(key), version: 0 })
     }
 
@@ -308,8 +315,11 @@ where
     P: PendingWrites<Key = K, Value = V>,
 {
     fn insert_with_in(&mut self, key: K, value: V) -> Result<(), TransactionError> {
-        let ent = Entry { data: EntryData::Insert { key, value }, version: self.version };
+        if self.discarded {
+            return Err(TransactionError::Discarded);
+        }
 
+        let ent = Entry { data: EntryData::Set { key, value }, version: self.version };
         self.modify(ent)
     }
 
@@ -355,6 +365,10 @@ where
     P: PendingWrites<Key = K, Value = V>,
 {
     fn commit_entries(&mut self) -> Result<(u64, Vec<Entry<K, V>>), TransactionError> {
+        if self.discarded {
+            return Err(TransactionError::Discarded);
+        }
+
         // Ensure that the order in which we get the commit timestamp is the same as
         // the order in which we push these updates to the write channel. So, we
         // acquire a writeChLock before getting a commit timestamp, and only release
@@ -409,8 +423,6 @@ impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
     /// Discards a created transaction. This method is very important and must be called. `commit*`
     /// methods calls this internally, however, calling this multiple times doesn't cause any issues. So,
     /// this can safely be called via a defer right when transaction is created.
-    ///
-    /// NOTE: If any operations are run on a discarded transaction, [`TransactionError::Discarded`] is returned.
     pub fn discard(&mut self) {
         if self.discarded {
             return;
@@ -455,7 +467,7 @@ mod tests {
         wtm.mark_read(&two);
         wtm.mark_conflict(&one);
 
-        wtm.insert(five.clone(), 5).unwrap();
+        wtm.set(five.clone(), 5).unwrap();
     }
 
     struct TestConflict<K> {

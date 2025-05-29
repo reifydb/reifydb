@@ -160,7 +160,7 @@ where
     /// Insert a new key-value pair.
 
     pub fn insert(&mut self, key: K, value: V) -> Result<(), TransactionError> {
-        self.wtm.insert(key, value)
+        self.wtm.set(key, value)
     }
 
     /// Remove a key.

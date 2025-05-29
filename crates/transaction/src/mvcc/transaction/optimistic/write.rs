@@ -156,7 +156,7 @@ where
 
     /// Insert a new key-value pair.
     pub fn set(&mut self, key: K, value: V) -> Result<(), TransactionError> {
-        self.tx.insert(key, value)
+        self.tx.set(key, value)
     }
 
     /// Remove a key.

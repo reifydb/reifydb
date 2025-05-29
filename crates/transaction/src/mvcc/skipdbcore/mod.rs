@@ -79,7 +79,7 @@ where
         for ent in entries {
             let version = ent.version();
             match ent.data {
-                EntryData::Insert { key, value } => {
+                EntryData::Set { key, value } => {
                     let ent = self.mem_table.get_or_insert_with(key, || Values::new());
                     let val = ent.value();
                     val.lock();

@@ -93,7 +93,7 @@ pub mod types {
     #[derive(Debug, PartialEq, Eq, Hash)]
     pub enum EntryData<K, V> {
         /// Insert the key and the value.
-        Insert {
+        Set {
             /// key of the entry.
             key: K,
             /// value of the entry.
@@ -120,7 +120,7 @@ pub mod types {
 
         pub const fn key(&self) -> &K {
             match self {
-                Self::Insert { key, .. } => key,
+                Self::Set { key, .. } => key,
                 Self::Remove(key) => key,
             }
         }
@@ -129,7 +129,7 @@ pub mod types {
 
         pub const fn value(&self) -> Option<&V> {
             match self {
-                Self::Insert { value, .. } => Some(value),
+                Self::Set { value, .. } => Some(value),
                 Self::Remove(_) => None,
             }
         }
@@ -142,8 +142,8 @@ pub mod types {
     {
         fn clone(&self) -> Self {
             match self {
-                Self::Insert { key, value } => {
-                    Self::Insert { key: key.clone(), value: value.clone() }
+                Self::Set { key, value } => {
+                    Self::Set { key: key.clone(), value: value.clone() }
                 }
                 Self::Remove(key) => Self::Remove(key.clone()),
             }
@@ -207,7 +207,7 @@ pub mod types {
 
         pub fn key(&self) -> &K {
             match &self.data {
-                EntryData::Insert { key, .. } => key,
+                EntryData::Set { key, .. } => key,
                 EntryData::Remove(key) => key,
             }
         }
@@ -217,7 +217,7 @@ pub mod types {
             let Entry { data, version } = self;
 
             let (key, value) = match data {
-                EntryData::Insert { key, value } => (key, Some(value)),
+                EntryData::Set { key, value } => (key, Some(value)),
                 EntryData::Remove(key) => (key, None),
             };
             (key, EntryValue { value, version })
@@ -228,7 +228,7 @@ pub mod types {
             let EntryValue { value, version } = value;
             Entry {
                 data: match value {
-                    Some(value) => EntryData::Insert { key, value },
+                    Some(value) => EntryData::Set { key, value },
                     None => EntryData::Remove(key),
                 },
                 version,
