@@ -9,19 +9,10 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-//! `Watermark` and `Closer` implementation for implementing transaction.
-// #![allow(clippy::type_complexity)]
-// #![deny(warnings, missing_docs)]
-// #![cfg_attr(docsrs, feature(doc_cfg))]
-// #![cfg_attr(docsrs, allow(unused_attributes))]
-
-extern crate alloc;
-extern crate std;
+pub use closer::Closer;
+pub use error::WaterMarkError;
+pub use watermark::WaterMark;
 
 mod closer;
-
-pub use closer::Closer;
-
+mod error;
 mod watermark;
-
-pub use watermark::{WaterMark, WaterMarkError};

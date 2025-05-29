@@ -20,7 +20,7 @@ use crate::skipdb::skipdbcore::iter::TransactionIter;
 use crate::skipdb::skipdbcore::rev_iter::WriteTransactionRevIter;
 use crate::skipdb::skipdbcore::rev_range::WriteTransactionRevRange;
 use crate::skipdb::txn::error::WtmError;
-use crate::skipdb::wmark::Closer;
+use crate::skipdb::watermark::Closer;
 use super::*;
 
 mod write_skew;

@@ -13,4 +13,4 @@ pub mod skipdb;
 pub mod skipdbcore;
 pub mod txn;
 pub mod txncore;
-pub mod wmark;
+pub mod watermark;

@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use crate::skipdb::wmark::Closer;
+use crate::skipdb::watermark::Closer;
 use rand::Rng;
 use crate::skipdb::skipdbcore::iter::TransactionIter;
 use crate::skipdb::skipdbcore::rev_iter::WriteTransactionRevIter;

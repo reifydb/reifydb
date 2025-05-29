@@ -15,7 +15,7 @@ use smallvec_wrapper::TinyVec;
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard};
 
-use crate::skipdb::wmark::{Closer, WaterMark};
+use crate::skipdb::watermark::{Closer, WaterMark};
 
 #[derive(Debug)]
 pub(super) struct OracleInner<C> {

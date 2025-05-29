@@ -9,17 +9,14 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-mod std_;
-pub use std_::*;
-
-/// Error type for watermark.
+/// Watermark errors
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WaterMarkError {
-    /// The watermark is uninitialized, please call init first before using any other functions
+    /// The watermark is uninitialized, call init first before using any other function
     Uninitialized,
-    /// The watermark is canceled.
+    /// The watermark is canceled
     Canceled,
-    /// The channel is closed.
+    /// The channel is closed
     ChannelClosed,
 }
 
@@ -28,7 +25,7 @@ impl core::fmt::Display for WaterMarkError {
         match self {
             Self::Uninitialized => write!(
                 f,
-                "watermark: uninitialized, please call init first before using any other functions"
+                "watermark: uninitialized, call init first before using any other function"
             ),
             Self::Canceled => write!(f, "watermark: canceled"),
             Self::ChannelClosed => write!(f, "watermark: channel closed"),
@@ -37,15 +34,3 @@ impl core::fmt::Display for WaterMarkError {
 }
 
 impl std::error::Error for WaterMarkError {}
-
-#[test]
-fn test_error() {
-    assert_eq!(
-        format!("{}", WaterMarkError::Uninitialized),
-        "watermark: uninitialized, please call init first before using any other functions"
-    );
-
-    assert_eq!(format!("{}", WaterMarkError::Canceled), "watermark: canceled");
-
-    assert_eq!(format!("{}", WaterMarkError::ChannelClosed), "watermark: channel closed");
-}

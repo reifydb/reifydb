@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-use crate::skipdb::wmark::Closer;
+use crate::skipdb::watermark::Closer;
 use rand::Rng;
 
 use super::*;
