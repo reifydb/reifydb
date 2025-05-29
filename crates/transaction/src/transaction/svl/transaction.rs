@@ -11,17 +11,17 @@ use reifydb_persistence::Persistence;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-pub struct Transaction<P: Persistence> {
+pub struct TransactionRx<P: Persistence> {
     reifydb_engine: ReadGuard<SvlInner<P>>,
 }
 
-impl<P: Persistence> Transaction<P> {
+impl<P: Persistence> TransactionRx<P> {
     pub fn new(reifydb_engine: ReadGuard<SvlInner<P>>) -> Self {
         Self { reifydb_engine }
     }
 }
 
-impl<P: Persistence> crate::Rx for Transaction<P> {
+impl<P: Persistence> crate::Rx for TransactionRx<P> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -50,18 +50,18 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
     }
 }
 
-pub struct TransactionMut<P: Persistence> {
+pub struct TransactionTx<P: Persistence> {
     svl: WriteGuard<SvlInner<P>>,
     log: RefCell<HashMap<(String, String), Vec<Row>>>,
 }
 
-impl<P: Persistence> TransactionMut<P> {
+impl<P: Persistence> TransactionTx<P> {
     pub fn new(svl: WriteGuard<SvlInner<P>>) -> Self {
         Self { svl, log: RefCell::new(HashMap::new()) }
     }
 }
 
-impl<P: Persistence> crate::Rx for TransactionMut<P> {
+impl<P: Persistence> crate::Rx for TransactionTx<P> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -90,7 +90,7 @@ impl<P: Persistence> crate::Rx for TransactionMut<P> {
     }
 }
 
-impl<P: Persistence> crate::Tx for TransactionMut<P> {
+impl<P: Persistence> crate::Tx for TransactionTx<P> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::transaction::svl::lock::RwLock;
-use crate::transaction::svl::transaction::{Transaction, TransactionMut};
+use crate::transaction::svl::transaction::{TransactionRx, TransactionTx};
 pub use error::Error;
 
 mod error;
@@ -24,16 +24,16 @@ impl<P: ::reifydb_persistence::Persistence> Svl<P> {
 }
 
 impl<P: reifydb_persistence::Persistence> crate::Transaction<P> for Svl<P> {
-    type Rx = Transaction<P>;
-    type Tx = TransactionMut<P>;
+    type Rx = TransactionRx<P>;
+    type Tx = TransactionTx<P>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         let guard = self.inner.read();
-        Ok(Transaction::new(guard))
+        Ok(TransactionRx::new(guard))
     }
 
     fn begin(&self) -> crate::Result<Self::Tx> {
         let guard = self.inner.write();
-        Ok(TransactionMut::new(guard))
+        Ok(TransactionTx::new(guard))
     }
 }
