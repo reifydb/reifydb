@@ -11,18 +11,6 @@
 
 use core::{borrow::Borrow, hash::Hash, ops::RangeBounds};
 
-mod hash_cm;
-#[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
-pub use hash_cm::*;
-
-mod btree_cm;
-#[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
-pub use btree_cm::*;
-
-mod btree_pwm;
-pub use btree_pwm::*;
-
-mod hash_pwm;
 use crate::skipdb::conflict::{
     Cm, CmComparable, CmComparableRange, CmEquivalent, CmEquivalentRange, CmIter, CmRange,
 };

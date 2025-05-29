@@ -9,12 +9,12 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::skipdb::txncore::sync::Marker;
 use either::Either;
 
 use super::*;
 
 use crate::skipdb::conflict::Cm;
+use crate::skipdb::marker::Marker;
 use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 

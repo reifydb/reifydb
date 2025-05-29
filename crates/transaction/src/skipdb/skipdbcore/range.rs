@@ -9,12 +9,12 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::skipdb::txncore::sync::Marker;
 use either::Either;
 
 use super::*;
 
 use crate::skipdb::conflict::Cm;
+use crate::skipdb::marker::Marker;
 use core::cmp;
 use crossbeam_skiplist::map::Range as MapRange;
 
@@ -40,10 +40,10 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let ent = self.range.next()?;
-            if let Some(version) =
-                ent.value()
-                    .upper_bound(Bound::Included(&self.version))
-                    .and_then(|ent| if ent.value().is_some() { Some(*ent.key()) } else { None })
+            if let Some(version) = ent
+                .value()
+                .upper_bound(Bound::Included(&self.version))
+                .and_then(|ent| if ent.value().is_some() { Some(*ent.key()) } else { None })
             {
                 return Some(CommittedRef { version, ent }.into());
             }

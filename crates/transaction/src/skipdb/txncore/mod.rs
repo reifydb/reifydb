@@ -106,14 +106,12 @@ pub mod types {
     }
 
     impl<K: Ord, V: Eq> PartialOrd for EntryData<K, V> {
-
         fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
             Some(self.cmp(other))
         }
     }
 
     impl<K: Ord, V: Eq> Ord for EntryData<K, V> {
-
         fn cmp(&self, other: &Self) -> cmp::Ordering {
             self.key().cmp(other.key())
         }
@@ -164,14 +162,12 @@ pub mod types {
     }
 
     impl<K: Ord, V: Eq> PartialOrd for Entry<K, V> {
-
         fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
             Some(self.cmp(other))
         }
     }
 
     impl<K: Ord, V: Eq> Ord for Entry<K, V> {
-
         fn cmp(&self, other: &Self) -> cmp::Ordering {
             self.data
                 .key()
@@ -263,5 +259,3 @@ pub mod types {
 
 /// Errors
 pub mod error;
-
-pub mod sync;

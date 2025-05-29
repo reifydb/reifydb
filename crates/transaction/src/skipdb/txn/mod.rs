@@ -33,10 +33,10 @@ use oracle::*;
 mod read;
 pub use read::*;
 mod write;
-pub use write::*;
 use crate::skipdb::conflict::Cm;
 use crate::skipdb::pending::Pwm;
-pub use crate::skipdb::txncore::{sync::*, types::*};
+pub use crate::skipdb::txncore::types::*;
+pub use write::*;
 
 /// A multi-writer multi-reader MVCC, ACID, Serializable Snapshot Isolation transaction manager.
 pub struct Tm<K, V, C, P> {
@@ -80,7 +80,6 @@ where
 }
 
 impl<K, V, C, P> Tm<K, V, C, P> {
-
     /// Create a new transaction manager with the given name (just for logging or debugging, use your crate name is enough)
     /// and the current version (provided by the database).
     pub fn new(name: &str, current_version: u64) -> Self {

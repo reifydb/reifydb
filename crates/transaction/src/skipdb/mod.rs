@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 pub mod conflict;
+pub mod marker;
 pub mod pending;
 pub mod skipdb;
 pub mod skipdbcore;

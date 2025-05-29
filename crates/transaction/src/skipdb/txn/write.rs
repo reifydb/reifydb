@@ -13,6 +13,7 @@ use self::error::WtmError;
 
 use super::*;
 use crate::skipdb::conflict::{CmComparable, CmEquivalent};
+use crate::skipdb::marker::Marker;
 use crate::skipdb::pending::{PwmComparable, PwmEquivalent};
 use core::{borrow::Borrow, hash::Hash};
 
