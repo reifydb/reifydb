@@ -1419,7 +1419,6 @@ version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
- "either",
  "log",
  "rand 0.9.1",
  "reifydb_core",

@@ -14,6 +14,7 @@ pub use row_meta::RowMeta;
 pub use value::{Value, ValueKind};
 
 mod cowvec;
+pub mod either;
 pub mod encoding;
 mod error;
 pub mod expression;

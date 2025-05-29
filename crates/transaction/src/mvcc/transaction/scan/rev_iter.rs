@@ -12,17 +12,16 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use either::Either;
-
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
 use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
+use crate::mvcc::version::types::EntryValue;
+use reifydb_core::either::Either;
 use std::collections::btree_map::Iter as BTreeMapIter;
 use std::ops::Bound;
-use crate::mvcc::version::types::EntryValue;
 
 /// An iterator over the entries of the database.
 pub struct RevIter<'a, K, V> {

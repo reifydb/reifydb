@@ -12,8 +12,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use either::Either;
-
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
@@ -22,6 +20,7 @@ use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;
 
+use reifydb_core::either::Either;
 use std::collections::btree_map::Iter as BTreeMapIter;
 
 /// An iterator over the entries of the database.

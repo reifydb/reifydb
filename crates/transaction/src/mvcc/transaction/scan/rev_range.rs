@@ -12,18 +12,17 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use either::Either;
-
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use core::{cmp, iter::Rev};
-use std::borrow::Borrow;
 use crossbeam_skiplist::map::Range as MapRange;
+use std::borrow::Borrow;
 
-use std::collections::btree_map::Range as BTreeMapRange;
-use std::ops::{Bound, RangeBounds};
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
 use crate::mvcc::version::types::EntryValue;
+use reifydb_core::either::Either;
+use std::collections::btree_map::Range as BTreeMapRange;
+use std::ops::{Bound, RangeBounds};
 
 /// An iterator over a subset of entries of the database.
 pub struct RevRange<'a, Q, R, K, V>

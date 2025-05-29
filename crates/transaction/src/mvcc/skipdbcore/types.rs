@@ -13,7 +13,7 @@ use core::sync::atomic::{AtomicU8, Ordering};
 
 use crossbeam_skiplist::{SkipMap, map::Entry as MapEntry};
 
-use either::Either;
+use reifydb_core::either::Either;
 
 const UNINITIALIZED: u8 = 0;
 const LOCKED: u8 = 1;
