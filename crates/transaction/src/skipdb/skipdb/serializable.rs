@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::skipdb::skipdbcore::types::Values;
-use crate::skipdb::txn::BTreeCm;
 
 use super::*;
 
@@ -19,6 +18,7 @@ pub use optimistic::*;
 
 #[allow(clippy::module_inception)]
 mod serializable;
+use crate::skipdb::conflict::BTreeCm;
 pub use serializable::*;
 
 struct Inner<K, V> {

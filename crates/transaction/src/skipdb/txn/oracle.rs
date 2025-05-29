@@ -9,13 +9,12 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::skipdb::txncore::sync::Cm;
+use crate::skipdb::conflict::Cm;
+use crate::skipdb::watermark::{Closer, WaterMark};
 use core::ops::AddAssign;
 use smallvec_wrapper::TinyVec;
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard};
-
-use crate::skipdb::watermark::{Closer, WaterMark};
 
 #[derive(Debug)]
 pub(super) struct OracleInner<C> {

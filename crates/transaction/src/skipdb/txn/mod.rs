@@ -34,7 +34,7 @@ mod read;
 pub use read::*;
 mod write;
 pub use write::*;
-
+use crate::skipdb::conflict::Cm;
 pub use crate::skipdb::txncore::{sync::*, types::*};
 
 /// A multi-writer multi-reader MVCC, ACID, Serializable Snapshot Isolation transaction manager.

@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::catalog::{Catalog, Schema};
+use crate::skipdb::conflict::BTreeCm;
 use crate::skipdb::skipdb::ReadTransaction;
 use crate::skipdb::skipdb::serializable::{SerializableDb, SerializableTransaction};
-use crate::skipdb::txn::BTreeCm;
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
@@ -116,7 +116,7 @@ impl crate::Tx for SerializableTransaction<Vec<u8>, Vec<u8>> {
                 key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
                 bincode::serialize(row),
             )
-                .unwrap();
+            .unwrap();
         }
         // let mut persistence = self.persistence.lock().unwrap();
         // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();

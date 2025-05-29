@@ -10,12 +10,13 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
+use crate::skipdb::conflict::{HashCm, HashCmOptions};
 use crate::skipdb::skipdbcore::iter::TransactionIter;
 use crate::skipdb::skipdbcore::range::TransactionRange;
 use crate::skipdb::skipdbcore::rev_iter::WriteTransactionRevIter;
 use crate::skipdb::skipdbcore::rev_range::WriteTransactionRevRange;
 use crate::skipdb::skipdbcore::types::Ref;
-use crate::skipdb::txn::{HashCmOptions, PwmComparableRange, error::WtmError};
+use crate::skipdb::txn::{PwmComparableRange, error::WtmError};
 use std::convert::Infallible;
 use std::fmt::Debug;
 
@@ -30,7 +31,6 @@ where
     K: Ord + Hash + Eq,
     S: BuildHasher + Clone,
 {
-
     pub(super) fn new(db: OptimisticDb<K, V, S>, cap: Option<usize>) -> Self {
         let wtm = db
             .inner

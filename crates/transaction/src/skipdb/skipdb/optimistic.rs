@@ -14,6 +14,7 @@ use crate::skipdb::skipdbcore::types::Values;
 use std::{collections::hash_map::RandomState, hash::Hash};
 
 mod write;
+use crate::skipdb::conflict::HashCm;
 use crate::skipdb::skipdbcore::{AsSkipCore, SkipCore};
 pub use write::*;
 
@@ -72,7 +73,6 @@ impl<K, V> Default for OptimisticDb<K, V> {
 }
 
 impl<K, V> OptimisticDb<K, V> {
-
     /// Creates a new `OptimisticDb` with the given options.
     pub fn new() -> Self {
         Self::with_hasher(Default::default())

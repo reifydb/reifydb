@@ -11,9 +11,9 @@
 
 use self::error::WtmError;
 
-use core::{borrow::Borrow, hash::Hash};
-
 use super::*;
+use crate::skipdb::conflict::{CmComparable, CmEquivalent};
+use core::{borrow::Borrow, hash::Hash};
 
 /// Wtm is used to perform writes to the database. It is created by
 /// calling [`Tm::write`].
@@ -919,9 +919,9 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, convert::Infallible, marker::PhantomData};
-
     use super::*;
+    use crate::skipdb::conflict::HashCm;
+    use std::{collections::BTreeSet, convert::Infallible, marker::PhantomData};
 
     #[test]
     fn wtm() {
