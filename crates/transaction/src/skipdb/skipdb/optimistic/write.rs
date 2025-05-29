@@ -30,7 +30,7 @@ where
     K: Ord + Hash + Eq,
     S: BuildHasher + Clone,
 {
-    #[inline]
+
     pub(super) fn new(db: OptimisticDb<K, V, S>, cap: Option<usize>) -> Self {
         let wtm = db
             .inner
@@ -62,7 +62,7 @@ where
     ///    there is a conflict, an error will be returned and the callback will not
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
-    #[inline]
+
     pub fn commit(&mut self) -> Result<(), WtmError<Infallible, Infallible, Infallible>> {
         self.wtm.commit(|operations| {
             self.db.inner.map.apply(operations);
@@ -92,7 +92,7 @@ where
     ///    If there is a conflict, an error will be returned immediately and the callback will not
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
-    #[inline]
+
     pub fn commit_with_callback<E, R>(
         &mut self,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
@@ -120,19 +120,19 @@ where
     S: BuildHasher,
 {
     /// Returns the read version of the transaction.
-    #[inline]
+
     pub fn version(&self) -> u64 {
         self.wtm.version()
     }
 
     /// Rollback the transaction.
-    #[inline]
+
     pub fn rollback(&mut self) -> Result<(), TransactionError<Infallible, Infallible>> {
         self.wtm.rollback()
     }
 
     /// Returns true if the given key exists in the database.
-    #[inline]
+
     pub fn contains_key<Q>(
         &mut self,
         key: &Q,
@@ -150,7 +150,7 @@ where
     }
 
     /// Get a value from the database.
-    #[inline]
+
     pub fn get<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
@@ -173,7 +173,7 @@ where
     }
 
     /// Insert a new key-value pair.
-    #[inline]
+
     pub fn insert(
         &mut self,
         key: K,
@@ -183,13 +183,13 @@ where
     }
 
     /// Remove a key.
-    #[inline]
+
     pub fn remove(&mut self, key: K) -> Result<(), TransactionError<Infallible, Infallible>> {
         self.wtm.remove(key)
     }
 
     /// Iterate over the entries of the write transaction.
-    #[inline]
+
     pub fn iter(
         &mut self,
     ) -> Result<TransactionIter<'_, K, V, HashCm<K, S>>, TransactionError<Infallible, Infallible>>
@@ -203,7 +203,7 @@ where
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
-    #[inline]
+
     pub fn iter_rev(
         &mut self,
     ) -> Result<
@@ -219,7 +219,7 @@ where
     }
 
     /// Returns an iterator over the subset of entries of the database.
-    #[inline]
+
     pub fn range<'a, Q, R>(
         &'a mut self,
         range: R,
@@ -243,7 +243,7 @@ where
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    #[inline]
+
     pub fn range_rev<'a, Q, R>(
         &'a mut self,
         range: R,

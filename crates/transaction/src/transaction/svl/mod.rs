@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::catalog_init;
 use crate::transaction::svl::lock::RwLock;
 use crate::transaction::svl::transaction::{Transaction, TransactionMut};
 pub use error::Error;
@@ -20,7 +19,6 @@ pub struct SvlInner<P: ::reifydb_persistence::Persistence> {
 
 impl<P: ::reifydb_persistence::Persistence> Svl<P> {
     pub fn new(persistence: P) -> Self {
-        catalog_init();
         Self { inner: RwLock::new(SvlInner { persistence }) }
     }
 }

@@ -2,9 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::embedded::Embedded;
-use reifydb::reifydb_persistence::{Lmdb, Persistence};
+use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl};
+use reifydb::reifydb_transaction::skipdb::skipdb::optimistic::OptimisticDb;
+use reifydb::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb;
+use reifydb::{DB, Principal, ReifyDB, memory, mvcc, optimistic, serializable, svl};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -64,11 +66,30 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner f
     }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_mvcc_memory => test_mvcc_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_serializable_memory => test_serializable_memory }
+test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_optimistic_memory => test_optimistic_memory }
 test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_svl_memory => test_svl_memory }
+
+test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_mvcc_memory => test_mvcc_memory }
 
 test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_svl_lmdb => test_svl_lmdb }
 test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_mvcc_lmdb => test_mvcc_lmdb }
+
+fn test_serializable_memory(path: &Path) {
+    testscript::run_path(
+        &mut Runner::<Memory, SerializableDb<Vec<u8>, Vec<u8>>>::new(serializable()),
+        path,
+    )
+    .expect("test failed")
+}
+
+fn test_optimistic_memory(path: &Path) {
+    testscript::run_path(
+        &mut Runner::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>::new(optimistic()),
+        path,
+    )
+    .expect("test failed")
+}
 
 fn test_mvcc_memory(path: &Path) {
     testscript::run_path(&mut Runner::new(mvcc(memory())), path).expect("test failed")

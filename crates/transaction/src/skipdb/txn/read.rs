@@ -24,7 +24,7 @@ pub struct Rtm<K, V, C, P> {
 
 impl<K, V, C, P> Rtm<K, V, C, P> {
   /// Returns the version of this read transaction.
-  #[inline]
+
   pub const fn version(&self) -> u64 {
     self.read_ts
   }

@@ -60,14 +60,14 @@ pub struct SkipCore<K, V> {
 }
 
 impl<K, V> Default for SkipCore<K, V> {
-	#[inline]
+
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
 impl<K, V> SkipCore<K, V> {
-	#[inline]
+
 	pub fn new() -> Self {
 		Self {
 			map: SkipMap::new(),
@@ -75,7 +75,7 @@ impl<K, V> SkipCore<K, V> {
 		}
 	}
 
-	#[inline]
+
 	#[doc(hidden)]
 	#[allow(private_interfaces)]
 	pub fn __by_ref(&self) -> &SkipMap<K, Values<V>> {

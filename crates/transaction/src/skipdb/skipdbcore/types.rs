@@ -88,7 +88,7 @@ pub struct Entry<'a, K, V> {
 }
 
 impl<K, V> Clone for Entry<'_, K, V> {
-  #[inline]
+
   fn clone(&self) -> Self {
     Self {
       ent: self.ent.clone(),
@@ -100,19 +100,19 @@ impl<K, V> Clone for Entry<'_, K, V> {
 
 impl<K, V> Entry<'_, K, V> {
   /// Get the value of the entry.
-  #[inline]
+
   pub fn value(&self) -> Option<&V> {
     self.ent.value().as_ref()
   }
 
   /// Get the key of the entry.
-  #[inline]
+
   pub const fn key(&self) -> &K {
     self.key
   }
 
   /// Get the version of the entry.
-  #[inline]
+
   pub const fn version(&self) -> u64 {
     self.version
   }
@@ -134,7 +134,7 @@ impl<K, V: core::fmt::Display> core::fmt::Display for ValueRef<'_, K, V> {
 }
 
 impl<K, V> Clone for ValueRef<'_, K, V> {
-  #[inline]
+
   fn clone(&self) -> Self {
     Self(self.0.clone())
   }
@@ -143,7 +143,7 @@ impl<K, V> Clone for ValueRef<'_, K, V> {
 impl<K, V> core::ops::Deref for ValueRef<'_, K, V> {
   type Target = V;
 
-  #[inline]
+
   fn deref(&self) -> &Self::Target {
     match &self.0 {
       Either::Left(v) => v,
@@ -156,7 +156,7 @@ impl<K, V> core::ops::Deref for ValueRef<'_, K, V> {
 
 impl<K, V> ValueRef<'_, K, V> {
   /// Returns `true` if the value was commited.
-  #[inline]
+
   pub const fn is_committed(&self) -> bool {
     matches!(self.0, Either::Right(_))
   }
@@ -166,7 +166,7 @@ impl<K, V> PartialEq<V> for ValueRef<'_, K, V>
 where
   V: PartialEq,
 {
-  #[inline]
+
   fn eq(&self, other: &V) -> bool {
     core::ops::Deref::deref(self).eq(other)
   }
@@ -176,7 +176,7 @@ impl<K, V> PartialEq<&V> for ValueRef<'_, K, V>
 where
   V: PartialEq,
 {
-  #[inline]
+
   fn eq(&self, other: &&V) -> bool {
     core::ops::Deref::deref(self).eq(other)
   }

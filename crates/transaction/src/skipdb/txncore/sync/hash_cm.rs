@@ -34,7 +34,7 @@ pub struct HashCmOptions<S = DefaultHasher> {
 
 impl<S> HashCmOptions<S> {
   /// Creates a new `HashCmOptions` with the given hasher.
-  #[inline]
+
   pub const fn new(hasher: S) -> Self {
     Self {
       hasher,
@@ -43,7 +43,7 @@ impl<S> HashCmOptions<S> {
   }
 
   /// Creates a new `HashCmOptions` with the given hasher and capacity.
-  #[inline]
+
   pub const fn with_capacity(hasher: S, capacity: usize) -> Self {
     Self {
       hasher,
@@ -78,7 +78,7 @@ where
   type Key = K;
   type Options = HashCmOptions<S>;
 
-  #[inline]
+
   fn new(options: Self::Options) -> Result<Self, Self::Error> {
     Ok(match options.capacity {
       Some(capacity) => Self {
@@ -94,19 +94,19 @@ where
     })
   }
 
-  #[inline]
+
   fn mark_read(&mut self, key: &K) {
     let fp = self.conflict_keys.hasher().hash_one(key);
     self.reads.push(Read::Single(fp));
   }
 
-  #[inline]
+
   fn mark_conflict(&mut self, key: &Self::Key) {
     let fp = self.conflict_keys.hasher().hash_one(key);
     self.conflict_keys.insert(fp);
   }
 
-  #[inline]
+
   fn has_conflict(&self, other: &Self) -> bool {
     if self.reads.is_empty() {
       return false;
@@ -131,7 +131,7 @@ where
     false
   }
 
-  #[inline]
+
   fn rollback(&mut self) -> Result<(), Self::Error> {
     self.reads.clear();
     self.conflict_keys.clear();
@@ -154,7 +154,7 @@ where
   S: BuildHasher,
   K: Hash + Eq,
 {
-  #[inline]
+
   fn mark_read_equivalent<Q>(&mut self, key: &Q)
   where
     Self::Key: core::borrow::Borrow<Q>,
@@ -164,7 +164,7 @@ where
     self.reads.push(Read::Single(fp));
   }
 
-  #[inline]
+
   fn mark_conflict_equivalent<Q>(&mut self, key: &Q)
   where
     Self::Key: core::borrow::Borrow<Q>,

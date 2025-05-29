@@ -50,13 +50,13 @@ impl<C: Error, P: Error> core::fmt::Display for TransactionError<C, P> {
 
 impl<C: Error, P: Error> TransactionError<C, P> {
   /// Create a new error from the database error.
-  #[inline]
+
   pub const fn conflict(err: C) -> Self {
     Self::Cm(err)
   }
 
   /// Create a new error from the transaction error.
-  #[inline]
+
   pub const fn pending(err: P) -> Self {
     Self::Pwm(err)
   }
@@ -91,7 +91,7 @@ impl<C: Error, P: Error, E: Error> core::fmt::Display for WtmError<C, P, E> {
 impl<C: Error, P: Error, E: Error> Error for WtmError<C, P, E> {}
 
 impl<C: Error, P: Error, E: Error> From<TransactionError<C, P>> for WtmError<C, P, E> {
-  #[inline]
+
   fn from(err: TransactionError<C, P>) -> Self {
     Self::Transaction(err)
   }
@@ -99,13 +99,13 @@ impl<C: Error, P: Error, E: Error> From<TransactionError<C, P>> for WtmError<C, 
 
 impl<C: Error, P: Error, E: Error> WtmError<C, P, E> {
   /// Create a new error from the transaction error.
-  #[inline]
+
   pub const fn transaction(err: TransactionError<C, P>) -> Self {
     Self::Transaction(err)
   }
 
   /// Create a new error from the commit error.
-  #[inline]
+
   pub const fn commit(err: E) -> Self {
     Self::Commit(err)
   }

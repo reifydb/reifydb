@@ -12,7 +12,6 @@ use reifydb::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb;
 use reifydb::{serializable, ReifyDB, DB};
 
 fn main() {
-    catalog_init();
 
     let (db, root) =
         // ReifyDB::embedded_blocking_with::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>(optimistic());

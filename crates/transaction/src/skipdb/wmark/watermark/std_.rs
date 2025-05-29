@@ -176,7 +176,7 @@ impl WaterMark {
     /// Create a new WaterMark with the given name.
     ///
     /// **Note**: Before using the watermark, you must call `init` to start the background thread.
-    #[inline]
+
     pub fn new(name: Cow<'static, str>) -> Self {
         let (mark_tx, mark_rx) = bounded(100);
         Self {
@@ -198,7 +198,7 @@ impl WaterMark {
     }
 
     /// Initializes a WaterMark struct. MUST be called before using it.
-    #[inline]
+
     pub fn init(&mut self, closer: Closer) {
         if self.initialized {
             return;
@@ -212,7 +212,7 @@ impl WaterMark {
     }
 
     /// Sets the last index to the given value.
-    #[inline]
+
     pub fn begin(&self, index: u64) -> Result<()> {
         self.check().map(|_| {
             self.inner.last_index.store(index, Ordering::SeqCst);
@@ -224,7 +224,7 @@ impl WaterMark {
     }
 
     /// Works like [`begin`] but accepts multiple indices.
-    #[inline]
+
     pub fn begin_many(&self, indices: MediumVec<u64>) -> Result<()> {
         if indices.is_empty() {
             return Ok(());
@@ -241,7 +241,7 @@ impl WaterMark {
     }
 
     /// Sets a single index as done.
-    #[inline]
+
     pub fn done(&self, index: u64) -> Result<()> {
         self.check().map(|_| {
             self.inner
@@ -252,7 +252,7 @@ impl WaterMark {
     }
 
     /// Sets multiple indices as done.
-    #[inline]
+
     pub fn done_many(&self, indices: MediumVec<u64>) -> Result<()> {
         if indices.is_empty() {
             return Ok(());
@@ -268,26 +268,26 @@ impl WaterMark {
 
     /// Returns the maximum index that has the property that all indices
     /// less than or equal to it are done.
-    #[inline]
+
     pub fn done_until(&self) -> Result<u64> {
         self.check().map(|_| self.inner.done_until.load(Ordering::SeqCst))
     }
 
     /// Sets the maximum index that has the property that all indices
     /// less than or equal to it are done.
-    #[inline]
+
     pub fn set_done_util(&self, val: u64) -> Result<()> {
         self.check().map(|_| self.inner.done_until.store(val, Ordering::SeqCst))
     }
 
     /// Returns the last index for which `begin` has been called.
-    #[inline]
+
     pub fn last_index(&self) -> Result<u64> {
         self.check().map(|_| self.inner.last_index.load(Ordering::SeqCst))
     }
 
     /// Waits until the given index is marked as done.
-    #[inline]
+
     pub fn wait_for_mark(&self, index: u64) -> Result<()> {
         self.check().map(|_| {
             if self.inner.done_until.load(Ordering::SeqCst) >= index {
@@ -304,7 +304,7 @@ impl WaterMark {
         })
     }
 
-    #[inline]
+
     fn check(&self) -> Result<()> {
         if !self.initialized {
             return Err(WaterMarkError::Uninitialized);

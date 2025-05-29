@@ -34,7 +34,7 @@ pub struct Marker<'a, C> {
 
 impl<'a, C> Marker<'a, C> {
     /// Returns a new marker.
-    #[inline]
+
     pub fn new(marker: &'a mut C) -> Self {
         Self { marker }
     }

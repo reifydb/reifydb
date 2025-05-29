@@ -43,22 +43,22 @@ where
     type Key = K;
     type Options = ();
 
-    #[inline]
+
     fn new(_options: Self::Options) -> Result<Self, Self::Error> {
         Ok(Self { reads: MediumVec::new(), conflict_keys: BTreeSet::new() })
     }
 
-    #[inline]
+
     fn mark_read(&mut self, key: &K) {
         self.reads.push(Read::Single(key.clone()));
     }
 
-    #[inline]
+
     fn mark_conflict(&mut self, key: &Self::Key) {
         self.conflict_keys.insert(key.clone());
     }
 
-    #[inline]
+
     fn has_conflict(&self, other: &Self) -> bool {
         if self.reads.is_empty() {
             return false;
@@ -161,7 +161,7 @@ where
         false
     }
 
-    #[inline]
+
     fn rollback(&mut self) -> Result<(), Self::Error> {
         self.reads.clear();
         self.conflict_keys.clear();

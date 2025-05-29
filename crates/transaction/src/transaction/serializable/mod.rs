@@ -103,7 +103,24 @@ impl crate::Tx for SerializableTransaction<Vec<u8>, Vec<u8>> {
         table: &str,
         rows: Vec<Row>,
     ) -> crate::Result<InsertResult> {
-        todo!()
+        let last_id = self
+            .range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, table)))
+            .unwrap()
+            .count();
+
+        // FIXME assumes every row gets inserted - not updated etc..
+        let inserted = rows.len();
+
+        for (id, row) in rows.iter().enumerate() {
+            self.insert(
+                key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
+                bincode::serialize(row),
+            )
+                .unwrap();
+        }
+        // let mut persistence = self.persistence.lock().unwrap();
+        // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
+        Ok(InsertResult { inserted })
     }
 
     fn insert_into_series(

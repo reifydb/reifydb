@@ -9,7 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::catalog_init;
 use crate::transaction::mvcc::key::{Key, KeyPrefix};
 use crate::transaction::mvcc::{Status, Transaction, Version};
 use reifydb_core::encoding::{Key as _, Value};
@@ -40,7 +39,6 @@ impl<P: Persistence> crate::Transaction<P> for Mvcc<P> {
 impl<P: Persistence> Mvcc<P> {
     /// Creates a new MVCC reifydb_engine with the given store reifydb_engine.
     pub fn new(persistence: P) -> Self {
-        catalog_init();
         Self { persistence: Arc::new(Mutex::new(persistence)) }
     }
 

@@ -23,7 +23,7 @@ struct Canceler {
 }
 
 impl Canceler {
-  #[inline]
+
   fn cancel(&self) {
     // Safely take the sender out of the AtomicPtr.
     let tx_ptr = self.tx.swap(std::ptr::null_mut(), Ordering::AcqRel);
@@ -64,7 +64,7 @@ impl CancelContext {
     )
   }
 
-  #[inline]
+
   fn done(&self) -> Receiver<()> {
     self.rx.clone()
   }
@@ -87,7 +87,7 @@ struct CloserInner {
 }
 
 impl CloserInner {
-  #[inline]
+
   fn new() -> Self {
     let (ctx, cancel) = CancelContext::new();
     Self {
@@ -97,7 +97,7 @@ impl CloserInner {
     }
   }
 
-  #[inline]
+
   fn with(initial: usize) -> Self {
     let (ctx, cancel) = CancelContext::new();
     Self {
@@ -118,7 +118,7 @@ impl Default for Closer {
 
 impl Closer {
   /// Constructs a new [`Closer`], with an initial count on the [`WaitGroup`].
-  #[inline]
+
   pub fn new(initial: usize) -> Self {
     Self {
       inner: Arc::new(CloserInner::with(initial)),
@@ -126,32 +126,32 @@ impl Closer {
   }
 
   /// Adds delta to the [`WaitGroup`].
-  #[inline]
+
   pub fn add_running(&self, running: usize) {
     self.inner.wg.add(running);
   }
 
   /// Calls [`WaitGroup::done`] on the [`WaitGroup`].
-  #[inline]
+
   pub fn done(&self) {
     self.inner.wg.done();
   }
 
   /// Signals the [`Closer::has_been_closed`] signal.
-  #[inline]
+
   pub fn signal(&self) {
     self.inner.cancel.cancel();
   }
 
   /// Waits on the [`WaitGroup`]. (It waits for the Closer's initial value, [`Closer::add_running`], and [`Closer::done`]
   /// calls to balance out.)
-  #[inline]
+
   pub fn wait(&self) {
     self.inner.wg.wait();
   }
 
   /// Calls [`Closer::signal`], then [`Closer::wait`].
-  #[inline]
+
   pub fn signal_and_wait(&self) {
     self.signal();
     self.wait();

@@ -107,7 +107,7 @@ where
         CreateCommitTimestampResult::Timestamp(ts)
     }
 
-    #[inline]
+
     fn cleanup_committed_transactions(
         &self,
         detect_conflicts: bool,
@@ -136,7 +136,7 @@ where
 }
 
 impl<C> Oracle<C> {
-    #[inline]
+
     pub fn new(
         read_mark_name: Cow<'static, str>,
         txn_mark_name: Cow<'static, str>,
@@ -160,7 +160,7 @@ impl<C> Oracle<C> {
         orc
     }
 
-    #[inline]
+
     pub(super) fn read_ts(&self) -> u64 {
         let read_ts = {
             let inner = self.inner.lock().unwrap();
@@ -180,27 +180,27 @@ impl<C> Oracle<C> {
         read_ts
     }
 
-    #[inline]
+
     pub(super) fn increment_next_ts(&self) {
         self.inner.lock().unwrap().next_txn_ts.add_assign(1);
     }
 
-    #[inline]
+
     pub(super) fn discard_at_or_below(&self) -> u64 {
         self.read_mark.done_until().unwrap()
     }
 
-    #[inline]
+
     pub(super) fn done_read(&self, read_ts: u64) {
         self.read_mark.done(read_ts).unwrap();
     }
 
-    #[inline]
+
     pub(super) fn done_commit(&self, cts: u64) {
         self.txn_mark.done(cts).unwrap();
     }
 
-    #[inline]
+
     fn stop(&self) {
         self.closer.signal_and_wait();
     }

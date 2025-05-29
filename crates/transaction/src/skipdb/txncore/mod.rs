@@ -43,7 +43,7 @@ pub mod types {
 
     impl<K, V> EntryRef<'_, K, V> {
         /// Get the key of the entry.
-        #[inline]
+
         pub const fn key(&self) -> &K {
             match self.data {
                 EntryDataRef::Insert { key, .. } => key,
@@ -52,7 +52,7 @@ pub mod types {
         }
 
         /// Get the value of the entry, if None, it means the entry is removed.
-        #[inline]
+
         pub const fn value(&self) -> Option<&V> {
             match self.data {
                 EntryDataRef::Insert { value, .. } => Some(value),
@@ -63,7 +63,7 @@ pub mod types {
         /// Returns the version of the entry.
         ///
         /// This version is useful when you want to implement MVCC.
-        #[inline]
+
         pub const fn version(&self) -> u64 {
             self.version
         }
@@ -106,14 +106,14 @@ pub mod types {
     }
 
     impl<K: Ord, V: Eq> PartialOrd for EntryData<K, V> {
-        #[inline]
+
         fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
             Some(self.cmp(other))
         }
     }
 
     impl<K: Ord, V: Eq> Ord for EntryData<K, V> {
-        #[inline]
+
         fn cmp(&self, other: &Self) -> cmp::Ordering {
             self.key().cmp(other.key())
         }
@@ -121,7 +121,7 @@ pub mod types {
 
     impl<K, V> EntryData<K, V> {
         /// Returns the key of the entry.
-        #[inline]
+
         pub const fn key(&self) -> &K {
             match self {
                 Self::Insert { key, .. } => key,
@@ -130,7 +130,7 @@ pub mod types {
         }
 
         /// Returns the value of the entry, if None, it means the entry is marked as remove.
-        #[inline]
+
         pub const fn value(&self) -> Option<&V> {
             match self {
                 Self::Insert { value, .. } => Some(value),
@@ -164,14 +164,14 @@ pub mod types {
     }
 
     impl<K: Ord, V: Eq> PartialOrd for Entry<K, V> {
-        #[inline]
+
         fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
             Some(self.cmp(other))
         }
     }
 
     impl<K: Ord, V: Eq> Ord for Entry<K, V> {
-        #[inline]
+
         fn cmp(&self, other: &Self) -> cmp::Ordering {
             self.data
                 .key()
@@ -192,25 +192,25 @@ pub mod types {
 
     impl<K, V> Entry<K, V> {
         /// Returns the data contained by the entry.
-        #[inline]
+
         pub const fn data(&self) -> &EntryData<K, V> {
             &self.data
         }
 
         /// Returns the version (can also be tought as transaction timestamp) of the entry.
-        #[inline]
+
         pub const fn version(&self) -> u64 {
             self.version
         }
 
         /// Consumes the entry and returns the version and the entry data.
-        #[inline]
+
         pub fn into_components(self) -> (u64, EntryData<K, V>) {
             (self.version, self.data)
         }
 
         /// Returns the key of the entry.
-        #[inline]
+
         pub fn key(&self) -> &K {
             match &self.data {
                 EntryData::Insert { key, .. } => key,

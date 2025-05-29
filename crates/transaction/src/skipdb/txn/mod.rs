@@ -82,7 +82,7 @@ where
 impl<K, V, C, P> Tm<K, V, C, P> {
     /// Create a new transaction manager with the given name (just for logging or debugging, use your crate name is enough)
     /// and the current version (provided by the database).
-    #[inline]
+
     pub fn new(name: &str, current_version: u64) -> Self {
         Self {
             inner: Arc::new({
@@ -102,7 +102,7 @@ impl<K, V, C, P> Tm<K, V, C, P> {
     }
 
     /// Returns the current read version of the transaction manager.
-    #[inline]
+
     pub fn version(&self) -> u64 {
         self.inner.read_ts()
     }

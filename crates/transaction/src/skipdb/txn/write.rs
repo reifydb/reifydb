@@ -42,7 +42,7 @@ impl<K, V, C, P> Drop for Wtm<K, V, C, P> {
 
 impl<K, V, C, P> Wtm<K, V, C, P> {
     /// Returns the read version of this transaction.
-    #[inline]
+
     pub const fn version(&self) -> u64 {
         self.read_ts
     }
@@ -50,7 +50,7 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
     /// Sets the current read version of the transaction manager.
     // This should be used only for testing purposes.
     #[doc(hidden)]
-    #[inline]
+
     pub fn __set_read_version(&mut self, version: u64) {
         self.read_ts = version;
     }
@@ -58,7 +58,7 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
     /// Returns the pending writes manager.
     ///
     /// `None` means the transaction has already been discarded.
-    #[inline]
+
     pub fn pwm(&self) -> Option<&P> {
         self.pending_writes.as_ref()
     }
@@ -66,7 +66,7 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
     /// Returns the conflict manager.
     ///
     /// `None` means the transaction has already been discarded.
-    #[inline]
+
     pub fn cm(&self) -> Option<&C> {
         self.conflict_manager.as_ref()
     }
@@ -893,7 +893,7 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
         }
     }
 
-    #[inline]
+
     fn orc(&self) -> &Oracle<C> {
         &self.orc
     }
@@ -912,7 +912,7 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
     }
 
     /// Returns true if the transaction is discarded.
-    #[inline]
+
     pub const fn is_discard(&self) -> bool {
         self.discarded
     }

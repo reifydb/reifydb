@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::reifydb_persistence::{Lmdb, Persistence};
+use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{ReifyDB, memory, mvcc, svl};
+use reifydb::{ReifyDB, memory, mvcc, svl, serializable, optimistic};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
@@ -16,6 +16,8 @@ use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
+use reifydb::reifydb_transaction::skipdb::skipdb::optimistic::OptimisticDb;
+use reifydb::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb;
 
 pub struct ClientRunner<P: Persistence, T: Transaction<P>> {
     server: Option<Server<P, T>>,
@@ -110,11 +112,28 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner
     }
 }
 
+test_each_path! { in "testsuite/regression/tests/scripts" as client_serializable_memory => test_serializable_memory }
+test_each_path! { in "testsuite/regression/tests/scripts" as client_optimistic_memory => test_optimistic_memory }
+
 test_each_path! { in "testsuite/regression/tests/scripts" as client_svl_memory => test_svl_memory }
 test_each_path! { in "testsuite/regression/tests/scripts" as client_mvcc_memory => test_mvcc_memory }
 
 test_each_path! { in "testsuite/regression/tests/scripts" as client_svl_lmdb => test_svl_lmdb }
 test_each_path! { in "testsuite/regression/tests/scripts" as client_mvcc_lmdb => test_mvcc_lmdb }
+
+fn test_serializable_memory(path: &Path) {
+    testscript::run_path(
+        &mut ClientRunner::<Memory, SerializableDb<Vec<u8>, Vec<u8>>>::new(serializable()),
+        path,
+    ).expect("test failed")
+}
+
+fn test_optimistic_memory(path: &Path) {
+    testscript::run_path(
+        &mut ClientRunner::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>::new(optimistic()),
+        path,
+    ).expect("test failed")
+}
 
 fn test_mvcc_memory(path: &Path) {
     testscript::run_path(&mut ClientRunner::new(mvcc(memory())), path).expect("test failed")
