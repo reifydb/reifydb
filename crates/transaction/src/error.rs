@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::transaction::{mvcc, svl};
+use crate::transaction::{old_mvcc, svl};
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors related to transactions, the mempool, or store.
@@ -13,7 +13,7 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, PartialEq)]
 pub enum Error {
     /// MVCC-related error
-    Mvcc(mvcc::Error),
+    Mvcc(old_mvcc::Error),
 
     /// Persistence-layer error
     Persistence(reifydb_persistence::Error),
@@ -34,10 +34,10 @@ impl Display for Error {
 
 impl std::error::Error for Error {}
 
-impl From<mvcc::Error> for Error {
-    fn from(err: mvcc::Error) -> Self {
+impl From<old_mvcc::Error> for Error {
+    fn from(err: old_mvcc::Error) -> Self {
         match err {
-            mvcc::Error::Persistence(err) => Self::Persistence(err),
+            old_mvcc::Error::Persistence(err) => Self::Persistence(err),
             _ => Self::Mvcc(err),
         }
     }

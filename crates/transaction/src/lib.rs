@@ -14,7 +14,7 @@ pub use catalog::{
 pub use error::Error;
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
-pub use transaction::{InsertResult, Rx, Transaction, Tx, mvcc, svl};
+pub use transaction::{InsertResult, Rx, Transaction, Tx, old_mvcc, svl};
 
 mod catalog;
 mod error;

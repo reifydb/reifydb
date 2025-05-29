@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::mvcc::{Error, Transaction, TransactionState, Version};
+use crate::transaction::old_mvcc::{Error, Transaction, TransactionState, Version};
 use crate::{CATALOG, CatalogRx as _, CatalogTx, InsertResult};
 
 use std::collections::BTreeSet;
@@ -17,8 +17,8 @@ use std::ops::{Bound, RangeBounds};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::catalog::{Catalog, Schema};
-use crate::transaction::mvcc::key::{Key, KeyPrefix};
-use crate::transaction::mvcc::scan::ScanIterator;
+use crate::transaction::old_mvcc::key::{Key, KeyPrefix};
+use crate::transaction::old_mvcc::scan::ScanIterator;
 use reifydb_core::encoding::{Key as _, Value, bincode, keycode};
 use reifydb_core::{Row, RowIter, key_prefix};
 use reifydb_persistence::Persistence;
@@ -200,7 +200,7 @@ impl<P: Persistence> Transaction<P> {
     /// Begins a new transaction in read-write mode. This will allocate a new
     /// version that the transaction can write at, add it to the active set, and
     /// record its active snapshot for time-travel queries.
-    pub(crate) fn begin(persistence: Arc<Mutex<P>>) -> crate::transaction::mvcc::Result<Self> {
+    pub(crate) fn begin(persistence: Arc<Mutex<P>>) -> crate::transaction::old_mvcc::Result<Self> {
         // FIXME
         // let mut session = reifydb_engine.lock()?;
         let mut session = persistence.lock().unwrap();
@@ -232,7 +232,7 @@ impl<P: Persistence> Transaction<P> {
     pub(crate) fn begin_read_only(
         persistence: Arc<Mutex<P>>,
         as_of: Option<Version>,
-    ) -> crate::transaction::mvcc::Result<Self> {
+    ) -> crate::transaction::old_mvcc::Result<Self> {
         // FIXME
         // let mut session = reifydb_engine.lock()?;
         let mut session = persistence.lock().unwrap();
@@ -267,7 +267,7 @@ impl<P: Persistence> Transaction<P> {
     /// Fetches the set of currently active transactions.
     fn scan_active(
         session: &mut MutexGuard<P>,
-    ) -> crate::transaction::mvcc::Result<BTreeSet<Version>> {
+    ) -> crate::transaction::old_mvcc::Result<BTreeSet<Version>> {
         let mut active = BTreeSet::new();
         let mut scan = session.scan_prefix(&KeyPrefix::TxActive.encode());
         while let Some((key, _)) = scan.next().transpose()? {
@@ -296,12 +296,12 @@ impl<P: Persistence> Transaction<P> {
     }
 
     /// Removes a key.
-    pub fn remove(&self, key: &[u8]) -> crate::transaction::mvcc::Result<()> {
+    pub fn remove(&self, key: &[u8]) -> crate::transaction::old_mvcc::Result<()> {
         self.write_version(key, None)
     }
 
     /// Sets a value for a key.
-    pub fn set(&self, key: &[u8], value: Vec<u8>) -> crate::transaction::mvcc::Result<()> {
+    pub fn set(&self, key: &[u8], value: Vec<u8>) -> crate::transaction::old_mvcc::Result<()> {
         self.write_version(key, Some(value))
     }
 
@@ -313,7 +313,7 @@ impl<P: Persistence> Transaction<P> {
         &self,
         key: &[u8],
         value: Option<Vec<u8>>,
-    ) -> crate::transaction::mvcc::Result<()> {
+    ) -> crate::transaction::old_mvcc::Result<()> {
         if self.state.read_only {
             return Err(Error::ReadOnly);
         }
@@ -356,7 +356,7 @@ impl<P: Persistence> Transaction<P> {
     }
 
     /// Fetches a key's value, or None if it does not exist.
-    pub fn get(&self, key: &[u8]) -> crate::transaction::mvcc::Result<Option<Vec<u8>>> {
+    pub fn get(&self, key: &[u8]) -> crate::transaction::old_mvcc::Result<Option<Vec<u8>>> {
         // FIXME
         // let mut reifydb_engine = self.reifydb_engine.lock()?;
         let mut reifydb_engine = self.persistence.lock().unwrap();

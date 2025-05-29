@@ -5,7 +5,7 @@ use reifydb::embedded_blocking::Embedded;
 use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb;
 use reifydb::reifydb_transaction::skipdb::transaction::serializable::SerializableDb;
-use reifydb::reifydb_transaction::{Transaction, mvcc};
+use reifydb::reifydb_transaction::{Transaction, old_mvcc};
 use reifydb::{DB, Principal, ReifyDB, memory, mvcc, optimistic, serializable, svl};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;

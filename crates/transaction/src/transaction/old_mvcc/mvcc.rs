@@ -9,8 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::mvcc::key::{Key, KeyPrefix};
-use crate::transaction::mvcc::{Status, Transaction, Version};
+use crate::transaction::old_mvcc::key::{Key, KeyPrefix};
+use crate::transaction::old_mvcc::{Status, Transaction, Version};
 use reifydb_core::encoding::{Key as _, Value};
 use reifydb_persistence::Persistence;
 use std::sync::{Arc, Mutex};
@@ -43,12 +43,12 @@ impl<P: Persistence> Mvcc<P> {
     }
 
     /// Begins a new read-write transaction.
-    pub fn begin(&self) -> crate::transaction::mvcc::Result<Transaction<P>> {
+    pub fn begin(&self) -> crate::transaction::old_mvcc::Result<Transaction<P>> {
         Transaction::begin(self.persistence.clone())
     }
 
     /// Begins a new read-only transaction at the latest version.
-    pub fn begin_read_only(&self) -> crate::transaction::mvcc::Result<Transaction<P>> {
+    pub fn begin_read_only(&self) -> crate::transaction::old_mvcc::Result<Transaction<P>> {
         Transaction::begin_read_only(self.persistence.clone(), None)
     }
 
@@ -56,12 +56,12 @@ impl<P: Persistence> Mvcc<P> {
     pub fn begin_read_only_as_of(
         &self,
         version: Version,
-    ) -> crate::transaction::mvcc::Result<Transaction<P>> {
+    ) -> crate::transaction::old_mvcc::Result<Transaction<P>> {
         Transaction::begin_read_only(self.persistence.clone(), Some(version))
     }
 
     /// Fetches the value of an unversioned key.
-    pub fn get_unversioned(&self, key: &[u8]) -> crate::transaction::mvcc::Result<Option<Vec<u8>>> {
+    pub fn get_unversioned(&self, key: &[u8]) -> crate::transaction::old_mvcc::Result<Option<Vec<u8>>> {
         // self.reifydb_engine.lock()?.get(&Key::Unversioned(key.into()).encode())
         // FIXME
         Ok(self.persistence.lock().unwrap().get(&Key::Unversioned(key.into()).encode()).unwrap())
@@ -72,7 +72,7 @@ impl<P: Persistence> Mvcc<P> {
         &self,
         key: &[u8],
         value: Vec<u8>,
-    ) -> crate::transaction::mvcc::Result<()> {
+    ) -> crate::transaction::old_mvcc::Result<()> {
         // self.reifydb_engine.lock()?.set(&Key::Unversioned(key.into()).encode(), value)
 
         // FIXME
@@ -85,7 +85,7 @@ impl<P: Persistence> Mvcc<P> {
     }
 
     /// Returns the status of the MVCC and store reifydb_engines.
-    pub fn status(&self) -> crate::transaction::mvcc::Result<Status> {
+    pub fn status(&self) -> crate::transaction::old_mvcc::Result<Status> {
         // FIXME
         // let mut reifydb_engine = self.reifydb_engine.lock()?;
         let mut reifydb_engine = self.persistence.lock().unwrap();

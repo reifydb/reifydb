@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::mvcc::{Error, Key, TransactionState, Version};
+use crate::transaction::old_mvcc::{Error, Key, TransactionState, Version};
 use reifydb_core::encoding::{Key as _, bincode};
 use reifydb_persistence::{Persistence, Value};
 use std::collections::{Bound, VecDeque};
@@ -63,7 +63,7 @@ impl<P: Persistence> ScanIterator<P> {
     }
 
     /// Fills the buffer, if there's any pending items.
-    fn fill_buffer(&mut self) -> crate::transaction::mvcc::Result<()> {
+    fn fill_buffer(&mut self) -> crate::transaction::old_mvcc::Result<()> {
         // Check if there's anything to buffer.
         if self.buffer.len() >= Self::BUFFER_SIZE {
             return Ok(());
@@ -109,7 +109,7 @@ impl<P: Persistence> ScanIterator<P> {
 }
 
 impl<P: Persistence> Iterator for ScanIterator<P> {
-    type Item = crate::transaction::mvcc::Result<(Vec<u8>, Vec<u8>)>;
+    type Item = crate::transaction::old_mvcc::Result<(Vec<u8>, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.buffer.is_empty() {
@@ -139,7 +139,7 @@ impl<'a, I: reifydb_persistence::ScanIterator> VersionIterator<'a, I> {
     // Fallible next(). Returns the next visible key/version/value tuple.
     fn try_next(
         &mut self,
-    ) -> crate::transaction::mvcc::Result<Option<(Vec<u8>, Version, Vec<u8>)>> {
+    ) -> crate::transaction::old_mvcc::Result<Option<(Vec<u8>, Version, Vec<u8>)>> {
         while let Some((key, value)) = self.inner.next().transpose()? {
             let decoded_key = Key::decode(&key)?;
             let Key::Version(key, version) = decoded_key else {
@@ -155,7 +155,7 @@ impl<'a, I: reifydb_persistence::ScanIterator> VersionIterator<'a, I> {
 }
 
 impl<I: reifydb_persistence::ScanIterator> Iterator for VersionIterator<'_, I> {
-    type Item = crate::transaction::mvcc::Result<(Vec<u8>, Version, Vec<u8>)>;
+    type Item = crate::transaction::old_mvcc::Result<(Vec<u8>, Version, Vec<u8>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.try_next().transpose()

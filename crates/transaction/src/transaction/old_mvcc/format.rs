@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::mvcc;
+use crate::transaction::old_mvcc;
 pub use reifydb_core::encoding::format::{Formatter, Raw};
 use reifydb_core::encoding::{Key, bincode};
 use std::collections::BTreeSet;
@@ -20,37 +20,37 @@ pub struct MVCC<F: Formatter>(PhantomData<F>);
 
 impl<F: Formatter> Formatter for MVCC<F> {
     fn key(key: &[u8]) -> String {
-        let Ok(key) = mvcc::Key::decode(key) else {
+        let Ok(key) = old_mvcc::Key::decode(key) else {
             return Raw::key(key); // invalid key
         };
         match key {
-            mvcc::Key::TxWrite(version, innerkey) => {
+            old_mvcc::Key::TxWrite(version, innerkey) => {
                 format!("mvcc:TxWrite({version}, {})", F::key(&innerkey))
             }
-            mvcc::Key::Version(innerkey, version) => {
+            old_mvcc::Key::Version(innerkey, version) => {
                 format!("mvcc:Version({}, {version})", F::key(&innerkey))
             }
-            mvcc::Key::Unversioned(innerkey) => {
+            old_mvcc::Key::Unversioned(innerkey) => {
                 format!("mvcc:Unversioned({})", F::key(&innerkey))
             }
-            mvcc::Key::NextVersion | mvcc::Key::TxActive(_) | mvcc::Key::TxActiveSnapshot(_) => {
+            old_mvcc::Key::NextVersion | old_mvcc::Key::TxActive(_) | old_mvcc::Key::TxActiveSnapshot(_) => {
                 format!("mvcc:{key:?}")
             }
         }
     }
 
     fn value(key: &[u8], value: &[u8]) -> String {
-        let Ok(key) = mvcc::Key::decode(key) else {
+        let Ok(key) = old_mvcc::Key::decode(key) else {
             return Raw::bytes(value); // invalid key
         };
         match key {
-            mvcc::Key::NextVersion => {
-                let Ok(version) = bincode::deserialize::<mvcc::Version>(value) else {
+            old_mvcc::Key::NextVersion => {
+                let Ok(version) = bincode::deserialize::<old_mvcc::Version>(value) else {
                     return Raw::bytes(value);
                 };
                 version.to_string()
             }
-            mvcc::Key::TxActiveSnapshot(_) => {
+            old_mvcc::Key::TxActiveSnapshot(_) => {
                 let Ok(active) = bincode::deserialize::<BTreeSet<u64>>(value) else {
                     return Raw::bytes(value);
                 };
@@ -59,13 +59,13 @@ impl<F: Formatter> Formatter for MVCC<F> {
                     active.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
                 )
             }
-            mvcc::Key::TxActive(_) | mvcc::Key::TxWrite(_, _) => Raw::bytes(value),
-            mvcc::Key::Version(userkey, _) => match bincode::deserialize(value) {
+            old_mvcc::Key::TxActive(_) | old_mvcc::Key::TxWrite(_, _) => Raw::bytes(value),
+            old_mvcc::Key::Version(userkey, _) => match bincode::deserialize(value) {
                 Ok(Some(value)) => F::value(&userkey, value),
                 Ok(None) => "None".to_string(),
                 Err(_) => Raw::bytes(value),
             },
-            mvcc::Key::Unversioned(userkey) => F::value(&userkey, value),
+            old_mvcc::Key::Unversioned(userkey) => F::value(&userkey, value),
         }
     }
 }

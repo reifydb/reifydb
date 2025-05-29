@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::mvcc::Version;
+use crate::transaction::old_mvcc::Version;
 use reifydb_core::encoding;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -88,7 +88,7 @@ impl<'a> encoding::Key<'a> for KeyPrefix<'a> {}
 
 #[cfg(test)]
 mod tests {
-    use crate::transaction::mvcc::{Key, KeyPrefix, Version};
+    use crate::transaction::old_mvcc::{Key, KeyPrefix, Version};
     use reifydb_core::encoding::Key as _;
 
     #[test]
