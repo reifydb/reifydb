@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 use crate::transaction::old_mvcc::{Key, Version};
 use reifydb_core::encoding;
 use std::fmt::{Display, Formatter};

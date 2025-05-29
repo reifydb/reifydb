@@ -55,11 +55,11 @@ where
     ) -> Result<TransactionManagerTx<K, V, C, P>, TransactionError> {
         let read_ts = self.inner.read_ts();
         Ok(TransactionManagerTx {
-            orc: self.inner.clone(),
+            oracle: self.inner.clone(),
             version: read_ts,
             size: 0,
             count: 0,
-            conflict_manager: Some(C::new(conflict_manager_opts)),
+            conflicts: Some(C::new(conflict_manager_opts)),
             pending_writes: Some(P::new(pending_manager_opts)),
             duplicate_writes: Vec::new(),
             discarded: false,

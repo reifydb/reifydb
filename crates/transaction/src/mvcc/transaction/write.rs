@@ -18,8 +18,8 @@ pub struct TransactionManagerTx<K, V, C, P> {
     pub(super) version: u64,
     pub(super) size: u64,
     pub(super) count: u64,
-    pub(super) orc: Arc<Oracle<C>>,
-    pub(super) conflict_manager: Option<C>,
+    pub(super) oracle: Arc<Oracle<C>>,
+    pub(super) conflicts: Option<C>,
     // stores any writes done by tx
     pub(super) pending_writes: Option<P>,
     pub(super) duplicate_writes: Vec<Entry<K, V>>,
@@ -60,8 +60,8 @@ impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
     /// Returns the conflict manager.
     ///
     /// `None` means the transaction has already been discarded.
-    pub fn conflics(&self) -> Option<&C> {
-        self.conflict_manager.as_ref()
+    pub fn conflicts(&self) -> Option<&C> {
+        self.conflicts.as_ref()
     }
 }
 
@@ -75,7 +75,7 @@ where
     ///
     /// `None` means the transaction has already been discarded.
     pub fn marker(&mut self) -> Option<Marker<'_, C>> {
-        self.conflict_manager.as_mut().map(Marker::new)
+        self.conflicts.as_mut().map(Marker::new)
     }
 
     /// Returns a marker for the keys that are operated and the pending writes manager.
@@ -84,21 +84,21 @@ where
     ///
     /// As Rust's borrow checker does not allow to borrow mutable marker and the immutable pending writes manager at the same
     pub fn marker_with_pm(&mut self) -> Option<(Marker<'_, C>, &P)> {
-        self.conflict_manager
+        self.conflicts
             .as_mut()
             .map(|marker| (Marker::new(marker), self.pending_writes.as_ref().unwrap()))
     }
 
     /// Marks a key is read.
     pub fn mark_read(&mut self, k: &K) {
-        if let Some(ref mut conflict_manager) = self.conflict_manager {
+        if let Some(ref mut conflict_manager) = self.conflicts {
             conflict_manager.mark_read(k);
         }
     }
 
     /// Marks a key is conflict.
     pub fn mark_conflict(&mut self, k: &K) {
-        if let Some(ref mut conflict_manager) = self.conflict_manager {
+        if let Some(ref mut conflict_manager) = self.conflicts {
             conflict_manager.mark_conflict(k);
         }
     }
@@ -130,7 +130,7 @@ where
         }
 
         self.pending_writes.as_mut().unwrap().rollback();
-        self.conflict_manager.as_mut().unwrap().rollback();
+        self.conflicts.as_mut().unwrap().rollback();
         Ok(())
     }
 
@@ -153,7 +153,7 @@ where
             None => {
                 // track reads. No need to track read if txn serviced it
                 // internally.
-                if let Some(ref mut conflict_manager) = self.conflict_manager {
+                if let Some(ref mut conflict_manager) = self.conflicts {
                     conflict_manager.mark_read(key);
                 }
 
@@ -189,7 +189,7 @@ where
         } else {
             // track reads. No need to track read if txn serviced it
             // internally.
-            if let Some(ref mut conflict_manager) = self.conflict_manager {
+            if let Some(ref mut conflict_manager) = self.conflicts {
                 conflict_manager.mark_read(key);
             }
 
@@ -307,7 +307,7 @@ where
             }
         })?;
 
-        let orc = self.orc.clone();
+        let orc = self.oracle.clone();
 
         Ok(std::thread::spawn(move || {
             callback(
@@ -353,7 +353,7 @@ where
 
         // The conflict_manager is used for conflict detection. If conflict detection
         // is disabled, we don't need to store key hashes in the conflict_manager.
-        if let Some(ref mut conflict_manager) = self.conflict_manager {
+        if let Some(ref mut conflict_manager) = self.conflicts {
             conflict_manager.mark_conflict(ent.key());
         }
 
@@ -384,19 +384,16 @@ where
         // the order in which we push these updates to the write channel. So, we
         // acquire a writeChLock before getting a commit timestamp, and only release
         // it after pushing the entries to it.
-        let _write_lock = self.orc.write_serialize_lock.lock();
+        let _write_lock = self.oracle.write_serialize_lock.lock();
 
-        let conflict_manager = if self.conflict_manager.is_none() {
-            None
-        } else {
-            mem::take(&mut self.conflict_manager)
-        };
+        let conflict_manager =
+            if self.conflicts.is_none() { None } else { mem::take(&mut self.conflicts) };
 
-        match self.orc.new_commit_ts(&mut self.done_read, self.version, conflict_manager) {
+        match self.oracle.new_commit_ts(&mut self.done_read, self.version, conflict_manager) {
             CreateCommitTimestampResult::Conflict(conflict_manager) => {
                 // If there is a conflict, we should not send the updates to the write channel.
                 // Instead, we should return the conflict error to the user.
-                self.conflict_manager = conflict_manager;
+                self.conflicts = conflict_manager;
                 Err(TransactionError::Conflict)
             }
             CreateCommitTimestampResult::Timestamp(commit_ts) => {
@@ -432,7 +429,7 @@ impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
     }
 
     fn orc(&self) -> &Oracle<C> {
-        &self.orc
+        &self.oracle
     }
 
     /// Discards a created transaction. This method is very important and must be called. `commit*`
@@ -472,7 +469,7 @@ mod tests {
         let mut wtm = tm.write((), ()).unwrap();
         assert!(!wtm.is_discard());
         assert!(wtm.pending_writes().is_some());
-        assert!(wtm.conflics().is_some());
+        assert!(wtm.conflicts().is_some());
 
         let mut marker = wtm.marker().unwrap();
 
