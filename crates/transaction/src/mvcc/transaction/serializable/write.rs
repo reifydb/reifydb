@@ -35,7 +35,7 @@ impl<K, V> SerializableTransaction<K, V>
 where
     K: Clone + Ord,
 {
-    pub(in crate::mvcc) fn new(db: SerializableDb<K, V>) -> Self {
+    pub fn new(db: SerializableDb<K, V>) -> Self {
         let wtm = db.inner.tm.write((), ()).unwrap();
         Self { db, wtm }
     }

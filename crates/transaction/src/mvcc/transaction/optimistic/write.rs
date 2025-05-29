@@ -35,7 +35,7 @@ where
     K: Ord + Hash + Eq,
     S: BuildHasher + Clone,
 {
-    pub(in crate::mvcc) fn new(db: OptimisticDb<K, V, S>, cap: Option<usize>) -> Self {
+    pub fn new(db: OptimisticDb<K, V, S>, cap: Option<usize>) -> Self {
         let wtm = db
             .inner
             .tm
