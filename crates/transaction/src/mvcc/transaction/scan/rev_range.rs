@@ -14,7 +14,7 @@
 
 use either::Either;
 
-use crate::mvcc::conflict::ConflictManager;
+use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use core::{cmp, iter::Rev};
 use std::borrow::Borrow;
@@ -78,7 +78,7 @@ where
     K: Ord + Borrow<Q>,
     Q: Ord + ?Sized,
     R: RangeBounds<Q> + 'a,
-    C: ConflictManager<Key = K>,
+    C: Conflict<Key = K>,
 {
     fn advance_pending(&mut self) {
         self.next_pending = self.pendings.next();
@@ -117,7 +117,7 @@ where
     K: Ord + Borrow<Q>,
     Q: Ord + ?Sized,
     R: RangeBounds<Q> + 'a,
-    C: ConflictManager<Key = K>,
+    C: Conflict<Key = K>,
 {
     type Item = Ref<'a, K, V>;
 

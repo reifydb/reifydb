@@ -22,7 +22,7 @@ enum Read<K> {
     All,
 }
 
-/// A [`ConflictManager`] conflict manager implementation that based on the [`BTreeSet`](std::collections::BTreeSet).
+/// A [`Conflict`] conflict manager implementation that based on the [`BTreeSet`](std::collections::BTreeSet).
 #[derive(Debug)]
 pub struct BTreeCm<K> {
     reads: MediumVec<Read<K>>,
@@ -35,7 +35,7 @@ impl<K: Clone> Clone for BTreeCm<K> {
     }
 }
 
-impl<K> ConflictManager for BTreeCm<K>
+impl<K> Conflict for BTreeCm<K>
 where
     K: Clone + Ord,
 {
@@ -166,7 +166,7 @@ impl<K> CmRange for BTreeCm<K>
 where
     K: Clone + Ord,
 {
-    fn mark_range(&mut self, range: impl RangeBounds<<Self as ConflictManager>::Key>) {
+    fn mark_range(&mut self, range: impl RangeBounds<<Self as Conflict>::Key>) {
         let start = match range.start_bound() {
             Bound::Included(k) => Bound::Included(k.clone()),
             Bound::Excluded(k) => Bound::Excluded(k.clone()),
@@ -190,7 +190,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::{BTreeCm, ConflictManager};
+    use super::{BTreeCm, Conflict};
 
     #[test]
     fn test_btree_cm() {

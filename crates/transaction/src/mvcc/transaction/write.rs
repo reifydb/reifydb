@@ -76,7 +76,7 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
 
 impl<K, V, C, P> Wtm<K, V, C, P>
 where
-    C: ConflictManager<Key = K>,
+    C: Conflict<Key = K>,
 {
     /// This method is used to create a marker for the keys that are operated.
     /// It must be used to mark keys when end user is implementing iterators to
@@ -115,11 +115,11 @@ where
 
 impl<K, V, C, P> Wtm<K, V, C, P>
 where
-    C: ConflictManager<Key = K>,
-    P: Pwm<Key = K, Value = V>,
+    C: Conflict<Key = K>,
+    P: PendingWrites<Key = K, Value = V>,
 {
     /// Insert a key-value pair to the transaction.
-    pub fn insert(&mut self, key: K, value: V) -> Result<(), TransactionError<P::Error>> {
+    pub fn insert(&mut self, key: K, value: V) -> Result<(), TransactionError> {
         self.insert_with_in(key, value)
     }
 
@@ -128,28 +128,28 @@ where
     /// This is done by adding a delete marker for the key at commit timestamp.  Any
     /// reads happening before this timestamp would be unaffected. Any reads after
     /// this commit would see the deletion.
-    pub fn remove(&mut self, key: K) -> Result<(), TransactionError<P::Error>> {
+    pub fn remove(&mut self, key: K) -> Result<(), TransactionError> {
         self.modify(Entry { data: EntryData::Remove(key), version: 0 })
     }
 
     /// Rolls back the transaction.
-    pub fn rollback(&mut self) -> Result<(), TransactionError<P::Error>> {
+    pub fn rollback(&mut self) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discard);
         }
 
-        self.pending_writes.as_mut().unwrap().rollback().map_err(TransactionError::Pwm)?;
+        self.pending_writes.as_mut().unwrap().rollback();
         self.conflict_manager.as_mut().unwrap().rollback();
         Ok(())
     }
 
     /// Returns `true` if the pending writes contains the key.
-    pub fn contains_key(&mut self, key: &K) -> Result<Option<bool>, TransactionError<P::Error>> {
+    pub fn contains_key(&mut self, key: &K) -> Result<Option<bool>, TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discard);
         }
 
-        match self.pending_writes.as_ref().unwrap().get(key).map_err(TransactionError::pending)? {
+        match self.pending_writes.as_ref().unwrap().get(key) {
             Some(ent) => {
                 // If the value is None, it means that the key is removed.
                 if ent.value.is_none() {
@@ -176,14 +176,12 @@ where
     pub fn get<'a, 'b: 'a>(
         &'a mut self,
         key: &'b K,
-    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError<P::Error>> {
+    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discard);
         }
 
-        if let Some(e) =
-            self.pending_writes.as_ref().unwrap().get(key).map_err(TransactionError::Pwm)?
-        {
+        if let Some(e) = self.pending_writes.as_ref().unwrap().get(key) {
             // If the value is None, it means that the key is removed.
             if e.value.is_none() {
                 return Ok(None);
@@ -211,8 +209,8 @@ where
 
 impl<K, V, C, P> Wtm<K, V, C, P>
 where
-    C: ConflictManager<Key = K>,
-    P: Pwm<Key = K, Value = V>,
+    C: Conflict<Key = K>,
+    P: PendingWrites<Key = K, Value = V>,
 {
     /// Commits the transaction, following these steps:
     ///
@@ -229,7 +227,7 @@ where
     ///    there is a conflict, an error will be returned and the callback will not
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
-    pub fn commit<F, E>(&mut self, apply: F) -> Result<(), MvccError<P::Error, E>>
+    pub fn commit<F, E>(&mut self, apply: F) -> Result<(), MvccError<E>>
     where
         F: FnOnce(OneOrMore<Entry<K, V>>) -> Result<(), E>,
         E: std::error::Error,
@@ -268,7 +266,7 @@ where
 impl<K, V, C, P> Wtm<K, V, C, P>
 where
     C: CmEquivalent<Key = K>,
-    P: Pwm<Key = K, Value = V>,
+    P: PendingWrites<Key = K, Value = V>,
 {
     /// Marks a key is read.
     pub fn mark_read_equivalent<Q>(&mut self, k: &Q)
@@ -306,7 +304,7 @@ where
     pub fn contains_key_equivalent<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<bool>, TransactionError<P::Error>>
+    ) -> Result<Option<bool>, TransactionError>
     where
         K: Borrow<Q>,
         Q: ?Sized + Eq + Hash,
@@ -315,13 +313,7 @@ where
             return Err(TransactionError::Discard);
         }
 
-        match self
-            .pending_writes
-            .as_ref()
-            .unwrap()
-            .get_equivalent(key)
-            .map_err(TransactionError::pending)?
-        {
+        match self.pending_writes.as_ref().unwrap().get_equivalent(key) {
             Some(ent) => {
                 // If the value is None, it means that the key is removed.
                 if ent.value.is_none() {
@@ -348,7 +340,7 @@ where
     pub fn get_equivalent<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError<P::Error>>
+    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError>
     where
         K: Borrow<Q>,
         Q: ?Sized + Eq + Hash,
@@ -357,13 +349,7 @@ where
             return Err(TransactionError::Discard);
         }
 
-        if let Some((k, e)) = self
-            .pending_writes
-            .as_ref()
-            .unwrap()
-            .get_entry_equivalent(key)
-            .map_err(TransactionError::Pwm)?
-        {
+        if let Some((k, e)) = self.pending_writes.as_ref().unwrap().get_entry_equivalent(key) {
             // If the value is None, it means that the key is removed.
             if e.value.is_none() {
                 return Ok(None);
@@ -402,7 +388,7 @@ where
     pub fn contains_key_comparable_cm_equivalent_pm<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<bool>, TransactionError<P::Error>>
+    ) -> Result<Option<bool>, TransactionError>
     where
         K: Borrow<Q>,
         Q: ?Sized + Eq + Ord + Hash,
@@ -411,13 +397,7 @@ where
             return Err(TransactionError::Discard);
         }
 
-        match self
-            .pending_writes
-            .as_ref()
-            .unwrap()
-            .get_equivalent(key)
-            .map_err(TransactionError::pending)?
-        {
+        match self.pending_writes.as_ref().unwrap().get_equivalent(key) {
             Some(ent) => {
                 // If the value is None, it means that the key is removed.
                 if ent.value.is_none() {
@@ -444,7 +424,7 @@ where
     pub fn get_comparable_cm_equivalent_pm<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError<P::Error>>
+    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError>
     where
         K: Borrow<Q>,
         Q: ?Sized + Eq + Ord + Hash,
@@ -453,13 +433,7 @@ where
             return Err(TransactionError::Discard);
         }
 
-        if let Some((k, e)) = self
-            .pending_writes
-            .as_ref()
-            .unwrap()
-            .get_entry_equivalent(key)
-            .map_err(TransactionError::Pwm)?
-        {
+        if let Some((k, e)) = self.pending_writes.as_ref().unwrap().get_entry_equivalent(key) {
             // If the value is None, it means that the key is removed.
             if e.value.is_none() {
                 return Ok(None);
@@ -488,7 +462,7 @@ where
 impl<K, V, C, P> Wtm<K, V, C, P>
 where
     C: CmComparable<Key = K>,
-    P: Pwm<Key = K, Value = V>,
+    P: PendingWrites<Key = K, Value = V>,
 {
     /// Marks a key is read.
     pub fn mark_read_comparable<Q>(&mut self, k: &Q)
@@ -526,7 +500,7 @@ where
     pub fn contains_key_comparable<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<bool>, TransactionError<P::Error>>
+    ) -> Result<Option<bool>, TransactionError>
     where
         K: Borrow<Q>,
         Q: ?Sized + Ord,
@@ -535,13 +509,7 @@ where
             return Err(TransactionError::Discard);
         }
 
-        match self
-            .pending_writes
-            .as_ref()
-            .unwrap()
-            .get_comparable(key)
-            .map_err(TransactionError::pending)?
-        {
+        match self.pending_writes.as_ref().unwrap().get_comparable(key) {
             Some(ent) => {
                 // If the value is None, it means that the key is removed.
                 if ent.value.is_none() {
@@ -568,7 +536,7 @@ where
     pub fn get_comparable<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError<P::Error>>
+    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError>
     where
         K: Borrow<Q>,
         Q: ?Sized + Ord,
@@ -577,13 +545,7 @@ where
             return Err(TransactionError::Discard);
         }
 
-        if let Some((k, e)) = self
-            .pending_writes
-            .as_ref()
-            .unwrap()
-            .get_entry_comparable(key)
-            .map_err(TransactionError::Pwm)?
-        {
+        if let Some((k, e)) = self.pending_writes.as_ref().unwrap().get_entry_comparable(key) {
             // If the value is None, it means that the key is removed.
             if e.value.is_none() {
                 return Ok(None);
@@ -622,7 +584,7 @@ where
     pub fn contains_key_equivalent_cm_comparable_pm<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<bool>, TransactionError<P::Error>>
+    ) -> Result<Option<bool>, TransactionError>
     where
         K: Borrow<Q>,
         Q: ?Sized + Eq + Ord + Hash,
@@ -631,13 +593,7 @@ where
             return Err(TransactionError::Discard);
         }
 
-        match self
-            .pending_writes
-            .as_ref()
-            .unwrap()
-            .get_comparable(key)
-            .map_err(TransactionError::pending)?
-        {
+        match self.pending_writes.as_ref().unwrap().get_comparable(key) {
             Some(ent) => {
                 // If the value is None, it means that the key is removed.
                 if ent.value.is_none() {
@@ -664,7 +620,7 @@ where
     pub fn get_equivalent_cm_comparable_pm<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError<P::Error>>
+    ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError>
     where
         K: Borrow<Q>,
         Q: ?Sized + Eq + Ord + Hash,
@@ -673,13 +629,7 @@ where
             return Err(TransactionError::Discard);
         }
 
-        if let Some((k, e)) = self
-            .pending_writes
-            .as_ref()
-            .unwrap()
-            .get_entry_comparable(key)
-            .map_err(TransactionError::Pwm)?
-        {
+        if let Some((k, e)) = self.pending_writes.as_ref().unwrap().get_entry_comparable(key) {
             // If the value is None, it means that the key is removed.
             if e.value.is_none() {
                 return Ok(None);
@@ -707,8 +657,8 @@ where
 
 impl<K, V, C, P> Wtm<K, V, C, P>
 where
-    C: ConflictManager<Key = K> + Send,
-    P: Pwm<Key = K, Value = V> + Send,
+    C: Conflict<Key = K> + Send,
+    P: PendingWrites<Key = K, Value = V> + Send,
 {
     /// Acts like [`commit`](Wtm::commit), but takes a callback, which gets run via a
     /// thread to avoid blocking this function. Following these steps:
@@ -732,7 +682,7 @@ where
         &mut self,
         apply: F,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, MvccError<P::Error, E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError<E>>
     where
         K: Send + 'static,
         V: Send + 'static,
@@ -777,22 +727,21 @@ where
 
 impl<K, V, C, P> Wtm<K, V, C, P>
 where
-    C: ConflictManager<Key = K>,
-    P: Pwm<Key = K, Value = V>,
+    C: Conflict<Key = K>,
+    P: PendingWrites<Key = K, Value = V>,
 {
-    fn insert_with_in(&mut self, key: K, value: V) -> Result<(), TransactionError<P::Error>> {
+    fn insert_with_in(&mut self, key: K, value: V) -> Result<(), TransactionError> {
         let ent = Entry { data: EntryData::Insert { key, value }, version: self.read_ts };
 
         self.modify(ent)
     }
 
-    fn modify(&mut self, ent: Entry<K, V>) -> Result<(), TransactionError<P::Error>> {
+    fn modify(&mut self, ent: Entry<K, V>) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discard);
         }
 
         let pending_writes = self.pending_writes.as_mut().unwrap();
-        pending_writes.validate_entry(&ent).map_err(TransactionError::Pwm)?;
 
         let cnt = self.count + 1;
         // Extra bytes for the version in key.
@@ -816,14 +765,12 @@ where
         let eversion = ent.version;
         let (ek, ev) = ent.split();
 
-        if let Some((old_key, old_value)) =
-            pending_writes.remove_entry(&ek).map_err(TransactionError::Pwm)?
-        {
+        if let Some((old_key, old_value)) = pending_writes.remove_entry(&ek) {
             if old_value.version != eversion {
                 self.duplicate_writes.push(Entry::unsplit(old_key, old_value));
             }
         }
-        pending_writes.insert(ek, ev).map_err(TransactionError::Pwm)?;
+        pending_writes.insert(ek, ev);
 
         Ok(())
     }
@@ -831,12 +778,10 @@ where
 
 impl<K, V, C, P> Wtm<K, V, C, P>
 where
-    C: ConflictManager<Key = K>,
-    P: Pwm<Key = K, Value = V>,
+    C: Conflict<Key = K>,
+    P: PendingWrites<Key = K, Value = V>,
 {
-    fn commit_entries(
-        &mut self,
-    ) -> Result<(u64, OneOrMore<Entry<K, V>>), TransactionError<P::Error>> {
+    fn commit_entries(&mut self) -> Result<(u64, OneOrMore<Entry<K, V>>), TransactionError> {
         // Ensure that the order in which we get the commit timestamp is the same as
         // the order in which we push these updates to the write channel. So, we
         // acquire a writeChLock before getting a commit timestamp, and only release
@@ -953,7 +898,7 @@ mod tests {
         _m: PhantomData<K>,
     }
 
-    impl<K> ConflictManager for TestCm<K> {
+    impl<K> Conflict for TestCm<K> {
         type Key = K;
 
         type Options = ();

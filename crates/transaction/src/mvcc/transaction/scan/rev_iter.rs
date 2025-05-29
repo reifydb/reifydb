@@ -14,7 +14,7 @@
 
 use either::Either;
 
-use crate::mvcc::conflict::ConflictManager;
+use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
 use core::{cmp, iter::Rev};
@@ -62,7 +62,7 @@ pub struct WriteTransactionRevIter<'a, K, V, C> {
 
 impl<'a, K, V, C> WriteTransactionRevIter<'a, K, V, C>
 where
-    C: ConflictManager<Key = K>,
+    C: Conflict<Key = K>,
     K: Ord,
 {
     fn advance_pending(&mut self) {
@@ -100,7 +100,7 @@ where
 impl<'a, K, V, C> Iterator for WriteTransactionRevIter<'a, K, V, C>
 where
     K: Ord + 'static,
-    C: ConflictManager<Key = K>,
+    C: Conflict<Key = K>,
 {
     type Item = Ref<'a, K, V>;
 

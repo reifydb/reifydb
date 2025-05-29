@@ -46,7 +46,7 @@ impl<S> HashCmOptions<S> {
     }
 }
 
-/// A [`ConflictManager`] conflict manager implementation that based on the [`Hash`](Hash).
+/// A [`Conflict`] conflict manager implementation that based on the [`Hash`](Hash).
 pub struct HashCm<K, S = DefaultHasher> {
     reads: MediumVec<Read>,
     conflict_keys: IndexSet<u64, S>,
@@ -63,7 +63,7 @@ impl<K, S: Clone> Clone for HashCm<K, S> {
     }
 }
 
-impl<K, S> ConflictManager for HashCm<K, S>
+impl<K, S> Conflict for HashCm<K, S>
 where
     S: BuildHasher,
     K: Hash + Eq,
@@ -162,7 +162,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::{ConflictManager, HashCm, HashCmOptions};
+    use super::{Conflict, HashCm, HashCmOptions};
     use crate::mvcc::conflict::CmEquivalent;
 
     #[test]

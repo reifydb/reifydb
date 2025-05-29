@@ -14,6 +14,7 @@ use std::borrow::Borrow;
 use std::hash::Hash;
 use std::ops::RangeBounds;
 
+use crate::mvcc::error::TransactionError;
 pub use btree::BTreePwm;
 pub use hash::IndexMapPwm;
 
@@ -29,10 +30,7 @@ mod hash;
 /// But, users can create their own implementations by implementing this trait.
 /// e.g. if you want to implement a recovery transaction manager, you can use a persistent
 /// storage to store the pending writes.
-pub trait Pwm: Sized {
-    /// The error type returned by the conflict manager.
-    type Error: crate::mvcc::error::Error;
-
+pub trait PendingWrites: Sized {
     /// The key type.
     type Key;
     /// The value type.
@@ -50,7 +48,7 @@ pub trait Pwm: Sized {
     type Options;
 
     /// Create a new pending manager with the given options.
-    fn new(options: Self::Options) -> Result<Self, Self::Error>;
+    fn new(options: Self::Options) -> Self;
 
     /// Returns true if the buffer is empty.
     fn is_empty(&self) -> bool;
@@ -58,15 +56,6 @@ pub trait Pwm: Sized {
     /// Returns the number of elements in the buffer.
     fn len(&self) -> usize;
 
-    /// Validate if the entry is valid for this database.
-    ///
-    /// e.g.
-    /// - If the entry is expired
-    /// - If the key or the value is too large
-    /// - If the key or the value is empty
-    /// - If the key or the value contains invalid characters
-    /// - and etc.
-    fn validate_entry(&self, entry: &Entry<Self::Key, Self::Value>) -> Result<(), Self::Error>;
 
     /// Returns the maximum batch size in bytes
     fn max_batch_size(&self) -> u64;
@@ -78,26 +67,19 @@ pub trait Pwm: Sized {
     fn estimate_size(&self, entry: &Entry<Self::Key, Self::Value>) -> u64;
 
     /// Returns a reference to the value corresponding to the key.
-    fn get(&self, key: &Self::Key) -> Result<Option<&EntryValue<Self::Value>>, Self::Error>;
+    fn get(&self, key: &Self::Key) -> Option<&EntryValue<Self::Value>>;
 
     /// Returns a reference to the key-value pair corresponding to the key.
-    fn get_entry(
-        &self,
-        key: &Self::Key,
-    ) -> Result<Option<(&Self::Key, &EntryValue<Self::Value>)>, Self::Error>;
+    fn get_entry(&self, key: &Self::Key) -> Option<(&Self::Key, &EntryValue<Self::Value>)>;
 
     /// Returns true if the pending manager contains the key.
-    fn contains_key(&self, key: &Self::Key) -> Result<bool, Self::Error>;
+    fn contains_key(&self, key: &Self::Key) -> bool;
 
     /// Inserts a key-value pair into the er.
-    fn insert(&mut self, key: Self::Key, value: EntryValue<Self::Value>)
-    -> Result<(), Self::Error>;
+    fn insert(&mut self, key: Self::Key, value: EntryValue<Self::Value>);
 
     /// Removes a key from the pending writes, returning the key-value pair if the key was previously in the pending writes.
-    fn remove_entry(
-        &mut self,
-        key: &Self::Key,
-    ) -> Result<Option<(Self::Key, EntryValue<Self::Value>)>, Self::Error>;
+    fn remove_entry(&mut self, key: &Self::Key) -> Option<(Self::Key, EntryValue<Self::Value>)>;
 
     /// Returns an iterator over the pending writes.
     fn iter(&self) -> Self::Iter<'_>;
@@ -106,11 +88,11 @@ pub trait Pwm: Sized {
     fn into_iter(self) -> Self::IntoIter;
 
     /// Rollback the pending writes.
-    fn rollback(&mut self) -> Result<(), Self::Error>;
+    fn rollback(&mut self);
 }
 
 /// An trait that can be used to get a range over the pending writes.
-pub trait PwmRange: Pwm {
+pub trait PwmRange: PendingWrites {
     /// The iterator type.
     type Range<'a>: IntoIterator<Item = (&'a Self::Key, &'a EntryValue<Self::Value>)>
     where
@@ -140,67 +122,61 @@ pub trait PwmEquivalentRange: PwmRange + PwmEquivalent {
         R: RangeBounds<T>;
 }
 
-/// An optimized version of the [`Pwm`] trait that if your pending writes manager is depend on hash.
-pub trait PwmEquivalent: Pwm {
-    /// Optimized version of [`Pwm::get`] that accepts borrowed keys.
-    fn get_equivalent<Q>(&self, key: &Q) -> Result<Option<&EntryValue<Self::Value>>, Self::Error>
+/// An optimized version of the [`PendingWrites`] trait that if your pending writes manager is depend on hash.
+pub trait PwmEquivalent: PendingWrites {
+    /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
+    fn get_equivalent<Q>(&self, key: &Q) -> Option<&EntryValue<Self::Value>>
     where
         Self::Key: Borrow<Q>,
         Q: Hash + Eq + ?Sized;
 
-    /// Optimized version of [`Pwm::get_entry`] that accepts borrowed keys.
-    fn get_entry_equivalent<Q>(
-        &self,
-        key: &Q,
-    ) -> Result<Option<(&Self::Key, &EntryValue<Self::Value>)>, Self::Error>
+    /// Optimized version of [`PendingWrites::get_entry`] that accepts borrowed keys.
+    fn get_entry_equivalent<Q>(&self, key: &Q) -> Option<(&Self::Key, &EntryValue<Self::Value>)>
     where
         Self::Key: Borrow<Q>,
         Q: Hash + Eq + ?Sized;
 
-    /// Optimized version of [`Pwm::contains_key`] that accepts borrowed keys.
-    fn contains_key_equivalent<Q>(&self, key: &Q) -> Result<bool, Self::Error>
+    /// Optimized version of [`PendingWrites::contains_key`] that accepts borrowed keys.
+    fn contains_key_equivalent<Q>(&self, key: &Q) -> bool
     where
         Self::Key: Borrow<Q>,
         Q: Hash + Eq + ?Sized;
 
-    /// Optimized version of [`Pwm::remove_entry`] that accepts borrowed keys.
+    /// Optimized version of [`PendingWrites::remove_entry`] that accepts borrowed keys.
     fn remove_entry_equivalent<Q>(
         &mut self,
         key: &Q,
-    ) -> Result<Option<(Self::Key, EntryValue<Self::Value>)>, Self::Error>
+    ) -> Option<(Self::Key, EntryValue<Self::Value>)>
     where
         Self::Key: Borrow<Q>,
         Q: Hash + Eq + ?Sized;
 }
 
-/// An optimized version of the [`Pwm`] trait that if your pending writes manager is depend on the order.
-pub trait PwmComparable: Pwm {
-    /// Optimized version of [`Pwm::get`] that accepts borrowed keys.
-    fn get_comparable<Q>(&self, key: &Q) -> Result<Option<&EntryValue<Self::Value>>, Self::Error>
+/// An optimized version of the [`PendingWrites`] trait that if your pending writes manager is depend on the order.
+pub trait PwmComparable: PendingWrites {
+    /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
+    fn get_comparable<Q>(&self, key: &Q) -> Option<&EntryValue<Self::Value>>
     where
         Self::Key: Borrow<Q>,
         Q: Ord + ?Sized;
 
-    /// Optimized version of [`Pwm::get`] that accepts borrowed keys.
-    fn get_entry_comparable<Q>(
-        &self,
-        key: &Q,
-    ) -> Result<Option<(&Self::Key, &EntryValue<Self::Value>)>, Self::Error>
+    /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
+    fn get_entry_comparable<Q>(&self, key: &Q) -> Option<(&Self::Key, &EntryValue<Self::Value>)>
     where
         Self::Key: Borrow<Q>,
         Q: Ord + ?Sized;
 
-    /// Optimized version of [`Pwm::contains_key`] that accepts borrowed keys.
-    fn contains_key_comparable<Q>(&self, key: &Q) -> Result<bool, Self::Error>
+    /// Optimized version of [`PendingWrites::contains_key`] that accepts borrowed keys.
+    fn contains_key_comparable<Q>(&self, key: &Q) -> bool
     where
         Self::Key: Borrow<Q>,
         Q: Ord + ?Sized;
 
-    /// Optimized version of [`Pwm::remove_entry`] that accepts borrowed keys.
+    /// Optimized version of [`PendingWrites::remove_entry`] that accepts borrowed keys.
     fn remove_entry_comparable<Q>(
         &mut self,
         key: &Q,
-    ) -> Result<Option<(Self::Key, EntryValue<Self::Value>)>, Self::Error>
+    ) -> Option<(Self::Key, EntryValue<Self::Value>)>
     where
         Self::Key: Borrow<Q>,
         Q: Ord + ?Sized;

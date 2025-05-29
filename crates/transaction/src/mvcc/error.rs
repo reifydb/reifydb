@@ -13,7 +13,7 @@ pub use std::error::Error;
 
 /// Error type for the transaction.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TransactionError<P: Error> {
+pub enum TransactionError {
     /// Returned if an update function is called on a read-only transaction.
     ReadOnly,
 
@@ -26,71 +26,60 @@ pub enum TransactionError<P: Error> {
 
     /// Returned if too many writes are fit into a single transaction.
     LargeTxn,
-
-    /// Returned if the transaction manager error occurs.
-    Pwm(P),
 }
 
-impl<P: Error> core::fmt::Display for TransactionError<P> {
+impl core::fmt::Display for TransactionError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::ReadOnly => write!(f, "transaction is read-only"),
             Self::Conflict => write!(f, "transaction conflict, please retry"),
             Self::Discard => write!(f, "transaction has been discarded, please create a new one"),
             Self::LargeTxn => write!(f, "transaction is too large"),
-            Self::Pwm(e) => write!(f, "transaction manager error: {}", e),
         }
-    }
-}
-
-impl<P: Error> TransactionError<P> {
-    /// Create a new error from the transaction error.
-    pub const fn pending(err: P) -> Self {
-        Self::Pwm(err)
     }
 }
 
 /// Error type for write transaction.
-pub enum MvccError<P: Error, E: Error> {
+pub enum MvccError<E: Error> {
     /// Returned if the write error occurs.
     Commit(E),
     /// Returned if the transaction error occurs.
-    Transaction(TransactionError<P>),
+    Transaction(TransactionError),
     /// Persistence-layer error
     Persistence(reifydb_persistence::Error),
 }
 
-impl<P: Error, E: Error> core::fmt::Debug for MvccError<P, E> {
+impl<E: Error> core::fmt::Debug for MvccError<E> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Transaction(e) => write!(f, "Transaction({:?})", e),
-            Self::Commit(e) => write!(f, "Commit({:?})", e),
+            Self::Transaction(err) => write!(f, "Transaction({:?})", err),
+            Self::Commit(err) => write!(f, "Commit({:?})", err),
             MvccError::Persistence(_) => unimplemented!(),
         }
     }
 }
 
-impl<P: Error, E: Error> core::fmt::Display for MvccError<P, E> {
+impl<E: Error> core::fmt::Display for MvccError<E> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Transaction(e) => write!(f, "transaction error: {e}"),
-            Self::Commit(e) => write!(f, "commit error: {e}"),
+            Self::Transaction(err) => write!(f, "transaction error: {err}"),
+            Self::Commit(err) => write!(f, "commit error: {err}"),
             MvccError::Persistence(_) => unimplemented!(),
         }
     }
 }
 
-impl<P: Error, E: Error> Error for MvccError<P, E> {}
+impl<E: Error> Error for MvccError<E> {}
 
-impl<P: Error, E: Error> From<TransactionError<P>> for MvccError<P, E> {
-    fn from(err: TransactionError<P>) -> Self {
+impl<E: Error> From<TransactionError> for MvccError<E> {
+    fn from(err: TransactionError) -> Self {
         Self::Transaction(err)
     }
 }
 
-impl<P: Error, E: Error> MvccError<P, E> {
+impl<E: Error> MvccError<E> {
     /// Create a new error from the transaction error.
-    pub const fn transaction(err: TransactionError<P>) -> Self {
+    pub const fn transaction(err: TransactionError) -> Self {
         Self::Transaction(err)
     }
 

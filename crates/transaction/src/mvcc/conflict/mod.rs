@@ -25,7 +25,7 @@ mod hash;
 ///
 /// 1. Contains fingerprints of keys read.
 /// 2. Contains fingerprints of keys written. This is used for conflict detection.
-pub trait ConflictManager: Sized {
+pub trait Conflict: Sized {
     /// The key type.
     type Key;
     /// The options type used to create the conflict manager.
@@ -47,14 +47,14 @@ pub trait ConflictManager: Sized {
     fn rollback(&mut self);
 }
 
-/// A extended trait of the [`ConflictManager`] trait that can be used to manage the range of keys.
-pub trait CmRange: ConflictManager + Sized {
+/// A extended trait of the [`Conflict`] trait that can be used to manage the range of keys.
+pub trait CmRange: Conflict + Sized {
     /// Mark the range is read.
-    fn mark_range(&mut self, range: impl RangeBounds<<Self as ConflictManager>::Key>);
+    fn mark_range(&mut self, range: impl RangeBounds<<Self as Conflict>::Key>);
 }
 
-/// A extended trait of the [`ConflictManager`] trait that can be used to manage the iterator of keys.
-pub trait CmIter: ConflictManager + Sized {
+/// A extended trait of the [`Conflict`] trait that can be used to manage the iterator of keys.
+pub trait CmIter: Conflict + Sized {
     /// Mark the iterator is operated, this is useful to detect the indirect conflict.
     fn mark_iter(&mut self);
 }
@@ -65,8 +65,8 @@ impl<T: CmRange> CmIter for T {
     }
 }
 
-/// An optimized version of the [`ConflictManager`] trait that if your conflict manager is depend on hash.
-pub trait CmEquivalent: ConflictManager {
+/// An optimized version of the [`Conflict`] trait that if your conflict manager is depend on hash.
+pub trait CmEquivalent: Conflict {
     /// Optimized version of [`mark_read`] that accepts borrowed keys. Optional to implement.
     fn mark_read_equivalent<Q>(&mut self, key: &Q)
     where
@@ -89,8 +89,8 @@ pub trait CmEquivalentRange: CmRange + Sized {
         Q: Hash + Eq + ?Sized;
 }
 
-/// An optimized version of the [`ConflictManager`] trait that if your conflict manager is depend on the order.
-pub trait CmComparable: ConflictManager {
+/// An optimized version of the [`Conflict`] trait that if your conflict manager is depend on the order.
+pub trait CmComparable: Conflict {
     /// Optimized version of [`mark_read`] that accepts borrowed keys. Optional to implement.
     fn mark_read_comparable<Q>(&mut self, key: &Q)
     where

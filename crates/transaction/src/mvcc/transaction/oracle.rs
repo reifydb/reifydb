@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::conflict::ConflictManager;
+use crate::mvcc::conflict::Conflict;
 use crate::mvcc::watermark::{Closer, WaterMark};
 use core::ops::AddAssign;
 use smallvec_wrapper::TinyVec;
@@ -52,7 +52,7 @@ pub(super) struct Oracle<C> {
 
 impl<C> Oracle<C>
 where
-    C: ConflictManager,
+    C: Conflict,
 {
     pub(super) fn new_commit_ts(
         &self,

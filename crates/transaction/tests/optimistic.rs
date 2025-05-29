@@ -22,7 +22,6 @@ use reifydb_transaction::Tx;
 use reifydb_transaction::mvcc::transaction::optimistic::{
     Optimistic, Transaction, TransactionRx, TransactionTx,
 };
-use reifydb_transaction::old_mvcc::Version;
 use std::path::Path;
 use test_each_file::test_each_path;
 

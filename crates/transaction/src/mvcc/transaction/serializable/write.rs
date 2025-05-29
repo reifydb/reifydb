@@ -62,7 +62,7 @@ where
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
 
-    pub fn commit(&mut self) -> Result<(), MvccError<Infallible, Infallible>> {
+    pub fn commit(&mut self) -> Result<(), MvccError<Infallible>> {
         self.wtm.commit(|ents| {
             self.db.inner.map.apply(ents);
             Ok(())
@@ -94,7 +94,7 @@ where
     pub fn commit_with_callback<E, R>(
         &mut self,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, MvccError<Infallible, E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError<E>>
     where
         E: std::error::Error,
         R: Send + 'static,
@@ -123,13 +123,13 @@ where
 
     /// Rollback the transaction.
 
-    pub fn rollback(&mut self) -> Result<(), TransactionError<Infallible>> {
+    pub fn rollback(&mut self) -> Result<(), TransactionError> {
         self.wtm.rollback()
     }
 
     /// Returns true if the given key exists in the database.
 
-    pub fn contains_key(&mut self, key: &K) -> Result<bool, TransactionError<Infallible>> {
+    pub fn contains_key(&mut self, key: &K) -> Result<bool, TransactionError> {
         let version = self.wtm.version();
         match self.wtm.contains_key(key)? {
             Some(true) => Ok(true),
@@ -143,7 +143,7 @@ where
     pub fn get<'a, 'b: 'a>(
         &'a mut self,
         key: &'b K,
-    ) -> Result<Option<Ref<'a, K, V>>, TransactionError<Infallible>> {
+    ) -> Result<Option<Ref<'a, K, V>>, TransactionError> {
         let version = self.wtm.version();
         match self.wtm.get(key)? {
             Some(v) => {
@@ -159,21 +159,19 @@ where
 
     /// Insert a new key-value pair.
 
-    pub fn insert(&mut self, key: K, value: V) -> Result<(), TransactionError<Infallible>> {
+    pub fn insert(&mut self, key: K, value: V) -> Result<(), TransactionError> {
         self.wtm.insert(key, value)
     }
 
     /// Remove a key.
 
-    pub fn remove(&mut self, key: K) -> Result<(), TransactionError<Infallible>> {
+    pub fn remove(&mut self, key: K) -> Result<(), TransactionError> {
         self.wtm.remove(key)
     }
 
     /// Iterate over the entries of the write transaction.
 
-    pub fn iter(
-        &mut self,
-    ) -> Result<TransactionIter<'_, K, V, BTreeCm<K>>, TransactionError<Infallible>> {
+    pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, BTreeCm<K>>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
 
@@ -190,7 +188,7 @@ where
 
     pub fn iter_rev(
         &mut self,
-    ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeCm<K>>, TransactionError<Infallible>> {
+    ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeCm<K>>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
         let start: Bound<K> = Bound::Unbounded;
@@ -207,7 +205,7 @@ where
     pub fn range<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<TransactionRange<'a, K, R, K, V, BTreeCm<K>>, TransactionError<Infallible>>
+    ) -> Result<TransactionRange<'a, K, R, K, V, BTreeCm<K>>, TransactionError>
     where
         R: RangeBounds<K> + 'a,
     {
@@ -227,7 +225,7 @@ where
     pub fn range_rev<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<WriteTransactionRevRange<'a, K, R, K, V, BTreeCm<K>>, TransactionError<Infallible>>
+    ) -> Result<WriteTransactionRevRange<'a, K, R, K, V, BTreeCm<K>>, TransactionError>
     where
         R: RangeBounds<K> + 'a,
     {

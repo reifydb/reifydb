@@ -65,7 +65,7 @@ where
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
 
-    pub fn commit(&mut self) -> Result<(), MvccError<Infallible, Infallible>> {
+    pub fn commit(&mut self) -> Result<(), MvccError<Infallible>> {
         self.wtm.commit(|operations| {
             self.engine.inner.map.apply(operations);
             Ok(())
@@ -97,7 +97,7 @@ where
     pub fn commit_with_callback<E, R>(
         &mut self,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, MvccError<Infallible, E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError<E>>
     where
         E: std::error::Error,
         R: Send + 'static,
@@ -120,20 +120,17 @@ where
     V: 'static,
 {
     /// Returns the read version of the transaction.
-
     pub fn version(&self) -> u64 {
         self.wtm.version()
     }
 
     /// Rollback the transaction.
-
-    pub fn rollback(&mut self) -> Result<(), TransactionError<Infallible>> {
+    pub fn rollback(&mut self) -> Result<(), TransactionError> {
         self.wtm.rollback()
     }
 
     /// Returns true if the given key exists in the database.
-
-    pub fn contains_key<Q>(&mut self, key: &Q) -> Result<bool, TransactionError<Infallible>>
+    pub fn contains_key<Q>(&mut self, key: &Q) -> Result<bool, TransactionError>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + Ord + ?Sized,
@@ -147,11 +144,10 @@ where
     }
 
     /// Get a value from the database.
-
     pub fn get<'a, 'b: 'a, Q>(
         &'a mut self,
         key: &'b Q,
-    ) -> Result<Option<Ref<'a, K, V>>, TransactionError<Infallible>>
+    ) -> Result<Option<Ref<'a, K, V>>, TransactionError>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + Ord + ?Sized,
@@ -170,21 +166,17 @@ where
     }
 
     /// Insert a new key-value pair.
-    pub fn set(&mut self, key: K, value: V) -> Result<(), TransactionError<Infallible>> {
+    pub fn set(&mut self, key: K, value: V) -> Result<(), TransactionError> {
         self.wtm.insert(key, value)
     }
 
     /// Remove a key.
-
-    pub fn remove(&mut self, key: K) -> Result<(), TransactionError<Infallible>> {
+    pub fn remove(&mut self, key: K) -> Result<(), TransactionError> {
         self.wtm.remove(key)
     }
 
     /// Iterate over the entries of the write transaction.
-
-    pub fn iter(
-        &mut self,
-    ) -> Result<TransactionIter<'_, K, V, HashCm<K>>, TransactionError<Infallible>> {
+    pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, HashCm<K>>, TransactionError> {
         let version = self.wtm.version();
         let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
         let committed = self.engine.inner.map.iter(version);
@@ -194,10 +186,9 @@ where
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
-
     pub fn iter_rev(
         &mut self,
-    ) -> Result<WriteTransactionRevIter<'_, K, V, HashCm<K>>, TransactionError<Infallible>> {
+    ) -> Result<WriteTransactionRevIter<'_, K, V, HashCm<K>>, TransactionError> {
         let version = self.wtm.version();
         let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
         let committed = self.engine.inner.map.iter_rev(version);
@@ -207,11 +198,10 @@ where
     }
 
     /// Returns an iterator over the subset of entries of the database.
-
     pub fn range<'a, Q, R>(
         &'a mut self,
         range: R,
-    ) -> Result<TransactionRange<'a, Q, R, K, V, HashCm<K>>, TransactionError<Infallible>>
+    ) -> Result<TransactionRange<'a, Q, R, K, V, HashCm<K>>, TransactionError>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q> + 'a,
@@ -228,11 +218,10 @@ where
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-
     pub fn range_rev<'a, Q, R>(
         &'a mut self,
         range: R,
-    ) -> Result<WriteTransactionRevRange<'a, Q, R, K, V, HashCm<K>>, TransactionError<Infallible>>
+    ) -> Result<WriteTransactionRevRange<'a, Q, R, K, V, HashCm<K>>, TransactionError>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q> + 'a,
