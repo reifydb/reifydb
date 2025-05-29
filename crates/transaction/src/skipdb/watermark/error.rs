@@ -12,8 +12,6 @@
 /// Watermark errors
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WaterMarkError {
-    /// The watermark is uninitialized, call init first before using any other function
-    Uninitialized,
     /// The watermark is canceled
     Canceled,
     /// The channel is closed
@@ -23,10 +21,6 @@ pub enum WaterMarkError {
 impl core::fmt::Display for WaterMarkError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Uninitialized => write!(
-                f,
-                "watermark: uninitialized, call init first before using any other function"
-            ),
             Self::Canceled => write!(f, "watermark: canceled"),
             Self::ChannelClosed => write!(f, "watermark: channel closed"),
         }

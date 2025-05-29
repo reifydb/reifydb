@@ -889,10 +889,9 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
     fn done_read(&mut self) {
         if !self.done_read {
             self.done_read = true;
-            self.orc().read_mark.done(self.read_ts).unwrap();
+            self.orc().rx.done(self.read_ts);
         }
     }
-
 
     fn orc(&self) -> &Oracle<C> {
         &self.orc

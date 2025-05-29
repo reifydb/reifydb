@@ -9,7 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-
 //! A generic optimistic transaction manger, which is ACID, concurrent with SSI (Serializable Snapshot Isolation).
 //!
 //! For other async runtime, [`async-txn`](https://crates.io/crates/async-txn)
@@ -80,9 +79,9 @@ where
 }
 
 impl<K, V, C, P> Tm<K, V, C, P> {
+
     /// Create a new transaction manager with the given name (just for logging or debugging, use your crate name is enough)
     /// and the current version (provided by the database).
-
     pub fn new(name: &str, current_version: u64) -> Self {
         Self {
             inner: Arc::new({
@@ -92,8 +91,8 @@ impl<K, V, C, P> Tm<K, V, C, P> {
                     format!("{}.txn_timestamps", name).into(),
                     next_ts,
                 );
-                orc.read_mark.done(next_ts).unwrap();
-                orc.txn_mark.done(next_ts).unwrap();
+                orc.rx.done(next_ts);
+                orc.tx.done(next_ts);
                 orc.increment_next_ts();
                 orc
             }),

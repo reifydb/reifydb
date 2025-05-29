@@ -9,6 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use std::ops::Deref;
 use std::sync::{
     Arc,
     atomic::{AtomicPtr, Ordering},
@@ -19,13 +20,13 @@ use wg::WaitGroup;
 
 #[derive(Debug)]
 struct Canceler {
-    tx: AtomicPtr<()>,
+    ptr: AtomicPtr<()>,
 }
 
 impl Canceler {
     fn cancel(&self) {
         // Safely take the sender out of the AtomicPtr.
-        let tx_ptr = self.tx.swap(std::ptr::null_mut(), Ordering::AcqRel);
+        let tx_ptr = self.ptr.swap(std::ptr::null_mut(), Ordering::AcqRel);
 
         // Check if the pointer is not null (indicating it hasn't been taken already).
         if !tx_ptr.is_null() {
@@ -33,8 +34,8 @@ impl Canceler {
             // and it is done only once.
             unsafe {
                 // Convert the pointer back to a Box to take ownership and drop the sender.
-                let _ = Box::from_raw(tx_ptr as *mut Sender<()>);
-                // Sender is dropped here when `_tx_boxed` goes out of scope.
+                let tx = Box::from_raw(tx_ptr as *mut Sender<()>);
+                drop(tx);
             }
         }
     }
@@ -55,7 +56,7 @@ struct CancelContext {
 impl CancelContext {
     fn new() -> (Self, Canceler) {
         let (tx, rx) = unbounded();
-        (Self { rx }, Canceler { tx: AtomicPtr::new(Box::into_raw(Box::new(tx)) as _) })
+        (Self { rx }, Canceler { ptr: AtomicPtr::new(Box::into_raw(Box::new(tx)) as _) })
     }
 
     fn done(&self) -> Receiver<()> {
@@ -68,12 +69,17 @@ impl CancelContext {
 /// which to wait for it to finish shutting down.
 #[derive(Debug, Clone)]
 #[repr(transparent)]
-pub struct Closer {
-    inner: Arc<CloserInner>,
+pub struct Closer(Arc<CloserInner>);
+
+impl Deref for Closer {
+    type Target = CloserInner;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Debug)]
-struct CloserInner {
+pub struct CloserInner {
     wg: WaitGroup,
     ctx: CancelContext,
     cancel: Canceler,
@@ -93,34 +99,34 @@ impl CloserInner {
 
 impl Default for Closer {
     fn default() -> Self {
-        Self { inner: Arc::new(CloserInner::new()) }
+        Self(Arc::new(CloserInner::new()))
     }
 }
 
 impl Closer {
     /// Constructs a new [`Closer`], with an initial count on the [`WaitGroup`].
     pub fn new(initial: usize) -> Self {
-        Self { inner: Arc::new(CloserInner::with(initial)) }
+        Self(Arc::new(CloserInner::with(initial)))
     }
 
     /// Adds delta to the [`WaitGroup`].
     pub fn add_running(&self, running: usize) {
-        self.inner.wg.add(running);
+        self.wg.add(running);
     }
 
     /// Calls [`WaitGroup::done`] on the [`WaitGroup`].
     pub fn done(&self) {
-        self.inner.wg.done();
+        self.wg.done();
     }
 
     /// Signals the [`Closer::has_been_closed`] signal.
     pub fn signal(&self) {
-        self.inner.cancel.cancel();
+        self.cancel.cancel();
     }
 
     /// Waits on the [`WaitGroup`]. (It waits for the Closer's initial value, [`Closer::add_running`], and [`Closer::done`]
     pub fn wait(&self) {
-        self.inner.wg.wait();
+        self.wg.wait();
     }
 
     /// Calls [`Closer::signal`], then [`Closer::wait`].
@@ -131,6 +137,61 @@ impl Closer {
 
     /// Listens for the [`Closer::signal`] signal.
     pub fn listen(&self) -> Receiver<()> {
-        self.inner.ctx.done()
+        self.ctx.done()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::skipdb::watermark::Closer;
+
+    #[test]
+    fn test_multiple_singles() {
+        let closer = Closer::default();
+        closer.signal();
+        closer.signal();
+        closer.signal_and_wait();
+
+        let closer = Closer::new(1);
+        closer.done();
+        closer.signal_and_wait();
+        closer.signal_and_wait();
+        closer.signal();
+    }
+
+    #[test]
+    fn test_closer_single() {
+        let closer = Closer::new(1);
+        let tc = closer.clone();
+        std::thread::spawn(move || {
+            if let Err(err) = tc.listen().recv() {
+                eprintln!("err: {}", err);
+            }
+            tc.done();
+        });
+        closer.signal_and_wait();
+    }
+
+    #[test]
+    fn test_closer_many() {
+        use core::time::Duration;
+        use crossbeam_channel::unbounded;
+
+        let (tx, rx) = unbounded();
+
+        let c = Closer::default();
+
+        for _ in 0..10 {
+            let c = c.clone();
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                assert!(c.listen().recv().is_err());
+                tx.send(()).unwrap();
+            });
+        }
+        c.signal();
+        for _ in 0..10 {
+            rx.recv_timeout(Duration::from_millis(10)).unwrap();
+        }
     }
 }

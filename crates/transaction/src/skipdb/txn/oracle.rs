@@ -42,10 +42,10 @@ pub(super) struct Oracle<C> {
     pub(super) inner: Mutex<OracleInner<C>>,
 
     /// Used by DB
-    pub(super) read_mark: WaterMark,
+    pub(super) rx: WaterMark,
 
     /// Used to block new transaction, so all previous commits are visible to a new read.
-    pub(super) txn_mark: WaterMark,
+    pub(super) tx: WaterMark,
 
     /// closer is used to stop watermarks.
     closer: Closer,
@@ -85,7 +85,7 @@ where
 
         let ts = {
             if !*done_read {
-                self.read_mark.done(read_ts).unwrap();
+                self.rx.done(read_ts);
                 *done_read = true;
             }
 
@@ -94,7 +94,7 @@ where
             // This is the general case, when user doesn't specify the read and commit ts.
             let ts = inner.next_txn_ts;
             inner.next_txn_ts += 1;
-            self.txn_mark.begin(ts).unwrap();
+            self.tx.begin(ts);
             ts
         };
 
@@ -107,19 +107,18 @@ where
         CreateCommitTimestampResult::Timestamp(ts)
     }
 
-
     fn cleanup_committed_transactions(
         &self,
         detect_conflicts: bool,
         inner: &mut MutexGuard<OracleInner<C>>,
     ) {
         if !detect_conflicts {
-            // When detectConflicts is set to false, we do not store any
+            // When detect_conflicts is set to false, we do not store any
             // committedTxns and so there's nothing to clean up.
             return;
         }
 
-        let max_read_ts = self.read_mark.done_until().unwrap();
+        let max_read_ts = self.rx.done_until();
 
         assert!(max_read_ts >= inner.last_cleanup_ts);
 
@@ -136,37 +135,31 @@ where
 }
 
 impl<C> Oracle<C> {
-
     pub fn new(
-        read_mark_name: Cow<'static, str>,
-        txn_mark_name: Cow<'static, str>,
+        rx_mark_name: Cow<'static, str>,
+        tx_mark_name: Cow<'static, str>,
         next_txn_ts: u64,
     ) -> Self {
         let closer = Closer::new(2);
-        let mut orc = Self {
+        Self {
             write_serialize_lock: Mutex::new(()),
             inner: Mutex::new(OracleInner {
                 next_txn_ts,
                 last_cleanup_ts: 0,
                 committed_txns: TinyVec::new(),
             }),
-            read_mark: WaterMark::new(read_mark_name),
-            txn_mark: WaterMark::new(txn_mark_name),
+            rx: WaterMark::new(rx_mark_name, closer.clone()),
+            tx: WaterMark::new(tx_mark_name, closer.clone()),
             closer,
-        };
-
-        orc.read_mark.init(orc.closer.clone());
-        orc.txn_mark.init(orc.closer.clone());
-        orc
+        }
     }
-
 
     pub(super) fn read_ts(&self) -> u64 {
         let read_ts = {
             let inner = self.inner.lock().unwrap();
 
             let read_ts = inner.next_txn_ts - 1;
-            self.read_mark.begin(read_ts).unwrap();
+            self.rx.begin(read_ts);
             read_ts
         };
 
@@ -174,32 +167,27 @@ impl<C> Oracle<C> {
         // timestamp and are going through the write to value log and LSM tree
         // process. Not waiting here could mean that some txns which have been
         // committed would not be read.
-        if let Err(e) = self.txn_mark.wait_for_mark(read_ts) {
+        if let Err(e) = self.tx.wait_for_mark(read_ts) {
             panic!("{e}");
         }
         read_ts
     }
 
-
     pub(super) fn increment_next_ts(&self) {
         self.inner.lock().unwrap().next_txn_ts.add_assign(1);
     }
 
-
     pub(super) fn discard_at_or_below(&self) -> u64 {
-        self.read_mark.done_until().unwrap()
+        self.rx.done_until()
     }
-
 
     pub(super) fn done_read(&self, read_ts: u64) {
-        self.read_mark.done(read_ts).unwrap();
+        self.rx.done(read_ts)
     }
-
 
     pub(super) fn done_commit(&self, cts: u64) {
-        self.txn_mark.done(cts).unwrap();
+        self.tx.done(cts)
     }
-
 
     fn stop(&self) {
         self.closer.signal_and_wait();
