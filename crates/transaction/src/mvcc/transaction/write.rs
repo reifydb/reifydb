@@ -21,7 +21,7 @@ pub struct TransactionManagerTx<K, V, C, P> {
     pub(super) oracle: Arc<Oracle<C>>,
     pub(super) conflicts: C,
     // stores any writes done by tx
-    pub(super) pending_writes: Option<P>,
+    pub(super) pending_writes: P,
     pub(super) duplicate_writes: Vec<Entry<K, V>>,
 
     pub(super) discarded: bool,
@@ -51,10 +51,8 @@ impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
     }
 
     /// Returns the pending writes
-    ///
-    /// `None` means the transaction has already been discarded.
-    pub fn pending_writes(&self) -> Option<&P> {
-        self.pending_writes.as_ref()
+    pub fn pending_writes(&self) -> &P {
+        &self.pending_writes
     }
 
     /// Returns the conflict manager.
@@ -77,7 +75,7 @@ where
     /// Returns a marker for the keys that are operated and the pending writes manager.
     /// As Rust's borrow checker does not allow to borrow mutable marker and the immutable pending writes manager at the same
     pub fn marker_with_pending_writes(&mut self) -> (Marker<'_, C>, &P) {
-        (Marker::new(&mut self.conflicts), self.pending_writes.as_ref().unwrap())
+        (Marker::new(&mut self.conflicts), &self.pending_writes)
     }
 
     /// Marks a key is read.
@@ -116,7 +114,7 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        self.pending_writes.as_mut().unwrap().rollback();
+        self.pending_writes.rollback();
         self.conflicts.rollback();
         Ok(())
     }
@@ -127,7 +125,7 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        match self.pending_writes.as_ref().unwrap().get(key) {
+        match self.pending_writes.get(key) {
             Some(ent) => {
                 // If the value is None, it means that the key is removed.
                 if ent.value.is_none() {
@@ -156,7 +154,7 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        if let Some(e) = self.pending_writes.as_ref().unwrap().get(key) {
+        if let Some(e) = self.pending_writes.get(key) {
             // If the value is None, it means that the key is removed.
             if e.value.is_none() {
                 return Ok(None);
@@ -207,7 +205,7 @@ where
             return Err(TransactionError::Discarded.into());
         }
 
-        if self.pending_writes.as_ref().unwrap().is_empty() {
+        if self.pending_writes.is_empty() {
             // Nothing to commit
             self.discard();
             return Ok(());
@@ -274,7 +272,7 @@ where
             return Err(MvccError::transaction(TransactionError::Discarded));
         }
 
-        if self.pending_writes.as_ref().unwrap().is_empty() {
+        if self.pending_writes.is_empty() {
             // Nothing to commit
             self.discard();
             return Ok(std::thread::spawn(move || callback(Ok(()))));
@@ -320,7 +318,7 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        let pending_writes = self.pending_writes.as_mut().unwrap();
+        let pending_writes = &mut self.pending_writes;
 
         let cnt = self.count + 1;
         // Extra bytes for the version in key.
@@ -373,7 +371,7 @@ where
                 Err(TransactionError::Conflict)
             }
             CreateCommitTimestampResult::Timestamp(commit_ts) => {
-                let pending_writes = mem::take(&mut self.pending_writes).unwrap();
+                let pending_writes = mem::take(&mut self.pending_writes);
                 let duplicate_writes = mem::take(&mut self.duplicate_writes);
                 let mut entries =
                     Vec::with_capacity(pending_writes.len() + self.duplicate_writes.len());
@@ -442,9 +440,8 @@ mod tests {
             TestConflict<Arc<u64>>,
             BTreePendingWrites<Arc<u64>, u64>,
         >::new("test", 0);
-        let mut wtm = tm.write(()).unwrap();
+        let mut wtm = tm.write().unwrap();
         assert!(!wtm.is_discard());
-        assert!(wtm.pending_writes().is_some());
 
         let mut marker = wtm.marker();
 

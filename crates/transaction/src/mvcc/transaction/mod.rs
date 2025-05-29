@@ -48,10 +48,7 @@ where
 {
     /// Create a new writable transaction with
     /// the default pending writes manager to store the pending writes.
-    pub fn write(
-        &self,
-        pending_manager_opts: P::Options,
-    ) -> Result<TransactionManagerTx<K, V, C, P>, TransactionError> {
+    pub fn write(&self) -> Result<TransactionManagerTx<K, V, C, P>, TransactionError> {
         let read_ts = self.inner.read_ts();
         Ok(TransactionManagerTx {
             oracle: self.inner.clone(),
@@ -59,7 +56,7 @@ where
             size: 0,
             count: 0,
             conflicts: C::new(),
-            pending_writes: Some(P::new(pending_manager_opts)),
+            pending_writes: P::new(),
             duplicate_writes: Vec::new(),
             discarded: false,
             done_read: false,

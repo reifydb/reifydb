@@ -33,7 +33,7 @@ where
     K: Clone + Ord + Hash + Eq,
 {
     pub fn new(db: Optimistic<K, V>) -> Self {
-        let tx = db.inner.tm.write(()).unwrap();
+        let tx = db.inner.tm.write().unwrap();
         Self { engine: db, tx }
     }
 }

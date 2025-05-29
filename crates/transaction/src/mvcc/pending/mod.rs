@@ -19,15 +19,7 @@ pub use btree::BTreePendingWrites;
 mod btree;
 
 /// A pending writes manager that can be used to store pending writes in a transaction.
-///
-/// By default, there are two implementations of this trait:
-/// - [`IndexMap`]: A hash map with consistent ordering and fast lookups.
-/// - [`BTreeMap`]: A balanced binary tree with ordered keys and fast lookups.
-///
-/// But, users can create their own implementations by implementing this trait.
-/// e.g. if you want to implement a recovery transaction manager, you can use a persistent
-/// storage to store the pending writes.
-pub trait PendingWrites: Sized {
+pub trait PendingWrites: Default + Sized {
     /// The key type.
     type Key;
     /// The value type.
@@ -41,11 +33,8 @@ pub trait PendingWrites: Sized {
     /// The IntoIterator type.
     type IntoIter: Iterator<Item = (Self::Key, EntryValue<Self::Value>)>;
 
-    /// The options type used to create the pending manager.
-    type Options;
-
-    /// Create a new pending manager with the given options.
-    fn new(options: Self::Options) -> Self;
+    /// Create a new pending writes manager.
+    fn new() -> Self;
 
     /// Returns true if the buffer is empty.
     fn is_empty(&self) -> bool;

@@ -36,7 +36,7 @@ where
     K: Clone + Ord,
 {
     pub fn new(db: SerializableDb<K, V>) -> Self {
-        let wtm = db.inner.tm.write(()).unwrap();
+        let wtm = db.inner.tm.write().unwrap();
         Self { db, wtm }
     }
 }

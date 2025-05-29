@@ -33,9 +33,7 @@ where
 
     type IntoIter = BTreeMapIntoIter<K, EntryValue<V>>;
 
-    type Options = ();
-
-    fn new(_: Self::Options) -> Self {
+    fn new() -> Self {
         Self::default()
     }
 

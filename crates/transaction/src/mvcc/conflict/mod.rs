@@ -18,26 +18,17 @@ pub use btree::BTreeConflict;
 mod btree;
 
 /// The conflict manager that can be used to manage the conflicts in a transaction.
-///
-/// The conflict normally needs to have:
-///
-/// 1. Contains fingerprints of keys read.
-/// 2. Contains fingerprints of keys written. This is used for conflict detection.
 pub trait Conflict: Default + Sized {
     /// The key type.
     type Key;
     /// Create a new conflict manager.
     fn new() -> Self;
-
     /// Mark the key is read.
     fn mark_read(&mut self, key: &Self::Key);
-
     /// Mark the key is .
     fn mark_conflict(&mut self, key: &Self::Key);
-
     /// Returns true if we have a conflict.
     fn has_conflict(&self, other: &Self) -> bool;
-
     /// Rollback the conflict manager.
     fn rollback(&mut self);
 }
