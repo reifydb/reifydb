@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::skipdb::txn::{Entry, EntryValue};
+use crate::skipdb::version::types::{Entry, EntryValue};
 use std::borrow::Borrow;
 use std::hash::Hash;
 use std::ops::RangeBounds;

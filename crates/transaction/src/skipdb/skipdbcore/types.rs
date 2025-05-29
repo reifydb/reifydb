@@ -12,7 +12,7 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 
 use crossbeam_skiplist::{map::Entry as MapEntry, SkipMap};
-use crate::skipdb::txncore::types::EntryRef;
+use crate::skipdb::version::types::EntryRef;
 
 mod reference;
 use either::Either;

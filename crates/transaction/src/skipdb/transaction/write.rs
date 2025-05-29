@@ -15,6 +15,7 @@ use crate::skipdb::error::WtmError;
 use crate::skipdb::marker::Marker;
 use crate::skipdb::pending::{PwmComparable, PwmEquivalent};
 use core::{borrow::Borrow, hash::Hash};
+use crate::skipdb::version::types::{Entry, EntryData, EntryDataRef, EntryRef};
 
 /// Wtm is used to perform writes to the database. It is created by
 /// calling [`Tm::write`].

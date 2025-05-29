@@ -16,8 +16,7 @@ pub mod pending;
 pub mod skipdb;
 pub mod skipdbcore;
 pub mod transaction;
-pub mod txn;
-pub mod txncore;
+pub mod version;
 pub mod watermark;
 
 pub type DefaultHasher = std::collections::hash_map::RandomState;

@@ -20,7 +20,7 @@
 
 use std::{borrow::Borrow, hash::BuildHasher, ops::RangeBounds, sync::Arc};
 
-use crate::skipdb::txn::{Rtm, Tm, Wtm};
+use crate::skipdb::transaction::{Rtm, Tm, Wtm};
 
 /// `OptimisticDb` implementation, which requires `K` implements both [`Hash`](core::hash::Hash) and [`Ord`].
 ///
