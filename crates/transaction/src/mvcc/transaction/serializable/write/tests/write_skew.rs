@@ -19,7 +19,7 @@ fn txn_write_skew() {
   let db: SerializableDb<u64, u64> = SerializableDb::new();
 
   // Set balance to $100 in each account.
-  let mut txn = db.serializable_write();
+  let mut txn = db.write();
   txn.insert(a999, 100).unwrap();
   txn.insert(a888, 100).unwrap();
   txn.commit().unwrap();
@@ -32,7 +32,7 @@ fn txn_write_skew() {
   };
 
   // Start two transactions, each would read both accounts and deduct from one account.
-  let mut txn1 = db.serializable_write();
+  let mut txn1 = db.write();
 
   let mut sum = get_bal(&mut txn1, &a999);
   sum += get_bal(&mut txn1, &a888);
@@ -46,7 +46,7 @@ fn txn_write_skew() {
   assert_eq!(100, sum);
   // Don't commit yet.
 
-  let mut txn2 = db.serializable_write();
+  let mut txn2 = db.write();
 
   let mut sum = get_bal(&mut txn2, &a999);
   sum += get_bal(&mut txn2, &a888);
@@ -72,7 +72,7 @@ fn txn_write_skew_black_white() {
   let db: SerializableDb<u64, &'static str> = SerializableDb::new();
 
   // Setup
-  let mut txn = db.serializable_write();
+  let mut txn = db.write();
   for i in 1..=10 {
     if i % 2 == 1 {
       txn.insert(i, "black").unwrap();
@@ -83,7 +83,7 @@ fn txn_write_skew_black_white() {
   txn.commit().unwrap();
 
   // txn1
-  let mut txn1 = db.serializable_write();
+  let mut txn1 = db.write();
   let indices = txn1
     .iter()
     .unwrap()
@@ -100,7 +100,7 @@ fn txn_write_skew_black_white() {
   }
 
   // txn2
-  let mut txn2 = db.serializable_write();
+  let mut txn2 = db.write();
   let indices = txn2
     .iter()
     .unwrap()
@@ -125,7 +125,7 @@ fn txn_write_skew_intersecting_data() {
   let db: SerializableDb<&'static str, u64> = SerializableDb::new();
 
   // Setup
-  let mut txn = db.serializable_write();
+  let mut txn = db.write();
   txn.insert("a1", 10).unwrap();
   txn.insert("a2", 20).unwrap();
   txn.insert("b1", 100).unwrap();
@@ -133,7 +133,7 @@ fn txn_write_skew_intersecting_data() {
   txn.commit().unwrap();
   assert_eq!(1, db.version());
 
-  let mut txn1 = db.serializable_write();
+  let mut txn1 = db.write();
   let val = txn1
     .iter()
     .unwrap()
@@ -148,7 +148,7 @@ fn txn_write_skew_intersecting_data() {
   txn1.insert("b3", 30).unwrap();
   assert_eq!(30, val);
 
-  let mut txn2 = db.serializable_write();
+  let mut txn2 = db.write();
   let val = txn2
     .iter()
     .unwrap()
@@ -165,7 +165,7 @@ fn txn_write_skew_intersecting_data() {
   txn2.commit().unwrap();
   txn1.commit().unwrap_err();
 
-  let mut txn3 = db.serializable_write();
+  let mut txn3 = db.write();
   let val = txn3
     .iter()
     .unwrap()
@@ -186,7 +186,7 @@ fn txn_write_skew_intersecting_data2() {
   let db: SerializableDb<&'static str, u64> = SerializableDb::new();
 
   // Setup
-  let mut txn = db.serializable_write();
+  let mut txn = db.write();
   txn.insert("a1", 10).unwrap();
   txn.insert("b1", 100).unwrap();
   txn.insert("b2", 200).unwrap();
@@ -194,7 +194,7 @@ fn txn_write_skew_intersecting_data2() {
   assert_eq!(1, db.version());
 
   //
-  let mut txn1 = db.serializable_write();
+  let mut txn1 = db.write();
   let val = txn1
     .range("a".."b")
     .unwrap()
@@ -203,7 +203,7 @@ fn txn_write_skew_intersecting_data2() {
   txn1.insert("b3", 10).unwrap();
   assert_eq!(10, val);
 
-  let mut txn2 = db.serializable_write();
+  let mut txn2 = db.write();
   let val = txn2
     .range("b".."c")
     .unwrap()
@@ -214,7 +214,7 @@ fn txn_write_skew_intersecting_data2() {
   txn2.commit().unwrap();
   txn1.commit().unwrap_err();
 
-  let mut txn3 = db.serializable_write();
+  let mut txn3 = db.write();
   let val = txn3
     .iter()
     .unwrap()
@@ -235,13 +235,13 @@ fn txn_write_skew_intersecting_data3() {
   let db: SerializableDb<&'static str, u64> = SerializableDb::new();
 
   // Setup
-  let mut txn = db.serializable_write();
+  let mut txn = db.write();
   txn.insert("b1", 100).unwrap();
   txn.insert("b2", 200).unwrap();
   txn.commit().unwrap();
   assert_eq!(1, db.version());
 
-  let mut txn1 = db.serializable_write();
+  let mut txn1 = db.write();
   let val = txn1
     .range("a".."b")
     .unwrap()
@@ -250,7 +250,7 @@ fn txn_write_skew_intersecting_data3() {
   txn1.insert("b3", 0).unwrap();
   assert_eq!(0, val);
 
-  let mut txn2 = db.serializable_write();
+  let mut txn2 = db.write();
   let val = txn2
     .range("b".."c")
     .unwrap()
@@ -261,7 +261,7 @@ fn txn_write_skew_intersecting_data3() {
   txn2.commit().unwrap();
   txn1.commit().unwrap_err();
 
-  let mut txn3 = db.serializable_write();
+  let mut txn3 = db.write();
   let val = txn3
     .iter()
     .unwrap()
@@ -282,17 +282,17 @@ fn txn_write_skew_overdraft_protection() {
   let db: SerializableDb<&'static str, u64> = SerializableDb::new();
 
   // Setup
-  let mut txn = db.serializable_write();
+  let mut txn = db.write();
   txn.insert("kevin", 1000).unwrap();
   txn.commit().unwrap();
 
   // txn1
-  let mut txn1 = db.serializable_write();
+  let mut txn1 = db.write();
   let money = *txn1.get(&"kevin").unwrap().unwrap().value();
   txn1.insert("kevin", money - 100).unwrap();
 
   // txn2
-  let mut txn2 = db.serializable_write();
+  let mut txn2 = db.write();
   let money = *txn2.get(&"kevin").unwrap().unwrap().value();
   txn2.insert("kevin", money - 100).unwrap();
 
@@ -306,7 +306,7 @@ fn txn_write_skew_primary_colors() {
   let db: SerializableDb<u64, &'static str> = SerializableDb::new();
 
   // Setup
-  let mut txn = db.serializable_write();
+  let mut txn = db.write();
   for i in 1..=9000 {
     if i % 3 == 1 {
       txn.insert(i, "red").unwrap();
@@ -319,7 +319,7 @@ fn txn_write_skew_primary_colors() {
   txn.commit().unwrap();
 
   // txn1
-  let mut txn1 = db.serializable_write();
+  let mut txn1 = db.write();
   let indices = txn1
     .iter()
     .unwrap()
@@ -336,7 +336,7 @@ fn txn_write_skew_primary_colors() {
   }
 
   // txn2
-  let mut txn2 = db.serializable_write();
+  let mut txn2 = db.write();
   let indices = txn2
     .iter()
     .unwrap()
@@ -353,7 +353,7 @@ fn txn_write_skew_primary_colors() {
   }
 
   // txn3
-  let mut txn3 = db.serializable_write();
+  let mut txn3 = db.write();
   let indices = txn3
     .iter()
     .unwrap()

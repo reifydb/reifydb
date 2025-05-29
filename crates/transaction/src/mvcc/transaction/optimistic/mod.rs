@@ -18,8 +18,11 @@ mod write;
 use crate::mvcc::conflict::HashCm;
 use crate::mvcc::pending::BTreePwm;
 use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
-use crate::mvcc::transaction::{ReadTransaction, Tm};
+use crate::mvcc::transaction::Tm;
+use crate::mvcc::transaction::optimistic::read::ReadTransaction;
 pub use write::*;
+
+pub mod read;
 
 #[cfg(test)]
 mod tests;

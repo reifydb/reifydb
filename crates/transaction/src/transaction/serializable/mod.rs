@@ -3,7 +3,7 @@
 
 use crate::catalog::{Catalog, Schema};
 use crate::mvcc::conflict::BTreeCm;
-use crate::mvcc::transaction::ReadTransaction;
+use crate::mvcc::transaction::optimistic::read::ReadTransaction;
 use crate::mvcc::transaction::serializable::{SerializableDb, SerializableTransaction};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
@@ -20,7 +20,7 @@ impl<P: Persistence> Transaction<P> for SerializableDb<Vec<u8>, Vec<u8>> {
     }
 
     fn begin(&self) -> crate::Result<Self::Tx> {
-        Ok(self.serializable_write())
+        Ok(self.write())
     }
 }
 

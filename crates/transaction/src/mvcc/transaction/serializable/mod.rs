@@ -12,14 +12,18 @@
 use crate::mvcc::skipdbcore::types::Values;
 use std::sync::Arc;
 
+pub use write::*;
+pub use read::*;
+
+mod read;
 #[allow(clippy::module_inception)]
 mod write;
 
 use crate::mvcc::conflict::BTreeCm;
 use crate::mvcc::pending::BTreePwm;
 use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
-use crate::mvcc::transaction::{ReadTransaction, Tm};
-pub use write::*;
+use crate::mvcc::transaction::Tm;
+use crate::mvcc::transaction::optimistic::read::ReadTransaction;
 
 struct Inner<K, V> {
     tm: Tm<K, V, BTreeCm<K>, BTreePwm<K, V>>,
@@ -99,18 +103,6 @@ where
     K: Clone + Ord + 'static,
     V: 'static,
 {
-    /// Create a optimistic write transaction.
-    ///
-    /// Optimistic write transaction is not a totally Serializable Snapshot Isolation transaction.
-    /// It can handle most of write skew anomaly, but not all. Basically, all directly dependencies
-    /// can be handled, but indirect dependencies (logical dependencies) can not be handled.
-    /// If you need a totally Serializable Snapshot Isolation transaction, you should use
-    /// [`SerializableDb::serializable_write`](SerializableDb::serializable_write) instead.
-
-    // pub fn optimistic_write(&self) -> OptimisticTransaction<K, V> {
-    //     OptimisticTransaction::new(self.clone())
-    // }
-
     /// Create a serializable write transaction.
     ///
     /// Serializable write transaction is a totally Serializable Snapshot Isolation transaction.
@@ -118,7 +110,7 @@ where
     /// If in your code, you do not care about indirect dependencies (logical dependencies), you can use
     /// [`SerializableDb::optimistic_write`](SerializableDb::optimistic_write) instead.
 
-    pub fn serializable_write(&self) -> SerializableTransaction<K, V> {
+    pub fn write(&self) -> SerializableTransaction<K, V> {
         SerializableTransaction::new(self.clone())
     }
 }
