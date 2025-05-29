@@ -10,12 +10,12 @@ repository.workspace = true
 reifydb_core = { workspace = true }
 reifydb_persistence = { workspace = true }
 
+crossbeam-channel = { workspace = true }
+crossbeam-skiplist = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 
-crossbeam-skiplist = { version = "0.1" }
-crossbeam-channel = { version = "0.5" }
 either = "1"
 wg = { version = "0.9" }
 
