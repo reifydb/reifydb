@@ -131,11 +131,9 @@ fn txn_commit_with_callback() {
     let db1 = db.clone();
     let closer1 = closer.clone();
     std::thread::spawn(move || {
-        scopeguard::defer!(closer.done(););
-
         loop {
             crossbeam_channel::select! {
-              recv(closer.listen()) -> _ => return,
+              recv(closer.listen()) -> _ => { closer.done(); return },
               default => {
                 // Keep checking balance variant
                 let txn = db1.read();
@@ -683,11 +681,9 @@ fn compact() {
     let db1 = db.clone();
     let closer1 = closer.clone();
     std::thread::spawn(move || {
-        scopeguard::defer!(closer.done(););
-
         loop {
             crossbeam_channel::select! {
-              recv(closer.listen()) -> _ => return,
+              recv(closer.listen()) -> _ => { closer.done(); return},
               default => {
                 // Keep checking balance variant
                 let txn = db1.read();

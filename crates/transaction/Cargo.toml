@@ -14,18 +14,13 @@ log = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 
-
-
 crossbeam-skiplist = { version = "0.1" }
 crossbeam-channel = { version = "0.5" }
-crossbeam-utils = { version = "0.8" }
 either = "1"
-rand = "0.8"
-scopeguard = { version = "1" }
 wg = { version = "0.9" }
-
-
 
 [dev-dependencies]
 reifydb_testing = { workspace = true }
+
+rand = { workspace = true }
 test_each_file = { workspace = true }

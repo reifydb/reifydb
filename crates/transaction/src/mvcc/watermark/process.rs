@@ -20,8 +20,6 @@ use std::sync::atomic::Ordering;
 
 impl WatermarkInner {
     pub(crate) fn process(&self, closer: Closer) {
-        scopeguard::defer!(closer.done(););
-
         let mut indices: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
         let pending: RefCell<HashMap<u64, i64>> = RefCell::new(HashMap::new());
         let waiters: RefCell<HashMap<u64, Vec<Sender<()>>>> = RefCell::new(HashMap::new());
@@ -91,10 +89,10 @@ impl WatermarkInner {
             }
         };
 
-        let closer = closer.listen();
+        let receiver = closer.listen();
         loop {
             select! {
-              recv(closer) -> _ => return,
+              recv(receiver) -> _ => { closer.done(); return },
               recv(self.rx) -> mark => match mark {
                 Ok(mark) => {
                   if let Some(wait_tx) = mark.waiter {
@@ -111,6 +109,7 @@ impl WatermarkInner {
                 Err(_) => {
                   // Channel closed.
                   error!("watermark has been dropped.");
+                  closer.done();
                   return;
                 }
               },

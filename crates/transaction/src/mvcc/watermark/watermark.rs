@@ -11,7 +11,6 @@
 
 use crate::mvcc::watermark::{Closer, WaterMarkError};
 use crossbeam_channel::{Receiver, Sender, bounded};
-use crossbeam_utils::CachePadded;
 use std::ops::Deref;
 use std::{
     borrow::Cow,
@@ -25,8 +24,8 @@ type Result<T> = std::result::Result<T, WaterMarkError>;
 
 #[derive(Debug)]
 pub struct WatermarkInner {
-    pub(crate) done_until: CachePadded<AtomicU64>,
-    pub(crate) last_index: CachePadded<AtomicU64>,
+    pub(crate) done_until: AtomicU64,
+    pub(crate) last_index: AtomicU64,
     pub(crate) name: Cow<'static, str>,
     pub(crate) tx: Sender<Mark>,
     pub(crate) rx: Receiver<Mark>,
@@ -60,8 +59,8 @@ impl WaterMark {
         let (tx, rx) = bounded(100);
 
         let inner = Arc::new(WatermarkInner {
-            done_until: CachePadded::new(AtomicU64::new(0)),
-            last_index: CachePadded::new(AtomicU64::new(0)),
+            done_until: AtomicU64::new(0),
+            last_index: AtomicU64::new(0),
             name,
             tx,
             rx,
