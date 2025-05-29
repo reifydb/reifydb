@@ -49,7 +49,7 @@ pub trait AsSkipCore<K, V> {
 }
 
 pub struct SkipCore<K, V> {
-    map: SkipMap<K, Values<V>>,
+    mem_table: SkipMap<K, Values<V>>,
     last_discard_version: AtomicU64,
 }
 
@@ -61,13 +61,13 @@ impl<K, V> Default for SkipCore<K, V> {
 
 impl<K, V> SkipCore<K, V> {
     pub fn new() -> Self {
-        Self { map: SkipMap::new(), last_discard_version: AtomicU64::new(0) }
+        Self { mem_table: SkipMap::new(), last_discard_version: AtomicU64::new(0) }
     }
 
     #[doc(hidden)]
     #[allow(private_interfaces)]
     pub fn __by_ref(&self) -> &SkipMap<K, Values<V>> {
-        &self.map
+        &self.mem_table
     }
 }
 
@@ -81,14 +81,14 @@ where
             let version = ent.version();
             match ent.data {
                 EntryData::Insert { key, value } => {
-                    let ent = self.map.get_or_insert_with(key, || Values::new());
+                    let ent = self.mem_table.get_or_insert_with(key, || Values::new());
                     let val = ent.value();
                     val.lock();
                     val.insert(version, Some(value));
                     val.unlock();
                 }
                 EntryData::Remove(key) => {
-                    if let Some(values) = self.map.get(&key) {
+                    if let Some(values) = self.mem_table.get(&key) {
                         let values = values.value();
                         if !values.is_empty() {
                             values.insert(version, None);
@@ -109,7 +109,7 @@ where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        let ent = self.map.get(key)?;
+        let ent = self.mem_table.get(key)?;
         let version = ent
             .value()
             .upper_bound(Bound::Included(&version))
@@ -123,7 +123,7 @@ where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        match self.map.get(key) {
+        match self.mem_table.get(key) {
             None => false,
             Some(values) => match values.value().upper_bound(Bound::Included(&version)) {
                 None => false,
@@ -133,12 +133,12 @@ where
     }
 
     pub fn iter(&self, version: u64) -> Iter<'_, K, V> {
-        let iter = self.map.iter();
+        let iter = self.mem_table.iter();
         Iter { iter, version }
     }
 
     pub fn iter_rev(&self, version: u64) -> RevIter<'_, K, V> {
-        let iter = self.map.iter();
+        let iter = self.mem_table.iter();
         RevIter { iter: iter.rev(), version }
     }
 
@@ -148,7 +148,7 @@ where
         R: RangeBounds<Q>,
         Q: Ord + ?Sized,
     {
-        Range { range: self.map.range(range), version }
+        Range { range: self.mem_table.range(range), version }
     }
 
     pub fn range_rev<Q, R>(&self, range: R, version: u64) -> RevRange<'_, Q, R, K, V>
@@ -157,7 +157,7 @@ where
         R: RangeBounds<Q>,
         Q: Ord + ?Sized,
     {
-        RevRange { range: self.map.range(range).rev(), version }
+        RevRange { range: self.mem_table.range(range).rev(), version }
     }
 }
 
@@ -178,7 +178,7 @@ where
             Err(_) => return,
         }
 
-        for ent in self.map.iter() {
+        for ent in self.mem_table.iter() {
             let values = ent.value();
 
             // if the oldest version is larger or equal to the new discard version,
