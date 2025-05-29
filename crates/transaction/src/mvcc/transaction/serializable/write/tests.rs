@@ -208,7 +208,7 @@ fn txn_conflict_get() {
                             };
                         })
                     {
-                        assert!(matches!(e, WtmError::Transaction(TransactionError::Conflict)));
+                        assert!(matches!(e, MvccError::Transaction(TransactionError::Conflict)));
                     }
                 }
             })
@@ -312,7 +312,7 @@ fn txn_conflict_iter() {
                             };
                         })
                     {
-                        assert!(matches!(e, WtmError::Transaction(TransactionError::Conflict)));
+                        assert!(matches!(e, MvccError::Transaction(TransactionError::Conflict)));
                     }
                 }
             })

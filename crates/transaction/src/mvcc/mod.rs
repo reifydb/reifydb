@@ -9,8 +9,10 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+pub use error::MvccError;
+
 pub mod conflict;
-pub mod error;
+mod error;
 pub mod marker;
 pub mod pending;
 pub mod skipdbcore;

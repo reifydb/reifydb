@@ -180,7 +180,8 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
                     // the version
                 }
                 // key => return errdata!("expected TxWrite, got {key:?}"),
-                key => return Err(Error::unexpected_key("TxWrite", key).into()),
+                // key => return Err(Error::unexpected_key("TxWrite", key).into()),
+                key => unimplemented!(),
             };
             rollback.push(key); // the TxWrite record
         }

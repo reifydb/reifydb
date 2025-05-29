@@ -12,7 +12,7 @@
 use crate::mvcc::transaction::scan::rev_range::WriteTransactionRevRange;
 
 use super::*;
-use crate::mvcc::error::{TransactionError, WtmError};
+use crate::mvcc::error::{TransactionError, MvccError};
 use crate::mvcc::pending::{BTreePwm, PwmComparableRange};
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
@@ -62,7 +62,7 @@ where
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
 
-    pub fn commit(&mut self) -> Result<(), WtmError<Infallible, Infallible, Infallible>> {
+    pub fn commit(&mut self) -> Result<(), MvccError<Infallible, Infallible, Infallible>> {
         self.wtm.commit(|ents| {
             self.db.inner.map.apply(ents);
             Ok(())
@@ -94,7 +94,7 @@ where
     pub fn commit_with_callback<E, R>(
         &mut self,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, WtmError<Infallible, Infallible, E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError<Infallible, Infallible, E>>
     where
         E: std::error::Error,
         R: Send + 'static,

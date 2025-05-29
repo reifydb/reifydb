@@ -21,14 +21,14 @@ pub trait Formatter {
     fn value(key: &[u8], value: &[u8]) -> String;
 
     /// Formats a key/value pair.
-    fn key_value(key: &[u8], value: &[u8]) -> String {
+    fn key_value(key: &[u8], value: impl AsRef<[u8]>) -> String {
         Self::key_maybe_value(key, Some(value))
     }
 
     /// Formats a key/value pair, where the value may not exist.
-    fn key_maybe_value(key: &[u8], value: Option<&[u8]>) -> String {
+    fn key_maybe_value(key: &[u8], value: Option<impl AsRef<[u8]>>) -> String {
         let fmtkey = Self::key(key);
-        let fmtvalue = value.map_or("None".to_string(), |v| Self::value(key, v));
+        let fmtvalue = value.map_or("None".to_string(), |v| Self::value(key, v.as_ref()));
         format!("{fmtkey} → {fmtvalue}")
     }
 }

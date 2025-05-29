@@ -26,7 +26,8 @@ use reifydb_transaction::old_mvcc::Version;
 use std::path::Path;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/transaction/tests/scripts/mvcc" as memory => test_optimistic }
+test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_optimistic }
+test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_optimistic }
 
 fn test_optimistic(path: &Path) {
     testscript::run_path(&mut MvccRunner::new(Optimistic::new()), path).expect("test failed")
@@ -68,10 +69,10 @@ impl MvccRunner {
 impl<'a> testscript::Runner for MvccRunner {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
-        let mut tags = command.tags.clone();
+        let tags = command.tags.clone();
 
         match command.name.as_str() {
-            // tx: begin [readonly] [as_of=VERSION]
+            // tx: begin [readonly]
             "begin" => {
                 let name = Self::tx_name(&command.prefix)?;
                 if self.transactions.contains_key(name) {
@@ -83,15 +84,11 @@ impl<'a> testscript::Runner for MvccRunner {
                     None => false,
                     Some(v) => return Err(format!("invalid argument {v}").into()),
                 };
-                let as_of: Option<Version> = args.lookup_parse("as_of")?;
                 args.reject_rest()?;
-                let tx = match (readonly, as_of) {
-                    (false, None) => Transaction::Tx(TransactionTx::new(self.engine.clone())),
-                    (true, None) => Transaction::Rx(TransactionRx::new(self.engine.clone())),
-                    // (true, None) => self.mvcc.begin_read_only()?,
-                    // (true, Some(v)) => self.mvcc.begin_read_only_as_of(v)?,
-                    // (false, Some(_)) => return Err("as_of only valid for read-only tx".into()),
-                    (_, _) => unimplemented!(),
+
+                let tx = match readonly {
+                    true => Transaction::Rx(TransactionRx::new(self.engine.clone())),
+                    false => Transaction::Tx(TransactionTx::new(self.engine.clone())),
                 };
                 self.transactions.insert(name.to_string(), tx);
             }
@@ -142,16 +139,29 @@ impl<'a> testscript::Runner for MvccRunner {
             //         writeln!(output, "{fmtkv} [{rawkv}]")?;
             //     }
             // }
-
+            // tx: version
+            "version" => {
+                command.consume_args().reject_rest()?;
+                let t = self.get_transaction(&command.prefix)?;
+                let version = match t {
+                    Transaction::Rx(rx) => rx.version(),
+                    Transaction::Tx(tx) => tx.version(),
+                };
+                writeln!(output, "{}", version)?;
+            }
             // tx: get KEY...
             "get" => {
-                let tx = self.get_transaction(&command.prefix)?;
+                let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
                 for arg in args.rest_pos() {
                     let key = decode_binary(&arg.value);
-                    dbg!(&key);
-                    // let fmtkv = format::Raw::key_maybe_value(&key, r.as_deref());
-                    // writeln!(output, "{fmtkv}")?;
+                    let t = self.get_transaction(&command.prefix)?;
+                    let value = match t {
+                        Transaction::Rx(rx) => rx.get(&key).map(|r| r.value().to_vec()),
+                        Transaction::Tx(tx) => tx.get(&key).unwrap().map(|r| r.value().to_vec()),
+                    };
+                    let fmtkv = format::Raw::key_maybe_value(&key, value);
+                    writeln!(output, "{fmtkv}")?;
                 }
                 args.reject_rest()?;
             }
@@ -191,7 +201,7 @@ impl<'a> testscript::Runner for MvccRunner {
                     if value.is_empty() {
                         tx.remove(key).unwrap();
                     } else {
-                        tx.insert(key, value).unwrap();
+                        tx.set(key, value).unwrap();
                     }
                 }
                 args.reject_rest()?;
@@ -281,7 +291,7 @@ impl<'a> testscript::Runner for MvccRunner {
                             unreachable!("can not call set on rx")
                         }
                         Transaction::Tx(tx) => {
-                            tx.insert(key, value).unwrap();
+                            tx.set(key, value).unwrap();
                         }
                     }
                 }

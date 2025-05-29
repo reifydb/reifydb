@@ -28,11 +28,11 @@ impl<P: Persistence> crate::Transaction<P> for Mvcc<P> {
     type Tx = Transaction<P>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
-        Ok(Transaction::begin_read_only(self.persistence.clone(), None)?)
+        Ok(Transaction::begin_read_only(self.persistence.clone(), None).unwrap())
     }
 
     fn begin(&self) -> crate::Result<Self::Tx> {
-        Ok(Transaction::begin(self.persistence.clone())?)
+        Ok(Transaction::begin(self.persistence.clone()).unwrap())
     }
 }
 

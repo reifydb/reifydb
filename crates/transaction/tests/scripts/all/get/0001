@@ -1,0 +1,13 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# A readonly transaction can read the current state of the database
+
+t1: begin
+t1: set a=1
+t1: commit
+
+t2: begin readonly
+t2: get a
+---
+t2: "a" → "1"

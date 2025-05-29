@@ -15,7 +15,7 @@ use std::{
 };
 
 use super::*;
-use crate::mvcc::error::{TransactionError, WtmError};
+use crate::mvcc::error::{TransactionError, MvccError};
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
@@ -46,7 +46,7 @@ fn writeable_tx() {
         let mut tx = db.write();
         assert_eq!(tx.version(), 0);
 
-        tx.insert("foo", "foo1").unwrap();
+        tx.set("foo", "foo1").unwrap();
         assert_eq!(*tx.get("foo").unwrap().unwrap().value(), "foo1");
         tx.commit().unwrap();
     }
@@ -65,7 +65,7 @@ fn txn_simple() {
     {
         let mut txn = db.write();
         for i in 0..10 {
-            if let Err(e) = txn.insert(i, i) {
+            if let Err(e) = txn.set(i, i) {
                 panic!("{e}");
             }
         }
@@ -102,7 +102,7 @@ fn txn_read_after_write() {
                 let v = i;
 
                 let mut txn = db.write();
-                txn.insert(k, v).unwrap();
+                txn.set(k, v).unwrap();
                 txn.commit().unwrap();
 
                 let txn = db.read();
@@ -126,7 +126,7 @@ fn txn_commit_with_callback() {
     let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     for i in 0..40 {
-        txn.insert(i, 100).unwrap();
+        txn.set(i, 100).unwrap();
     }
     txn.commit().unwrap();
 
@@ -164,14 +164,14 @@ fn txn_commit_with_callback() {
                     let mut rng = thread_rng();
                     let r = rng.gen_range(0..100);
                     let v = 100 - r;
-                    txn.insert(i, v).unwrap();
+                    txn.set(i, v).unwrap();
                 }
 
                 for i in 20..40 {
                     let mut rng = thread_rng();
                     let r = rng.gen_range(0..100);
                     let v = 100 + r;
-                    txn.insert(i, v).unwrap();
+                    txn.set(i, v).unwrap();
                 }
 
                 // We are only doing writes, so there won't be any conflicts.
@@ -201,7 +201,7 @@ fn txn_conflict_get() {
             std::thread::spawn(move || {
                 let mut txn = db1.write();
                 if txn.get(&100).unwrap().is_none() {
-                    txn.insert(100, 999).unwrap();
+                    txn.set(100, 999).unwrap();
                     if let Err(e) =
                         txn.commit_with_callback::<std::convert::Infallible, _>(move |e| {
                             match e {
@@ -212,7 +212,7 @@ fn txn_conflict_get() {
                             };
                         })
                     {
-                        assert!(matches!(e, WtmError::Transaction(TransactionError::Conflict)));
+                        assert!(matches!(e, MvccError::Transaction(TransactionError::Conflict)));
                     }
                 }
             })
@@ -233,7 +233,7 @@ fn txn_versions() {
     let k0 = 0;
     for i in 1..10 {
         let mut txn = db.write();
-        txn.insert(k0, i).unwrap();
+        txn.set(k0, i).unwrap();
         txn.commit().unwrap();
         assert_eq!(i, db.version());
     }
@@ -306,7 +306,7 @@ fn txn_conflict_iter() {
                 }
 
                 if !found {
-                    txn.insert(100, 999).unwrap();
+                    txn.set(100, 999).unwrap();
                     if let Err(e) =
                         txn.commit_with_callback::<std::convert::Infallible, ()>(move |e| {
                             match e {
@@ -317,7 +317,7 @@ fn txn_conflict_iter() {
                             };
                         })
                     {
-                        assert!(matches!(e, WtmError::Transaction(TransactionError::Conflict)));
+                        assert!(matches!(e, MvccError::Transaction(TransactionError::Conflict)));
                     }
                 }
             })
@@ -344,7 +344,7 @@ fn txn_iteration_edge_case() {
     // c1
     {
         let mut txn = db.write();
-        txn.insert(3, 31).unwrap();
+        txn.set(3, 31).unwrap();
         txn.commit().unwrap();
         assert_eq!(1, db.version());
     }
@@ -352,8 +352,8 @@ fn txn_iteration_edge_case() {
     // a2, c2
     {
         let mut txn = db.write();
-        txn.insert(1, 12).unwrap();
-        txn.insert(3, 32).unwrap();
+        txn.set(1, 12).unwrap();
+        txn.set(3, 32).unwrap();
         txn.commit().unwrap();
         assert_eq!(2, db.version());
     }
@@ -361,15 +361,15 @@ fn txn_iteration_edge_case() {
     // b3
     {
         let mut txn = db.write();
-        txn.insert(1, 13).unwrap();
-        txn.insert(2, 23).unwrap();
+        txn.set(1, 13).unwrap();
+        txn.set(2, 23).unwrap();
         txn.commit().unwrap();
         assert_eq!(3, db.version());
     }
 
     // b4, c4(remove) (uncommitted)
     let mut txn4 = db.write();
-    txn4.insert(2, 24).unwrap();
+    txn4.set(2, 24).unwrap();
     txn4.remove(3).unwrap();
     assert_eq!(3, db.version());
 
@@ -443,7 +443,7 @@ fn txn_iteration_edge_case2() {
     // c1
     {
         let mut txn = db.write();
-        txn.insert(3, 31).unwrap();
+        txn.set(3, 31).unwrap();
         txn.commit().unwrap();
         assert_eq!(1, db.version());
     }
@@ -451,8 +451,8 @@ fn txn_iteration_edge_case2() {
     // a2, c2
     {
         let mut txn = db.write();
-        txn.insert(1, 12).unwrap();
-        txn.insert(3, 32).unwrap();
+        txn.set(1, 12).unwrap();
+        txn.set(3, 32).unwrap();
         txn.commit().unwrap();
         assert_eq!(2, db.version());
     }
@@ -460,8 +460,8 @@ fn txn_iteration_edge_case2() {
     // b3
     {
         let mut txn = db.write();
-        txn.insert(1, 13).unwrap();
-        txn.insert(2, 23).unwrap();
+        txn.set(1, 13).unwrap();
+        txn.set(2, 23).unwrap();
         txn.commit().unwrap();
         assert_eq!(3, db.version());
     }
@@ -561,10 +561,10 @@ fn txn_range_edge_case2() {
     {
         let mut txn = db.write();
 
-        txn.insert(0, 0).unwrap();
-        txn.insert(u64::MAX, u64::MAX).unwrap();
+        txn.set(0, 0).unwrap();
+        txn.set(u64::MAX, u64::MAX).unwrap();
 
-        txn.insert(3, 31).unwrap();
+        txn.set(3, 31).unwrap();
         txn.commit().unwrap();
         assert_eq!(1, db.version());
     }
@@ -572,8 +572,8 @@ fn txn_range_edge_case2() {
     // a2, c2
     {
         let mut txn = db.write();
-        txn.insert(1, 12).unwrap();
-        txn.insert(3, 32).unwrap();
+        txn.set(1, 12).unwrap();
+        txn.set(3, 32).unwrap();
         txn.commit().unwrap();
         assert_eq!(2, db.version());
     }
@@ -581,8 +581,8 @@ fn txn_range_edge_case2() {
     // b3
     {
         let mut txn = db.write();
-        txn.insert(1, 13).unwrap();
-        txn.insert(2, 23).unwrap();
+        txn.set(1, 13).unwrap();
+        txn.set(2, 23).unwrap();
         txn.commit().unwrap();
         assert_eq!(3, db.version());
     }
@@ -678,8 +678,8 @@ fn compact() {
     let mut txn = db.write();
     let k = 88;
     for i in 0..40 {
-        txn.insert(k, i).unwrap();
-        txn.insert(i, 100).unwrap();
+        txn.set(k, i).unwrap();
+        txn.set(i, 100).unwrap();
     }
     txn.commit().unwrap();
 
@@ -722,14 +722,14 @@ fn compact() {
                     let mut rng = thread_rng();
                     let r = rng.gen_range(0..100);
                     let v = 100 - r;
-                    txn.insert(i, v).unwrap();
+                    txn.set(i, v).unwrap();
                 }
 
                 for i in 20..40 {
                     let mut rng = thread_rng();
                     let r = rng.gen_range(0..100);
                     let v = 100 + r;
-                    txn.insert(i, v).unwrap();
+                    txn.set(i, v).unwrap();
                 }
 
                 // We are only doing writes, so there won't be any conflicts.
@@ -764,7 +764,7 @@ fn compact() {
 fn rollback() {
     let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
-    txn.insert(1, 1).unwrap();
+    txn.set(1, 1).unwrap();
     txn.rollback().unwrap();
     assert!(txn.get(&1).unwrap().is_none());
 }
@@ -773,9 +773,9 @@ fn rollback() {
 fn iter() {
     let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
-    txn.insert(1, 1).unwrap();
-    txn.insert(2, 2).unwrap();
-    txn.insert(3, 3).unwrap();
+    txn.set(1, 1).unwrap();
+    txn.set(2, 2).unwrap();
+    txn.set(3, 3).unwrap();
     txn.commit().unwrap();
 
     let txn = db.read();
@@ -801,9 +801,9 @@ fn iter() {
 fn iter2() {
     let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
-    txn.insert(1, 1).unwrap();
-    txn.insert(2, 2).unwrap();
-    txn.insert(3, 3).unwrap();
+    txn.set(1, 1).unwrap();
+    txn.set(2, 2).unwrap();
+    txn.set(3, 3).unwrap();
 
     let iter = txn.iter().unwrap();
     let mut count = 0;
@@ -827,9 +827,9 @@ fn iter2() {
     txn.commit().unwrap();
 
     let mut txn = db.write();
-    txn.insert(4, 4).unwrap();
-    txn.insert(5, 5).unwrap();
-    txn.insert(6, 6).unwrap();
+    txn.set(4, 4).unwrap();
+    txn.set(5, 5).unwrap();
+    txn.set(6, 6).unwrap();
 
     let iter = txn.iter().unwrap();
     let mut count = 0;
@@ -855,9 +855,9 @@ fn iter2() {
 fn iter3() {
     let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
-    txn.insert(4, 4).unwrap();
-    txn.insert(5, 5).unwrap();
-    txn.insert(6, 6).unwrap();
+    txn.set(4, 4).unwrap();
+    txn.set(5, 5).unwrap();
+    txn.set(6, 6).unwrap();
 
     let iter = txn.iter().unwrap();
     let mut count = 3;
@@ -881,9 +881,9 @@ fn iter3() {
     txn.commit().unwrap();
 
     let mut txn = db.write();
-    txn.insert(1, 1).unwrap();
-    txn.insert(2, 2).unwrap();
-    txn.insert(3, 3).unwrap();
+    txn.set(1, 1).unwrap();
+    txn.set(2, 2).unwrap();
+    txn.set(3, 3).unwrap();
 
     let iter = txn.iter().unwrap();
     let mut count = 0;
@@ -909,9 +909,9 @@ fn iter3() {
 fn range() {
     let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
-    txn.insert(1, 1).unwrap();
-    txn.insert(2, 2).unwrap();
-    txn.insert(3, 3).unwrap();
+    txn.set(1, 1).unwrap();
+    txn.set(2, 2).unwrap();
+    txn.set(3, 3).unwrap();
     txn.commit().unwrap();
 
     let txn = db.read();
@@ -937,9 +937,9 @@ fn range() {
 fn range2() {
     let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
-    txn.insert(1, 1).unwrap();
-    txn.insert(2, 2).unwrap();
-    txn.insert(3, 3).unwrap();
+    txn.set(1, 1).unwrap();
+    txn.set(2, 2).unwrap();
+    txn.set(3, 3).unwrap();
 
     let iter = txn.range(1..4).unwrap();
     let mut count = 0;
@@ -967,9 +967,9 @@ fn range2() {
     txn.commit().unwrap();
 
     let mut txn = db.write();
-    txn.insert(4, 4).unwrap();
-    txn.insert(5, 5).unwrap();
-    txn.insert(6, 6).unwrap();
+    txn.set(4, 4).unwrap();
+    txn.set(5, 5).unwrap();
+    txn.set(6, 6).unwrap();
 
     let iter = txn.range(1..5).unwrap();
     let mut count = 0;
@@ -995,9 +995,9 @@ fn range2() {
 fn range3() {
     let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
-    txn.insert(4, 4).unwrap();
-    txn.insert(5, 5).unwrap();
-    txn.insert(6, 6).unwrap();
+    txn.set(4, 4).unwrap();
+    txn.set(5, 5).unwrap();
+    txn.set(6, 6).unwrap();
 
     let iter = txn.range(4..7).unwrap();
     let mut count = 3;
@@ -1021,9 +1021,9 @@ fn range3() {
     txn.commit().unwrap();
 
     let mut txn = db.write();
-    txn.insert(1, 1).unwrap();
-    txn.insert(2, 2).unwrap();
-    txn.insert(3, 3).unwrap();
+    txn.set(1, 1).unwrap();
+    txn.set(2, 2).unwrap();
+    txn.set(3, 3).unwrap();
 
     let iter = txn.range(1..5).unwrap();
     let mut count = 0;

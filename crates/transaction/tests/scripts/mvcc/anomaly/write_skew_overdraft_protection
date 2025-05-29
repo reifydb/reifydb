@@ -1,0 +1,25 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
+
+t1: begin
+t1: set kevin=1000
+t1: commit
+
+t2: begin
+t2: get kevin
+t2: set kevin=900
+---
+t2: "kevin" → "1000"
+
+t3: begin
+t3: get kevin
+t3: set kevin=900
+---
+t3: "kevin" → "1000"
+
+t2: commit
+t3: !commit
+---
+t3: Error: transaction error: transaction conflict, please retry

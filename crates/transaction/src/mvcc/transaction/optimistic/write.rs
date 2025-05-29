@@ -11,7 +11,7 @@
 
 use super::*;
 use crate::mvcc::conflict::{HashCm, HashCmOptions};
-use crate::mvcc::error::{TransactionError, WtmError};
+use crate::mvcc::error::{TransactionError, MvccError};
 use crate::mvcc::pending::{BTreePwm, PwmComparableRange};
 use crate::mvcc::skipdbcore::types::Ref;
 use crate::mvcc::transaction::Wtm;
@@ -65,7 +65,7 @@ where
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
 
-    pub fn commit(&mut self) -> Result<(), WtmError<Infallible, Infallible, Infallible>> {
+    pub fn commit(&mut self) -> Result<(), MvccError<Infallible, Infallible, Infallible>> {
         self.wtm.commit(|operations| {
             self.engine.inner.map.apply(operations);
             Ok(())
@@ -97,7 +97,7 @@ where
     pub fn commit_with_callback<E, R>(
         &mut self,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, WtmError<Infallible, Infallible, E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError<Infallible, Infallible, E>>
     where
         E: std::error::Error,
         R: Send + 'static,
@@ -173,8 +173,7 @@ where
     }
 
     /// Insert a new key-value pair.
-
-    pub fn insert(
+    pub fn set(
         &mut self,
         key: K,
         value: V,

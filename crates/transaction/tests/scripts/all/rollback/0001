@@ -1,6 +1,8 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later
 
+# After rollback database is in the state before the transaction
+
 t1: begin
 t1: set a=1
 t1: commit
@@ -11,6 +13,7 @@ t2: begin
 t2: set a=2
 t2: set b=1
 t2: set a=3
+t2: remove a
 t2: rollback
 ---
 ok

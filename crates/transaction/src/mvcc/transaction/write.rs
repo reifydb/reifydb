@@ -11,7 +11,7 @@
 
 use super::*;
 use crate::mvcc::conflict::{CmComparable, CmEquivalent};
-use crate::mvcc::error::WtmError;
+use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::pending::{PwmComparable, PwmEquivalent};
 use core::{borrow::Borrow, hash::Hash};
@@ -232,7 +232,7 @@ where
     ///    there is a conflict, an error will be returned and the callback will not
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
-    pub fn commit<F, E>(&mut self, apply: F) -> Result<(), WtmError<C::Error, P::Error, E>>
+    pub fn commit<F, E>(&mut self, apply: F) -> Result<(), MvccError<C::Error, P::Error, E>>
     where
         F: FnOnce(OneOrMore<Entry<K, V>>) -> Result<(), E>,
         E: std::error::Error,
@@ -263,7 +263,7 @@ where
             .map_err(|e| {
                 self.orc().done_commit(commit_ts);
                 self.discard();
-                WtmError::commit(e)
+                MvccError::commit(e)
             })
     }
 }
@@ -735,7 +735,7 @@ where
         &mut self,
         apply: F,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, WtmError<C::Error, P::Error, E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError<C::Error, P::Error, E>>
     where
         K: Send + 'static,
         V: Send + 'static,
@@ -745,7 +745,7 @@ where
         C: 'static,
     {
         if self.discarded {
-            return Err(WtmError::transaction(TransactionError::Discard));
+            return Err(MvccError::transaction(TransactionError::Discard));
         }
 
         if self.pending_writes.as_ref().unwrap().is_empty() {

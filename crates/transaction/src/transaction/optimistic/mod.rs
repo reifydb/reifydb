@@ -107,7 +107,7 @@ impl crate::Tx for TransactionTx<Vec<u8>, Vec<u8>> {
         let inserted = rows.len();
 
         for (id, row) in rows.iter().enumerate() {
-            self.insert(
+            self.set(
                 key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
                 bincode::serialize(row),
             )
@@ -133,7 +133,7 @@ impl crate::Tx for TransactionTx<Vec<u8>, Vec<u8>> {
         let inserted = rows.len();
 
         for (id, row) in rows.iter().enumerate() {
-            self.insert(
+            self.set(
                 key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)).clone(),
                 bincode::serialize(row),
             )
@@ -145,13 +145,12 @@ impl crate::Tx for TransactionTx<Vec<u8>, Vec<u8>> {
     }
 
     fn commit(mut self) -> crate::Result<()> {
-        TransactionTx::commit(&mut self).unwrap();
-
+        TransactionTx::commit(&mut self)?;
         Ok(())
     }
 
     fn rollback(mut self) -> crate::Result<()> {
-        TransactionTx::rollback(&mut self).unwrap();
+        TransactionTx::rollback(&mut self);
 
         Ok(())
     }
