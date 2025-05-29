@@ -95,7 +95,7 @@ impl<K, V> Optimistic<K, V> {
 
     /// Create a read transaction.
     pub fn read(&self) -> TransactionRx<K, V> {
-        TransactionRx::new(self.clone(), self.inner.tm.read())
+        TransactionRx::new(self.clone())
     }
 }
 
@@ -127,4 +127,9 @@ where
     pub fn compact(&self) {
         self.inner.map.compact(self.inner.tm.discard_hint());
     }
+}
+
+pub enum Transaction<K, V> {
+    Rx(TransactionRx<K, V>),
+    Tx(TransactionTx<K, V>),
 }

@@ -28,10 +28,8 @@ pub struct TransactionRx<K, V> {
 }
 
 impl<K, V> TransactionRx<K, V> {
-    pub(in crate::mvcc::transaction) fn new(
-        engine: Optimistic<K, V>,
-        rtm: Rtm<K, V, HashCm<K>, BTreePwm<K, V>>,
-    ) -> Self {
+    pub fn new(engine: Optimistic<K, V>) -> Self {
+        let rtm = engine.inner.tm.read();
         Self { engine, rtm }
     }
 }
