@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::ops::Bound;
-use smallvec_wrapper::MediumVec;
 use std::collections::BTreeSet;
 
 use super::*;
@@ -25,7 +24,7 @@ enum Read<K> {
 /// A [`Conflict`] conflict manager implementation that based on the [`BTreeSet`](std::collections::BTreeSet).
 #[derive(Debug)]
 pub struct BTreeConflict<K> {
-    reads: MediumVec<Read<K>>,
+    reads: Vec<Read<K>>,
     conflict_keys: BTreeSet<K>,
 }
 
@@ -43,7 +42,7 @@ where
     type Options = ();
 
     fn new(_options: Self::Options) -> Self {
-        Self { reads: MediumVec::new(), conflict_keys: BTreeSet::new() }
+        Self { reads: Vec::new(), conflict_keys: BTreeSet::new() }
     }
 
     fn mark_read(&mut self, key: &K) {

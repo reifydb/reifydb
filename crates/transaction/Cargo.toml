@@ -10,6 +10,7 @@ repository.workspace = true
 reifydb_core = { workspace = true }
 reifydb_persistence = { workspace = true }
 
+log = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 
@@ -20,9 +21,7 @@ crossbeam-channel = { version = "0.5" }
 crossbeam-utils = { version = "0.8" }
 either = "1"
 rand = "0.8"
-smallvec-wrapper = { version = "0.1", features = ["const_new"] }
 scopeguard = { version = "1" }
-tracing = "0.1"
 wg = { version = "0.9" }
 
 

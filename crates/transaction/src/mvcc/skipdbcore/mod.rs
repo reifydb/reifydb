@@ -23,7 +23,6 @@ use core::{
 
 use crate::mvcc::version::types::{Entry, EntryData};
 use crossbeam_skiplist::SkipMap;
-use smallvec_wrapper::OneOrMore;
 
 use crate::mvcc::transaction::scan::iter::*;
 
@@ -76,7 +75,7 @@ where
     K: Ord,
     V: Send + 'static,
 {
-    pub fn apply(&self, entries: OneOrMore<Entry<K, V>>) {
+    pub fn apply(&self, entries: Vec<Entry<K, V>>) {
         for ent in entries {
             let version = ent.version();
             match ent.data {

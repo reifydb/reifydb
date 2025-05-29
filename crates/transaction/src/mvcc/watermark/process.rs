@@ -12,7 +12,7 @@
 use crate::mvcc::watermark::Closer;
 use crate::mvcc::watermark::watermark::WatermarkInner;
 use crossbeam_channel::{Sender, select};
-use smallvec_wrapper::MediumVec;
+use log::error;
 use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -24,7 +24,7 @@ impl WatermarkInner {
 
         let mut indices: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
         let pending: RefCell<HashMap<u64, i64>> = RefCell::new(HashMap::new());
-        let waiters: RefCell<HashMap<u64, MediumVec<Sender<()>>>> = RefCell::new(HashMap::new());
+        let waiters: RefCell<HashMap<u64, Vec<Sender<()>>>> = RefCell::new(HashMap::new());
 
         let mut process_one = |idx: u64, done: bool| {
             // If not already done, then set. Otherwise, don't undo a done entry.
@@ -110,7 +110,7 @@ impl WatermarkInner {
                 },
                 Err(_) => {
                   // Channel closed.
-                  tracing::error!(target: "watermark", err = "watermark has been dropped.");
+                  error!("watermark has been dropped.");
                   return;
                 }
               },

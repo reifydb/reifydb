@@ -12,7 +12,6 @@
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::watermark::{Closer, WaterMark};
 use core::ops::AddAssign;
-use smallvec_wrapper::TinyVec;
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard};
 
@@ -24,7 +23,7 @@ pub(super) struct OracleInner<C> {
 
     /// Contains all committed writes (contains fingerprints
     /// of keys written and their latest commit counter).
-    pub(super) committed_txns: TinyVec<CommittedTxn<C>>,
+    pub(super) committed_txns: Vec<CommittedTxn<C>>,
 }
 
 pub(super) enum CreateCommitTimestampResult<C> {
@@ -145,7 +144,7 @@ impl<C> Oracle<C> {
             inner: Mutex::new(OracleInner {
                 next_txn_ts,
                 last_cleanup_ts: 0,
-                committed_txns: TinyVec::new(),
+                committed_txns: Vec::new(),
             }),
             rx: WaterMark::new(rx_mark_name, closer.clone()),
             tx: WaterMark::new(tx_mark_name, closer.clone()),

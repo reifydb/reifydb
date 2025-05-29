@@ -22,7 +22,7 @@ pub struct TransactionManagerTx<K, V, C, P> {
     pub(super) conflict_manager: Option<C>,
     // stores any writes done by tx
     pub(super) pending_writes: Option<P>,
-    pub(super) duplicate_writes: OneOrMore<Entry<K, V>>,
+    pub(super) duplicate_writes: Vec<Entry<K, V>>,
 
     pub(super) discarded: bool,
     pub(super) done_read: bool,
@@ -220,7 +220,7 @@ where
     ///    background upon successful completion of writes or any error during write.
     pub fn commit<F>(&mut self, apply: F) -> Result<(), MvccError>
     where
-        F: FnOnce(OneOrMore<Entry<K, V>>) -> Result<(), Box<dyn std::error::Error>>,
+        F: FnOnce(Vec<Entry<K, V>>) -> Result<(), Box<dyn std::error::Error>>,
     {
         if self.discarded {
             return Err(TransactionError::Discarded.into());
@@ -284,7 +284,7 @@ where
     where
         K: Send + 'static,
         V: Send + 'static,
-        F: FnOnce(OneOrMore<Entry<K, V>>) -> Result<(), E> + Send + 'static,
+        F: FnOnce(Vec<Entry<K, V>>) -> Result<(), E> + Send + 'static,
         E: std::error::Error,
         R: Send + 'static,
         C: 'static,
@@ -379,7 +379,7 @@ where
     C: Conflict<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
 {
-    fn commit_entries(&mut self) -> Result<(u64, OneOrMore<Entry<K, V>>), TransactionError> {
+    fn commit_entries(&mut self) -> Result<(u64, Vec<Entry<K, V>>), TransactionError> {
         // Ensure that the order in which we get the commit timestamp is the same as
         // the order in which we push these updates to the write channel. So, we
         // acquire a writeChLock before getting a commit timestamp, and only release
@@ -403,9 +403,9 @@ where
                 let pending_writes = mem::take(&mut self.pending_writes).unwrap();
                 let duplicate_writes = mem::take(&mut self.duplicate_writes);
                 let mut entries =
-                    OneOrMore::with_capacity(pending_writes.len() + self.duplicate_writes.len());
+                    Vec::with_capacity(pending_writes.len() + self.duplicate_writes.len());
 
-                let process_entry = |entries: &mut OneOrMore<Entry<K, V>>, mut ent: Entry<K, V>| {
+                let process_entry = |entries: &mut Vec<Entry<K, V>>, mut ent: Entry<K, V>| {
                     ent.version = commit_ts;
                     entries.push(ent);
                 };

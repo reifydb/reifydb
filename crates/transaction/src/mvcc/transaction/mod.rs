@@ -12,8 +12,6 @@
 use core::mem;
 use std::sync::Arc;
 
-pub use smallvec_wrapper::OneOrMore;
-
 pub use crate::mvcc::version::*;
 pub use write::*;
 
@@ -63,7 +61,7 @@ where
             count: 0,
             conflict_manager: Some(C::new(conflict_manager_opts)),
             pending_writes: Some(P::new(pending_manager_opts)),
-            duplicate_writes: OneOrMore::new(),
+            duplicate_writes: Vec::new(),
             discarded: false,
             done_read: false,
         })
