@@ -10,11 +10,11 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::skipdb::skipdbcore::rev_range::WriteTransactionRevRange;
-use crate::skipdb::txn::{PwmComparableRange, error::WtmError};
-
-use std::convert::Infallible;
+use crate::skipdb::txn::error::WtmError;
 
 use super::*;
+use crate::skipdb::pending::{BTreePwm, PwmComparableRange};
+use std::convert::Infallible;
 
 #[cfg(test)]
 mod tests;
@@ -29,7 +29,6 @@ impl<K, V> OptimisticTransaction<K, V>
 where
     K: Clone + Ord,
 {
-
     pub(super) fn new(db: SerializableDb<K, V>) -> Self {
         let wtm = db.inner.tm.write((), ()).unwrap();
         Self { db, wtm }

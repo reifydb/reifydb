@@ -15,6 +15,7 @@ use std::{collections::hash_map::RandomState, hash::Hash};
 
 mod write;
 use crate::skipdb::conflict::HashCm;
+use crate::skipdb::pending::BTreePwm;
 use crate::skipdb::skipdbcore::{AsSkipCore, SkipCore};
 pub use write::*;
 

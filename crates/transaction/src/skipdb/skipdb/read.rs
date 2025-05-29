@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
+use crate::skipdb::pending::BTreePwm;
 use crate::skipdb::skipdbcore::rev_range::RevRange;
 
 /// A read only transaction over the [`OptimisticDb`],
@@ -19,7 +20,6 @@ pub struct ReadTransaction<K, V, I, C> {
 }
 
 impl<K, V, I, C> ReadTransaction<K, V, I, C> {
-
     pub(super) fn new(db: I, rtm: Rtm<K, V, C, BTreePwm<K, V>>) -> Self {
         Self { db, rtm }
     }

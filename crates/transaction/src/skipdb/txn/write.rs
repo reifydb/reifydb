@@ -13,6 +13,7 @@ use self::error::WtmError;
 
 use super::*;
 use crate::skipdb::conflict::{CmComparable, CmEquivalent};
+use crate::skipdb::pending::{PwmComparable, PwmEquivalent};
 use core::{borrow::Borrow, hash::Hash};
 
 /// Wtm is used to perform writes to the database. It is created by
@@ -921,6 +922,7 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
 mod tests {
     use super::*;
     use crate::skipdb::conflict::HashCm;
+    use crate::skipdb::pending::{BTreePwm, IndexMapPwm};
     use std::{collections::BTreeSet, convert::Infallible, marker::PhantomData};
 
     #[test]

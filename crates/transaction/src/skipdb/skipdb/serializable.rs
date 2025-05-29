@@ -19,6 +19,7 @@ pub use optimistic::*;
 #[allow(clippy::module_inception)]
 mod serializable;
 use crate::skipdb::conflict::BTreeCm;
+use crate::skipdb::pending::BTreePwm;
 pub use serializable::*;
 
 struct Inner<K, V> {
