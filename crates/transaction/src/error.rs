@@ -7,7 +7,7 @@ use std::fmt::{Display, Formatter};
 /// Represents all possible errors related to transactions, the mempool, or store.
 ///
 /// This error type captures issues that arise during any operation that involves transactional
-/// logic, coordination with the mempool, or access to the underlying store reifydb_engine. It provides
+/// logic, coordination with the mempool, or access to the underlying store engine. It provides
 /// a unified interface for handling failures across the execution, persistence, and coordination
 /// layers of the system.
 #[derive(Debug, PartialEq)]

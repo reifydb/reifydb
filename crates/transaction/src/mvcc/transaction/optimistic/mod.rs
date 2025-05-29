@@ -10,33 +10,34 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::skipdbcore::types::Values;
-use std::hash::BuildHasher;
 use std::sync::Arc;
 use std::{collections::hash_map::RandomState, hash::Hash};
 
-mod write;
+use crate::mvcc::DefaultHasher;
 use crate::mvcc::conflict::HashCm;
 use crate::mvcc::pending::BTreePwm;
 use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
 use crate::mvcc::transaction::Tm;
-use crate::mvcc::transaction::optimistic::read::ReadTransaction;
-pub use write::*;
 
-pub mod read;
+pub use read::TransactionRx;
+pub use write::TransactionTx;
+
+mod read;
+mod write;
 
 #[cfg(test)]
 mod tests;
 
-struct Inner<K, V, S = RandomState> {
-    tm: Tm<K, V, HashCm<K, S>, BTreePwm<K, V>>,
+struct Inner<K, V> {
+    tm: Tm<K, V, HashCm<K>, BTreePwm<K, V>>,
     map: SkipCore<K, V>,
-    hasher: S,
+    hasher: RandomState,
 }
 
-impl<K, V, S> Inner<K, V, S> {
-    fn new(name: &str, hasher: S) -> Self {
+impl<K, V> Inner<K, V> {
+    fn new(name: &str) -> Self {
         let tm = Tm::new(name, 0);
-        Self { tm, map: SkipCore::new(), hasher }
+        Self { tm, map: SkipCore::new(), hasher: DefaultHasher::default() }
     }
 
     fn version(&self) -> u64 {
@@ -52,25 +53,25 @@ impl<K, V, S> Inner<K, V, S> {
 /// 1. `SerializableDb` support full serializable snapshot isolation, which can detect both direct dependencies and indirect dependencies.
 /// 2. `SerializableDb` does not require key to implement [`Hash`](core::hash::Hash).
 /// 3. But, [`OptimisticDb`](crate::optimistic::OptimisticDb) has more flexible write transaction APIs and no clone happen.
-pub struct OptimisticDb<K, V, S = RandomState> {
-    inner: Arc<Inner<K, V, S>>,
+pub struct Optimistic<K, V> {
+    inner: Arc<Inner<K, V>>,
 }
 
 #[doc(hidden)]
-impl<K, V, S> AsSkipCore<K, V> for OptimisticDb<K, V, S> {
+impl<K, V> AsSkipCore<K, V> for Optimistic<K, V> {
     #[allow(private_interfaces)]
     fn as_inner(&self) -> &SkipCore<K, V> {
         &self.inner.map
     }
 }
 
-impl<K, V, S> Clone for OptimisticDb<K, V, S> {
+impl<K, V> Clone for Optimistic<K, V> {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone() }
     }
 }
 
-impl<K, V> Default for OptimisticDb<K, V> {
+impl<K, V> Default for Optimistic<K, V> {
     /// Creates a new `OptimisticDb` with the default options.
 
     fn default() -> Self {
@@ -78,39 +79,30 @@ impl<K, V> Default for OptimisticDb<K, V> {
     }
 }
 
-impl<K, V> OptimisticDb<K, V> {
+impl<K, V> Optimistic<K, V> {
     /// Creates a new `OptimisticDb` with the given options.
     pub fn new() -> Self {
-        Self::with_hasher(Default::default())
+        let inner = Arc::new(Inner::new(core::any::type_name::<Self>()));
+        Self { inner }
     }
 }
 
-impl<K, V, S> OptimisticDb<K, V, S> {
-    /// Creates a new `OptimisticDb` with the given hasher.
-
-    pub fn with_hasher(hasher: S) -> Self {
-        let inner = Arc::new(Inner::new(core::any::type_name::<Self>(), hasher));
-        Self { inner }
-    }
-
+impl<K, V> Optimistic<K, V> {
     /// Returns the current read version of the database.
-
     pub fn version(&self) -> u64 {
         self.inner.version()
     }
 
     /// Create a read transaction.
-
-    pub fn read(&self) -> ReadTransaction<K, V, OptimisticDb<K, V, S>, HashCm<K, S>> {
-        ReadTransaction::new(self.clone(), self.inner.tm.read())
+    pub fn read(&self) -> TransactionRx<K, V> {
+        TransactionRx::new(self.clone(), self.inner.tm.read())
     }
 }
 
-impl<K, V, S> OptimisticDb<K, V, S>
+impl<K, V> Optimistic<K, V>
 where
     K: Ord + Eq + Hash,
     V: 'static,
-    S: BuildHasher + Clone,
 {
     /// Create a optimistic write transaction.
     ///
@@ -119,24 +111,16 @@ where
     /// can be handled, but indirect dependencies (logical dependencies) can not be handled.
     /// If you need a totally Serializable Snapshot Isolation transaction, you should use
     /// [`SerializableDb`](crate::serializable::SerializableDb) instead.
-
-    pub fn write(&self) -> OptimisticTransaction<K, V, S> {
-        OptimisticTransaction::new(self.clone(), None)
-    }
-
-    /// Create a optimistic write transaction with the given capacity hint.
-
-    pub fn write_with_capacity(&self, capacity: usize) -> OptimisticTransaction<K, V, S> {
-        OptimisticTransaction::new(self.clone(), Some(capacity))
+    pub fn write(&self) -> TransactionTx<K, V> {
+        TransactionTx::new(self.clone())
     }
 }
 
-impl<K, V, S> OptimisticDb<K, V, S>
+impl<K, V> Optimistic<K, V>
 where
     K: Ord + Eq + Hash + Send + 'static,
     V: Send + 'static,
     Values<V>: Send,
-    S: BuildHasher + Clone,
 {
     /// Compact the database.
 

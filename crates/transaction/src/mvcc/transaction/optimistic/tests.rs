@@ -27,21 +27,21 @@ mod write_skew;
 
 #[test]
 fn begin_tx_readable() {
-    let db: OptimisticDb<&'static str, Vec<u8>> = OptimisticDb::new();
+    let db: Optimistic<&'static str, Vec<u8>> = Optimistic::new();
     let tx = db.read();
     assert_eq!(tx.version(), 0);
 }
 
 #[test]
 fn begin_tx_writeable() {
-    let db: OptimisticDb<&'static str, Vec<u8>> = OptimisticDb::new();
+    let db: Optimistic<&'static str, Vec<u8>> = Optimistic::new();
     let tx = db.write();
     assert_eq!(tx.version(), 0);
 }
 
 #[test]
 fn writeable_tx() {
-    let db: OptimisticDb<&'static str, &'static str> = OptimisticDb::new();
+    let db: Optimistic<&'static str, &'static str> = Optimistic::new();
     {
         let mut tx = db.write();
         assert_eq!(tx.version(), 0);
@@ -60,7 +60,7 @@ fn writeable_tx() {
 
 #[test]
 fn txn_simple() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
 
     {
         let mut txn = db.write();
@@ -92,7 +92,7 @@ fn txn_simple() {
 fn txn_read_after_write() {
     const N: u64 = 100;
 
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
 
     let handles = (0..N)
         .map(|i| {
@@ -123,7 +123,7 @@ fn txn_read_after_write() {
 fn txn_commit_with_callback() {
     use rand::thread_rng;
 
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     for i in 0..40 {
         txn.insert(i, 100).unwrap();
@@ -193,7 +193,7 @@ fn txn_conflict_get() {
     let set_count = Arc::new(AtomicU32::new(0));
 
     for _ in 0..10 {
-        let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+        let db: Optimistic<u64, u64> = Optimistic::new();
         set_count.store(0, Ordering::SeqCst);
         let handles = (0..16).map(|_| {
             let db1 = db.clone();
@@ -228,7 +228,7 @@ fn txn_conflict_get() {
 
 #[test]
 fn txn_versions() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
 
     let k0 = 0;
     for i in 1..10 {
@@ -288,7 +288,7 @@ fn txn_conflict_iter() {
     let set_count = Arc::new(AtomicU32::new(0));
 
     for _ in 0..10 {
-        let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+        let db: Optimistic<u64, u64> = Optimistic::new();
         set_count.store(0, Ordering::SeqCst);
         let handles = (0..16).map(|_| {
             let db1 = db.clone();
@@ -339,7 +339,7 @@ fn txn_conflict_iter() {
 /// Read at ts=1 -> c1
 #[test]
 fn txn_iteration_edge_case() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
 
     // c1
     {
@@ -438,7 +438,7 @@ fn txn_iteration_edge_case() {
 /// Read at ts=1 -> c1
 #[test]
 fn txn_iteration_edge_case2() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
 
     // c1
     {
@@ -555,7 +555,7 @@ fn txn_iteration_edge_case2() {
 /// Read at ts=1 -> c1
 #[test]
 fn txn_range_edge_case2() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
 
     // c1
     {
@@ -674,7 +674,7 @@ fn txn_range_edge_case2() {
 fn compact() {
     use rand::thread_rng;
 
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     let k = 88;
     for i in 0..40 {
@@ -762,7 +762,7 @@ fn compact() {
 
 #[test]
 fn rollback() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     txn.insert(1, 1).unwrap();
     txn.rollback().unwrap();
@@ -771,7 +771,7 @@ fn rollback() {
 
 #[test]
 fn iter() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     txn.insert(1, 1).unwrap();
     txn.insert(2, 2).unwrap();
@@ -799,7 +799,7 @@ fn iter() {
 
 #[test]
 fn iter2() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     txn.insert(1, 1).unwrap();
     txn.insert(2, 2).unwrap();
@@ -853,7 +853,7 @@ fn iter2() {
 
 #[test]
 fn iter3() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     txn.insert(4, 4).unwrap();
     txn.insert(5, 5).unwrap();
@@ -907,7 +907,7 @@ fn iter3() {
 
 #[test]
 fn range() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     txn.insert(1, 1).unwrap();
     txn.insert(2, 2).unwrap();
@@ -935,7 +935,7 @@ fn range() {
 
 #[test]
 fn range2() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     txn.insert(1, 1).unwrap();
     txn.insert(2, 2).unwrap();
@@ -993,7 +993,7 @@ fn range2() {
 
 #[test]
 fn range3() {
-    let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+    let db: Optimistic<u64, u64> = Optimistic::new();
     let mut txn = db.write();
     txn.insert(4, 4).unwrap();
     txn.insert(5, 5).unwrap();

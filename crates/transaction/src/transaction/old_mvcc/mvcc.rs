@@ -15,7 +15,7 @@ use reifydb_core::encoding::{Key as _, Value};
 use reifydb_persistence::Persistence;
 use std::sync::{Arc, Mutex};
 
-/// An MVCC-based transactional key-value reifydb_engine. It wraps an underlying persistence that's used for raw key-value storage.
+/// An MVCC-based transactional key-value engine. It wraps an underlying persistence that's used for raw key-value storage.
 ///
 /// While it supports any number of concurrent transactions, individual read or
 /// write operations are executed sequentially, serialized via a mutex
@@ -37,7 +37,7 @@ impl<P: Persistence> crate::Transaction<P> for Mvcc<P> {
 }
 
 impl<P: Persistence> Mvcc<P> {
-    /// Creates a new MVCC reifydb_engine with the given store reifydb_engine.
+    /// Creates a new MVCC engine with the given store engine.
     pub fn new(persistence: P) -> Self {
         Self { persistence: Arc::new(Mutex::new(persistence)) }
     }
@@ -62,7 +62,7 @@ impl<P: Persistence> Mvcc<P> {
 
     /// Fetches the value of an unversioned key.
     pub fn get_unversioned(&self, key: &[u8]) -> crate::transaction::old_mvcc::Result<Option<Vec<u8>>> {
-        // self.reifydb_engine.lock()?.get(&Key::Unversioned(key.into()).encode())
+        // self.engine.lock()?.get(&Key::Unversioned(key.into()).encode())
         // FIXME
         Ok(self.persistence.lock().unwrap().get(&Key::Unversioned(key.into()).encode()).unwrap())
     }
@@ -73,7 +73,7 @@ impl<P: Persistence> Mvcc<P> {
         key: &[u8],
         value: Vec<u8>,
     ) -> crate::transaction::old_mvcc::Result<()> {
-        // self.reifydb_engine.lock()?.set(&Key::Unversioned(key.into()).encode(), value)
+        // self.engine.lock()?.set(&Key::Unversioned(key.into()).encode(), value)
 
         // FIXME
         Ok(self
@@ -84,10 +84,10 @@ impl<P: Persistence> Mvcc<P> {
             .unwrap())
     }
 
-    /// Returns the status of the MVCC and store reifydb_engines.
+    /// Returns the status of the MVCC and store engines.
     pub fn status(&self) -> crate::transaction::old_mvcc::Result<Status> {
         // FIXME
-        // let mut reifydb_engine = self.reifydb_engine.lock()?;
+        // let mut engine = self.engine.lock()?;
         let mut reifydb_engine = self.persistence.lock().unwrap();
         let versions = match reifydb_engine.get(&Key::NextVersion.encode())? {
             Some(ref v) => Version::decode(v)? - 1,

@@ -17,7 +17,7 @@ use std::fmt::{Display, Formatter};
 /// - `RQL`: A failure occurred in the Reify Query Language layer.  
 ///   This can include parsing errors, logical plan issues, optimization failures, or runtime execution faults.
 ///
-/// - `Store`: A low-level store reifydb_engine error was encountered.
+/// - `Store`: A low-level store engine error was encountered.
 ///   This includes I/O errors, key-value corruption, encoding issues at the store level, or internal store bugs.
 ///
 #[derive(Debug, PartialEq)]

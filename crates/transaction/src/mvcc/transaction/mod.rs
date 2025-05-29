@@ -31,11 +31,12 @@ use oracle::*;
 ///
 /// If your `K` does not implement [`Hash`](core::hash::Hash), you can use [`SerializableDb`] instead.
 pub mod optimistic;
-mod read;
+pub mod read;
 pub mod scan;
 /// `SerializableDb` implementation, which requires `K` implements [`Ord`] and [`CheapClone`](cheap_clone::CheapClone). If your `K` implements both [`Hash`](core::hash::Hash) and [`Ord`], you are recommended to use [`OptimisticDb`](crate::optimistic::OptimisticDb) instead.
 pub mod serializable;
 mod write;
+
 
 use crate::mvcc::conflict::Cm;
 use crate::mvcc::error::TransactionError;

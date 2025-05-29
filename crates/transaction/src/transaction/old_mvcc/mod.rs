@@ -13,7 +13,7 @@
 //! multiple concurrent transactions to access and modify the same dataset,
 //! isolates them from each other, detects and handles conflicts, and commits
 //! their writes atomically as a single unit. It uses an underlying store
-//! reifydb_engine to store raw keys and values.
+//! engine to store raw keys and values.
 //!
 //! VERSIONS
 //! ========
@@ -119,7 +119,7 @@
 //! version consistency.
 //!
 //! To achieve this, every read-write transaction stores its active set snapshot
-//! in the store reifydb_engine as well, as Key::TxActiveSnapshot, such that later
+//! in the store engine as well, as Key::TxActiveSnapshot, such that later
 //! time-travel queries can restore its original snapshot. Furthermore, a
 //! time-travel query can only see versions below the snapshot version, otherwise
 //! it could see spurious in-progress or since-committed versions.
@@ -167,22 +167,22 @@ use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// MVCC reifydb_engine status.
+/// MVCC engine status.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Status {
     /// The current MVCC.
     pub version: Version,
     /// Number of currently active transactions.
     pub active_txs: u64,
-    // ///The store reifydb_engine.
-    // pub store: super::reifydb_engine::Status,
+    // ///The store engine.
+    // pub store: super::engine::Status,
 }
 
 impl encoding::Value for Status {}
 
 /// An MVCC transaction.
 pub struct Transaction<P: Persistence> {
-    /// The underlying reifydb_engine, shared by all transactions.
+    /// The underlying engine, shared by all transactions.
     persistence: Arc<Mutex<P>>,
     /// The transaction state.
     state: TransactionState,
@@ -190,11 +190,11 @@ pub struct Transaction<P: Persistence> {
 
 /// A Transaction's state, which determines its write version and isolation. It
 /// is separate from Transaction to allow it to be passed around independently
-/// of the reifydb_engine. There are two main motivations for this:
+/// of the engine. There are two main motivations for this:
 ///
 /// * It can be exported via Transaction.state(), (de)serialized,
 ///
-/// * It can be borrowed independently of reifydb_engine, allowing references to it
+/// * It can be borrowed independently of engine, allowing references to it
 ///   in VisibleIterator, which would otherwise result in self-references.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TransactionState {

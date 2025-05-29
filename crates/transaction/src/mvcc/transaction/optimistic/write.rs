@@ -13,43 +13,41 @@ use super::*;
 use crate::mvcc::conflict::{HashCm, HashCmOptions};
 use crate::mvcc::error::{TransactionError, WtmError};
 use crate::mvcc::pending::{BTreePwm, PwmComparableRange};
+use crate::mvcc::skipdbcore::types::Ref;
+use crate::mvcc::transaction::Wtm;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
 use crate::mvcc::transaction::scan::rev_range::WriteTransactionRevRange;
-use crate::mvcc::skipdbcore::types::Ref;
-use crate::mvcc::transaction::Wtm;
 use std::borrow::Borrow;
 use std::convert::Infallible;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
-/// A optimistic concurrency control transaction over the [`OptimisticDb`].
-pub struct OptimisticTransaction<K, V, S = RandomState> {
-    db: OptimisticDb<K, V, S>,
-    pub(in crate::mvcc) wtm: Wtm<K, V, HashCm<K, S>, BTreePwm<K, V>>,
+/// A optimistic concurrency control transaction over the [`Optimistic`].
+pub struct TransactionTx<K, V> {
+    engine: Optimistic<K, V>,
+    pub(in crate::mvcc) wtm: Wtm<K, V, HashCm<K>, BTreePwm<K, V>>,
 }
 
-impl<K, V, S> OptimisticTransaction<K, V, S>
+impl<K, V> TransactionTx<K, V>
 where
     K: Ord + Hash + Eq,
-    S: BuildHasher + Clone,
 {
-    pub fn new(db: OptimisticDb<K, V, S>, cap: Option<usize>) -> Self {
+    pub fn new(db: Optimistic<K, V>) -> Self {
         let wtm = db
             .inner
             .tm
-            .write((), HashCmOptions::with_capacity(db.inner.hasher.clone(), cap.unwrap_or(8)))
+            .write((), HashCmOptions::with_capacity(db.inner.hasher.clone(), 8))
             .unwrap();
-        Self { db, wtm }
+        Self { engine: db, wtm }
     }
 }
 
-impl<K, V, S> OptimisticTransaction<K, V, S>
+impl<K, V> TransactionTx<K, V>
 where
     K: Ord + Hash + Eq + Debug,
     V: Send + 'static + Debug,
-    S: BuildHasher,
 {
     /// Commits the transaction, following these steps:
     ///
@@ -69,17 +67,16 @@ where
 
     pub fn commit(&mut self) -> Result<(), WtmError<Infallible, Infallible, Infallible>> {
         self.wtm.commit(|operations| {
-            self.db.inner.map.apply(operations);
+            self.engine.inner.map.apply(operations);
             Ok(())
         })
     }
 }
 
-impl<K, V, S> OptimisticTransaction<K, V, S>
+impl<K, V> TransactionTx<K, V>
 where
     K: Ord + Hash + Eq + Send + Sync + 'static,
     V: Send + Sync + 'static,
-    S: BuildHasher + Send + Sync + 'static,
 {
     /// Acts like [`commit`](WriteTransaction::commit), but takes a callback, which gets run via a
     /// thread to avoid blocking this function. Following these steps:
@@ -105,7 +102,7 @@ where
         E: std::error::Error,
         R: Send + 'static,
     {
-        let db = self.db.clone();
+        let db = self.engine.clone();
 
         self.wtm.commit_with_callback(
             move |ents| {
@@ -117,11 +114,10 @@ where
     }
 }
 
-impl<K, V, S> OptimisticTransaction<K, V, S>
+impl<K, V> TransactionTx<K, V>
 where
     K: Ord + Hash + Eq,
     V: 'static,
-    S: BuildHasher,
 {
     /// Returns the read version of the transaction.
 
@@ -149,7 +145,7 @@ where
         match self.wtm.contains_key_equivalent_cm_comparable_pm(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.db.inner.map.contains_key(key, version)),
+            None => Ok(self.engine.inner.map.contains_key(key, version)),
         }
     }
 
@@ -172,7 +168,7 @@ where
                     Ok(None)
                 }
             }
-            None => Ok(self.db.inner.map.get(key, version).map(Into::into)),
+            None => Ok(self.engine.inner.map.get(key, version).map(Into::into)),
         }
     }
 
@@ -196,11 +192,11 @@ where
 
     pub fn iter(
         &mut self,
-    ) -> Result<TransactionIter<'_, K, V, HashCm<K, S>>, TransactionError<Infallible, Infallible>>
+    ) -> Result<TransactionIter<'_, K, V, HashCm<K>>, TransactionError<Infallible, Infallible>>
     {
         let version = self.wtm.version();
         let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
-        let committed = self.db.inner.map.iter(version);
+        let committed = self.engine.inner.map.iter(version);
         let pendings = pm.iter();
 
         Ok(TransactionIter::new(pendings, committed, Some(marker)))
@@ -211,12 +207,12 @@ where
     pub fn iter_rev(
         &mut self,
     ) -> Result<
-        WriteTransactionRevIter<'_, K, V, HashCm<K, S>>,
+        WriteTransactionRevIter<'_, K, V, HashCm<K>>,
         TransactionError<Infallible, Infallible>,
     > {
         let version = self.wtm.version();
         let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
-        let committed = self.db.inner.map.iter_rev(version);
+        let committed = self.engine.inner.map.iter_rev(version);
         let pendings = pm.iter().rev();
 
         Ok(WriteTransactionRevIter::new(pendings, committed, Some(marker)))
@@ -227,10 +223,7 @@ where
     pub fn range<'a, Q, R>(
         &'a mut self,
         range: R,
-    ) -> Result<
-        TransactionRange<'a, Q, R, K, V, HashCm<K, S>>,
-        TransactionError<Infallible, Infallible>,
-    >
+    ) -> Result<TransactionRange<'a, Q, R, K, V, HashCm<K>>, TransactionError<Infallible, Infallible>>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q> + 'a,
@@ -241,7 +234,7 @@ where
         let start = range.start_bound();
         let end = range.end_bound();
         let pendings = pm.range_comparable((start, end));
-        let committed = self.db.inner.map.range(range, version);
+        let committed = self.engine.inner.map.range(range, version);
 
         Ok(TransactionRange::new(pendings, committed, Some(marker)))
     }
@@ -252,7 +245,7 @@ where
         &'a mut self,
         range: R,
     ) -> Result<
-        WriteTransactionRevRange<'a, Q, R, K, V, HashCm<K, S>>,
+        WriteTransactionRevRange<'a, Q, R, K, V, HashCm<K>>,
         TransactionError<Infallible, Infallible>,
     >
     where
@@ -265,7 +258,7 @@ where
         let start = range.start_bound();
         let end = range.end_bound();
         let pendings = pm.range_comparable((start, end));
-        let committed = self.db.inner.map.range_rev(range, version);
+        let committed = self.engine.inner.map.range_rev(range, version);
 
         Ok(WriteTransactionRevRange::new(pendings.rev(), committed, Some(marker)))
     }

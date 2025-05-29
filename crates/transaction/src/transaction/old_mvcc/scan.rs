@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 /// An iterator over the latest live and visible key-value pairs for the tx.
 ///
-/// The (single-threaded) reifydb_engine is shared via mutex, and holding the mutex for
+/// The (single-threaded) engine is shared via mutex, and holding the mutex for
 /// the lifetime of the iterator can cause deadlocks (e.g. when the local SQL
 /// reifydb_engine pulls from two tables concurrently during a join). Instead, we pull
 /// and buffer a batch of rows at a time, and release the mutex in between.

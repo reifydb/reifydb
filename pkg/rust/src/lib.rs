@@ -3,7 +3,7 @@
 
 //! # ReifyDB
 //!
-//! ReifyDB is an embeddable application backend reifydb_engine that blends a high-level query language
+//! ReifyDB is an embeddable application backend engine that blends a high-level query language
 //! (RQL – Reify Query Language) with a low-level key-value store system.
 //!
 //! It is designed for rapid prototyping, persistent data manipulation, and embedding powerful
@@ -27,7 +27,7 @@
 pub use error::Error;
 pub use reifydb_auth::Principal;
 pub use reifydb_core::*;
-/// The execution reifydb_engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
+/// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
 pub use reifydb_engine;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use reifydb_rql;
@@ -155,8 +155,8 @@ pub fn serializable()
 }
 
 pub fn optimistic()
--> ::reifydb_transaction::mvcc::transaction::optimistic::OptimisticDb<Vec<u8>, Vec<u8>> {
-    ::reifydb_transaction::mvcc::transaction::optimistic::OptimisticDb::new()
+-> ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic<Vec<u8>, Vec<u8>> {
+    ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic::new()
 }
 
 pub fn memory() -> Memory {

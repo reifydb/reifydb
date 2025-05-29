@@ -12,10 +12,10 @@
 use crate::mvcc::skipdbcore::types::Values;
 use std::sync::Arc;
 
-pub use write::*;
 pub use read::*;
+pub use write::*;
 
-mod read;
+pub(crate) mod read;
 #[allow(clippy::module_inception)]
 mod write;
 
@@ -23,7 +23,7 @@ use crate::mvcc::conflict::BTreeCm;
 use crate::mvcc::pending::BTreePwm;
 use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
 use crate::mvcc::transaction::Tm;
-use crate::mvcc::transaction::optimistic::read::ReadTransaction;
+use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
 struct Inner<K, V> {
     tm: Tm<K, V, BTreeCm<K>, BTreePwm<K, V>>,

@@ -4,7 +4,7 @@
 use reifydb::client::Client;
 use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::mvcc::transaction::optimistic::OptimisticDb;
+use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::reifydb_transaction::mvcc::transaction::serializable::SerializableDb;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::{ReifyDB, memory, mvcc, optimistic, serializable, svl};
@@ -131,7 +131,7 @@ fn test_serializable_memory(path: &Path) {
 
 fn test_optimistic_memory(path: &Path) {
     testscript::run_path(
-        &mut ClientRunner::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>::new(optimistic()),
+        &mut ClientRunner::<Memory, Optimistic<Vec<u8>, Vec<u8>>>::new(optimistic()),
         path,
     )
     .expect("test failed")

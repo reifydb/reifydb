@@ -143,7 +143,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
             return Ok(());
         }
         // FIXME
-        // let mut reifydb_engine = self.reifydb_engine.lock()?;
+        // let mut engine = self.engine.lock()?;
         let mut persistence = self.persistence.lock().unwrap();
 
         let mut remove = Vec::new();
@@ -156,7 +156,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
         }
 
         // FIXME
-        // reifydb_engine.remove(&Key::TxActive(self.state.version).encode())
+        // engine.remove(&Key::TxActive(self.state.version).encode())
         persistence.remove(&Key::TxActive(self.state.version).encode()).unwrap();
         Ok(())
     }
@@ -169,7 +169,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
             return Ok(());
         }
         // FIXME
-        // let mut reifydb_engine = self.reifydb_engine.lock()?;
+        // let mut engine = self.reifydb_engine.lock()?;
         let mut reifydb_engine = self.persistence.lock().unwrap();
         let mut rollback = Vec::new();
         let mut scan = reifydb_engine.scan_prefix(&KeyPrefix::TxWrite(self.state.version).encode());

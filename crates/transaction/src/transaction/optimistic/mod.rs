@@ -2,23 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::catalog::{Catalog, Schema};
-use crate::mvcc::conflict::HashCm;
-use crate::mvcc::transaction::optimistic::read::ReadTransaction;
-use crate::mvcc::transaction::optimistic::{OptimisticDb, OptimisticTransaction};
+use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
-use std::hash::RandomState;
 
-impl<P: Persistence> Transaction<P> for OptimisticDb<Vec<u8>, Vec<u8>, RandomState> {
-    type Rx = ReadTransaction<Vec<u8>, Vec<u8>, OptimisticDb<Vec<u8>, Vec<u8>>, HashCm<Vec<u8>>>;
-    type Tx = OptimisticTransaction<Vec<u8>, Vec<u8>>;
+impl<P: Persistence> Transaction<P> for Optimistic<Vec<u8>, Vec<u8>> {
+    type Rx = TransactionRx<Vec<u8>, Vec<u8>>;
+    type Tx = TransactionTx<Vec<u8>, Vec<u8>>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         Ok(self.read())
-        // Ok(self.db.read())
-        // todo!()
     }
 
     fn begin(&self) -> crate::Result<Self::Tx> {
@@ -26,9 +21,7 @@ impl<P: Persistence> Transaction<P> for OptimisticDb<Vec<u8>, Vec<u8>, RandomSta
     }
 }
 
-impl crate::Rx
-    for ReadTransaction<Vec<u8>, Vec<u8>, OptimisticDb<Vec<u8>, Vec<u8>>, HashCm<Vec<u8>>>
-{
+impl crate::Rx for TransactionRx<Vec<u8>, Vec<u8>> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -55,7 +48,7 @@ impl crate::Rx
     }
 }
 
-impl crate::Rx for OptimisticTransaction<Vec<u8>, Vec<u8>, RandomState> {
+impl crate::Rx for TransactionTx<Vec<u8>, Vec<u8>> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -84,7 +77,7 @@ impl crate::Rx for OptimisticTransaction<Vec<u8>, Vec<u8>, RandomState> {
     }
 }
 
-impl crate::Tx for OptimisticTransaction<Vec<u8>, Vec<u8>, RandomState> {
+impl crate::Tx for TransactionTx<Vec<u8>, Vec<u8>> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
@@ -152,13 +145,13 @@ impl crate::Tx for OptimisticTransaction<Vec<u8>, Vec<u8>, RandomState> {
     }
 
     fn commit(mut self) -> crate::Result<()> {
-        OptimisticTransaction::commit(&mut self).unwrap();
+        TransactionTx::commit(&mut self).unwrap();
 
         Ok(())
     }
 
     fn rollback(mut self) -> crate::Result<()> {
-        OptimisticTransaction::rollback(&mut self).unwrap();
+        TransactionTx::rollback(&mut self).unwrap();
 
         Ok(())
     }

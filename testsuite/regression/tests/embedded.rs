@@ -4,7 +4,7 @@
 use reifydb::embedded::Embedded;
 use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::mvcc::transaction::optimistic::OptimisticDb;
+use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::reifydb_transaction::mvcc::transaction::serializable::SerializableDb;
 use reifydb::{DB, Principal, ReifyDB, memory, mvcc, optimistic, serializable, svl};
 use reifydb_testing::tempdir::temp_dir;
@@ -17,15 +17,15 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
 pub struct Runner<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    reifydb_engine: Embedded<P, T>,
+    engine: Embedded<P, T>,
     root: Principal,
     runtime: Runtime,
 }
 
 impl<P: Persistence + 'static, T: Transaction<P> + 'static> Runner<P, T> {
     pub fn new(transaction: T) -> Self {
-        let (reifydb_engine, root) = ReifyDB::embedded_with(transaction);
-        Self { reifydb_engine, root, runtime: Runtime::new().unwrap() }
+        let (engine, root) = ReifyDB::embedded_with(transaction);
+        Self { engine, root, runtime: Runtime::new().unwrap() }
     }
 }
 
@@ -39,9 +39,9 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner f
 
                 println!("tx: {query}");
 
-                let reifydb_engine = self.reifydb_engine.clone();
+                let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in reifydb_engine.tx_as(&self.root, query.as_str()).await {
+                    for line in engine.tx_as(&self.root, query.as_str()).await {
                         writeln!(output, "{}", line);
                     }
                 });
@@ -52,9 +52,9 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner f
 
                 println!("rx: {query}");
 
-                let reifydb_engine = self.reifydb_engine.clone();
+                let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in reifydb_engine.rx_as(&self.root, query.as_str()).await {
+                    for line in engine.rx_as(&self.root, query.as_str()).await {
                         writeln!(output, "{}", line);
                     }
                 });
@@ -85,7 +85,7 @@ fn test_serializable_memory(path: &Path) {
 
 fn test_optimistic_memory(path: &Path) {
     testscript::run_path(
-        &mut Runner::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>::new(optimistic()),
+        &mut Runner::<Memory, Optimistic<Vec<u8>, Vec<u8>>>::new(optimistic()),
         path,
     )
     .expect("test failed")

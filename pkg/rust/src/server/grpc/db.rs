@@ -20,12 +20,12 @@ use reifydb_engine::{Engine, ExecutionResult};
 use tokio_stream::once;
 
 pub struct DbService<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    pub(crate) reifydb_engine: Arc<Engine<P, T>>,
+    pub(crate) engine: Arc<Engine<P, T>>,
 }
 
 impl<P: Persistence + 'static, T: Transaction<P> + 'static> DbService<P, T> {
-    pub fn new(reifydb_engine: Engine<P, T>) -> Self {
-        Self { reifydb_engine: Arc::new(reifydb_engine) }
+    pub fn new(engine: Engine<P, T>) -> Self {
+        Self { engine: Arc::new(engine) }
     }
 }
 
@@ -49,9 +49,9 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> grpc_db::db_server::
         let query = request.into_inner().query;
         println!("Received query: {}", query);
 
-        let reifydb_engine = self.reifydb_engine.clone();
+        let engine = self.engine.clone();
         let result = spawn_blocking(move || {
-            let result = reifydb_engine
+            let result = engine
                 .tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
                 .unwrap();
 
@@ -145,9 +145,9 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> grpc_db::db_server::
         let query = request.into_inner().query;
         println!("Received query: {}", query);
 
-        let reifydb_engine = self.reifydb_engine.clone();
+        let engine = self.engine.clone();
         let result = spawn_blocking(move || {
-            let result = reifydb_engine
+            let result = engine
                 .rx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
                 .unwrap();
             result

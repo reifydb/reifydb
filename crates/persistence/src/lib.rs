@@ -23,7 +23,7 @@ pub type Result<T> = result::Result<T, Error>;
 pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
 
-/// An reifydb_engine operation emitted by the Emit reifydb_engine.
+/// An engine operation emitted by the Emit reifydb_engine.
 pub enum Operation {
     Set { key: Key, value: Value },
     Remove { key: Key },

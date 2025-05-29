@@ -17,7 +17,7 @@ fn txn_write_skew() {
   // accounts
   let a999 = 999;
   let a888 = 888;
-  let db: OptimisticDb<u64, u64> = OptimisticDb::new();
+  let db: Optimistic<u64, u64> = Optimistic::new();
 
   // Set balance to $100 in each account.
   let mut txn = db.write();
@@ -26,7 +26,7 @@ fn txn_write_skew() {
   txn.commit().unwrap();
   assert_eq!(1, db.version());
 
-  let get_bal = |txn: &mut OptimisticTransaction<u64, u64>, k: &u64| -> u64 {
+  let get_bal = |txn: &mut TransactionTx<u64, u64>, k: &u64| -> u64 {
     let item = txn.get(k).unwrap().unwrap();
     let val = *item.value();
     val
@@ -70,7 +70,7 @@ fn txn_write_skew() {
 // https://wiki.postgresql.org/wiki/SSI#Black_and_White
 #[test]
 fn txn_write_skew_black_white() {
-  let db: OptimisticDb<u64, &'static str> = OptimisticDb::new();
+  let db: Optimistic<u64, &'static str> = Optimistic::new();
 
   // Setup
   let mut txn = db.write();
@@ -123,7 +123,7 @@ fn txn_write_skew_black_white() {
 // https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
 #[test]
 fn txn_write_skew_overdraft_protection() {
-  let db: OptimisticDb<&'static str, u64> = OptimisticDb::new();
+  let db: Optimistic<&'static str, u64> = Optimistic::new();
 
   // Setup
   let mut txn = db.write();
@@ -147,7 +147,7 @@ fn txn_write_skew_overdraft_protection() {
 // https://wiki.postgresql.org/wiki/SSI#Primary_Colors
 #[test]
 fn txn_write_skew_primary_colors() {
-  let db: OptimisticDb<u64, &'static str> = OptimisticDb::new();
+  let db: Optimistic<u64, &'static str> = Optimistic::new();
 
   // Setup
   let mut txn = db.write();

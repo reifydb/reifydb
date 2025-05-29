@@ -12,12 +12,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub struct TransactionRx<P: Persistence> {
-    reifydb_engine: ReadGuard<SvlInner<P>>,
+    engine: ReadGuard<SvlInner<P>>,
 }
 
 impl<P: Persistence> TransactionRx<P> {
-    pub fn new(reifydb_engine: ReadGuard<SvlInner<P>>) -> Self {
-        Self { reifydb_engine }
+    pub fn new(engine: ReadGuard<SvlInner<P>>) -> Self {
+        Self { engine }
     }
 }
 
@@ -40,7 +40,7 @@ impl<P: Persistence> crate::Rx for TransactionRx<P> {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.reifydb_engine
+            self.engine
                 .persistence
                 .scan_prefix(key_prefix!("{}::{}::row::", schema, store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())

@@ -16,7 +16,7 @@ get_unversioned a
 ---
 "a" → None
 
-# Setting and getting an unversioned key should work. Dump reifydb_engine operations.
+# Setting and getting an unversioned key should work. Dump engine operations.
 set_unversioned a=0 [ops]
 get_unversioned a
 ---

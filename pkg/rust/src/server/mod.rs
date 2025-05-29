@@ -6,7 +6,7 @@ pub use config::{DatabaseConfig, ServerConfig};
 use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
 use reifydb_persistence::Persistence;
-use reifydb_transaction::{catalog_init, Rx, Transaction, Tx};
+use reifydb_transaction::{Rx, Transaction, Tx, catalog_init};
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -30,8 +30,8 @@ impl<P: Persistence, T: Transaction<P>> Server<P, T> {
         self
     }
 
-    pub fn with_reifydb_engine(mut self, reifydb_engine: Engine<P, T>) -> Self {
-        self.engine = reifydb_engine;
+    pub fn with_engine(mut self, engine: Engine<P, T>) -> Self {
+        self.engine = engine;
         self
     }
 }
@@ -75,20 +75,16 @@ impl Deref for BeforeBootstrap {
 }
 
 pub struct OnCreate<P: Persistence, T: Transaction<P>> {
-    reifydb_engine: Engine<P, T>,
+    engine: Engine<P, T>,
 }
 
 impl<P: Persistence, T: Transaction<P>> OnCreate<P, T> {
     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
-        self.reifydb_engine
-            .tx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql)
-            .unwrap()
+        self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
     }
 
     pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
-        self.reifydb_engine
-            .rx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql)
-            .unwrap()
+        self.engine.rx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
     }
 }
 
@@ -130,7 +126,7 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> Server<P, T> {
         }
 
         for f in self.callbacks.on_create {
-            f(OnCreate { reifydb_engine: self.engine.clone() }).await;
+            f(OnCreate { engine: self.engine.clone() }).await;
         }
 
         let address =
@@ -152,7 +148,7 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> Server<P, T> {
             }
 
             for f in self.callbacks.on_create {
-                f(OnCreate { reifydb_engine: self.engine.clone() }).await;
+                f(OnCreate { engine: self.engine.clone() }).await;
             }
 
             let address =

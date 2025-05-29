@@ -3,12 +3,12 @@
 
 use crate::catalog::{Catalog, Schema};
 use crate::mvcc::conflict::BTreeCm;
-use crate::mvcc::transaction::optimistic::read::ReadTransaction;
 use crate::mvcc::transaction::serializable::{SerializableDb, SerializableTransaction};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
+use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
 impl<P: Persistence> Transaction<P> for SerializableDb<Vec<u8>, Vec<u8>> {
     type Rx = ReadTransaction<Vec<u8>, Vec<u8>, SerializableDb<Vec<u8>, Vec<u8>>, BTreeCm<Vec<u8>>>;

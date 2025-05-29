@@ -289,7 +289,7 @@ impl<'a> testscript::Runner for MvccRunner {
             name => return Err(format!("invalid command {name}").into()),
         }
 
-        // If requested, output reifydb_engine operations.
+        // If requested, output engine operations.
         // if tags.remove("ops") {
         //     while let Ok(op) = self.operations.try_recv() {
         //         match op {

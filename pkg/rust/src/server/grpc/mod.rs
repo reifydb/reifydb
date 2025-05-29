@@ -3,8 +3,8 @@
 
 use crate::server::grpc::db::DbService;
 use crate::server::grpc::grpc_db::db_server::DbServer;
-use reifydb_persistence::Persistence;
 use reifydb_engine::Engine;
+use reifydb_persistence::Persistence;
 use reifydb_transaction::Transaction;
 
 pub mod auth;
@@ -16,9 +16,9 @@ pub(crate) mod grpc_db {
 
 // FIXME return result
 pub fn db_service<P: Persistence + 'static, T: Transaction<P> + 'static>(
-    reifydb_engine: Engine<P, T>,
+    engine: Engine<P, T>,
 ) -> DbServer<DbService<P, T>> {
-    DbServer::new(DbService::new(reifydb_engine))
+    DbServer::new(DbService::new(engine))
 }
 
 #[derive(Debug, Clone)]

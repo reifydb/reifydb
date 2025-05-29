@@ -17,7 +17,7 @@ pub trait Persistence: Send + Sync {
     /// An associated type representing the iterator returned by `scan` and `scan_prefix`.
     ///
     /// The iterator yields ordered key-value pairs and must implement [`ScanIterator`].
-    /// The lifetime `'a` ensures the iterator does not outlive the reifydb_engine reference.
+    /// The lifetime `'a` ensures the iterator does not outlive the engine reference.
     type ScanIter<'a>: Iterator<Item = crate::Result<(Key, Value)>> + 'a
     where
         Self: 'a;
@@ -63,7 +63,7 @@ pub trait Persistence: Send + Sync {
 
     /// Flushes all pending writes to durable store, if applicable.
     ///
-    /// This may be a no-op for in-memory reifydb_engines.
+    /// This may be a no-op for in-memory engines.
     ///
     /// # Errors
     /// Returns an error if syncing fails (e.g., I/O error).
