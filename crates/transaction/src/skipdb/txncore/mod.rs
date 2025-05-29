@@ -17,8 +17,6 @@
 extern crate alloc;
 extern crate std;
 
-/// Default hasher.
-pub type DefaultHasher = std::collections::hash_map::RandomState;
 
 /// Types
 pub mod types {

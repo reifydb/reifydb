@@ -14,7 +14,7 @@ use smallvec_wrapper::MediumVec;
 
 use super::*;
 
-use crate::skipdb::txncore::DefaultHasher;
+use crate::skipdb::DefaultHasher;
 use indexmap::IndexSet;
 
 #[derive(Clone, Copy, Debug)]

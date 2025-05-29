@@ -19,3 +19,5 @@ pub mod transaction;
 pub mod txn;
 pub mod txncore;
 pub mod watermark;
+
+pub type DefaultHasher = std::collections::hash_map::RandomState;

@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::skipdb::txncore::DefaultHasher;
+use crate::skipdb::DefaultHasher;
 use core::{convert::Infallible, hash::BuildHasher};
 use indexmap::IndexMap;
 
