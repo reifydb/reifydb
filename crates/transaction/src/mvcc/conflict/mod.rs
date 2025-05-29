@@ -13,11 +13,9 @@ use std::borrow::Borrow;
 use std::hash::Hash;
 use std::ops::RangeBounds;
 
-pub use btree::BTreeCm;
-pub use hash::{HashCm, HashCmOptions};
+pub use btree::BTreeConflict;
 
 mod btree;
-mod hash;
 
 /// The conflict manager that can be used to manage the conflicts in a transaction.
 ///
@@ -48,7 +46,7 @@ pub trait Conflict: Sized {
 }
 
 /// A extended trait of the [`Conflict`] trait that can be used to manage the range of keys.
-pub trait CmRange: Conflict + Sized {
+pub trait ConflictRange: Conflict + Sized {
     /// Mark the range is read.
     fn mark_range(&mut self, range: impl RangeBounds<<Self as Conflict>::Key>);
 }
@@ -59,14 +57,14 @@ pub trait CmIter: Conflict + Sized {
     fn mark_iter(&mut self);
 }
 
-impl<T: CmRange> CmIter for T {
+impl<T: ConflictRange> CmIter for T {
     fn mark_iter(&mut self) {
         self.mark_range(..);
     }
 }
 
 /// An optimized version of the [`Conflict`] trait that if your conflict manager is depend on hash.
-pub trait CmEquivalent: Conflict {
+pub trait ConflictEquivalent: Conflict {
     /// Optimized version of [`mark_read`] that accepts borrowed keys. Optional to implement.
     fn mark_read_equivalent<Q>(&mut self, key: &Q)
     where
@@ -80,8 +78,8 @@ pub trait CmEquivalent: Conflict {
         Q: Hash + Eq + ?Sized;
 }
 
-/// An optimized version of the [`CmRange`] trait that if your conflict manager is depend on hash.
-pub trait CmEquivalentRange: CmRange + Sized {
+/// An optimized version of the [`ConflictRange`] trait that if your conflict manager is depend on hash.
+pub trait ConflictEquivalentRange: ConflictRange + Sized {
     /// Mark the range is read.
     fn mark_range_equivalent<Q>(&mut self, range: impl RangeBounds<Q>)
     where
@@ -90,7 +88,7 @@ pub trait CmEquivalentRange: CmRange + Sized {
 }
 
 /// An optimized version of the [`Conflict`] trait that if your conflict manager is depend on the order.
-pub trait CmComparable: Conflict {
+pub trait ConflictComparable: Conflict {
     /// Optimized version of [`mark_read`] that accepts borrowed keys. Optional to implement.
     fn mark_read_comparable<Q>(&mut self, key: &Q)
     where
@@ -104,8 +102,8 @@ pub trait CmComparable: Conflict {
         Q: Ord + ?Sized;
 }
 
-/// An optimized version of the [`CmRange`] trait that if your conflict manager is depend on the order.
-pub trait CmComparableRange: CmRange + CmComparable {
+/// An optimized version of the [`ConflictRange`] trait that if your conflict manager is depend on the order.
+pub trait CmComparableRange: ConflictRange + ConflictComparable {
     /// Mark the range is read.
     fn mark_range_comparable<Q>(&mut self, range: impl RangeBounds<Q>)
     where

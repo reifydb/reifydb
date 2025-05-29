@@ -17,7 +17,7 @@ use std::collections::{
 };
 
 /// A type alias for [`PendingWrites`] that based on the [`BTreeMap`].
-pub type BTreePwm<K, V> = BTreeMap<K, EntryValue<V>>;
+pub type BTreePendingWrites<K, V> = BTreeMap<K, EntryValue<V>>;
 
 impl<K, V> PendingWrites for BTreeMap<K, EntryValue<V>>
 where
@@ -92,7 +92,7 @@ where
     }
 }
 
-impl<K, V> PwmRange for BTreeMap<K, EntryValue<V>>
+impl<K, V> PendingWritesRange for BTreeMap<K, EntryValue<V>>
 where
     K: Ord,
 {
@@ -106,7 +106,7 @@ where
     }
 }
 
-impl<K, V> PwmComparableRange for BTreeMap<K, EntryValue<V>>
+impl<K, V> PendingWritesComparableRange for BTreeMap<K, EntryValue<V>>
 where
     K: Ord,
 {
@@ -120,7 +120,7 @@ where
     }
 }
 
-impl<K, V> PwmComparable for BTreeMap<K, EntryValue<V>>
+impl<K, V> PendingWritesComparable for BTreeMap<K, EntryValue<V>>
 where
     K: Ord,
 {

@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::{collections::hash_map::RandomState, hash::Hash};
 
 use crate::mvcc::DefaultHasher;
-use crate::mvcc::conflict::HashCm;
-use crate::mvcc::pending::BTreePwm;
+use crate::mvcc::conflict::BTreeConflict;
+use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
 use crate::mvcc::transaction::TransactionManager;
 
@@ -29,7 +29,7 @@ mod write;
 mod tests;
 
 struct Inner<K, V> {
-    tm: TransactionManager<K, V, HashCm<K>, BTreePwm<K, V>>,
+    tm: TransactionManager<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
     mem_table: SkipCore<K, V>,
     hasher: RandomState,
 }
@@ -90,7 +90,7 @@ impl<K, V> Optimistic<K, V> {
 
 impl<K, V> Optimistic<K, V>
 where
-    K: Ord + Eq + Hash,
+    K: Clone + Ord + Eq + Hash,
     V: 'static,
 {
     pub fn write(&self) -> TransactionTx<K, V> {

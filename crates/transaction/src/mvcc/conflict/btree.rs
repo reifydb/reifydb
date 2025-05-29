@@ -24,18 +24,18 @@ enum Read<K> {
 
 /// A [`Conflict`] conflict manager implementation that based on the [`BTreeSet`](std::collections::BTreeSet).
 #[derive(Debug)]
-pub struct BTreeCm<K> {
+pub struct BTreeConflict<K> {
     reads: MediumVec<Read<K>>,
     conflict_keys: BTreeSet<K>,
 }
 
-impl<K: Clone> Clone for BTreeCm<K> {
+impl<K: Clone> Clone for BTreeConflict<K> {
     fn clone(&self) -> Self {
         Self { reads: self.reads.clone(), conflict_keys: self.conflict_keys.clone() }
     }
 }
 
-impl<K> Conflict for BTreeCm<K>
+impl<K> Conflict for BTreeConflict<K>
 where
     K: Clone + Ord,
 {
@@ -162,7 +162,7 @@ where
     }
 }
 
-impl<K> CmRange for BTreeCm<K>
+impl<K> ConflictRange for BTreeConflict<K>
 where
     K: Clone + Ord,
 {
@@ -188,13 +188,34 @@ where
     }
 }
 
+impl<K> ConflictEquivalent for BTreeConflict<K>
+where
+    K: Clone + Ord,
+{
+    fn mark_read_equivalent<Q>(&mut self, key: &Q)
+    where
+        Self::Key: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        todo!()
+    }
+
+    fn mark_conflict_equivalent<Q>(&mut self, key: &Q)
+    where
+        Self::Key: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use super::{BTreeCm, Conflict};
+    use super::{BTreeConflict, Conflict};
 
     #[test]
     fn test_btree_cm() {
-        let mut cm = BTreeCm::<u64>::new(());
+        let mut cm = BTreeConflict::<u64>::new(());
         cm.mark_read(&1);
         cm.mark_read(&2);
         cm.mark_conflict(&2);

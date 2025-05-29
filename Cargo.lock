@@ -1519,7 +1519,6 @@ dependencies = [
  "crossbeam-skiplist",
  "crossbeam-utils",
  "either",
- "indexmap",
  "rand 0.8.5",
  "reifydb_core",
  "reifydb_persistence",

@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::pending::BTreePwm;
+use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::skipdbcore::Database;
 use crate::mvcc::skipdbcore::types::Ref;
 use crate::mvcc::transaction::read::TransactionManagerRx;
@@ -23,11 +23,11 @@ use std::ops::RangeBounds;
 
 pub struct ReadTransaction<K, V, I, C> {
     pub(crate) db: I,
-    pub(crate) rtm: TransactionManagerRx<K, V, C, BTreePwm<K, V>>,
+    pub(crate) rtm: TransactionManagerRx<K, V, C, BTreePendingWrites<K, V>>,
 }
 
 impl<K, V, I, C> ReadTransaction<K, V, I, C> {
-    pub(in crate::mvcc::transaction) fn new(db: I, rtm: TransactionManagerRx<K, V, C, BTreePwm<K, V>>) -> Self {
+    pub(in crate::mvcc::transaction) fn new(db: I, rtm: TransactionManagerRx<K, V, C, BTreePendingWrites<K, V>>) -> Self {
         Self { db, rtm }
     }
 }

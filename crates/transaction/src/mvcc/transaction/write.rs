@@ -10,24 +10,21 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::mvcc::conflict::{CmComparable, CmEquivalent};
+use crate::mvcc::conflict::{ConflictComparable, ConflictEquivalent};
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::pending::{PwmComparable, PwmEquivalent};
+use crate::mvcc::pending::{PendingWritesComparable, PendingWritesEquivalent};
 use crate::mvcc::version::types::{Entry, EntryData, EntryDataRef, EntryRef};
 use core::{borrow::Borrow, hash::Hash};
 
-/// Wtm is used to perform writes to the database. It is created by
-/// calling [`TransactionManager::write`].
 pub struct TransactionManagerTx<K, V, C, P> {
     pub(super) version: u64,
     pub(super) size: u64,
     pub(super) count: u64,
     pub(super) orc: Arc<Oracle<C>>,
     pub(super) conflict_manager: Option<C>,
-    // stores any writes done by txn.
+    // stores any writes done by tx
     pub(super) pending_writes: Option<P>,
-    // Used in managed mode to store duplicate entries.
     pub(super) duplicate_writes: OneOrMore<Entry<K, V>>,
 
     pub(super) discarded: bool,
@@ -59,14 +56,14 @@ impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
     /// Returns the pending writes
     ///
     /// `None` means the transaction has already been discarded.
-    pub fn pwm(&self) -> Option<&P> {
+    pub fn pending_writes(&self) -> Option<&P> {
         self.pending_writes.as_ref()
     }
 
     /// Returns the conflict manager.
     ///
     /// `None` means the transaction has already been discarded.
-    pub fn cm(&self) -> Option<&C> {
+    pub fn conflics(&self) -> Option<&C> {
         self.conflict_manager.as_ref()
     }
 }
@@ -261,7 +258,7 @@ where
 
 impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
-    C: CmEquivalent<Key = K>,
+    C: ConflictEquivalent<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
 {
     /// Marks a key is read.
@@ -289,8 +286,8 @@ where
 
 impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
-    C: CmEquivalent<Key = K>,
-    P: PwmEquivalent<Key = K, Value = V>,
+    C: ConflictEquivalent<Key = K>,
+    P: PendingWritesEquivalent<Key = K, Value = V>,
 {
     /// Returns `true` if the pending writes contains the key.
     ///
@@ -373,8 +370,8 @@ where
 
 impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
-    C: CmComparable<Key = K>,
-    P: PwmEquivalent<Key = K, Value = V>,
+    C: ConflictComparable<Key = K>,
+    P: PendingWritesEquivalent<Key = K, Value = V>,
 {
     /// Returns `true` if the pending writes contains the key.
     ///
@@ -457,7 +454,7 @@ where
 
 impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
-    C: CmComparable<Key = K>,
+    C: ConflictComparable<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
 {
     /// Marks a key is read.
@@ -485,8 +482,8 @@ where
 
 impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
-    C: CmComparable<Key = K>,
-    P: PwmComparable<Key = K, Value = V>,
+    C: ConflictComparable<Key = K>,
+    P: PendingWritesComparable<Key = K, Value = V>,
 {
     /// Returns `true` if the pending writes contains the key.
     ///
@@ -569,8 +566,9 @@ where
 
 impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
-    C: CmEquivalent<Key = K>,
-    P: PwmComparable<Key = K, Value = V>,
+    C: ConflictEquivalent<Key = K>,
+    P: PendingWritesComparable<Key = K, Value = V>,
+    K: Clone
 {
     /// Returns `true` if the pending writes contains the key.
     ///
@@ -582,7 +580,7 @@ where
         key: &'b Q,
     ) -> Result<Option<bool>, TransactionError>
     where
-        K: Borrow<Q>,
+        K: Clone + Borrow<Q>,
         Q: ?Sized + Eq + Ord + Hash,
     {
         if self.discarded {
@@ -618,7 +616,7 @@ where
         key: &'b Q,
     ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError>
     where
-        K: Borrow<Q>,
+        K: Clone + Borrow<Q>,
         Q: ?Sized + Eq + Ord + Hash,
     {
         if self.discarded {
@@ -813,7 +811,7 @@ where
                 duplicate_writes.into_iter().for_each(|ent| process_entry(&mut entries, ent));
 
                 // CommitTs should not be zero if we're inserting transaction markers.
-                assert_ne!(commit_ts, 0);
+                debug_assert_ne!(commit_ts, 0);
 
                 Ok((commit_ts, entries))
             }
@@ -856,47 +854,55 @@ impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mvcc::conflict::HashCm;
-    use crate::mvcc::pending::{BTreePwm, IndexMapPwm};
+    use crate::mvcc::pending::BTreePendingWrites;
     use std::{collections::BTreeSet, marker::PhantomData};
 
     #[test]
-    fn wtm() {
-        let tm = TransactionManager::<String, u64, HashCm<String>, IndexMapPwm<String, u64>>::new(
-            "test", 0,
-        );
-        let mut wtm = tm.write(Default::default(), Default::default()).unwrap();
+    fn test_transaction_manager_with_btree_pending_writes() {
+        let tm = TransactionManager::<
+            Arc<u64>,
+            u64,
+            TestConflict<Arc<u64>>,
+            BTreePendingWrites<Arc<u64>, u64>,
+        >::new("test", 0);
+        let mut wtm = tm.write((), ()).unwrap();
         assert!(!wtm.is_discard());
-        assert!(wtm.pwm().is_some());
-        assert!(wtm.cm().is_some());
+        assert!(wtm.pending_writes().is_some());
+        assert!(wtm.conflics().is_some());
 
         let mut marker = wtm.marker().unwrap();
 
-        marker.mark(&"1".to_owned());
-        marker.mark_equivalent("3");
-        marker.mark_conflict(&"2".to_owned());
-        marker.mark_conflict_equivalent("4");
-        wtm.mark_read(&"2".to_owned());
-        wtm.mark_conflict(&"1".to_owned());
-        wtm.mark_conflict_equivalent("2");
-        wtm.mark_read_equivalent("3");
+        let one = Arc::new(1);
+        let two = Arc::new(2);
+        let three = Arc::new(3);
+        let four = Arc::new(4);
+        let five = Arc::new(5);
+        marker.mark(&one);
+        marker.mark_comparable(&three);
+        marker.mark_conflict(&two);
+        marker.mark_conflict_comparable(&four);
+        wtm.mark_read(&two);
+        wtm.mark_conflict(&one);
+        wtm.mark_conflict_comparable(&two);
+        wtm.mark_read_comparable(&three);
 
-        wtm.insert("5".into(), 5).unwrap();
+        wtm.insert(five.clone(), 5).unwrap();
 
-        assert_eq!(wtm.contains_key_equivalent("5").unwrap(), Some(true));
-        assert_eq!(wtm.get_equivalent("5").unwrap().unwrap().value().unwrap(), &5);
+        assert_eq!(wtm.contains_key_comparable(&five).unwrap(), Some(true));
+        assert_eq!(wtm.get_comparable(&five).unwrap().unwrap().value().unwrap(), &5);
 
-        assert_eq!(wtm.contains_key_equivalent("6").unwrap(), None);
-        assert_eq!(wtm.get_equivalent("6").unwrap(), None);
+        let six = Arc::new(6);
+        assert_eq!(wtm.contains_key_comparable(&six).unwrap(), None);
+        assert_eq!(wtm.get_comparable(&six).unwrap(), None);
     }
 
-    struct TestCm<K> {
+    struct TestConflict<K> {
         conflict_keys: BTreeSet<usize>,
         reads: BTreeSet<usize>,
         _m: PhantomData<K>,
     }
 
-    impl<K> Conflict for TestCm<K> {
+    impl<K> Conflict for TestConflict<K> {
         type Key = K;
 
         type Options = ();
@@ -932,7 +938,7 @@ mod tests {
         }
     }
 
-    impl<K> CmComparable for TestCm<K> {
+    impl<K> ConflictComparable for TestConflict<K> {
         fn mark_read_comparable<Q>(&mut self, key: &Q)
         where
             Self::Key: Borrow<Q>,
@@ -948,84 +954,5 @@ mod tests {
         {
             self.conflict_keys.insert(key as *const Q as *const () as usize);
         }
-    }
-
-    #[test]
-    fn wtm2() {
-        let tm =
-            TransactionManager::<Arc<u64>, u64, TestCm<Arc<u64>>, IndexMapPwm<Arc<u64>, u64>>::new(
-                "test", 0,
-            );
-        let mut wtm = tm.write(Default::default(), ()).unwrap();
-        assert!(!wtm.is_discard());
-        assert!(wtm.pwm().is_some());
-        assert!(wtm.cm().is_some());
-
-        let mut marker = wtm.marker().unwrap();
-
-        let one = Arc::new(1);
-        let two = Arc::new(2);
-        let three = Arc::new(3);
-        let four = Arc::new(4);
-        let five = Arc::new(5);
-        marker.mark(&one);
-        marker.mark_comparable(&three);
-        marker.mark_conflict(&two);
-        marker.mark_conflict_comparable(&four);
-        wtm.mark_read(&two);
-        wtm.mark_conflict(&one);
-        wtm.mark_conflict_comparable(&two);
-        wtm.mark_read_comparable(&three);
-
-        wtm.insert(five.clone(), 5).unwrap();
-
-        assert_eq!(wtm.contains_key_comparable_cm_equivalent_pm(&five).unwrap(), Some(true));
-        assert_eq!(
-            wtm.get_comparable_cm_equivalent_pm(&five).unwrap().unwrap().value().unwrap(),
-            &5
-        );
-
-        let six = Arc::new(6);
-
-        assert_eq!(wtm.contains_key_comparable_cm_equivalent_pm(&six).unwrap(), None);
-        assert_eq!(wtm.get_comparable_cm_equivalent_pm(&six).unwrap(), None);
-    }
-
-    #[test]
-    fn wtm3() {
-        let tm =
-            TransactionManager::<Arc<u64>, u64, TestCm<Arc<u64>>, BTreePwm<Arc<u64>, u64>>::new(
-                "test", 0,
-            );
-        let mut wtm = tm.write((), ()).unwrap();
-        assert!(!wtm.is_discard());
-        assert!(wtm.pwm().is_some());
-        assert!(wtm.cm().is_some());
-
-        let mut marker = wtm.marker().unwrap();
-
-        let one = Arc::new(1);
-        let two = Arc::new(2);
-        let three = Arc::new(3);
-        let four = Arc::new(4);
-        let five = Arc::new(5);
-        marker.mark(&one);
-        marker.mark_comparable(&three);
-        marker.mark_conflict(&two);
-        marker.mark_conflict_comparable(&four);
-        wtm.mark_read(&two);
-        wtm.mark_conflict(&one);
-        wtm.mark_conflict_comparable(&two);
-        wtm.mark_read_comparable(&three);
-
-        wtm.insert(five.clone(), 5).unwrap();
-
-        assert_eq!(wtm.contains_key_comparable(&five).unwrap(), Some(true));
-        assert_eq!(wtm.get_comparable(&five).unwrap().unwrap().value().unwrap(), &5);
-
-        let six = Arc::new(6);
-
-        assert_eq!(wtm.contains_key_comparable(&six).unwrap(), None);
-        assert_eq!(wtm.get_comparable(&six).unwrap(), None);
     }
 }

@@ -19,14 +19,14 @@ pub(crate) mod read;
 #[allow(clippy::module_inception)]
 mod write;
 
-use crate::mvcc::conflict::BTreeCm;
-use crate::mvcc::pending::BTreePwm;
+use crate::mvcc::conflict::BTreeConflict;
+use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
 use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
 struct Inner<K, V> {
-    tm: TransactionManager<K, V, BTreeCm<K>, BTreePwm<K, V>>,
+    tm: TransactionManager<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
     map: SkipCore<K, V>,
 }
 
@@ -93,7 +93,7 @@ impl<K, V> SerializableDb<K, V> {
 
     /// Create a read transaction.
 
-    pub fn read(&self) -> ReadTransaction<K, V, SerializableDb<K, V>, BTreeCm<K>> {
+    pub fn read(&self) -> ReadTransaction<K, V, SerializableDb<K, V>, BTreeConflict<K>> {
         ReadTransaction::new(self.clone(), self.inner.tm.read())
     }
 }

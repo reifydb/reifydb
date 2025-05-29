@@ -12,7 +12,7 @@
 use core::{borrow::Borrow, hash::Hash, ops::RangeBounds};
 
 use crate::mvcc::conflict::{
-    Conflict, CmComparable, CmComparableRange, CmEquivalent, CmEquivalentRange, CmIter, CmRange,
+    Conflict, ConflictComparable, CmComparableRange, ConflictEquivalent, ConflictEquivalentRange, CmIter, ConflictRange,
 };
 
 /// A marker used to mark the keys that are read.
@@ -40,7 +40,7 @@ impl<C: Conflict> Marker<'_, C> {
     }
 }
 
-impl<C: CmRange> Marker<'_, C> {
+impl<C: ConflictRange> Marker<'_, C> {
     /// Marks a key is operated.
     pub fn mark_range(&mut self, range: impl RangeBounds<<C as Conflict>::Key>) {
         self.marker.mark_range(range);
@@ -54,7 +54,7 @@ impl<C: CmIter> Marker<'_, C> {
     }
 }
 
-impl<C: CmComparable> Marker<'_, C> {
+impl<C: ConflictComparable> Marker<'_, C> {
     /// Marks a key is operated.
     pub fn mark_comparable<Q>(&mut self, k: &Q)
     where
@@ -85,7 +85,7 @@ impl<C: CmComparableRange> Marker<'_, C> {
     }
 }
 
-impl<C: CmEquivalent> Marker<'_, C> {
+impl<C: ConflictEquivalent> Marker<'_, C> {
     /// Marks a key is operated.
     pub fn mark_equivalent<Q>(&mut self, k: &Q)
     where
@@ -105,7 +105,7 @@ impl<C: CmEquivalent> Marker<'_, C> {
     }
 }
 
-impl<C: CmEquivalentRange> Marker<'_, C> {
+impl<C: ConflictEquivalentRange> Marker<'_, C> {
     /// Marks a range is operated.
     pub fn mark_range_equivalent<Q>(&mut self, range: impl RangeBounds<Q>)
     where

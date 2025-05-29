@@ -15,7 +15,7 @@ use std::{
 };
 
 use super::*;
-use crate::mvcc::error::{TransactionError, MvccError};
+use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
@@ -238,7 +238,7 @@ fn txn_versions() {
         assert_eq!(i, db.version());
     }
 
-    let check_iter = |itr: TransactionIter<'_, u64, u64, HashCm<u64, RandomState>>, i: u64| {
+    let check_iter = |itr: TransactionIter<'_, u64, u64, BTreeConflict<u64>>, i: u64| {
         let mut count = 0;
         for ent in itr {
             assert_eq!(ent.key(), &k0);
@@ -248,7 +248,7 @@ fn txn_versions() {
         assert_eq!(1, count) // should only loop once.
     };
 
-    let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, HashCm<u64, RandomState>>,
+    let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, BTreeConflict<u64>>,
                           i: u64| {
         let mut count = 0;
         for ent in itr {
@@ -261,7 +261,7 @@ fn txn_versions() {
 
     for i in 1..10 {
         let mut txn = db.write();
-        txn.wtm.set_read_version(i); // Read version at i.
+        txn.tx.set_read_version(i); // Read version at i.
 
         let v = i;
         {
@@ -381,8 +381,7 @@ fn txn_iteration_edge_case() {
         assert_eq!(4, db.version());
     }
 
-    let check_iter = |itr: TransactionIter<'_, u64, u64, HashCm<u64, RandomState>>,
-                      expected: &[u64]| {
+    let check_iter = |itr: TransactionIter<'_, u64, u64, BTreeConflict<u64>>, expected: &[u64]| {
         let mut i = 0;
         for ent in itr {
             assert_eq!(expected[i], *ent.value(), "read_vs={}", ent.version());
@@ -391,7 +390,7 @@ fn txn_iteration_edge_case() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, HashCm<u64, RandomState>>,
+    let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, BTreeConflict<u64>>,
                           expected: &[u64]| {
         let mut i = 0;
         for ent in itr {
@@ -412,19 +411,19 @@ fn txn_iteration_edge_case() {
     check_rev_iter(itr, &[32, 13]);
     check_rev_iter(itr5, &[24, 13]);
 
-    txn.wtm.set_read_version(3);
+    txn.tx.set_read_version(3);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[13, 23, 32]);
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
-    txn.wtm.set_read_version(2);
+    txn.tx.set_read_version(2);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[12, 32]);
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 12]);
 
-    txn.wtm.set_read_version(1);
+    txn.tx.set_read_version(1);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[31]);
     let itr = txn.iter_rev().unwrap();
@@ -474,8 +473,7 @@ fn txn_iteration_edge_case2() {
         assert_eq!(4, db.version());
     }
 
-    let check_iter = |itr: TransactionIter<'_, u64, u64, HashCm<u64, RandomState>>,
-                      expected: &[u64]| {
+    let check_iter = |itr: TransactionIter<'_, u64, u64, BTreeConflict<u64>>, expected: &[u64]| {
         let mut i = 0;
         for ent in itr {
             assert_eq!(expected[i], *ent.value());
@@ -484,7 +482,7 @@ fn txn_iteration_edge_case2() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, HashCm<u64, RandomState>>,
+    let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, BTreeConflict<u64>>,
                           expected: &[u64]| {
         let mut i = 0;
         for ent in itr {
@@ -500,7 +498,7 @@ fn txn_iteration_edge_case2() {
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 13]);
 
-    txn.wtm.set_read_version(5);
+    txn.tx.set_read_version(5);
     let itr = txn.iter().unwrap();
     let mut count = 2;
     for ent in itr {
@@ -527,21 +525,21 @@ fn txn_iteration_edge_case2() {
     }
     assert_eq!(0, count);
 
-    txn.wtm.set_read_version(3);
+    txn.tx.set_read_version(3);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[13, 23, 32]);
 
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
-    txn.wtm.set_read_version(2);
+    txn.tx.set_read_version(2);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[12, 32]);
 
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 12]);
 
-    txn.wtm.set_read_version(1);
+    txn.tx.set_read_version(1);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[31]);
     let itr = txn.iter_rev().unwrap();
@@ -595,7 +593,7 @@ fn txn_range_edge_case2() {
         assert_eq!(4, db.version());
     }
 
-    let check_iter = |itr: TransactionRange<'_, _, _, u64, u64, HashCm<u64, RandomState>>,
+    let check_iter = |itr: TransactionRange<'_, _, _, u64, u64, BTreeConflict<u64>>,
                       expected: &[u64]| {
         let mut i = 0;
         for ent in itr {
@@ -605,16 +603,15 @@ fn txn_range_edge_case2() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter =
-        |itr: WriteTransactionRevRange<'_, _, _, u64, u64, HashCm<u64, RandomState>>,
-         expected: &[u64]| {
-            let mut i = 0;
-            for ent in itr {
-                assert_eq!(expected[i], *ent.value());
-                i += 1;
-            }
-            assert_eq!(expected.len(), i);
-        };
+    let check_rev_iter = |itr: WriteTransactionRevRange<'_, _, _, u64, u64, BTreeConflict<u64>>,
+                          expected: &[u64]| {
+        let mut i = 0;
+        for ent in itr {
+            assert_eq!(expected[i], *ent.value());
+            i += 1;
+        }
+        assert_eq!(expected.len(), i);
+    };
 
     let mut txn = db.write();
     let itr = txn.range(1..10).unwrap();
@@ -622,7 +619,7 @@ fn txn_range_edge_case2() {
     let itr = txn.range_rev(1..10).unwrap();
     check_rev_iter(itr, &[32, 13]);
 
-    txn.wtm.set_read_version(5);
+    txn.tx.set_read_version(5);
     let itr = txn.range(1..10).unwrap();
     let mut count = 2;
     for ent in itr {
@@ -649,21 +646,21 @@ fn txn_range_edge_case2() {
     }
     assert_eq!(0, count);
 
-    txn.wtm.set_read_version(3);
+    txn.tx.set_read_version(3);
     let itr = txn.range(1..10).unwrap();
     check_iter(itr, &[13, 23, 32]);
 
     let itr = txn.range_rev(1..10).unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
-    txn.wtm.set_read_version(2);
+    txn.tx.set_read_version(2);
     let itr = txn.range(1..10).unwrap();
     check_iter(itr, &[12, 32]);
 
     let itr = txn.range_rev(1..10).unwrap();
     check_rev_iter(itr, &[32, 12]);
 
-    txn.wtm.set_read_version(1);
+    txn.tx.set_read_version(1);
     let itr = txn.range(1..10).unwrap();
     check_iter(itr, &[31]);
     let itr = txn.range_rev(1..10).unwrap();

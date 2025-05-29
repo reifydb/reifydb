@@ -9,8 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::conflict::HashCm;
-use crate::mvcc::pending::BTreePwm;
+use crate::mvcc::conflict::BTreeConflict;
+use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::skipdbcore::AsSkipCore;
 use crate::mvcc::skipdbcore::types::Ref;
 use crate::mvcc::transaction::optimistic::Optimistic;
@@ -24,7 +24,7 @@ use std::ops::RangeBounds;
 
 pub struct TransactionRx<K, V> {
     pub(crate) engine: Optimistic<K, V>,
-    pub(crate) rtm: TransactionManagerRx<K, V, HashCm<K>, BTreePwm<K, V>>,
+    pub(crate) rtm: TransactionManagerRx<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
 }
 
 impl<K, V> TransactionRx<K, V> {

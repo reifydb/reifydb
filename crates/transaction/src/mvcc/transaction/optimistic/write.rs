@@ -10,9 +10,8 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::mvcc::conflict::{HashCm, HashCmOptions};
 use crate::mvcc::error::{MvccError, TransactionError};
-use crate::mvcc::pending::{BTreePwm, PwmComparableRange};
+use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::skipdbcore::types::Ref;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
@@ -26,26 +25,22 @@ use std::ops::RangeBounds;
 /// A optimistic concurrency control transaction over the [`Optimistic`].
 pub struct TransactionTx<K, V> {
     engine: Optimistic<K, V>,
-    pub(in crate::mvcc) wtm: TransactionManagerTx<K, V, HashCm<K>, BTreePwm<K, V>>,
+    pub(in crate::mvcc) tx: TransactionManagerTx<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
 }
 
 impl<K, V> TransactionTx<K, V>
 where
-    K: Ord + Hash + Eq,
+    K: Clone + Ord + Hash + Eq,
 {
     pub fn new(db: Optimistic<K, V>) -> Self {
-        let wtm = db
-            .inner
-            .tm
-            .write((), HashCmOptions::with_capacity(db.inner.hasher.clone(), 8))
-            .unwrap();
-        Self { engine: db, wtm }
+        let tx = db.inner.tm.write((), ()).unwrap();
+        Self { engine: db, tx }
     }
 }
 
 impl<K, V> TransactionTx<K, V>
 where
-    K: Ord + Hash + Eq + Debug,
+    K: Clone + Ord + Hash + Eq + Debug,
     V: Send + 'static + Debug,
 {
     /// Commits the transaction, following these steps:
@@ -65,7 +60,7 @@ where
     ///    background upon successful completion of writes or any error during write.
 
     pub fn commit(&mut self) -> Result<(), MvccError> {
-        self.wtm.commit(|operations| {
+        self.tx.commit(|operations| {
             self.engine.inner.mem_table.apply(operations);
             Ok(())
         })
@@ -74,7 +69,7 @@ where
 
 impl<K, V> TransactionTx<K, V>
 where
-    K: Ord + Hash + Eq + Send + Sync + 'static,
+    K: Clone + Ord + Hash + Eq + Send + Sync + 'static,
     V: Send + Sync + 'static,
 {
     /// Acts like [`commit`](WriteTransaction::commit), but takes a callback, which gets run via a
@@ -103,7 +98,7 @@ where
     {
         let db = self.engine.clone();
 
-        self.wtm.commit_with_callback(
+        self.tx.commit_with_callback(
             move |ents| {
                 db.inner.mem_table.apply(ents);
                 Ok(())
@@ -115,27 +110,27 @@ where
 
 impl<K, V> TransactionTx<K, V>
 where
-    K: Ord + Hash + Eq,
+    K: Clone + Ord + Hash + Eq,
     V: 'static,
 {
     /// Returns the read version of the transaction.
     pub fn version(&self) -> u64 {
-        self.wtm.version()
+        self.tx.version()
     }
 
     /// Rollback the transaction.
     pub fn rollback(&mut self) -> Result<(), TransactionError> {
-        self.wtm.rollback()
+        self.tx.rollback()
     }
 
     /// Returns true if the given key exists in the database.
     pub fn contains_key<Q>(&mut self, key: &Q) -> Result<bool, TransactionError>
     where
-        K: Borrow<Q>,
+        K: Clone + Borrow<Q>,
         Q: Hash + Eq + Ord + ?Sized,
     {
-        let version = self.wtm.version();
-        match self.wtm.contains_key_equivalent_cm_comparable_pm(key)? {
+        let version = self.tx.version();
+        match self.tx.contains_key_equivalent_cm_comparable_pm(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
             None => Ok(self.engine.inner.mem_table.contains_key(key, version)),
@@ -148,11 +143,11 @@ where
         key: &'b Q,
     ) -> Result<Option<Ref<'a, K, V>>, TransactionError>
     where
-        K: Borrow<Q>,
+        K: Clone + Borrow<Q>,
         Q: Hash + Eq + Ord + ?Sized,
     {
-        let version = self.wtm.version();
-        match self.wtm.get_equivalent_cm_comparable_pm(key)? {
+        let version = self.tx.version();
+        match self.tx.get_equivalent_cm_comparable_pm(key)? {
             Some(v) => {
                 if v.value().is_some() {
                     Ok(Some(v.into()))
@@ -166,18 +161,20 @@ where
 
     /// Insert a new key-value pair.
     pub fn set(&mut self, key: K, value: V) -> Result<(), TransactionError> {
-        self.wtm.insert(key, value)
+        self.tx.insert(key, value)
     }
 
     /// Remove a key.
     pub fn remove(&mut self, key: K) -> Result<(), TransactionError> {
-        self.wtm.remove(key)
+        self.tx.remove(key)
     }
 
     /// Iterate over the entries of the write transaction.
-    pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, HashCm<K>>, TransactionError> {
-        let version = self.wtm.version();
-        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
+    pub fn iter(
+        &mut self,
+    ) -> Result<TransactionIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
+        let version = self.tx.version();
+        let (marker, pm) = self.tx.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let committed = self.engine.inner.mem_table.iter(version);
         let pending = pm.iter();
 
@@ -187,9 +184,9 @@ where
     /// Iterate over the entries of the write transaction in reverse order.
     pub fn iter_rev(
         &mut self,
-    ) -> Result<WriteTransactionRevIter<'_, K, V, HashCm<K>>, TransactionError> {
-        let version = self.wtm.version();
-        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
+    ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
+        let version = self.tx.version();
+        let (marker, pm) = self.tx.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let committed = self.engine.inner.mem_table.iter_rev(version);
         let pending = pm.iter().rev();
 
@@ -200,14 +197,14 @@ where
     pub fn range<'a, Q, R>(
         &'a mut self,
         range: R,
-    ) -> Result<TransactionRange<'a, Q, R, K, V, HashCm<K>>, TransactionError>
+    ) -> Result<TransactionRange<'a, Q, R, K, V, BTreeConflict<K>>, TransactionError>
     where
-        K: Borrow<Q>,
+        K: Clone + Borrow<Q>,
         R: RangeBounds<Q> + 'a,
         Q: Ord + ?Sized,
     {
-        let version = self.wtm.version();
-        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let version = self.tx.version();
+        let (marker, pm) = self.tx.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
@@ -220,14 +217,14 @@ where
     pub fn range_rev<'a, Q, R>(
         &'a mut self,
         range: R,
-    ) -> Result<WriteTransactionRevRange<'a, Q, R, K, V, HashCm<K>>, TransactionError>
+    ) -> Result<WriteTransactionRevRange<'a, Q, R, K, V, BTreeConflict<K>>, TransactionError>
     where
-        K: Borrow<Q>,
+        K: Clone + Borrow<Q>,
         R: RangeBounds<Q> + 'a,
         Q: Ord + ?Sized,
     {
-        let version = self.wtm.version();
-        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let version = self.tx.version();
+        let (marker, pm) = self.tx.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));

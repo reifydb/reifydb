@@ -13,7 +13,7 @@ use crate::mvcc::transaction::scan::rev_range::WriteTransactionRevRange;
 
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
-use crate::mvcc::pending::{BTreePwm, PwmComparableRange};
+use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::skipdbcore::types::Ref;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
@@ -28,7 +28,7 @@ mod tests;
 /// A serializable snapshot isolation transaction over the [`SerializableDb`],
 pub struct SerializableTransaction<K, V> {
     pub(in crate::mvcc) db: SerializableDb<K, V>,
-    pub(in crate::mvcc) wtm: TransactionManagerTx<K, V, BTreeCm<K>, BTreePwm<K, V>>,
+    pub(in crate::mvcc) wtm: TransactionManagerTx<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
 }
 
 impl<K, V> SerializableTransaction<K, V>
@@ -171,7 +171,7 @@ where
 
     /// Iterate over the entries of the write transaction.
 
-    pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, BTreeCm<K>>, TransactionError> {
+    pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
 
@@ -188,7 +188,7 @@ where
 
     pub fn iter_rev(
         &mut self,
-    ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeCm<K>>, TransactionError> {
+    ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let start: Bound<K> = Bound::Unbounded;
@@ -205,7 +205,7 @@ where
     pub fn range<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<TransactionRange<'a, K, R, K, V, BTreeCm<K>>, TransactionError>
+    ) -> Result<TransactionRange<'a, K, R, K, V, BTreeConflict<K>>, TransactionError>
     where
         R: RangeBounds<K> + 'a,
     {
@@ -225,7 +225,7 @@ where
     pub fn range_rev<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<WriteTransactionRevRange<'a, K, R, K, V, BTreeCm<K>>, TransactionError>
+    ) -> Result<WriteTransactionRevRange<'a, K, R, K, V, BTreeConflict<K>>, TransactionError>
     where
         R: RangeBounds<K> + 'a,
     {

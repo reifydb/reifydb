@@ -14,12 +14,9 @@ use std::borrow::Borrow;
 use std::hash::Hash;
 use std::ops::RangeBounds;
 
-use crate::mvcc::error::TransactionError;
-pub use btree::BTreePwm;
-pub use hash::IndexMapPwm;
+pub use btree::BTreePendingWrites;
 
 mod btree;
-mod hash;
 
 /// A pending writes manager that can be used to store pending writes in a transaction.
 ///
@@ -56,7 +53,6 @@ pub trait PendingWrites: Sized {
     /// Returns the number of elements in the buffer.
     fn len(&self) -> usize;
 
-
     /// Returns the maximum batch size in bytes
     fn max_batch_size(&self) -> u64;
 
@@ -92,7 +88,7 @@ pub trait PendingWrites: Sized {
 }
 
 /// An trait that can be used to get a range over the pending writes.
-pub trait PwmRange: PendingWrites {
+pub trait PendingWritesRange: PendingWrites {
     /// The iterator type.
     type Range<'a>: IntoIterator<Item = (&'a Self::Key, &'a EntryValue<Self::Value>)>
     where
@@ -103,7 +99,7 @@ pub trait PwmRange: PendingWrites {
 }
 
 /// An trait that can be used to get a range over the pending writes.
-pub trait PwmComparableRange: PwmRange + PwmComparable {
+pub trait PendingWritesComparableRange: PendingWritesRange + PendingWritesComparable {
     /// Returns an iterator over the pending writes.
     fn range_comparable<T, R>(&self, range: R) -> Self::Range<'_>
     where
@@ -113,7 +109,7 @@ pub trait PwmComparableRange: PwmRange + PwmComparable {
 }
 
 /// An trait that can be used to get a range over the pending writes.
-pub trait PwmEquivalentRange: PwmRange + PwmEquivalent {
+pub trait PendingWritesEquivalentRange: PendingWritesRange + PendingWritesEquivalent {
     /// Returns an iterator over the pending writes.
     fn range_equivalent<T, R>(&self, range: R) -> Self::Range<'_>
     where
@@ -123,7 +119,7 @@ pub trait PwmEquivalentRange: PwmRange + PwmEquivalent {
 }
 
 /// An optimized version of the [`PendingWrites`] trait that if your pending writes manager is depend on hash.
-pub trait PwmEquivalent: PendingWrites {
+pub trait PendingWritesEquivalent: PendingWrites {
     /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
     fn get_equivalent<Q>(&self, key: &Q) -> Option<&EntryValue<Self::Value>>
     where
@@ -153,7 +149,7 @@ pub trait PwmEquivalent: PendingWrites {
 }
 
 /// An optimized version of the [`PendingWrites`] trait that if your pending writes manager is depend on the order.
-pub trait PwmComparable: PendingWrites {
+pub trait PendingWritesComparable: PendingWrites {
     /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
     fn get_comparable<Q>(&self, key: &Q) -> Option<&EntryValue<Self::Value>>
     where

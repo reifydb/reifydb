@@ -19,7 +19,6 @@ crossbeam-skiplist = { version = "0.1" }
 crossbeam-channel = { version = "0.5" }
 crossbeam-utils = { version = "0.8" }
 either = "1"
-indexmap = { version = "2" }
 rand = "0.8"
 smallvec-wrapper = { version = "0.1", features = ["const_new"] }
 scopeguard = { version = "1" }
