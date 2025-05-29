@@ -20,36 +20,38 @@ use reifydb_persistence::Operation;
 use reifydb_testing::testscript;
 use reifydb_testing::util::parse_key_range;
 use reifydb_transaction::Tx;
-use reifydb_transaction::mvcc::transaction::optimistic::{OptimisticDb, OptimisticTransaction};
+use reifydb_transaction::mvcc::transaction::serializable::{
+    SerializableDb, SerializableTransaction,
+};
 use reifydb_transaction::old_mvcc::Version;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/transaction/tests/scripts/mvcc" as memory => test_optimistic }
+test_each_path! { in "crates/transaction/tests/scripts/mvcc" as memory => test_serializable }
 
-fn test_optimistic(path: &Path) {
-    testscript::run_path(&mut MvccRunner::new(OptimisticDb::new()), path).expect("test failed")
+fn test_serializable(path: &Path) {
+    testscript::run_path(&mut MvccRunner::new(SerializableDb::new()), path).expect("test failed")
 }
 
 pub struct MvccRunner {
-    mvcc: OptimisticDb<Vec<u8>, Vec<u8>>,
-    txs: HashMap<String, OptimisticTransaction<Vec<u8>, Vec<u8>>>,
+    mvcc: SerializableDb<Vec<u8>, Vec<u8>>,
+    txs: HashMap<String, SerializableTransaction<Vec<u8>, Vec<u8>>>,
     operations: Receiver<Operation>,
 }
 
 impl MvccRunner {
-    fn new(optimistic: OptimisticDb<Vec<u8>, Vec<u8>>) -> Self {
+    fn new(serializable: SerializableDb<Vec<u8>, Vec<u8>>) -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { mvcc: optimistic, txs: HashMap::new(), operations: rx }
+        Self { mvcc: serializable, txs: HashMap::new(), operations: rx }
     }
 
     /// Fetches the named transaction from a command prefix.
     fn get_tx(
         &mut self,
         prefix: &Option<String>,
-    ) -> Result<&'_ mut OptimisticTransaction<Vec<u8>, Vec<u8>>, Box<dyn StdError>> {
+    ) -> Result<&'_ mut SerializableTransaction<Vec<u8>, Vec<u8>>, Box<dyn StdError>> {
         let name = Self::tx_name(prefix)?;
         self.txs.get_mut(name).ok_or(format!("unknown tx {name}").into())
     }
@@ -89,7 +91,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let as_of: Option<Version> = args.lookup_parse("as_of")?;
                 args.reject_rest()?;
                 let tx = match (readonly, as_of) {
-                    (false, None) => OptimisticTransaction::new(self.mvcc.clone(), None),
+                    (false, None) => SerializableTransaction::new(self.mvcc.clone()),
                     // (true, None) => self.mvcc.begin_read_only()?,
                     // (true, None) => self.mvcc.begin_read_only()?,
                     // (true, Some(v)) => self.mvcc.begin_read_only_as_of(v)?,
@@ -162,14 +164,14 @@ impl<'a> testscript::Runner for MvccRunner {
                 let mut args = command.consume_args();
                 let version = args.next_pos().map(|a| a.parse()).transpose()?;
                 // let mut tx = self.mvcc.begin()?;
-                let mut tx = OptimisticTransaction::new(self.mvcc.clone(), None);
+                let mut tx = SerializableTransaction::new(self.mvcc.clone());
                 if let Some(version) = version {
                     if tx.version() > version {
                         return Err(format!("version {version} already used").into());
                     }
                     while tx.version() < version {
                         // tx = self.mvcc.begin()?;
-                        tx = OptimisticTransaction::new(self.mvcc.clone(), None);
+                        tx = SerializableTransaction::new(self.mvcc.clone());
                     }
                 }
                 for kv in args.rest_key() {
