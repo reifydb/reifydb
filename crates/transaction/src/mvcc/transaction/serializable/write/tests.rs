@@ -256,7 +256,7 @@ fn txn_versions() {
 
     for i in 1..10 {
         let mut txn = db.write();
-        txn.wtm.__set_read_version(i); // Read version at i.
+        txn.wtm.set_read_version(i); // Read version at i.
 
         let v = i;
         {
@@ -406,19 +406,19 @@ fn txn_iteration_edge_case() {
     check_rev_iter(itr, &[32, 13]);
     check_rev_iter(itr5, &[24, 13]);
 
-    txn.wtm.__set_read_version(3);
+    txn.wtm.set_read_version(3);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[13, 23, 32]);
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
-    txn.wtm.__set_read_version(2);
+    txn.wtm.set_read_version(2);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[12, 32]);
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 12]);
 
-    txn.wtm.__set_read_version(1);
+    txn.wtm.set_read_version(1);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[31]);
     let itr = txn.iter_rev().unwrap();
@@ -493,7 +493,7 @@ fn txn_iteration_edge_case2() {
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 13]);
 
-    txn.wtm.__set_read_version(5);
+    txn.wtm.set_read_version(5);
     let itr = txn.iter().unwrap();
     let mut count = 2;
     for ent in itr {
@@ -520,21 +520,21 @@ fn txn_iteration_edge_case2() {
     }
     assert_eq!(0, count);
 
-    txn.wtm.__set_read_version(3);
+    txn.wtm.set_read_version(3);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[13, 23, 32]);
 
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
-    txn.wtm.__set_read_version(2);
+    txn.wtm.set_read_version(2);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[12, 32]);
 
     let itr = txn.iter_rev().unwrap();
     check_rev_iter(itr, &[32, 12]);
 
-    txn.wtm.__set_read_version(1);
+    txn.wtm.set_read_version(1);
     let itr = txn.iter().unwrap();
     check_iter(itr, &[31]);
     let itr = txn.iter_rev().unwrap();
@@ -613,7 +613,7 @@ fn txn_range_edge_case2() {
     let itr = txn.range_rev(1..10).unwrap();
     check_rev_iter(itr, &[32, 13]);
 
-    txn.wtm.__set_read_version(5);
+    txn.wtm.set_read_version(5);
     let itr = txn.range(1..10).unwrap();
     let mut count = 2;
     for ent in itr {
@@ -640,21 +640,21 @@ fn txn_range_edge_case2() {
     }
     assert_eq!(0, count);
 
-    txn.wtm.__set_read_version(3);
+    txn.wtm.set_read_version(3);
     let itr = txn.range(1..10).unwrap();
     check_iter(itr, &[13, 23, 32]);
 
     let itr = txn.range_rev(1..10).unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
-    txn.wtm.__set_read_version(2);
+    txn.wtm.set_read_version(2);
     let itr = txn.range(1..10).unwrap();
     check_iter(itr, &[12, 32]);
 
     let itr = txn.range_rev(1..10).unwrap();
     check_rev_iter(itr, &[32, 12]);
 
-    txn.wtm.__set_read_version(1);
+    txn.wtm.set_read_version(1);
     let itr = txn.range(1..10).unwrap();
     check_iter(itr, &[31]);
     let itr = txn.range_rev(1..10).unwrap();

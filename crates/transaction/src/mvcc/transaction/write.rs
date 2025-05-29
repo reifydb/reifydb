@@ -18,14 +18,14 @@ use crate::mvcc::version::types::{Entry, EntryData, EntryDataRef, EntryRef};
 use core::{borrow::Borrow, hash::Hash};
 
 /// Wtm is used to perform writes to the database. It is created by
-/// calling [`Tm::write`].
-pub struct Wtm<K, V, C, P> {
-    pub(super) read_ts: u64,
+/// calling [`TransactionManager::write`].
+pub struct TransactionManagerTx<K, V, C, P> {
+    pub(super) version: u64,
     pub(super) size: u64,
     pub(super) count: u64,
     pub(super) orc: Arc<Oracle<C>>,
     pub(super) conflict_manager: Option<C>,
-    // buffer stores any writes done by txn.
+    // stores any writes done by txn.
     pub(super) pending_writes: Option<P>,
     // Used in managed mode to store duplicate entries.
     pub(super) duplicate_writes: OneOrMore<Entry<K, V>>,
@@ -34,7 +34,7 @@ pub struct Wtm<K, V, C, P> {
     pub(super) done_read: bool,
 }
 
-impl<K, V, C, P> Drop for Wtm<K, V, C, P> {
+impl<K, V, C, P> Drop for TransactionManagerTx<K, V, C, P> {
     fn drop(&mut self) {
         if !self.discarded {
             self.discard();
@@ -42,25 +42,23 @@ impl<K, V, C, P> Drop for Wtm<K, V, C, P> {
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P> {
-    /// Returns the read version of this transaction.
-
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
+    /// Returns the version of the transaction.
     pub const fn version(&self) -> u64 {
-        self.read_ts
+        self.version
     }
 
     /// Sets the current read version of the transaction manager.
     // This should be used only for testing purposes.
     #[doc(hidden)]
-
-    pub fn __set_read_version(&mut self, version: u64) {
-        self.read_ts = version;
+    #[cfg(test)]
+    pub fn set_read_version(&mut self, version: u64) {
+        self.version = version;
     }
 
-    /// Returns the pending writes manager.
+    /// Returns the pending writes
     ///
     /// `None` means the transaction has already been discarded.
-
     pub fn pwm(&self) -> Option<&P> {
         self.pending_writes.as_ref()
     }
@@ -68,13 +66,12 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
     /// Returns the conflict manager.
     ///
     /// `None` means the transaction has already been discarded.
-
     pub fn cm(&self) -> Option<&C> {
         self.conflict_manager.as_ref()
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: Conflict<Key = K>,
 {
@@ -113,7 +110,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: Conflict<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
@@ -207,7 +204,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: Conflict<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
@@ -262,7 +259,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: CmEquivalent<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
@@ -290,7 +287,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: CmEquivalent<Key = K>,
     P: PwmEquivalent<Key = K, Value = V>,
@@ -374,7 +371,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: CmComparable<Key = K>,
     P: PwmEquivalent<Key = K, Value = V>,
@@ -458,7 +455,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: CmComparable<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
@@ -486,7 +483,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: CmComparable<Key = K>,
     P: PwmComparable<Key = K, Value = V>,
@@ -570,7 +567,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: CmEquivalent<Key = K>,
     P: PwmComparable<Key = K, Value = V>,
@@ -654,12 +651,12 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: Conflict<Key = K> + Send,
     P: PendingWrites<Key = K, Value = V> + Send,
 {
-    /// Acts like [`commit`](Wtm::commit), but takes a callback, which gets run via a
+    /// Acts like [`commit`](TransactionManagerTx::commit), but takes a callback, which gets run via a
     /// thread to avoid blocking this function. Following these steps:
     ///
     /// 1. If there are no writes, return immediately, callback will be invoked.
@@ -724,13 +721,13 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: Conflict<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
 {
     fn insert_with_in(&mut self, key: K, value: V) -> Result<(), TransactionError> {
-        let ent = Entry { data: EntryData::Insert { key, value }, version: self.read_ts };
+        let ent = Entry { data: EntryData::Insert { key, value }, version: self.version };
 
         self.modify(ent)
     }
@@ -775,7 +772,7 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P>
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P>
 where
     C: Conflict<Key = K>,
     P: PendingWrites<Key = K, Value = V>,
@@ -793,7 +790,7 @@ where
             mem::take(&mut self.conflict_manager)
         };
 
-        match self.orc.new_commit_ts(&mut self.done_read, self.read_ts, conflict_manager) {
+        match self.orc.new_commit_ts(&mut self.done_read, self.version, conflict_manager) {
             CreateCommitTimestampResult::Conflict(conflict_manager) => {
                 // If there is a conflict, we should not send the updates to the write channel.
                 // Instead, we should return the conflict error to the user.
@@ -824,11 +821,11 @@ where
     }
 }
 
-impl<K, V, C, P> Wtm<K, V, C, P> {
+impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
     fn done_read(&mut self) {
         if !self.done_read {
             self.done_read = true;
-            self.orc().rx.done(self.read_ts);
+            self.orc().rx.done(self.version);
         }
     }
 
@@ -865,7 +862,9 @@ mod tests {
 
     #[test]
     fn wtm() {
-        let tm = Tm::<String, u64, HashCm<String>, IndexMapPwm<String, u64>>::new("test", 0);
+        let tm = TransactionManager::<String, u64, HashCm<String>, IndexMapPwm<String, u64>>::new(
+            "test", 0,
+        );
         let mut wtm = tm.write(Default::default(), Default::default()).unwrap();
         assert!(!wtm.is_discard());
         assert!(wtm.pwm().is_some());
@@ -953,7 +952,10 @@ mod tests {
 
     #[test]
     fn wtm2() {
-        let tm = Tm::<Arc<u64>, u64, TestCm<Arc<u64>>, IndexMapPwm<Arc<u64>, u64>>::new("test", 0);
+        let tm =
+            TransactionManager::<Arc<u64>, u64, TestCm<Arc<u64>>, IndexMapPwm<Arc<u64>, u64>>::new(
+                "test", 0,
+            );
         let mut wtm = tm.write(Default::default(), ()).unwrap();
         assert!(!wtm.is_discard());
         assert!(wtm.pwm().is_some());
@@ -991,7 +993,10 @@ mod tests {
 
     #[test]
     fn wtm3() {
-        let tm = Tm::<Arc<u64>, u64, TestCm<Arc<u64>>, BTreePwm<Arc<u64>, u64>>::new("test", 0);
+        let tm =
+            TransactionManager::<Arc<u64>, u64, TestCm<Arc<u64>>, BTreePwm<Arc<u64>, u64>>::new(
+                "test", 0,
+            );
         let mut wtm = tm.write((), ()).unwrap();
         assert!(!wtm.is_discard());
         assert!(wtm.pwm().is_some());

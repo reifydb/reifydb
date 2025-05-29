@@ -12,7 +12,7 @@
 use crate::mvcc::pending::BTreePwm;
 use crate::mvcc::skipdbcore::Database;
 use crate::mvcc::skipdbcore::types::Ref;
-use crate::mvcc::transaction::read::Rtm;
+use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
@@ -23,11 +23,11 @@ use std::ops::RangeBounds;
 
 pub struct ReadTransaction<K, V, I, C> {
     pub(crate) db: I,
-    pub(crate) rtm: Rtm<K, V, C, BTreePwm<K, V>>,
+    pub(crate) rtm: TransactionManagerRx<K, V, C, BTreePwm<K, V>>,
 }
 
 impl<K, V, I, C> ReadTransaction<K, V, I, C> {
-    pub(in crate::mvcc::transaction) fn new(db: I, rtm: Rtm<K, V, C, BTreePwm<K, V>>) -> Self {
+    pub(in crate::mvcc::transaction) fn new(db: I, rtm: TransactionManagerRx<K, V, C, BTreePwm<K, V>>) -> Self {
         Self { db, rtm }
     }
 }

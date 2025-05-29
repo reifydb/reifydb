@@ -14,7 +14,7 @@ use crate::mvcc::conflict::{HashCm, HashCmOptions};
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePwm, PwmComparableRange};
 use crate::mvcc::skipdbcore::types::Ref;
-use crate::mvcc::transaction::Wtm;
+use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
@@ -26,7 +26,7 @@ use std::ops::RangeBounds;
 /// A optimistic concurrency control transaction over the [`Optimistic`].
 pub struct TransactionTx<K, V> {
     engine: Optimistic<K, V>,
-    pub(in crate::mvcc) wtm: Wtm<K, V, HashCm<K>, BTreePwm<K, V>>,
+    pub(in crate::mvcc) wtm: TransactionManagerTx<K, V, HashCm<K>, BTreePwm<K, V>>,
 }
 
 impl<K, V> TransactionTx<K, V>

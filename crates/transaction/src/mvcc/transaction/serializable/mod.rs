@@ -22,17 +22,17 @@ mod write;
 use crate::mvcc::conflict::BTreeCm;
 use crate::mvcc::pending::BTreePwm;
 use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
-use crate::mvcc::transaction::Tm;
+use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
 struct Inner<K, V> {
-    tm: Tm<K, V, BTreeCm<K>, BTreePwm<K, V>>,
+    tm: TransactionManager<K, V, BTreeCm<K>, BTreePwm<K, V>>,
     map: SkipCore<K, V>,
 }
 
 impl<K, V> Inner<K, V> {
     fn new(name: &str) -> Self {
-        let tm = Tm::new(name, 0);
+        let tm = TransactionManager::new(name, 0);
         Self { tm, map: SkipCore::new() }
     }
 

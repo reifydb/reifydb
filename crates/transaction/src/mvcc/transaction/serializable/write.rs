@@ -15,7 +15,7 @@ use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePwm, PwmComparableRange};
 use crate::mvcc::skipdbcore::types::Ref;
-use crate::mvcc::transaction::Wtm;
+use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
@@ -28,7 +28,7 @@ mod tests;
 /// A serializable snapshot isolation transaction over the [`SerializableDb`],
 pub struct SerializableTransaction<K, V> {
     pub(in crate::mvcc) db: SerializableDb<K, V>,
-    pub(in crate::mvcc) wtm: Wtm<K, V, BTreeCm<K>, BTreePwm<K, V>>,
+    pub(in crate::mvcc) wtm: TransactionManagerTx<K, V, BTreeCm<K>, BTreePwm<K, V>>,
 }
 
 impl<K, V> SerializableTransaction<K, V>

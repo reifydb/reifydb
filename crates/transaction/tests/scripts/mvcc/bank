@@ -62,14 +62,14 @@ bob: set C=200
 ---
 ok
 
-bob: !set B=0
----
-bob: Error: transaction serialization conflict occurred, retry transaction
-
-# MVCC caught the conflict, and Bob has to roll back and retry.
-bob: rollback
+bob: set B=0
 ---
 ok
+
+# MVCC caught the conflict
+bob: !commit
+---
+bob: Error: transaction error: transaction conflict, please retry
 
 # He then finds there's no money left in B anymore, and can't make the transfer.
 bob: begin

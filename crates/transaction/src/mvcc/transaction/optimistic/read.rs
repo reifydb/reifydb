@@ -14,7 +14,7 @@ use crate::mvcc::pending::BTreePwm;
 use crate::mvcc::skipdbcore::AsSkipCore;
 use crate::mvcc::skipdbcore::types::Ref;
 use crate::mvcc::transaction::optimistic::Optimistic;
-use crate::mvcc::transaction::read::Rtm;
+use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
@@ -24,7 +24,7 @@ use std::ops::RangeBounds;
 
 pub struct TransactionRx<K, V> {
     pub(crate) engine: Optimistic<K, V>,
-    pub(crate) rtm: Rtm<K, V, HashCm<K>, BTreePwm<K, V>>,
+    pub(crate) rtm: TransactionManagerRx<K, V, HashCm<K>, BTreePwm<K, V>>,
 }
 
 impl<K, V> TransactionRx<K, V> {
