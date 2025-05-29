@@ -124,13 +124,9 @@ where
     }
 
     /// Returns true if the given key exists in the database.
-    pub fn contains_key<Q>(&mut self, key: &Q) -> Result<bool, TransactionError>
-    where
-        K: Clone + Borrow<Q>,
-        Q: Hash + Eq + Ord + ?Sized,
-    {
+    pub fn contains_key(&mut self, key: &K) -> Result<bool, TransactionError> {
         let version = self.tx.version();
-        match self.tx.contains_key_equivalent_cm_comparable_pm(key)? {
+        match self.tx.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
             None => Ok(self.engine.inner.mem_table.contains_key(key, version)),
@@ -138,16 +134,15 @@ where
     }
 
     /// Get a value from the database.
-    pub fn get<'a, 'b: 'a, Q>(
+    pub fn get<'a, 'b: 'a>(
         &'a mut self,
-        key: &'b Q,
+        key: &'b K,
     ) -> Result<Option<Ref<'a, K, V>>, TransactionError>
     where
-        K: Clone + Borrow<Q>,
-        Q: Hash + Eq + Ord + ?Sized,
+        K: Clone,
     {
         let version = self.tx.version();
-        match self.tx.get_equivalent_cm_comparable_pm(key)? {
+        match self.tx.get(key)? {
             Some(v) => {
                 if v.value().is_some() {
                     Ok(Some(v.into()))

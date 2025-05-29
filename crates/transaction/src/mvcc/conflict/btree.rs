@@ -188,27 +188,6 @@ where
     }
 }
 
-impl<K> ConflictEquivalent for BTreeConflict<K>
-where
-    K: Clone + Ord,
-{
-    fn mark_read_equivalent<Q>(&mut self, key: &Q)
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        todo!()
-    }
-
-    fn mark_conflict_equivalent<Q>(&mut self, key: &Q)
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        todo!()
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::{BTreeConflict, Conflict};

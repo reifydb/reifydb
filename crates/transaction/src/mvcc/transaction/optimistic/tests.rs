@@ -47,14 +47,14 @@ fn writeable_tx() {
         assert_eq!(tx.version(), 0);
 
         tx.set("foo", "foo1").unwrap();
-        assert_eq!(*tx.get("foo").unwrap().unwrap().value(), "foo1");
+        assert_eq!(*tx.get(&"foo").unwrap().unwrap().value(), "foo1");
         tx.commit().unwrap();
     }
 
     {
         let tx = db.read();
         assert_eq!(tx.version(), 1);
-        assert_eq!(*tx.get("foo").unwrap().value(), "foo1");
+        assert_eq!(*tx.get(&"foo").unwrap().value(), "foo1");
     }
 }
 

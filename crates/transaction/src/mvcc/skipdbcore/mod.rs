@@ -104,11 +104,7 @@ impl<K, V> SkipCore<K, V>
 where
     K: Ord,
 {
-    pub fn get<Q>(&self, key: &Q, version: u64) -> Option<CommittedRef<'_, K, V>>
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
+    pub fn get(&self, key: &K, version: u64) -> Option<CommittedRef<'_, K, V>> {
         let ent = self.mem_table.get(key)?;
         let version = ent
             .value()

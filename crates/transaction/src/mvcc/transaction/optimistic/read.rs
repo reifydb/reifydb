@@ -44,11 +44,7 @@ where
     }
 
     /// Get a value from the database.
-    pub fn get<Q>(&self, key: &Q) -> Option<Ref<'_, K, V>>
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
+    pub fn get(&self, key: &K) -> Option<Ref<'_, K, V>> {
         let version = self.rtm.version();
         self.engine.as_inner().get(key, version).map(Into::into)
     }

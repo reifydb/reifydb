@@ -17,18 +17,20 @@ use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
 use crate::mvcc::transaction::scan::rev_range::RevRange;
-use crate::mvcc::transaction::*;
 use std::borrow::Borrow;
 use std::ops::RangeBounds;
 
 pub struct ReadTransaction<K, V, I, C> {
     pub(crate) db: I,
-    pub(crate) rtm: TransactionManagerRx<K, V, C, BTreePendingWrites<K, V>>,
+    pub(crate) rx: TransactionManagerRx<K, V, C, BTreePendingWrites<K, V>>,
 }
 
 impl<K, V, I, C> ReadTransaction<K, V, I, C> {
-    pub(in crate::mvcc::transaction) fn new(db: I, rtm: TransactionManagerRx<K, V, C, BTreePendingWrites<K, V>>) -> Self {
-        Self { db, rtm }
+    pub(in crate::mvcc::transaction) fn new(
+        db: I,
+        rtm: TransactionManagerRx<K, V, C, BTreePendingWrites<K, V>>,
+    ) -> Self {
+        Self { db, rx: rtm }
     }
 }
 
@@ -38,68 +40,57 @@ where
     I: Database<K, V>,
 {
     /// Returns the version of the transaction.
-
     pub fn version(&self) -> u64 {
-        self.rtm.version()
+        self.rx.version()
     }
 
     /// Get a value from the database.
-
-    pub fn get<Q>(&self, key: &Q) -> Option<Ref<'_, K, V>>
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
-        let version = self.rtm.version();
+    pub fn get(&self, key: &K) -> Option<Ref<'_, K, V>> {
+        let version = self.rx.version();
         self.db.as_inner().get(key, version).map(Into::into)
     }
 
     /// Returns true if the given key exists in the database.
-
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        let version = self.rtm.version();
+        let version = self.rx.version();
         self.db.as_inner().contains_key(key, version)
     }
 
     /// Returns an iterator over the entries of the database.
-
     pub fn iter(&self) -> Iter<'_, K, V> {
-        let version = self.rtm.version();
+        let version = self.rx.version();
         self.db.as_inner().iter(version)
     }
 
     /// Returns a reverse iterator over the entries of the database.
-
     pub fn iter_rev(&self) -> RevIter<'_, K, V> {
-        let version = self.rtm.version();
+        let version = self.rx.version();
         self.db.as_inner().iter_rev(version)
     }
 
     /// Returns an iterator over the subset of entries of the database.
-
     pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, K, V>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
         Q: Ord + ?Sized,
     {
-        let version = self.rtm.version();
+        let version = self.rx.version();
         self.db.as_inner().range(range, version)
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-
     pub fn range_rev<Q, R>(&self, range: R) -> RevRange<'_, Q, R, K, V>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
         Q: Ord + ?Sized,
     {
-        let version = self.rtm.version();
+        let version = self.rx.version();
         self.db.as_inner().range_rev(range, version)
     }
 }

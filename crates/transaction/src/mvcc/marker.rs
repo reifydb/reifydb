@@ -11,9 +11,7 @@
 
 use core::{borrow::Borrow, hash::Hash, ops::RangeBounds};
 
-use crate::mvcc::conflict::{
-    Conflict, ConflictComparable, CmComparableRange, ConflictEquivalent, ConflictEquivalentRange, CmIter, ConflictRange,
-};
+use crate::mvcc::conflict::{Conflict, ConflictIter, ConflictRange};
 
 /// A marker used to mark the keys that are read.
 pub struct Marker<'a, C> {
@@ -47,71 +45,9 @@ impl<C: ConflictRange> Marker<'_, C> {
     }
 }
 
-impl<C: CmIter> Marker<'_, C> {
+impl<C: ConflictIter> Marker<'_, C> {
     /// Marks a key is operated.
     pub fn mark_iter(&mut self) {
         self.marker.mark_iter();
-    }
-}
-
-impl<C: ConflictComparable> Marker<'_, C> {
-    /// Marks a key is operated.
-    pub fn mark_comparable<Q>(&mut self, k: &Q)
-    where
-        C::Key: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
-        self.marker.mark_read_comparable(k);
-    }
-
-    /// Marks a key is conflicted.
-    pub fn mark_conflict_comparable<Q>(&mut self, k: &Q)
-    where
-        C::Key: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
-        self.marker.mark_conflict_comparable(k);
-    }
-}
-
-impl<C: CmComparableRange> Marker<'_, C> {
-    /// Marks a range is operated.
-    pub fn mark_range_comparable<Q>(&mut self, range: impl RangeBounds<Q>)
-    where
-        C::Key: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
-        self.marker.mark_range_comparable(range);
-    }
-}
-
-impl<C: ConflictEquivalent> Marker<'_, C> {
-    /// Marks a key is operated.
-    pub fn mark_equivalent<Q>(&mut self, k: &Q)
-    where
-        C::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        self.marker.mark_read_equivalent(k);
-    }
-
-    /// Marks a key is conflicted.
-    pub fn mark_conflict_equivalent<Q>(&mut self, k: &Q)
-    where
-        C::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        self.marker.mark_conflict_equivalent(k);
-    }
-}
-
-impl<C: ConflictEquivalentRange> Marker<'_, C> {
-    /// Marks a range is operated.
-    pub fn mark_range_equivalent<Q>(&mut self, range: impl RangeBounds<Q>)
-    where
-        C::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        self.marker.mark_range_equivalent(range);
     }
 }

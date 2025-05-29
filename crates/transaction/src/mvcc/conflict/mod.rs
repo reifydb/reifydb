@@ -52,61 +52,13 @@ pub trait ConflictRange: Conflict + Sized {
 }
 
 /// A extended trait of the [`Conflict`] trait that can be used to manage the iterator of keys.
-pub trait CmIter: Conflict + Sized {
+pub trait ConflictIter: Conflict + Sized {
     /// Mark the iterator is operated, this is useful to detect the indirect conflict.
     fn mark_iter(&mut self);
 }
 
-impl<T: ConflictRange> CmIter for T {
+impl<T: ConflictRange> ConflictIter for T {
     fn mark_iter(&mut self) {
         self.mark_range(..);
     }
-}
-
-/// An optimized version of the [`Conflict`] trait that if your conflict manager is depend on hash.
-pub trait ConflictEquivalent: Conflict {
-    /// Optimized version of [`mark_read`] that accepts borrowed keys. Optional to implement.
-    fn mark_read_equivalent<Q>(&mut self, key: &Q)
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized;
-
-    /// Optimized version of [`mark_conflict`] that accepts borrowed keys. Optional to implement.
-    fn mark_conflict_equivalent<Q>(&mut self, key: &Q)
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized;
-}
-
-/// An optimized version of the [`ConflictRange`] trait that if your conflict manager is depend on hash.
-pub trait ConflictEquivalentRange: ConflictRange + Sized {
-    /// Mark the range is read.
-    fn mark_range_equivalent<Q>(&mut self, range: impl RangeBounds<Q>)
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized;
-}
-
-/// An optimized version of the [`Conflict`] trait that if your conflict manager is depend on the order.
-pub trait ConflictComparable: Conflict {
-    /// Optimized version of [`mark_read`] that accepts borrowed keys. Optional to implement.
-    fn mark_read_comparable<Q>(&mut self, key: &Q)
-    where
-        Self::Key: Borrow<Q>,
-        Q: Ord + ?Sized;
-
-    /// Optimized version of [`mark_conflict`] that accepts borrowed keys. Optional to implement.
-    fn mark_conflict_comparable<Q>(&mut self, key: &Q)
-    where
-        Self::Key: Borrow<Q>,
-        Q: Ord + ?Sized;
-}
-
-/// An optimized version of the [`ConflictRange`] trait that if your conflict manager is depend on the order.
-pub trait CmComparableRange: ConflictRange + ConflictComparable {
-    /// Mark the range is read.
-    fn mark_range_comparable<Q>(&mut self, range: impl RangeBounds<Q>)
-    where
-        Self::Key: Borrow<Q>,
-        Q: Ord + ?Sized;
 }

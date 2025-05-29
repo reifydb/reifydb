@@ -52,7 +52,7 @@ fn writeable_tx() {
     {
         let tx = db.read();
         assert_eq!(tx.version(), 1);
-        assert_eq!(*tx.get("foo").unwrap().value(), "foo1");
+        assert_eq!(*tx.get(&"foo").unwrap().value(), "foo1");
         assert!(tx.contains_key("foo"));
     }
 }

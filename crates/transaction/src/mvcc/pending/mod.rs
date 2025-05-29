@@ -108,46 +108,6 @@ pub trait PendingWritesComparableRange: PendingWritesRange + PendingWritesCompar
         R: RangeBounds<T>;
 }
 
-/// An trait that can be used to get a range over the pending writes.
-pub trait PendingWritesEquivalentRange: PendingWritesRange + PendingWritesEquivalent {
-    /// Returns an iterator over the pending writes.
-    fn range_equivalent<T, R>(&self, range: R) -> Self::Range<'_>
-    where
-        T: ?Sized + Eq + Hash,
-        Self::Key: Borrow<T> + Eq + Hash,
-        R: RangeBounds<T>;
-}
-
-/// An optimized version of the [`PendingWrites`] trait that if your pending writes manager is depend on hash.
-pub trait PendingWritesEquivalent: PendingWrites {
-    /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
-    fn get_equivalent<Q>(&self, key: &Q) -> Option<&EntryValue<Self::Value>>
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized;
-
-    /// Optimized version of [`PendingWrites::get_entry`] that accepts borrowed keys.
-    fn get_entry_equivalent<Q>(&self, key: &Q) -> Option<(&Self::Key, &EntryValue<Self::Value>)>
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized;
-
-    /// Optimized version of [`PendingWrites::contains_key`] that accepts borrowed keys.
-    fn contains_key_equivalent<Q>(&self, key: &Q) -> bool
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized;
-
-    /// Optimized version of [`PendingWrites::remove_entry`] that accepts borrowed keys.
-    fn remove_entry_equivalent<Q>(
-        &mut self,
-        key: &Q,
-    ) -> Option<(Self::Key, EntryValue<Self::Value>)>
-    where
-        Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized;
-}
-
 /// An optimized version of the [`PendingWrites`] trait that if your pending writes manager is depend on the order.
 pub trait PendingWritesComparable: PendingWrites {
     /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
