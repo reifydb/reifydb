@@ -13,7 +13,6 @@ pub mod conflict;
 pub mod error;
 pub mod marker;
 pub mod pending;
-pub mod skipdb;
 pub mod skipdbcore;
 pub mod transaction;
 pub mod version;

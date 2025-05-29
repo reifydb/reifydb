@@ -14,6 +14,12 @@ use crate::skipdb::skipdbcore::rev_range::WriteTransactionRevRange;
 use super::*;
 use crate::skipdb::error::{TransactionError, WtmError};
 use crate::skipdb::pending::{BTreePwm, PwmComparableRange};
+use crate::skipdb::skipdbcore::iter::TransactionIter;
+use crate::skipdb::skipdbcore::range::TransactionRange;
+use crate::skipdb::skipdbcore::rev_iter::WriteTransactionRevIter;
+use crate::skipdb::skipdbcore::types::Ref;
+use crate::skipdb::transaction::Wtm;
+use std::ops::RangeBounds;
 use std::{convert::Infallible, ops::Bound};
 
 #[cfg(test)]
@@ -21,15 +27,15 @@ mod tests;
 
 /// A serializable snapshot isolation transaction over the [`SerializableDb`],
 pub struct SerializableTransaction<K, V> {
-    pub(super) db: SerializableDb<K, V>,
-    pub(super) wtm: Wtm<K, V, BTreeCm<K>, BTreePwm<K, V>>,
+    pub(in crate::skipdb) db: SerializableDb<K, V>,
+    pub(in crate::skipdb) wtm: Wtm<K, V, BTreeCm<K>, BTreePwm<K, V>>,
 }
 
 impl<K, V> SerializableTransaction<K, V>
 where
     K: Clone + Ord,
 {
-    pub(super) fn new(db: SerializableDb<K, V>) -> Self {
+    pub(in crate::skipdb) fn new(db: SerializableDb<K, V>) -> Self {
         let wtm = db.inner.tm.write((), ()).unwrap();
         Self { db, wtm }
     }

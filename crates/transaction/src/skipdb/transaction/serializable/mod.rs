@@ -10,14 +10,16 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::skipdb::skipdbcore::types::Values;
-
-use super::*;
+use std::sync::Arc;
 
 #[allow(clippy::module_inception)]
-mod serializable;
+mod write;
+
 use crate::skipdb::conflict::BTreeCm;
 use crate::skipdb::pending::BTreePwm;
-pub use serializable::*;
+use crate::skipdb::skipdbcore::{AsSkipCore, SkipCore};
+use crate::skipdb::transaction::{ReadTransaction, Tm};
+pub use write::*;
 
 struct Inner<K, V> {
     tm: Tm<K, V, BTreeCm<K>, BTreePwm<K, V>>,

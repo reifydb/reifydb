@@ -3,13 +3,13 @@
 
 use crate::catalog::{Catalog, Schema};
 use crate::skipdb::conflict::HashCm;
-use crate::skipdb::skipdb::ReadTransaction;
-use crate::skipdb::skipdb::optimistic::{OptimisticDb, OptimisticTransaction};
+use crate::skipdb::transaction::ReadTransaction;
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
 use std::hash::RandomState;
+use crate::skipdb::transaction::optimistic::{OptimisticDb, OptimisticTransaction};
 
 impl<P: Persistence> Transaction<P> for OptimisticDb<Vec<u8>, Vec<u8>, RandomState> {
     type Rx = ReadTransaction<Vec<u8>, Vec<u8>, OptimisticDb<Vec<u8>, Vec<u8>>, HashCm<Vec<u8>>>;

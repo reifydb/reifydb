@@ -29,6 +29,13 @@ use oracle::*;
 mod read;
 pub use read::*;
 mod write;
+/// `OptimisticDb` implementation, which requires `K` implements both [`Hash`](core::hash::Hash) and [`Ord`].
+///
+/// If your `K` does not implement [`Hash`](core::hash::Hash), you can use [`SerializableDb`] instead.
+pub mod optimistic;
+/// `SerializableDb` implementation, which requires `K` implements [`Ord`] and [`CheapClone`](cheap_clone::CheapClone). If your `K` implements both [`Hash`](core::hash::Hash) and [`Ord`], you are recommended to use [`OptimisticDb`](crate::optimistic::OptimisticDb) instead.
+pub mod serializable;
+
 use crate::skipdb::conflict::Cm;
 use crate::skipdb::error::TransactionError;
 use crate::skipdb::pending::Pwm;

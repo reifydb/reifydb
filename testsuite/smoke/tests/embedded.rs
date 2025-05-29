@@ -4,8 +4,8 @@
 use reifydb::embedded::Embedded;
 use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::skipdb::skipdb::optimistic::OptimisticDb;
-use reifydb::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb;
+use reifydb::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb;
+use reifydb::reifydb_transaction::skipdb::transaction::serializable::SerializableDb;
 use reifydb::{DB, Principal, ReifyDB, memory, mvcc, optimistic, serializable, svl};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;

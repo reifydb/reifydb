@@ -7,12 +7,10 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 use reifydb::reifydb_persistence::Memory;
-use reifydb::reifydb_transaction::catalog_init;
-use reifydb::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb;
-use reifydb::{serializable, ReifyDB, DB};
+use reifydb::reifydb_transaction::skipdb::transaction::serializable::SerializableDb;
+use reifydb::{DB, ReifyDB, serializable};
 
 fn main() {
-
     let (db, root) =
         // ReifyDB::embedded_blocking_with::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>(optimistic());
     ReifyDB::embedded_blocking_with::<Memory, SerializableDb<Vec<u8>, Vec<u8>>>(serializable());

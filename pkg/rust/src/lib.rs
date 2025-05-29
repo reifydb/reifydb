@@ -48,7 +48,7 @@ use crate::embedded::Embedded;
 use crate::server::Server;
 
 use reifydb_persistence::{Lmdb, Memory, Persistence};
-use reifydb_transaction::{Transaction, catalog_init};
+use reifydb_transaction::Transaction;
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -149,13 +149,14 @@ pub fn mvcc<P: Persistence>(persistence: P) -> ::reifydb_transaction::mvcc::Mvcc
     ::reifydb_transaction::mvcc::Mvcc::new(persistence)
 }
 
-pub fn serializable() -> ::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb<Vec<u8>, Vec<u8>> {
-    ::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb::new()
+pub fn serializable()
+-> ::reifydb_transaction::skipdb::transaction::serializable::SerializableDb<Vec<u8>, Vec<u8>> {
+    ::reifydb_transaction::skipdb::transaction::serializable::SerializableDb::new()
 }
 
 pub fn optimistic()
--> ::reifydb_transaction::skipdb::skipdb::optimistic::OptimisticDb<Vec<u8>, Vec<u8>> {
-    ::reifydb_transaction::skipdb::skipdb::optimistic::OptimisticDb::new()
+-> ::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb<Vec<u8>, Vec<u8>> {
+    ::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb::new()
 }
 
 pub fn memory() -> Memory {

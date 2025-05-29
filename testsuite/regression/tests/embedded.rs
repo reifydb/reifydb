@@ -4,7 +4,9 @@
 use reifydb::embedded::Embedded;
 use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::{DB, Principal, ReifyDB, memory, mvcc, svl, serializable, optimistic};
+use reifydb::reifydb_transaction::skipdb::transaction::optimistic::OptimisticDb;
+use reifydb::reifydb_transaction::skipdb::transaction::serializable::SerializableDb;
+use reifydb::{DB, Principal, ReifyDB, memory, mvcc, optimistic, serializable, svl};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -13,8 +15,6 @@ use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
-use reifydb::reifydb_transaction::skipdb::skipdb::optimistic::OptimisticDb;
-use reifydb::reifydb_transaction::skipdb::skipdb::serializable::SerializableDb;
 
 pub struct Runner<P: Persistence + 'static, T: Transaction<P> + 'static> {
     reifydb_engine: Embedded<P, T>,
@@ -80,7 +80,7 @@ fn test_serializable_memory(path: &Path) {
         &mut Runner::<Memory, SerializableDb<Vec<u8>, Vec<u8>>>::new(serializable()),
         path,
     )
-        .expect("test failed")
+    .expect("test failed")
 }
 
 fn test_optimistic_memory(path: &Path) {
@@ -88,7 +88,7 @@ fn test_optimistic_memory(path: &Path) {
         &mut Runner::<Memory, OptimisticDb<Vec<u8>, Vec<u8>>>::new(optimistic()),
         path,
     )
-        .expect("test failed")
+    .expect("test failed")
 }
 
 fn test_mvcc_memory(path: &Path) {

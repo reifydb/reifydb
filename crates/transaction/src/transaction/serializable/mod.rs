@@ -3,8 +3,8 @@
 
 use crate::catalog::{Catalog, Schema};
 use crate::skipdb::conflict::BTreeCm;
-use crate::skipdb::skipdb::ReadTransaction;
-use crate::skipdb::skipdb::serializable::{SerializableDb, SerializableTransaction};
+use crate::skipdb::transaction::ReadTransaction;
+use crate::skipdb::transaction::serializable::{SerializableDb, SerializableTransaction};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};

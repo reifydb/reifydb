@@ -18,13 +18,16 @@ use crate::skipdb::skipdbcore::range::TransactionRange;
 use crate::skipdb::skipdbcore::rev_iter::WriteTransactionRevIter;
 use crate::skipdb::skipdbcore::rev_range::WriteTransactionRevRange;
 use crate::skipdb::skipdbcore::types::Ref;
+use crate::skipdb::transaction::Wtm;
+use std::borrow::Borrow;
 use std::convert::Infallible;
 use std::fmt::Debug;
+use std::ops::RangeBounds;
 
 /// A optimistic concurrency control transaction over the [`OptimisticDb`].
 pub struct OptimisticTransaction<K, V, S = RandomState> {
     db: OptimisticDb<K, V, S>,
-    pub(super) wtm: Wtm<K, V, HashCm<K, S>, BTreePwm<K, V>>,
+    pub(in crate::skipdb) wtm: Wtm<K, V, HashCm<K, S>, BTreePwm<K, V>>,
 }
 
 impl<K, V, S> OptimisticTransaction<K, V, S>
@@ -32,7 +35,7 @@ where
     K: Ord + Hash + Eq,
     S: BuildHasher + Clone,
 {
-    pub(super) fn new(db: OptimisticDb<K, V, S>, cap: Option<usize>) -> Self {
+    pub(in crate::skipdb) fn new(db: OptimisticDb<K, V, S>, cap: Option<usize>) -> Self {
         let wtm = db
             .inner
             .tm
