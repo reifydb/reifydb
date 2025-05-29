@@ -30,14 +30,14 @@ mod tests;
 
 struct Inner<K, V> {
     tm: Tm<K, V, HashCm<K>, BTreePwm<K, V>>,
-    map: SkipCore<K, V>,
+    mem_table: SkipCore<K, V>,
     hasher: RandomState,
 }
 
 impl<K, V> Inner<K, V> {
     fn new(name: &str) -> Self {
         let tm = Tm::new(name, 0);
-        Self { tm, map: SkipCore::new(), hasher: DefaultHasher::default() }
+        Self { tm, mem_table: SkipCore::new(), hasher: DefaultHasher::default() }
     }
 
     fn version(&self) -> u64 {
@@ -61,7 +61,7 @@ pub struct Optimistic<K, V> {
 impl<K, V> AsSkipCore<K, V> for Optimistic<K, V> {
     #[allow(private_interfaces)]
     fn as_inner(&self) -> &SkipCore<K, V> {
-        &self.inner.map
+        &self.inner.mem_table
     }
 }
 
@@ -125,7 +125,7 @@ where
     /// Compact the database.
 
     pub fn compact(&self) {
-        self.inner.map.compact(self.inner.tm.discard_hint());
+        self.inner.mem_table.compact(self.inner.tm.discard_hint());
     }
 }
 

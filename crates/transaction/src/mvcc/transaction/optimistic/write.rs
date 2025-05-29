@@ -67,7 +67,7 @@ where
 
     pub fn commit(&mut self) -> Result<(), MvccError<Infallible>> {
         self.wtm.commit(|operations| {
-            self.engine.inner.map.apply(operations);
+            self.engine.inner.mem_table.apply(operations);
             Ok(())
         })
     }
@@ -106,7 +106,7 @@ where
 
         self.wtm.commit_with_callback(
             move |ents| {
-                db.inner.map.apply(ents);
+                db.inner.mem_table.apply(ents);
                 Ok(())
             },
             callback,
@@ -139,7 +139,7 @@ where
         match self.wtm.contains_key_equivalent_cm_comparable_pm(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.engine.inner.map.contains_key(key, version)),
+            None => Ok(self.engine.inner.mem_table.contains_key(key, version)),
         }
     }
 
@@ -161,7 +161,7 @@ where
                     Ok(None)
                 }
             }
-            None => Ok(self.engine.inner.map.get(key, version).map(Into::into)),
+            None => Ok(self.engine.inner.mem_table.get(key, version).map(Into::into)),
         }
     }
 
@@ -179,7 +179,7 @@ where
     pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, HashCm<K>>, TransactionError> {
         let version = self.wtm.version();
         let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
-        let committed = self.engine.inner.map.iter(version);
+        let committed = self.engine.inner.mem_table.iter(version);
         let pendings = pm.iter();
 
         Ok(TransactionIter::new(pendings, committed, Some(marker)))
@@ -191,7 +191,7 @@ where
     ) -> Result<WriteTransactionRevIter<'_, K, V, HashCm<K>>, TransactionError> {
         let version = self.wtm.version();
         let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
-        let committed = self.engine.inner.map.iter_rev(version);
+        let committed = self.engine.inner.mem_table.iter_rev(version);
         let pendings = pm.iter().rev();
 
         Ok(WriteTransactionRevIter::new(pendings, committed, Some(marker)))
@@ -212,7 +212,7 @@ where
         let start = range.start_bound();
         let end = range.end_bound();
         let pendings = pm.range_comparable((start, end));
-        let committed = self.engine.inner.map.range(range, version);
+        let committed = self.engine.inner.mem_table.range(range, version);
 
         Ok(TransactionRange::new(pendings, committed, Some(marker)))
     }
@@ -232,7 +232,7 @@ where
         let start = range.start_bound();
         let end = range.end_bound();
         let pendings = pm.range_comparable((start, end));
-        let committed = self.engine.inner.map.range_rev(range, version);
+        let committed = self.engine.inner.mem_table.range_rev(range, version);
 
         Ok(WriteTransactionRevRange::new(pendings.rev(), committed, Some(marker)))
     }
