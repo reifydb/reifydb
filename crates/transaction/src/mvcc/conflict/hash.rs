@@ -46,7 +46,7 @@ impl<S> HashCmOptions<S> {
     }
 }
 
-/// A [`Cm`] conflict manager implementation that based on the [`Hash`](Hash).
+/// A [`ConflictManager`] conflict manager implementation that based on the [`Hash`](Hash).
 pub struct HashCm<K, S = DefaultHasher> {
     reads: MediumVec<Read>,
     conflict_keys: IndexSet<u64, S>,
@@ -63,17 +63,16 @@ impl<K, S: Clone> Clone for HashCm<K, S> {
     }
 }
 
-impl<K, S> Cm for HashCm<K, S>
+impl<K, S> ConflictManager for HashCm<K, S>
 where
     S: BuildHasher,
     K: Hash + Eq,
 {
-    type Error = core::convert::Infallible;
     type Key = K;
     type Options = HashCmOptions<S>;
 
-    fn new(options: Self::Options) -> Result<Self, Self::Error> {
-        Ok(match options.capacity {
+    fn new(options: Self::Options) -> Self {
+        match options.capacity {
             Some(capacity) => Self {
                 reads: MediumVec::with_capacity(capacity),
                 conflict_keys: IndexSet::with_capacity_and_hasher(capacity, options.hasher),
@@ -84,7 +83,7 @@ where
                 conflict_keys: IndexSet::with_hasher(options.hasher),
                 _k: core::marker::PhantomData,
             },
-        })
+        }
     }
 
     fn mark_read(&mut self, key: &K) {
@@ -121,10 +120,9 @@ where
         false
     }
 
-    fn rollback(&mut self) -> Result<(), Self::Error> {
+    fn rollback(&mut self) {
         self.reads.clear();
         self.conflict_keys.clear();
-        Ok(())
     }
 }
 
@@ -164,14 +162,13 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::{Cm, HashCm, HashCmOptions};
+    use super::{ConflictManager, HashCm, HashCmOptions};
     use crate::mvcc::conflict::CmEquivalent;
 
     #[test]
     fn test_hash_cm() {
         let mut cm =
-            HashCm::<u64>::new(HashCmOptions::new(std::collections::hash_map::RandomState::new()))
-                .unwrap();
+            HashCm::<u64>::new(HashCmOptions::new(std::collections::hash_map::RandomState::new()));
         cm.mark_read(&1);
         cm.mark_read(&2);
         cm.mark_conflict(&3);

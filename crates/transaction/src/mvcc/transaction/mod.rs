@@ -37,8 +37,7 @@ pub mod scan;
 pub mod serializable;
 mod write;
 
-
-use crate::mvcc::conflict::Cm;
+use crate::mvcc::conflict::ConflictManager;
 use crate::mvcc::error::TransactionError;
 use crate::mvcc::pending::Pwm;
 use crate::mvcc::transaction::read::Rtm;
@@ -59,7 +58,7 @@ impl<K, V, C, P> Clone for Tm<K, V, C, P> {
 
 impl<K, V, C, P> Tm<K, V, C, P>
 where
-    C: Cm<Key = K>,
+    C: ConflictManager<Key = K>,
     P: Pwm<Key = K, Value = V>,
 {
     /// Create a new writable transaction with
@@ -68,16 +67,14 @@ where
         &self,
         pending_manager_opts: P::Options,
         conflict_manager_opts: C::Options,
-    ) -> Result<Wtm<K, V, C, P>, TransactionError<C::Error, P::Error>> {
+    ) -> Result<Wtm<K, V, C, P>, TransactionError<P::Error>> {
         let read_ts = self.inner.read_ts();
         Ok(Wtm {
             orc: self.inner.clone(),
             read_ts,
             size: 0,
             count: 0,
-            conflict_manager: Some(
-                C::new(conflict_manager_opts).map_err(TransactionError::conflict)?,
-            ),
+            conflict_manager: Some(C::new(conflict_manager_opts)),
             pending_writes: Some(P::new(pending_manager_opts).map_err(TransactionError::pending)?),
             duplicate_writes: OneOrMore::new(),
             discarded: false,

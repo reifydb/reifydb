@@ -22,7 +22,7 @@ enum Read<K> {
     All,
 }
 
-/// A [`Cm`] conflict manager implementation that based on the [`BTreeSet`](std::collections::BTreeSet).
+/// A [`ConflictManager`] conflict manager implementation that based on the [`BTreeSet`](std::collections::BTreeSet).
 #[derive(Debug)]
 pub struct BTreeCm<K> {
     reads: MediumVec<Read<K>>,
@@ -35,16 +35,15 @@ impl<K: Clone> Clone for BTreeCm<K> {
     }
 }
 
-impl<K> Cm for BTreeCm<K>
+impl<K> ConflictManager for BTreeCm<K>
 where
     K: Clone + Ord,
 {
-    type Error = core::convert::Infallible;
     type Key = K;
     type Options = ();
 
-    fn new(_options: Self::Options) -> Result<Self, Self::Error> {
-        Ok(Self { reads: MediumVec::new(), conflict_keys: BTreeSet::new() })
+    fn new(_options: Self::Options) -> Self {
+        Self { reads: MediumVec::new(), conflict_keys: BTreeSet::new() }
     }
 
     fn mark_read(&mut self, key: &K) {
@@ -157,10 +156,9 @@ where
         false
     }
 
-    fn rollback(&mut self) -> Result<(), Self::Error> {
+    fn rollback(&mut self) {
         self.reads.clear();
         self.conflict_keys.clear();
-        Ok(())
     }
 }
 
@@ -168,7 +166,7 @@ impl<K> CmRange for BTreeCm<K>
 where
     K: Clone + Ord,
 {
-    fn mark_range(&mut self, range: impl RangeBounds<<Self as Cm>::Key>) {
+    fn mark_range(&mut self, range: impl RangeBounds<<Self as ConflictManager>::Key>) {
         let start = match range.start_bound() {
             Bound::Included(k) => Bound::Included(k.clone()),
             Bound::Excluded(k) => Bound::Excluded(k.clone()),
@@ -192,11 +190,11 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::{BTreeCm, Cm};
+    use super::{BTreeCm, ConflictManager};
 
     #[test]
     fn test_btree_cm() {
-        let mut cm = BTreeCm::<u64>::new(()).unwrap();
+        let mut cm = BTreeCm::<u64>::new(());
         cm.mark_read(&1);
         cm.mark_read(&2);
         cm.mark_conflict(&2);

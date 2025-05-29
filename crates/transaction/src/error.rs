@@ -10,7 +10,7 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug)]
 pub enum Error {
     /// MVCC-related error
-    Mvcc(mvcc::MvccError<Infallible, Infallible, Infallible>),
+    Mvcc(mvcc::MvccError<Infallible, Infallible>),
     /// Persistence-layer error
     Persistence(reifydb_persistence::Error),
     /// SVL concurrency error
@@ -29,8 +29,8 @@ impl Display for Error {
 
 impl std::error::Error for Error {}
 
-impl From<mvcc::MvccError<Infallible, Infallible, Infallible>> for Error {
-    fn from(err: mvcc::MvccError<Infallible, Infallible, Infallible>) -> Self {
+impl From<mvcc::MvccError<Infallible, Infallible>> for Error {
+    fn from(err: mvcc::MvccError<Infallible, Infallible>) -> Self {
         match err {
             mvcc::MvccError::Persistence(err) => Self::Persistence(err),
             _ => Self::Mvcc(err),

@@ -14,7 +14,7 @@
 
 use either::Either;
 
-use crate::mvcc::conflict::Cm;
+use crate::mvcc::conflict::ConflictManager;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
 use crate::mvcc::version::types::EntryValue;
@@ -62,7 +62,7 @@ pub struct TransactionIter<'a, K, V, C> {
 
 impl<'a, K, V, C> TransactionIter<'a, K, V, C>
 where
-    C: Cm<Key = K>,
+    C: ConflictManager<Key = K>,
     K: Ord,
 {
     fn advance_pending(&mut self) {
@@ -100,7 +100,7 @@ where
 impl<'a, K, V, C> Iterator for TransactionIter<'a, K, V, C>
 where
     K: Ord,
-    C: Cm<Key = K>,
+    C: ConflictManager<Key = K>,
 {
     type Item = Ref<'a, K, V>;
 

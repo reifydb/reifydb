@@ -25,18 +25,14 @@ mod hash;
 ///
 /// 1. Contains fingerprints of keys read.
 /// 2. Contains fingerprints of keys written. This is used for conflict detection.
-pub trait Cm: Sized {
-    /// The error type returned by the conflict manager.
-    type Error: crate::mvcc::error::Error;
-
+pub trait ConflictManager: Sized {
     /// The key type.
     type Key;
-
     /// The options type used to create the conflict manager.
     type Options;
 
     /// Create a new conflict manager with the given options.
-    fn new(options: Self::Options) -> Result<Self, Self::Error>;
+    fn new(options: Self::Options) -> Self;
 
     /// Mark the key is read.
     fn mark_read(&mut self, key: &Self::Key);
@@ -48,17 +44,17 @@ pub trait Cm: Sized {
     fn has_conflict(&self, other: &Self) -> bool;
 
     /// Rollback the conflict manager.
-    fn rollback(&mut self) -> Result<(), Self::Error>;
+    fn rollback(&mut self);
 }
 
-/// A extended trait of the [`Cm`] trait that can be used to manage the range of keys.
-pub trait CmRange: Cm + Sized {
+/// A extended trait of the [`ConflictManager`] trait that can be used to manage the range of keys.
+pub trait CmRange: ConflictManager + Sized {
     /// Mark the range is read.
-    fn mark_range(&mut self, range: impl RangeBounds<<Self as Cm>::Key>);
+    fn mark_range(&mut self, range: impl RangeBounds<<Self as ConflictManager>::Key>);
 }
 
-/// A extended trait of the [`Cm`] trait that can be used to manage the iterator of keys.
-pub trait CmIter: Cm + Sized {
+/// A extended trait of the [`ConflictManager`] trait that can be used to manage the iterator of keys.
+pub trait CmIter: ConflictManager + Sized {
     /// Mark the iterator is operated, this is useful to detect the indirect conflict.
     fn mark_iter(&mut self);
 }
@@ -69,8 +65,8 @@ impl<T: CmRange> CmIter for T {
     }
 }
 
-/// An optimized version of the [`Cm`] trait that if your conflict manager is depend on hash.
-pub trait CmEquivalent: Cm {
+/// An optimized version of the [`ConflictManager`] trait that if your conflict manager is depend on hash.
+pub trait CmEquivalent: ConflictManager {
     /// Optimized version of [`mark_read`] that accepts borrowed keys. Optional to implement.
     fn mark_read_equivalent<Q>(&mut self, key: &Q)
     where
@@ -93,8 +89,8 @@ pub trait CmEquivalentRange: CmRange + Sized {
         Q: Hash + Eq + ?Sized;
 }
 
-/// An optimized version of the [`Cm`] trait that if your conflict manager is depend on the order.
-pub trait CmComparable: Cm {
+/// An optimized version of the [`ConflictManager`] trait that if your conflict manager is depend on the order.
+pub trait CmComparable: ConflictManager {
     /// Optimized version of [`mark_read`] that accepts borrowed keys. Optional to implement.
     fn mark_read_comparable<Q>(&mut self, key: &Q)
     where

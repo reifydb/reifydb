@@ -12,7 +12,7 @@
 use core::{borrow::Borrow, hash::Hash, ops::RangeBounds};
 
 use crate::mvcc::conflict::{
-    Cm, CmComparable, CmComparableRange, CmEquivalent, CmEquivalentRange, CmIter, CmRange,
+    ConflictManager, CmComparable, CmComparableRange, CmEquivalent, CmEquivalentRange, CmIter, CmRange,
 };
 
 /// A marker used to mark the keys that are read.
@@ -28,7 +28,7 @@ impl<'a, C> Marker<'a, C> {
     }
 }
 
-impl<C: Cm> Marker<'_, C> {
+impl<C: ConflictManager> Marker<'_, C> {
     /// Marks a key is operated.
     pub fn mark(&mut self, k: &C::Key) {
         self.marker.mark_read(k);
@@ -42,7 +42,7 @@ impl<C: Cm> Marker<'_, C> {
 
 impl<C: CmRange> Marker<'_, C> {
     /// Marks a key is operated.
-    pub fn mark_range(&mut self, range: impl RangeBounds<<C as Cm>::Key>) {
+    pub fn mark_range(&mut self, range: impl RangeBounds<<C as ConflictManager>::Key>) {
         self.marker.mark_range(range);
     }
 }
