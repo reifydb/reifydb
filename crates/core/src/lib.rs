@@ -23,6 +23,7 @@ pub mod ordered_float;
 mod row;
 mod row_meta;
 mod value;
+pub mod wait_group;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

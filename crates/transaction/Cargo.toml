@@ -16,8 +16,6 @@ log = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 
-wg = { version = "0.9" }
-
 [dev-dependencies]
 reifydb_testing = { workspace = true }
 
