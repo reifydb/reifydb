@@ -22,11 +22,7 @@ use std::sync::Arc;
 
 use core::mem;
 
-use crate::skipdb::txncore::error::TransactionError;
 pub use smallvec_wrapper::OneOrMore;
-
-/// Error types for the [`txn`] crate.
-pub use crate::skipdb::txncore::error;
 
 mod oracle;
 use oracle::*;
@@ -34,6 +30,7 @@ mod read;
 pub use read::*;
 mod write;
 use crate::skipdb::conflict::Cm;
+use crate::skipdb::error::TransactionError;
 use crate::skipdb::pending::Pwm;
 pub use crate::skipdb::txncore::types::*;
 pub use write::*;

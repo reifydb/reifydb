@@ -10,9 +10,9 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::skipdb::skipdbcore::rev_range::WriteTransactionRevRange;
-use crate::skipdb::txn::error::WtmError;
 
 use super::*;
+use crate::skipdb::error::{TransactionError, WtmError};
 use crate::skipdb::pending::{BTreePwm, PwmComparableRange};
 use std::convert::Infallible;
 

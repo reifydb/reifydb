@@ -9,10 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use self::error::WtmError;
-
 use super::*;
 use crate::skipdb::conflict::{CmComparable, CmEquivalent};
+use crate::skipdb::error::WtmError;
 use crate::skipdb::marker::Marker;
 use crate::skipdb::pending::{PwmComparable, PwmEquivalent};
 use core::{borrow::Borrow, hash::Hash};

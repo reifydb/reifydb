@@ -27,7 +27,7 @@ mod hash;
 /// 2. Contains fingerprints of keys written. This is used for conflict detection.
 pub trait Cm: Sized {
     /// The error type returned by the conflict manager.
-    type Error: crate::skipdb::txncore::error::Error;
+    type Error: crate::skipdb::error::Error;
 
     /// The key type.
     type Key;

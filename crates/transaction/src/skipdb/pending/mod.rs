@@ -31,7 +31,7 @@ mod hash;
 /// storage to store the pending writes.
 pub trait Pwm: Sized {
     /// The error type returned by the conflict manager.
-    type Error: crate::skipdb::txncore::error::Error;
+    type Error: crate::skipdb::error::Error;
 
     /// The key type.
     type Key;

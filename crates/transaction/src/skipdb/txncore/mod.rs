@@ -256,6 +256,3 @@ pub mod types {
         }
     }
 }
-
-/// Errors
-pub mod error;
