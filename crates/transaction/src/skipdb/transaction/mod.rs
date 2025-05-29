@@ -35,6 +35,7 @@ mod write;
 pub mod optimistic;
 /// `SerializableDb` implementation, which requires `K` implements [`Ord`] and [`CheapClone`](cheap_clone::CheapClone). If your `K` implements both [`Hash`](core::hash::Hash) and [`Ord`], you are recommended to use [`OptimisticDb`](crate::optimistic::OptimisticDb) instead.
 pub mod serializable;
+pub mod scan;
 
 use crate::skipdb::conflict::Cm;
 use crate::skipdb::error::TransactionError;

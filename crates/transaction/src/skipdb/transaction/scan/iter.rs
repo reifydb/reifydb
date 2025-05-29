@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 // This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -11,34 +14,31 @@
 
 use either::Either;
 
-use super::*;
 use crate::skipdb::conflict::Cm;
 use crate::skipdb::marker::Marker;
-use core::{cmp, iter::Rev};
-use crossbeam_skiplist::map::Range as MapRange;
+use crate::skipdb::skipdbcore::types::{CommittedRef, Ref, Values};
+use crate::skipdb::version::types::EntryValue;
+use core::cmp;
+use crossbeam_skiplist::map::Iter as MapIter;
+use std::ops::Bound;
 
-/// An iterator over a subset of entries of the database.
-pub struct RevRange<'a, Q, R, K, V>
-where
-    K: Ord + Borrow<Q>,
-    R: RangeBounds<Q>,
-    Q: Ord + ?Sized,
-{
-    pub(crate) range: Rev<MapRange<'a, Q, R, K, Values<V>>>,
+use std::collections::btree_map::Iter as BTreeMapIter;
+
+/// An iterator over the entries of the database.
+pub struct Iter<'a, K, V> {
+    pub(crate) iter: MapIter<'a, K, Values<V>>,
     pub(crate) version: u64,
 }
 
-impl<'a, Q, R, K, V> Iterator for RevRange<'a, Q, R, K, V>
+impl<'a, K, V> Iterator for Iter<'a, K, V>
 where
-    K: Ord + Borrow<Q>,
-    R: RangeBounds<Q>,
-    Q: Ord + ?Sized,
+    K: Ord,
 {
     type Item = Ref<'a, K, V>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let ent = self.range.next()?;
+            let ent = self.iter.next()?;
             if let Some(version) = ent
                 .value()
                 .upper_bound(Bound::Included(&self.version))
@@ -50,27 +50,20 @@ where
     }
 }
 
-/// An iterator over a subset of entries of the database.
-pub struct WriteTransactionRevRange<'a, Q, R, K, V, C>
-where
-    K: Ord + Borrow<Q>,
-    R: RangeBounds<Q> + 'a,
-    Q: Ord + ?Sized,
-{
-    pub(crate) committed: RevRange<'a, Q, R, K, V>,
-    pub(crate) pendings: Rev<BTreeMapRange<'a, K, EntryValue<V>>>,
+/// Iterator over the entries of the write transaction.
+pub struct TransactionIter<'a, K, V, C> {
+    committed: Iter<'a, K, V>,
+    pendings: BTreeMapIter<'a, K, EntryValue<V>>,
     next_pending: Option<(&'a K, &'a EntryValue<V>)>,
     next_committed: Option<Ref<'a, K, V>>,
     last_yielded_key: Option<Either<&'a K, Ref<'a, K, V>>>,
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, Q, R, K, V, C> WriteTransactionRevRange<'a, Q, R, K, V, C>
+impl<'a, K, V, C> TransactionIter<'a, K, V, C>
 where
-    K: Ord + Borrow<Q>,
-    Q: Ord + ?Sized,
-    R: RangeBounds<Q> + 'a,
     C: Cm<Key = K>,
+    K: Ord,
 {
     fn advance_pending(&mut self) {
         self.next_pending = self.pendings.next();
@@ -84,11 +77,11 @@ where
     }
 
     pub fn new(
-        pendings: Rev<BTreeMapRange<'a, K, EntryValue<V>>>,
-        committed: RevRange<'a, Q, R, K, V>,
+        pendings: BTreeMapIter<'a, K, EntryValue<V>>,
+        committed: Iter<'a, K, V>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
-        let mut iterator = Self {
+        let mut iterator = TransactionIter {
             pendings,
             committed,
             next_pending: None,
@@ -104,11 +97,9 @@ where
     }
 }
 
-impl<'a, Q, R, K, V, C> Iterator for WriteTransactionRevRange<'a, Q, R, K, V, C>
+impl<'a, K, V, C> Iterator for TransactionIter<'a, K, V, C>
 where
-    K: Ord + Borrow<Q>,
-    Q: Ord + ?Sized,
-    R: RangeBounds<Q> + 'a,
+    K: Ord,
     C: Cm<Key = K>,
 {
     type Item = Ref<'a, K, V>;
@@ -119,8 +110,8 @@ where
                 // Both pending and committed iterators have items to yield.
                 (Some((pending_key, _)), Some(committed)) => {
                     match pending_key.cmp(committed.key()) {
-                        // Pending item has a larger key, so yield this one.
-                        cmp::Ordering::Greater => {
+                        // Pending item has a smaller key, so yield this one.
+                        cmp::Ordering::Less => {
                             let (key, value) = self.next_pending.take().unwrap();
                             self.advance_pending();
                             self.last_yielded_key = Some(Either::Left(key));
@@ -137,8 +128,8 @@ where
                             // Loop again to check the next item without yielding anything this time.
                             continue;
                         }
-                        // Committed item has a larger key, so we consider yielding this one.
-                        cmp::Ordering::Less => {
+                        // Committed item has a smaller key, so we consider yielding this one.
+                        cmp::Ordering::Greater => {
                             let committed = self.next_committed.take().unwrap();
                             self.advance_committed(); // Prepare the next committed item for future iterations.
                             // Yield the committed item if it has not been yielded before.

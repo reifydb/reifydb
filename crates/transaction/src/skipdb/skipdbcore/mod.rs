@@ -21,22 +21,17 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::skipdb::version::types::{Entry, EntryData, EntryValue};
-use alloc::collections::btree_map::{Iter as BTreeMapIter, Range as BTreeMapRange};
+use crate::skipdb::version::types::{Entry, EntryData};
 use crossbeam_skiplist::SkipMap;
 use smallvec_wrapper::OneOrMore;
 
-pub mod iter;
-use iter::*;
+use crate::skipdb::transaction::scan::iter::*;
 
-pub mod rev_iter;
-use rev_iter::*;
+use crate::skipdb::transaction::scan::rev_iter::*;
 
-pub mod range;
-use range::*;
+use crate::skipdb::transaction::scan::range::*;
 
-pub mod rev_range;
-use rev_range::*;
+use crate::skipdb::transaction::scan::rev_range::*;
 
 pub mod types;
 use types::*;

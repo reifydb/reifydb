@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 // This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -11,20 +14,23 @@
 
 use either::Either;
 
-use super::*;
-
 use crate::skipdb::conflict::Cm;
 use crate::skipdb::marker::Marker;
-use core::cmp;
+use crate::skipdb::skipdbcore::types::{CommittedRef, Ref, Values};
+use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
+use std::collections::btree_map::Iter as BTreeMapIter;
+use std::ops::Bound;
+use crate::skipdb::version::types::EntryValue;
+
 /// An iterator over the entries of the database.
-pub struct Iter<'a, K, V> {
-    pub(crate) iter: MapIter<'a, K, Values<V>>,
+pub struct RevIter<'a, K, V> {
+    pub(crate) iter: Rev<MapIter<'a, K, Values<V>>>,
     pub(crate) version: u64,
 }
 
-impl<'a, K, V> Iterator for Iter<'a, K, V>
+impl<'a, K, V> Iterator for RevIter<'a, K, V>
 where
     K: Ord,
 {
@@ -45,16 +51,16 @@ where
 }
 
 /// Iterator over the entries of the write transaction.
-pub struct TransactionIter<'a, K, V, C> {
-    committed: Iter<'a, K, V>,
-    pendings: BTreeMapIter<'a, K, EntryValue<V>>,
+pub struct WriteTransactionRevIter<'a, K, V, C> {
+    pendings: Rev<BTreeMapIter<'a, K, EntryValue<V>>>,
+    committed: RevIter<'a, K, V>,
     next_pending: Option<(&'a K, &'a EntryValue<V>)>,
     next_committed: Option<Ref<'a, K, V>>,
     last_yielded_key: Option<Either<&'a K, Ref<'a, K, V>>>,
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, K, V, C> TransactionIter<'a, K, V, C>
+impl<'a, K, V, C> WriteTransactionRevIter<'a, K, V, C>
 where
     C: Cm<Key = K>,
     K: Ord,
@@ -71,11 +77,11 @@ where
     }
 
     pub fn new(
-        pendings: BTreeMapIter<'a, K, EntryValue<V>>,
-        committed: Iter<'a, K, V>,
+        pendings: Rev<BTreeMapIter<'a, K, EntryValue<V>>>,
+        committed: RevIter<'a, K, V>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
-        let mut iterator = TransactionIter {
+        let mut iterator = WriteTransactionRevIter {
             pendings,
             committed,
             next_pending: None,
@@ -91,9 +97,9 @@ where
     }
 }
 
-impl<'a, K, V, C> Iterator for TransactionIter<'a, K, V, C>
+impl<'a, K, V, C> Iterator for WriteTransactionRevIter<'a, K, V, C>
 where
-    K: Ord,
+    K: Ord + 'static,
     C: Cm<Key = K>,
 {
     type Item = Ref<'a, K, V>;
@@ -104,8 +110,8 @@ where
                 // Both pending and committed iterators have items to yield.
                 (Some((pending_key, _)), Some(committed)) => {
                     match pending_key.cmp(committed.key()) {
-                        // Pending item has a smaller key, so yield this one.
-                        cmp::Ordering::Less => {
+                        // Pending item has a larger key, so yield this one.
+                        cmp::Ordering::Greater => {
                             let (key, value) = self.next_pending.take().unwrap();
                             self.advance_pending();
                             self.last_yielded_key = Some(Either::Left(key));
@@ -122,8 +128,8 @@ where
                             // Loop again to check the next item without yielding anything this time.
                             continue;
                         }
-                        // Committed item has a smaller key, so we consider yielding this one.
-                        cmp::Ordering::Greater => {
+                        // Committed item has a larger key, so we consider yielding this one.
+                        cmp::Ordering::Less => {
                             let committed = self.next_committed.take().unwrap();
                             self.advance_committed(); // Prepare the next committed item for future iterations.
                             // Yield the committed item if it has not been yielded before.

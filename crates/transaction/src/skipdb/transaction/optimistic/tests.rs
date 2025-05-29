@@ -16,10 +16,10 @@ use std::{
 
 use super::*;
 use crate::skipdb::error::{TransactionError, WtmError};
-use crate::skipdb::skipdbcore::iter::TransactionIter;
-use crate::skipdb::skipdbcore::range::TransactionRange;
-use crate::skipdb::skipdbcore::rev_iter::WriteTransactionRevIter;
-use crate::skipdb::skipdbcore::rev_range::WriteTransactionRevRange;
+use crate::skipdb::transaction::scan::iter::TransactionIter;
+use crate::skipdb::transaction::scan::range::TransactionRange;
+use crate::skipdb::transaction::scan::rev_iter::WriteTransactionRevIter;
+use crate::skipdb::transaction::scan::rev_range::WriteTransactionRevRange;
 use crate::skipdb::watermark::Closer;
 use rand::Rng;
 

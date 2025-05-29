@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 // This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -11,12 +14,16 @@
 
 use either::Either;
 
-use super::*;
-
 use crate::skipdb::conflict::Cm;
 use crate::skipdb::marker::Marker;
 use core::cmp;
+use std::borrow::Borrow;
 use crossbeam_skiplist::map::Range as MapRange;
+
+use std::collections::btree_map::Range as BTreeMapRange;
+use std::ops::{Bound, RangeBounds};
+use crate::skipdb::skipdbcore::types::{CommittedRef, Ref, Values};
+use crate::skipdb::version::types::EntryValue;
 
 /// An iterator over a subset of entries of the database.
 pub struct Range<'a, Q, R, K, V>

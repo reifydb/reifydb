@@ -51,10 +51,10 @@ impl<K, V, C, P> Drop for Rtm<K, V, C, P> {
 use super::*;
 use crate::skipdb::pending::BTreePwm;
 use crate::skipdb::skipdbcore::Database;
-use crate::skipdb::skipdbcore::iter::Iter;
-use crate::skipdb::skipdbcore::range::Range;
-use crate::skipdb::skipdbcore::rev_iter::RevIter;
-use crate::skipdb::skipdbcore::rev_range::RevRange;
+use crate::skipdb::transaction::scan::iter::Iter;
+use crate::skipdb::transaction::scan::range::Range;
+use crate::skipdb::transaction::scan::rev_iter::RevIter;
+use crate::skipdb::transaction::scan::rev_range::RevRange;
 use crate::skipdb::skipdbcore::types::Ref;
 
 /// A read only transaction over the [`OptimisticDb`],
