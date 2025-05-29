@@ -13,9 +13,6 @@ use crate::skipdb::skipdbcore::types::Values;
 
 use super::*;
 
-mod optimistic;
-pub use optimistic::*;
-
 #[allow(clippy::module_inception)]
 mod serializable;
 use crate::skipdb::conflict::BTreeCm;
@@ -108,9 +105,9 @@ where
     /// If you need a totally Serializable Snapshot Isolation transaction, you should use
     /// [`SerializableDb::serializable_write`](SerializableDb::serializable_write) instead.
 
-    pub fn optimistic_write(&self) -> OptimisticTransaction<K, V> {
-        OptimisticTransaction::new(self.clone())
-    }
+    // pub fn optimistic_write(&self) -> OptimisticTransaction<K, V> {
+    //     OptimisticTransaction::new(self.clone())
+    // }
 
     /// Create a serializable write transaction.
     ///
