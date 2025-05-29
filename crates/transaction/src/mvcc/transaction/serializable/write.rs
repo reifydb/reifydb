@@ -19,8 +19,8 @@ use crate::mvcc::transaction::Wtm;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
+use std::ops::Bound;
 use std::ops::RangeBounds;
-use std::{convert::Infallible, ops::Bound};
 
 #[cfg(test)]
 mod tests;
@@ -62,7 +62,7 @@ where
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
 
-    pub fn commit(&mut self) -> Result<(), MvccError<Infallible>> {
+    pub fn commit(&mut self) -> Result<(), MvccError> {
         self.wtm.commit(|ents| {
             self.db.inner.map.apply(ents);
             Ok(())
@@ -94,7 +94,7 @@ where
     pub fn commit_with_callback<E, R>(
         &mut self,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, MvccError<E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError>
     where
         E: std::error::Error,
         R: Send + 'static,
@@ -173,15 +173,15 @@ where
 
     pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, BTreeCm<K>>, TransactionError> {
         let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
+        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
 
         let start: Bound<K> = Bound::Unbounded;
         let end: Bound<K> = Bound::Unbounded;
         marker.mark_range((start, end));
         let committed = self.db.inner.map.iter(version);
-        let pendings = pm.iter();
+        let pending = pm.iter();
 
-        Ok(TransactionIter::new(pendings, committed, None))
+        Ok(TransactionIter::new(pending, committed, None))
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
@@ -190,14 +190,14 @@ where
         &mut self,
     ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeCm<K>>, TransactionError> {
         let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
+        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let start: Bound<K> = Bound::Unbounded;
         let end: Bound<K> = Bound::Unbounded;
         marker.mark_range((start, end));
         let committed = self.db.inner.map.iter_rev(version);
-        let pendings = pm.iter().rev();
+        let pending = pm.iter().rev();
 
-        Ok(WriteTransactionRevIter::new(pendings, committed, None))
+        Ok(WriteTransactionRevIter::new(pending, committed, None))
     }
 
     /// Returns an iterator over the subset of entries of the database.
@@ -210,14 +210,14 @@ where
         R: RangeBounds<K> + 'a,
     {
         let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
+        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let start = range.start_bound();
         let end = range.end_bound();
         marker.mark_range((start, end));
-        let pendings = pm.range_comparable((start, end));
+        let pending = pm.range_comparable((start, end));
         let committed = self.db.inner.map.range(range, version);
 
-        Ok(TransactionRange::new(pendings, committed, Some(marker)))
+        Ok(TransactionRange::new(pending, committed, Some(marker)))
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
@@ -230,13 +230,13 @@ where
         R: RangeBounds<K> + 'a,
     {
         let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
+        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let start = range.start_bound();
         let end = range.end_bound();
         marker.mark_range((start, end));
-        let pendings = pm.range_comparable((start, end)).rev();
+        let pending = pm.range_comparable((start, end)).rev();
         let committed = self.db.inner.map.range_rev(range, version);
 
-        Ok(WriteTransactionRevRange::new(pendings, committed, Some(marker)))
+        Ok(WriteTransactionRevRange::new(pending, committed, Some(marker)))
     }
 }

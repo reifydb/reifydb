@@ -3,14 +3,13 @@
 
 use crate::mvcc;
 use crate::transaction::svl;
-use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors related to transactions, the mem-table, or persistence.
 #[derive(Debug)]
 pub enum Error {
     /// MVCC-related error
-    Mvcc(mvcc::MvccError<Infallible>),
+    Mvcc(mvcc::MvccError),
     /// Persistence-layer error
     Persistence(reifydb_persistence::Error),
     /// SVL concurrency error
@@ -29,8 +28,8 @@ impl Display for Error {
 
 impl std::error::Error for Error {}
 
-impl From<mvcc::MvccError<Infallible>> for Error {
-    fn from(err: mvcc::MvccError<Infallible>) -> Self {
+impl From<mvcc::MvccError> for Error {
+    fn from(err: mvcc::MvccError) -> Self {
         match err {
             mvcc::MvccError::Persistence(err) => Self::Persistence(err),
             _ => Self::Mvcc(err),

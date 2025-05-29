@@ -66,7 +66,7 @@ where
     Q: Ord + ?Sized,
 {
     pub(crate) committed: Range<'a, Q, R, K, V>,
-    pub(crate) pendings: BTreeMapRange<'a, K, EntryValue<V>>,
+    pub(crate) pending: BTreeMapRange<'a, K, EntryValue<V>>,
     next_pending: Option<(&'a K, &'a EntryValue<V>)>,
     next_committed: Option<Ref<'a, K, V>>,
     last_yielded_key: Option<Either<&'a K, Ref<'a, K, V>>>,
@@ -81,7 +81,7 @@ where
     C: Conflict<Key = K>,
 {
     fn advance_pending(&mut self) {
-        self.next_pending = self.pendings.next();
+        self.next_pending = self.pending.next();
     }
 
     fn advance_committed(&mut self) {
@@ -92,12 +92,12 @@ where
     }
 
     pub fn new(
-        pendings: BTreeMapRange<'a, K, EntryValue<V>>,
+        pending: BTreeMapRange<'a, K, EntryValue<V>>,
         committed: Range<'a, Q, R, K, V>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = TransactionRange {
-            pendings,
+            pending,
             committed,
             next_pending: None,
             next_committed: None,

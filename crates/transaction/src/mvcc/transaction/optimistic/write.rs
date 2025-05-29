@@ -20,7 +20,6 @@ use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
 use crate::mvcc::transaction::scan::rev_range::WriteTransactionRevRange;
 use std::borrow::Borrow;
-use std::convert::Infallible;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
@@ -65,7 +64,7 @@ where
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
 
-    pub fn commit(&mut self) -> Result<(), MvccError<Infallible>> {
+    pub fn commit(&mut self) -> Result<(), MvccError> {
         self.wtm.commit(|operations| {
             self.engine.inner.mem_table.apply(operations);
             Ok(())
@@ -97,7 +96,7 @@ where
     pub fn commit_with_callback<E, R>(
         &mut self,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, MvccError<E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError>
     where
         E: std::error::Error,
         R: Send + 'static,
@@ -178,11 +177,11 @@ where
     /// Iterate over the entries of the write transaction.
     pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, HashCm<K>>, TransactionError> {
         let version = self.wtm.version();
-        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
+        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let committed = self.engine.inner.mem_table.iter(version);
-        let pendings = pm.iter();
+        let pending = pm.iter();
 
-        Ok(TransactionIter::new(pendings, committed, Some(marker)))
+        Ok(TransactionIter::new(pending, committed, Some(marker)))
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
@@ -190,11 +189,11 @@ where
         &mut self,
     ) -> Result<WriteTransactionRevIter<'_, K, V, HashCm<K>>, TransactionError> {
         let version = self.wtm.version();
-        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
+        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let committed = self.engine.inner.mem_table.iter_rev(version);
-        let pendings = pm.iter().rev();
+        let pending = pm.iter().rev();
 
-        Ok(WriteTransactionRevIter::new(pendings, committed, Some(marker)))
+        Ok(WriteTransactionRevIter::new(pending, committed, Some(marker)))
     }
 
     /// Returns an iterator over the subset of entries of the database.
@@ -208,13 +207,13 @@ where
         Q: Ord + ?Sized,
     {
         let version = self.wtm.version();
-        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
+        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let start = range.start_bound();
         let end = range.end_bound();
-        let pendings = pm.range_comparable((start, end));
+        let pending = pm.range_comparable((start, end));
         let committed = self.engine.inner.mem_table.range(range, version);
 
-        Ok(TransactionRange::new(pendings, committed, Some(marker)))
+        Ok(TransactionRange::new(pending, committed, Some(marker)))
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
@@ -228,12 +227,12 @@ where
         Q: Ord + ?Sized,
     {
         let version = self.wtm.version();
-        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discard)?;
+        let (marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
         let start = range.start_bound();
         let end = range.end_bound();
-        let pendings = pm.range_comparable((start, end));
+        let pending = pm.range_comparable((start, end));
         let committed = self.engine.inner.mem_table.range_rev(range, version);
 
-        Ok(WriteTransactionRevRange::new(pendings.rev(), committed, Some(marker)))
+        Ok(WriteTransactionRevRange::new(pending.rev(), committed, Some(marker)))
     }
 }

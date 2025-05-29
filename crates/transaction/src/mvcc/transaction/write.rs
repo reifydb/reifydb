@@ -135,7 +135,7 @@ where
     /// Rolls back the transaction.
     pub fn rollback(&mut self) -> Result<(), TransactionError> {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         self.pending_writes.as_mut().unwrap().rollback();
@@ -146,7 +146,7 @@ where
     /// Returns `true` if the pending writes contains the key.
     pub fn contains_key(&mut self, key: &K) -> Result<Option<bool>, TransactionError> {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         match self.pending_writes.as_ref().unwrap().get(key) {
@@ -178,7 +178,7 @@ where
         key: &'b K,
     ) -> Result<Option<EntryRef<'a, K, V>>, TransactionError> {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         if let Some(e) = self.pending_writes.as_ref().unwrap().get(key) {
@@ -227,13 +227,12 @@ where
     ///    there is a conflict, an error will be returned and the callback will not
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
-    pub fn commit<F, E>(&mut self, apply: F) -> Result<(), MvccError<E>>
+    pub fn commit<F>(&mut self, apply: F) -> Result<(), MvccError>
     where
-        F: FnOnce(OneOrMore<Entry<K, V>>) -> Result<(), E>,
-        E: std::error::Error,
+        F: FnOnce(OneOrMore<Entry<K, V>>) -> Result<(), Box<dyn std::error::Error>>,
     {
         if self.discarded {
-            return Err(TransactionError::Discard.into());
+            return Err(TransactionError::Discarded.into());
         }
 
         if self.pending_writes.as_ref().unwrap().is_empty() {
@@ -310,7 +309,7 @@ where
         Q: ?Sized + Eq + Hash,
     {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         match self.pending_writes.as_ref().unwrap().get_equivalent(key) {
@@ -346,7 +345,7 @@ where
         Q: ?Sized + Eq + Hash,
     {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         if let Some((k, e)) = self.pending_writes.as_ref().unwrap().get_entry_equivalent(key) {
@@ -394,7 +393,7 @@ where
         Q: ?Sized + Eq + Ord + Hash,
     {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         match self.pending_writes.as_ref().unwrap().get_equivalent(key) {
@@ -430,7 +429,7 @@ where
         Q: ?Sized + Eq + Ord + Hash,
     {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         if let Some((k, e)) = self.pending_writes.as_ref().unwrap().get_entry_equivalent(key) {
@@ -506,7 +505,7 @@ where
         Q: ?Sized + Ord,
     {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         match self.pending_writes.as_ref().unwrap().get_comparable(key) {
@@ -542,7 +541,7 @@ where
         Q: ?Sized + Ord,
     {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         if let Some((k, e)) = self.pending_writes.as_ref().unwrap().get_entry_comparable(key) {
@@ -590,7 +589,7 @@ where
         Q: ?Sized + Eq + Ord + Hash,
     {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         match self.pending_writes.as_ref().unwrap().get_comparable(key) {
@@ -626,7 +625,7 @@ where
         Q: ?Sized + Eq + Ord + Hash,
     {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         if let Some((k, e)) = self.pending_writes.as_ref().unwrap().get_entry_comparable(key) {
@@ -682,7 +681,7 @@ where
         &mut self,
         apply: F,
         callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, MvccError<E>>
+    ) -> Result<std::thread::JoinHandle<R>, MvccError>
     where
         K: Send + 'static,
         V: Send + 'static,
@@ -692,7 +691,7 @@ where
         C: 'static,
     {
         if self.discarded {
-            return Err(MvccError::transaction(TransactionError::Discard));
+            return Err(MvccError::transaction(TransactionError::Discarded));
         }
 
         if self.pending_writes.as_ref().unwrap().is_empty() {
@@ -738,7 +737,7 @@ where
 
     fn modify(&mut self, ent: Entry<K, V>) -> Result<(), TransactionError> {
         if self.discarded {
-            return Err(TransactionError::Discard);
+            return Err(TransactionError::Discarded);
         }
 
         let pending_writes = self.pending_writes.as_mut().unwrap();
@@ -841,7 +840,7 @@ impl<K, V, C, P> Wtm<K, V, C, P> {
     /// methods calls this internally, however, calling this multiple times doesn't cause any issues. So,
     /// this can safely be called via a defer right when transaction is created.
     ///
-    /// NOTE: If any operations are run on a discarded transaction, [`TransactionError::Discard`] is returned.
+    /// NOTE: If any operations are run on a discarded transaction, [`TransactionError::Discarded`] is returned.
     pub fn discard(&mut self) {
         if self.discarded {
             return;

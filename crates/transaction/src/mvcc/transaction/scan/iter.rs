@@ -53,7 +53,7 @@ where
 /// Iterator over the entries of the write transaction.
 pub struct TransactionIter<'a, K, V, C> {
     committed: Iter<'a, K, V>,
-    pendings: BTreeMapIter<'a, K, EntryValue<V>>,
+    pending: BTreeMapIter<'a, K, EntryValue<V>>,
     next_pending: Option<(&'a K, &'a EntryValue<V>)>,
     next_committed: Option<Ref<'a, K, V>>,
     last_yielded_key: Option<Either<&'a K, Ref<'a, K, V>>>,
@@ -66,7 +66,7 @@ where
     K: Ord,
 {
     fn advance_pending(&mut self) {
-        self.next_pending = self.pendings.next();
+        self.next_pending = self.pending.next();
     }
 
     fn advance_committed(&mut self) {
@@ -77,12 +77,12 @@ where
     }
 
     pub fn new(
-        pendings: BTreeMapIter<'a, K, EntryValue<V>>,
+        pending: BTreeMapIter<'a, K, EntryValue<V>>,
         committed: Iter<'a, K, V>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = TransactionIter {
-            pendings,
+            pending,
             committed,
             next_pending: None,
             next_committed: None,
