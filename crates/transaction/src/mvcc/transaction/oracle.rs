@@ -28,7 +28,7 @@ pub(super) struct OracleInner<C> {
 
 pub(super) enum CreateCommitTimestampResult<C> {
     Timestamp(u64),
-    Conflict(Option<C>),
+    Conflict(C),
 }
 
 #[derive(Debug)]
@@ -57,11 +57,9 @@ where
         &self,
         done_read: &mut bool,
         read_ts: u64,
-        mut conflict_manager: Option<C>,
+        mut conflicts: C,
     ) -> CreateCommitTimestampResult<C> {
         let mut inner = self.inner.lock().unwrap();
-
-        let conflict_manager = conflict_manager.take().unwrap();
 
         for committed_txn in inner.committed_txns.iter() {
             // If the committed_txn.ts is less than txn.read_ts that implies that the
@@ -74,9 +72,9 @@ where
                 continue;
             }
 
-            if let Some(old_conflict_manager) = &committed_txn.conflict_manager {
-                if conflict_manager.has_conflict(old_conflict_manager) {
-                    return CreateCommitTimestampResult::Conflict(Some(conflict_manager));
+            if let Some(old_conflicts) = &committed_txn.conflict_manager {
+                if conflicts.has_conflict(old_conflicts) {
+                    return CreateCommitTimestampResult::Conflict(conflicts);
                 }
             }
         }
@@ -100,7 +98,7 @@ where
 
         // We should ensure that txns are not added to o.committedTxns slice when
         // conflict detection is disabled otherwise this slice would keep growing.
-        inner.committed_txns.push(CommittedTxn { ts, conflict_manager: Some(conflict_manager) });
+        inner.committed_txns.push(CommittedTxn { ts, conflict_manager: Some(conflicts) });
 
         CreateCommitTimestampResult::Timestamp(ts)
     }

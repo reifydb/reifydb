@@ -19,7 +19,7 @@ pub struct TransactionManagerTx<K, V, C, P> {
     pub(super) size: u64,
     pub(super) count: u64,
     pub(super) oracle: Arc<Oracle<C>>,
-    pub(super) conflicts: Option<C>,
+    pub(super) conflicts: C,
     // stores any writes done by tx
     pub(super) pending_writes: Option<P>,
     pub(super) duplicate_writes: Vec<Entry<K, V>>,
@@ -58,10 +58,8 @@ impl<K, V, C, P> TransactionManagerTx<K, V, C, P> {
     }
 
     /// Returns the conflict manager.
-    ///
-    /// `None` means the transaction has already been discarded.
-    pub fn conflicts(&self) -> Option<&C> {
-        self.conflicts.as_ref()
+    pub fn conflicts(&self) -> &C {
+        &self.conflicts
     }
 }
 
@@ -72,35 +70,24 @@ where
     /// This method is used to create a marker for the keys that are operated.
     /// It must be used to mark keys when end user is implementing iterators to
     /// make sure the transaction manager works correctly.
-    ///
-    /// `None` means the transaction has already been discarded.
-    pub fn marker(&mut self) -> Option<Marker<'_, C>> {
-        self.conflicts.as_mut().map(Marker::new)
+    pub fn marker(&mut self) -> Marker<'_, C> {
+        Marker::new(&mut self.conflicts)
     }
 
     /// Returns a marker for the keys that are operated and the pending writes manager.
-    ///
-    /// `None` means the transaction has already been discarded.
-    ///
     /// As Rust's borrow checker does not allow to borrow mutable marker and the immutable pending writes manager at the same
-    pub fn marker_with_pm(&mut self) -> Option<(Marker<'_, C>, &P)> {
-        self.conflicts
-            .as_mut()
-            .map(|marker| (Marker::new(marker), self.pending_writes.as_ref().unwrap()))
+    pub fn marker_with_pending_writes(&mut self) -> (Marker<'_, C>, &P) {
+        (Marker::new(&mut self.conflicts), self.pending_writes.as_ref().unwrap())
     }
 
     /// Marks a key is read.
     pub fn mark_read(&mut self, k: &K) {
-        if let Some(ref mut conflict_manager) = self.conflicts {
-            conflict_manager.mark_read(k);
-        }
+        self.conflicts.mark_read(k);
     }
 
     /// Marks a key is conflict.
     pub fn mark_conflict(&mut self, k: &K) {
-        if let Some(ref mut conflict_manager) = self.conflicts {
-            conflict_manager.mark_conflict(k);
-        }
+        self.conflicts.mark_conflict(k);
     }
 }
 
@@ -130,7 +117,7 @@ where
         }
 
         self.pending_writes.as_mut().unwrap().rollback();
-        self.conflicts.as_mut().unwrap().rollback();
+        self.conflicts.rollback();
         Ok(())
     }
 
@@ -153,10 +140,7 @@ where
             None => {
                 // track reads. No need to track read if txn serviced it
                 // internally.
-                if let Some(ref mut conflict_manager) = self.conflicts {
-                    conflict_manager.mark_read(key);
-                }
-
+                self.conflicts.mark_read(key);
                 Ok(None)
             }
         }
@@ -189,10 +173,7 @@ where
         } else {
             // track reads. No need to track read if txn serviced it
             // internally.
-            if let Some(ref mut conflict_manager) = self.conflicts {
-                conflict_manager.mark_read(key);
-            }
-
+            self.conflicts.mark_read(key);
             Ok(None)
         }
     }
@@ -351,11 +332,7 @@ where
         self.count = cnt;
         self.size = size;
 
-        // The conflict_manager is used for conflict detection. If conflict detection
-        // is disabled, we don't need to store key hashes in the conflict_manager.
-        if let Some(ref mut conflict_manager) = self.conflicts {
-            conflict_manager.mark_conflict(ent.key());
-        }
+        self.conflicts.mark_conflict(ent.key());
 
         // If a duplicate entry was inserted in managed mode, move it to the duplicate writes slice.
         // Add the entry to duplicateWrites only if both the entries have different versions. For
@@ -386,14 +363,13 @@ where
         // it after pushing the entries to it.
         let _write_lock = self.oracle.write_serialize_lock.lock();
 
-        let conflict_manager =
-            if self.conflicts.is_none() { None } else { mem::take(&mut self.conflicts) };
+        let conflict_manager = mem::take(&mut self.conflicts);
 
         match self.oracle.new_commit_ts(&mut self.done_read, self.version, conflict_manager) {
-            CreateCommitTimestampResult::Conflict(conflict_manager) => {
+            CreateCommitTimestampResult::Conflict(conflicts) => {
                 // If there is a conflict, we should not send the updates to the write channel.
                 // Instead, we should return the conflict error to the user.
-                self.conflicts = conflict_manager;
+                self.conflicts = conflicts;
                 Err(TransactionError::Conflict)
             }
             CreateCommitTimestampResult::Timestamp(commit_ts) => {
@@ -466,12 +442,11 @@ mod tests {
             TestConflict<Arc<u64>>,
             BTreePendingWrites<Arc<u64>, u64>,
         >::new("test", 0);
-        let mut wtm = tm.write((), ()).unwrap();
+        let mut wtm = tm.write(()).unwrap();
         assert!(!wtm.is_discard());
         assert!(wtm.pending_writes().is_some());
-        assert!(wtm.conflicts().is_some());
 
-        let mut marker = wtm.marker().unwrap();
+        let mut marker = wtm.marker();
 
         let one = Arc::new(1);
         let two = Arc::new(2);
@@ -492,12 +467,16 @@ mod tests {
         _m: PhantomData<K>,
     }
 
+    impl<K> Default for TestConflict<K> {
+        fn default() -> Self {
+            TestConflict::new()
+        }
+    }
+
     impl<K> Conflict for TestConflict<K> {
         type Key = K;
 
-        type Options = ();
-
-        fn new(_options: Self::Options) -> Self {
+        fn new() -> Self {
             Self { conflict_keys: BTreeSet::new(), reads: BTreeSet::new(), _m: PhantomData }
         }
 

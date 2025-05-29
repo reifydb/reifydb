@@ -23,14 +23,11 @@ mod btree;
 ///
 /// 1. Contains fingerprints of keys read.
 /// 2. Contains fingerprints of keys written. This is used for conflict detection.
-pub trait Conflict: Sized {
+pub trait Conflict: Default + Sized {
     /// The key type.
     type Key;
-    /// The options type used to create the conflict manager.
-    type Options;
-
-    /// Create a new conflict manager with the given options.
-    fn new(options: Self::Options) -> Self;
+    /// Create a new conflict manager.
+    fn new() -> Self;
 
     /// Mark the key is read.
     fn mark_read(&mut self, key: &Self::Key);

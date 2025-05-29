@@ -34,14 +34,22 @@ impl<K: Clone> Clone for BTreeConflict<K> {
     }
 }
 
+impl<K> Default for BTreeConflict<K>
+where
+    K: Clone + Ord,
+{
+    fn default() -> Self {
+        BTreeConflict::new()
+    }
+}
+
 impl<K> Conflict for BTreeConflict<K>
 where
     K: Clone + Ord,
 {
     type Key = K;
-    type Options = ();
 
-    fn new(_options: Self::Options) -> Self {
+    fn new() -> Self {
         Self { reads: Vec::new(), conflict_keys: BTreeSet::new() }
     }
 
@@ -193,7 +201,7 @@ mod test {
 
     #[test]
     fn test_btree_cm() {
-        let mut cm = BTreeConflict::<u64>::new(());
+        let mut cm = BTreeConflict::<u64>::new();
         cm.mark_read(&1);
         cm.mark_read(&2);
         cm.mark_conflict(&2);

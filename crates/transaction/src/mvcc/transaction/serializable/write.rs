@@ -36,7 +36,7 @@ where
     K: Clone + Ord,
 {
     pub fn new(db: SerializableDb<K, V>) -> Self {
-        let wtm = db.inner.tm.write((), ()).unwrap();
+        let wtm = db.inner.tm.write(()).unwrap();
         Self { db, wtm }
     }
 }
@@ -171,9 +171,11 @@ where
 
     /// Iterate over the entries of the write transaction.
 
-    pub fn iter(&mut self) -> Result<TransactionIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
+    pub fn iter(
+        &mut self,
+    ) -> Result<TransactionIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
         let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let (mut marker, pm) = self.wtm.marker_with_pending_writes();
 
         let start: Bound<K> = Bound::Unbounded;
         let end: Bound<K> = Bound::Unbounded;
@@ -190,7 +192,7 @@ where
         &mut self,
     ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
         let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let (mut marker, pm) = self.wtm.marker_with_pending_writes();
         let start: Bound<K> = Bound::Unbounded;
         let end: Bound<K> = Bound::Unbounded;
         marker.mark_range((start, end));
@@ -210,7 +212,7 @@ where
         R: RangeBounds<K> + 'a,
     {
         let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let (mut marker, pm) = self.wtm.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
         marker.mark_range((start, end));
@@ -230,7 +232,7 @@ where
         R: RangeBounds<K> + 'a,
     {
         let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let (mut marker, pm) = self.wtm.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
         marker.mark_range((start, end));

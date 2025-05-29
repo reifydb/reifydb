@@ -33,7 +33,7 @@ where
     K: Clone + Ord + Hash + Eq,
 {
     pub fn new(db: Optimistic<K, V>) -> Self {
-        let tx = db.inner.tm.write((), ()).unwrap();
+        let tx = db.inner.tm.write(()).unwrap();
         Self { engine: db, tx }
     }
 }
@@ -169,7 +169,7 @@ where
         &mut self,
     ) -> Result<TransactionIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
         let version = self.tx.version();
-        let (marker, pm) = self.tx.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let (marker, pm) = self.tx.marker_with_pending_writes();
         let committed = self.engine.inner.mem_table.iter(version);
         let pending = pm.iter();
 
@@ -181,7 +181,7 @@ where
         &mut self,
     ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
         let version = self.tx.version();
-        let (marker, pm) = self.tx.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let (marker, pm) = self.tx.marker_with_pending_writes();
         let committed = self.engine.inner.mem_table.iter_rev(version);
         let pending = pm.iter().rev();
 
@@ -199,7 +199,7 @@ where
         Q: Ord + ?Sized,
     {
         let version = self.tx.version();
-        let (marker, pm) = self.tx.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let (marker, pm) = self.tx.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
@@ -219,7 +219,7 @@ where
         Q: Ord + ?Sized,
     {
         let version = self.tx.version();
-        let (marker, pm) = self.tx.marker_with_pm().ok_or(TransactionError::Discarded)?;
+        let (marker, pm) = self.tx.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));

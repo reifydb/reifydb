@@ -51,7 +51,6 @@ where
     pub fn write(
         &self,
         pending_manager_opts: P::Options,
-        conflict_manager_opts: C::Options,
     ) -> Result<TransactionManagerTx<K, V, C, P>, TransactionError> {
         let read_ts = self.inner.read_ts();
         Ok(TransactionManagerTx {
@@ -59,7 +58,7 @@ where
             version: read_ts,
             size: 0,
             count: 0,
-            conflicts: Some(C::new(conflict_manager_opts)),
+            conflicts: C::new(),
             pending_writes: Some(P::new(pending_manager_opts)),
             duplicate_writes: Vec::new(),
             discarded: false,
