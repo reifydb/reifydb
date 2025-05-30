@@ -14,18 +14,18 @@ use core::cmp::{self, Reverse};
 use reifydb_persistence::{Action, Key, Value};
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub struct TransactionAction {
+pub struct Pending {
     pub action: Action,
     pub version: Version,
 }
 
-impl PartialOrd for TransactionAction {
+impl PartialOrd for Pending {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for TransactionAction {
+impl Ord for Pending {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.action
             .key()
@@ -34,13 +34,13 @@ impl Ord for TransactionAction {
     }
 }
 
-impl Clone for TransactionAction {
+impl Clone for Pending {
     fn clone(&self) -> Self {
         Self { version: self.version, action: self.action.clone() }
     }
 }
 
-impl TransactionAction {
+impl Pending {
     pub fn action(&self) -> &Action {
         &self.action
     }
@@ -62,7 +62,7 @@ impl TransactionAction {
     }
 
     pub fn split(self) -> (Key, TransactionValue) {
-        let TransactionAction { action: data, version } = self;
+        let Pending { action: data, version } = self;
 
         let (key, value) = match data {
             Action::Set { key, value } => (key, Some(value)),
@@ -73,7 +73,7 @@ impl TransactionAction {
 
     pub fn unsplit(key: Key, value: TransactionValue) -> Self {
         let TransactionValue { value, version } = value;
-        TransactionAction {
+        Pending {
             action: match value {
                 Some(value) => Action::Set { key, value },
                 None => Action::Remove { key },

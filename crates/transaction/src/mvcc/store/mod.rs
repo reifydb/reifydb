@@ -20,7 +20,7 @@ use core::{
     ops::{Bound, RangeBounds},
 };
 
-use crate::mvcc::types::TransactionAction;
+use crate::mvcc::types::Pending;
 use crossbeam_skiplist::SkipMap;
 
 use crate::mvcc::transaction::scan::iter::*;
@@ -53,7 +53,7 @@ impl Store {
 }
 
 impl Store {
-    pub fn apply(&self, actions: Vec<TransactionAction>) {
+    pub fn apply(&self, actions: Vec<Pending>) {
         for item in actions {
             let version = item.version();
             match item.action {
@@ -78,14 +78,18 @@ impl Store {
 }
 
 impl Store {
-    pub fn get(&self, key: &Key, version: Version) -> Option<CommittedRef<'_>> {
+    pub fn get(&self, key: &Key, version: Version) -> Option<Committed> {
         let item = self.mem_table.get(key)?;
-        let version = item
-            .value()
-            .upper_bound(Bound::Included(&version))
-            .and_then(|v| if v.value().is_some() { Some(*v.key()) } else { None })?;
+        let (version, value) =
+            item.value().upper_bound(Bound::Included(&version)).and_then(|v| {
+                if v.value().is_some() {
+                    Some((*v.key(), v.value().clone().unwrap()))
+                } else {
+                    None
+                }
+            })?;
 
-        Some(CommittedRef { item, version })
+        Some(Committed { key: key.clone(), value, version })
     }
 
     pub fn contains_key(&self, key: &Key, version: Version) -> bool {

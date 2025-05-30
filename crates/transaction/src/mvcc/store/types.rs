@@ -10,56 +10,40 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::Version;
-use crate::mvcc::store::value::{Entry, ValueRef, VersionedValue};
-use crate::mvcc::types::TransactionAction;
-use crossbeam_skiplist::map::Entry as MapEntry;
+use crate::mvcc::store::value::ValueRef;
+use crate::mvcc::types::Pending;
 use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};
 
-/// A reference to an entry in the write transaction.
-#[derive(Debug)]
-pub struct CommittedRef<'a> {
-    pub(crate) item: MapEntry<'a, Key, VersionedValue<Value>>,
+/// Represents a committed key value pair of a specific version
+#[derive(Clone, Debug)]
+pub struct Committed {
+    pub(crate) key: Key,
+    pub(crate) value: Value,
     pub(crate) version: Version,
 }
 
-impl Clone for CommittedRef<'_> {
-    fn clone(&self) -> Self {
-        Self { item: self.item.clone(), version: self.version }
-    }
-}
-
-impl CommittedRef<'_> {
-    /// Get the value of the entry.
-    fn entry(&self) -> Entry<'_> {
-        let item = self.item.value().get(&self.version).unwrap();
-
-        Entry { item, key: self.item.key(), version: self.version }
+impl Committed {
+    pub fn value(&self) -> &Value {
+        &self.value
     }
 
-    /// Get the key of the ref.
-    pub fn value(&self) -> ValueRef<'_> {
-        ValueRef(Either::Right(self.entry()))
-    }
-
-    /// Get the key of the ref.
     pub fn key(&self) -> &Key {
-        self.item.key()
+        &self.key
     }
 
-    /// Get the version of the entry.
-    pub const fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         self.version
     }
 }
 
-enum RefKind<'a> {
-    PendingIter { version: Version, key: &'a Key, value: &'a Value },
-    Pending(TransactionAction),
-    Committed(CommittedRef<'a>),
+enum RefKind {
+    PendingIter { version: Version, key: Key, value: Value },
+    Pending(Pending),
+    Committed(Committed),
 }
 
-impl core::fmt::Debug for Ref<'_> {
+impl core::fmt::Debug for Ref {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ref")
             .field("key", self.0.key())
@@ -69,19 +53,19 @@ impl core::fmt::Debug for Ref<'_> {
     }
 }
 
-impl Clone for RefKind<'_> {
+impl Clone for RefKind {
     fn clone(&self) -> Self {
         match self {
             Self::Committed(item) => Self::Committed(item.clone()),
             Self::Pending(action) => Self::Pending(action.clone()),
             Self::PendingIter { version, key, value } => {
-                Self::PendingIter { version: *version, key: *key, value: *value }
+                Self::PendingIter { version: *version, key: key.clone(), value: value.clone() }
             }
         }
     }
 }
 
-impl RefKind<'_> {
+impl RefKind {
     fn key(&self) -> &Key {
         match self {
             Self::PendingIter { key, .. } => key,
@@ -104,7 +88,7 @@ impl RefKind<'_> {
             Self::Pending(item) => ValueRef(Either::Left(
                 item.value().expect("value of pending entry cannot be `None`"),
             )),
-            Self::Committed(item) => ValueRef(Either::Right(item.entry())),
+            Self::Committed(item) => ValueRef(Either::Left(&item.value)),
         }
     }
 
@@ -113,68 +97,52 @@ impl RefKind<'_> {
     }
 }
 
-/// A reference to an entry in the write transaction.
-pub struct Ref<'a>(RefKind<'a>);
+pub struct Ref(RefKind);
 
-impl Clone for Ref<'_> {
+impl Clone for Ref {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<'a> From<(u64, &'a Key, &'a Value)> for Ref<'a> {
-    fn from((version, k, v): (u64, &'a Key, &'a Value)) -> Self {
+impl From<(Version, Key, Value)> for Ref {
+    fn from((version, k, v): (Version, Key, Value)) -> Self {
         Self(RefKind::PendingIter { version, key: k, value: v })
     }
 }
 
-impl<'a> From<TransactionAction> for Ref<'a> {
-    fn from(action: TransactionAction) -> Self {
+impl From<(Version, &Key, &Value)> for Ref {
+    fn from((version, k, v): (Version, &Key, &Value)) -> Self {
+        Self(RefKind::PendingIter { version, key: k.clone(), value: v.clone() })
+    }
+}
+
+impl From<Pending> for Ref {
+    fn from(action: Pending) -> Self {
         Self(RefKind::Pending(action))
     }
 }
 
-impl<'a> From<CommittedRef<'a>> for Ref<'a> {
-    fn from(item: CommittedRef<'a>) -> Self {
+impl From<Committed> for Ref {
+    fn from(item: Committed) -> Self {
         Self(RefKind::Committed(item))
     }
 }
 
-impl Ref<'_> {
-    /// Returns the value of the key.
-
+impl Ref {
     pub fn key(&self) -> &Key {
         self.0.key()
     }
-
-    /// Returns the read version of the entry.
 
     pub fn version(&self) -> u64 {
         self.0.version()
     }
 
-    /// Returns the value of the entry.
-
     pub fn value(&self) -> ValueRef<'_> {
         self.0.value()
     }
 
-    /// Returns `true` if the entry was commited.
-
     pub fn is_committed(&self) -> bool {
         self.0.is_committed()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_values_send() {
-        fn takes_send<T: Send>(_t: T) {}
-
-        let values = VersionedValue::<()>::new();
-        takes_send(values);
     }
 }

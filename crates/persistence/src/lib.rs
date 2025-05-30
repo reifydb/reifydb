@@ -50,7 +50,7 @@ impl Ord for Action {
 
 impl Action {
     /// Returns the key
-    pub const fn key(&self) -> &Key {
+    pub fn key(&self) -> &Key {
         match self {
             Self::Set { key, .. } => key,
             Self::Remove { key } => key,
@@ -58,7 +58,7 @@ impl Action {
     }
 
     /// Returns the value, if None, it means the entry is marked as remove.
-    pub const fn value(&self) -> Option<&Value> {
+    pub fn value(&self) -> Option<&Value> {
         match self {
             Self::Set { value, .. } => Some(value),
             Self::Remove { .. } => None,

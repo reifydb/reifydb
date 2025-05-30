@@ -20,7 +20,7 @@ pub struct TransactionManagerRx<C, P> {
 
 impl<C, P> TransactionManagerRx<C, P> {
     /// Returns the version of this read transaction.
-    pub const fn version(&self) -> u64 {
+    pub fn version(&self) -> u64 {
         self.version
     }
 }

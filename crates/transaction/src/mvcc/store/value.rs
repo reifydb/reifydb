@@ -95,12 +95,12 @@ impl Entry<'_> {
 	}
 
 	/// Get the key of the entry.
-	pub const fn key(&self) -> &Key {
+	pub fn key(&self) -> &Key {
 		self.key
 	}
 
 	/// Get the version of the entry.
-	pub const fn version(&self) -> u64 {
+	pub fn version(&self) -> u64 {
 		self.version
 	}
 }
@@ -139,13 +139,6 @@ impl core::ops::Deref for ValueRef<'_> {
 	}
 }
 
-impl ValueRef<'_> {
-	/// Returns `true` if the value was commited.
-
-	pub const fn is_committed(&self) -> bool {
-		matches!(self.0, Either::Right(_))
-	}
-}
 
 impl PartialEq<Value> for ValueRef<'_> {
 	fn eq(&self, other: &Value) -> bool {

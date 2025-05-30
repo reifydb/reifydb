@@ -64,7 +64,7 @@ impl From<TransactionError> for MvccError {
 
 impl MvccError {
     /// Create a new error from the transaction error.
-    pub const fn transaction(err: TransactionError) -> Self {
+    pub fn transaction(err: TransactionError) -> Self {
         Self::Transaction(err)
     }
 

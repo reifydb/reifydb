@@ -47,7 +47,7 @@ impl PendingWrites for BTreeMap<Key, TransactionValue> {
         u64::MAX
     }
 
-    fn estimate_size(&self, _entry: &TransactionAction) -> u64 {
+    fn estimate_size(&self, _entry: &Pending) -> u64 {
         size_of::<Key>() as u64 + size_of::<Value>() as u64
     }
 

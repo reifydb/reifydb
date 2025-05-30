@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
+use crate::Version;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::store::types::Ref;
@@ -20,7 +21,6 @@ use crate::mvcc::transaction::scan::rev_iter::TransactionRevIter;
 use crate::mvcc::transaction::scan::rev_range::TransactionRevRange;
 use reifydb_persistence::{Key, Value};
 use std::ops::RangeBounds;
-use crate::Version;
 
 /// A optimistic concurrency control transaction over the [`Optimistic`].
 pub struct TransactionTx {
@@ -86,10 +86,7 @@ impl TransactionTx {
     }
 
     /// Get a value from the database.
-    pub fn get<'a, 'b: 'a>(
-        &'a mut self,
-        key: &'b Key,
-    ) -> Result<Option<Ref<'a>>, TransactionError> {
+    pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b Key) -> Result<Option<Ref>, TransactionError> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {

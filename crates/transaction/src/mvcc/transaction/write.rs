@@ -13,7 +13,7 @@ use super::*;
 use crate::Version;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::types::TransactionAction;
+use crate::mvcc::types::Pending;
 use reifydb_persistence::{Action, Key, Value};
 
 pub struct TransactionManagerTx<C, P> {
@@ -24,7 +24,7 @@ pub struct TransactionManagerTx<C, P> {
     pub(super) conflicts: C,
     // stores any writes done by tx
     pub(super) pending_writes: P,
-    pub(super) duplicate_actions: Vec<TransactionAction>,
+    pub(super) duplicate_actions: Vec<Pending>,
 
     pub(super) discarded: bool,
     pub(super) done_read: bool,
@@ -40,7 +40,7 @@ impl<C, P> Drop for TransactionManagerTx<C, P> {
 
 impl<C, P> TransactionManagerTx<C, P> {
     /// Returns the version of the transaction.
-    pub const fn version(&self) -> u64 {
+    pub fn version(&self) -> u64 {
         self.version
     }
 
@@ -112,7 +112,7 @@ where
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
-        self.modify(TransactionAction { action: Action::Remove { key }, version: 0 })
+        self.modify(Pending { action: Action::Remove { key }, version: 0 })
     }
 
     /// Rolls back the transaction.
@@ -156,7 +156,7 @@ where
     pub fn get<'a, 'b: 'a>(
         &'a mut self,
         key: &'b Key,
-    ) -> Result<Option<TransactionAction>, TransactionError> {
+    ) -> Result<Option<Pending>, TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -168,7 +168,7 @@ where
             }
 
             // Fulfill from buffer.
-            Ok(Some(TransactionAction {
+            Ok(Some(Pending {
                 action: match &e.value {
                     Some(value) => Action::Set { key: key.clone(), value: value.clone() },
                     None => Action::Remove { key: key.clone() },
@@ -206,7 +206,7 @@ where
     ///    background upon successful completion of writes or any error during write.
     pub fn commit<F>(&mut self, apply: F) -> Result<(), MvccError>
     where
-        F: FnOnce(Vec<TransactionAction>) -> Result<(), Box<dyn std::error::Error>>,
+        F: FnOnce(Vec<Pending>) -> Result<(), Box<dyn std::error::Error>>,
     {
         if self.discarded {
             return Err(TransactionError::Discarded.into());
@@ -249,11 +249,11 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        let item = TransactionAction { action: Action::Set { key, value }, version: self.version };
+        let item = Pending { action: Action::Set { key, value }, version: self.version };
         self.modify(item)
     }
 
-    fn modify(&mut self, item: TransactionAction) -> Result<(), TransactionError> {
+    fn modify(&mut self, item: Pending) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -280,7 +280,7 @@ where
 
         if let Some((old_key, old_value)) = pending_writes.remove_entry(&key) {
             if old_value.version != eversion {
-                self.duplicate_actions.push(TransactionAction::unsplit(old_key, old_value));
+                self.duplicate_actions.push(Pending::unsplit(old_key, old_value));
             }
         }
         pending_writes.insert(key, value);
@@ -294,7 +294,7 @@ where
     C: Conflict,
     P: PendingWrites,
 {
-    fn commit_entries(&mut self) -> Result<(u64, Vec<TransactionAction>), TransactionError> {
+    fn commit_entries(&mut self) -> Result<(u64, Vec<Pending>), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -321,12 +321,12 @@ where
                     Vec::with_capacity(pending_writes.len() + self.duplicate_actions.len());
 
                 let process_entry =
-                    |entries: &mut Vec<TransactionAction>, mut item: TransactionAction| {
+                    |entries: &mut Vec<Pending>, mut item: Pending| {
                         item.version = commit_ts;
                         entries.push(item);
                     };
                 pending_writes.into_iter().for_each(|(k, v)| {
-                    process_entry(&mut entries, TransactionAction::unsplit(k, v))
+                    process_entry(&mut entries, Pending::unsplit(k, v))
                 });
                 duplicate_writes.into_iter().for_each(|item| process_entry(&mut entries, item));
 
@@ -364,7 +364,7 @@ impl<C, P> TransactionManagerTx<C, P> {
 
     /// Returns true if the transaction is discarded.
 
-    pub const fn is_discard(&self) -> bool {
+    pub fn is_discard(&self) -> bool {
         self.discarded
     }
 }

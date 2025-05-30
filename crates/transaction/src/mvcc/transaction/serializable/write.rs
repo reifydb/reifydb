@@ -89,11 +89,7 @@ impl SerializableTransaction {
     }
 
     /// Get a value from the database.
-
-    pub fn get<'a, 'b: 'a>(
-        &'a mut self,
-        key: &'b Key,
-    ) -> Result<Option<Ref<'a>>, TransactionError> {
+    pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b Key) -> Result<Option<Ref>, TransactionError> {
         let version = self.wtm.version();
         match self.wtm.get(key)? {
             Some(v) => {
@@ -132,9 +128,7 @@ impl SerializableTransaction {
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
-    pub fn iter_rev(
-        &mut self,
-    ) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
+    pub fn iter_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
         let start: Bound<Key> = Bound::Unbounded;

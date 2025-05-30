@@ -15,7 +15,7 @@ use core::cmp;
 use crossbeam_skiplist::map::Range as MapRange;
 
 use crate::Version;
-use crate::mvcc::store::types::{CommittedRef, Ref};
+use crate::mvcc::store::types::{Committed, Ref};
 use crate::mvcc::store::value::VersionedValue;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::either::Either;
@@ -36,17 +36,21 @@ impl<'a, R> Iterator for Range<'a, R>
 where
     R: RangeBounds<Key>,
 {
-    type Item = Ref<'a>;
+    type Item = Ref;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let item = self.range.next()?;
-            if let Some(version) = item
-                .value()
-                .upper_bound(Bound::Included(&self.version))
-                .and_then(|item| if item.value().is_some() { Some(*item.key()) } else { None })
+            if let Some((version, value)) =
+                item.value().upper_bound(Bound::Included(&self.version)).and_then(|item| {
+                    if item.value().is_some() {
+                        Some((*item.key(), item.value().clone().unwrap()))
+                    } else {
+                        None
+                    }
+                })
             {
-                return Some(CommittedRef { version, item }.into());
+                return Some(Committed { key: item.key().clone(), version, value }.into());
             }
         }
     }
@@ -60,8 +64,8 @@ where
     pub(crate) committed: Range<'a, R>,
     pub(crate) pending: BTreeMapRange<'a, Key, TransactionValue>,
     next_pending: Option<(&'a Key, &'a TransactionValue)>,
-    next_committed: Option<Ref<'a>>,
-    last_yielded_key: Option<Either<&'a Key, Ref<'a>>>,
+    next_committed: Option<Ref>,
+    last_yielded_key: Option<Either<&'a Key, Ref>>,
     marker: Option<Marker<'a, C>>,
 }
 
@@ -107,7 +111,7 @@ where
     R: RangeBounds<Key> + 'a,
     C: Conflict,
 {
-    type Item = Ref<'a>;
+    type Item = Ref;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

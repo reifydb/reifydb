@@ -14,7 +14,7 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::store::types::{CommittedRef, Ref};
+use crate::mvcc::store::types::{Committed, Ref};
 use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
@@ -33,17 +33,21 @@ pub struct RevIter<'a> {
 }
 
 impl<'a> Iterator for RevIter<'a> {
-    type Item = Ref<'a>;
+    type Item = Ref;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let item = self.iter.next()?;
-            if let Some(version) = item
-                .value()
-                .upper_bound(Bound::Included(&self.version))
-                .and_then(|item| if item.value().is_some() { Some(*item.key()) } else { None })
+            if let Some((version, value)) =
+                item.value().upper_bound(Bound::Included(&self.version)).and_then(|item| {
+                    if item.value().is_some() {
+                        Some((*item.key(), item.value().clone().unwrap()))
+                    } else {
+                        None
+                    }
+                })
             {
-                return Some(CommittedRef { version, item }.into());
+                return Some(Committed { key: item.key().clone(), value, version }.into());
             }
         }
     }
@@ -54,8 +58,8 @@ pub struct TransactionRevIter<'a, C> {
     pending: Rev<BTreeMapIter<'a, Key, TransactionValue>>,
     committed: RevIter<'a>,
     next_pending: Option<(&'a Key, &'a TransactionValue)>,
-    next_committed: Option<Ref<'a>>,
-    last_yielded_key: Option<Either<&'a Key, Ref<'a>>>,
+    next_committed: Option<Ref>,
+    last_yielded_key: Option<Either<&'a Key, Ref>>,
     marker: Option<Marker<'a, C>>,
 }
 
@@ -99,7 +103,7 @@ impl<'a, C> Iterator for TransactionRevIter<'a, C>
 where
     C: Conflict,
 {
-    type Item = Ref<'a>;
+    type Item = Ref;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

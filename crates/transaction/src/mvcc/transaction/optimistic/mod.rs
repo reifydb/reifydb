@@ -18,7 +18,7 @@ use crate::mvcc::store::Store;
 use crate::mvcc::transaction::TransactionManager;
 
 use crate::Version;
-use crate::mvcc::store::types::CommittedRef;
+use crate::mvcc::store::types::Committed;
 use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
@@ -101,7 +101,7 @@ pub enum Transaction {
 }
 
 impl Optimistic {
-    pub fn get(&self, key: &Key, version: Version) -> Option<CommittedRef<'_>> {
+    pub fn get(&self, key: &Key, version: Version) -> Option<Committed> {
         self.store.get(key, version)
     }
 

@@ -41,7 +41,7 @@ impl<C> ReadTransaction<C> {
     }
 
     /// Get a value from the database.
-    pub fn get(&self, key: &Key) -> Option<Ref<'_>> {
+    pub fn get(&self, key: &Key) -> Option<Ref> {
         let version = self.rx.version();
         // self.db.as_inner().get(key, version).map(Into::into)
         unimplemented!()

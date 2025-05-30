@@ -40,7 +40,7 @@ impl TransactionRx {
     }
 
     /// Get a value from the database.
-    pub fn get(&self, key: &Key) -> Option<Ref<'_>> {
+    pub fn get(&self, key: &Key) -> Option<Ref> {
         let version = self.rtm.version();
         self.engine.get(key, version).map(Into::into)
     }
