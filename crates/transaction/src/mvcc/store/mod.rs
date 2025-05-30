@@ -32,12 +32,12 @@ pub mod types;
 pub mod value;
 
 use crate::Version;
-use crate::mvcc::store::value::VersionedValue;
+use crate::mvcc::store::value::VersionedValues;
 use reifydb_persistence::{Action, Key, Value};
 use types::*;
 
 pub struct Store {
-    mem_table: SkipMap<Key, VersionedValue<Value>>,
+    mem_table: SkipMap<Key, VersionedValues<Value>>,
 }
 
 impl Default for Store {
@@ -58,7 +58,7 @@ impl Store {
             let version = item.version();
             match item.action {
                 Action::Set { key, value } => {
-                    let item = self.mem_table.get_or_insert_with(key, || VersionedValue::new());
+                    let item = self.mem_table.get_or_insert_with(key, || VersionedValues::new());
                     let val = item.value();
                     val.lock();
                     val.insert(version, Some(value));

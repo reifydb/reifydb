@@ -58,7 +58,7 @@ where
             count: 0,
             conflicts: C::new(),
             pending_writes: P::new(),
-            duplicate_actions: Vec::new(),
+            duplicates: Vec::new(),
             discarded: false,
             done_read: false,
         })

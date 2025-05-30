@@ -19,7 +19,7 @@ use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
 use crate::Version;
-use crate::mvcc::store::value::VersionedValue;
+use crate::mvcc::store::value::VersionedValues;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};
@@ -27,7 +27,7 @@ use std::collections::btree_map::Iter as BTreeMapIter;
 use std::ops::Bound;
 
 pub struct RevIter<'a> {
-    pub(crate) iter: Rev<MapIter<'a, Key, VersionedValue<Value>>>,
+    pub(crate) iter: Rev<MapIter<'a, Key, VersionedValues<Value>>>,
     pub(crate) version: Version,
 }
 

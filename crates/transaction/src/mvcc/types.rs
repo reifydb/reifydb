@@ -89,6 +89,12 @@ pub struct TransactionValue {
     pub value: Option<Value>,
 }
 
+impl TransactionValue {
+    pub fn was_removed(&self) -> bool {
+        self.value.is_none()
+    }
+}
+
 impl Clone for TransactionValue {
     fn clone(&self) -> Self {
         Self { version: self.version, value: self.value.clone() }

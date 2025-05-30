@@ -16,7 +16,7 @@ use crossbeam_skiplist::map::Range as MapRange;
 
 use crate::Version;
 use crate::mvcc::store::types::{Committed, Ref};
-use crate::mvcc::store::value::VersionedValue;
+use crate::mvcc::store::value::VersionedValues;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};
@@ -27,7 +27,7 @@ pub struct Range<'a, R>
 where
     R: RangeBounds<Key>,
 {
-    pub(crate) range: MapRange<'a, Key, R, Key, VersionedValue<Value>>,
+    pub(crate) range: MapRange<'a, Key, R, Key, VersionedValues<Value>>,
     pub(crate) version: Version,
 }
 

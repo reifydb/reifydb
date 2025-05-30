@@ -24,7 +24,7 @@ pub struct TransactionManagerTx<C, P> {
     pub(super) conflicts: C,
     // stores any writes done by tx
     pub(super) pending_writes: P,
-    pub(super) duplicate_actions: Vec<Pending>,
+    pub(super) duplicates: Vec<Pending>,
 
     pub(super) discarded: bool,
     pub(super) done_read: bool,
@@ -161,19 +161,19 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        if let Some(e) = self.pending_writes.get(key) {
+        if let Some(v) = self.pending_writes.get(key) {
             // If the value is None, it means that the key is removed.
-            if e.value.is_none() {
+            if v.was_removed() {
                 return Ok(None);
             }
 
             // Fulfill from buffer.
             Ok(Some(Pending {
-                action: match &e.value {
+                action: match &v.value {
                     Some(value) => Action::Set { key: key.clone(), value: value.clone() },
                     None => Action::Remove { key: key.clone() },
                 },
-                version: e.version,
+                version: v.version,
             }))
         } else {
             // track reads. No need to track read if txn serviced it
@@ -280,7 +280,7 @@ where
 
         if let Some((old_key, old_value)) = pending_writes.remove_entry(&key) {
             if old_value.version != eversion {
-                self.duplicate_actions.push(Pending::unsplit(old_key, old_value));
+                self.duplicates.push(Pending::unsplit(old_key, old_value));
             }
         }
         pending_writes.insert(key, value);
@@ -316,18 +316,16 @@ where
             }
             CreateCommitTimestampResult::Timestamp(commit_ts) => {
                 let pending_writes = mem::take(&mut self.pending_writes);
-                let duplicate_writes = mem::take(&mut self.duplicate_actions);
-                let mut entries =
-                    Vec::with_capacity(pending_writes.len() + self.duplicate_actions.len());
+                let duplicate_writes = mem::take(&mut self.duplicates);
+                let mut entries = Vec::with_capacity(pending_writes.len() + self.duplicates.len());
 
-                let process_entry =
-                    |entries: &mut Vec<Pending>, mut item: Pending| {
-                        item.version = commit_ts;
-                        entries.push(item);
-                    };
-                pending_writes.into_iter().for_each(|(k, v)| {
-                    process_entry(&mut entries, Pending::unsplit(k, v))
-                });
+                let process_entry = |entries: &mut Vec<Pending>, mut item: Pending| {
+                    item.version = commit_ts;
+                    entries.push(item);
+                };
+                pending_writes
+                    .into_iter()
+                    .for_each(|(k, v)| process_entry(&mut entries, Pending::unsplit(k, v)));
                 duplicate_writes.into_iter().for_each(|item| process_entry(&mut entries, item));
 
                 // CommitTs should not be zero if we're inserting transaction markers.
