@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::AsyncCowVec;
 use crate::catalog::{Catalog, Schema};
 use crate::transaction::svl::SvlInner;
 use crate::transaction::svl::lock::{ReadGuard, WriteGuard};
 use crate::{CATALOG, CatalogRx as _, CatalogTx, InsertResult};
 use reifydb_core::encoding::{Value as OtherValue, bincode};
-use reifydb_core::{Key, Row, RowIter, Value, key_prefix_old};
+use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -42,7 +43,7 @@ impl<P: Persistence> crate::Rx for TransactionRx<P> {
         Ok(Box::new(
             self.engine
                 .persistence
-                .scan_prefix(key_prefix_old!("{}::{}::row::", schema, store))
+                .scan_prefix(key_prefix!("{}::{}::row::", schema, store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -82,7 +83,7 @@ impl<P: Persistence> crate::Rx for TransactionTx<P> {
         Ok(Box::new(
             self.svl
                 .persistence
-                .scan_prefix(key_prefix_old!("{}::{}::row::", schema, store))
+                .scan_prefix(key_prefix!("{}::{}::row::", schema, store))
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -136,16 +137,15 @@ impl<P: Persistence> crate::Tx for TransactionTx<P> {
             let last_id = self
                 .svl
                 .persistence
-                .scan_prefix(&key_prefix_old!("{}::{}::row::", schema, table))
+                .scan_prefix(&key_prefix!("{}::{}::row::", schema, table))
                 .count();
 
             for (id, row) in rows.iter().enumerate() {
                 self.svl
                     .persistence
                     .set(
-                        // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
-                        key_prefix_old!("{}::{}::row::{}", schema, table, (last_id + id + 1)),
-                        bincode::serialize(row),
+                        key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)),
+                        AsyncCowVec::new(bincode::serialize(row)),
                     )
                     .unwrap();
             }

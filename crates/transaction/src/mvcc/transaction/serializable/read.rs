@@ -9,7 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::Key;
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::skipdbcore::Database;
 use crate::mvcc::skipdbcore::types::Ref;
@@ -18,6 +17,7 @@ use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
 use crate::mvcc::transaction::scan::rev_range::RevRange;
+use reifydb_persistence::Key;
 use std::ops::RangeBounds;
 
 pub struct ReadTransaction<I, C>

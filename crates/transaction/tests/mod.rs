@@ -5,12 +5,9 @@ mod optimistic;
 mod serializable;
 mod transaction;
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
-
 use reifydb_core::AsyncCowVec;
 use reifydb_core::encoding::{bincode, keycode};
-use reifydb_transaction::Value;
+use reifydb_persistence::Value;
 
 pub trait IntoValue {
     fn into_value(self) -> Value;
@@ -33,7 +30,7 @@ macro_rules! as_value {
 #[macro_export]
 macro_rules! from_value {
     ($t:ty, $val:expr) => {
-        < $t as FromValue >::from_value(&$val).unwrap()
+        <$t as FromValue>::from_value(&$val).unwrap()
     };
 }
 

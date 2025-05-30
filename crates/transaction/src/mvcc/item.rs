@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 
-use crate::{Key, Value};
+use reifydb_persistence::{Key, Value};
 use core::cmp::{self, Reverse};
 
 /// The reference of the [`Item`].

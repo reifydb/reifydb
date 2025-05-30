@@ -17,7 +17,7 @@ use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;
 
-use crate::{Key, Value};
+use reifydb_persistence::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Iter as BTreeMapIter;
 

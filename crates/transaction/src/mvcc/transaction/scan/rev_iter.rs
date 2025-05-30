@@ -19,7 +19,7 @@ use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
 use crate::mvcc::item::EntryValue;
-use crate::{Key, Value};
+use reifydb_persistence::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Iter as BTreeMapIter;
 use std::ops::Bound;

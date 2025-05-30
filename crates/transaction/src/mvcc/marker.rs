@@ -9,9 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::Key;
 use crate::mvcc::conflict::{Conflict, ConflictIter, ConflictRange};
 use core::{borrow::Borrow, hash::Hash, ops::RangeBounds};
+use reifydb_persistence::Key;
 
 /// A marker used to mark the keys that are read.
 pub struct Marker<'a, C> {

@@ -54,7 +54,7 @@ impl Persistence for Memory {
     }
 
     fn set(&mut self, key: &Key, value: Value) -> Result<()> {
-        self.0.insert(key.to_vec(), value);
+        self.0.insert(key.clone(), value);
         Ok(())
     }
 

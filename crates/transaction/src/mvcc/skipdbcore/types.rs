@@ -170,7 +170,7 @@ impl PartialEq<&Value> for ValueRef<'_> {
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::item::ItemRef;
-use crate::{Key, Value};
+use reifydb_persistence::{Key, Value};
 
 /// A reference to an entry in the write transaction.
 #[derive(Debug)]

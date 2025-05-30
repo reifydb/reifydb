@@ -41,10 +41,6 @@ impl<E: Persistence> Persistence for Emit<E> {
         self.inner.scan(range)
     }
 
-    // fn status(&mut self) -> Result<Status> {
-    // 	self.inner.status()
-    // }
-
     fn sync(&mut self) -> crate::Result<()> {
         self.inner.sync()?;
         // self.tx.send(Operation::Sync).unwrap();
@@ -53,13 +49,13 @@ impl<E: Persistence> Persistence for Emit<E> {
 
     fn remove(&mut self, key: &Key) -> crate::Result<()> {
         self.inner.remove(key)?;
-        self.tx.send(Operation::Remove { key: key.to_vec() }).unwrap();
+        self.tx.send(Operation::Remove { key: key.clone() }).unwrap();
         Ok(())
     }
 
     fn set(&mut self, key: &Key, value: Value) -> crate::Result<()> {
         self.inner.set(key, value.clone())?;
-        self.tx.send(Operation::Set { key: key.to_vec(), value }).unwrap();
+        self.tx.send(Operation::Set { key: key.clone(), value }).unwrap();
         Ok(())
     }
 }

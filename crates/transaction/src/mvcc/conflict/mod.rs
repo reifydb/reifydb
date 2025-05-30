@@ -11,8 +11,8 @@
 
 use std::ops::RangeBounds;
 
-use crate::Key;
 pub use btree::BTreeConflict;
+use reifydb_persistence::Key;
 
 mod btree;
 

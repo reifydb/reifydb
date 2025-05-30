@@ -33,7 +33,7 @@ use crate::mvcc::transaction::scan::range::*;
 use crate::mvcc::transaction::scan::rev_range::*;
 
 pub mod types;
-use crate::{Key, Value};
+use reifydb_persistence::{Key, Value};
 use types::*;
 
 #[doc(hidden)]

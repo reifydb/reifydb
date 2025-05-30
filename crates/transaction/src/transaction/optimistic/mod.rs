@@ -6,7 +6,7 @@ use crate::catalog::{Catalog, Schema};
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
-use reifydb_core::{Key, Row, RowIter, Value, key_prefix, key_prefix_old};
+use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
 
 impl<P: Persistence> Transaction<P> for Optimistic {
@@ -41,7 +41,7 @@ impl crate::Rx for TransactionRx {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.range(keycode::prefix_range(&key_prefix_old!("{}::{}::row::", schema, store)))
+            self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)))
                 .map(|r| Row::decode(&r.value()).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -68,7 +68,7 @@ impl crate::Rx for TransactionTx {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.range(keycode::prefix_range(&key_prefix_old!("{}::{}::row::", schema, store)))
+            self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)))
                 .unwrap()
                 // .scan(start_key..end_key) // range is [start_key, end_key)
                 .map(|r| Row::decode(&r.value()).unwrap())
@@ -100,7 +100,7 @@ impl crate::Tx for TransactionTx {
         rows: Vec<Row>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .range(keycode::prefix_range(&key_prefix_old!("{}::{}::row::", schema, table)))
+            .range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, table)))
             .unwrap()
             .count();
 
@@ -126,7 +126,7 @@ impl crate::Tx for TransactionTx {
         rows: Vec<Vec<Value>>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .range(keycode::prefix_range(&key_prefix_old!("{}::{}::row::", schema, series)))
+            .range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, series)))
             .unwrap()
             .count();
 

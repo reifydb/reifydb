@@ -34,14 +34,14 @@ impl<A: Persistence, B: Persistence> Persistence for Mirror<A, B> {
         A: 'a,
         B: 'a;
 
-    fn get(&self, key: &Key) -> crate::Result<Option<Vec<u8>>> {
+    fn get(&self, key: &Key) -> crate::Result<Option<Value>> {
         let a = self.a.get(key)?;
         let b = self.b.get(key)?;
         assert_eq!(a, b);
         Ok(a)
     }
 
-    fn scan(&self, range: impl RangeBounds<Vec<u8>> + Clone) -> Self::ScanIter<'_>
+    fn scan(&self, range: impl RangeBounds<Key> + Clone) -> Self::ScanIter<'_>
     where
         Self: Sized,
     {
@@ -81,7 +81,7 @@ pub struct MirrorIterator<'a, A: Persistence + 'a, B: Persistence + 'a> {
 }
 
 impl<A: Persistence, B: Persistence> Iterator for MirrorIterator<'_, A, B> {
-    type Item = crate::Result<(Vec<u8>, Vec<u8>)>;
+    type Item = crate::Result<(Key, Value)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let a = self.a.next();

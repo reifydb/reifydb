@@ -10,6 +10,7 @@ pub use error::Error;
 pub use lmdb::{Lmdb, LmdbBatch};
 pub use memory::{Memory, MemoryScanIter};
 pub use persistence::{BeginBatch, Persistence, PersistenceBatch};
+use reifydb_core::AsyncCowVec;
 use std::result;
 
 mod error;
@@ -20,8 +21,8 @@ pub mod test;
 
 pub type Result<T> = result::Result<T, Error>;
 
-pub type Key = Vec<u8>;
-pub type Value = Vec<u8>;
+pub type Key = AsyncCowVec<u8>;
+pub type Value = AsyncCowVec<u8>;
 
 /// An engine operation emitted by the Emit reifydb_engine.
 pub enum Operation {

@@ -7,7 +7,7 @@ use std::rc::Rc;
 #[derive(Debug, PartialOrd, PartialEq)]
 pub struct CowVec<T>
 where
-    T: Clone + PartialEq,
+    T: Clone,
 {
     inner: Rc<Vec<T>>,
 }

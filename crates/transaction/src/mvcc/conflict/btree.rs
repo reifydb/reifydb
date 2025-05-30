@@ -10,8 +10,8 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::Key;
 use core::ops::Bound;
+use reifydb_persistence::Key;
 use std::collections::BTreeSet;
 
 #[derive(Clone, Debug)]

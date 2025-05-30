@@ -17,6 +17,7 @@ use reifydb_testing::testscript;
 use reifydb_testing::util::parse_key_range;
 use std::error::Error as StdError;
 use std::fmt::Write;
+use std::ops::Deref;
 use std::path::Path;
 use test_each_file::test_each_path;
 
@@ -78,7 +79,7 @@ impl<P: Persistence> testscript::Runner for PersistenceRunner<P> {
                 }
 
                 for (key, value) in kvs {
-                    let fmtkv = format::Raw::key_value(&key, &value);
+                    let fmtkv = format::Raw::key_value(&key, &value.deref());
                     writeln!(output, "{fmtkv}")?;
                 }
             }
@@ -90,7 +91,7 @@ impl<P: Persistence> testscript::Runner for PersistenceRunner<P> {
 
                 let mut scan = self.persistence.scan_prefix(&prefix);
                 while let Some((key, value)) = scan.next().transpose()? {
-                    let fmtkv = format::Raw::key_value(&key, &value);
+                    let fmtkv = format::Raw::key_value(&key, &value.deref());
                     writeln!(output, "{fmtkv}")?;
                 }
             }

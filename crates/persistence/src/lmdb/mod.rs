@@ -7,6 +7,7 @@ use crate::lmdb::scan::LmdbScanIter;
 use crate::{BeginBatch, Key, Persistence, PersistenceBatch, Value};
 use heed::types::Bytes;
 use heed::{Database, Env, EnvOpenOptions, RwTxn};
+use reifydb_core::AsyncCowVec;
 use std::ops::RangeBounds;
 use std::path::Path;
 use std::sync::Arc;
@@ -65,7 +66,7 @@ impl Persistence for Lmdb {
     fn get(&self, key: &Key) -> crate::Result<Option<Value>> {
         let txn = self.env.read_txn().unwrap();
         let val = self.db.get(&txn, &key[..]).unwrap();
-        Ok(val.map(|v| v.to_vec()))
+        Ok(val.map(|v| AsyncCowVec::new(v.to_vec())))
     }
 
     fn scan(&self, range: impl RangeBounds<Key> + Clone) -> Self::ScanIter<'_> {

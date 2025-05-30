@@ -8,6 +8,9 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
+
+use crate::AsyncCowVec;
+
 /// Decodes a raw byte vector from a Unicode string. Code points in the
 /// range U+0080 to U+00FF are converted back to bytes 0x80 to 0xff.
 /// This allows using e.g. \xff in the input string literal, and getting
@@ -15,7 +18,7 @@
 /// the UTF-8 bytes 0xc3bf, which is the U+00FF code point as UTF-8.
 /// These characters are effectively represented as ISO-8859-1 rather
 /// than UTF-8, but it allows precise use of the entire u8 value range.
-pub fn decode_binary(s: &str) -> Vec<u8> {
+pub fn decode_binary(s: &str) -> AsyncCowVec<u8> {
     let mut buf = [0; 4];
     let mut bytes = Vec::new();
     for c in s.chars() {
@@ -25,5 +28,5 @@ pub fn decode_binary(s: &str) -> Vec<u8> {
             _ => bytes.extend(c.encode_utf8(&mut buf).as_bytes()),
         }
     }
-    bytes
+    AsyncCowVec::new(bytes)
 }

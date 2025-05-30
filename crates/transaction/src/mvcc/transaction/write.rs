@@ -13,7 +13,7 @@ use super::*;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::item::{Item, ItemData, ItemDataRef, ItemRef};
-use crate::{Key, Value};
+use reifydb_persistence::{Key, Value};
 
 pub struct TransactionManagerTx<C, P> {
     pub(super) version: u64,

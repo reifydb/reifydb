@@ -4,6 +4,7 @@
 use crate::{Key, Value};
 use heed::types::Bytes;
 use heed::{Database, Env};
+use reifydb_core::AsyncCowVec;
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -56,8 +57,11 @@ impl LmdbScanIter {
         for result in iter.take(self.batch_size) {
             match result {
                 Ok((k, v)) => {
-                    self.last_key = Some(k.to_vec());
-                    self.buffer.push_back(Ok((k.to_vec(), v.to_vec())));
+                    self.last_key = Some(AsyncCowVec::new(k.to_vec()));
+                    self.buffer.push_back(Ok((
+                        AsyncCowVec::new(k.to_vec()),
+                        AsyncCowVec::new(v.to_vec()),
+                    )));
                 }
                 Err(e) => {
                     // FIXME

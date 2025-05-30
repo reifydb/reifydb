@@ -19,7 +19,7 @@ use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::TransactionRevIter;
-use crate::{Key, Value};
+use reifydb_persistence::{Key, Value};
 use std::ops::Bound;
 use std::ops::RangeBounds;
 

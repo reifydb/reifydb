@@ -16,7 +16,7 @@ use crate::keycode;
 use crate::{as_key, as_value, from_value};
 use MvccError::Transaction;
 use TransactionError::Conflict;
-use reifydb_transaction::Key;
+use reifydb_persistence::Key;
 use reifydb_transaction::mvcc::MvccError;
 use reifydb_transaction::mvcc::error::TransactionError;
 use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
