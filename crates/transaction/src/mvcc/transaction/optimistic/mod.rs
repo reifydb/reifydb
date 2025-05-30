@@ -18,7 +18,7 @@ use crate::mvcc::store::Store;
 use crate::mvcc::transaction::TransactionManager;
 
 use crate::Version;
-use crate::mvcc::store::types::Committed;
+use crate::mvcc::types::Committed;
 use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;

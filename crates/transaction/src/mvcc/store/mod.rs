@@ -9,18 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-// #![deny(warnings)]
-// #![forbid(unsafe_code)]
-// #![allow(clippy::type_complexity)]
+use core::ops::{Bound, RangeBounds};
 
-extern crate alloc;
-
-use core::{
-    borrow::Borrow,
-    ops::{Bound, RangeBounds},
-};
-
-use crate::mvcc::types::Pending;
+use crate::mvcc::types::{Committed, Pending};
 use crossbeam_skiplist::SkipMap;
 
 use crate::mvcc::transaction::scan::iter::*;
@@ -28,13 +19,11 @@ use crate::mvcc::transaction::scan::range::*;
 use crate::mvcc::transaction::scan::rev_iter::*;
 use crate::mvcc::transaction::scan::rev_range::*;
 
-pub mod types;
 pub mod value;
 
 use crate::Version;
 use crate::mvcc::store::value::VersionedValues;
 use reifydb_persistence::{Action, Key, Value};
-use types::*;
 
 pub struct Store {
     mem_table: SkipMap<Key, VersionedValues<Value>>,

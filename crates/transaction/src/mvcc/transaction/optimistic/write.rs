@@ -13,7 +13,7 @@ use super::*;
 use crate::Version;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
-use crate::mvcc::store::types::Ref;
+use crate::mvcc::types::TransactionValue;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
@@ -86,7 +86,7 @@ impl TransactionTx {
     }
 
     /// Get a value from the database.
-    pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b Key) -> Result<Option<Ref>, TransactionError> {
+    pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b Key) -> Result<Option<TransactionValue>, TransactionError> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {

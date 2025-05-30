@@ -11,7 +11,7 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::store::types::{Committed, Ref};
+use crate::mvcc::types::{Committed, TransactionValue};
 use crate::mvcc::types::Pending;
 use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
@@ -29,7 +29,7 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = Ref;
+    type Item = TransactionValue;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -53,8 +53,8 @@ pub struct TransactionIter<'a, C> {
     committed: Iter<'a>,
     pending: BTreeMapIter<'a, Key, Pending>,
     next_pending: Option<(&'a Key, &'a Pending)>,
-    next_committed: Option<Ref>,
-    last_yielded_key: Option<Either<&'a Key, Ref>>,
+    next_committed: Option<TransactionValue>,
+    last_yielded_key: Option<Either<&'a Key, TransactionValue>>,
     marker: Option<Marker<'a, C>>,
 }
 
@@ -98,7 +98,7 @@ impl<'a, C> Iterator for TransactionIter<'a, C>
 where
     C: Conflict,
 {
-    type Item = Ref;
+    type Item = TransactionValue;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

@@ -10,8 +10,112 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::Version;
-use core::cmp::{self, Reverse};
 use reifydb_persistence::{Action, Key, Value};
+use std::cmp;
+use std::cmp::Reverse;
+
+pub enum TransactionValue {
+    PendingIter { version: Version, key: Key, value: Value },
+    Pending(Pending),
+    Committed(Committed),
+}
+
+impl core::fmt::Debug for TransactionValue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TransactionValue")
+            .field("key", self.key())
+            .field("version", &self.version())
+            .field("value", &self.value())
+            .finish()
+    }
+}
+
+impl Clone for TransactionValue {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Committed(item) => Self::Committed(item.clone()),
+            Self::Pending(action) => Self::Pending(action.clone()),
+            Self::PendingIter { version, key, value } => {
+                Self::PendingIter { version: *version, key: key.clone(), value: value.clone() }
+            }
+        }
+    }
+}
+
+impl TransactionValue {
+    pub fn key(&self) -> &Key {
+        match self {
+            Self::PendingIter { key, .. } => key,
+            Self::Pending(item) => item.key(),
+            Self::Committed(item) => item.key(),
+        }
+    }
+
+    pub fn version(&self) -> u64 {
+        match self {
+            Self::PendingIter { version, .. } => *version,
+            Self::Pending(item) => item.version(),
+            Self::Committed(item) => item.version(),
+        }
+    }
+
+    pub fn value(&self) -> &Value {
+        match self {
+            Self::PendingIter { value, .. } => value,
+            Self::Pending(item) => item.value().expect("value of pending cannot be `None`"),
+            Self::Committed(item) => &item.value,
+        }
+    }
+
+    pub fn is_committed(&self) -> bool {
+        matches!(self, Self::Committed(_))
+    }
+}
+
+impl From<(Version, Key, Value)> for TransactionValue {
+    fn from((version, k, v): (Version, Key, Value)) -> Self {
+        Self::PendingIter { version, key: k, value: v }
+    }
+}
+
+impl From<(Version, &Key, &Value)> for TransactionValue {
+    fn from((version, k, v): (Version, &Key, &Value)) -> Self {
+        Self::PendingIter { version, key: k.clone(), value: v.clone() }
+    }
+}
+
+impl From<Pending> for TransactionValue {
+    fn from(action: Pending) -> Self {
+        Self::Pending(action)
+    }
+}
+
+impl From<Committed> for TransactionValue {
+    fn from(item: Committed) -> Self {
+        Self::Committed(item)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Committed {
+    pub(crate) key: Key,
+    pub(crate) value: Value,
+    pub(crate) version: Version,
+}
+
+impl Committed {
+    pub fn value(&self) -> &Value {
+        &self.value
+    }
+
+    pub fn key(&self) -> &Key {
+        &self.key
+    }
+
+    pub fn version(&self) -> Version {
+        self.version
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Pending {

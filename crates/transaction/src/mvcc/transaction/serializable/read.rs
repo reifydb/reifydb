@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::store::types::Ref;
+use crate::mvcc::types::TransactionValue;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
@@ -41,7 +41,7 @@ impl<C> ReadTransaction<C> {
     }
 
     /// Get a value from the database.
-    pub fn get(&self, key: &Key) -> Option<Ref> {
+    pub fn get(&self, key: &Key) -> Option<TransactionValue> {
         let version = self.rx.version();
         // self.db.as_inner().get(key, version).map(Into::into)
         unimplemented!()

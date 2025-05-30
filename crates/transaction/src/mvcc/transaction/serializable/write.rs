@@ -14,7 +14,7 @@ use crate::mvcc::transaction::scan::rev_range::TransactionRevRange;
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
-use crate::mvcc::store::types::Ref;
+use crate::mvcc::types::TransactionValue;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
@@ -89,7 +89,7 @@ impl SerializableTransaction {
     }
 
     /// Get a value from the database.
-    pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b Key) -> Result<Option<Ref>, TransactionError> {
+    pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b Key) -> Result<Option<TransactionValue>, TransactionError> {
         let version = self.wtm.version();
         match self.wtm.get(key)? {
             Some(v) => {

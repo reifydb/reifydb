@@ -11,13 +11,13 @@
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::store::types::Ref;
 use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
 use crate::mvcc::transaction::scan::rev_range::RevRange;
+use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::Key;
 use std::ops::RangeBounds;
 
@@ -40,7 +40,7 @@ impl TransactionRx {
     }
 
     /// Get a value from the database.
-    pub fn get(&self, key: &Key) -> Option<Ref> {
+    pub fn get(&self, key: &Key) -> Option<TransactionValue> {
         let version = self.rtm.version();
         self.engine.get(key, version).map(Into::into)
     }

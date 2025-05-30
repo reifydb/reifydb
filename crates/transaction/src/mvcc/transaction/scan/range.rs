@@ -15,7 +15,7 @@ use core::cmp;
 use crossbeam_skiplist::map::Range as MapRange;
 
 use crate::Version;
-use crate::mvcc::store::types::{Committed, Ref};
+use crate::mvcc::types::{Committed, TransactionValue};
 use crate::mvcc::store::value::VersionedValues;
 use crate::mvcc::types::Pending;
 use reifydb_core::either::Either;
@@ -35,7 +35,7 @@ impl<'a, R> Iterator for Range<'a, R>
 where
     R: RangeBounds<Key>,
 {
-    type Item = Ref;
+    type Item = TransactionValue;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -62,8 +62,8 @@ where
     pub(crate) committed: Range<'a, R>,
     pub(crate) pending: BTreeMapRange<'a, Key, Pending>,
     next_pending: Option<(&'a Key, &'a Pending)>,
-    next_committed: Option<Ref>,
-    last_yielded_key: Option<Either<&'a Key, Ref>>,
+    next_committed: Option<TransactionValue>,
+    last_yielded_key: Option<Either<&'a Key, TransactionValue>>,
     marker: Option<Marker<'a, C>>,
 }
 
@@ -109,7 +109,7 @@ where
     R: RangeBounds<Key> + 'a,
     C: Conflict,
 {
-    type Item = Ref;
+    type Item = TransactionValue;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
