@@ -187,14 +187,15 @@ impl ConflictRange for BTreeConflict {
 #[cfg(test)]
 mod test {
     use super::{BTreeConflict, Conflict};
+    use reifydb_core::AsyncCowVec;
 
     #[test]
     fn test_btree_cm() {
         let mut cm = BTreeConflict::new();
-        cm.mark_read(&b"1".to_vec());
-        cm.mark_read(&b"2".to_vec());
-        cm.mark_conflict(&b"2".to_vec());
-        cm.mark_conflict(&b"3".to_vec());
+        cm.mark_read(&AsyncCowVec::new(b"1".to_vec()));
+        cm.mark_read(&AsyncCowVec::new(b"2".to_vec()));
+        cm.mark_conflict(&AsyncCowVec::new(b"2".to_vec()));
+        cm.mark_conflict(&AsyncCowVec::new(b"3".to_vec()));
         let cm2 = cm.clone();
         assert!(cm.has_conflict(&cm2));
     }

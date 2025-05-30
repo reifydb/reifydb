@@ -16,8 +16,9 @@ use std::fmt::Write as _;
 
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
+use reifydb_core::{AsyncCowVec, CowVec};
 use reifydb_testing::testscript;
-use reifydb_testing::util::parse_key_range;
+use reifydb_testing::util::parse_key_range_cowvec;
 use reifydb_transaction::Tx;
 use reifydb_transaction::mvcc::transaction::optimistic::{
     Optimistic, Transaction, TransactionRx, TransactionTx,
@@ -113,7 +114,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
                 for arg in args.rest_pos() {
-                    let key = decode_binary(&arg.value);
+                    let key = AsyncCowVec::new(decode_binary(&arg.value));
 
                     match t {
                         Transaction::Rx(_) => {
@@ -153,7 +154,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
                 for arg in args.rest_pos() {
-                    let key = decode_binary(&arg.value);
+                    let key = AsyncCowVec::new(decode_binary(&arg.value));
                     let t = self.get_transaction(&command.prefix)?;
                     let value = match t {
                         Transaction::Rx(rx) => rx.get(&key).map(|r| r.value().to_vec()),
@@ -195,7 +196,7 @@ impl<'a> testscript::Runner for MvccRunner {
                     }
                 }
                 for kv in args.rest_key() {
-                    let key = decode_binary(kv.key.as_ref().unwrap());
+                    let key = AsyncCowVec::new(decode_binary(kv.key.as_ref().unwrap()));
                     let value = decode_binary(&kv.value);
                     if value.is_empty() {
                         tx.remove(key).unwrap();
@@ -227,8 +228,9 @@ impl<'a> testscript::Runner for MvccRunner {
             "scan" => {
                 let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
-                let range =
-                    parse_key_range(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."))?;
+                let range = parse_key_range_cowvec(
+                    args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
+                )?;
                 args.reject_rest()?;
 
                 let mut kvs = Vec::new();
@@ -282,7 +284,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
                 for kv in args.rest_key() {
-                    let key = decode_binary(kv.key.as_ref().unwrap());
+                    let key = AsyncCowVec::new(decode_binary(kv.key.as_ref().unwrap()));
                     let value = decode_binary(&kv.value);
 
                     match t {

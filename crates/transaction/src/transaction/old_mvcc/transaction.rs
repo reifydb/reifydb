@@ -23,7 +23,7 @@ use crate::catalog::{Catalog, Schema};
 use crate::transaction::old_mvcc::key::{Key, KeyPrefix};
 use crate::transaction::old_mvcc::scan::ScanIterator;
 use reifydb_core::encoding::{Key as _, Value, bincode, keycode};
-use reifydb_core::{Row, RowIter, key_prefix};
+use reifydb_core::{Row, RowIter, key_prefix_old};
 use reifydb_persistence::Persistence;
 // FIXME remove this
 
@@ -53,7 +53,7 @@ impl<P: Persistence> crate::Rx for Transaction<P> {
             self.persistence
                 .lock()
                 .unwrap()
-                .scan_prefix(key_prefix!("{}::{}::row::", schema, table))
+                .scan_prefix(key_prefix_old!("{}::{}::row::", schema, table))
                 // .scan(start_key..end_key) // range is [start_key, end_key)
                 .map(|r| Row::decode(&r.unwrap().1).unwrap())
                 .collect::<Vec<_>>()
@@ -87,7 +87,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
             .persistence
             .lock()
             .unwrap()
-            .scan_prefix(&key_prefix!("{}::{}::row::", schema, table))
+            .scan_prefix(&key_prefix_old!("{}::{}::row::", schema, table))
             .count();
 
         // FIXME assumes every row gets inserted - not updated etc..
@@ -99,7 +99,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
                 .unwrap()
                 .set(
                     // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
-                    key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)),
+                    key_prefix_old!("{}::{}::row::{}", schema, table, (last_id + id + 1)),
                     bincode::serialize(row),
                 )
                 .unwrap();
@@ -119,7 +119,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
             .persistence
             .lock()
             .unwrap()
-            .scan_prefix(&key_prefix!("{}::{}::row::", schema, series))
+            .scan_prefix(&key_prefix_old!("{}::{}::row::", schema, series))
             .count();
 
         // FIXME assumes every row gets inserted - not updated etc..
@@ -131,7 +131,7 @@ impl<P: Persistence> crate::Tx for Transaction<P> {
                 .unwrap()
                 .set(
                     // &encode_key(format!("{}::row::{}", store, (last_id + id + 1)).as_str()),
-                    key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)),
+                    key_prefix_old!("{}::{}::row::{}", schema, series, (last_id + id + 1)),
                     bincode::serialize(row),
                 )
                 .unwrap();
@@ -420,7 +420,7 @@ impl<P: Persistence> Transaction<P> {
         // the Keycode byte slice terminator 0x0000 at the end.
         let mut prefix = KeyPrefix::Version(prefix.into()).encode();
         prefix.truncate(prefix.len() - 2);
-        let range = keycode::prefix_range(&prefix);
+        let range = keycode::prefix_range_old(&prefix);
         ScanIterator::new(self.persistence.clone(), self.state().clone(), range)
     }
 }

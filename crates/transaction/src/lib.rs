@@ -12,6 +12,7 @@ pub use catalog::{
     StoreTx,
 };
 pub use error::Error;
+use reifydb_core::AsyncCowVec;
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
 pub use transaction::{InsertResult, Rx, Transaction, Tx, old_mvcc, svl};
@@ -21,7 +22,7 @@ mod error;
 pub mod mvcc;
 mod transaction;
 
-pub type Key = Vec<u8>;
+pub type Key = AsyncCowVec<u8>;
 pub type Value = Vec<u8>;
 
 pub type Result<T> = std::result::Result<T, Error>;

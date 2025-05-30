@@ -45,7 +45,7 @@ pub trait Persistence: Send + Sync {
     /// # Returns
     /// A [`ScanIter`] over key-value pairs whose keys start with the prefix.
     fn scan_prefix(&self, prefix: &Key) -> Self::ScanIter<'_> {
-        self.scan(keycode::prefix_range(prefix))
+        self.scan(keycode::prefix_range_old(prefix))
     }
     /// Inserts or updates the given `value` at the specified `key`.
     ///

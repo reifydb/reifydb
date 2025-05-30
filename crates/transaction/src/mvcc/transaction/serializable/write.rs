@@ -145,7 +145,7 @@ impl SerializableTransaction {
     }
 
     /// Insert a new key-value pair.
-    pub fn insert(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
         self.wtm.set(key, value)
     }
 
