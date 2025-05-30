@@ -169,7 +169,7 @@ impl PartialEq<&Value> for ValueRef<'_> {
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::item::ItemRef;
+use crate::mvcc::types::TransactionAction;
 use reifydb_persistence::{Key, Value};
 
 /// A reference to an entry in the write transaction.
@@ -211,7 +211,7 @@ impl CommittedRef<'_> {
 
 enum RefKind<'a> {
     PendingIter { version: u64, key: &'a Key, value: &'a Value },
-    Pending(ItemRef<'a>),
+    Pending(TransactionAction),
     Committed(CommittedRef<'a>),
 }
 
@@ -229,7 +229,7 @@ impl Clone for RefKind<'_> {
     fn clone(&self) -> Self {
         match self {
             Self::Committed(item) => Self::Committed(item.clone()),
-            Self::Pending(item) => Self::Pending(*item),
+            Self::Pending(action) => Self::Pending(action.clone()),
             Self::PendingIter { version, key, value } => {
                 Self::PendingIter { version: *version, key: *key, value: *value }
             }
@@ -284,9 +284,9 @@ impl<'a> From<(u64, &'a Key, &'a Value)> for Ref<'a> {
     }
 }
 
-impl<'a> From<ItemRef<'a>> for Ref<'a> {
-    fn from(item: ItemRef<'a>) -> Self {
-        Self(RefKind::Pending(item))
+impl<'a> From<TransactionAction> for Ref<'a> {
+    fn from(action: TransactionAction) -> Self {
+        Self(RefKind::Pending(action))
     }
 }
 

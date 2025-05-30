@@ -21,7 +21,7 @@ use core::{
     sync::atomic::AtomicU64,
 };
 
-use crate::mvcc::item::ToWrite;
+use crate::mvcc::types::TransactionAction;
 use crossbeam_skiplist::SkipMap;
 
 use crate::mvcc::transaction::scan::iter::*;
@@ -69,7 +69,7 @@ impl SkipCore {
 }
 
 impl SkipCore {
-    pub fn apply(&self, entries: Vec<ToWrite>) {
+    pub fn apply(&self, entries: Vec<TransactionAction>) {
         for item in entries {
             let version = item.version();
             match item.action {

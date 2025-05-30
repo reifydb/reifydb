@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::item::{EntryValue, ToWrite};
+use crate::mvcc::types::{TransactionValue, TransactionAction};
 use std::ops::RangeBounds;
 
 pub use btree::BTreePendingWrites;
@@ -20,12 +20,12 @@ mod btree;
 /// A pending writes manager that can be used to store pending writes in a transaction.
 pub trait PendingWrites: Default + Sized {
     /// The iterator type.
-    type Iter<'a>: Iterator<Item = (&'a Key, &'a EntryValue<Value>)>
+    type Iter<'a>: Iterator<Item = (&'a Key, &'a TransactionValue)>
     where
         Self: 'a;
 
     /// The IntoIterator type.
-    type IntoIter: Iterator<Item = (Key, EntryValue<Value>)>;
+    type IntoIter: Iterator<Item = (Key, TransactionValue)>;
 
     /// Create a new pending writes manager.
     fn new() -> Self;
@@ -43,22 +43,22 @@ pub trait PendingWrites: Default + Sized {
     fn max_batch_entries(&self) -> u64;
 
     /// Returns the estimated size of the entry in bytes when persisted in the database.
-    fn estimate_size(&self, entry: &ToWrite) -> u64;
+    fn estimate_size(&self, entry: &TransactionAction) -> u64;
 
     /// Returns a reference to the value corresponding to the key.
-    fn get(&self, key: &Key) -> Option<&EntryValue<Value>>;
+    fn get(&self, key: &Key) -> Option<&TransactionValue>;
 
     /// Returns a reference to the key-value pair corresponding to the key.
-    fn get_entry(&self, key: &Key) -> Option<(&Key, &EntryValue<Value>)>;
+    fn get_entry(&self, key: &Key) -> Option<(&Key, &TransactionValue)>;
 
     /// Returns true if the pending manager contains the key.
     fn contains_key(&self, key: &Key) -> bool;
 
     /// Inserts a key-value pair into the er.
-    fn insert(&mut self, key: Key, value: EntryValue<Value>);
+    fn insert(&mut self, key: Key, value: TransactionValue);
 
     /// Removes a key from the pending writes, returning the key-value pair if the key was previously in the pending writes.
-    fn remove_entry(&mut self, key: &Key) -> Option<(Key, EntryValue<Value>)>;
+    fn remove_entry(&mut self, key: &Key) -> Option<(Key, TransactionValue)>;
 
     /// Returns an iterator over the pending writes.
     fn iter(&self) -> Self::Iter<'_>;
@@ -73,7 +73,7 @@ pub trait PendingWrites: Default + Sized {
 /// An trait that can be used to get a range over the pending writes.
 pub trait PendingWritesRange: PendingWrites {
     /// The iterator type.
-    type Range<'a>: IntoIterator<Item = (&'a Key, &'a EntryValue<Value>)>
+    type Range<'a>: IntoIterator<Item = (&'a Key, &'a TransactionValue)>
     where
         Self: 'a;
 
@@ -92,14 +92,14 @@ pub trait PendingWritesComparableRange: PendingWritesRange + PendingWritesCompar
 /// An optimized version of the [`PendingWrites`] trait that if your pending writes manager is depend on the order.
 pub trait PendingWritesComparable: PendingWrites {
     /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
-    fn get_comparable(&self, key: &Key) -> Option<&EntryValue<Value>>;
+    fn get_comparable(&self, key: &Key) -> Option<&TransactionValue>;
 
     /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
-    fn get_entry_comparable(&self, key: &Key) -> Option<(&Key, &EntryValue<Value>)>;
+    fn get_entry_comparable(&self, key: &Key) -> Option<(&Key, &TransactionValue)>;
 
     /// Optimized version of [`PendingWrites::contains_key`] that accepts borrowed keys.
     fn contains_key_comparable(&self, key: &Key) -> bool;
 
     /// Optimized version of [`PendingWrites::remove_entry`] that accepts borrowed keys.
-    fn remove_entry_comparable(&mut self, key: &Key) -> Option<(Key, EntryValue<Value>)>;
+    fn remove_entry_comparable(&mut self, key: &Key) -> Option<(Key, TransactionValue)>;
 }

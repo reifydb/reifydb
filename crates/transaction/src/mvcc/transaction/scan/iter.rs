@@ -12,7 +12,7 @@
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
-use crate::mvcc::item::EntryValue;
+use crate::mvcc::types::TransactionValue;
 use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;
@@ -47,8 +47,8 @@ impl<'a> Iterator for Iter<'a> {
 /// Iterator over the entries of the transaction.
 pub struct TransactionIter<'a, C> {
     committed: Iter<'a>,
-    pending: BTreeMapIter<'a, Key, EntryValue<Value>>,
-    next_pending: Option<(&'a Key, &'a EntryValue<Value>)>,
+    pending: BTreeMapIter<'a, Key, TransactionValue>,
+    next_pending: Option<(&'a Key, &'a TransactionValue)>,
     next_committed: Option<Ref<'a>>,
     last_yielded_key: Option<Either<&'a Key, Ref<'a>>>,
     marker: Option<Marker<'a, C>>,
@@ -70,7 +70,7 @@ where
     }
 
     pub fn new(
-        pending: BTreeMapIter<'a, Key, EntryValue<Value>>,
+        pending: BTreeMapIter<'a, Key, TransactionValue>,
         committed: Iter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {

@@ -11,8 +11,8 @@
 
 use super::*;
 use crate::mvcc::error::MvccError;
-use crate::mvcc::item::{ItemDataRef, ItemRef, ToWrite};
 use crate::mvcc::marker::Marker;
+use crate::mvcc::types::TransactionAction;
 use reifydb_persistence::{Action, Key, Value};
 
 pub struct TransactionManagerTx<C, P> {
@@ -23,7 +23,7 @@ pub struct TransactionManagerTx<C, P> {
     pub(super) conflicts: C,
     // stores any writes done by tx
     pub(super) pending_writes: P,
-    pub(super) duplicate_writes: Vec<ToWrite>,
+    pub(super) duplicate_actions: Vec<TransactionAction>,
 
     pub(super) discarded: bool,
     pub(super) done_read: bool,
@@ -111,7 +111,7 @@ where
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
-        self.modify(ToWrite { action: Action::Remove { key }, version: 0 })
+        self.modify(TransactionAction { action: Action::Remove { key }, version: 0 })
     }
 
     /// Rolls back the transaction.
@@ -155,7 +155,7 @@ where
     pub fn get<'a, 'b: 'a>(
         &'a mut self,
         key: &'b Key,
-    ) -> Result<Option<ItemRef<'a>>, TransactionError> {
+    ) -> Result<Option<TransactionAction>, TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -167,10 +167,10 @@ where
             }
 
             // Fulfill from buffer.
-            Ok(Some(ItemRef {
-                data: match &e.value {
-                    Some(value) => ItemDataRef::Insert { key, value },
-                    None => ItemDataRef::Remove(key),
+            Ok(Some(TransactionAction {
+                action: match &e.value {
+                    Some(value) => Action::Set { key: key.clone(), value: value.clone() },
+                    None => Action::Remove { key: key.clone() },
                 },
                 version: e.version,
             }))
@@ -205,7 +205,7 @@ where
     ///    background upon successful completion of writes or any error during write.
     pub fn commit<F>(&mut self, apply: F) -> Result<(), MvccError>
     where
-        F: FnOnce(Vec<ToWrite>) -> Result<(), Box<dyn std::error::Error>>,
+        F: FnOnce(Vec<TransactionAction>) -> Result<(), Box<dyn std::error::Error>>,
     {
         if self.discarded {
             return Err(TransactionError::Discarded.into());
@@ -248,11 +248,11 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        let item = ToWrite { action: Action::Set { key, value }, version: self.version };
+        let item = TransactionAction { action: Action::Set { key, value }, version: self.version };
         self.modify(item)
     }
 
-    fn modify(&mut self, item: ToWrite) -> Result<(), TransactionError> {
+    fn modify(&mut self, item: TransactionAction) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -275,14 +275,14 @@ where
         // Add the entry to duplicateWrites only if both the entries have different versions. For
         // same versions, we will overwrite the existing entry.
         let eversion = item.version;
-        let (ek, ev) = item.split();
+        let (key, value) = item.split();
 
-        if let Some((old_key, old_value)) = pending_writes.remove_entry(&ek) {
+        if let Some((old_key, old_value)) = pending_writes.remove_entry(&key) {
             if old_value.version != eversion {
-                self.duplicate_writes.push(ToWrite::unsplit(old_key, old_value));
+                self.duplicate_actions.push(TransactionAction::unsplit(old_key, old_value));
             }
         }
-        pending_writes.insert(ek, ev);
+        pending_writes.insert(key, value);
 
         Ok(())
     }
@@ -293,7 +293,7 @@ where
     C: Conflict,
     P: PendingWrites,
 {
-    fn commit_entries(&mut self) -> Result<(u64, Vec<ToWrite>), TransactionError> {
+    fn commit_entries(&mut self) -> Result<(u64, Vec<TransactionAction>), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -315,17 +315,18 @@ where
             }
             CreateCommitTimestampResult::Timestamp(commit_ts) => {
                 let pending_writes = mem::take(&mut self.pending_writes);
-                let duplicate_writes = mem::take(&mut self.duplicate_writes);
+                let duplicate_writes = mem::take(&mut self.duplicate_actions);
                 let mut entries =
-                    Vec::with_capacity(pending_writes.len() + self.duplicate_writes.len());
+                    Vec::with_capacity(pending_writes.len() + self.duplicate_actions.len());
 
-                let process_entry = |entries: &mut Vec<ToWrite>, mut item: ToWrite| {
-                    item.version = commit_ts;
-                    entries.push(item);
-                };
-                pending_writes
-                    .into_iter()
-                    .for_each(|(k, v)| process_entry(&mut entries, ToWrite::unsplit(k, v)));
+                let process_entry =
+                    |entries: &mut Vec<TransactionAction>, mut item: TransactionAction| {
+                        item.version = commit_ts;
+                        entries.push(item);
+                    };
+                pending_writes.into_iter().for_each(|(k, v)| {
+                    process_entry(&mut entries, TransactionAction::unsplit(k, v))
+                });
                 duplicate_writes.into_iter().for_each(|item| process_entry(&mut entries, item));
 
                 // CommitTs should not be zero if we're inserting transaction markers.

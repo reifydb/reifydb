@@ -15,7 +15,7 @@ use core::cmp;
 use crossbeam_skiplist::map::Range as MapRange;
 
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
-use crate::mvcc::item::EntryValue;
+use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Range as BTreeMapRange;
@@ -56,8 +56,8 @@ where
     R: RangeBounds<Key> + 'a,
 {
     pub(crate) committed: Range<'a, R>,
-    pub(crate) pending: BTreeMapRange<'a, Key, EntryValue<Value>>,
-    next_pending: Option<(&'a Key, &'a EntryValue<Value>)>,
+    pub(crate) pending: BTreeMapRange<'a, Key, TransactionValue>,
+    next_pending: Option<(&'a Key, &'a TransactionValue)>,
     next_committed: Option<Ref<'a>>,
     last_yielded_key: Option<Either<&'a Key, Ref<'a>>>,
     marker: Option<Marker<'a, C>>,
@@ -80,7 +80,7 @@ where
     }
 
     pub fn new(
-        pending: BTreeMapRange<'a, Key, EntryValue<Value>>,
+        pending: BTreeMapRange<'a, Key, TransactionValue>,
         committed: Range<'a, R>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {

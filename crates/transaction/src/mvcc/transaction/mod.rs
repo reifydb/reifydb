@@ -12,7 +12,7 @@
 use core::mem;
 use std::sync::Arc;
 
-pub use crate::mvcc::item::*;
+pub use crate::mvcc::types::*;
 pub use write::*;
 
 use oracle::*;
@@ -57,7 +57,7 @@ where
             count: 0,
             conflicts: C::new(),
             pending_writes: P::new(),
-            duplicate_writes: Vec::new(),
+            duplicate_actions: Vec::new(),
             discarded: false,
             done_read: false,
         })

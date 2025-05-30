@@ -9,8 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::conflict::{Conflict, ConflictIter, ConflictRange};
-use core::{borrow::Borrow, hash::Hash, ops::RangeBounds};
+use crate::mvcc::conflict::{Conflict, ConflictRange};
+use core::{hash::Hash, ops::RangeBounds};
 use reifydb_persistence::Key;
 
 /// A marker used to mark the keys that are read.
@@ -31,23 +31,11 @@ impl<C: Conflict> Marker<'_, C> {
     pub fn mark(&mut self, k: &Key) {
         self.marker.mark_read(k);
     }
-
-    /// Marks a key is conflicted.
-    pub fn mark_conflict(&mut self, k: &Key) {
-        self.marker.mark_conflict(k);
-    }
 }
 
 impl<C: ConflictRange> Marker<'_, C> {
     /// Marks a key is operated.
     pub fn mark_range(&mut self, range: impl RangeBounds<Key>) {
         self.marker.mark_range(range);
-    }
-}
-
-impl<C: ConflictIter> Marker<'_, C> {
-    /// Marks a key is operated.
-    pub fn mark_iter(&mut self) {
-        self.marker.mark_iter();
     }
 }

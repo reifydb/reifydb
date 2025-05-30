@@ -17,15 +17,15 @@ use std::collections::{
 };
 
 /// A type alias for [`PendingWrites`] that based on the [`BTreeMap`].
-pub type BTreePendingWrites = BTreeMap<Key, EntryValue<Value>>;
+pub type BTreePendingWrites = BTreeMap<Key, TransactionValue>;
 
-impl PendingWrites for BTreeMap<Key, EntryValue<Value>> {
+impl PendingWrites for BTreeMap<Key, TransactionValue> {
     type Iter<'a>
-        = BTreeMapIter<'a, Key, EntryValue<Value>>
+        = BTreeMapIter<'a, Key, TransactionValue>
     where
         Self: 'a;
 
-    type IntoIter = BTreeMapIntoIter<Key, EntryValue<Value>>;
+    type IntoIter = BTreeMapIntoIter<Key, TransactionValue>;
 
     fn new() -> Self {
         Self::default()
@@ -47,15 +47,15 @@ impl PendingWrites for BTreeMap<Key, EntryValue<Value>> {
         u64::MAX
     }
 
-    fn estimate_size(&self, _entry: &ToWrite) -> u64 {
+    fn estimate_size(&self, _entry: &TransactionAction) -> u64 {
         size_of::<Key>() as u64 + size_of::<Value>() as u64
     }
 
-    fn get(&self, key: &Key) -> Option<&EntryValue<Value>> {
+    fn get(&self, key: &Key) -> Option<&TransactionValue> {
         self.get(key)
     }
 
-    fn get_entry(&self, key: &Key) -> Option<(&Key, &EntryValue<Value>)> {
+    fn get_entry(&self, key: &Key) -> Option<(&Key, &TransactionValue)> {
         self.get_key_value(key)
     }
 
@@ -63,11 +63,11 @@ impl PendingWrites for BTreeMap<Key, EntryValue<Value>> {
         self.contains_key(key)
     }
 
-    fn insert(&mut self, key: Key, value: EntryValue<Value>) {
+    fn insert(&mut self, key: Key, value: TransactionValue) {
         self.insert(key, value);
     }
 
-    fn remove_entry(&mut self, key: &Key) -> Option<(Key, EntryValue<Value>)> {
+    fn remove_entry(&mut self, key: &Key) -> Option<(Key, TransactionValue)> {
         self.remove_entry(key)
     }
 
@@ -84,9 +84,9 @@ impl PendingWrites for BTreeMap<Key, EntryValue<Value>> {
     }
 }
 
-impl PendingWritesRange for BTreeMap<Key, EntryValue<Value>> {
+impl PendingWritesRange for BTreeMap<Key, TransactionValue> {
     type Range<'a>
-        = BTreeMapRange<'a, Key, EntryValue<Value>>
+        = BTreeMapRange<'a, Key, TransactionValue>
     where
         Self: 'a;
 
@@ -95,7 +95,7 @@ impl PendingWritesRange for BTreeMap<Key, EntryValue<Value>> {
     }
 }
 
-impl PendingWritesComparableRange for BTreeMap<Key, EntryValue<Value>> {
+impl PendingWritesComparableRange for BTreeMap<Key, TransactionValue> {
     fn range_comparable<R>(&self, range: R) -> Self::Range<'_>
     where
         R: RangeBounds<Key>,
@@ -104,12 +104,12 @@ impl PendingWritesComparableRange for BTreeMap<Key, EntryValue<Value>> {
     }
 }
 
-impl PendingWritesComparable for BTreeMap<Key, EntryValue<Value>> {
-    fn get_comparable(&self, key: &Key) -> Option<&EntryValue<Value>> {
+impl PendingWritesComparable for BTreeMap<Key, TransactionValue> {
+    fn get_comparable(&self, key: &Key) -> Option<&TransactionValue> {
         BTreeMap::get(self, key)
     }
 
-    fn get_entry_comparable(&self, key: &Key) -> Option<(&Key, &EntryValue<Value>)> {
+    fn get_entry_comparable(&self, key: &Key) -> Option<(&Key, &TransactionValue)> {
         BTreeMap::get_key_value(self, key)
     }
 
@@ -117,7 +117,7 @@ impl PendingWritesComparable for BTreeMap<Key, EntryValue<Value>> {
         BTreeMap::contains_key(self, key)
     }
 
-    fn remove_entry_comparable(&mut self, key: &Key) -> Option<(Key, EntryValue<Value>)> {
+    fn remove_entry_comparable(&mut self, key: &Key) -> Option<(Key, TransactionValue)> {
         BTreeMap::remove_entry(self, key)
     }
 }

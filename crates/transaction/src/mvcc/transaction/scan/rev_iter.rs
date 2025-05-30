@@ -18,7 +18,7 @@ use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
 use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
-use crate::mvcc::item::EntryValue;
+use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Iter as BTreeMapIter;
@@ -49,9 +49,9 @@ impl<'a> Iterator for RevIter<'a> {
 
 /// Iterator over the entries of the write transaction.
 pub struct TransactionRevIter<'a, C> {
-    pending: Rev<BTreeMapIter<'a, Key, EntryValue<Value>>>,
+    pending: Rev<BTreeMapIter<'a, Key, TransactionValue>>,
     committed: RevIter<'a>,
-    next_pending: Option<(&'a Key, &'a EntryValue<Value>)>,
+    next_pending: Option<(&'a Key, &'a TransactionValue)>,
     next_committed: Option<Ref<'a>>,
     last_yielded_key: Option<Either<&'a Key, Ref<'a>>>,
     marker: Option<Marker<'a, C>>,
@@ -73,7 +73,7 @@ where
     }
 
     pub fn new(
-        pending: Rev<BTreeMapIter<'a, Key, EntryValue<Value>>>,
+        pending: Rev<BTreeMapIter<'a, Key, TransactionValue>>,
         committed: RevIter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
