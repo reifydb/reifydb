@@ -12,7 +12,7 @@
 pub use std::error::Error;
 
 /// Error type for the transaction.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TransactionError {
     /// Returned when a transaction conflicts with another transaction. This can
     /// happen if the read rows had been updated concurrently by another transaction.
@@ -33,24 +33,15 @@ impl core::fmt::Display for TransactionError {
     }
 }
 
-/// Error type for write transaction.
+#[derive(Debug, PartialEq)]
+/// Error type for mvcc transactions.
 pub enum MvccError {
     /// Returned if something goes wrong during the commit
-    Commit(Box<dyn Error>),
+    Commit(String),
     /// Returned if the transaction error occurs.
     Transaction(TransactionError),
     /// Persistence-layer error
     Persistence(reifydb_persistence::Error),
-}
-
-impl core::fmt::Debug for MvccError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Transaction(err) => write!(f, "Transaction({:?})", err),
-            Self::Commit(err) => write!(f, "Commit({:?})", err),
-            Self::Persistence(_) => unimplemented!(),
-        }
-    }
 }
 
 impl core::fmt::Display for MvccError {
@@ -79,6 +70,6 @@ impl MvccError {
 
     /// Create a new error from the commit error.
     pub fn commit(err: Box<dyn Error + 'static>) -> Self {
-        Self::Commit(err)
+        Self::Commit(err.to_string())
     }
 }

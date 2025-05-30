@@ -25,13 +25,7 @@
 //
 // mod write_skew;
 //
-// #[test]
-// fn begin_tx_readable() {
-//     let db: Optimistic<&'static str, Vec<u8>> = Optimistic::new();
-//     let tx = db.read();
-//     assert_eq!(tx.version(), 0);
-// }
-//
+
 // #[test]
 // fn begin_tx_writeable() {
 //     let db: Optimistic<&'static str, Vec<u8>> = Optimistic::new();
