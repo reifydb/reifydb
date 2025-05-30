@@ -26,7 +26,7 @@ pub enum TransactionError {
 impl core::fmt::Display for TransactionError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Conflict => write!(f, "transaction conflict, please retry"),
+            Self::Conflict => write!(f, "transaction conflict, please try again"),
             Self::Discarded => write!(f, "transaction has been discarded, please create a new one"),
             Self::LargeTxn => write!(f, "transaction is too large"),
         }

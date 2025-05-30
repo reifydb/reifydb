@@ -1,0 +1,26 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Non-Repeatable Read Prevention
+# Ensure that reading the same key in the same transaction yields the same value.
+
+t1: begin
+t1: set stock=50
+t1: commit
+
+t2: begin
+t2: get stock
+---
+t2: "stock" → "50"
+
+t3: begin
+t3: set stock=30
+t3: commit
+
+t2: get stock
+---
+t2: "stock" → "50"
+
+t2: commit
+---
+ok

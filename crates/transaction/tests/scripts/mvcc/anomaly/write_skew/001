@@ -22,4 +22,4 @@ t3: "kevin" → "1000"
 t2: commit
 t3: !commit
 ---
-t3: Error: transaction error: transaction conflict, please retry
+t3: Error: transaction error: transaction conflict, please try again

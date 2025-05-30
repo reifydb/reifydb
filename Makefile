@@ -1,5 +1,5 @@
 .PHONY: all
-all: check test build push
+all: check clean test build push
 
 .PHONY: check
 check:
@@ -8,10 +8,16 @@ check:
 		exit 1; \
 	fi
 
+.PHONY: clean
+clean:
+	@for pkg in $$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name' | grep '^reifydb_'); do \
+		cargo clean -p $$pkg; \
+	done
+
 .PHONY: test
 test:
-	cargo nextest run -p smoke --all-targets
-	cargo nextest run --all-targets --no-fail-fast --final-status-level all
+	cargo nextest run -p smoke --all-targets --no-fail-fast --status-level fail --final-status-level fail
+	cargo nextest run --all-targets --no-fail-fast --status-level fail --final-status-level fail
 
 .PHONY: test
 build:

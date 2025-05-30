@@ -1,0 +1,28 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Reading values that were never consistent together.
+# Ensures t2 does not observe a mix of old and new states.
+
+t1: begin
+t1: set temp=22
+t1: set pressure=101
+t1: commit
+
+t2: begin
+t2: get temp
+---
+t2: "temp" → "22"
+
+t3: begin
+t3: set temp=24
+t3: set pressure=99
+t3: commit
+
+t2: get pressure
+---
+t2: "pressure" → "101"
+
+t2: commit
+---
+ok

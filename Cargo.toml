@@ -50,14 +50,18 @@ debug-assertions = true
 overflow-checks = true
 incremental = true
 lto = false
+codegen-units = 256
 panic = "unwind"
 
 [profile.test]
 opt-level = 0
 debug = true
 lto = false
+codegen-units = 256
+incremental = true
 debug-assertions = true
 overflow-checks = true
+panic = "unwind"
 
 [workspace.dependencies]
 reifydb = { path = "pkg/rust", version = "0.0.1" }

@@ -1,0 +1,56 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Initial state
+t0: begin
+t0: set red=on
+t0: set green=on
+t0: set blue=on
+t0: commit
+
+# Transaction 1 reads all, disables red
+t1: begin
+t1: get red
+t1: get green
+t1: get blue
+t1: set red=off
+t1: get red
+---
+t1: "red" → "on"
+t1: "green" → "on"
+t1: "blue" → "on"
+t1: "red" → "off"
+
+# Transaction 2 reads all, disables green
+t2: begin
+t2: get red
+t2: get green
+t2: get blue
+t2: set green=off
+t2: get green
+---
+t2: "red" → "on"
+t2: "green" → "on"
+t2: "blue" → "on"
+t2: "green" → "off"
+
+# Transaction 3 reads all, disables blue
+t3: begin
+t3: get red
+t3: get green
+t3: get blue
+t3: set blue=off
+t3: get blue
+---
+t3: "red" → "on"
+t3: "green" → "on"
+t3: "blue" → "on"
+t3: "blue" → "off"
+
+# Now try to commit them all
+t1: commit
+t2: !commit
+t3: !commit
+---
+t2: Error: transaction error: transaction conflict, please try again
+t3: Error: transaction error: transaction conflict, please try again

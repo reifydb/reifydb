@@ -1,0 +1,25 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Prevent new rows from "appearing" mid-transaction.
+
+t1: begin
+t1: set user1=Alice
+t1: commit
+
+t2: begin
+t2: scan
+---
+t2: "user1" → "Alice"
+
+t3: begin
+t3: set user2=Bob
+t3: commit
+
+t2: scan
+---
+t2: "user1" → "Alice"
+
+t2: commit
+---
+ok

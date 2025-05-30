@@ -1,0 +1,32 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Two doctors on call, both check there’s one doctor scheduled, and each removes themselves.
+
+t1: begin
+t1: set doctor1=on
+t1: set doctor2=on
+t1: commit
+
+t2: begin
+t2: get doctor1
+t2: get doctor2
+t2: set doctor1=off
+---
+t2: "doctor1" → "on"
+t2: "doctor2" → "on"
+
+t3: begin
+t3: get doctor1
+t3: get doctor2
+t3: set doctor2=off
+---
+t3: "doctor1" → "on"
+t3: "doctor2" → "on"
+
+t2: commit
+t3: !commit
+---
+t3: Error: transaction error: transaction conflict, please try again
+
+
