@@ -9,8 +9,9 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
+use crate::AsyncCowVec;
+use crate::bincode;
 use crate::FromValue;
-use crate::IntoKey;
 use crate::IntoValue;
 use crate::{from_value, into_key, into_value};
 use MvccError::Transaction;
@@ -30,20 +31,20 @@ fn test_txn_write_skew() {
     let engine: Optimistic = Optimistic::new();
 
     // Set balance to $100 in each account.
-    let mut txn = engine.write();
-    txn.set(a999.clone(), into_value!(100)).unwrap();
-    txn.set(a888.clone(), into_value!(100)).unwrap();
+    let mut txn = engine.begin();
+    txn.set(a999.clone(), into_value!(100u64)).unwrap();
+    txn.set(a888.clone(), into_value!(100u64)).unwrap();
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
     let get_bal = |txn: &mut TransactionTx, k: &Key| -> u64 {
         let item = txn.get(k).unwrap().unwrap();
         let val = item.value().deref().clone();
-        from_value!(val)
+        from_value!(u64, val)
     };
 
     // Start two transactions, each would read both accounts and deduct from one account.
-    let mut txn1 = engine.write();
+    let mut txn1 = engine.begin();
 
     let mut sum = get_bal(&mut txn1, &a999);
     sum += get_bal(&mut txn1, &a888);
@@ -57,7 +58,7 @@ fn test_txn_write_skew() {
     assert_eq!(100, sum);
     // Don't commit yet.
 
-    let mut txn2 = engine.write();
+    let mut txn2 = engine.begin();
 
     let mut sum = get_bal(&mut txn2, &a999);
     sum += get_bal(&mut txn2, &a888);

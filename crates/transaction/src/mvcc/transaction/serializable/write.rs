@@ -65,43 +65,6 @@ impl SerializableTransaction {
 }
 
 impl SerializableTransaction {
-    /// Acts like [`commit`](WriteTransaction::commit), but takes a callback, which gets run via a
-    /// thread to avoid blocking this function. Following these steps:
-    ///
-    /// 1. If there are no writes, return immediately, callback will be invoked.
-    ///
-    /// 2. Check if read rows were updated since txn started. If so, return `TransactionError::Conflict`.
-    ///
-    /// 3. If no conflict, generate a commit timestamp and update written rows' commit ts.
-    ///
-    /// 4. Batch up all writes, write them to database.
-    ///
-    /// 5. Return immediately after checking for conflicts.
-    ///    If there is a conflict, an error will be returned immediately and the callback will not
-    ///    run. If there are no conflicts, the callback will be called in the
-    ///    background upon successful completion of writes or any error during write.
-
-    pub fn commit_with_callback<E, R>(
-        &mut self,
-        callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, MvccError>
-    where
-        E: std::error::Error,
-        R: Send + 'static,
-    {
-        let db = self.db.clone();
-
-        self.wtm.commit_with_callback(
-            move |ents| {
-                db.inner.map.apply(ents);
-                Ok(())
-            },
-            callback,
-        )
-    }
-}
-
-impl SerializableTransaction {
     /// Returns the read version of the transaction.
 
     pub fn version(&self) -> u64 {

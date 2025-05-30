@@ -14,11 +14,11 @@ impl<P: Persistence> Transaction<P> for Optimistic {
     type Tx = TransactionTx;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
-        Ok(self.read())
+        Ok(self.begin_read_only())
     }
 
     fn begin(&self) -> crate::Result<Self::Tx> {
-        Ok(self.write())
+        Ok(self.begin())
     }
 }
 

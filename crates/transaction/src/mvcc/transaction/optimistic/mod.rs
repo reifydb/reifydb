@@ -83,13 +83,13 @@ impl Optimistic {
     }
 
     /// Create a read transaction.
-    pub fn read(&self) -> TransactionRx {
+    pub fn begin_read_only(&self) -> TransactionRx {
         TransactionRx::new(self.clone())
     }
 }
 
 impl Optimistic {
-    pub fn write(&self) -> TransactionTx {
+    pub fn begin(&self) -> TransactionTx {
         TransactionTx::new(self.clone())
     }
 }

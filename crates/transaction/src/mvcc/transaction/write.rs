@@ -43,11 +43,10 @@ impl<C, P> TransactionManagerTx<C, P> {
         self.version
     }
 
-    /// Sets the current read version of the transaction manager.
-    // This should be used only for testing purposes.
     #[doc(hidden)]
-    #[cfg(test)]
-    pub fn set_read_version(&mut self, version: u64) {
+    /// Sets the current read version of the transaction manager.
+    /// This should be used only for testing purposes.
+    pub fn set_version(&mut self, version: u64) {
         self.version = version;
     }
 
@@ -237,74 +236,6 @@ where
                 self.discard();
                 MvccError::commit(e)
             })
-    }
-}
-
-impl<C, P> TransactionManagerTx<C, P>
-where
-    C: Conflict + Send,
-    P: PendingWrites + Send,
-{
-    /// Acts like [`commit`](TransactionManagerTx::commit), but takes a callback, which gets run via a
-    /// thread to avoid blocking this function. Following these steps:
-    ///
-    /// 1. If there are no writes, return immediately, callback will be invoked.
-    ///
-    /// 2. Check if read rows were updated since txn started. If so, return `TransactionError::Conflict`.
-    ///
-    /// 3. If no conflict, generate a commit timestamp and update written rows' commit ts.
-    ///
-    /// 4. Batch up all writes, write them to database.
-    ///
-    /// 5. Return immediately after checking for conflicts.
-    ///    If there is a conflict, an error will be returned immediately and the callback will not
-    ///    run. If there are no conflicts, the callback will be called in the
-    ///    background upon successful completion of writes or any error during write.
-    ///
-    /// If error does not occur, the transaction is successfully committed. In case of an error, the DB
-    /// should not be updated (The implementors of [`Database`] must promise this), so there's no need for any rollback.
-    pub fn commit_with_callback<F, E, R>(
-        &mut self,
-        apply: F,
-        callback: impl FnOnce(Result<(), E>) -> R + Send + 'static,
-    ) -> Result<std::thread::JoinHandle<R>, MvccError>
-    where
-        F: FnOnce(Vec<Entry>) -> Result<(), E> + Send + 'static,
-        E: std::error::Error,
-        R: Send + 'static,
-        C: 'static,
-    {
-        if self.discarded {
-            return Err(MvccError::transaction(TransactionError::Discarded));
-        }
-
-        if self.pending_writes.is_empty() {
-            // Nothing to commit
-            self.discard();
-            return Ok(std::thread::spawn(move || callback(Ok(()))));
-        }
-
-        let (commit_ts, entries) = self.commit_entries().map_err(|e| match e {
-            TransactionError::Conflict => e,
-            _ => {
-                self.discard();
-                e
-            }
-        })?;
-
-        let orc = self.oracle.clone();
-
-        Ok(std::thread::spawn(move || {
-            callback(
-                apply(entries)
-                    .map(|_| {
-                        orc.done_commit(commit_ts);
-                    })
-                    .inspect_err(|_| {
-                        orc.done_commit(commit_ts);
-                    }),
-            )
-        }))
     }
 }
 
