@@ -1,9 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
-
 // This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:

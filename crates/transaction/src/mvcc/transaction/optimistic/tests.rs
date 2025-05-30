@@ -1,14 +1,14 @@
-// // Copyright (c) reifydb.com 2025
-// // This file is licensed under the AGPL-3.0-or-later
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
+// originally licensed under the Apache License, Version 2.0.
+// Original copyright:
+//   Copyright (c) 2024 Al Liu
 //
-// // This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
-// // originally licensed under the Apache License, Version 2.0.
-// // Original copyright:
-// //   Copyright (c) 2024 Al Liu
-// //
-// // The original Apache License can be found at:
-// //   http://www.apache.org/licenses/LICENSE-2.0
-//
+// The original Apache License can be found at:
+//   http://www.apache.org/licenses/LICENSE-2.0
+
 // use std::{
 //     sync::atomic::{AtomicU32, Ordering},
 //     time::Duration,
@@ -92,11 +92,11 @@
 // fn txn_read_after_write() {
 //     const N: u64 = 100;
 //
-//     let db: Optimistic<u64, u64> = Optimistic::new();
+//     let engine: Optimistic = Optimistic::new();
 //
 //     let handles = (0..N)
 //         .map(|i| {
-//             let db = db.clone();
+//             let db = engine.clone();
 //             std::thread::spawn(move || {
 //                 let k = i;
 //                 let v = i;
