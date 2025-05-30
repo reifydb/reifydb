@@ -13,7 +13,7 @@ use crate::AsyncCowVec;
 use crate::FromValue;
 use crate::IntoValue;
 use crate::keycode;
-use crate::{from_value, as_key, as_value};
+use crate::{as_key, as_value, from_value};
 use MvccError::Transaction;
 use TransactionError::Conflict;
 use reifydb_transaction::Key;
@@ -23,7 +23,7 @@ use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, Transaction
 use std::ops::Deref;
 
 #[test]
-fn test_txn_write_skew() {
+fn test_write_skew() {
     // accounts
     let a999: Key = as_key!(999);
     let a888: Key = as_key!(888);
@@ -77,4 +77,182 @@ fn test_txn_write_skew() {
     assert_eq!(err, Transaction(Conflict));
 
     assert_eq!(2, engine.version());
+}
+
+// https://wiki.postgresql.org/wiki/SSI#Black_and_White
+#[test]
+fn test_black_white() {
+    let engine: Optimistic = Optimistic::new();
+
+    // Setup
+    let mut txn = engine.begin();
+    for i in 1..=10 {
+        if i % 2 == 1 {
+            txn.set(as_key!(i), as_value!("black".to_string())).unwrap();
+        } else {
+            txn.set(as_key!(i), as_value!("white".to_string())).unwrap();
+        }
+    }
+    txn.commit().unwrap();
+
+    let mut white = engine.begin();
+    let indices = white
+        .iter()
+        .unwrap()
+        .filter_map(|item| {
+            if item.value() == as_value!("black".to_string()) {
+                Some(item.key().clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    for i in indices {
+        white.set(i, as_value!("white".to_string())).unwrap();
+    }
+
+    let mut black = engine.begin();
+    let indices = black
+        .iter()
+        .unwrap()
+        .filter_map(|item| {
+            if item.value() == as_value!("white".to_string()) {
+                Some(item.key().clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    for i in indices {
+        black.set(i, as_value!("black".to_string())).unwrap();
+    }
+
+    black.commit().unwrap();
+    let err = white.commit().unwrap_err();
+    assert_eq!(err, Transaction(Conflict));
+
+    let rx = engine.begin_read_only();
+    let result: Vec<_> = rx.iter().collect();
+    assert_eq!(result.len(), 10);
+
+    result.iter().for_each(|item| {
+        assert_eq!(item.value(), as_value!("black".to_string()));
+    })
+}
+
+// https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
+#[test]
+fn test_overdraft_protection() {
+    let engine: Optimistic = Optimistic::new();
+
+    let key = as_key!("karen");
+
+    // Setup
+    let mut txn = engine.begin();
+    txn.set(key.clone(), as_value!(1000)).unwrap();
+    txn.commit().unwrap();
+
+    // txn1
+    let mut txn1 = engine.begin();
+    let money = from_value!(i32, *txn1.get(&key).unwrap().unwrap().value());
+    txn1.set(key.clone(), as_value!(money - 500)).unwrap();
+
+    // txn2
+    let mut txn2 = engine.begin();
+    let money = from_value!(i32, *txn2.get(&key).unwrap().unwrap().value());
+    txn2.set(key.clone(), as_value!(money - 500)).unwrap();
+
+    txn1.commit().unwrap();
+    let err = txn2.commit().unwrap_err();
+    assert_eq!(err, Transaction(Conflict));
+
+    let rx = engine.begin_read_only();
+    let money = from_value!(i32, *rx.get(&key).unwrap().value());
+    assert_eq!(money, 500);
+}
+
+// https://wiki.postgresql.org/wiki/SSI#Primary_Colors
+#[test]
+fn test_primary_colors() {
+    let engine: Optimistic = Optimistic::new();
+
+    // Setup
+    let mut txn = engine.begin();
+    for i in 1..=9000 {
+        if i % 3 == 1 {
+            txn.set(as_key!(i), as_value!("red".to_string())).unwrap();
+        } else if i % 3 == 2 {
+            txn.set(as_key!(i), as_value!("yellow".to_string())).unwrap();
+        } else {
+            txn.set(as_key!(i), as_value!("blue".to_string())).unwrap();
+        }
+    }
+    txn.commit().unwrap();
+
+    let mut red = engine.begin();
+    let indices = red
+        .iter()
+        .unwrap()
+        .filter_map(|e| {
+            if e.value() == as_value!("yellow".to_string()) { Some(e.key().clone()) } else { None }
+        })
+        .collect::<Vec<_>>();
+    for i in indices {
+        red.set(i, as_value!("red".to_string())).unwrap();
+    }
+
+    let mut yellow = engine.begin();
+    let indices = yellow
+        .iter()
+        .unwrap()
+        .filter_map(|e| {
+            if e.value() == as_value!("blue".to_string()) { Some(e.key().clone()) } else { None }
+        })
+        .collect::<Vec<_>>();
+    for i in indices {
+        yellow.set(i, as_value!("yellow".to_string())).unwrap();
+    }
+
+    let mut red_two = engine.begin();
+    let indices = red_two
+        .iter()
+        .unwrap()
+        .filter_map(|e| {
+            if e.value() == as_value!("blue".to_string()) { Some(e.key().clone()) } else { None }
+        })
+        .collect::<Vec<_>>();
+    for i in indices {
+        red_two.set(i, as_value!("red".to_string())).unwrap();
+    }
+
+    red.commit().unwrap();
+    let err = red_two.commit().unwrap_err();
+    assert_eq!(err, Transaction(Conflict));
+
+    let err = yellow.commit().unwrap_err();
+    assert_eq!(err, Transaction(Conflict));
+
+    let rx = engine.begin_read_only();
+    let result: Vec<_> = rx.iter().collect();
+    assert_eq!(result.len(), 9000);
+
+    let mut red_count = 0;
+    let mut yellow_count = 0;
+    let mut blue_count = 0;
+
+    result.iter().for_each(|item| {
+        let value = from_value!(String, item.value());
+        match value.as_str() {
+            "red" => red_count += 1,
+            "yellow" => yellow_count += 1,
+            "blue" => blue_count += 1,
+            _ => unreachable!(),
+        }
+    });
+
+    assert_eq!(red_count, 6000);
+    assert_eq!(blue_count, 3000);
+    assert_eq!(yellow_count, 0);
 }
