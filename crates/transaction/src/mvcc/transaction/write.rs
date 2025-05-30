@@ -10,13 +10,14 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
+use crate::Version;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::TransactionAction;
 use reifydb_persistence::{Action, Key, Value};
 
 pub struct TransactionManagerTx<C, P> {
-    pub(super) version: u64,
+    pub(super) version: Version,
     pub(super) size: u64,
     pub(super) count: u64,
     pub(super) oracle: Arc<Oracle<C>>,
@@ -45,7 +46,7 @@ impl<C, P> TransactionManagerTx<C, P> {
 
     /// Sets the current version of the transaction manager.
     /// This should be used only for testing purposes.
-    pub fn as_of_version(&mut self, version: u64) {
+    pub fn as_of_version(&mut self, version: Version) {
         self.version = version;
     }
 

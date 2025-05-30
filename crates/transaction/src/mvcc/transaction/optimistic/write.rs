@@ -20,6 +20,7 @@ use crate::mvcc::transaction::scan::rev_iter::TransactionRevIter;
 use crate::mvcc::transaction::scan::rev_range::TransactionRevRange;
 use reifydb_persistence::{Key, Value};
 use std::ops::RangeBounds;
+use crate::Version;
 
 /// A optimistic concurrency control transaction over the [`Optimistic`].
 pub struct TransactionTx {
@@ -65,7 +66,7 @@ impl TransactionTx {
         self.tm.version()
     }
 
-    pub fn as_of_version(&mut self, version: u64) {
+    pub fn as_of_version(&mut self, version: Version) {
         self.tm.as_of_version(version);
     }
 

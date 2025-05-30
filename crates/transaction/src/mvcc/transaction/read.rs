@@ -9,27 +9,23 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::Version;
 use crate::mvcc::transaction::*;
 
 /// TransactionManagerRx is a read-only transaction manager.
-///
-/// It is created by calling [`TransactionManager::read`],
-/// the read transaction will automatically notify the transaction manager when it
-/// is dropped. So, the end user doesn't need to call any cleanup function, but must
-/// hold this struct in their final read transaction implementation.
-pub struct TransactionManagerRx<C,P> {
-    pub(in crate::mvcc::transaction) db: TransactionManager<C,P>,
-    pub(in crate::mvcc::transaction) version: u64,
+pub struct TransactionManagerRx<C, P> {
+    pub(crate) db: TransactionManager<C, P>,
+    pub(crate) version: Version,
 }
 
-impl<C,P> TransactionManagerRx<C,P> {
+impl<C, P> TransactionManagerRx<C, P> {
     /// Returns the version of this read transaction.
     pub const fn version(&self) -> u64 {
         self.version
     }
 }
 
-impl<C,P> Drop for TransactionManagerRx<C,P> {
+impl<C, P> Drop for TransactionManagerRx<C, P> {
     fn drop(&mut self) {
         self.db.inner.done_read(self.version);
     }

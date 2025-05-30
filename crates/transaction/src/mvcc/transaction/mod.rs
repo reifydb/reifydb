@@ -24,6 +24,7 @@ pub mod scan;
 pub mod serializable;
 
 mod write;
+use crate::Version;
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::error::TransactionError;
 use crate::mvcc::pending::PendingWrites;
@@ -67,7 +68,7 @@ where
 impl<C, P> TransactionManager<C, P> {
     /// Create a new transaction manager with the given name (just for logging or debugging, use your crate name is enough)
     /// and the current version (provided by the database).
-    pub fn new(name: &str, current_version: u64) -> Self {
+    pub fn new(name: &str, current_version: Version) -> Self {
         Self {
             inner: Arc::new({
                 let next_ts = current_version;

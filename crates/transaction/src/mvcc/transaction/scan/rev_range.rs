@@ -18,10 +18,11 @@ use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Range as MapRange;
 use std::borrow::Borrow;
 
-use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
+use crate::Version;
+use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, VersionedValue};
 use crate::mvcc::types::TransactionValue;
-use reifydb_persistence::{Key, Value};
 use reifydb_core::either::Either;
+use reifydb_persistence::{Key, Value};
 use std::collections::btree_map::Range as BTreeMapRange;
 use std::ops::{Bound, RangeBounds};
 
@@ -30,8 +31,8 @@ pub struct RevRange<'a, R>
 where
     R: RangeBounds<Key>,
 {
-    pub(crate) range: Rev<MapRange<'a, Key, R, Key, Values<Value>>>,
-    pub(crate) version: u64,
+    pub(crate) range: Rev<MapRange<'a, Key, R, Key, VersionedValue<Value>>>,
+    pub(crate) version: Version,
 }
 
 impl<'a, R> Iterator for RevRange<'a, R>

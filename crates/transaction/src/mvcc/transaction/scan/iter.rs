@@ -11,20 +11,21 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
+use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, VersionedValue};
 use crate::mvcc::types::TransactionValue;
 use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;
 
-use reifydb_persistence::{Key, Value};
+use crate::Version;
 use reifydb_core::either::Either;
+use reifydb_persistence::{Key, Value};
 use std::collections::btree_map::Iter as BTreeMapIter;
 
 /// An iterator over the entries of the database.
 pub struct Iter<'a> {
-    pub(crate) iter: MapIter<'a, Key, Values<Value>>,
-    pub(crate) version: u64,
+    pub(crate) iter: MapIter<'a, Key, VersionedValue<Value>>,
+    pub(crate) version: Version,
 }
 
 impl<'a> Iterator for Iter<'a> {

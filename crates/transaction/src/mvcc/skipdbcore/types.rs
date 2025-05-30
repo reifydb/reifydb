@@ -21,13 +21,12 @@ const LOCKED: u8 = 1;
 const UNLOCKED: u8 = 2;
 
 #[derive(Debug)]
-#[doc(hidden)]
-pub struct Values<V> {
+pub struct VersionedValue<V> {
     pub(crate) op: AtomicU8,
-    values: SkipMap<u64, Option<V>>,
+    values: SkipMap<Version, Option<V>>,
 }
 
-impl<V> Values<V> {
+impl<V> VersionedValue<V> {
     pub(crate) fn new() -> Self {
         Self { op: AtomicU8::new(UNINITIALIZED), values: SkipMap::new() }
     }
@@ -66,7 +65,7 @@ impl<V> Values<V> {
     }
 }
 
-impl<V> core::ops::Deref for Values<V> {
+impl<V> core::ops::Deref for VersionedValue<V> {
     type Target = SkipMap<u64, Option<V>>;
 
     fn deref(&self) -> &Self::Target {
@@ -78,7 +77,7 @@ impl<V> core::ops::Deref for Values<V> {
 pub struct Entry<'a> {
     item: MapEntry<'a, u64, Option<Value>>,
     key: &'a Key,
-    version: u64,
+    version: Version,
 }
 
 impl Clone for Entry<'_> {
@@ -169,14 +168,15 @@ impl PartialEq<&Value> for ValueRef<'_> {
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::Version;
 use crate::mvcc::types::TransactionAction;
 use reifydb_persistence::{Key, Value};
 
 /// A reference to an entry in the write transaction.
 #[derive(Debug)]
 pub struct CommittedRef<'a> {
-    pub(crate) item: MapEntry<'a, Key, Values<Value>>,
-    pub(crate) version: u64,
+    pub(crate) item: MapEntry<'a, Key, VersionedValue<Value>>,
+    pub(crate) version: Version,
 }
 
 impl Clone for CommittedRef<'_> {
@@ -210,7 +210,7 @@ impl CommittedRef<'_> {
 }
 
 enum RefKind<'a> {
-    PendingIter { version: u64, key: &'a Key, value: &'a Value },
+    PendingIter { version: Version, key: &'a Key, value: &'a Value },
     Pending(TransactionAction),
     Committed(CommittedRef<'a>),
 }
@@ -330,7 +330,7 @@ mod tests {
     fn test_values_send() {
         fn takes_send<T: Send>(_t: T) {}
 
-        let values = Values::<()>::new();
+        let values = VersionedValue::<()>::new();
         takes_send(values);
     }
 }

@@ -14,10 +14,11 @@ use crate::mvcc::marker::Marker;
 use core::cmp;
 use crossbeam_skiplist::map::Range as MapRange;
 
-use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
+use crate::Version;
+use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, VersionedValue};
 use crate::mvcc::types::TransactionValue;
-use reifydb_persistence::{Key, Value};
 use reifydb_core::either::Either;
+use reifydb_persistence::{Key, Value};
 use std::collections::btree_map::Range as BTreeMapRange;
 use std::ops::{Bound, RangeBounds};
 
@@ -26,8 +27,8 @@ pub struct Range<'a, R>
 where
     R: RangeBounds<Key>,
 {
-    pub(crate) range: MapRange<'a, Key, R, Key, Values<Value>>,
-    pub(crate) version: u64,
+    pub(crate) range: MapRange<'a, Key, R, Key, VersionedValue<Value>>,
+    pub(crate) version: Version,
 }
 
 impl<'a, R> Iterator for Range<'a, R>

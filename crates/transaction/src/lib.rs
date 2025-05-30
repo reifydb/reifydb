@@ -23,6 +23,8 @@ pub mod mvcc;
 
 mod transaction;
 
+pub type Version = u64;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 // FIXME remove this - just a quick hack

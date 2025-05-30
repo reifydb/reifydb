@@ -18,7 +18,6 @@ extern crate alloc;
 use core::{
     borrow::Borrow,
     ops::{Bound, RangeBounds},
-    sync::atomic::AtomicU64,
 };
 
 use crate::mvcc::types::TransactionAction;
@@ -30,6 +29,7 @@ use crate::mvcc::transaction::scan::rev_iter::*;
 use crate::mvcc::transaction::scan::rev_range::*;
 
 pub mod types;
+use crate::Version;
 use reifydb_persistence::{Action, Key, Value};
 use types::*;
 
@@ -46,8 +46,7 @@ pub trait AsSkipCore {
 }
 
 pub struct SkipCore {
-    mem_table: SkipMap<Key, Values<Value>>,
-    last_discard_version: AtomicU64,
+    mem_table: SkipMap<Key, VersionedValue<Value>>,
 }
 
 impl Default for SkipCore {
@@ -58,23 +57,17 @@ impl Default for SkipCore {
 
 impl SkipCore {
     pub fn new() -> Self {
-        Self { mem_table: SkipMap::new(), last_discard_version: AtomicU64::new(0) }
-    }
-
-    #[doc(hidden)]
-    #[allow(private_interfaces)]
-    pub fn __by_ref(&self) -> &SkipMap<Key, Values<Value>> {
-        &self.mem_table
+        Self { mem_table: SkipMap::new() }
     }
 }
 
 impl SkipCore {
-    pub fn apply(&self, entries: Vec<TransactionAction>) {
-        for item in entries {
+    pub fn apply(&self, actions: Vec<TransactionAction>) {
+        for item in actions {
             let version = item.version();
             match item.action {
                 Action::Set { key, value } => {
-                    let item = self.mem_table.get_or_insert_with(key, || Values::new());
+                    let item = self.mem_table.get_or_insert_with(key, || VersionedValue::new());
                     let val = item.value();
                     val.lock();
                     val.insert(version, Some(value));
@@ -94,7 +87,7 @@ impl SkipCore {
 }
 
 impl SkipCore {
-    pub fn get(&self, key: &Key, version: u64) -> Option<CommittedRef<'_>> {
+    pub fn get(&self, key: &Key, version: Version) -> Option<CommittedRef<'_>> {
         let item = self.mem_table.get(key)?;
         let version = item
             .value()
@@ -104,7 +97,7 @@ impl SkipCore {
         Some(CommittedRef { item, version })
     }
 
-    pub fn contains_key(&self, key: &Key, version: u64) -> bool {
+    pub fn contains_key(&self, key: &Key, version: Version) -> bool {
         match self.mem_table.get(key) {
             None => false,
             Some(values) => match values.value().upper_bound(Bound::Included(&version)) {
@@ -114,24 +107,24 @@ impl SkipCore {
         }
     }
 
-    pub fn iter(&self, version: u64) -> Iter<'_> {
+    pub fn iter(&self, version: Version) -> Iter<'_> {
         let iter = self.mem_table.iter();
         Iter { iter, version }
     }
 
-    pub fn iter_rev(&self, version: u64) -> RevIter<'_> {
+    pub fn iter_rev(&self, version: Version) -> RevIter<'_> {
         let iter = self.mem_table.iter();
         RevIter { iter: iter.rev(), version }
     }
 
-    pub fn range<R>(&self, range: R, version: u64) -> Range<'_, R>
+    pub fn range<R>(&self, range: R, version: Version) -> Range<'_, R>
     where
         R: RangeBounds<Key>,
     {
         Range { range: self.mem_table.range(range), version }
     }
 
-    pub fn range_rev<R>(&self, range: R, version: u64) -> RevRange<'_, R>
+    pub fn range_rev<R>(&self, range: R, version: Version) -> RevRange<'_, R>
     where
         R: RangeBounds<Key>,
     {

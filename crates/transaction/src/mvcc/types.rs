@@ -9,13 +9,14 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::Version;
 use core::cmp::{self, Reverse};
 use reifydb_persistence::{Action, Key, Value};
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct TransactionAction {
     pub action: Action,
-    pub version: u64,
+    pub version: Version,
 }
 
 impl PartialOrd for TransactionAction {
@@ -84,7 +85,7 @@ impl TransactionAction {
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct TransactionValue {
-    pub version: u64,
+    pub version: Version,
     pub value: Option<Value>,
 }
 
