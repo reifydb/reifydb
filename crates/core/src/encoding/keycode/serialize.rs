@@ -36,16 +36,43 @@ impl serde::ser::Serializer for &mut Serializer {
         Ok(())
     }
 
-    fn serialize_i8(self, _: i8) -> encoding::Result<()> {
-        unimplemented!()
+    /// i8 uses the big-endian two's complement encoding, with the sign bit flipped
+    /// to ensure lexicographic ordering matches numeric ordering.
+    ///
+    /// Flipping the most significant bit maps negative values to start with `0x00`
+    /// and positive values to start with `0x80` or higher, making negative numbers
+    /// sort before positive ones.
+    fn serialize_i8(self, v: i8) -> encoding::Result<()> {
+        let mut bytes = v.to_be_bytes();
+        bytes[0] ^= 1 << 7; // flip sign bit
+        self.output.extend(&bytes);
+        Ok(())
+    }
+    
+    /// i16 uses the big-endian two's complement encoding, with the sign bit flipped
+    /// to make the byte representation lexicographically ordered.
+    ///
+    /// This transformation ensures that comparisons on encoded values produce the
+    /// same ordering as signed numeric comparisons.
+    fn serialize_i16(self, v: i16) -> encoding::Result<()> {
+        let mut bytes = v.to_be_bytes();
+        bytes[0] ^= 1 << 7; // flip sign bit
+        self.output.extend(&bytes);
+        Ok(())
     }
 
-    fn serialize_i16(self, _: i16) -> encoding::Result<()> {
-        unimplemented!()
-    }
 
-    fn serialize_i32(self, _: i32) -> encoding::Result<()> {
-        unimplemented!()
+    /// i32 uses the big-endian two's complement encoding, but flips the sign bit
+    /// of the most significant byte to enforce correct ordering.
+    ///
+    /// After the flip, all negative numbers start with `0x00..7F`, and all positive
+    /// numbers start with `0x80..FF`, aligning byte-wise comparison with signed
+    /// integer ordering.
+    fn serialize_i32(self, v: i32) -> encoding::Result<()> {
+        let mut bytes = v.to_be_bytes();
+        bytes[0] ^= 1 << 7; // flip sign bit
+        self.output.extend(&bytes);
+        Ok(())
     }
 
     /// i64 uses the big-endian two's complement encoding, but flips the

@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 // This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -45,7 +48,7 @@ impl<'a> Iterator for RevIter<'a> {
 }
 
 /// Iterator over the entries of the write transaction.
-pub struct WriteTransactionRevIter<'a, C> {
+pub struct TransactionRevIter<'a, C> {
     pending: Rev<BTreeMapIter<'a, Key, EntryValue<Value>>>,
     committed: RevIter<'a>,
     next_pending: Option<(&'a Key, &'a EntryValue<Value>)>,
@@ -54,7 +57,7 @@ pub struct WriteTransactionRevIter<'a, C> {
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, C> WriteTransactionRevIter<'a, C>
+impl<'a, C> TransactionRevIter<'a, C>
 where
     C: Conflict,
 {
@@ -74,7 +77,7 @@ where
         committed: RevIter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
-        let mut iterator = WriteTransactionRevIter {
+        let mut iterator = TransactionRevIter {
             pending,
             committed,
             next_pending: None,
@@ -90,7 +93,7 @@ where
     }
 }
 
-impl<'a, C> Iterator for WriteTransactionRevIter<'a, C>
+impl<'a, C> Iterator for TransactionRevIter<'a, C>
 where
     C: Conflict,
 {

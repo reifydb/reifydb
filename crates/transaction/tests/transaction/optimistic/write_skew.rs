@@ -10,10 +10,10 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use crate::AsyncCowVec;
-use crate::bincode;
 use crate::FromValue;
 use crate::IntoValue;
-use crate::{from_value, into_key, into_value};
+use crate::keycode;
+use crate::{from_value, as_key, as_value};
 use MvccError::Transaction;
 use TransactionError::Conflict;
 use reifydb_transaction::Key;
@@ -25,15 +25,15 @@ use std::ops::Deref;
 #[test]
 fn test_txn_write_skew() {
     // accounts
-    let a999: Key = into_key!(999);
-    let a888: Key = into_key!(888);
+    let a999: Key = as_key!(999);
+    let a888: Key = as_key!(888);
 
     let engine: Optimistic = Optimistic::new();
 
     // Set balance to $100 in each account.
     let mut txn = engine.begin();
-    txn.set(a999.clone(), into_value!(100u64)).unwrap();
-    txn.set(a888.clone(), into_value!(100u64)).unwrap();
+    txn.set(a999.clone(), as_value!(100u64)).unwrap();
+    txn.set(a888.clone(), as_value!(100u64)).unwrap();
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
@@ -49,7 +49,7 @@ fn test_txn_write_skew() {
     let mut sum = get_bal(&mut txn1, &a999);
     sum += get_bal(&mut txn1, &a888);
     assert_eq!(200, sum);
-    txn1.set(a999.clone(), into_value!(0)).unwrap(); // Deduct 100 from a999
+    txn1.set(a999.clone(), as_value!(0)).unwrap(); // Deduct 100 from a999
 
     // Let's read this back.
     let mut sum = get_bal(&mut txn1, &a999);
@@ -63,7 +63,7 @@ fn test_txn_write_skew() {
     let mut sum = get_bal(&mut txn2, &a999);
     sum += get_bal(&mut txn2, &a888);
     assert_eq!(200, sum);
-    txn2.set(a888.clone(), into_value!(0)).unwrap(); // Deduct 100 from a888
+    txn2.set(a888.clone(), as_value!(0)).unwrap(); // Deduct 100 from a888
 
     // Let's read this back.
     let mut sum = get_bal(&mut txn2, &a999);

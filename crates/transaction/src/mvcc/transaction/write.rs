@@ -46,7 +46,7 @@ impl<C, P> TransactionManagerTx<C, P> {
     #[doc(hidden)]
     /// Sets the current read version of the transaction manager.
     /// This should be used only for testing purposes.
-    pub fn set_version(&mut self, version: u64) {
+    pub fn as_of_version(&mut self, version: u64) {
         self.version = version;
     }
 

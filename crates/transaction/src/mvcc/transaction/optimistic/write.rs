@@ -16,23 +16,21 @@ use crate::mvcc::skipdbcore::types::Ref;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
-use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
-use crate::mvcc::transaction::scan::rev_range::WriteTransactionRevRange;
+use crate::mvcc::transaction::scan::rev_iter::TransactionRevIter;
+use crate::mvcc::transaction::scan::rev_range::TransactionRevRange;
 use crate::{Key, Value};
-use std::borrow::Borrow;
-use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 /// A optimistic concurrency control transaction over the [`Optimistic`].
 pub struct TransactionTx {
     engine: Optimistic,
-    pub tx: TransactionManagerTx<BTreeConflict, BTreePendingWrites>,
+    tm: TransactionManagerTx<BTreeConflict, BTreePendingWrites>,
 }
 
 impl TransactionTx {
     pub fn new(db: Optimistic) -> Self {
-        let tx = db.inner.tm.write().unwrap();
-        Self { engine: db, tx }
+        let tm = db.inner.tm.write().unwrap();
+        Self { engine: db, tm }
     }
 }
 
@@ -54,7 +52,7 @@ impl TransactionTx {
     ///    background upon successful completion of writes or any error during write.
 
     pub fn commit(&mut self) -> Result<(), MvccError> {
-        self.tx.commit(|operations| {
+        self.tm.commit(|operations| {
             self.engine.inner.mem_table.apply(operations);
             Ok(())
         })
@@ -64,18 +62,22 @@ impl TransactionTx {
 impl TransactionTx {
     /// Returns the read version of the transaction.
     pub fn version(&self) -> u64 {
-        self.tx.version()
+        self.tm.version()
+    }
+
+    pub fn as_of_version(&mut self, version: u64) {
+        self.tm.as_of_version(version);
     }
 
     /// Rollback the transaction.
     pub fn rollback(&mut self) -> Result<(), TransactionError> {
-        self.tx.rollback()
+        self.tm.rollback()
     }
 
     /// Returns true if the given key exists in the database.
     pub fn contains_key(&mut self, key: &Key) -> Result<bool, TransactionError> {
-        let version = self.tx.version();
-        match self.tx.contains_key(key)? {
+        let version = self.tm.version();
+        match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
             None => Ok(self.engine.inner.mem_table.contains_key(key, version)),
@@ -87,8 +89,8 @@ impl TransactionTx {
         &'a mut self,
         key: &'b Key,
     ) -> Result<Option<Ref<'a>>, TransactionError> {
-        let version = self.tx.version();
-        match self.tx.get(key)? {
+        let version = self.tm.version();
+        match self.tm.get(key)? {
             Some(v) => {
                 if v.value().is_some() {
                     Ok(Some(v.into()))
@@ -102,18 +104,18 @@ impl TransactionTx {
 
     /// Set a new key-value pair.
     pub fn set(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
-        self.tx.set(key, value)
+        self.tm.set(key, value)
     }
 
     /// Remove a key.
     pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {
-        self.tx.remove(key)
+        self.tm.remove(key)
     }
 
     /// Iterate over the entries of the write transaction.
     pub fn iter(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
-        let version = self.tx.version();
-        let (marker, pm) = self.tx.marker_with_pending_writes();
+        let version = self.tm.version();
+        let (marker, pm) = self.tm.marker_with_pending_writes();
         let committed = self.engine.inner.mem_table.iter(version);
         let pending = pm.iter();
 
@@ -121,15 +123,13 @@ impl TransactionTx {
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
-    pub fn iter_rev(
-        &mut self,
-    ) -> Result<WriteTransactionRevIter<'_, BTreeConflict>, TransactionError> {
-        let version = self.tx.version();
-        let (marker, pm) = self.tx.marker_with_pending_writes();
+    pub fn iter_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
+        let version = self.tm.version();
+        let (marker, pm) = self.tm.marker_with_pending_writes();
         let committed = self.engine.inner.mem_table.iter_rev(version);
         let pending = pm.iter().rev();
 
-        Ok(WriteTransactionRevIter::new(pending, committed, Some(marker)))
+        Ok(TransactionRevIter::new(pending, committed, Some(marker)))
     }
 
     /// Returns an iterator over the subset of entries of the database.
@@ -140,8 +140,8 @@ impl TransactionTx {
     where
         R: RangeBounds<Key> + 'a,
     {
-        let version = self.tx.version();
-        let (marker, pm) = self.tx.marker_with_pending_writes();
+        let version = self.tm.version();
+        let (marker, pm) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
@@ -154,17 +154,17 @@ impl TransactionTx {
     pub fn range_rev<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<WriteTransactionRevRange<'a, R, BTreeConflict>, TransactionError>
+    ) -> Result<TransactionRevRange<'a, R, BTreeConflict>, TransactionError>
     where
         R: RangeBounds<Key> + 'a,
     {
-        let version = self.tx.version();
-        let (marker, pm) = self.tx.marker_with_pending_writes();
+        let version = self.tm.version();
+        let (marker, pm) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
         let committed = self.engine.inner.mem_table.range_rev(range, version);
 
-        Ok(WriteTransactionRevRange::new(pending.rev(), committed, Some(marker)))
+        Ok(TransactionRevRange::new(pending.rev(), committed, Some(marker)))
     }
 }

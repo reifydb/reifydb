@@ -106,11 +106,3 @@ impl SerializableDb {
         SerializableTransaction::new(self.clone())
     }
 }
-
-impl SerializableDb {
-    /// Compact the database.
-
-    pub fn compact(&self) {
-        self.inner.map.compact(self.inner.tm.discard_hint());
-    }
-}

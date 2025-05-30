@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 // This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -52,7 +55,7 @@ where
 }
 
 /// An iterator over a subset of entries of the database.
-pub struct WriteTransactionRevRange<'a, R, C>
+pub struct TransactionRevRange<'a, R, C>
 where
     R: RangeBounds<Key> + 'a,
 {
@@ -64,7 +67,7 @@ where
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, R, C> WriteTransactionRevRange<'a, R, C>
+impl<'a, R, C> TransactionRevRange<'a, R, C>
 where
     R: RangeBounds<Key> + 'a,
     C: Conflict,
@@ -101,7 +104,7 @@ where
     }
 }
 
-impl<'a, R, C> Iterator for WriteTransactionRevRange<'a, R, C>
+impl<'a, R, C> Iterator for TransactionRevRange<'a, R, C>
 where
     R: RangeBounds<Key> + 'a,
     C: Conflict,

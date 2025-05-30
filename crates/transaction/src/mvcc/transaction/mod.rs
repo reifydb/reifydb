@@ -30,25 +30,25 @@ use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 
 /// A multi-writer multi-reader MVCC, ACID, Serializable Snapshot Isolation transaction manager.
-pub struct TransactionManager<C,P> {
+pub struct TransactionManager<C, P> {
     inner: Arc<Oracle<C>>,
     _phantom: std::marker::PhantomData<(P)>,
 }
 
-impl<C,P> Clone for TransactionManager<C,P> {
+impl<C, P> Clone for TransactionManager<C, P> {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone(), _phantom: std::marker::PhantomData }
     }
 }
 
-impl<C,P> TransactionManager<C,P>
+impl<C, P> TransactionManager<C, P>
 where
     C: Conflict,
     P: PendingWrites,
 {
     /// Create a new writable transaction with
     /// the default pending writes manager to store the pending writes.
-    pub fn write(&self) -> Result<TransactionManagerTx<C,P>, TransactionError> {
+    pub fn write(&self) -> Result<TransactionManagerTx<C, P>, TransactionError> {
         let read_ts = self.inner.read_ts();
         Ok(TransactionManagerTx {
             oracle: self.inner.clone(),
@@ -64,7 +64,7 @@ where
     }
 }
 
-impl<C,P> TransactionManager<C,P> {
+impl<C, P> TransactionManager<C, P> {
     /// Create a new transaction manager with the given name (just for logging or debugging, use your crate name is enough)
     /// and the current version (provided by the database).
     pub fn new(name: &str, current_version: u64) -> Self {
@@ -92,15 +92,15 @@ impl<C,P> TransactionManager<C,P> {
     }
 }
 
-impl<C,P> TransactionManager<C,P> {
-    /// Returns a timestamp which hints that any versions under this timestamp can be discard.
+impl<C, P> TransactionManager<C, P> {
+    /// Returns a timestamp which hints that any versions under this timestamp can be discarded.
     /// This is useful when users want to implement compaction/merge functionality.
     pub fn discard_hint(&self) -> u64 {
         self.inner.discard_at_or_below()
     }
 
     /// Create a new writable transaction.
-    pub fn read(&self) -> TransactionManagerRx<C,P> {
+    pub fn read(&self) -> TransactionManagerRx<C, P> {
         TransactionManagerRx { db: self.clone(), version: self.inner.read_ts() }
     }
 }

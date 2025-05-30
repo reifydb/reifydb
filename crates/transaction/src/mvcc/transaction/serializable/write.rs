@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::transaction::scan::rev_range::WriteTransactionRevRange;
+use crate::mvcc::transaction::scan::rev_range::TransactionRevRange;
 
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
@@ -18,7 +18,7 @@ use crate::mvcc::skipdbcore::types::Ref;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
-use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
+use crate::mvcc::transaction::scan::rev_iter::TransactionRevIter;
 use crate::{Key, Value};
 use std::ops::Bound;
 use std::ops::RangeBounds;
@@ -134,7 +134,7 @@ impl SerializableTransaction {
     /// Iterate over the entries of the write transaction in reverse order.
     pub fn iter_rev(
         &mut self,
-    ) -> Result<WriteTransactionRevIter<'_, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
         let start: Bound<Key> = Bound::Unbounded;
@@ -143,7 +143,7 @@ impl SerializableTransaction {
         let committed = self.db.inner.map.iter_rev(version);
         let pending = pm.iter().rev();
 
-        Ok(WriteTransactionRevIter::new(pending, committed, None))
+        Ok(TransactionRevIter::new(pending, committed, None))
     }
 
     /// Returns an iterator over the subset of entries of the database.
@@ -169,7 +169,7 @@ impl SerializableTransaction {
     pub fn range_rev<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<WriteTransactionRevRange<'a, R, BTreeConflict>, TransactionError>
+    ) -> Result<TransactionRevRange<'a, R, BTreeConflict>, TransactionError>
     where
         R: RangeBounds<Key> + 'a,
     {
@@ -181,6 +181,6 @@ impl SerializableTransaction {
         let pending = pm.range_comparable((start, end)).rev();
         let committed = self.db.inner.map.range_rev(range, version);
 
-        Ok(WriteTransactionRevRange::new(pending, committed, Some(marker)))
+        Ok(TransactionRevRange::new(pending, committed, Some(marker)))
     }
 }

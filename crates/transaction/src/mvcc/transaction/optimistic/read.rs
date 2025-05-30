@@ -20,7 +20,6 @@ use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
 use crate::mvcc::transaction::scan::rev_range::RevRange;
-use std::borrow::Borrow;
 use std::ops::RangeBounds;
 
 pub struct TransactionRx {

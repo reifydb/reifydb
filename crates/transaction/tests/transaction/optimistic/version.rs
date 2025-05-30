@@ -11,24 +11,24 @@
 
 use crate::AsyncCowVec;
 use crate::FromValue;
-use crate::bincode;
+use crate::keycode;
 use crate::{IntoValue, from_value};
-use crate::{into_key, into_value};
+use crate::{as_key, as_value};
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::scan::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
+use reifydb_transaction::mvcc::transaction::scan::rev_iter::TransactionRevIter;
 
 #[test]
 #[cfg(test)]
 fn test_versions() {
     let engine: Optimistic = Optimistic::new();
 
-    let k0 = into_key!(0);
+    let k0 = as_key!(0);
 
     for i in 1..10 {
         let mut txn = engine.begin();
-        txn.set(k0.clone(), into_value!(i)).unwrap();
+        txn.set(k0.clone(), as_value!(i)).unwrap();
         txn.commit().unwrap();
         assert_eq!(i, engine.version());
     }
@@ -44,7 +44,7 @@ fn test_versions() {
         assert_eq!(1, count) // should only loop once.
     };
 
-    let check_rev_iter = |itr: WriteTransactionRevIter<'_, BTreeConflict>, i: u64| {
+    let check_rev_iter = |itr: TransactionRevIter<'_, BTreeConflict>, i: u64| {
         let mut count = 0;
         for ent in itr {
             let value = from_value!(u64, ent.value());
@@ -56,7 +56,7 @@ fn test_versions() {
 
     for idx in 1..10 {
         let mut txn = engine.begin();
-        txn.tx.set_version(idx); // Read version at idx.
+        txn.as_of_version(idx); // Read version at idx.
 
         let v = idx;
         {

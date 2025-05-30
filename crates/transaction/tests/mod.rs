@@ -9,7 +9,7 @@ mod transaction;
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_core::AsyncCowVec;
-use reifydb_core::encoding::bincode;
+use reifydb_core::encoding::{bincode, keycode};
 use reifydb_transaction::Value;
 
 pub trait IntoValue {
@@ -21,12 +21,12 @@ pub trait FromValue: Sized {
 }
 
 #[macro_export]
-macro_rules! into_key {
-    ($key:expr) => {{ AsyncCowVec::new(bincode::serialize(&$key)) }};
+macro_rules! as_key {
+    ($key:expr) => {{ AsyncCowVec::new(keycode::serialize(&$key)) }};
 }
 
 #[macro_export]
-macro_rules! into_value {
+macro_rules! as_value {
     ($val:expr) => {{ IntoValue::into_value($val) }};
 }
 

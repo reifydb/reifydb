@@ -9,11 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::skipdbcore::types::Values;
 use std::sync::Arc;
-use std::{collections::hash_map::RandomState, hash::Hash};
 
-use crate::mvcc::DefaultHasher;
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
@@ -25,19 +22,15 @@ pub use write::TransactionTx;
 mod read;
 mod write;
 
-#[cfg(test)]
-mod tests;
-
 struct Inner {
     tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
     mem_table: SkipCore,
-    hasher: RandomState,
 }
 
 impl Inner {
     fn new(name: &str) -> Self {
         let tm = TransactionManager::new(name, 0);
-        Self { tm, mem_table: SkipCore::new(), hasher: DefaultHasher::default() }
+        Self { tm, mem_table: SkipCore::new() }
     }
 
     fn version(&self) -> u64 {
@@ -91,12 +84,6 @@ impl Optimistic {
 impl Optimistic {
     pub fn begin(&self) -> TransactionTx {
         TransactionTx::new(self.clone())
-    }
-}
-
-impl Optimistic {
-    pub fn compact(&self) {
-        self.inner.mem_table.compact(self.inner.tm.discard_hint());
     }
 }
 
