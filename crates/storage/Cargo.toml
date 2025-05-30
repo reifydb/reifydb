@@ -1,0 +1,14 @@
+[package]
+name = "reifydb_storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reifydb_core = { workspace = true }
+reifydb_persistence = { workspace = true }
+
+[dev-dependencies]
+reifydb_testing = { workspace = true }
+test_each_file = { workspace = true }

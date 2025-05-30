@@ -1321,6 +1321,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb_storage"
+version = "0.0.1"
+dependencies = [
+ "reifydb_core",
+ "reifydb_persistence",
+ "reifydb_testing",
+ "test_each_file",
+]
+
+[[package]]
 name = "reifydb_testing"
 version = "0.0.1"
 dependencies = [
