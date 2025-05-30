@@ -20,20 +20,18 @@ use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;
 
+use crate::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Iter as BTreeMapIter;
 
 /// An iterator over the entries of the database.
-pub struct Iter<'a, K, V> {
-    pub(crate) iter: MapIter<'a, K, Values<V>>,
+pub struct Iter<'a> {
+    pub(crate) iter: MapIter<'a, Key, Values<Value>>,
     pub(crate) version: u64,
 }
 
-impl<'a, K, V> Iterator for Iter<'a, K, V>
-where
-    K: Ord,
-{
-    type Item = Ref<'a, K, V>;
+impl<'a> Iterator for Iter<'a> {
+    type Item = Ref<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -50,19 +48,18 @@ where
 }
 
 /// Iterator over the entries of the write transaction.
-pub struct TransactionIter<'a, K, V, C> {
-    committed: Iter<'a, K, V>,
-    pending: BTreeMapIter<'a, K, EntryValue<V>>,
-    next_pending: Option<(&'a K, &'a EntryValue<V>)>,
-    next_committed: Option<Ref<'a, K, V>>,
-    last_yielded_key: Option<Either<&'a K, Ref<'a, K, V>>>,
+pub struct TransactionIter<'a, C> {
+    committed: Iter<'a>,
+    pending: BTreeMapIter<'a, Key, EntryValue<Value>>,
+    next_pending: Option<(&'a Key, &'a EntryValue<Value>)>,
+    next_committed: Option<Ref<'a>>,
+    last_yielded_key: Option<Either<&'a Key, Ref<'a>>>,
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, K, V, C> TransactionIter<'a, K, V, C>
+impl<'a, C> TransactionIter<'a, C>
 where
-    C: Conflict<Key = K>,
-    K: Ord,
+    C: Conflict,
 {
     fn advance_pending(&mut self) {
         self.next_pending = self.pending.next();
@@ -76,8 +73,8 @@ where
     }
 
     pub fn new(
-        pending: BTreeMapIter<'a, K, EntryValue<V>>,
-        committed: Iter<'a, K, V>,
+        pending: BTreeMapIter<'a, Key, EntryValue<Value>>,
+        committed: Iter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = TransactionIter {
@@ -96,12 +93,11 @@ where
     }
 }
 
-impl<'a, K, V, C> Iterator for TransactionIter<'a, K, V, C>
+impl<'a, C> Iterator for TransactionIter<'a, C>
 where
-    K: Ord,
-    C: Conflict<Key = K>,
+    C: Conflict,
 {
-    type Item = Ref<'a, K, V>;
+    type Item = Ref<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

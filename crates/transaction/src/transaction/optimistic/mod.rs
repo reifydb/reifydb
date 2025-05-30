@@ -8,9 +8,9 @@ use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
 
-impl<P: Persistence> Transaction<P> for Optimistic<Vec<u8>, Vec<u8>> {
-    type Rx = TransactionRx<Vec<u8>, Vec<u8>>;
-    type Tx = TransactionTx<Vec<u8>, Vec<u8>>;
+impl<P: Persistence> Transaction<P> for Optimistic {
+    type Rx = TransactionRx;
+    type Tx = TransactionTx;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         Ok(self.read())
@@ -21,7 +21,7 @@ impl<P: Persistence> Transaction<P> for Optimistic<Vec<u8>, Vec<u8>> {
     }
 }
 
-impl crate::Rx for TransactionRx<Vec<u8>, Vec<u8>> {
+impl crate::Rx for TransactionRx {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -48,7 +48,7 @@ impl crate::Rx for TransactionRx<Vec<u8>, Vec<u8>> {
     }
 }
 
-impl crate::Rx for TransactionTx<Vec<u8>, Vec<u8>> {
+impl crate::Rx for TransactionTx {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -77,7 +77,7 @@ impl crate::Rx for TransactionTx<Vec<u8>, Vec<u8>> {
     }
 }
 
-impl crate::Tx for TransactionTx<Vec<u8>, Vec<u8>> {
+impl crate::Tx for TransactionTx {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

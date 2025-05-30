@@ -120,7 +120,7 @@
 //                 let mut args = command.consume_args();
 //                 for arg in args.rest_pos() {
 //                     let key = decode_binary(&arg.value);
-//                     tx.remove(&key)?;
+//                     tx.remove(&Keyey)?;
 //                 }
 //                 args.reject_rest()?;
 //             }
@@ -131,8 +131,8 @@
 //                 let mut persistence = self.mvcc.persistence.lock().unwrap();
 //                 let mut scan = persistence.scan(..);
 //                 while let Some((key, value)) = scan.next().transpose()? {
-//                     let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
-//                     let rawkv = format::Raw::key_value(&key, &value);
+//                     let fmtkv = MVCC::<format::Raw>::key_value(&Keyey, &value);
+//                     let rawkv = format::Raw::key_value(&Keyey, &value);
 //                     writeln!(output, "{fmtkv} [{rawkv}]")?;
 //                 }
 //             }
@@ -143,8 +143,8 @@
 //                 let mut args = command.consume_args();
 //                 for arg in args.rest_pos() {
 //                     let key = decode_binary(&arg.value);
-//                     let value = tx.get(&key)?;
-//                     let fmtkv = format::Raw::key_maybe_value(&key, value.as_deref());
+//                     let value = tx.get(&Keyey)?;
+//                     let fmtkv = format::Raw::key_maybe_value(&Keyey, value.as_deref());
 //                     writeln!(output, "{fmtkv}")?;
 //                 }
 //                 args.reject_rest()?;
@@ -156,8 +156,8 @@
 //                 let mut args = command.consume_args();
 //                 for arg in args.rest_pos() {
 //                     let key = decode_binary(&arg.value);
-//                     let value = self.mvcc.get_unversioned(&key)?;
-//                     let fmtkv = format::Raw::key_maybe_value(&key, value.as_deref());
+//                     let value = self.mvcc.get_unversioned(&Keyey)?;
+//                     let fmtkv = format::Raw::key_maybe_value(&Keyey, value.as_deref());
 //                     writeln!(output, "{fmtkv}")?;
 //                 }
 //                 args.reject_rest()?;
@@ -179,11 +179,11 @@
 //                 }
 //                 for kv in args.rest_key() {
 //                     let key = decode_binary(kv.key.as_ref().unwrap());
-//                     let value = decode_binary(&kv.value);
+//                     let value = decode_binary(&Keyv.value);
 //                     if value.is_empty() {
-//                         tx.remove(&key)?;
+//                         tx.remove(&Keyey)?;
 //                     } else {
-//                         tx.set(&key, value)?;
+//                         tx.set(&Keyey, value)?;
 //                     }
 //                 }
 //                 args.reject_rest()?;
@@ -213,7 +213,7 @@
 //                 }
 //
 //                 for (key, value) in kvs {
-//                     writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
+//                     writeln!(output, "{}", format::Raw::key_value(&Keyey, &value))?;
 //                 }
 //             }
 //
@@ -231,7 +231,7 @@
 //                 }
 //
 //                 for (key, value) in kvs {
-//                     writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
+//                     writeln!(output, "{}", format::Raw::key_value(&Keyey, &value))?;
 //                 }
 //             }
 //
@@ -241,8 +241,8 @@
 //                 let mut args = command.consume_args();
 //                 for kv in args.rest_key() {
 //                     let key = decode_binary(kv.key.as_ref().unwrap());
-//                     let value = decode_binary(&kv.value);
-//                     tx.set(&key, value)?;
+//                     let value = decode_binary(&Keyv.value);
+//                     tx.set(&Keyey, value)?;
 //                 }
 //                 args.reject_rest()?;
 //             }
@@ -253,8 +253,8 @@
 //                 let mut args = command.consume_args();
 //                 for kv in args.rest_key() {
 //                     let key = decode_binary(kv.key.as_ref().unwrap());
-//                     let value = decode_binary(&kv.value);
-//                     self.mvcc.set_unversioned(&key, value)?;
+//                     let value = decode_binary(&Keyv.value);
+//                     self.mvcc.set_unversioned(&Keyey, value)?;
 //                 }
 //                 args.reject_rest()?;
 //             }
@@ -289,13 +289,13 @@
 //             while let Ok(op) = self.operations.try_recv() {
 //                 match op {
 //                     Operation::Remove { key } => {
-//                         let fmtkey = MVCC::<format::Raw>::key(&key);
-//                         let rawkey = format::Raw::key(&key);
+//                         let fmtkey = MVCC::<format::Raw>::key(&Keyey);
+//                         let rawkey = format::Raw::key(&Keyey);
 //                         writeln!(output, "reifydb_engine remove {fmtkey} [{rawkey}]")?
 //                     }
 //                     Operation::Set { key, value } => {
-//                         let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
-//                         let rawkv = format::Raw::key_value(&key, &value);
+//                         let fmtkv = MVCC::<format::Raw>::key_value(&Keyey, &value);
+//                         let rawkv = format::Raw::key_value(&Keyey, &value);
 //                         writeln!(output, "reifydb_engine set {fmtkv} [{rawkv}]")?
 //                     }
 //                 }

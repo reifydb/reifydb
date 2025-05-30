@@ -19,6 +19,7 @@ use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
+use crate::{Key, Value};
 use std::ops::Bound;
 use std::ops::RangeBounds;
 
@@ -26,26 +27,19 @@ use std::ops::RangeBounds;
 mod tests;
 
 /// A serializable snapshot isolation transaction over the [`SerializableDb`],
-pub struct SerializableTransaction<K, V> {
-    pub(in crate::mvcc) db: SerializableDb<K, V>,
-    pub(in crate::mvcc) wtm: TransactionManagerTx<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
+pub struct SerializableTransaction {
+    pub(in crate::mvcc) db: SerializableDb,
+    pub(in crate::mvcc) wtm: TransactionManagerTx<BTreeConflict, BTreePendingWrites>,
 }
 
-impl<K, V> SerializableTransaction<K, V>
-where
-    K: Clone + Ord,
-{
-    pub fn new(db: SerializableDb<K, V>) -> Self {
+impl SerializableTransaction {
+    pub fn new(db: SerializableDb) -> Self {
         let wtm = db.inner.tm.write().unwrap();
         Self { db, wtm }
     }
 }
 
-impl<K, V> SerializableTransaction<K, V>
-where
-    K: Clone + Ord,
-    V: Send + 'static,
-{
+impl SerializableTransaction {
     /// Commits the transaction, following these steps:
     ///
     /// 1. If there are no writes, return immediately.
@@ -70,11 +64,7 @@ where
     }
 }
 
-impl<K, V> SerializableTransaction<K, V>
-where
-    K: Clone + Ord + Send + Sync + 'static,
-    V: Send + Sync + 'static,
-{
+impl SerializableTransaction {
     /// Acts like [`commit`](WriteTransaction::commit), but takes a callback, which gets run via a
     /// thread to avoid blocking this function. Following these steps:
     ///
@@ -111,10 +101,7 @@ where
     }
 }
 
-impl<K, V> SerializableTransaction<K, V>
-where
-    K: Clone + Ord,
-{
+impl SerializableTransaction {
     /// Returns the read version of the transaction.
 
     pub fn version(&self) -> u64 {
@@ -129,7 +116,7 @@ where
 
     /// Returns true if the given key exists in the database.
 
-    pub fn contains_key(&mut self, key: &K) -> Result<bool, TransactionError> {
+    pub fn contains_key(&mut self, key: &Key) -> Result<bool, TransactionError> {
         let version = self.wtm.version();
         match self.wtm.contains_key(key)? {
             Some(true) => Ok(true),
@@ -142,8 +129,8 @@ where
 
     pub fn get<'a, 'b: 'a>(
         &'a mut self,
-        key: &'b K,
-    ) -> Result<Option<Ref<'a, K, V>>, TransactionError> {
+        key: &'b Key,
+    ) -> Result<Option<Ref<'a>>, TransactionError> {
         let version = self.wtm.version();
         match self.wtm.get(key)? {
             Some(v) => {
@@ -158,27 +145,22 @@ where
     }
 
     /// Insert a new key-value pair.
-
-    pub fn insert(&mut self, key: K, value: V) -> Result<(), TransactionError> {
+    pub fn insert(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
         self.wtm.set(key, value)
     }
 
     /// Remove a key.
-
-    pub fn remove(&mut self, key: K) -> Result<(), TransactionError> {
+    pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {
         self.wtm.remove(key)
     }
 
     /// Iterate over the entries of the write transaction.
-
-    pub fn iter(
-        &mut self,
-    ) -> Result<TransactionIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
+    pub fn iter(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
 
-        let start: Bound<K> = Bound::Unbounded;
-        let end: Bound<K> = Bound::Unbounded;
+        let start: Bound<Key> = Bound::Unbounded;
+        let end: Bound<Key> = Bound::Unbounded;
         marker.mark_range((start, end));
         let committed = self.db.inner.map.iter(version);
         let pending = pm.iter();
@@ -187,14 +169,13 @@ where
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
-
     pub fn iter_rev(
         &mut self,
-    ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
+    ) -> Result<WriteTransactionRevIter<'_, BTreeConflict>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-        let start: Bound<K> = Bound::Unbounded;
-        let end: Bound<K> = Bound::Unbounded;
+        let start: Bound<Key> = Bound::Unbounded;
+        let end: Bound<Key> = Bound::Unbounded;
         marker.mark_range((start, end));
         let committed = self.db.inner.map.iter_rev(version);
         let pending = pm.iter().rev();
@@ -203,13 +184,12 @@ where
     }
 
     /// Returns an iterator over the subset of entries of the database.
-
     pub fn range<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<TransactionRange<'a, K, R, K, V, BTreeConflict<K>>, TransactionError>
+    ) -> Result<TransactionRange<'a, R, BTreeConflict>, TransactionError>
     where
-        R: RangeBounds<K> + 'a,
+        R: RangeBounds<Key> + 'a,
     {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
@@ -223,13 +203,12 @@ where
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-
     pub fn range_rev<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<WriteTransactionRevRange<'a, K, R, K, V, BTreeConflict<K>>, TransactionError>
+    ) -> Result<WriteTransactionRevRange<'a, R, BTreeConflict>, TransactionError>
     where
-        R: RangeBounds<K> + 'a,
+        R: RangeBounds<Key> + 'a,
     {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();

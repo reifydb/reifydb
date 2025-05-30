@@ -33,49 +33,46 @@ use crate::mvcc::transaction::scan::range::*;
 use crate::mvcc::transaction::scan::rev_range::*;
 
 pub mod types;
+use crate::{Key, Value};
 use types::*;
 
 #[doc(hidden)]
-pub trait Database<K, V>: AsSkipCore<K, V> {}
+pub trait Database: AsSkipCore {}
 
-impl<K, V, T: AsSkipCore<K, V>> Database<K, V> for T {}
+impl<T: AsSkipCore> Database for T {}
 
 #[doc(hidden)]
-pub trait AsSkipCore<K, V> {
+pub trait AsSkipCore {
     // This trait is sealed and cannot be implemented for types outside of this crate.
     // So returning a reference to the inner database is ok.
-    fn as_inner(&self) -> &SkipCore<K, V>;
+    fn as_inner(&self) -> &SkipCore;
 }
 
-pub struct SkipCore<K, V> {
-    mem_table: SkipMap<K, Values<V>>,
+pub struct SkipCore {
+    mem_table: SkipMap<Key, Values<Value>>,
     last_discard_version: AtomicU64,
 }
 
-impl<K, V> Default for SkipCore<K, V> {
+impl Default for SkipCore {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K, V> SkipCore<K, V> {
+impl SkipCore {
     pub fn new() -> Self {
         Self { mem_table: SkipMap::new(), last_discard_version: AtomicU64::new(0) }
     }
 
     #[doc(hidden)]
     #[allow(private_interfaces)]
-    pub fn __by_ref(&self) -> &SkipMap<K, Values<V>> {
+    pub fn __by_ref(&self) -> &SkipMap<Key, Values<Value>> {
         &self.mem_table
     }
 }
 
-impl<K, V> SkipCore<K, V>
-where
-    K: Ord,
-    V: Send + 'static,
-{
-    pub fn apply(&self, entries: Vec<Entry<K, V>>) {
+impl SkipCore {
+    pub fn apply(&self, entries: Vec<Entry>) {
         for ent in entries {
             let version = ent.version();
             match ent.data {
@@ -99,11 +96,8 @@ where
     }
 }
 
-impl<K, V> SkipCore<K, V>
-where
-    K: Ord,
-{
-    pub fn get(&self, key: &K, version: u64) -> Option<CommittedRef<'_, K, V>> {
+impl SkipCore {
+    pub fn get(&self, key: &Key, version: u64) -> Option<CommittedRef<'_>> {
         let ent = self.mem_table.get(key)?;
         let version = ent
             .value()
@@ -113,11 +107,7 @@ where
         Some(CommittedRef { ent, version })
     }
 
-    pub fn contains_key<Q>(&self, key: &Q, version: u64) -> bool
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
+    pub fn contains_key(&self, key: &Key, version: u64) -> bool {
         match self.mem_table.get(key) {
             None => false,
             Some(values) => match values.value().upper_bound(Bound::Included(&version)) {
@@ -127,41 +117,32 @@ where
         }
     }
 
-    pub fn iter(&self, version: u64) -> Iter<'_, K, V> {
+    pub fn iter(&self, version: u64) -> Iter<'_> {
         let iter = self.mem_table.iter();
         Iter { iter, version }
     }
 
-    pub fn iter_rev(&self, version: u64) -> RevIter<'_, K, V> {
+    pub fn iter_rev(&self, version: u64) -> RevIter<'_> {
         let iter = self.mem_table.iter();
         RevIter { iter: iter.rev(), version }
     }
 
-    pub fn range<Q, R>(&self, range: R, version: u64) -> Range<'_, Q, R, K, V>
+    pub fn range<R>(&self, range: R, version: u64) -> Range<'_, R>
     where
-        K: Borrow<Q>,
-        R: RangeBounds<Q>,
-        Q: Ord + ?Sized,
+        R: RangeBounds<Key>,
     {
         Range { range: self.mem_table.range(range), version }
     }
 
-    pub fn range_rev<Q, R>(&self, range: R, version: u64) -> RevRange<'_, Q, R, K, V>
+    pub fn range_rev<R>(&self, range: R, version: u64) -> RevRange<'_, R>
     where
-        K: Borrow<Q>,
-        R: RangeBounds<Q>,
-        Q: Ord + ?Sized,
+        R: RangeBounds<Key>,
     {
         RevRange { range: self.mem_table.range(range).rev(), version }
     }
 }
 
-impl<K, V> SkipCore<K, V>
-where
-    K: Ord + Send + 'static,
-    V: Send + 'static,
-    Values<V>: Send,
-{
+impl SkipCore {
     pub fn compact(&self, new_discard_version: u64) {
         match self.last_discard_version.fetch_update(Ordering::SeqCst, Ordering::Acquire, |val| {
             if val >= new_discard_version { None } else { Some(new_discard_version) }

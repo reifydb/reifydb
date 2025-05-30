@@ -69,7 +69,7 @@ test_each_path! { in "testsuite/regression/tests/scripts" as embedded_blocking_s
 
 fn test_serializable_memory(path: &Path) {
     testscript::run_path(
-        &mut Runner::<Memory, SerializableDb<Vec<u8>, Vec<u8>>>::new(serializable()),
+        &mut Runner::<Memory, SerializableDb>::new(serializable()),
         path,
     )
     .expect("test failed")
@@ -77,7 +77,7 @@ fn test_serializable_memory(path: &Path) {
 
 fn test_optimistic_memory(path: &Path) {
     testscript::run_path(
-        &mut Runner::<Memory, Optimistic<Vec<u8>, Vec<u8>>>::new(optimistic()),
+        &mut Runner::<Memory, Optimistic>::new(optimistic()),
         path,
     )
     .expect("test failed")

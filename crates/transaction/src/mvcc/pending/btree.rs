@@ -17,21 +17,15 @@ use std::collections::{
 };
 
 /// A type alias for [`PendingWrites`] that based on the [`BTreeMap`].
-pub type BTreePendingWrites<K, V> = BTreeMap<K, EntryValue<V>>;
+pub type BTreePendingWrites = BTreeMap<Key, EntryValue<Value>>;
 
-impl<K, V> PendingWrites for BTreeMap<K, EntryValue<V>>
-where
-    K: Ord,
-{
-    type Key = K;
-    type Value = V;
-
+impl PendingWrites for BTreeMap<Key, EntryValue<Value>> {
     type Iter<'a>
-        = BTreeMapIter<'a, K, EntryValue<V>>
+        = BTreeMapIter<'a, Key, EntryValue<Value>>
     where
         Self: 'a;
 
-    type IntoIter = BTreeMapIntoIter<K, EntryValue<V>>;
+    type IntoIter = BTreeMapIntoIter<Key, EntryValue<Value>>;
 
     fn new() -> Self {
         Self::default()
@@ -53,27 +47,27 @@ where
         u64::MAX
     }
 
-    fn estimate_size(&self, _entry: &Entry<Self::Key, Self::Value>) -> u64 {
-        size_of::<Self::Key>() as u64 + size_of::<Self::Value>() as u64
+    fn estimate_size(&self, _entry: &Entry) -> u64 {
+        size_of::<Key>() as u64 + size_of::<Value>() as u64
     }
 
-    fn get(&self, key: &K) -> Option<&EntryValue<Self::Value>> {
+    fn get(&self, key: &Key) -> Option<&EntryValue<Value>> {
         self.get(key)
     }
 
-    fn get_entry(&self, key: &Self::Key) -> Option<(&Self::Key, &EntryValue<Self::Value>)> {
+    fn get_entry(&self, key: &Key) -> Option<(&Key, &EntryValue<Value>)> {
         self.get_key_value(key)
     }
 
-    fn contains_key(&self, key: &K) -> bool {
+    fn contains_key(&self, key: &Key) -> bool {
         self.contains_key(key)
     }
 
-    fn insert(&mut self, key: K, value: EntryValue<Self::Value>) {
+    fn insert(&mut self, key: Key, value: EntryValue<Value>) {
         self.insert(key, value);
     }
 
-    fn remove_entry(&mut self, key: &K) -> Option<(K, EntryValue<Self::Value>)> {
+    fn remove_entry(&mut self, key: &Key) -> Option<(Key, EntryValue<Value>)> {
         self.remove_entry(key)
     }
 
@@ -90,67 +84,40 @@ where
     }
 }
 
-impl<K, V> PendingWritesRange for BTreeMap<K, EntryValue<V>>
-where
-    K: Ord,
-{
+impl PendingWritesRange for BTreeMap<Key, EntryValue<Value>> {
     type Range<'a>
-        = BTreeMapRange<'a, K, EntryValue<V>>
+        = BTreeMapRange<'a, Key, EntryValue<Value>>
     where
         Self: 'a;
 
-    fn range<R: RangeBounds<Self::Key>>(&self, range: R) -> Self::Range<'_> {
+    fn range<R: RangeBounds<Key>>(&self, range: R) -> Self::Range<'_> {
         BTreeMap::range(self, range)
     }
 }
 
-impl<K, V> PendingWritesComparableRange for BTreeMap<K, EntryValue<V>>
-where
-    K: Ord,
-{
-    fn range_comparable<T, R>(&self, range: R) -> Self::Range<'_>
+impl PendingWritesComparableRange for BTreeMap<Key, EntryValue<Value>> {
+    fn range_comparable<R>(&self, range: R) -> Self::Range<'_>
     where
-        T: ?Sized + Ord,
-        Self::Key: Borrow<T> + Ord,
-        R: RangeBounds<T>,
+        R: RangeBounds<Key>,
     {
         BTreeMap::range(self, range)
     }
 }
 
-impl<K, V> PendingWritesComparable for BTreeMap<K, EntryValue<V>>
-where
-    K: Ord,
-{
-    fn get_comparable<Q>(&self, key: &Q) -> Option<&EntryValue<Self::Value>>
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
+impl PendingWritesComparable for BTreeMap<Key, EntryValue<Value>> {
+    fn get_comparable(&self, key: &Key) -> Option<&EntryValue<Value>> {
         BTreeMap::get(self, key)
     }
 
-    fn get_entry_comparable<Q>(&self, key: &Q) -> Option<(&Self::Key, &EntryValue<Self::Value>)>
-    where
-        Self::Key: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
+    fn get_entry_comparable(&self, key: &Key) -> Option<(&Key, &EntryValue<Value>)> {
         BTreeMap::get_key_value(self, key)
     }
 
-    fn contains_key_comparable<Q>(&self, key: &Q) -> bool
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
+    fn contains_key_comparable(&self, key: &Key) -> bool {
         BTreeMap::contains_key(self, key)
     }
 
-    fn remove_entry_comparable<Q>(&mut self, key: &Q) -> Option<(K, EntryValue<V>)>
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
+    fn remove_entry_comparable(&mut self, key: &Key) -> Option<(Key, EntryValue<Value>)> {
         BTreeMap::remove_entry(self, key)
     }
 }

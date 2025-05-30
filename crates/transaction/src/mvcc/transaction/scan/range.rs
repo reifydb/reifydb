@@ -20,28 +20,25 @@ use std::borrow::Borrow;
 
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
 use crate::mvcc::version::types::EntryValue;
+use crate::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Range as BTreeMapRange;
 use std::ops::{Bound, RangeBounds};
 
 /// An iterator over a subset of entries of the database.
-pub struct Range<'a, Q, R, K, V>
+pub struct Range<'a, R>
 where
-    K: Ord + Borrow<Q>,
-    R: RangeBounds<Q>,
-    Q: Ord + ?Sized,
+    R: RangeBounds<Key>,
 {
-    pub(crate) range: MapRange<'a, Q, R, K, Values<V>>,
+    pub(crate) range: MapRange<'a, Key, R, Key, Values<Value>>,
     pub(crate) version: u64,
 }
 
-impl<'a, Q, R, K, V> Iterator for Range<'a, Q, R, K, V>
+impl<'a, R> Iterator for Range<'a, R>
 where
-    K: Ord + Borrow<Q>,
-    R: RangeBounds<Q>,
-    Q: Ord + ?Sized,
+    R: RangeBounds<Key>,
 {
-    type Item = Ref<'a, K, V>;
+    type Item = Ref<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -58,26 +55,22 @@ where
 }
 
 /// An iterator over a subset of entries of the database.
-pub struct TransactionRange<'a, Q, R, K, V, C>
+pub struct TransactionRange<'a, R, C>
 where
-    K: Ord + Borrow<Q>,
-    R: RangeBounds<Q> + 'a,
-    Q: Ord + ?Sized,
+    R: RangeBounds<Key> + 'a,
 {
-    pub(crate) committed: Range<'a, Q, R, K, V>,
-    pub(crate) pending: BTreeMapRange<'a, K, EntryValue<V>>,
-    next_pending: Option<(&'a K, &'a EntryValue<V>)>,
-    next_committed: Option<Ref<'a, K, V>>,
-    last_yielded_key: Option<Either<&'a K, Ref<'a, K, V>>>,
+    pub(crate) committed: Range<'a, R>,
+    pub(crate) pending: BTreeMapRange<'a, Key, EntryValue<Value>>,
+    next_pending: Option<(&'a Key, &'a EntryValue<Value>)>,
+    next_committed: Option<Ref<'a>>,
+    last_yielded_key: Option<Either<&'a Key, Ref<'a>>>,
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, Q, R, K, V, C> TransactionRange<'a, Q, R, K, V, C>
+impl<'a, R, C> TransactionRange<'a, R, C>
 where
-    K: Ord + Borrow<Q>,
-    Q: Ord + ?Sized,
-    R: RangeBounds<Q> + 'a,
-    C: Conflict<Key = K>,
+    R: RangeBounds<Key> + 'a,
+    C: Conflict,
 {
     fn advance_pending(&mut self) {
         self.next_pending = self.pending.next();
@@ -91,8 +84,8 @@ where
     }
 
     pub fn new(
-        pending: BTreeMapRange<'a, K, EntryValue<V>>,
-        committed: Range<'a, Q, R, K, V>,
+        pending: BTreeMapRange<'a, Key, EntryValue<Value>>,
+        committed: Range<'a, R>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = TransactionRange {
@@ -111,14 +104,12 @@ where
     }
 }
 
-impl<'a, Q, R, K, V, C> Iterator for TransactionRange<'a, Q, R, K, V, C>
+impl<'a, R, C> Iterator for TransactionRange<'a, R, C>
 where
-    K: Ord + Borrow<Q>,
-    Q: Ord + ?Sized,
-    R: RangeBounds<Q> + 'a,
-    C: Conflict<Key = K>,
+    R: RangeBounds<Key> + 'a,
+    C: Conflict,
 {
-    type Item = Ref<'a, K, V>;
+    type Item = Ref<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

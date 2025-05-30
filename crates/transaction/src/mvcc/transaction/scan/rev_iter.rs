@@ -19,21 +19,19 @@ use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
 use crate::mvcc::version::types::EntryValue;
+use crate::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Iter as BTreeMapIter;
 use std::ops::Bound;
 
 /// An iterator over the entries of the database.
-pub struct RevIter<'a, K, V> {
-    pub(crate) iter: Rev<MapIter<'a, K, Values<V>>>,
+pub struct RevIter<'a> {
+    pub(crate) iter: Rev<MapIter<'a, Key, Values<Value>>>,
     pub(crate) version: u64,
 }
 
-impl<'a, K, V> Iterator for RevIter<'a, K, V>
-where
-    K: Ord,
-{
-    type Item = Ref<'a, K, V>;
+impl<'a> Iterator for RevIter<'a> {
+    type Item = Ref<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -50,19 +48,18 @@ where
 }
 
 /// Iterator over the entries of the write transaction.
-pub struct WriteTransactionRevIter<'a, K, V, C> {
-    pending: Rev<BTreeMapIter<'a, K, EntryValue<V>>>,
-    committed: RevIter<'a, K, V>,
-    next_pending: Option<(&'a K, &'a EntryValue<V>)>,
-    next_committed: Option<Ref<'a, K, V>>,
-    last_yielded_key: Option<Either<&'a K, Ref<'a, K, V>>>,
+pub struct WriteTransactionRevIter<'a, C> {
+    pending: Rev<BTreeMapIter<'a, Key, EntryValue<Value>>>,
+    committed: RevIter<'a>,
+    next_pending: Option<(&'a Key, &'a EntryValue<Value>)>,
+    next_committed: Option<Ref<'a>>,
+    last_yielded_key: Option<Either<&'a Key, Ref<'a>>>,
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, K, V, C> WriteTransactionRevIter<'a, K, V, C>
+impl<'a, C> WriteTransactionRevIter<'a, C>
 where
-    C: Conflict<Key = K>,
-    K: Ord,
+    C: Conflict,
 {
     fn advance_pending(&mut self) {
         self.next_pending = self.pending.next();
@@ -76,8 +73,8 @@ where
     }
 
     pub fn new(
-        pending: Rev<BTreeMapIter<'a, K, EntryValue<V>>>,
-        committed: RevIter<'a, K, V>,
+        pending: Rev<BTreeMapIter<'a, Key, EntryValue<Value>>>,
+        committed: RevIter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = WriteTransactionRevIter {
@@ -96,12 +93,11 @@ where
     }
 }
 
-impl<'a, K, V, C> Iterator for WriteTransactionRevIter<'a, K, V, C>
+impl<'a, C> Iterator for WriteTransactionRevIter<'a, C>
 where
-    K: Ord + 'static,
-    C: Conflict<Key = K>,
+    C: Conflict,
 {
-    type Item = Ref<'a, K, V>;
+    type Item = Ref<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

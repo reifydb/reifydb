@@ -28,13 +28,13 @@ mod write;
 #[cfg(test)]
 mod tests;
 
-struct Inner<K, V> {
-    tm: TransactionManager<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
-    mem_table: SkipCore<K, V>,
+struct Inner {
+    tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
+    mem_table: SkipCore,
     hasher: RandomState,
 }
 
-impl<K, V> Inner<K, V> {
+impl Inner {
     fn new(name: &str) -> Self {
         let tm = TransactionManager::new(name, 0);
         Self { tm, mem_table: SkipCore::new(), hasher: DefaultHasher::default() }
@@ -45,71 +45,62 @@ impl<K, V> Inner<K, V> {
     }
 }
 
-pub struct Optimistic<K, V> {
-    inner: Arc<Inner<K, V>>,
+pub struct Optimistic {
+    inner: Arc<Inner>,
 }
 
 #[doc(hidden)]
-impl<K, V> AsSkipCore<K, V> for Optimistic<K, V> {
+impl AsSkipCore for Optimistic {
     #[allow(private_interfaces)]
-    fn as_inner(&self) -> &SkipCore<K, V> {
+    fn as_inner(&self) -> &SkipCore {
         &self.inner.mem_table
     }
 }
 
-impl<K, V> Clone for Optimistic<K, V> {
+impl Clone for Optimistic {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone() }
     }
 }
 
-impl<K, V> Default for Optimistic<K, V> {
+impl Default for Optimistic {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K, V> Optimistic<K, V> {
+impl Optimistic {
     pub fn new() -> Self {
         let inner = Arc::new(Inner::new(core::any::type_name::<Self>()));
         Self { inner }
     }
 }
 
-impl<K, V> Optimistic<K, V> {
+impl Optimistic {
     /// Returns the current read version of the database.
     pub fn version(&self) -> u64 {
         self.inner.version()
     }
 
     /// Create a read transaction.
-    pub fn read(&self) -> TransactionRx<K, V> {
+    pub fn read(&self) -> TransactionRx {
         TransactionRx::new(self.clone())
     }
 }
 
-impl<K, V> Optimistic<K, V>
-where
-    K: Clone + Ord + Eq + Hash,
-    V: 'static,
-{
-    pub fn write(&self) -> TransactionTx<K, V> {
+impl Optimistic {
+    pub fn write(&self) -> TransactionTx {
         TransactionTx::new(self.clone())
     }
 }
 
-impl<K, V> Optimistic<K, V>
-where
-    K: Ord + Eq + Hash + Send + 'static,
-    V: Send + 'static,
-    Values<V>: Send,
-{
+impl Optimistic {
     pub fn compact(&self) {
         self.inner.mem_table.compact(self.inner.tm.discard_hint());
     }
 }
 
-pub enum Transaction<K, V> {
-    Rx(TransactionRx<K, V>),
-    Tx(TransactionTx<K, V>),
+pub enum Transaction {
+    Rx(TransactionRx),
+    Tx(TransactionTx),
 }

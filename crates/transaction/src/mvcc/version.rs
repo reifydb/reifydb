@@ -17,32 +17,32 @@
 extern crate alloc;
 extern crate std;
 
-
 /// Types
 pub mod types {
+    use crate::{Key, Value};
     use core::cmp::{self, Reverse};
 
     /// The reference of the [`Entry`].
     #[derive(Debug, PartialEq, Eq, Hash)]
-    pub struct EntryRef<'a, K, V> {
+    pub struct EntryRef<'a> {
         /// The data reference of the entry.
-        pub data: EntryDataRef<'a, K, V>,
+        pub data: EntryDataRef<'a>,
         /// The version of the entry.
         pub version: u64,
     }
 
-    impl<K, V> Clone for EntryRef<'_, K, V> {
+    impl Clone for EntryRef<'_> {
         fn clone(&self) -> Self {
             *self
         }
     }
 
-    impl<K, V> Copy for EntryRef<'_, K, V> {}
+    impl Copy for EntryRef<'_> {}
 
-    impl<K, V> EntryRef<'_, K, V> {
+    impl EntryRef<'_> {
         /// Get the key of the entry.
 
-        pub const fn key(&self) -> &K {
+        pub const fn key(&self) -> &Key {
             match self.data {
                 EntryDataRef::Insert { key, .. } => key,
                 EntryDataRef::Remove(key) => key,
@@ -51,7 +51,7 @@ pub mod types {
 
         /// Get the value of the entry, if None, it means the entry is removed.
 
-        pub const fn value(&self) -> Option<&V> {
+        pub const fn value(&self) -> Option<&Value> {
             match self.data {
                 EntryDataRef::Insert { value, .. } => Some(value),
                 EntryDataRef::Remove(_) => None,
@@ -69,56 +69,55 @@ pub mod types {
 
     /// The reference of the [`EntryData`].
     #[derive(Debug, PartialEq, Eq, Hash)]
-    pub enum EntryDataRef<'a, K, V> {
+    pub enum EntryDataRef<'a> {
         /// Insert the key and the value.
         Insert {
             /// key of the entry.
-            key: &'a K,
+            key: &'a Key,
             /// value of the entry.
-            value: &'a V,
+            value: &'a Value,
         },
         /// Remove the key.
-        Remove(&'a K),
+        Remove(&'a Key),
     }
 
-    impl<K, V> Clone for EntryDataRef<'_, K, V> {
+    impl Clone for EntryDataRef<'_> {
         fn clone(&self) -> Self {
             *self
         }
     }
 
-    impl<K, V> Copy for EntryDataRef<'_, K, V> {}
+    impl Copy for EntryDataRef<'_> {}
 
     /// The data of the [`Entry`].
     #[derive(Debug, PartialEq, Eq, Hash)]
-    pub enum EntryData<K, V> {
+    pub enum EntryData {
         /// Insert the key and the value.
         Set {
             /// key of the entry.
-            key: K,
+            key: Key,
             /// value of the entry.
-            value: V,
+            value: Value,
         },
         /// Remove the key.
-        Remove(K),
+        Remove(Key),
     }
 
-    impl<K: Ord, V: Eq> PartialOrd for EntryData<K, V> {
+    impl PartialOrd for EntryData {
         fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
             Some(self.cmp(other))
         }
     }
 
-    impl<K: Ord, V: Eq> Ord for EntryData<K, V> {
+    impl Ord for EntryData {
         fn cmp(&self, other: &Self) -> cmp::Ordering {
             self.key().cmp(other.key())
         }
     }
 
-    impl<K, V> EntryData<K, V> {
+    impl EntryData {
         /// Returns the key of the entry.
-
-        pub const fn key(&self) -> &K {
+        pub const fn key(&self) -> &Key {
             match self {
                 Self::Set { key, .. } => key,
                 Self::Remove(key) => key,
@@ -126,8 +125,7 @@ pub mod types {
         }
 
         /// Returns the value of the entry, if None, it means the entry is marked as remove.
-
-        pub const fn value(&self) -> Option<&V> {
+        pub const fn value(&self) -> Option<&Value> {
             match self {
                 Self::Set { value, .. } => Some(value),
                 Self::Remove(_) => None,
@@ -135,16 +133,10 @@ pub mod types {
         }
     }
 
-    impl<K, V> Clone for EntryData<K, V>
-    where
-        K: Clone,
-        V: Clone,
-    {
+    impl Clone for EntryData {
         fn clone(&self) -> Self {
             match self {
-                Self::Set { key, value } => {
-                    Self::Set { key: key.clone(), value: value.clone() }
-                }
+                Self::Set { key, value } => Self::Set { key: key.clone(), value: value.clone() },
                 Self::Remove(key) => Self::Remove(key.clone()),
             }
         }
@@ -152,20 +144,20 @@ pub mod types {
 
     /// An entry can be persisted to the database.
     #[derive(Debug, PartialEq, Eq, Hash)]
-    pub struct Entry<K, V> {
+    pub struct Entry {
         /// The version of the entry.
         pub version: u64,
         /// The data of the entry.
-        pub data: EntryData<K, V>,
+        pub data: EntryData,
     }
 
-    impl<K: Ord, V: Eq> PartialOrd for Entry<K, V> {
+    impl PartialOrd for Entry {
         fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
             Some(self.cmp(other))
         }
     }
 
-    impl<K: Ord, V: Eq> Ord for Entry<K, V> {
+    impl Ord for Entry {
         fn cmp(&self, other: &Self) -> cmp::Ordering {
             self.data
                 .key()
@@ -174,20 +166,16 @@ pub mod types {
         }
     }
 
-    impl<K, V> Clone for Entry<K, V>
-    where
-        K: Clone,
-        V: Clone,
-    {
+    impl Clone for Entry {
         fn clone(&self) -> Self {
             Self { version: self.version, data: self.data.clone() }
         }
     }
 
-    impl<K, V> Entry<K, V> {
+    impl Entry {
         /// Returns the data contained by the entry.
 
-        pub const fn data(&self) -> &EntryData<K, V> {
+        pub const fn data(&self) -> &EntryData {
             &self.data
         }
 
@@ -199,13 +187,13 @@ pub mod types {
 
         /// Consumes the entry and returns the version and the entry data.
 
-        pub fn into_components(self) -> (u64, EntryData<K, V>) {
+        pub fn into_components(self) -> (u64, EntryData) {
             (self.version, self.data)
         }
 
         /// Returns the key of the entry.
 
-        pub fn key(&self) -> &K {
+        pub fn key(&self) -> &Key {
             match &self.data {
                 EntryData::Set { key, .. } => key,
                 EntryData::Remove(key) => key,
@@ -213,7 +201,7 @@ pub mod types {
         }
 
         /// Split the entry into its key and [`EntryValue`].
-        pub fn split(self) -> (K, EntryValue<V>) {
+        pub fn split(self) -> (Key, EntryValue<Value>) {
             let Entry { data, version } = self;
 
             let (key, value) = match data {
@@ -224,7 +212,7 @@ pub mod types {
         }
 
         /// Unsplit the key and [`EntryValue`] into an entry.
-        pub fn unsplit(key: K, value: EntryValue<V>) -> Self {
+        pub fn unsplit(key: Key, value: EntryValue<Value>) -> Self {
             let EntryValue { value, version } = value;
             Entry {
                 data: match value {

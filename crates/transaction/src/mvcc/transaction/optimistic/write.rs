@@ -18,31 +18,25 @@ use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
 use crate::mvcc::transaction::scan::rev_iter::WriteTransactionRevIter;
 use crate::mvcc::transaction::scan::rev_range::WriteTransactionRevRange;
+use crate::{Key, Value};
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 /// A optimistic concurrency control transaction over the [`Optimistic`].
-pub struct TransactionTx<K, V> {
-    engine: Optimistic<K, V>,
-    pub(in crate::mvcc) tx: TransactionManagerTx<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
+pub struct TransactionTx {
+    engine: Optimistic,
+    pub(in crate::mvcc) tx: TransactionManagerTx<BTreeConflict, BTreePendingWrites>,
 }
 
-impl<K, V> TransactionTx<K, V>
-where
-    K: Clone + Ord + Hash + Eq,
-{
-    pub fn new(db: Optimistic<K, V>) -> Self {
+impl TransactionTx {
+    pub fn new(db: Optimistic) -> Self {
         let tx = db.inner.tm.write().unwrap();
         Self { engine: db, tx }
     }
 }
 
-impl<K, V> TransactionTx<K, V>
-where
-    K: Clone + Ord + Hash + Eq + Debug,
-    V: Send + 'static + Debug,
-{
+impl TransactionTx {
     /// Commits the transaction, following these steps:
     ///
     /// 1. If there are no writes, return immediately.
@@ -67,11 +61,7 @@ where
     }
 }
 
-impl<K, V> TransactionTx<K, V>
-where
-    K: Clone + Ord + Hash + Eq + Send + Sync + 'static,
-    V: Send + Sync + 'static,
-{
+impl TransactionTx {
     /// Acts like [`commit`](WriteTransaction::commit), but takes a callback, which gets run via a
     /// thread to avoid blocking this function. Following these steps:
     ///
@@ -108,11 +98,7 @@ where
     }
 }
 
-impl<K, V> TransactionTx<K, V>
-where
-    K: Clone + Ord + Hash + Eq,
-    V: 'static,
-{
+impl TransactionTx {
     /// Returns the read version of the transaction.
     pub fn version(&self) -> u64 {
         self.tx.version()
@@ -124,7 +110,7 @@ where
     }
 
     /// Returns true if the given key exists in the database.
-    pub fn contains_key(&mut self, key: &K) -> Result<bool, TransactionError> {
+    pub fn contains_key(&mut self, key: &Key) -> Result<bool, TransactionError> {
         let version = self.tx.version();
         match self.tx.contains_key(key)? {
             Some(true) => Ok(true),
@@ -136,11 +122,8 @@ where
     /// Get a value from the database.
     pub fn get<'a, 'b: 'a>(
         &'a mut self,
-        key: &'b K,
-    ) -> Result<Option<Ref<'a, K, V>>, TransactionError>
-    where
-        K: Clone,
-    {
+        key: &'b Key,
+    ) -> Result<Option<Ref<'a>>, TransactionError> {
         let version = self.tx.version();
         match self.tx.get(key)? {
             Some(v) => {
@@ -154,20 +137,18 @@ where
         }
     }
 
-    /// Insert a new key-value pair.
-    pub fn set(&mut self, key: K, value: V) -> Result<(), TransactionError> {
+    /// Set a new key-value pair.
+    pub fn set(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
         self.tx.set(key, value)
     }
 
     /// Remove a key.
-    pub fn remove(&mut self, key: K) -> Result<(), TransactionError> {
+    pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {
         self.tx.remove(key)
     }
 
     /// Iterate over the entries of the write transaction.
-    pub fn iter(
-        &mut self,
-    ) -> Result<TransactionIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
+    pub fn iter(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
         let version = self.tx.version();
         let (marker, pm) = self.tx.marker_with_pending_writes();
         let committed = self.engine.inner.mem_table.iter(version);
@@ -179,7 +160,7 @@ where
     /// Iterate over the entries of the write transaction in reverse order.
     pub fn iter_rev(
         &mut self,
-    ) -> Result<WriteTransactionRevIter<'_, K, V, BTreeConflict<K>>, TransactionError> {
+    ) -> Result<WriteTransactionRevIter<'_, BTreeConflict>, TransactionError> {
         let version = self.tx.version();
         let (marker, pm) = self.tx.marker_with_pending_writes();
         let committed = self.engine.inner.mem_table.iter_rev(version);
@@ -189,14 +170,12 @@ where
     }
 
     /// Returns an iterator over the subset of entries of the database.
-    pub fn range<'a, Q, R>(
+    pub fn range<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<TransactionRange<'a, Q, R, K, V, BTreeConflict<K>>, TransactionError>
+    ) -> Result<TransactionRange<'a, R, BTreeConflict>, TransactionError>
     where
-        K: Clone + Borrow<Q>,
-        R: RangeBounds<Q> + 'a,
-        Q: Ord + ?Sized,
+        R: RangeBounds<Key> + 'a,
     {
         let version = self.tx.version();
         let (marker, pm) = self.tx.marker_with_pending_writes();
@@ -209,14 +188,12 @@ where
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev<'a, Q, R>(
+    pub fn range_rev<'a, R>(
         &'a mut self,
         range: R,
-    ) -> Result<WriteTransactionRevRange<'a, Q, R, K, V, BTreeConflict<K>>, TransactionError>
+    ) -> Result<WriteTransactionRevRange<'a, R, BTreeConflict>, TransactionError>
     where
-        K: Clone + Borrow<Q>,
-        R: RangeBounds<Q> + 'a,
-        Q: Ord + ?Sized,
+        R: RangeBounds<Key> + 'a,
     {
         let version = self.tx.version();
         let (marker, pm) = self.tx.marker_with_pending_writes();

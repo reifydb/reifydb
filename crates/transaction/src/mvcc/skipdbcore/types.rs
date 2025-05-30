@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::sync::atomic::{AtomicU8, Ordering};
+use std::fmt::Debug;
 
 use crossbeam_skiplist::{SkipMap, map::Entry as MapEntry};
 
@@ -74,61 +75,58 @@ impl<V> core::ops::Deref for Values<V> {
 }
 
 /// A reference to an entry in the write transaction.
-pub struct Entry<'a, K, V> {
-    ent: MapEntry<'a, u64, Option<V>>,
-    key: &'a K,
+pub struct Entry<'a> {
+    ent: MapEntry<'a, u64, Option<Value>>,
+    key: &'a Key,
     version: u64,
 }
 
-impl<K, V> Clone for Entry<'_, K, V> {
+impl Clone for Entry<'_> {
     fn clone(&self) -> Self {
         Self { ent: self.ent.clone(), version: self.version, key: self.key }
     }
 }
 
-impl<K, V> Entry<'_, K, V> {
+impl Entry<'_> {
     /// Get the value of the entry.
-
-    pub fn value(&self) -> Option<&V> {
+    pub fn value(&self) -> Option<&Value> {
         self.ent.value().as_ref()
     }
 
     /// Get the key of the entry.
-
-    pub const fn key(&self) -> &K {
+    pub const fn key(&self) -> &Key {
         self.key
     }
 
     /// Get the version of the entry.
-
     pub const fn version(&self) -> u64 {
         self.version
     }
 }
 
 /// A reference to an entry in the write transaction.
-pub struct ValueRef<'a, K, V>(Either<&'a V, Entry<'a, K, V>>);
+pub struct ValueRef<'a>(Either<&'a Value, Entry<'a>>);
 
-impl<K, V: core::fmt::Debug> core::fmt::Debug for ValueRef<'_, K, V> {
+impl Debug for ValueRef<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::ops::Deref::deref(self).fmt(f)
     }
 }
 
-impl<K, V: core::fmt::Display> core::fmt::Display for ValueRef<'_, K, V> {
+impl core::fmt::Display for ValueRef<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::ops::Deref::deref(self).fmt(f)
     }
 }
 
-impl<K, V> Clone for ValueRef<'_, K, V> {
+impl Clone for ValueRef<'_> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<K, V> core::ops::Deref for ValueRef<'_, K, V> {
-    type Target = V;
+impl core::ops::Deref for ValueRef<'_> {
+    type Target = Value;
 
     fn deref(&self) -> &Self::Target {
         match &self.0 {
@@ -140,7 +138,7 @@ impl<K, V> core::ops::Deref for ValueRef<'_, K, V> {
     }
 }
 
-impl<K, V> ValueRef<'_, K, V> {
+impl ValueRef<'_> {
     /// Returns `true` if the value was commited.
 
     pub const fn is_committed(&self) -> bool {
@@ -148,21 +146,15 @@ impl<K, V> ValueRef<'_, K, V> {
     }
 }
 
-impl<K, V> PartialEq<V> for ValueRef<'_, K, V>
-where
-    V: PartialEq,
-{
-    fn eq(&self, other: &V) -> bool {
+impl PartialEq<Value> for ValueRef<'_> {
+    fn eq(&self, other: &Value) -> bool {
         core::ops::Deref::deref(self).eq(other)
     }
 }
 
-impl<K, V> PartialEq<&V> for ValueRef<'_, K, V>
-where
-    V: PartialEq,
-{
-    fn eq(&self, other: &&V) -> bool {
-        core::ops::Deref::deref(self).eq(other)
+impl PartialEq<&Value> for ValueRef<'_> {
+    fn eq(&self, other: &&Value) -> bool {
+        core::ops::Deref::deref(self).eq(*other)
     }
 }
 
@@ -178,55 +170,52 @@ where
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::version::types::EntryRef;
+use crate::{Key, Value};
 
 /// A reference to an entry in the write transaction.
 #[derive(Debug)]
-pub struct CommittedRef<'a, K, V> {
-    pub(crate) ent: MapEntry<'a, K, Values<V>>,
+pub struct CommittedRef<'a> {
+    pub(crate) ent: MapEntry<'a, Key, Values<Value>>,
     pub(crate) version: u64,
 }
 
-impl<K, V> Clone for CommittedRef<'_, K, V> {
+impl Clone for CommittedRef<'_> {
     fn clone(&self) -> Self {
         Self { ent: self.ent.clone(), version: self.version }
     }
 }
 
-impl<K, V> CommittedRef<'_, K, V> {
+impl CommittedRef<'_> {
     /// Get the value of the entry.
-
-    fn entry(&self) -> Entry<'_, K, V> {
+    fn entry(&self) -> Entry<'_> {
         let ent = self.ent.value().get(&self.version).unwrap();
 
         Entry { ent, key: self.ent.key(), version: self.version }
     }
 
     /// Get the key of the ref.
-
-    pub fn value(&self) -> ValueRef<'_, K, V> {
+    pub fn value(&self) -> ValueRef<'_> {
         ValueRef(Either::Right(self.entry()))
     }
 
     /// Get the key of the ref.
-
-    pub fn key(&self) -> &K {
+    pub fn key(&self) -> &Key {
         self.ent.key()
     }
 
     /// Get the version of the entry.
-
     pub const fn version(&self) -> u64 {
         self.version
     }
 }
 
-enum RefKind<'a, K, V> {
-    PendingIter { version: u64, key: &'a K, value: &'a V },
-    Pending(EntryRef<'a, K, V>),
-    Committed(CommittedRef<'a, K, V>),
+enum RefKind<'a> {
+    PendingIter { version: u64, key: &'a Key, value: &'a Value },
+    Pending(EntryRef<'a>),
+    Committed(CommittedRef<'a>),
 }
 
-impl<K: core::fmt::Debug, V: core::fmt::Debug> core::fmt::Debug for Ref<'_, K, V> {
+impl core::fmt::Debug for Ref<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ref")
             .field("key", self.0.key())
@@ -236,7 +225,7 @@ impl<K: core::fmt::Debug, V: core::fmt::Debug> core::fmt::Debug for Ref<'_, K, V
     }
 }
 
-impl<K, V> Clone for RefKind<'_, K, V> {
+impl Clone for RefKind<'_> {
     fn clone(&self) -> Self {
         match self {
             Self::Committed(ent) => Self::Committed(ent.clone()),
@@ -248,8 +237,8 @@ impl<K, V> Clone for RefKind<'_, K, V> {
     }
 }
 
-impl<K, V> RefKind<'_, K, V> {
-    fn key(&self) -> &K {
+impl RefKind<'_> {
+    fn key(&self) -> &Key {
         match self {
             Self::PendingIter { key, .. } => key,
             Self::Pending(ent) => ent.key(),
@@ -265,7 +254,7 @@ impl<K, V> RefKind<'_, K, V> {
         }
     }
 
-    fn value(&self) -> ValueRef<'_, K, V> {
+    fn value(&self) -> ValueRef<'_> {
         match self {
             Self::PendingIter { value, .. } => ValueRef(Either::Left(value)),
             Self::Pending(ent) => ValueRef(Either::Left(
@@ -281,36 +270,36 @@ impl<K, V> RefKind<'_, K, V> {
 }
 
 /// A reference to an entry in the write transaction.
-pub struct Ref<'a, K, V>(RefKind<'a, K, V>);
+pub struct Ref<'a>(RefKind<'a>);
 
-impl<K, V> Clone for Ref<'_, K, V> {
+impl Clone for Ref<'_> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<'a, K, V> From<(u64, &'a K, &'a V)> for Ref<'a, K, V> {
-    fn from((version, k, v): (u64, &'a K, &'a V)) -> Self {
+impl<'a> From<(u64, &'a Key, &'a Value)> for Ref<'a> {
+    fn from((version, k, v): (u64, &'a Key, &'a Value)) -> Self {
         Self(RefKind::PendingIter { version, key: k, value: v })
     }
 }
 
-impl<'a, K, V> From<EntryRef<'a, K, V>> for Ref<'a, K, V> {
-    fn from(ent: EntryRef<'a, K, V>) -> Self {
+impl<'a> From<EntryRef<'a>> for Ref<'a> {
+    fn from(ent: EntryRef<'a>) -> Self {
         Self(RefKind::Pending(ent))
     }
 }
 
-impl<'a, K, V> From<CommittedRef<'a, K, V>> for Ref<'a, K, V> {
-    fn from(ent: CommittedRef<'a, K, V>) -> Self {
+impl<'a> From<CommittedRef<'a>> for Ref<'a> {
+    fn from(ent: CommittedRef<'a>) -> Self {
         Self(RefKind::Committed(ent))
     }
 }
 
-impl<K, V> Ref<'_, K, V> {
+impl Ref<'_> {
     /// Returns the value of the key.
 
-    pub fn key(&self) -> &K {
+    pub fn key(&self) -> &Key {
         self.0.key()
     }
 
@@ -322,7 +311,7 @@ impl<K, V> Ref<'_, K, V> {
 
     /// Returns the value of the entry.
 
-    pub fn value(&self) -> ValueRef<'_, K, V> {
+    pub fn value(&self) -> ValueRef<'_> {
         self.0.value()
     }
 

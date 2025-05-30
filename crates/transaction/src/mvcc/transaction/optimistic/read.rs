@@ -9,6 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::Key;
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::skipdbcore::AsSkipCore;
@@ -22,72 +23,61 @@ use crate::mvcc::transaction::scan::rev_range::RevRange;
 use std::borrow::Borrow;
 use std::ops::RangeBounds;
 
-pub struct TransactionRx<K, V> {
-    pub(crate) engine: Optimistic<K, V>,
-    pub(crate) rtm: TransactionManagerRx<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
+pub struct TransactionRx {
+    pub(crate) engine: Optimistic,
+    pub(crate) rtm: TransactionManagerRx<BTreeConflict, BTreePendingWrites>,
 }
 
-impl<K, V> TransactionRx<K, V> {
-    pub fn new(engine: Optimistic<K, V>) -> Self {
+impl TransactionRx {
+    pub fn new(engine: Optimistic) -> Self {
         let rtm = engine.inner.tm.read();
         Self { engine, rtm }
     }
 }
 
-impl<K, V> TransactionRx<K, V>
-where
-    K: Ord,
-{
+impl TransactionRx {
     /// Returns the version of the transaction.
     pub fn version(&self) -> u64 {
         self.rtm.version()
     }
 
     /// Get a value from the database.
-    pub fn get(&self, key: &K) -> Option<Ref<'_, K, V>> {
+    pub fn get(&self, key: &Key) -> Option<Ref<'_>> {
         let version = self.rtm.version();
         self.engine.as_inner().get(key, version).map(Into::into)
     }
 
     /// Returns true if the given key exists in the database.
-    pub fn contains_key<Q>(&self, key: &Q) -> bool
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
+    pub fn contains_key(&self, key: &Key) -> bool {
         let version = self.rtm.version();
         self.engine.as_inner().contains_key(key, version)
     }
 
     /// Returns an iterator over the entries of the database.
-    pub fn iter(&self) -> Iter<'_, K, V> {
+    pub fn iter(&self) -> Iter<'_> {
         let version = self.rtm.version();
         self.engine.as_inner().iter(version)
     }
 
     /// Returns a reverse iterator over the entries of the database.
-    pub fn iter_rev(&self) -> RevIter<'_, K, V> {
+    pub fn iter_rev(&self) -> RevIter<'_> {
         let version = self.rtm.version();
         self.engine.as_inner().iter_rev(version)
     }
 
     /// Returns an iterator over the subset of entries of the database.
-    pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, K, V>
+    pub fn range<R>(&self, range: R) -> Range<'_, R>
     where
-        K: Borrow<Q>,
-        R: RangeBounds<Q>,
-        Q: Ord + ?Sized,
+        R: RangeBounds<Key>,
     {
         let version = self.rtm.version();
         self.engine.as_inner().range(range, version)
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev<Q, R>(&self, range: R) -> RevRange<'_, Q, R, K, V>
+    pub fn range_rev<R>(&self, range: R) -> RevRange<'_, R>
     where
-        K: Borrow<Q>,
-        R: RangeBounds<Q>,
-        Q: Ord + ?Sized,
+        R: RangeBounds<Key>,
     {
         let version = self.rtm.version();
         self.engine.as_inner().range_rev(range, version)

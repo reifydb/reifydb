@@ -21,6 +21,9 @@ mod error;
 pub mod mvcc;
 mod transaction;
 
+pub type Key = Vec<u8>;
+pub type Value = Vec<u8>;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 // FIXME remove this - just a quick hack

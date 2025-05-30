@@ -3,16 +3,16 @@
 
 use crate::catalog::{Catalog, Schema};
 use crate::mvcc::conflict::BTreeConflict;
+use crate::mvcc::transaction::serializable::read::ReadTransaction;
 use crate::mvcc::transaction::serializable::{SerializableDb, SerializableTransaction};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
-use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
-impl<P: Persistence> Transaction<P> for SerializableDb<Vec<u8>, Vec<u8>> {
-    type Rx = ReadTransaction<Vec<u8>, Vec<u8>, SerializableDb<Vec<u8>, Vec<u8>>, BTreeConflict<Vec<u8>>>;
-    type Tx = SerializableTransaction<Vec<u8>, Vec<u8>>;
+impl<P: Persistence> Transaction<P> for SerializableDb {
+    type Rx = ReadTransaction<SerializableDb, BTreeConflict>;
+    type Tx = SerializableTransaction;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         Ok(self.read())
@@ -24,9 +24,7 @@ impl<P: Persistence> Transaction<P> for SerializableDb<Vec<u8>, Vec<u8>> {
     }
 }
 
-impl crate::Rx
-    for ReadTransaction<Vec<u8>, Vec<u8>, SerializableDb<Vec<u8>, Vec<u8>>, BTreeConflict<Vec<u8>>>
-{
+impl crate::Rx for ReadTransaction<SerializableDb, BTreeConflict> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -53,7 +51,7 @@ impl crate::Rx
     }
 }
 
-impl crate::Rx for SerializableTransaction<Vec<u8>, Vec<u8>> {
+impl crate::Rx for SerializableTransaction {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -82,7 +80,7 @@ impl crate::Rx for SerializableTransaction<Vec<u8>, Vec<u8>> {
     }
 }
 
-impl crate::Tx for SerializableTransaction<Vec<u8>, Vec<u8>> {
+impl crate::Tx for SerializableTransaction {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

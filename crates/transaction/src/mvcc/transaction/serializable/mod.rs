@@ -9,7 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::skipdbcore::types::Values;
 use std::sync::Arc;
 
 pub use read::*;
@@ -25,12 +24,12 @@ use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
 use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
-struct Inner<K, V> {
-    tm: TransactionManager<K, V, BTreeConflict<K>, BTreePendingWrites<K, V>>,
-    map: SkipCore<K, V>,
+struct Inner {
+    tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
+    map: SkipCore,
 }
 
-impl<K, V> Inner<K, V> {
+impl Inner {
     fn new(name: &str) -> Self {
         let tm = TransactionManager::new(name, 0);
         Self { tm, map: SkipCore::new() }
@@ -52,57 +51,50 @@ impl<K, V> Inner<K, V> {
 /// 2. `SerializableDb` does not require key to implement [`Hash`](core::hash::Hash).
 /// 3. But, [`OptimisticDb`](crate::optimistic::OptimisticDb) has more flexible write transaction APIs.
 #[repr(transparent)]
-pub struct SerializableDb<K, V> {
-    inner: Arc<Inner<K, V>>,
+pub struct SerializableDb {
+    inner: Arc<Inner>,
 }
 
 #[doc(hidden)]
-impl<K, V> AsSkipCore<K, V> for SerializableDb<K, V> {
-    fn as_inner(&self) -> &SkipCore<K, V> {
+impl AsSkipCore for SerializableDb {
+    fn as_inner(&self) -> &SkipCore {
         &self.inner.map
     }
 }
 
-impl<K, V> Clone for SerializableDb<K, V> {
+impl Clone for SerializableDb {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone() }
     }
 }
 
-impl<K, V> Default for SerializableDb<K, V> {
+impl Default for SerializableDb {
     /// Creates a new `SerializableDb` with the default options.
-
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K, V> SerializableDb<K, V> {
+impl SerializableDb {
     /// Creates a new `SerializableDb`
     pub fn new() -> Self {
         Self { inner: Arc::new(Inner::new(core::any::type_name::<Self>())) }
     }
 }
 
-impl<K, V> SerializableDb<K, V> {
+impl SerializableDb {
     /// Returns the current read version of the database.
-
     pub fn version(&self) -> u64 {
         self.inner.version()
     }
 
     /// Create a read transaction.
-
-    pub fn read(&self) -> ReadTransaction<K, V, SerializableDb<K, V>, BTreeConflict<K>> {
+    pub fn read(&self) -> ReadTransaction<SerializableDb, BTreeConflict> {
         ReadTransaction::new(self.clone(), self.inner.tm.read())
     }
 }
 
-impl<K, V> SerializableDb<K, V>
-where
-    K: Clone + Ord + 'static,
-    V: 'static,
-{
+impl SerializableDb {
     /// Create a serializable write transaction.
     ///
     /// Serializable write transaction is a totally Serializable Snapshot Isolation transaction.
@@ -110,17 +102,12 @@ where
     /// If in your code, you do not care about indirect dependencies (logical dependencies), you can use
     /// [`SerializableDb::optimistic_write`](SerializableDb::optimistic_write) instead.
 
-    pub fn write(&self) -> SerializableTransaction<K, V> {
+    pub fn write(&self) -> SerializableTransaction {
         SerializableTransaction::new(self.clone())
     }
 }
 
-impl<K, V> SerializableDb<K, V>
-where
-    K: Clone + Ord + Send + 'static,
-    V: Send + 'static,
-    Values<V>: Send,
-{
+impl SerializableDb {
     /// Compact the database.
 
     pub fn compact(&self) {

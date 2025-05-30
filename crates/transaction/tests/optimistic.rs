@@ -33,12 +33,12 @@ fn test_optimistic(path: &Path) {
 }
 
 pub struct MvccRunner {
-    engine: Optimistic<Vec<u8>, Vec<u8>>,
-    transactions: HashMap<String, Transaction<Vec<u8>, Vec<u8>>>,
+    engine: Optimistic,
+    transactions: HashMap<String, Transaction>,
 }
 
 impl MvccRunner {
-    fn new(optimistic: Optimistic<Vec<u8>, Vec<u8>>) -> Self {
+    fn new(optimistic: Optimistic) -> Self {
         Self { engine: optimistic, transactions: HashMap::new() }
     }
 
@@ -46,7 +46,7 @@ impl MvccRunner {
     fn get_transaction(
         &mut self,
         prefix: &Option<String>,
-    ) -> Result<&'_ mut Transaction<Vec<u8>, Vec<u8>>, Box<dyn StdError>> {
+    ) -> Result<&'_ mut Transaction, Box<dyn StdError>> {
         let name = Self::tx_name(prefix)?;
         self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
     }
@@ -133,8 +133,8 @@ impl<'a> testscript::Runner for MvccRunner {
             //     let mut persistence = self.mvcc.persistence.lock().unwrap();
             //     let mut scan = persistence.scan(..);
             //     while let Some((key, value)) = scan.next().transpose()? {
-            //         let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
-            //         let rawkv = format::Raw::key_value(&key, &value);
+            //         let fmtkv = MVCC::<format::Raw>::key_value(&Keyey, &value);
+            //         let rawkv = format::Raw::key_value(&Keyey, &value);
             //         writeln!(output, "{fmtkv} [{rawkv}]")?;
             //     }
             // }
@@ -171,8 +171,8 @@ impl<'a> testscript::Runner for MvccRunner {
             //     let mut args = command.consume_args();
             //     for arg in args.rest_pos() {
             //         let key = decode_binary(&arg.value);
-            //         let value = self.mvcc.get_unversioned(&key)?;
-            //         let fmtkv = format::Raw::key_maybe_value(&key, value.as_deref());
+            //         let value = self.mvcc.get_unversioned(&Keyey)?;
+            //         let fmtkv = format::Raw::key_maybe_value(&Keyey, value.as_deref());
             //         writeln!(output, "{fmtkv}")?;
             //     }
             //     args.reject_rest()?;
@@ -238,7 +238,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 // }
                 //
                 // for (key, value) in kvs {
-                //     writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
+                //     writeln!(output, "{}", format::Raw::key_value(&Keyey, &value))?;
                 // }
 
                 match t {
@@ -273,7 +273,7 @@ impl<'a> testscript::Runner for MvccRunner {
             //     }
             //
             //     for (key, value) in kvs {
-            //         writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
+            //         writeln!(output, "{}", format::Raw::key_value(&Keyey, &value))?;
             //     }
             // }
 
@@ -303,8 +303,8 @@ impl<'a> testscript::Runner for MvccRunner {
             //     let mut args = command.consume_args();
             //     for kv in args.rest_key() {
             //         let key = decode_binary(kv.key.as_ref().unwrap());
-            //         let value = decode_binary(&kv.value);
-            //         self.mvcc.set_unversioned(&key, value)?;
+            //         let value = decode_binary(&Keyv.value);
+            //         self.mvcc.set_unversioned(&Keyey, value)?;
             //     }
             //     args.reject_rest()?;
             // }
@@ -338,13 +338,13 @@ impl<'a> testscript::Runner for MvccRunner {
         //     while let Ok(op) = self.operations.try_recv() {
         //         match op {
         //             Operation::Remove { key } => {
-        //                 let fmtkey = MVCC::<format::Raw>::key(&key);
-        //                 let rawkey = format::Raw::key(&key);
+        //                 let fmtkey = MVCC::<format::Raw>::key(&Keyey);
+        //                 let rawkey = format::Raw::key(&Keyey);
         //                 writeln!(output, "reifydb_engine remove {fmtkey} [{rawkey}]")?
         //             }
         //             Operation::Set { key, value } => {
-        //                 let fmtkv = MVCC::<format::Raw>::key_value(&key, &value);
-        //                 let rawkv = format::Raw::key_value(&key, &value);
+        //                 let fmtkv = MVCC::<format::Raw>::key_value(&Keyey, &value);
+        //                 let rawkv = format::Raw::key_value(&Keyey, &value);
         //                 writeln!(output, "reifydb_engine set {fmtkv} [{rawkv}]")?
         //             }
         //         }

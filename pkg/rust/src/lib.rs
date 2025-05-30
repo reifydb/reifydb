@@ -89,21 +89,24 @@ pub trait DB<'a>: Sized {
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> (Embedded<Memory, ::reifydb_transaction::old_mvcc::Mvcc<Memory>>, Principal) {
+    pub fn embedded() -> (Embedded<Memory, ::reifydb_transaction::old_mvcc::Mvcc<Memory>>, Principal)
+    {
         Embedded::new(mvcc(memory()))
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking()
-    -> (embedded_blocking::Embedded<Memory, ::reifydb_transaction::old_mvcc::Mvcc<Memory>>, Principal)
-    {
+    pub fn embedded_blocking() -> (
+        embedded_blocking::Embedded<Memory, ::reifydb_transaction::old_mvcc::Mvcc<Memory>>,
+        Principal,
+    ) {
         embedded_blocking::Embedded::new(mvcc(memory()))
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded()
-    -> (embedded_blocking::Embedded<Memory, ::reifydb_transaction::old_mvcc::Mvcc<Memory>>, Principal)
-    {
+    pub fn embedded() -> (
+        embedded_blocking::Embedded<Memory, ::reifydb_transaction::old_mvcc::Mvcc<Memory>>,
+        Principal,
+    ) {
         Self::embedded_blocking()
     }
 
@@ -149,13 +152,11 @@ pub fn mvcc<P: Persistence>(persistence: P) -> ::reifydb_transaction::old_mvcc::
     ::reifydb_transaction::old_mvcc::Mvcc::new(persistence)
 }
 
-pub fn serializable()
--> ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb<Vec<u8>, Vec<u8>> {
+pub fn serializable() -> ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb {
     ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb::new()
 }
 
-pub fn optimistic()
--> ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic<Vec<u8>, Vec<u8>> {
+pub fn optimistic() -> ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic {
     ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic::new()
 }
 

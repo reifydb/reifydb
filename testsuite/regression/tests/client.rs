@@ -123,7 +123,7 @@ test_each_path! { in "testsuite/regression/tests/scripts" as client_mvcc_lmdb =>
 
 fn test_serializable_memory(path: &Path) {
     testscript::run_path(
-        &mut ClientRunner::<Memory, SerializableDb<Vec<u8>, Vec<u8>>>::new(serializable()),
+        &mut ClientRunner::<Memory, SerializableDb>::new(serializable()),
         path,
     )
     .expect("test failed")
@@ -131,7 +131,7 @@ fn test_serializable_memory(path: &Path) {
 
 fn test_optimistic_memory(path: &Path) {
     testscript::run_path(
-        &mut ClientRunner::<Memory, Optimistic<Vec<u8>, Vec<u8>>>::new(optimistic()),
+        &mut ClientRunner::<Memory, Optimistic>::new(optimistic()),
         path,
     )
     .expect("test failed")

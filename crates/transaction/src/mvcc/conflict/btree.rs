@@ -9,55 +9,47 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use super::*;
+use crate::Key;
 use core::ops::Bound;
 use std::collections::BTreeSet;
 
-use super::*;
-
 #[derive(Clone, Debug)]
-enum Read<K> {
-    Single(K),
-    Range { start: Bound<K>, end: Bound<K> },
+enum Read {
+    Single(Key),
+    Range { start: Bound<Key>, end: Bound<Key> },
     All,
 }
 
 /// A [`Conflict`] conflict manager implementation that based on the [`BTreeSet`](std::collections::BTreeSet).
 #[derive(Debug)]
-pub struct BTreeConflict<K> {
-    reads: Vec<Read<K>>,
-    conflict_keys: BTreeSet<K>,
+pub struct BTreeConflict {
+    reads: Vec<Read>,
+    conflict_keys: BTreeSet<Key>,
 }
 
-impl<K: Clone> Clone for BTreeConflict<K> {
+impl Clone for BTreeConflict {
     fn clone(&self) -> Self {
         Self { reads: self.reads.clone(), conflict_keys: self.conflict_keys.clone() }
     }
 }
 
-impl<K> Default for BTreeConflict<K>
-where
-    K: Clone + Ord,
-{
+impl Default for BTreeConflict {
     fn default() -> Self {
         BTreeConflict::new()
     }
 }
 
-impl<K> Conflict for BTreeConflict<K>
-where
-    K: Clone + Ord,
-{
-    type Key = K;
-
+impl Conflict for BTreeConflict {
     fn new() -> Self {
         Self { reads: Vec::new(), conflict_keys: BTreeSet::new() }
     }
 
-    fn mark_read(&mut self, key: &K) {
+    fn mark_read(&mut self, key: &Key) {
         self.reads.push(Read::Single(key.clone()));
     }
 
-    fn mark_conflict(&mut self, key: &Self::Key) {
+    fn mark_conflict(&mut self, key: &Key) {
         self.conflict_keys.insert(key.clone());
     }
 
@@ -73,7 +65,7 @@ where
                         return true;
                     }
                 }
-                Read::Range { start, end } => match (start, end) {
+                Read::Range { start, end } => match (start.to_owned(), end.to_owned()) {
                     (Bound::Included(start), Bound::Included(end)) => {
                         if other
                             .conflict_keys
@@ -169,11 +161,8 @@ where
     }
 }
 
-impl<K> ConflictRange for BTreeConflict<K>
-where
-    K: Clone + Ord,
-{
-    fn mark_range(&mut self, range: impl RangeBounds<<Self as Conflict>::Key>) {
+impl ConflictRange for BTreeConflict {
+    fn mark_range(&mut self, range: impl RangeBounds<Key>) {
         let start = match range.start_bound() {
             Bound::Included(k) => Bound::Included(k.clone()),
             Bound::Excluded(k) => Bound::Excluded(k.clone()),
@@ -201,11 +190,11 @@ mod test {
 
     #[test]
     fn test_btree_cm() {
-        let mut cm = BTreeConflict::<u64>::new();
-        cm.mark_read(&1);
-        cm.mark_read(&2);
-        cm.mark_conflict(&2);
-        cm.mark_conflict(&3);
+        let mut cm = BTreeConflict::new();
+        cm.mark_read(&b"1".to_vec());
+        cm.mark_read(&b"2".to_vec());
+        cm.mark_conflict(&b"2".to_vec());
+        cm.mark_conflict(&b"3".to_vec());
         let cm2 = cm.clone();
         assert!(cm.has_conflict(&cm2));
     }

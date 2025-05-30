@@ -17,19 +17,19 @@ use crate::mvcc::transaction::*;
 /// the read transaction will automatically notify the transaction manager when it
 /// is dropped. So, the end user doesn't need to call any cleanup function, but must
 /// hold this struct in their final read transaction implementation.
-pub struct TransactionManagerRx<K, V, C, P> {
-    pub(in crate::mvcc::transaction) db: TransactionManager<K, V, C, P>,
+pub struct TransactionManagerRx<C,P> {
+    pub(in crate::mvcc::transaction) db: TransactionManager<C,P>,
     pub(in crate::mvcc::transaction) version: u64,
 }
 
-impl<K, V, C, P> TransactionManagerRx<K, V, C, P> {
+impl<C,P> TransactionManagerRx<C,P> {
     /// Returns the version of this read transaction.
     pub const fn version(&self) -> u64 {
         self.version
     }
 }
 
-impl<K, V, C, P> Drop for TransactionManagerRx<K, V, C, P> {
+impl<C,P> Drop for TransactionManagerRx<C,P> {
     fn drop(&mut self) {
         self.db.inner.done_read(self.version);
     }
