@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::{Key, Operation, Persistence, Value};
+use crate::{Key, Action, Persistence, Value};
 use std::ops::RangeBounds;
 use std::sync::mpsc::Sender;
 
@@ -18,11 +18,11 @@ pub struct Emit<E: Persistence> {
     /// The wrapped reifydb_engine.
     inner: E,
     /// Sends operation events.
-    tx: Sender<Operation>,
+    tx: Sender<Action>,
 }
 
 impl<E: Persistence> crate::test::Emit<E> {
-    pub fn new(inner: E, tx: Sender<Operation>) -> Self {
+    pub fn new(inner: E, tx: Sender<Action>) -> Self {
         Self { inner, tx }
     }
 }
@@ -49,13 +49,13 @@ impl<E: Persistence> Persistence for Emit<E> {
 
     fn remove(&mut self, key: &Key) -> crate::Result<()> {
         self.inner.remove(key)?;
-        self.tx.send(Operation::Remove { key: key.clone() }).unwrap();
+        self.tx.send(Action::Remove { key: key.clone() }).unwrap();
         Ok(())
     }
 
     fn set(&mut self, key: &Key, value: Value) -> crate::Result<()> {
         self.inner.set(key, value.clone())?;
-        self.tx.send(Operation::Set { key: key.clone(), value }).unwrap();
+        self.tx.send(Action::Set { key: key.clone(), value }).unwrap();
         Ok(())
     }
 }

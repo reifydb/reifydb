@@ -18,22 +18,19 @@ extern crate alloc;
 use core::{
     borrow::Borrow,
     ops::{Bound, RangeBounds},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::AtomicU64,
 };
 
-use crate::mvcc::item::{Item, ItemData};
+use crate::mvcc::item::ToWrite;
 use crossbeam_skiplist::SkipMap;
 
 use crate::mvcc::transaction::scan::iter::*;
-
-use crate::mvcc::transaction::scan::rev_iter::*;
-
 use crate::mvcc::transaction::scan::range::*;
-
+use crate::mvcc::transaction::scan::rev_iter::*;
 use crate::mvcc::transaction::scan::rev_range::*;
 
 pub mod types;
-use reifydb_persistence::{Key, Value};
+use reifydb_persistence::{Action, Key, Value};
 use types::*;
 
 #[doc(hidden)]
@@ -72,18 +69,18 @@ impl SkipCore {
 }
 
 impl SkipCore {
-    pub fn apply(&self, entries: Vec<Item>) {
+    pub fn apply(&self, entries: Vec<ToWrite>) {
         for item in entries {
             let version = item.version();
-            match item.data {
-                ItemData::Set { key, value } => {
+            match item.action {
+                Action::Set { key, value } => {
                     let item = self.mem_table.get_or_insert_with(key, || Values::new());
                     let val = item.value();
                     val.lock();
                     val.insert(version, Some(value));
                     val.unlock();
                 }
-                ItemData::Remove(key) => {
+                Action::Remove { key } => {
                     if let Some(values) = self.mem_table.get(&key) {
                         let values = values.value();
                         if !values.is_empty() {

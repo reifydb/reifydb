@@ -11,7 +11,7 @@ pub use lmdb::{Lmdb, LmdbBatch};
 pub use memory::{Memory, MemoryScanIter};
 pub use persistence::{BeginBatch, Persistence, PersistenceBatch};
 use reifydb_core::AsyncCowVec;
-use std::result;
+use std::{cmp, result};
 
 mod error;
 mod lmdb;
@@ -24,13 +24,53 @@ pub type Result<T> = result::Result<T, Error>;
 pub type Key = AsyncCowVec<u8>;
 pub type Value = AsyncCowVec<u8>;
 
-/// An engine operation emitted by the Emit reifydb_engine.
-pub enum Operation {
-    Set { key: Key, value: Value },
-    Remove { key: Key },
-}
-
 /// A scan iterator over key-value pairs, returned by [`reifydb_persistence::scan()`].
 pub trait ScanIterator: Iterator<Item = Result<(Key, Value)>> {}
 
 impl<T> ScanIterator for T where T: Iterator<Item = Result<(Key, Value)>> {}
+
+/// Operation on a key-value pair.
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum Action {
+    Set { key: Key, value: Value },
+    Remove { key: Key },
+}
+
+impl PartialOrd for Action {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Action {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.key().cmp(other.key())
+    }
+}
+
+impl Action {
+    /// Returns the key
+    pub const fn key(&self) -> &Key {
+        match self {
+            Self::Set { key, .. } => key,
+            Self::Remove { key } => key,
+        }
+    }
+
+    /// Returns the value, if None, it means the entry is marked as remove.
+    pub const fn value(&self) -> Option<&Value> {
+        match self {
+            Self::Set { value, .. } => Some(value),
+            Self::Remove { .. } => None,
+        }
+    }
+}
+
+impl Clone for Action {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Set { key, value } => Self::Set { key: key.clone(), value: value.clone() },
+            Self::Remove { key } => Self::Remove { key: key.clone() },
+        }
+    }
+}

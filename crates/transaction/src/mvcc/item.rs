@@ -9,11 +9,10 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-
-use reifydb_persistence::{Key, Value};
 use core::cmp::{self, Reverse};
+use reifydb_persistence::{Action, Key, Value};
 
-/// The reference of the [`Item`].
+/// The reference of the [`ToWrite`].
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ItemRef<'a> {
     /// The data reference of the entry.
@@ -31,7 +30,6 @@ impl Clone for ItemRef<'_> {
 impl Copy for ItemRef<'_> {}
 
 impl ItemRef<'_> {
-
     /// Get the key of the entry.
     pub const fn key(&self) -> &Key {
         match self.data {
@@ -78,135 +76,66 @@ impl Clone for ItemDataRef<'_> {
 
 impl Copy for ItemDataRef<'_> {}
 
-/// The data of the [`Item`].
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub enum ItemData {
-    /// Insert the key and the value.
-    Set {
-        /// key of the entry.
-        key: Key,
-        /// value of the entry.
-        value: Value,
-    },
-    /// Remove the key.
-    Remove(Key),
-}
-
-impl PartialOrd for ItemData {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ItemData {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.key().cmp(other.key())
-    }
-}
-
-impl ItemData {
-    /// Returns the key of the entry.
-    pub const fn key(&self) -> &Key {
-        match self {
-            Self::Set { key, .. } => key,
-            Self::Remove(key) => key,
-        }
-    }
-
-    /// Returns the value of the entry, if None, it means the entry is marked as remove.
-    pub const fn value(&self) -> Option<&Value> {
-        match self {
-            Self::Set { value, .. } => Some(value),
-            Self::Remove(_) => None,
-        }
-    }
-}
-
-impl Clone for ItemData {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Set { key, value } => Self::Set { key: key.clone(), value: value.clone() },
-            Self::Remove(key) => Self::Remove(key.clone()),
-        }
-    }
-}
-
-/// An entry can be persisted to the database.
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct Item {
-    /// The version of the entry.
+pub struct ToWrite {
+    pub action: Action,
     pub version: u64,
-    /// The data of the entry.
-    pub data: ItemData,
 }
 
-impl PartialOrd for Item {
+impl PartialOrd for ToWrite {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for Item {
+impl Ord for ToWrite {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.data
+        self.action
             .key()
-            .cmp(other.data.key())
+            .cmp(other.action.key())
             .then_with(|| Reverse(self.version).cmp(&Reverse(other.version)))
     }
 }
 
-impl Clone for Item {
+impl Clone for ToWrite {
     fn clone(&self) -> Self {
-        Self { version: self.version, data: self.data.clone() }
+        Self { version: self.version, action: self.action.clone() }
     }
 }
 
-impl Item {
-    /// Returns the data contained by the entry.
-
-    pub const fn data(&self) -> &ItemData {
-        &self.data
+impl ToWrite {
+    pub const fn action(&self) -> &Action {
+        &self.action
     }
-
-    /// Returns the version (can also be tought as transaction timestamp) of the entry.
 
     pub const fn version(&self) -> u64 {
         self.version
     }
 
-    /// Consumes the entry and returns the version and the entry data.
-
-    pub fn into_components(self) -> (u64, ItemData) {
-        (self.version, self.data)
+    pub fn into_components(self) -> (u64, Action) {
+        (self.version, self.action)
     }
-
-    /// Returns the key of the entry.
 
     pub fn key(&self) -> &Key {
-        match &self.data {
-            ItemData::Set { key, .. } => key,
-            ItemData::Remove(key) => key,
-        }
+        &self.action.key()
     }
 
-    /// Split the entry into its key and [`EntryValue`].
     pub fn split(self) -> (Key, EntryValue<Value>) {
-        let Item { data, version } = self;
+        let ToWrite { action: data, version } = self;
 
         let (key, value) = match data {
-            ItemData::Set { key, value } => (key, Some(value)),
-            ItemData::Remove(key) => (key, None),
+            Action::Set { key, value } => (key, Some(value)),
+            Action::Remove { key } => (key, None),
         };
         (key, EntryValue { value, version })
     }
 
-    /// Unsplit the key and [`EntryValue`] into an entry.
     pub fn unsplit(key: Key, value: EntryValue<Value>) -> Self {
         let EntryValue { value, version } = value;
-        Item {
-            data: match value {
-                Some(value) => ItemData::Set { key, value },
-                None => ItemData::Remove(key),
+        ToWrite {
+            action: match value {
+                Some(value) => Action::Set { key, value },
+                None => Action::Remove { key },
             },
             version,
         }

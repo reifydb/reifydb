@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::item::{EntryValue, Item};
+use crate::mvcc::item::{EntryValue, ToWrite};
 use std::ops::RangeBounds;
 
 pub use btree::BTreePendingWrites;
@@ -43,7 +43,7 @@ pub trait PendingWrites: Default + Sized {
     fn max_batch_entries(&self) -> u64;
 
     /// Returns the estimated size of the entry in bytes when persisted in the database.
-    fn estimate_size(&self, entry: &Item) -> u64;
+    fn estimate_size(&self, entry: &ToWrite) -> u64;
 
     /// Returns a reference to the value corresponding to the key.
     fn get(&self, key: &Key) -> Option<&EntryValue<Value>>;
