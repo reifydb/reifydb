@@ -23,7 +23,6 @@ use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};
 use std::collections::btree_map::Iter as BTreeMapIter;
 
-/// An iterator over the entries of the database.
 pub struct Iter<'a> {
     pub(crate) iter: MapIter<'a, Key, VersionedValue<Value>>,
     pub(crate) version: Version,
@@ -50,7 +49,6 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-/// Iterator over the entries of the transaction.
 pub struct TransactionIter<'a, C> {
     committed: Iter<'a>,
     pending: BTreeMapIter<'a, Key, TransactionValue>,

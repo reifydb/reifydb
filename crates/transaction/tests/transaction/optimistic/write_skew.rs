@@ -20,7 +20,6 @@ use reifydb_persistence::Key;
 use reifydb_transaction::mvcc::MvccError;
 use reifydb_transaction::mvcc::error::TransactionError;
 use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
-use std::ops::Deref;
 
 #[test]
 fn test_write_skew() {
@@ -39,7 +38,7 @@ fn test_write_skew() {
 
     let get_bal = |txn: &mut TransactionTx, k: &Key| -> u64 {
         let item = txn.get(k).unwrap().unwrap();
-        let val = item.value().deref().clone();
+        let val = item.value();
         from_value!(u64, val)
     };
 
@@ -100,7 +99,7 @@ fn test_black_white() {
         .iter()
         .unwrap()
         .filter_map(|item| {
-            if item.value() == as_value!("black".to_string()) {
+            if *item.value() == as_value!("black".to_string()) {
                 Some(item.key().clone())
             } else {
                 None
@@ -117,7 +116,7 @@ fn test_black_white() {
         .iter()
         .unwrap()
         .filter_map(|item| {
-            if item.value() == as_value!("white".to_string()) {
+            if *item.value() == as_value!("white".to_string()) {
                 Some(item.key().clone())
             } else {
                 None
@@ -138,7 +137,7 @@ fn test_black_white() {
     assert_eq!(result.len(), 10);
 
     result.iter().for_each(|item| {
-        assert_eq!(item.value(), as_value!("black".to_string()));
+        assert_eq!(*item.value(), as_value!("black".to_string()));
     })
 }
 
@@ -195,8 +194,12 @@ fn test_primary_colors() {
     let indices = red
         .iter()
         .unwrap()
-        .filter_map(|e| {
-            if e.value() == as_value!("yellow".to_string()) { Some(e.key().clone()) } else { None }
+        .filter_map(|item| {
+            if *item.value() == as_value!("yellow".to_string()) {
+                Some(item.key().clone())
+            } else {
+                None
+            }
         })
         .collect::<Vec<_>>();
     for i in indices {
@@ -207,8 +210,12 @@ fn test_primary_colors() {
     let indices = yellow
         .iter()
         .unwrap()
-        .filter_map(|e| {
-            if e.value() == as_value!("blue".to_string()) { Some(e.key().clone()) } else { None }
+        .filter_map(|item| {
+            if *item.value() == as_value!("blue".to_string()) {
+                Some(item.key().clone())
+            } else {
+                None
+            }
         })
         .collect::<Vec<_>>();
     for i in indices {
@@ -219,8 +226,12 @@ fn test_primary_colors() {
     let indices = red_two
         .iter()
         .unwrap()
-        .filter_map(|e| {
-            if e.value() == as_value!("blue".to_string()) { Some(e.key().clone()) } else { None }
+        .filter_map(|item| {
+            if *item.value() == as_value!("blue".to_string()) {
+                Some(item.key().clone())
+            } else {
+                None
+            }
         })
         .collect::<Vec<_>>();
     for i in indices {

@@ -26,7 +26,6 @@ use reifydb_persistence::{Key, Value};
 use std::collections::btree_map::Iter as BTreeMapIter;
 use std::ops::Bound;
 
-/// An iterator over the entries of the database.
 pub struct RevIter<'a> {
     pub(crate) iter: Rev<MapIter<'a, Key, VersionedValue<Value>>>,
     pub(crate) version: Version,
@@ -53,7 +52,6 @@ impl<'a> Iterator for RevIter<'a> {
     }
 }
 
-/// Iterator over the entries of the write transaction.
 pub struct TransactionRevIter<'a, C> {
     pending: Rev<BTreeMapIter<'a, Key, TransactionValue>>,
     committed: RevIter<'a>,

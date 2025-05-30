@@ -23,7 +23,6 @@ use reifydb_persistence::{Key, Value};
 use std::collections::btree_map::Range as BTreeMapRange;
 use std::ops::{Bound, RangeBounds};
 
-/// An iterator over a subset of entries of the database.
 pub struct Range<'a, R>
 where
     R: RangeBounds<Key>,
@@ -56,7 +55,6 @@ where
     }
 }
 
-/// An iterator over a subset of entries of the database.
 pub struct TransactionRange<'a, R, C>
 where
     R: RangeBounds<Key> + 'a,

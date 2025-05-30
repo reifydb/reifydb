@@ -42,7 +42,7 @@ impl crate::Rx for TransactionRx {
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)))
-                .map(|r| Row::decode(&r.value()).unwrap())
+                .map(|r| Row::decode(r.value()).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))

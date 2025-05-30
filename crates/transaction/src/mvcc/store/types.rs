@@ -10,9 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::Version;
-use crate::mvcc::store::value::ValueRef;
 use crate::mvcc::types::Pending;
-use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};
 
 /// Represents a committed key value pair of a specific version
@@ -37,7 +35,7 @@ impl Committed {
     }
 }
 
-enum RefKind {
+pub enum Ref {
     PendingIter { version: Version, key: Key, value: Value },
     Pending(Pending),
     Committed(Committed),
@@ -46,14 +44,14 @@ enum RefKind {
 impl core::fmt::Debug for Ref {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ref")
-            .field("key", self.0.key())
-            .field("version", &self.0.version())
-            .field("value", &self.0.value())
+            .field("key", self.key())
+            .field("version", &self.version())
+            .field("value", &self.value())
             .finish()
     }
 }
 
-impl Clone for RefKind {
+impl Clone for Ref {
     fn clone(&self) -> Self {
         match self {
             Self::Committed(item) => Self::Committed(item.clone()),
@@ -65,8 +63,8 @@ impl Clone for RefKind {
     }
 }
 
-impl RefKind {
-    fn key(&self) -> &Key {
+impl Ref {
+    pub fn key(&self) -> &Key {
         match self {
             Self::PendingIter { key, .. } => key,
             Self::Pending(item) => item.key(),
@@ -74,7 +72,7 @@ impl RefKind {
         }
     }
 
-    fn version(&self) -> u64 {
+    pub fn version(&self) -> u64 {
         match self {
             Self::PendingIter { version, .. } => *version,
             Self::Pending(item) => item.version(),
@@ -82,67 +80,39 @@ impl RefKind {
         }
     }
 
-    fn value(&self) -> ValueRef<'_> {
+    pub fn value(&self) -> &Value {
         match self {
-            Self::PendingIter { value, .. } => ValueRef(Either::Left(value)),
-            Self::Pending(item) => ValueRef(Either::Left(
-                item.value().expect("value of pending entry cannot be `None`"),
-            )),
-            Self::Committed(item) => ValueRef(Either::Left(&item.value)),
+            Self::PendingIter { value, .. } => value,
+            Self::Pending(item) => item.value().expect("value of pending cannot be `None`"),
+            Self::Committed(item) => &item.value,
         }
     }
 
-    fn is_committed(&self) -> bool {
+    pub fn is_committed(&self) -> bool {
         matches!(self, Self::Committed(_))
-    }
-}
-
-pub struct Ref(RefKind);
-
-impl Clone for Ref {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
     }
 }
 
 impl From<(Version, Key, Value)> for Ref {
     fn from((version, k, v): (Version, Key, Value)) -> Self {
-        Self(RefKind::PendingIter { version, key: k, value: v })
+        Self::PendingIter { version, key: k, value: v }
     }
 }
 
 impl From<(Version, &Key, &Value)> for Ref {
     fn from((version, k, v): (Version, &Key, &Value)) -> Self {
-        Self(RefKind::PendingIter { version, key: k.clone(), value: v.clone() })
+        Self::PendingIter { version, key: k.clone(), value: v.clone() }
     }
 }
 
 impl From<Pending> for Ref {
     fn from(action: Pending) -> Self {
-        Self(RefKind::Pending(action))
+        Self::Pending(action)
     }
 }
 
 impl From<Committed> for Ref {
     fn from(item: Committed) -> Self {
-        Self(RefKind::Committed(item))
-    }
-}
-
-impl Ref {
-    pub fn key(&self) -> &Key {
-        self.0.key()
-    }
-
-    pub fn version(&self) -> u64 {
-        self.0.version()
-    }
-
-    pub fn value(&self) -> ValueRef<'_> {
-        self.0.value()
-    }
-
-    pub fn is_committed(&self) -> bool {
-        self.0.is_committed()
+        Self::Committed(item)
     }
 }
