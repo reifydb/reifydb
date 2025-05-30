@@ -21,7 +21,7 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::mvcc::version::types::{Entry, EntryData};
+use crate::mvcc::item::{Item, ItemData};
 use crossbeam_skiplist::SkipMap;
 
 use crate::mvcc::transaction::scan::iter::*;
@@ -72,18 +72,18 @@ impl SkipCore {
 }
 
 impl SkipCore {
-    pub fn apply(&self, entries: Vec<Entry>) {
+    pub fn apply(&self, entries: Vec<Item>) {
         for item in entries {
             let version = item.version();
             match item.data {
-                EntryData::Set { key, value } => {
+                ItemData::Set { key, value } => {
                     let item = self.mem_table.get_or_insert_with(key, || Values::new());
                     let val = item.value();
                     val.lock();
                     val.insert(version, Some(value));
                     val.unlock();
                 }
-                EntryData::Remove(key) => {
+                ItemData::Remove(key) => {
                     if let Some(values) = self.mem_table.get(&key) {
                         let values = values.value();
                         if !values.is_empty() {

@@ -18,7 +18,7 @@ use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
 use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
-use crate::mvcc::version::types::EntryValue;
+use crate::mvcc::item::EntryValue;
 use crate::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Iter as BTreeMapIter;

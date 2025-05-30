@@ -169,7 +169,7 @@ impl PartialEq<&Value> for ValueRef<'_> {
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::version::types::EntryRef;
+use crate::mvcc::item::ItemRef;
 use crate::{Key, Value};
 
 /// A reference to an entry in the write transaction.
@@ -211,7 +211,7 @@ impl CommittedRef<'_> {
 
 enum RefKind<'a> {
     PendingIter { version: u64, key: &'a Key, value: &'a Value },
-    Pending(EntryRef<'a>),
+    Pending(ItemRef<'a>),
     Committed(CommittedRef<'a>),
 }
 
@@ -284,8 +284,8 @@ impl<'a> From<(u64, &'a Key, &'a Value)> for Ref<'a> {
     }
 }
 
-impl<'a> From<EntryRef<'a>> for Ref<'a> {
-    fn from(item: EntryRef<'a>) -> Self {
+impl<'a> From<ItemRef<'a>> for Ref<'a> {
+    fn from(item: ItemRef<'a>) -> Self {
         Self(RefKind::Pending(item))
     }
 }

@@ -12,7 +12,7 @@
 use core::mem;
 use std::sync::Arc;
 
-pub use crate::mvcc::version::*;
+pub use crate::mvcc::item::*;
 pub use write::*;
 
 use oracle::*;

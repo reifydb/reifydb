@@ -12,7 +12,7 @@
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
-use crate::mvcc::version::types::EntryValue;
+use crate::mvcc::item::EntryValue;
 use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;

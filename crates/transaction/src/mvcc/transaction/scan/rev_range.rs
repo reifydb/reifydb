@@ -19,7 +19,7 @@ use crossbeam_skiplist::map::Range as MapRange;
 use std::borrow::Borrow;
 
 use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, Values};
-use crate::mvcc::version::types::EntryValue;
+use crate::mvcc::item::EntryValue;
 use crate::{Key, Value};
 use reifydb_core::either::Either;
 use std::collections::btree_map::Range as BTreeMapRange;
