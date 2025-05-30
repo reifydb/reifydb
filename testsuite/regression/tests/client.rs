@@ -7,7 +7,7 @@ use reifydb::reifydb_transaction::Transaction;
 use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::reifydb_transaction::mvcc::transaction::serializable::SerializableDb;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{ReifyDB, memory, mvcc, optimistic, serializable, svl};
+use reifydb::{ReifyDB, memory, optimistic, serializable, svl};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
@@ -116,40 +116,20 @@ test_each_path! { in "testsuite/regression/tests/scripts" as client_serializable
 test_each_path! { in "testsuite/regression/tests/scripts" as client_optimistic_memory => test_optimistic_memory }
 
 test_each_path! { in "testsuite/regression/tests/scripts" as client_svl_memory => test_svl_memory }
-test_each_path! { in "testsuite/regression/tests/scripts" as client_mvcc_memory => test_mvcc_memory }
-
 test_each_path! { in "testsuite/regression/tests/scripts" as client_svl_lmdb => test_svl_lmdb }
-test_each_path! { in "testsuite/regression/tests/scripts" as client_mvcc_lmdb => test_mvcc_lmdb }
 
 fn test_serializable_memory(path: &Path) {
-    testscript::run_path(
-        &mut ClientRunner::<Memory, SerializableDb>::new(serializable()),
-        path,
-    )
-    .expect("test failed")
+    testscript::run_path(&mut ClientRunner::<Memory, SerializableDb>::new(serializable()), path)
+        .expect("test failed")
 }
 
 fn test_optimistic_memory(path: &Path) {
-    testscript::run_path(
-        &mut ClientRunner::<Memory, Optimistic>::new(optimistic()),
-        path,
-    )
-    .expect("test failed")
-}
-
-fn test_mvcc_memory(path: &Path) {
-    testscript::run_path(&mut ClientRunner::new(mvcc(memory())), path).expect("test failed")
+    testscript::run_path(&mut ClientRunner::<Memory, Optimistic>::new(optimistic()), path)
+        .expect("test failed")
 }
 
 fn test_svl_memory(path: &Path) {
     testscript::run_path(&mut ClientRunner::new(svl(memory())), path).expect("test failed")
-}
-
-fn test_mvcc_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut ClientRunner::new(mvcc(Lmdb::new(db_path).unwrap())), path)
-            .expect("test failed")
-    })
 }
 
 fn test_svl_lmdb(path: &Path) {

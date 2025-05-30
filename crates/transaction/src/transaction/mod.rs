@@ -4,7 +4,6 @@
 use crate::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
 use reifydb_core::{Key, Row, RowIter, Value};
 
-pub mod old_mvcc;
 pub mod svl;
 mod optimistic;
 mod serializable;

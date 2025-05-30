@@ -15,7 +15,7 @@ pub use error::Error;
 use reifydb_core::AsyncCowVec;
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
-pub use transaction::{InsertResult, Rx, Transaction, Tx, old_mvcc, svl};
+pub use transaction::{InsertResult, Rx, Transaction, Tx, svl};
 
 mod catalog;
 mod error;
