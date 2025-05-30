@@ -29,7 +29,10 @@ use crate::mvcc::transaction::scan::rev_iter::*;
 use crate::mvcc::transaction::scan::rev_range::*;
 
 pub mod types;
+pub mod value;
+
 use crate::Version;
+use crate::mvcc::store::value::VersionedValue;
 use reifydb_persistence::{Action, Key, Value};
 use types::*;
 

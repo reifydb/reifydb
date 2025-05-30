@@ -14,11 +14,12 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::store::types::{CommittedRef, Ref, VersionedValue};
+use crate::mvcc::store::types::{CommittedRef, Ref};
 use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
 use crate::Version;
+use crate::mvcc::store::value::VersionedValue;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};
