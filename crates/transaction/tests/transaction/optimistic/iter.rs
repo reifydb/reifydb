@@ -31,18 +31,18 @@ fn test_iter() {
     let txn = engine.begin_read_only();
     let iter = txn.iter();
     let mut count = 0;
-    for ent in iter {
+    for item in iter {
         count += 1;
-        assert_eq!(ent.key(), &as_key!(count));
-        assert_eq!(ent.value(), &as_value!(count));
+        assert_eq!(item.key(), &as_key!(count));
+        assert_eq!(item.value(), &as_value!(count));
     }
     assert_eq!(count, 3);
 
     let iter = txn.iter_rev();
     let mut count = 3;
-    for ent in iter {
-        assert_eq!(ent.key(), &as_key!(count));
-        assert_eq!(ent.value(), &as_value!(count));
+    for item in iter {
+        assert_eq!(item.key(), &as_key!(count));
+        assert_eq!(item.value(), &as_value!(count));
         count -= 1;
     }
     assert_eq!(count, 0);

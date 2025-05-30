@@ -133,9 +133,9 @@ where
         }
 
         match self.pending_writes.get(key) {
-            Some(ent) => {
+            Some(item) => {
                 // If the value is None, it means that the key is removed.
-                if ent.value.is_none() {
+                if item.value.is_none() {
                     return Ok(Some(false));
                 }
 
@@ -249,11 +249,11 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        let ent = Entry { data: EntryData::Set { key, value }, version: self.version };
-        self.modify(ent)
+        let item = Entry { data: EntryData::Set { key, value }, version: self.version };
+        self.modify(item)
     }
 
-    fn modify(&mut self, ent: Entry) -> Result<(), TransactionError> {
+    fn modify(&mut self, item: Entry) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -262,7 +262,7 @@ where
 
         let cnt = self.count + 1;
         // Extra bytes for the version in key.
-        let size = self.size + pending_writes.estimate_size(&ent);
+        let size = self.size + pending_writes.estimate_size(&item);
         if cnt >= pending_writes.max_batch_entries() || size >= pending_writes.max_batch_size() {
             return Err(TransactionError::LargeTxn);
         }
@@ -270,13 +270,13 @@ where
         self.count = cnt;
         self.size = size;
 
-        self.conflicts.mark_conflict(ent.key());
+        self.conflicts.mark_conflict(item.key());
 
         // If a duplicate entry was inserted in managed mode, move it to the duplicate writes slice.
         // Add the entry to duplicateWrites only if both the entries have different versions. For
         // same versions, we will overwrite the existing entry.
-        let eversion = ent.version;
-        let (ek, ev) = ent.split();
+        let eversion = item.version;
+        let (ek, ev) = item.split();
 
         if let Some((old_key, old_value)) = pending_writes.remove_entry(&ek) {
             if old_value.version != eversion {
@@ -320,14 +320,14 @@ where
                 let mut entries =
                     Vec::with_capacity(pending_writes.len() + self.duplicate_writes.len());
 
-                let process_entry = |entries: &mut Vec<Entry>, mut ent: Entry| {
-                    ent.version = commit_ts;
-                    entries.push(ent);
+                let process_entry = |entries: &mut Vec<Entry>, mut item: Entry| {
+                    item.version = commit_ts;
+                    entries.push(item);
                 };
                 pending_writes
                     .into_iter()
                     .for_each(|(k, v)| process_entry(&mut entries, Entry::unsplit(k, v)));
-                duplicate_writes.into_iter().for_each(|ent| process_entry(&mut entries, ent));
+                duplicate_writes.into_iter().for_each(|item| process_entry(&mut entries, item));
 
                 // CommitTs should not be zero if we're inserting transaction markers.
                 debug_assert_ne!(commit_ts, 0);

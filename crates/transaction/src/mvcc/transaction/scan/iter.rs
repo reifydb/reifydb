@@ -32,19 +32,19 @@ impl<'a> Iterator for Iter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let ent = self.iter.next()?;
-            if let Some(version) = ent
+            let item = self.iter.next()?;
+            if let Some(version) = item
                 .value()
                 .upper_bound(Bound::Included(&self.version))
-                .and_then(|ent| if ent.value().is_some() { Some(*ent.key()) } else { None })
+                .and_then(|item| if item.value().is_some() { Some(*item.key()) } else { None })
             {
-                return Some(CommittedRef { version, ent }.into());
+                return Some(CommittedRef { version, item }.into());
             }
         }
     }
 }
 
-/// Iterator over the entries of the write transaction.
+/// Iterator over the entries of the transaction.
 pub struct TransactionIter<'a, C> {
     committed: Iter<'a>,
     pending: BTreeMapIter<'a, Key, EntryValue<Value>>,

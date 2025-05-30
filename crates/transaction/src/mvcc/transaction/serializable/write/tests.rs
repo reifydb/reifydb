@@ -234,9 +234,9 @@
 //
 //     let check_iter = |itr: TransactionIter<'_, u64, u64, BTreeConflict<u64>>, i: u64| {
 //         let mut count = 0;
-//         for ent in itr {
-//             assert_eq!(ent.key(), &Key0);
-//             assert_eq!(ent.value(), i, "{i} {:?}", ent.value());
+//         for item in itr {
+//             assert_eq!(item.key(), &Key0);
+//             assert_eq!(item.value(), i, "{i} {:?}", item.value());
 //             count += 1;
 //         }
 //         assert_eq!(1, count) // should only loop once.
@@ -244,9 +244,9 @@
 //
 //     let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, BTreeConflict<u64>>, i: u64| {
 //         let mut count = 0;
-//         for ent in itr {
-//             assert_eq!(ent.key(), &Key0);
-//             assert_eq!(ent.value(), i, "{i} {:?}", ent.value());
+//         for item in itr {
+//             assert_eq!(item.key(), &Key0);
+//             assert_eq!(item.value(), i, "{i} {:?}", item.value());
 //             count += 1;
 //         }
 //         assert_eq!(1, count) // should only loop once.
@@ -291,8 +291,8 @@
 //
 //                 let itr = txn.iter().unwrap();
 //                 let mut found = false;
-//                 for ent in itr {
-//                     if *ent.key() == 100 {
+//                 for item in itr {
+//                     if *item.key() == 100 {
 //                         found = true;
 //                         break;
 //                     }
@@ -376,8 +376,8 @@
 //
 //     let check_iter = |itr: TransactionIter<'_, u64, u64, BTreeConflict<u64>>, expected: &[u64]| {
 //         let mut i = 0;
-//         for ent in itr {
-//             assert_eq!(expected[i], *ent.value(), "read_vs={}", ent.version());
+//         for item in itr {
+//             assert_eq!(expected[i], *item.value(), "read_vs={}", item.version());
 //             i += 1;
 //         }
 //         assert_eq!(expected.len(), i);
@@ -386,8 +386,8 @@
 //     let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, BTreeConflict<u64>>,
 //                           expected: &[u64]| {
 //         let mut i = 0;
-//         for ent in itr {
-//             assert_eq!(expected[i], *ent.value(), "read_vs={}", ent.version());
+//         for item in itr {
+//             assert_eq!(expected[i], *item.value(), "read_vs={}", item.version());
 //             i += 1;
 //         }
 //         assert_eq!(expected.len(), i);
@@ -468,8 +468,8 @@
 //
 //     let check_iter = |itr: TransactionIter<'_, u64, u64, BTreeConflict<u64>>, expected: &[u64]| {
 //         let mut i = 0;
-//         for ent in itr {
-//             assert_eq!(expected[i], *ent.value());
+//         for item in itr {
+//             assert_eq!(expected[i], *item.value());
 //             i += 1;
 //         }
 //         assert_eq!(expected.len(), i);
@@ -478,8 +478,8 @@
 //     let check_rev_iter = |itr: WriteTransactionRevIter<'_, u64, u64, BTreeConflict<u64>>,
 //                           expected: &[u64]| {
 //         let mut i = 0;
-//         for ent in itr {
-//             assert_eq!(expected[i], *ent.value());
+//         for item in itr {
+//             assert_eq!(expected[i], *item.value());
 //             i += 1;
 //         }
 //         assert_eq!(expected.len(), i);
@@ -494,12 +494,12 @@
 //     txn.wtm.set_read_version(5);
 //     let itr = txn.iter().unwrap();
 //     let mut count = 2;
-//     for ent in itr {
-//         if *ent.key() == 1 {
+//     for item in itr {
+//         if *item.key() == 1 {
 //             count -= 1;
 //         }
 //
-//         if *ent.key() == 3 {
+//         if *item.key() == 3 {
 //             count -= 1;
 //         }
 //     }
@@ -507,12 +507,12 @@
 //
 //     let itr = txn.iter().unwrap();
 //     let mut count = 2;
-//     for ent in itr {
-//         if *ent.key() == 1 {
+//     for item in itr {
+//         if *item.key() == 1 {
 //             count -= 1;
 //         }
 //
-//         if *ent.key() == 3 {
+//         if *item.key() == 3 {
 //             count -= 1;
 //         }
 //     }
@@ -588,8 +588,8 @@
 //
 //     let check_iter = |itr: TransactionRange<'_, _, _, u64, u64, BTreeConflict<u64>>, expected: &[u64]| {
 //         let mut i = 0;
-//         for ent in itr {
-//             assert_eq!(expected[i], *ent.value());
+//         for item in itr {
+//             assert_eq!(expected[i], *item.value());
 //             i += 1;
 //         }
 //         assert_eq!(expected.len(), i);
@@ -598,8 +598,8 @@
 //     let check_rev_iter = |itr: WriteTransactionRevRange<'_, _, _, u64, u64, BTreeConflict<u64>>,
 //                           expected: &[u64]| {
 //         let mut i = 0;
-//         for ent in itr {
-//             assert_eq!(expected[i], *ent.value());
+//         for item in itr {
+//             assert_eq!(expected[i], *item.value());
 //             i += 1;
 //         }
 //         assert_eq!(expected.len(), i);
@@ -614,12 +614,12 @@
 //     txn.wtm.set_read_version(5);
 //     let itr = txn.range(1..10).unwrap();
 //     let mut count = 2;
-//     for ent in itr {
-//         if *ent.key() == 1 {
+//     for item in itr {
+//         if *item.key() == 1 {
 //             count -= 1;
 //         }
 //
-//         if *ent.key() == 3 {
+//         if *item.key() == 3 {
 //             count -= 1;
 //         }
 //     }
@@ -627,12 +627,12 @@
 //
 //     let itr = txn.range(1..10).unwrap();
 //     let mut count = 2;
-//     for ent in itr {
-//         if *ent.key() == 1 {
+//     for item in itr {
+//         if *item.key() == 1 {
 //             count -= 1;
 //         }
 //
-//         if *ent.key() == 3 {
+//         if *item.key() == 3 {
 //             count -= 1;
 //         }
 //     }
@@ -680,18 +680,18 @@
 //     let txn = db.read();
 //     let iter = txn.iter();
 //     let mut count = 0;
-//     for ent in iter {
+//     for item in iter {
 //         count += 1;
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
 //     }
 //     assert_eq!(count, 3);
 //
 //     let iter = txn.iter_rev();
 //     let mut count = 3;
-//     for ent in iter {
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
+//     for item in iter {
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
 //         count -= 1;
 //     }
 // }
@@ -706,20 +706,20 @@
 //
 //     let iter = txn.iter().unwrap();
 //     let mut count = 0;
-//     for ent in iter {
+//     for item in iter {
 //         count += 1;
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
-//         assert_eq!(ent.version(), 0);
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
+//         assert_eq!(item.version(), 0);
 //     }
 //     assert_eq!(count, 3);
 //
 //     let iter = txn.iter_rev().unwrap();
 //     let mut count = 3;
-//     for ent in iter {
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
-//         assert_eq!(ent.version(), 0);
+//     for item in iter {
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
+//         assert_eq!(item.version(), 0);
 //         count -= 1;
 //     }
 //
@@ -732,20 +732,20 @@
 //
 //     let iter = txn.iter().unwrap();
 //     let mut count = 0;
-//     for ent in iter {
+//     for item in iter {
 //         count += 1;
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
-//         assert_eq!(ent.version(), 1);
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
+//         assert_eq!(item.version(), 1);
 //     }
 //     assert_eq!(count, 6);
 //
 //     let iter = txn.iter_rev().unwrap();
 //     let mut count = 6;
-//     for ent in iter {
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
-//         assert_eq!(ent.version(), 1);
+//     for item in iter {
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
+//         assert_eq!(item.version(), 1);
 //         count -= 1;
 //     }
 // }
@@ -762,18 +762,18 @@
 //     let txn = db.read();
 //     let iter = txn.range(1..4);
 //     let mut count = 0;
-//     for ent in iter {
+//     for item in iter {
 //         count += 1;
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
 //     }
 //     assert_eq!(count, 3);
 //
 //     let iter = txn.range_rev(1..4);
 //     let mut count = 3;
-//     for ent in iter {
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
+//     for item in iter {
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
 //         count -= 1;
 //     }
 // }
@@ -788,20 +788,20 @@
 //
 //     let iter = txn.range(1..4).unwrap();
 //     let mut count = 0;
-//     for ent in iter {
+//     for item in iter {
 //         count += 1;
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
-//         assert_eq!(ent.version(), 0);
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
+//         assert_eq!(item.version(), 0);
 //     }
 //     assert_eq!(count, 3);
 //
 //     let iter = txn.range_rev(1..4).unwrap();
 //     let mut count = 3;
-//     for ent in iter {
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
-//         assert_eq!(ent.version(), 0);
+//     for item in iter {
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
+//         assert_eq!(item.version(), 0);
 //         count -= 1;
 //     }
 //
@@ -814,18 +814,18 @@
 //
 //     let iter = txn.range(1..5).unwrap();
 //     let mut count = 0;
-//     for ent in iter {
+//     for item in iter {
 //         count += 1;
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
 //     }
 //     assert_eq!(count, 4);
 //
 //     let iter = txn.range_rev(1..5).unwrap();
 //     let mut count = 4;
-//     for ent in iter {
-//         assert_eq!(ent.key(), &count);
-//         assert_eq!(ent.value(), count);
+//     for item in iter {
+//         assert_eq!(item.key(), &count);
+//         assert_eq!(item.value(), count);
 //         count -= 1;
 //     }
 // }

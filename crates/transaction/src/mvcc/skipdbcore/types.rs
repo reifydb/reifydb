@@ -76,21 +76,21 @@ impl<V> core::ops::Deref for Values<V> {
 
 /// A reference to an entry in the write transaction.
 pub struct Entry<'a> {
-    ent: MapEntry<'a, u64, Option<Value>>,
+    item: MapEntry<'a, u64, Option<Value>>,
     key: &'a Key,
     version: u64,
 }
 
 impl Clone for Entry<'_> {
     fn clone(&self) -> Self {
-        Self { ent: self.ent.clone(), version: self.version, key: self.key }
+        Self { item: self.item.clone(), version: self.version, key: self.key }
     }
 }
 
 impl Entry<'_> {
     /// Get the value of the entry.
     pub fn value(&self) -> Option<&Value> {
-        self.ent.value().as_ref()
+        self.item.value().as_ref()
     }
 
     /// Get the key of the entry.
@@ -131,8 +131,8 @@ impl core::ops::Deref for ValueRef<'_> {
     fn deref(&self) -> &Self::Target {
         match &self.0 {
             Either::Left(v) => v,
-            Either::Right(ent) => {
-                ent.value().expect("the value of `Entry` in `ValueRef` cannot be `None`")
+            Either::Right(item) => {
+                item.value().expect("the value of `Entry` in `ValueRef` cannot be `None`")
             }
         }
     }
@@ -175,22 +175,22 @@ use crate::{Key, Value};
 /// A reference to an entry in the write transaction.
 #[derive(Debug)]
 pub struct CommittedRef<'a> {
-    pub(crate) ent: MapEntry<'a, Key, Values<Value>>,
+    pub(crate) item: MapEntry<'a, Key, Values<Value>>,
     pub(crate) version: u64,
 }
 
 impl Clone for CommittedRef<'_> {
     fn clone(&self) -> Self {
-        Self { ent: self.ent.clone(), version: self.version }
+        Self { item: self.item.clone(), version: self.version }
     }
 }
 
 impl CommittedRef<'_> {
     /// Get the value of the entry.
     fn entry(&self) -> Entry<'_> {
-        let ent = self.ent.value().get(&self.version).unwrap();
+        let item = self.item.value().get(&self.version).unwrap();
 
-        Entry { ent, key: self.ent.key(), version: self.version }
+        Entry { item, key: self.item.key(), version: self.version }
     }
 
     /// Get the key of the ref.
@@ -200,7 +200,7 @@ impl CommittedRef<'_> {
 
     /// Get the key of the ref.
     pub fn key(&self) -> &Key {
-        self.ent.key()
+        self.item.key()
     }
 
     /// Get the version of the entry.
@@ -228,8 +228,8 @@ impl core::fmt::Debug for Ref<'_> {
 impl Clone for RefKind<'_> {
     fn clone(&self) -> Self {
         match self {
-            Self::Committed(ent) => Self::Committed(ent.clone()),
-            Self::Pending(ent) => Self::Pending(*ent),
+            Self::Committed(item) => Self::Committed(item.clone()),
+            Self::Pending(item) => Self::Pending(*item),
             Self::PendingIter { version, key, value } => {
                 Self::PendingIter { version: *version, key: *key, value: *value }
             }
@@ -241,26 +241,26 @@ impl RefKind<'_> {
     fn key(&self) -> &Key {
         match self {
             Self::PendingIter { key, .. } => key,
-            Self::Pending(ent) => ent.key(),
-            Self::Committed(ent) => ent.key(),
+            Self::Pending(item) => item.key(),
+            Self::Committed(item) => item.key(),
         }
     }
 
     fn version(&self) -> u64 {
         match self {
             Self::PendingIter { version, .. } => *version,
-            Self::Pending(ent) => ent.version(),
-            Self::Committed(ent) => ent.version(),
+            Self::Pending(item) => item.version(),
+            Self::Committed(item) => item.version(),
         }
     }
 
     fn value(&self) -> ValueRef<'_> {
         match self {
             Self::PendingIter { value, .. } => ValueRef(Either::Left(value)),
-            Self::Pending(ent) => ValueRef(Either::Left(
-                ent.value().expect("value of pending entry cannot be `None`"),
+            Self::Pending(item) => ValueRef(Either::Left(
+                item.value().expect("value of pending entry cannot be `None`"),
             )),
-            Self::Committed(ent) => ValueRef(Either::Right(ent.entry())),
+            Self::Committed(item) => ValueRef(Either::Right(item.entry())),
         }
     }
 
@@ -285,14 +285,14 @@ impl<'a> From<(u64, &'a Key, &'a Value)> for Ref<'a> {
 }
 
 impl<'a> From<EntryRef<'a>> for Ref<'a> {
-    fn from(ent: EntryRef<'a>) -> Self {
-        Self(RefKind::Pending(ent))
+    fn from(item: EntryRef<'a>) -> Self {
+        Self(RefKind::Pending(item))
     }
 }
 
 impl<'a> From<CommittedRef<'a>> for Ref<'a> {
-    fn from(ent: CommittedRef<'a>) -> Self {
-        Self(RefKind::Committed(ent))
+    fn from(item: CommittedRef<'a>) -> Self {
+        Self(RefKind::Committed(item))
     }
 }
 

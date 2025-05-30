@@ -314,13 +314,13 @@ fn test_range_edge() {
     txn.as_of_version(5);
     let itr = txn.range(one_to_ten.clone()).unwrap();
     let mut count = 2;
-    for ent in itr {
-        dbg!(&ent);
-        if *ent.key() == as_key!(1) {
+    for item in itr {
+        dbg!(&item);
+        if *item.key() == as_key!(1) {
             count -= 1;
         }
 
-        if *ent.key() == as_key!(3) {
+        if *item.key() == as_key!(3) {
             count -= 1;
         }
     }
@@ -328,12 +328,12 @@ fn test_range_edge() {
 
     let itr = txn.range(one_to_ten.clone()).unwrap();
     let mut count = 2;
-    for ent in itr {
-        if *ent.key() == as_key!(1) {
+    for item in itr {
+        if *item.key() == as_key!(1) {
             count -= 1;
         }
 
-        if *ent.key() == as_key!(3) {
+        if *item.key() == as_key!(3) {
             count -= 1;
         }
     }

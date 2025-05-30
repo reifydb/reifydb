@@ -35,9 +35,9 @@ fn test_versions() {
 
     let check_iter = |itr: TransactionIter<'_, BTreeConflict>, i: u64| {
         let mut count = 0;
-        for ent in itr {
-            assert_eq!(ent.key(), &k0);
-            let value = from_value!(u64, ent.value());
+        for item in itr {
+            assert_eq!(item.key(), &k0);
+            let value = from_value!(u64, item.value());
             assert_eq!(value, i, "{i} {:?}", value);
             count += 1;
         }
@@ -46,8 +46,8 @@ fn test_versions() {
 
     let check_rev_iter = |itr: TransactionRevIter<'_, BTreeConflict>, i: u64| {
         let mut count = 0;
-        for ent in itr {
-            let value = from_value!(u64, ent.value());
+        for item in itr {
+            let value = from_value!(u64, item.value());
             assert_eq!(value, i, "{i} {:?}", value);
             count += 1;
         }

@@ -73,12 +73,12 @@ impl SkipCore {
 
 impl SkipCore {
     pub fn apply(&self, entries: Vec<Entry>) {
-        for ent in entries {
-            let version = ent.version();
-            match ent.data {
+        for item in entries {
+            let version = item.version();
+            match item.data {
                 EntryData::Set { key, value } => {
-                    let ent = self.mem_table.get_or_insert_with(key, || Values::new());
-                    let val = ent.value();
+                    let item = self.mem_table.get_or_insert_with(key, || Values::new());
+                    let val = item.value();
                     val.lock();
                     val.insert(version, Some(value));
                     val.unlock();
@@ -98,13 +98,13 @@ impl SkipCore {
 
 impl SkipCore {
     pub fn get(&self, key: &Key, version: u64) -> Option<CommittedRef<'_>> {
-        let ent = self.mem_table.get(key)?;
-        let version = ent
+        let item = self.mem_table.get(key)?;
+        let version = item
             .value()
             .upper_bound(Bound::Included(&version))
             .and_then(|v| if v.value().is_some() { Some(*v.key()) } else { None })?;
 
-        Some(CommittedRef { ent, version })
+        Some(CommittedRef { item, version })
     }
 
     pub fn contains_key(&self, key: &Key, version: u64) -> bool {
@@ -112,7 +112,7 @@ impl SkipCore {
             None => false,
             Some(values) => match values.value().upper_bound(Bound::Included(&version)) {
                 None => false,
-                Some(ent) => ent.value().is_some(),
+                Some(item) => item.value().is_some(),
             },
         }
     }
