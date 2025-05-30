@@ -20,7 +20,7 @@ use crossbeam_skiplist::map::Range as MapRange;
 use crate::Version;
 use crate::mvcc::store::types::{Committed, Ref};
 use crate::mvcc::store::value::VersionedValues;
-use crate::mvcc::types::TransactionValue;
+use crate::mvcc::types::Pending;
 use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};
 use std::collections::btree_map::Range as BTreeMapRange;
@@ -63,8 +63,8 @@ where
     R: RangeBounds<Key> + 'a,
 {
     pub(crate) committed: RevRange<'a, R>,
-    pub(crate) pending: Rev<BTreeMapRange<'a, Key, TransactionValue>>,
-    next_pending: Option<(&'a Key, &'a TransactionValue)>,
+    pub(crate) pending: Rev<BTreeMapRange<'a, Key, Pending>>,
+    next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<Ref>,
     last_yielded_key: Option<Either<&'a Key, Ref>>,
     marker: Option<Marker<'a, C>>,
@@ -87,7 +87,7 @@ where
     }
 
     pub fn new(
-        pending: Rev<BTreeMapRange<'a, Key, TransactionValue>>,
+        pending: Rev<BTreeMapRange<'a, Key, Pending>>,
         committed: RevRange<'a, R>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
@@ -126,7 +126,7 @@ where
                             self.advance_pending();
                             self.last_yielded_key = Some(Either::Left(key));
                             let version = value.version;
-                            match &value.value {
+                            match value.value() {
                                 Some(value) => return Some((version, key, value).into()),
                                 None => continue,
                             }
@@ -159,7 +159,7 @@ where
                     self.advance_pending(); // Advance the pending iterator for the next iteration.
                     self.last_yielded_key = Some(Either::Left(key)); // Update the last yielded key.
                     let version = value.version;
-                    match &value.value {
+                    match value.value() {
                         Some(value) => return Some((version, key, value).into()),
                         None => continue,
                     }

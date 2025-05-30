@@ -61,42 +61,7 @@ impl Pending {
         self.action.value()
     }
 
-    pub fn split(self) -> (Key, TransactionValue) {
-        let Pending { action: data, version } = self;
-
-        let (key, value) = match data {
-            Action::Set { key, value } => (key, Some(value)),
-            Action::Remove { key } => (key, None),
-        };
-        (key, TransactionValue { value, version })
-    }
-
-    pub fn unsplit(key: Key, value: TransactionValue) -> Self {
-        let TransactionValue { value, version } = value;
-        Pending {
-            action: match value {
-                Some(value) => Action::Set { key, value },
-                None => Action::Remove { key },
-            },
-            version,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct TransactionValue {
-    pub version: Version,
-    pub value: Option<Value>,
-}
-
-impl TransactionValue {
     pub fn was_removed(&self) -> bool {
-        self.value.is_none()
-    }
-}
-
-impl Clone for TransactionValue {
-    fn clone(&self) -> Self {
-        Self { version: self.version, value: self.value.clone() }
+        matches!(self.action, Action::Remove { .. })
     }
 }

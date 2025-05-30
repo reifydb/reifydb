@@ -133,9 +133,8 @@ where
         }
 
         match self.pending_writes.get(key) {
-            Some(item) => {
-                // If the value is None, it means that the key is removed.
-                if item.value.is_none() {
+            Some(pending) => {
+                if pending.was_removed() {
                     return Ok(Some(false));
                 }
 
@@ -169,7 +168,7 @@ where
 
             // Fulfill from buffer.
             Ok(Some(Pending {
-                action: match &v.value {
+                action: match v.value() {
                     Some(value) => Action::Set { key: key.clone(), value: value.clone() },
                     None => Action::Remove { key: key.clone() },
                 },
@@ -249,11 +248,10 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        let item = Pending { action: Action::Set { key, value }, version: self.version };
-        self.modify(item)
+        self.modify(Pending { action: Action::Set { key, value }, version: self.version })
     }
 
-    fn modify(&mut self, item: Pending) -> Result<(), TransactionError> {
+    fn modify(&mut self, pending: Pending) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -262,7 +260,7 @@ where
 
         let cnt = self.count + 1;
         // Extra bytes for the version in key.
-        let size = self.size + pending_writes.estimate_size(&item);
+        let size = self.size + pending_writes.estimate_size(&pending);
         if cnt >= pending_writes.max_batch_entries() || size >= pending_writes.max_batch_size() {
             return Err(TransactionError::LargeTxn);
         }
@@ -270,20 +268,27 @@ where
         self.count = cnt;
         self.size = size;
 
-        self.conflicts.mark_conflict(item.key());
+        self.conflicts.mark_conflict(pending.key());
 
         // If a duplicate entry was inserted in managed mode, move it to the duplicate writes slice.
         // Add the entry to duplicateWrites only if both the entries have different versions. For
         // same versions, we will overwrite the existing entry.
-        let eversion = item.version;
-        let (key, value) = item.split();
+        let key = pending.key();
+        let value = pending.value();
+        let version = pending.version;
 
         if let Some((old_key, old_value)) = pending_writes.remove_entry(&key) {
-            if old_value.version != eversion {
-                self.duplicates.push(Pending::unsplit(old_key, old_value));
+            if old_value.version != version {
+                self.duplicates.push(Pending {
+                    action: match value {
+                        Some(value) => Action::Set { key: old_key, value: value.clone() },
+                        None => Action::Remove { key: old_key },
+                    },
+                    version,
+                })
             }
         }
-        pending_writes.insert(key, value);
+        pending_writes.insert(key.clone(), pending);
 
         Ok(())
     }
@@ -317,21 +322,32 @@ where
             CreateCommitTimestampResult::Timestamp(commit_ts) => {
                 let pending_writes = mem::take(&mut self.pending_writes);
                 let duplicate_writes = mem::take(&mut self.duplicates);
-                let mut entries = Vec::with_capacity(pending_writes.len() + self.duplicates.len());
+                let mut all = Vec::with_capacity(pending_writes.len() + self.duplicates.len());
 
-                let process_entry = |entries: &mut Vec<Pending>, mut item: Pending| {
-                    item.version = commit_ts;
-                    entries.push(item);
+                let process = |entries: &mut Vec<Pending>, mut pending: Pending| {
+                    pending.version = commit_ts;
+                    entries.push(pending);
                 };
-                pending_writes
-                    .into_iter()
-                    .for_each(|(k, v)| process_entry(&mut entries, Pending::unsplit(k, v)));
-                duplicate_writes.into_iter().for_each(|item| process_entry(&mut entries, item));
+
+                pending_writes.into_iter().for_each(|(k, v)| {
+                    process(
+                        &mut all,
+                        Pending {
+                            action: match v.value() {
+                                Some(value) => Action::Set { key: k, value: value.clone() },
+                                None => Action::Remove { key: k },
+                            },
+                            version: v.version,
+                        },
+                    )
+                });
+
+                duplicate_writes.into_iter().for_each(|item| process(&mut all, item));
 
                 // CommitTs should not be zero if we're inserting transaction markers.
                 debug_assert_ne!(commit_ts, 0);
 
-                Ok((commit_ts, entries))
+                Ok((commit_ts, all))
             }
         }
     }

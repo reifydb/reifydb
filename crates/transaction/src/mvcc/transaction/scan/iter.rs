@@ -12,7 +12,7 @@
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::store::types::{Committed, Ref};
-use crate::mvcc::types::TransactionValue;
+use crate::mvcc::types::Pending;
 use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;
@@ -51,8 +51,8 @@ impl<'a> Iterator for Iter<'a> {
 
 pub struct TransactionIter<'a, C> {
     committed: Iter<'a>,
-    pending: BTreeMapIter<'a, Key, TransactionValue>,
-    next_pending: Option<(&'a Key, &'a TransactionValue)>,
+    pending: BTreeMapIter<'a, Key, Pending>,
+    next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<Ref>,
     last_yielded_key: Option<Either<&'a Key, Ref>>,
     marker: Option<Marker<'a, C>>,
@@ -74,7 +74,7 @@ where
     }
 
     pub fn new(
-        pending: BTreeMapIter<'a, Key, TransactionValue>,
+        pending: BTreeMapIter<'a, Key, Pending>,
         committed: Iter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
@@ -112,7 +112,7 @@ where
                             self.advance_pending();
                             self.last_yielded_key = Some(Either::Left(key));
                             let version = value.version;
-                            match &value.value {
+                            match value.value() {
                                 Some(value) => return Some((version, key, value).into()),
                                 None => continue,
                             }
@@ -145,7 +145,7 @@ where
                     self.advance_pending(); // Advance the pending iterator for the next iteration.
                     self.last_yielded_key = Some(Either::Left(key)); // Update the last yielded key.
                     let version = value.version;
-                    match &value.value {
+                    match value.value() {
                         Some(value) => return Some((version, key, value).into()),
                         None => continue,
                     }

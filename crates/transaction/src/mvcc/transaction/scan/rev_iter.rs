@@ -20,7 +20,7 @@ use crossbeam_skiplist::map::Iter as MapIter;
 
 use crate::Version;
 use crate::mvcc::store::value::VersionedValues;
-use crate::mvcc::types::TransactionValue;
+use crate::mvcc::types::Pending;
 use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};
 use std::collections::btree_map::Iter as BTreeMapIter;
@@ -53,9 +53,9 @@ impl<'a> Iterator for RevIter<'a> {
 }
 
 pub struct TransactionRevIter<'a, C> {
-    pending: Rev<BTreeMapIter<'a, Key, TransactionValue>>,
+    pending: Rev<BTreeMapIter<'a, Key, Pending>>,
     committed: RevIter<'a>,
-    next_pending: Option<(&'a Key, &'a TransactionValue)>,
+    next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<Ref>,
     last_yielded_key: Option<Either<&'a Key, Ref>>,
     marker: Option<Marker<'a, C>>,
@@ -77,7 +77,7 @@ where
     }
 
     pub fn new(
-        pending: Rev<BTreeMapIter<'a, Key, TransactionValue>>,
+        pending: Rev<BTreeMapIter<'a, Key, Pending>>,
         committed: RevIter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
@@ -115,7 +115,7 @@ where
                             self.advance_pending();
                             self.last_yielded_key = Some(Either::Left(key));
                             let version = value.version;
-                            match &value.value {
+                            match value.value() {
                                 Some(value) => return Some((version, key, value).into()),
                                 None => continue,
                             }
@@ -148,7 +148,7 @@ where
                     self.advance_pending(); // Advance the pending iterator for the next iteration.
                     self.last_yielded_key = Some(Either::Left(key)); // Update the last yielded key.
                     let version = value.version;
-                    match &value.value {
+                    match value.value() {
                         Some(value) => return Some((version, key, value).into()),
                         None => continue,
                     }
