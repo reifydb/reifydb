@@ -17,14 +17,14 @@ use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::store::Store;
 use crate::mvcc::transaction::TransactionManager;
 
-use crate::Version;
-use crate::mvcc::types::Committed;
 use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
 use crate::mvcc::transaction::scan::rev_range::RevRange;
+use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
 use reifydb_persistence::Key;
+use reifydb_storage::Version;
 pub use write::TransactionTx;
 
 mod read;

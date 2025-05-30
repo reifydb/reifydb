@@ -12,8 +12,8 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 use std::fmt::Debug;
 
+use crate::Version;
 use crossbeam_skiplist::SkipMap;
-use reifydb_storage::Version;
 
 const UNINITIALIZED: u8 = 0;
 const LOCKED: u8 = 1;

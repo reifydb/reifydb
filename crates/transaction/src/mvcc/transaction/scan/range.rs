@@ -14,7 +14,7 @@ use crate::mvcc::marker::Marker;
 use core::cmp;
 use crossbeam_skiplist::map::Range as MapRange;
 
-use crate::Version;
+use reifydb_storage::Version;
 use crate::mvcc::types::{Committed, TransactionValue};
 use crate::mvcc::store::value::VersionedValues;
 use crate::mvcc::types::Pending;

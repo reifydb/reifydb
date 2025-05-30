@@ -21,7 +21,7 @@ use crate::mvcc::transaction::scan::rev_range::*;
 
 pub mod value;
 
-use crate::Version;
+use reifydb_storage::Version;
 use crate::mvcc::store::value::VersionedValues;
 use reifydb_persistence::{Action, Key, Value};
 

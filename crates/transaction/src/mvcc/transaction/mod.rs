@@ -24,7 +24,7 @@ pub mod scan;
 pub mod serializable;
 
 mod write;
-use crate::Version;
+use reifydb_storage::Version;
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::error::TransactionError;
 use crate::mvcc::pending::PendingWrites;

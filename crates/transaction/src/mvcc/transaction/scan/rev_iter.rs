@@ -18,7 +18,7 @@ use crate::mvcc::types::{Committed, TransactionValue};
 use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 
-use crate::Version;
+use reifydb_storage::Version;
 use crate::mvcc::store::value::VersionedValues;
 use crate::mvcc::types::Pending;
 use reifydb_core::either::Either;

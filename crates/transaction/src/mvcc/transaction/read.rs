@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::Version;
+use reifydb_storage::Version;
 use crate::mvcc::transaction::*;
 
 /// TransactionManagerRx is a read-only transaction manager.

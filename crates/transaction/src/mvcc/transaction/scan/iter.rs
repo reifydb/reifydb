@@ -17,7 +17,7 @@ use core::cmp;
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;
 
-use crate::Version;
+use reifydb_storage::Version;
 use crate::mvcc::store::value::VersionedValues;
 use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};

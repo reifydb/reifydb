@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::Version;
+use reifydb_storage::Version;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
