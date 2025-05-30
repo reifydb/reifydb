@@ -23,7 +23,7 @@ pub mod mvcc;
 mod transaction;
 
 pub type Key = AsyncCowVec<u8>;
-pub type Value = Vec<u8>;
+pub type Value = AsyncCowVec<u8>;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

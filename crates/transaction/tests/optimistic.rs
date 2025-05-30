@@ -197,7 +197,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 }
                 for kv in args.rest_key() {
                     let key = AsyncCowVec::new(decode_binary(kv.key.as_ref().unwrap()));
-                    let value = decode_binary(&kv.value);
+                    let value = AsyncCowVec::new(decode_binary(&kv.value));
                     if value.is_empty() {
                         tx.remove(key).unwrap();
                     } else {
@@ -285,8 +285,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let mut args = command.consume_args();
                 for kv in args.rest_key() {
                     let key = AsyncCowVec::new(decode_binary(kv.key.as_ref().unwrap()));
-                    let value = decode_binary(&kv.value);
-
+                    let value = AsyncCowVec::new(decode_binary(&kv.value));
                     match t {
                         Transaction::Rx(_) => {
                             unreachable!("can not call set on rx")

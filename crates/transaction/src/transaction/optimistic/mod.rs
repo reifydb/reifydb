@@ -6,7 +6,7 @@ use crate::catalog::{Catalog, Schema};
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
-use reifydb_core::{Key, Row, RowIter, Value, key_prefix_old, key_prefix, CowVec};
+use reifydb_core::{Key, Row, RowIter, Value, key_prefix, key_prefix_old};
 use reifydb_persistence::Persistence;
 
 impl<P: Persistence> Transaction<P> for Optimistic {
@@ -107,11 +107,10 @@ impl crate::Tx for TransactionTx {
         // FIXME assumes every row gets inserted - not updated etc..
         let inserted = rows.len();
 
-
         for (id, row) in rows.iter().enumerate() {
             self.set(
                 key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
-                bincode::serialize(row),
+                AsyncCowVec::new(bincode::serialize(row)),
             )
             .unwrap();
         }
@@ -137,7 +136,7 @@ impl crate::Tx for TransactionTx {
         for (id, row) in rows.iter().enumerate() {
             self.set(
                 key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)).clone(),
-                bincode::serialize(row),
+                AsyncCowVec::new(bincode::serialize(row)),
             )
             .unwrap();
         }

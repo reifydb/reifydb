@@ -113,7 +113,7 @@ impl crate::Tx for SerializableTransaction {
         for (id, row) in rows.iter().enumerate() {
             self.set(
                 key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
-                bincode::serialize(row),
+                AsyncCowVec::new(bincode::serialize(row)),
             )
             .unwrap();
         }
@@ -139,7 +139,7 @@ impl crate::Tx for SerializableTransaction {
         for (id, row) in rows.iter().enumerate() {
             self.set(
                 key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)).clone(),
-                bincode::serialize(row),
+                AsyncCowVec::new(bincode::serialize(row)),
             )
             .unwrap();
         }
