@@ -5,14 +5,14 @@ use crate::AsyncCowVec;
 use crate::catalog::{Catalog, Schema};
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::transaction::serializable::read::ReadTransaction;
-use crate::mvcc::transaction::serializable::{SerializableDb, SerializableTransaction};
+use crate::mvcc::transaction::serializable::{Serializable, SerializableTransaction};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
 
-impl<P: Persistence> Transaction<P> for SerializableDb {
-    type Rx = ReadTransaction<SerializableDb, BTreeConflict>;
+impl<P: Persistence> Transaction<P> for Serializable {
+    type Rx = ReadTransaction<BTreeConflict>;
     type Tx = SerializableTransaction;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
@@ -25,7 +25,7 @@ impl<P: Persistence> Transaction<P> for SerializableDb {
     }
 }
 
-impl crate::Rx for ReadTransaction<SerializableDb, BTreeConflict> {
+impl crate::Rx for ReadTransaction<BTreeConflict> {
     type Catalog = Catalog;
     type Schema = Schema;
 

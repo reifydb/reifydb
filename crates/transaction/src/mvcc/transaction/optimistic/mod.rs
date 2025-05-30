@@ -9,28 +9,36 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use std::ops::{Deref, RangeBounds};
 use std::sync::Arc;
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
+use crate::mvcc::store::Store;
 use crate::mvcc::transaction::TransactionManager;
 
+use crate::Version;
+use crate::mvcc::store::types::CommittedRef;
+use crate::mvcc::transaction::scan::iter::Iter;
+use crate::mvcc::transaction::scan::range::Range;
+use crate::mvcc::transaction::scan::rev_iter::RevIter;
+use crate::mvcc::transaction::scan::rev_range::RevRange;
 pub use read::TransactionRx;
+use reifydb_persistence::Key;
 pub use write::TransactionTx;
 
 mod read;
 mod write;
 
-struct Inner {
+pub struct Inner {
     tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
-    mem_table: SkipCore,
+    store: Store,
 }
 
 impl Inner {
     fn new(name: &str) -> Self {
         let tm = TransactionManager::new(name, 0);
-        Self { tm, mem_table: SkipCore::new() }
+        Self { tm, store: Store::new() }
     }
 
     fn version(&self) -> u64 {
@@ -42,11 +50,11 @@ pub struct Optimistic {
     inner: Arc<Inner>,
 }
 
-#[doc(hidden)]
-impl AsSkipCore for Optimistic {
-    #[allow(private_interfaces)]
-    fn as_inner(&self) -> &SkipCore {
-        &self.inner.mem_table
+impl Deref for Optimistic {
+    type Target = Inner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
@@ -90,4 +98,36 @@ impl Optimistic {
 pub enum Transaction {
     Rx(TransactionRx),
     Tx(TransactionTx),
+}
+
+impl Optimistic {
+    pub fn get(&self, key: &Key, version: Version) -> Option<CommittedRef<'_>> {
+        self.store.get(key, version)
+    }
+
+    pub fn contains_key(&self, key: &Key, version: Version) -> bool {
+        self.store.contains_key(key, version)
+    }
+
+    pub fn iter(&self, version: Version) -> Iter<'_> {
+        self.store.iter(version)
+    }
+
+    pub fn iter_rev(&self, version: Version) -> RevIter<'_> {
+        self.store.iter_rev(version)
+    }
+
+    pub fn range<R>(&self, range: R, version: Version) -> Range<'_, R>
+    where
+        R: RangeBounds<Key>,
+    {
+        self.store.range(range, version)
+    }
+
+    pub fn range_rev<R>(&self, range: R, version: Version) -> RevRange<'_, R>
+    where
+        R: RangeBounds<Key>,
+    {
+        self.store.range_rev(range, version)
+    }
 }

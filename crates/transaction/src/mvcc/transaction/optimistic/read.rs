@@ -11,8 +11,7 @@
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::skipdbcore::AsSkipCore;
-use crate::mvcc::skipdbcore::types::Ref;
+use crate::mvcc::store::types::Ref;
 use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::scan::iter::Iter;
@@ -43,25 +42,25 @@ impl TransactionRx {
     /// Get a value from the database.
     pub fn get(&self, key: &Key) -> Option<Ref<'_>> {
         let version = self.rtm.version();
-        self.engine.as_inner().get(key, version).map(Into::into)
+        self.engine.get(key, version).map(Into::into)
     }
 
     /// Returns true if the given key exists in the database.
     pub fn contains_key(&self, key: &Key) -> bool {
         let version = self.rtm.version();
-        self.engine.as_inner().contains_key(key, version)
+        self.engine.contains_key(key, version)
     }
 
     /// Returns an iterator over the entries of the database.
     pub fn iter(&self) -> Iter<'_> {
         let version = self.rtm.version();
-        self.engine.as_inner().iter(version)
+        self.engine.iter(version)
     }
 
     /// Returns a reverse iterator over the entries of the database.
     pub fn iter_rev(&self) -> RevIter<'_> {
         let version = self.rtm.version();
-        self.engine.as_inner().iter_rev(version)
+        self.engine.iter_rev(version)
     }
 
     /// Returns an iterator over the subset of entries of the database.
@@ -70,7 +69,7 @@ impl TransactionRx {
         R: RangeBounds<Key>,
     {
         let version = self.rtm.version();
-        self.engine.as_inner().range(range, version)
+        self.engine.range(range, version)
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
@@ -79,6 +78,6 @@ impl TransactionRx {
         R: RangeBounds<Key>,
     {
         let version = self.rtm.version();
-        self.engine.as_inner().range_rev(range, version)
+        self.engine.range_rev(range, version)
     }
 }

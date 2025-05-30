@@ -14,7 +14,7 @@ use crate::mvcc::transaction::scan::rev_range::TransactionRevRange;
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
-use crate::mvcc::skipdbcore::types::Ref;
+use crate::mvcc::store::types::Ref;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
@@ -26,14 +26,14 @@ use std::ops::RangeBounds;
 #[cfg(test)]
 mod tests;
 
-/// A serializable snapshot isolation transaction over the [`SerializableDb`],
+/// A serializable snapshot isolation transaction over the [`Serializable`],
 pub struct SerializableTransaction {
-    pub(in crate::mvcc) db: SerializableDb,
+    pub(in crate::mvcc) db: Serializable,
     pub(in crate::mvcc) wtm: TransactionManagerTx<BTreeConflict, BTreePendingWrites>,
 }
 
 impl SerializableTransaction {
-    pub fn new(db: SerializableDb) -> Self {
+    pub fn new(db: Serializable) -> Self {
         let wtm = db.inner.tm.write().unwrap();
         Self { db, wtm }
     }

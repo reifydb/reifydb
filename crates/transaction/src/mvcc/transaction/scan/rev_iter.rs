@@ -14,7 +14,7 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, VersionedValue};
+use crate::mvcc::store::types::{CommittedRef, Ref, VersionedValue};
 use core::{cmp, iter::Rev};
 use crossbeam_skiplist::map::Iter as MapIter;
 

@@ -20,19 +20,19 @@ mod write;
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::skipdbcore::{AsSkipCore, SkipCore};
+use crate::mvcc::store::Store;
 use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
 struct Inner {
     tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
-    map: SkipCore,
+    map: Store,
 }
 
 impl Inner {
     fn new(name: &str) -> Self {
         let tm = TransactionManager::new(name, 0);
-        Self { tm, map: SkipCore::new() }
+        Self { tm, map: Store::new() }
     }
 
     fn version(&self) -> u64 {
@@ -51,56 +51,50 @@ impl Inner {
 /// 2. `SerializableDb` does not require key to implement [`Hash`](core::hash::Hash).
 /// 3. But, [`OptimisticDb`](crate::optimistic::OptimisticDb) has more flexible write transaction APIs.
 #[repr(transparent)]
-pub struct SerializableDb {
+pub struct Serializable {
     inner: Arc<Inner>,
 }
 
-#[doc(hidden)]
-impl AsSkipCore for SerializableDb {
-    fn as_inner(&self) -> &SkipCore {
-        &self.inner.map
-    }
-}
 
-impl Clone for SerializableDb {
+impl Clone for Serializable {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone() }
     }
 }
 
-impl Default for SerializableDb {
+impl Default for Serializable {
     /// Creates a new `SerializableDb` with the default options.
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SerializableDb {
+impl Serializable {
     /// Creates a new `SerializableDb`
     pub fn new() -> Self {
         Self { inner: Arc::new(Inner::new(core::any::type_name::<Self>())) }
     }
 }
 
-impl SerializableDb {
+impl Serializable {
     /// Returns the current read version of the database.
     pub fn version(&self) -> u64 {
         self.inner.version()
     }
 
     /// Create a read transaction.
-    pub fn read(&self) -> ReadTransaction<SerializableDb, BTreeConflict> {
+    pub fn read(&self) -> ReadTransaction<BTreeConflict> {
         ReadTransaction::new(self.clone(), self.inner.tm.read())
     }
 }
 
-impl SerializableDb {
+impl Serializable {
     /// Create a serializable write transaction.
     ///
     /// Serializable write transaction is a totally Serializable Snapshot Isolation transaction.
     /// It can handle all kinds of write skew anomaly, including indirect dependencies (logical dependencies).
     /// If in your code, you do not care about indirect dependencies (logical dependencies), you can use
-    /// [`SerializableDb::optimistic_write`](SerializableDb::optimistic_write) instead.
+    /// [`SerializableDb::optimistic_write`](Serializable::optimistic_write) instead.
 
     pub fn write(&self) -> SerializableTransaction {
         SerializableTransaction::new(self.clone())

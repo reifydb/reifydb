@@ -10,40 +10,31 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::skipdbcore::Database;
-use crate::mvcc::skipdbcore::types::Ref;
+use crate::mvcc::store::types::Ref;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::scan::iter::Iter;
 use crate::mvcc::transaction::scan::range::Range;
 use crate::mvcc::transaction::scan::rev_iter::RevIter;
 use crate::mvcc::transaction::scan::rev_range::RevRange;
+use crate::mvcc::transaction::serializable::Serializable;
 use reifydb_persistence::Key;
 use std::ops::RangeBounds;
 
-pub struct ReadTransaction<I, C>
-where
-    I: Database,
-{
-    pub(crate) db: I,
+pub struct ReadTransaction<C> {
+    pub(crate) db: Serializable,
     pub(crate) rx: TransactionManagerRx<C, BTreePendingWrites>,
 }
 
-impl<I, C> ReadTransaction<I, C>
-where
-    I: Database,
-{
+impl<C> ReadTransaction<C> {
     pub(in crate::mvcc::transaction) fn new(
-        db: I,
+        db: Serializable,
         rtm: TransactionManagerRx<C, BTreePendingWrites>,
     ) -> Self {
         Self { db, rx: rtm }
     }
 }
 
-impl<I, C> ReadTransaction<I, C>
-where
-    I: Database,
-{
+impl<C> ReadTransaction<C> {
     /// Returns the version of the transaction.
     pub fn version(&self) -> u64 {
         self.rx.version()
@@ -52,25 +43,29 @@ where
     /// Get a value from the database.
     pub fn get(&self, key: &Key) -> Option<Ref<'_>> {
         let version = self.rx.version();
-        self.db.as_inner().get(key, version).map(Into::into)
+        // self.db.as_inner().get(key, version).map(Into::into)
+        unimplemented!()
     }
 
     /// Returns true if the given key exists in the database.
     pub fn contains_key(&self, key: &Key) -> bool {
         let version = self.rx.version();
-        self.db.as_inner().contains_key(key, version)
+        // self.db.as_inner().contains_key(key, version)
+        unimplemented!()
     }
 
     /// Returns an iterator over the entries of the database.
     pub fn iter(&self) -> Iter<'_> {
         let version = self.rx.version();
-        self.db.as_inner().iter(version)
+        // self.db.as_inner().iter(version)
+        unimplemented!()
     }
 
     /// Returns a reverse iterator over the entries of the database.
     pub fn iter_rev(&self) -> RevIter<'_> {
         let version = self.rx.version();
-        self.db.as_inner().iter_rev(version)
+        // self.db.as_inner().iter_rev(version)
+        unimplemented!()
     }
 
     /// Returns an iterator over the subset of entries of the database.
@@ -79,7 +74,8 @@ where
         R: RangeBounds<Key>,
     {
         let version = self.rx.version();
-        self.db.as_inner().range(range, version)
+        // self.db.as_inner().range(range, version)
+        unimplemented!()
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
@@ -88,6 +84,7 @@ where
         R: RangeBounds<Key>,
     {
         let version = self.rx.version();
-        self.db.as_inner().range_rev(range, version)
+        // self.db.as_inner().range_rev(range, version)
+        unimplemented!()
     }
 }

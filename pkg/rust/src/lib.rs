@@ -90,7 +90,7 @@ pub trait DB<'a>: Sized {
 impl ReifyDB {
     #[cfg(feature = "embedded")]
     pub fn embedded() -> (
-        Embedded<Memory, ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb>,
+        Embedded<Memory, ::reifydb_transaction::mvcc::transaction::serializable::Serializable>,
         Principal,
     ) {
         Embedded::new(serializable())
@@ -100,7 +100,7 @@ impl ReifyDB {
     pub fn embedded_blocking() -> (
         embedded_blocking::Embedded<
             Memory,
-            ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb,
+            ::reifydb_transaction::mvcc::transaction::serializable::Serializable,
         >,
         Principal,
     ) {
@@ -111,7 +111,7 @@ impl ReifyDB {
     pub fn embedded() -> (
         embedded_blocking::Embedded<
             Memory,
-            ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb,
+            ::reifydb_transaction::mvcc::transaction::serializable::Serializable,
         >,
         Principal,
     ) {
@@ -141,7 +141,7 @@ impl ReifyDB {
 
     #[cfg(feature = "server")]
     pub fn server()
-    -> Server<Memory, ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb> {
+    -> Server<Memory, ::reifydb_transaction::mvcc::transaction::serializable::Serializable> {
         Server::new(serializable())
     }
 
@@ -157,8 +157,8 @@ pub fn svl<P: Persistence>(persistence: P) -> ::reifydb_transaction::svl::Svl<P>
     ::reifydb_transaction::svl::Svl::new(persistence)
 }
 
-pub fn serializable() -> ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb {
-    ::reifydb_transaction::mvcc::transaction::serializable::SerializableDb::new()
+pub fn serializable() -> ::reifydb_transaction::mvcc::transaction::serializable::Serializable {
+    ::reifydb_transaction::mvcc::transaction::serializable::Serializable::new()
 }
 
 pub fn optimistic() -> ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic {

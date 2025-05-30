@@ -19,7 +19,7 @@ use crossbeam_skiplist::map::Range as MapRange;
 use std::borrow::Borrow;
 
 use crate::Version;
-use crate::mvcc::skipdbcore::types::{CommittedRef, Ref, VersionedValue};
+use crate::mvcc::store::types::{CommittedRef, Ref, VersionedValue};
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::either::Either;
 use reifydb_persistence::{Key, Value};

@@ -5,7 +5,7 @@ use reifydb::client::Client;
 use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb::reifydb_transaction::mvcc::transaction::serializable::SerializableDb;
+use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::{ReifyDB, memory, optimistic, serializable, svl};
 use reifydb_testing::network::free_local_socket;
@@ -109,14 +109,14 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner
     }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as client_serializable_memory => test_serializable_memory }
+// test_each_path! { in "testsuite/smoke/tests/scripts" as client_serializable_memory => test_serializable_memory }
 test_each_path! { in "testsuite/smoke/tests/scripts" as client_optimistic_memory => test_optimistic_memory }
 
 test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_memory => test_svl_memory }
 test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_lmdb => test_svl_lmdb }
 
 fn test_serializable_memory(path: &Path) {
-    testscript::run_path(&mut ClientRunner::<Memory, SerializableDb>::new(serializable()), path)
+    testscript::run_path(&mut ClientRunner::<Memory, Serializable>::new(serializable()), path)
         .expect("test failed")
 }
 

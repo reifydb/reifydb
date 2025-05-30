@@ -12,7 +12,7 @@
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
-use crate::mvcc::skipdbcore::types::Ref;
+use crate::mvcc::store::types::Ref;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::scan::iter::TransactionIter;
 use crate::mvcc::transaction::scan::range::TransactionRange;
@@ -54,7 +54,7 @@ impl TransactionTx {
 
     pub fn commit(&mut self) -> Result<(), MvccError> {
         self.tm.commit(|operations| {
-            self.engine.inner.mem_table.apply(operations);
+            self.engine.inner.store.apply(operations);
             Ok(())
         })
     }
@@ -81,7 +81,7 @@ impl TransactionTx {
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.engine.inner.mem_table.contains_key(key, version)),
+            None => Ok(self.engine.inner.store.contains_key(key, version)),
         }
     }
 
@@ -99,7 +99,7 @@ impl TransactionTx {
                     Ok(None)
                 }
             }
-            None => Ok(self.engine.inner.mem_table.get(key, version).map(Into::into)),
+            None => Ok(self.engine.inner.store.get(key, version).map(Into::into)),
         }
     }
 
@@ -117,7 +117,7 @@ impl TransactionTx {
     pub fn iter(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
-        let committed = self.engine.inner.mem_table.iter(version);
+        let committed = self.engine.inner.store.iter(version);
         let pending = pm.iter();
 
         Ok(TransactionIter::new(pending, committed, Some(marker)))
@@ -127,7 +127,7 @@ impl TransactionTx {
     pub fn iter_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
-        let committed = self.engine.inner.mem_table.iter_rev(version);
+        let committed = self.engine.inner.store.iter_rev(version);
         let pending = pm.iter().rev();
 
         Ok(TransactionRevIter::new(pending, committed, Some(marker)))
@@ -146,7 +146,7 @@ impl TransactionTx {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
-        let committed = self.engine.inner.mem_table.range(range, version);
+        let committed = self.engine.inner.store.range(range, version);
 
         Ok(TransactionRange::new(pending, committed, Some(marker)))
     }
@@ -164,7 +164,7 @@ impl TransactionTx {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
-        let committed = self.engine.inner.mem_table.range_rev(range, version);
+        let committed = self.engine.inner.store.range_rev(range, version);
 
         Ok(TransactionRevRange::new(pending.rev(), committed, Some(marker)))
     }

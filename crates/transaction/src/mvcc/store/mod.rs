@@ -33,35 +33,23 @@ use crate::Version;
 use reifydb_persistence::{Action, Key, Value};
 use types::*;
 
-#[doc(hidden)]
-pub trait Database: AsSkipCore {}
-
-impl<T: AsSkipCore> Database for T {}
-
-#[doc(hidden)]
-pub trait AsSkipCore {
-    // This trait is sealed and cannot be implemented for types outside of this crate.
-    // So returning a reference to the inner database is ok.
-    fn as_inner(&self) -> &SkipCore;
-}
-
-pub struct SkipCore {
+pub struct Store {
     mem_table: SkipMap<Key, VersionedValue<Value>>,
 }
 
-impl Default for SkipCore {
+impl Default for Store {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SkipCore {
+impl Store {
     pub fn new() -> Self {
         Self { mem_table: SkipMap::new() }
     }
 }
 
-impl SkipCore {
+impl Store {
     pub fn apply(&self, actions: Vec<TransactionAction>) {
         for item in actions {
             let version = item.version();
@@ -86,7 +74,7 @@ impl SkipCore {
     }
 }
 
-impl SkipCore {
+impl Store {
     pub fn get(&self, key: &Key, version: Version) -> Option<CommittedRef<'_>> {
         let item = self.mem_table.get(key)?;
         let version = item
