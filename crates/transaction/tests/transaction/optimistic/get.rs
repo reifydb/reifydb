@@ -17,10 +17,10 @@ use crate::{IntoValue, from_value};
 use Bound::{Excluded, Included};
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb_transaction::mvcc::transaction::scan::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::scan::range::TransactionRange;
-use reifydb_transaction::mvcc::transaction::scan::rev_iter::TransactionRevIter;
-use reifydb_transaction::mvcc::transaction::scan::rev_range::TransactionRevRange;
+use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
+use reifydb_transaction::mvcc::transaction::range::TransactionRange;
+use reifydb_transaction::mvcc::transaction::iter_rev::TransactionRevIter;
+use reifydb_transaction::mvcc::transaction::range_rev::TransactionRevRange;
 use std::ops::Bound;
 
 #[test]
@@ -41,8 +41,8 @@ fn test_read_after_write() {
                 txn.commit().unwrap();
 
                 let txn = db.begin_read_only();
-                let item = txn.get(&k).unwrap();
-                assert_eq!(*item.value(), v);
+                let sv = txn.get(&k).unwrap();
+                assert_eq!(*sv.value(), v);
             })
         })
         .collect::<Vec<_>>();
@@ -314,13 +314,13 @@ fn test_range_edge() {
     txn.as_of_version(5);
     let itr = txn.range(one_to_ten.clone()).unwrap();
     let mut count = 2;
-    for item in itr {
-        dbg!(&item);
-        if *item.key() == as_key!(1) {
+    for sv in itr {
+        dbg!(&sv);
+        if *sv.key() == as_key!(1) {
             count -= 1;
         }
 
-        if *item.key() == as_key!(3) {
+        if *sv.key() == as_key!(3) {
             count -= 1;
         }
     }
@@ -328,12 +328,12 @@ fn test_range_edge() {
 
     let itr = txn.range(one_to_ten.clone()).unwrap();
     let mut count = 2;
-    for item in itr {
-        if *item.key() == as_key!(1) {
+    for sv in itr {
+        if *sv.key() == as_key!(1) {
             count -= 1;
         }
 
-        if *item.key() == as_key!(3) {
+        if *sv.key() == as_key!(3) {
             count -= 1;
         }
     }

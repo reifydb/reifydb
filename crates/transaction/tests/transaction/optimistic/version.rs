@@ -16,8 +16,8 @@ use crate::{IntoValue, from_value};
 use crate::{as_key, as_value};
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb_transaction::mvcc::transaction::scan::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::scan::rev_iter::TransactionRevIter;
+use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
+use reifydb_transaction::mvcc::transaction::iter_rev::TransactionRevIter;
 
 #[test]
 #[cfg(test)]
@@ -35,9 +35,9 @@ fn test_versions() {
 
     let check_iter = |itr: TransactionIter<'_, BTreeConflict>, i: u64| {
         let mut count = 0;
-        for item in itr {
-            assert_eq!(item.key(), &k0);
-            let value = from_value!(u64, item.value());
+        for sv in itr {
+            assert_eq!(sv.key(), &k0);
+            let value = from_value!(u64, sv.value());
             assert_eq!(value, i, "{i} {:?}", value);
             count += 1;
         }
@@ -46,8 +46,8 @@ fn test_versions() {
 
     let check_rev_iter = |itr: TransactionRevIter<'_, BTreeConflict>, i: u64| {
         let mut count = 0;
-        for item in itr {
-            let value = from_value!(u64, item.value());
+        for sv in itr {
+            let value = from_value!(u64, sv.value());
             assert_eq!(value, i, "{i} {:?}", value);
             count += 1;
         }
@@ -60,8 +60,8 @@ fn test_versions() {
 
         let v = idx;
         {
-            let item = txn.get(&k0).unwrap().unwrap();
-            assert_eq!(v, from_value!(u64, *item.value()));
+            let sv = txn.get(&k0).unwrap().unwrap();
+            assert_eq!(v, from_value!(u64, *sv.value()));
         }
 
         // Try retrieving the latest version forward and reverse.
@@ -73,7 +73,7 @@ fn test_versions() {
     }
 
     let mut txn = engine.begin();
-    let item = txn.get(&k0).unwrap().unwrap();
-    let val = from_value!(u64, *item.value());
+    let sv = txn.get(&k0).unwrap().unwrap();
+    let val = from_value!(u64, *sv.value());
     assert_eq!(9, val)
 }

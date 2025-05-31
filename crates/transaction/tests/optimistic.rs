@@ -14,9 +14,9 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
 
+use reifydb_core::CowVec;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_core::{AsyncCowVec, CowVec};
 use reifydb_testing::testscript;
 use reifydb_testing::util::parse_key_range;
 use reifydb_transaction::Tx;
@@ -244,8 +244,8 @@ impl<'a> testscript::Runner for MvccRunner {
 
                 match t {
                     Transaction::Rx(rx) => {
-                        for item in rx.range(range).into_iter() {
-                            kvs.push((item.key().clone(), item.value().to_vec()));
+                        for sv in rx.range(range).into_iter() {
+                            kvs.push((sv.key.clone(), sv.value.to_vec()));
                         }
                     }
                     Transaction::Tx(tx) => {

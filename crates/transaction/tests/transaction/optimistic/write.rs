@@ -52,10 +52,10 @@ fn test_multiple_write() {
         }
 
         let key = as_key!(8);
-        let item = txn.get(&key).unwrap().unwrap();
-        assert!(!item.is_committed());
-        assert_eq!(from_value!(i32, *item.value()), 8);
-        drop(item);
+        let sv = txn.get(&key).unwrap().unwrap();
+        assert!(!sv.is_committed());
+        assert_eq!(from_value!(i32, *sv.value()), 8);
+        drop(sv);
 
         assert!(txn.contains_key(&as_key!(8)).unwrap());
 
@@ -66,6 +66,6 @@ fn test_multiple_write() {
     let v = 8;
     let txn = engine.begin_read_only();
     assert!(txn.contains_key(&as_key!(k)));
-    let item = txn.get(&as_key!(k)).unwrap();
-    assert_eq!(from_value!(i32, *item.value()), v);
+    let sv = txn.get(&as_key!(k)).unwrap();
+    assert_eq!(from_value!(i32, *sv.value()), v);
 }

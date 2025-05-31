@@ -10,16 +10,16 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use reifydb_storage::Version;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
-use crate::mvcc::types::TransactionValue;
 use crate::mvcc::transaction::TransactionManagerTx;
-use crate::mvcc::transaction::scan::iter::TransactionIter;
-use crate::mvcc::transaction::scan::range::TransactionRange;
-use crate::mvcc::transaction::scan::rev_iter::TransactionRevIter;
-use crate::mvcc::transaction::scan::rev_range::TransactionRevRange;
+use crate::mvcc::transaction::iter::TransactionIter;
+use crate::mvcc::transaction::iter_rev::TransactionRevIter;
+use crate::mvcc::transaction::range::TransactionRange;
+use crate::mvcc::transaction::range_rev::TransactionRevRange;
+use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, Value};
+use reifydb_storage::Version;
 use std::ops::RangeBounds;
 
 /// A optimistic concurrency control transaction over the [`Optimistic`].
@@ -53,8 +53,11 @@ impl TransactionTx {
     ///    background upon successful completion of writes or any error during write.
 
     pub fn commit(&mut self) -> Result<(), MvccError> {
-        self.tm.commit(|operations| {
-            self.engine.inner.store.apply(operations);
+        self.tm.commit(|pending| {
+            self.engine
+                .inner
+                .storage
+                .apply((pending.into_iter().map(|p| (p.action, p.version)).collect()));
             Ok(())
         })
     }
@@ -81,12 +84,11 @@ impl TransactionTx {
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.engine.inner.store.contains_key(key, version)),
+            None => Ok(self.engine.inner.storage.contains_key(key, version)),
         }
     }
 
-    /// Get a value from the database.
-    pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b Key) -> Result<Option<TransactionValue>, TransactionError> {
+    pub fn get(&mut self, key: &Key) -> Result<Option<TransactionValue>, TransactionError> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {
@@ -96,7 +98,7 @@ impl TransactionTx {
                     Ok(None)
                 }
             }
-            None => Ok(self.engine.inner.store.get(key, version).map(Into::into)),
+            None => Ok(self.engine.inner.storage.get(key, version).map(Into::into)),
         }
     }
 
@@ -114,20 +116,20 @@ impl TransactionTx {
     pub fn iter(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
-        let committed = self.engine.inner.store.iter(version);
         let pending = pm.iter();
+        let commited = self.engine.inner.storage.iter(version);
 
-        Ok(TransactionIter::new(pending, committed, Some(marker)))
+        Ok(TransactionIter::new(pending, commited, Some(marker)))
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
     pub fn iter_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
-        let committed = self.engine.inner.store.iter_rev(version);
         let pending = pm.iter().rev();
+        let commited = self.engine.inner.storage.iter_rev(version);
 
-        Ok(TransactionRevIter::new(pending, committed, Some(marker)))
+        Ok(TransactionRevIter::new(pending, commited, Some(marker)))
     }
 
     /// Returns an iterator over the subset of entries of the database.
@@ -143,9 +145,9 @@ impl TransactionTx {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
-        let committed = self.engine.inner.store.range(range, version);
+        let commited = self.engine.inner.storage.range(range, version);
 
-        Ok(TransactionRange::new(pending, committed, Some(marker)))
+        Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
@@ -161,8 +163,8 @@ impl TransactionTx {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
-        let committed = self.engine.inner.store.range_rev(range, version);
+        let commited = self.engine.inner.storage.range_rev(range, version);
 
-        Ok(TransactionRevRange::new(pending.rev(), committed, Some(marker)))
+        Ok(TransactionRevRange::new(pending.rev(), commited, Some(marker)))
     }
 }

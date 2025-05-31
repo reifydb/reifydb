@@ -12,13 +12,10 @@
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::types::TransactionValue;
 use crate::mvcc::transaction::read::TransactionManagerRx;
-use crate::mvcc::transaction::scan::iter::Iter;
-use crate::mvcc::transaction::scan::range::Range;
-use crate::mvcc::transaction::scan::rev_iter::RevIter;
-use crate::mvcc::transaction::scan::rev_range::RevRange;
 use crate::mvcc::transaction::serializable::Serializable;
 use reifydb_persistence::Key;
 use std::ops::RangeBounds;
+use reifydb_storage::memory::{Iter, Range, RevIter, RevRange};
 
 pub struct ReadTransaction<C> {
     pub(crate) db: Serializable,

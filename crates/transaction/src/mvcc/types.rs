@@ -9,8 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_storage::Version;
 use reifydb_persistence::{Action, Key, Value};
+use reifydb_storage::{StoredValue, Version};
 use std::cmp;
 use std::cmp::Reverse;
 
@@ -18,6 +18,12 @@ pub enum TransactionValue {
     PendingIter { version: Version, key: Key, value: Value },
     Pending(Pending),
     Committed(Committed),
+}
+
+impl From<StoredValue> for TransactionValue {
+    fn from(value: StoredValue) -> Self {
+        Self::Committed(Committed { key: value.key, value: value.value, version: value.version })
+    }
 }
 
 impl core::fmt::Debug for TransactionValue {
@@ -101,6 +107,12 @@ pub struct Committed {
     pub(crate) key: Key,
     pub(crate) value: Value,
     pub(crate) version: Version,
+}
+
+impl From<StoredValue> for Committed {
+    fn from(value: StoredValue) -> Self {
+        Self { key: value.key, value: value.value, version: value.version }
+    }
 }
 
 impl Committed {

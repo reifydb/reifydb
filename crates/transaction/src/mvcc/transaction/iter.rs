@@ -1,9 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
-
 // This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -14,54 +11,25 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::types::{Committed, TransactionValue};
-use core::{cmp, iter::Rev};
-use crossbeam_skiplist::map::Iter as MapIter;
-
-use reifydb_storage::Version;
-use crate::mvcc::store::value::VersionedValues;
 use crate::mvcc::types::Pending;
+use crate::mvcc::types::TransactionValue;
+use core::cmp;
+
 use reifydb_core::either::Either;
-use reifydb_persistence::{Key, Value};
+use reifydb_persistence::Key;
+use reifydb_storage::memory::Iter;
 use std::collections::btree_map::Iter as BTreeMapIter;
-use std::ops::Bound;
 
-pub struct RevIter<'a> {
-    pub(crate) iter: Rev<MapIter<'a, Key, VersionedValues<Value>>>,
-    pub(crate) version: Version,
-}
-
-impl<'a> Iterator for RevIter<'a> {
-    type Item = TransactionValue;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let item = self.iter.next()?;
-            if let Some((version, value)) =
-                item.value().upper_bound(Bound::Included(&self.version)).and_then(|item| {
-                    if item.value().is_some() {
-                        Some((*item.key(), item.value().clone().unwrap()))
-                    } else {
-                        None
-                    }
-                })
-            {
-                return Some(Committed { key: item.key().clone(), value, version }.into());
-            }
-        }
-    }
-}
-
-pub struct TransactionRevIter<'a, C> {
-    pending: Rev<BTreeMapIter<'a, Key, Pending>>,
-    committed: RevIter<'a>,
+pub struct TransactionIter<'a, C> {
+    committed: Iter<'a>,
+    pending: BTreeMapIter<'a, Key, Pending>,
     next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<TransactionValue>,
     last_yielded_key: Option<Either<&'a Key, TransactionValue>>,
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, C> TransactionRevIter<'a, C>
+impl<'a, C> TransactionIter<'a, C>
 where
     C: Conflict,
 {
@@ -70,18 +38,18 @@ where
     }
 
     fn advance_committed(&mut self) {
-        self.next_committed = self.committed.next();
+        self.next_committed = self.committed.next().map(|sv| sv.into());
         if let (Some(item), Some(marker)) = (&self.next_committed, &mut self.marker) {
             marker.mark(item.key());
         }
     }
 
     pub fn new(
-        pending: Rev<BTreeMapIter<'a, Key, Pending>>,
-        committed: RevIter<'a>,
+        pending: BTreeMapIter<'a, Key, Pending>,
+        committed: Iter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
-        let mut iterator = TransactionRevIter {
+        let mut iterator = TransactionIter {
             pending,
             committed,
             next_pending: None,
@@ -97,7 +65,7 @@ where
     }
 }
 
-impl<'a, C> Iterator for TransactionRevIter<'a, C>
+impl<'a, C> Iterator for TransactionIter<'a, C>
 where
     C: Conflict,
 {
@@ -109,8 +77,8 @@ where
                 // Both pending and committed iterators have items to yield.
                 (Some((pending_key, _)), Some(committed)) => {
                     match pending_key.cmp(committed.key()) {
-                        // Pending item has a larger key, so yield this one.
-                        cmp::Ordering::Greater => {
+                        // Pending item has a smaller key, so yield this one.
+                        cmp::Ordering::Less => {
                             let (key, value) = self.next_pending.take().unwrap();
                             self.advance_pending();
                             self.last_yielded_key = Some(Either::Left(key));
@@ -127,8 +95,8 @@ where
                             // Loop again to check the next item without yielding anything this time.
                             continue;
                         }
-                        // Committed item has a larger key, so we consider yielding this one.
-                        cmp::Ordering::Less => {
+                        // Committed item has a smaller key, so we consider yielding this one.
+                        cmp::Ordering::Greater => {
                             let committed = self.next_committed.take().unwrap();
                             self.advance_committed(); // Prepare the next committed item for future iterations.
                             // Yield the committed item if it has not been yielded before.

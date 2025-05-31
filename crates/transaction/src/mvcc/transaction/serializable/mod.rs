@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 pub use read::*;
+use reifydb_storage::memory::Memory;
 pub use write::*;
 
 pub(crate) mod read;
@@ -20,19 +21,18 @@ mod write;
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::store::Store;
 use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
 struct Inner {
     tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
-    map: Store,
+    map: Memory,
 }
 
 impl Inner {
     fn new(name: &str) -> Self {
         let tm = TransactionManager::new(name, 0);
-        Self { tm, map: Store::new() }
+        Self { tm, map: Memory::new() }
     }
 
     fn version(&self) -> u64 {

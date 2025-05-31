@@ -14,17 +14,13 @@ use std::sync::Arc;
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::store::Store;
 use crate::mvcc::transaction::TransactionManager;
 
-use crate::mvcc::transaction::scan::iter::Iter;
-use crate::mvcc::transaction::scan::range::Range;
-use crate::mvcc::transaction::scan::rev_iter::RevIter;
-use crate::mvcc::transaction::scan::rev_range::RevRange;
 use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
 use reifydb_persistence::Key;
 use reifydb_storage::Version;
+use reifydb_storage::memory::{Iter, Memory, Range, RevIter, RevRange};
 pub use write::TransactionTx;
 
 mod read;
@@ -32,13 +28,13 @@ mod write;
 
 pub struct Inner {
     tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
-    store: Store,
+    storage: Memory,
 }
 
 impl Inner {
     fn new(name: &str) -> Self {
         let tm = TransactionManager::new(name, 0);
-        Self { tm, store: Store::new() }
+        Self { tm, storage: Memory::new() }
     }
 
     fn version(&self) -> u64 {
@@ -102,32 +98,32 @@ pub enum Transaction {
 
 impl Optimistic {
     pub fn get(&self, key: &Key, version: Version) -> Option<Committed> {
-        self.store.get(key, version)
+        self.storage.get(key, version).map(|sv| sv.into())
     }
 
     pub fn contains_key(&self, key: &Key, version: Version) -> bool {
-        self.store.contains_key(key, version)
+        self.storage.contains_key(key, version)
     }
 
     pub fn iter(&self, version: Version) -> Iter<'_> {
-        self.store.iter(version)
+        self.storage.iter(version)
     }
 
     pub fn iter_rev(&self, version: Version) -> RevIter<'_> {
-        self.store.iter_rev(version)
+        self.storage.iter_rev(version)
     }
 
     pub fn range<R>(&self, range: R, version: Version) -> Range<'_, R>
     where
         R: RangeBounds<Key>,
     {
-        self.store.range(range, version)
+        self.storage.range(range, version)
     }
 
     pub fn range_rev<R>(&self, range: R, version: Version) -> RevRange<'_, R>
     where
         R: RangeBounds<Key>,
     {
-        self.store.range_rev(range, version)
+        self.storage.range_rev(range, version)
     }
 }

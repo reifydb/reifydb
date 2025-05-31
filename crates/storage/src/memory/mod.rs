@@ -9,18 +9,19 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+pub use iter::Iter;
+pub use iter_rev::RevIter;
+pub use range::Range;
+pub use range_rev::RevRange;
+
 mod iter;
 mod iter_rev;
 mod range;
 mod range_rev;
 mod value;
 
-use crate::Version;
-use crate::memory::iter::Iter;
-use crate::memory::iter_rev::RevIter;
-use crate::memory::range::Range;
-use crate::memory::range_rev::RevRange;
 use crate::memory::value::VersionedValues;
+use crate::{StoredValue, Version};
 use core::ops::Bound;
 use crossbeam_skiplist::SkipMap;
 use reifydb_persistence::{Action, Key, Value};
@@ -67,7 +68,7 @@ impl Memory {
 }
 
 impl Memory {
-    pub fn get(&self, key: &Key, version: Version) -> Option<(Key, Value, Version)> {
+    pub fn get(&self, key: &Key, version: Version) -> Option<StoredValue> {
         let item = self.mem_table.get(key)?;
         let (version, value) =
             item.value().upper_bound(Bound::Included(&version)).and_then(|v| {
@@ -78,7 +79,7 @@ impl Memory {
                 }
             })?;
 
-        Some((key.clone(), value, version))
+        Some(StoredValue { key: key.clone(), value, version })
     }
 
     pub fn contains_key(&self, key: &Key, version: Version) -> bool {

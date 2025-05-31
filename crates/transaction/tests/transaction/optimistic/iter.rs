@@ -16,8 +16,8 @@ use crate::{AsyncCowVec, as_value};
 use crate::{IntoValue, from_value};
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb_transaction::mvcc::transaction::scan::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::scan::rev_iter::TransactionRevIter;
+use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
+use reifydb_transaction::mvcc::transaction::iter_rev::TransactionRevIter;
 
 #[test]
 fn test_iter() {
@@ -31,18 +31,18 @@ fn test_iter() {
     let txn = engine.begin_read_only();
     let iter = txn.iter();
     let mut count = 0;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
+        assert_eq!(sv.key, as_key!(count));
+        assert_eq!(sv.value, as_value!(count));
     }
     assert_eq!(count, 3);
 
     let iter = txn.iter_rev();
     let mut count = 3;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
+    for sv in iter {
+        assert_eq!(sv.key, as_key!(count));
+        assert_eq!(sv.value, as_value!(count));
         count -= 1;
     }
     assert_eq!(count, 0);
@@ -58,19 +58,19 @@ fn test_iter2() {
 
     let iter = txn.iter().unwrap();
     let mut count = 0;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 0);
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 0);
     }
     assert_eq!(count, 3);
 
     let iter = txn.iter_rev().unwrap();
     let mut count = 3;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
+    for sv in iter {
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
         count -= 1;
     }
 
@@ -85,20 +85,20 @@ fn test_iter2() {
 
     let iter = txn.iter().unwrap();
     let mut count = 0;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 1);
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 1);
     }
     assert_eq!(count, 6);
 
     let iter = txn.iter_rev().unwrap();
     let mut count = 6;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 1);
+    for sv in iter {
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 1);
         count -= 1;
     }
 }
@@ -113,20 +113,20 @@ fn test_iter3() {
 
     let iter = txn.iter().unwrap();
     let mut count = 3;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 0);
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 0);
     }
     assert_eq!(count, 6);
 
     let iter = txn.iter_rev().unwrap();
     let mut count = 6;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 0);
+    for sv in iter {
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 0);
         count -= 1;
     }
     assert_eq!(count, 3);
@@ -140,20 +140,20 @@ fn test_iter3() {
 
     let iter = txn.iter().unwrap();
     let mut count = 0;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 1);
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 1);
     }
     assert_eq!(count, 6);
 
     let iter = txn.iter_rev().unwrap();
     let mut count = 6;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 1);
+    for sv in iter {
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 1);
         count -= 1;
     }
     assert_eq!(count, 0);

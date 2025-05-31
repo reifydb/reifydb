@@ -11,55 +11,31 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::types::{Committed, TransactionValue};
-use crate::mvcc::types::Pending;
 use core::cmp;
-use crossbeam_skiplist::map::Iter as MapIter;
-use std::ops::Bound;
 
-use reifydb_storage::Version;
-use crate::mvcc::store::value::VersionedValues;
+use crate::mvcc::types::Pending;
+use crate::mvcc::types::TransactionValue;
 use reifydb_core::either::Either;
-use reifydb_persistence::{Key, Value};
-use std::collections::btree_map::Iter as BTreeMapIter;
+use reifydb_persistence::Key;
+use reifydb_storage::memory::Range;
+use std::collections::btree_map::Range as BTreeMapRange;
+use std::ops::RangeBounds;
 
-pub struct Iter<'a> {
-    pub(crate) iter: MapIter<'a, Key, VersionedValues<Value>>,
-    pub(crate) version: Version,
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = TransactionValue;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let item = self.iter.next()?;
-            if let Some((version, value)) =
-                item.value().upper_bound(Bound::Included(&self.version)).and_then(|item| {
-                    if item.value().is_some() {
-                        Some((*item.key(), item.value().clone().unwrap()))
-                    } else {
-                        None
-                    }
-                })
-            {
-                return Some(Committed { key: item.key().clone(), value, version }.into());
-            }
-        }
-    }
-}
-
-pub struct TransactionIter<'a, C> {
-    committed: Iter<'a>,
-    pending: BTreeMapIter<'a, Key, Pending>,
+pub struct TransactionRange<'a, R, C>
+where
+    R: RangeBounds<Key> + 'a,
+{
+    pub(crate) committed: Range<'a, R>,
+    pub(crate) pending: BTreeMapRange<'a, Key, Pending>,
     next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<TransactionValue>,
     last_yielded_key: Option<Either<&'a Key, TransactionValue>>,
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, C> TransactionIter<'a, C>
+impl<'a, R, C> TransactionRange<'a, R, C>
 where
+    R: RangeBounds<Key> + 'a,
     C: Conflict,
 {
     fn advance_pending(&mut self) {
@@ -67,18 +43,18 @@ where
     }
 
     fn advance_committed(&mut self) {
-        self.next_committed = self.committed.next();
+        self.next_committed = self.committed.next().map(|sv| sv.into());
         if let (Some(item), Some(marker)) = (&self.next_committed, &mut self.marker) {
             marker.mark(item.key());
         }
     }
 
     pub fn new(
-        pending: BTreeMapIter<'a, Key, Pending>,
-        committed: Iter<'a>,
+        pending: BTreeMapRange<'a, Key, Pending>,
+        committed: Range<'a, R>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
-        let mut iterator = TransactionIter {
+        let mut iterator = TransactionRange {
             pending,
             committed,
             next_pending: None,
@@ -94,8 +70,9 @@ where
     }
 }
 
-impl<'a, C> Iterator for TransactionIter<'a, C>
+impl<'a, R, C> Iterator for TransactionRange<'a, R, C>
 where
+    R: RangeBounds<Key> + 'a,
     C: Conflict,
 {
     type Item = TransactionValue;

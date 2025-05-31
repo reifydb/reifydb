@@ -10,11 +10,11 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use reifydb_storage::Version;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
 use reifydb_persistence::{Action, Key, Value};
+use reifydb_storage::Version;
 
 pub struct TransactionManagerTx<C, P> {
     pub(super) version: Version,
@@ -137,7 +137,6 @@ where
                 if pending.was_removed() {
                     return Ok(Some(false));
                 }
-
                 // Fulfill from buffer.
                 Ok(Some(true))
             }

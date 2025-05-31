@@ -37,8 +37,8 @@ fn test_write_skew() {
     assert_eq!(1, engine.version());
 
     let get_bal = |txn: &mut TransactionTx, k: &Key| -> u64 {
-        let item = txn.get(k).unwrap().unwrap();
-        let val = item.value();
+        let sv = txn.get(k).unwrap().unwrap();
+        let val = sv.value();
         from_value!(u64, val)
     };
 
@@ -98,9 +98,9 @@ fn test_black_white() {
     let indices = white
         .iter()
         .unwrap()
-        .filter_map(|item| {
-            if *item.value() == as_value!("black".to_string()) {
-                Some(item.key().clone())
+        .filter_map(|sv| {
+            if *sv.value() == as_value!("black".to_string()) {
+                Some(sv.key().clone())
             } else {
                 None
             }
@@ -115,9 +115,9 @@ fn test_black_white() {
     let indices = black
         .iter()
         .unwrap()
-        .filter_map(|item| {
-            if *item.value() == as_value!("white".to_string()) {
-                Some(item.key().clone())
+        .filter_map(|sv| {
+            if *sv.value() == as_value!("white".to_string()) {
+                Some(sv.key().clone())
             } else {
                 None
             }
@@ -136,8 +136,8 @@ fn test_black_white() {
     let result: Vec<_> = rx.iter().collect();
     assert_eq!(result.len(), 10);
 
-    result.iter().for_each(|item| {
-        assert_eq!(*item.value(), as_value!("black".to_string()));
+    result.iter().for_each(|sv| {
+        assert_eq!(sv.value, as_value!("black".to_string()));
     })
 }
 
@@ -194,9 +194,9 @@ fn test_primary_colors() {
     let indices = red
         .iter()
         .unwrap()
-        .filter_map(|item| {
-            if *item.value() == as_value!("yellow".to_string()) {
-                Some(item.key().clone())
+        .filter_map(|sv| {
+            if *sv.value() == as_value!("yellow".to_string()) {
+                Some(sv.key().clone())
             } else {
                 None
             }
@@ -210,9 +210,9 @@ fn test_primary_colors() {
     let indices = yellow
         .iter()
         .unwrap()
-        .filter_map(|item| {
-            if *item.value() == as_value!("blue".to_string()) {
-                Some(item.key().clone())
+        .filter_map(|sv| {
+            if *sv.value() == as_value!("blue".to_string()) {
+                Some(sv.key().clone())
             } else {
                 None
             }
@@ -226,9 +226,9 @@ fn test_primary_colors() {
     let indices = red_two
         .iter()
         .unwrap()
-        .filter_map(|item| {
-            if *item.value() == as_value!("blue".to_string()) {
-                Some(item.key().clone())
+        .filter_map(|sv| {
+            if *sv.value() == as_value!("blue".to_string()) {
+                Some(sv.key().clone())
             } else {
                 None
             }
@@ -253,8 +253,8 @@ fn test_primary_colors() {
     let mut yellow_count = 0;
     let mut blue_count = 0;
 
-    result.iter().for_each(|item| {
-        let value = from_value!(String, item.value());
+    result.iter().for_each(|sv| {
+        let value = from_value!(String, sv.value);
         match value.as_str() {
             "red" => red_count += 1,
             "yellow" => yellow_count += 1,

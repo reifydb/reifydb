@@ -16,8 +16,8 @@ use crate::{AsyncCowVec, as_value};
 use crate::{IntoValue, from_value};
 use Bound::{Excluded, Included};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb_transaction::mvcc::transaction::scan::range::TransactionRange;
-use reifydb_transaction::mvcc::transaction::scan::rev_range::TransactionRevRange;
+use reifydb_transaction::mvcc::transaction::range::TransactionRange;
+use reifydb_transaction::mvcc::transaction::range_rev::TransactionRevRange;
 use std::ops::Bound;
 
 #[test]
@@ -34,20 +34,20 @@ fn test_range() {
     let txn = engine.begin_read_only();
     let iter = txn.range(one_to_four.clone());
     let mut count = 0;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 1);
+        assert_eq!(sv.key, as_key!(count));
+        assert_eq!(sv.value, as_value!(count));
+        assert_eq!(sv.version, 1);
     }
     assert_eq!(count, 3);
 
     let iter = txn.range_rev(one_to_four);
     let mut count = 3;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 1);
+    for sv in iter {
+        assert_eq!(sv.key, as_key!(count));
+        assert_eq!(sv.value, as_value!(count));
+        assert_eq!(sv.version, 1);
         count -= 1;
     }
     assert_eq!(count, 0);
@@ -65,21 +65,21 @@ fn test_range2() {
 
     let iter = txn.range(one_to_four.clone()).unwrap();
     let mut count = 0;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        let item = item.clone();
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 0);
+        let sv = sv.clone();
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 0);
     }
     assert_eq!(count, 3);
 
     let iter = txn.range_rev(one_to_four.clone()).unwrap();
     let mut count = 3;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 0);
+    for sv in iter {
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 0);
         count -= 1;
     }
     assert_eq!(count, 0);
@@ -95,18 +95,18 @@ fn test_range2() {
 
     let iter = txn.range(one_to_five.clone()).unwrap();
     let mut count = 0;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
     }
     assert_eq!(count, 4);
 
     let iter = txn.range_rev(one_to_five.clone()).unwrap();
     let mut count = 4;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
+    for sv in iter {
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
         count -= 1;
     }
     assert_eq!(count, 0);
@@ -124,20 +124,20 @@ fn test_range3() {
 
     let iter = txn.range(four_to_seven.clone()).unwrap();
     let mut count = 3;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 0);
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 0);
     }
     assert_eq!(count, 6);
 
     let iter = txn.range_rev(four_to_seven.clone()).unwrap();
     let mut count = 6;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
-        assert_eq!(item.version(), 0);
+    for sv in iter {
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
+        assert_eq!(sv.version(), 0);
         count -= 1;
     }
     assert_eq!(count, 3);
@@ -153,18 +153,18 @@ fn test_range3() {
 
     let iter = txn.range(one_to_five.clone()).unwrap();
     let mut count = 0;
-    for item in iter {
+    for sv in iter {
         count += 1;
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
     }
     assert_eq!(count, 4);
 
     let iter = txn.range_rev(one_to_five.clone()).unwrap();
     let mut count = 4;
-    for item in iter {
-        assert_eq!(item.key(), &as_key!(count));
-        assert_eq!(item.value(), &as_value!(count));
+    for sv in iter {
+        assert_eq!(sv.key(), &as_key!(count));
+        assert_eq!(sv.value(), &as_value!(count));
         count -= 1;
     }
     assert_eq!(count, 0);
@@ -246,13 +246,13 @@ fn test_range_edge() {
     txn.as_of_version(5);
     let itr = txn.range(one_to_ten.clone()).unwrap();
     let mut count = 2;
-    for item in itr {
-        dbg!(&item);
-        if *item.key() == as_key!(1) {
+    for sv in itr {
+        dbg!(&sv);
+        if *sv.key() == as_key!(1) {
             count -= 1;
         }
 
-        if *item.key() == as_key!(3) {
+        if *sv.key() == as_key!(3) {
             count -= 1;
         }
     }
@@ -260,12 +260,12 @@ fn test_range_edge() {
 
     let itr = txn.range(one_to_ten.clone()).unwrap();
     let mut count = 2;
-    for item in itr {
-        if *item.key() == as_key!(1) {
+    for sv in itr {
+        if *sv.key() == as_key!(1) {
             count -= 1;
         }
 
-        if *item.key() == as_key!(3) {
+        if *sv.key() == as_key!(3) {
             count -= 1;
         }
     }

@@ -16,21 +16,23 @@ pub use crate::mvcc::types::*;
 pub use write::*;
 
 use oracle::*;
-/// If your `K` does not implement [`Hash`](core::hash::Hash), you can use [`SerializableDb`] instead.
+pub mod iter;
+pub mod iter_rev;
+
 pub mod optimistic;
 mod oracle;
+pub mod range;
+pub mod range_rev;
 pub mod read;
-pub mod scan;
 pub mod serializable;
-
 mod write;
-use reifydb_storage::Version;
+
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::error::TransactionError;
 use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::read::TransactionManagerRx;
+use reifydb_storage::Version;
 
-/// A multi-writer multi-reader MVCC, ACID, Serializable Snapshot Isolation transaction manager.
 pub struct TransactionManager<C, P> {
     inner: Arc<Oracle<C>>,
     _phantom: std::marker::PhantomData<(P)>,
@@ -47,8 +49,6 @@ where
     C: Conflict,
     P: PendingWrites,
 {
-    /// Create a new writable transaction with
-    /// the default pending writes manager to store the pending writes.
     pub fn write(&self) -> Result<TransactionManagerTx<C, P>, TransactionError> {
         let read_ts = self.inner.read_ts();
         Ok(TransactionManagerTx {
@@ -66,8 +66,6 @@ where
 }
 
 impl<C, P> TransactionManager<C, P> {
-    /// Create a new transaction manager with the given name (just for logging or debugging, use your crate name is enough)
-    /// and the current version (provided by the database).
     pub fn new(name: &str, current_version: Version) -> Self {
         Self {
             inner: Arc::new({
@@ -86,21 +84,16 @@ impl<C, P> TransactionManager<C, P> {
         }
     }
 
-    /// Returns the current read version of the transaction manager.
-
     pub fn version(&self) -> u64 {
         self.inner.read_ts()
     }
 }
 
 impl<C, P> TransactionManager<C, P> {
-    /// Returns a timestamp which hints that any versions under this timestamp can be discarded.
-    /// This is useful when users want to implement compaction/merge functionality.
     pub fn discard_hint(&self) -> u64 {
         self.inner.discard_at_or_below()
     }
 
-    /// Create a new writable transaction.
     pub fn read(&self) -> TransactionManagerRx<C, P> {
         TransactionManagerRx { db: self.clone(), version: self.inner.read_ts() }
     }

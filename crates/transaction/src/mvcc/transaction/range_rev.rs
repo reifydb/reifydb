@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 // This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
 // originally licensed under the Apache License, Version 2.0.
 // Original copyright:
@@ -11,63 +14,29 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
-use core::cmp;
-use crossbeam_skiplist::map::Range as MapRange;
+use core::{cmp, iter::Rev};
 
-use reifydb_storage::Version;
-use crate::mvcc::types::{Committed, TransactionValue};
-use crate::mvcc::store::value::VersionedValues;
 use crate::mvcc::types::Pending;
+use crate::mvcc::types::TransactionValue;
 use reifydb_core::either::Either;
-use reifydb_persistence::{Key, Value};
+use reifydb_persistence::Key;
+use reifydb_storage::memory::RevRange;
 use std::collections::btree_map::Range as BTreeMapRange;
-use std::ops::{Bound, RangeBounds};
+use std::ops::RangeBounds;
 
-pub struct Range<'a, R>
-where
-    R: RangeBounds<Key>,
-{
-    pub(crate) range: MapRange<'a, Key, R, Key, VersionedValues<Value>>,
-    pub(crate) version: Version,
-}
-
-impl<'a, R> Iterator for Range<'a, R>
-where
-    R: RangeBounds<Key>,
-{
-    type Item = TransactionValue;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let item = self.range.next()?;
-            if let Some((version, value)) =
-                item.value().upper_bound(Bound::Included(&self.version)).and_then(|item| {
-                    if item.value().is_some() {
-                        Some((*item.key(), item.value().clone().unwrap()))
-                    } else {
-                        None
-                    }
-                })
-            {
-                return Some(Committed { key: item.key().clone(), version, value }.into());
-            }
-        }
-    }
-}
-
-pub struct TransactionRange<'a, R, C>
+pub struct TransactionRevRange<'a, R, C>
 where
     R: RangeBounds<Key> + 'a,
 {
-    pub(crate) committed: Range<'a, R>,
-    pub(crate) pending: BTreeMapRange<'a, Key, Pending>,
+    pub(crate) committed: RevRange<'a, R>,
+    pub(crate) pending: Rev<BTreeMapRange<'a, Key, Pending>>,
     next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<TransactionValue>,
     last_yielded_key: Option<Either<&'a Key, TransactionValue>>,
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, R, C> TransactionRange<'a, R, C>
+impl<'a, R, C> TransactionRevRange<'a, R, C>
 where
     R: RangeBounds<Key> + 'a,
     C: Conflict,
@@ -77,18 +46,18 @@ where
     }
 
     fn advance_committed(&mut self) {
-        self.next_committed = self.committed.next();
+        self.next_committed = self.committed.next().map(|sv| sv.into());
         if let (Some(item), Some(marker)) = (&self.next_committed, &mut self.marker) {
             marker.mark(item.key());
         }
     }
 
     pub fn new(
-        pending: BTreeMapRange<'a, Key, Pending>,
-        committed: Range<'a, R>,
+        pending: Rev<BTreeMapRange<'a, Key, Pending>>,
+        committed: RevRange<'a, R>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
-        let mut iterator = TransactionRange {
+        let mut iterator = Self {
             pending,
             committed,
             next_pending: None,
@@ -104,7 +73,7 @@ where
     }
 }
 
-impl<'a, R, C> Iterator for TransactionRange<'a, R, C>
+impl<'a, R, C> Iterator for TransactionRevRange<'a, R, C>
 where
     R: RangeBounds<Key> + 'a,
     C: Conflict,
@@ -117,8 +86,8 @@ where
                 // Both pending and committed iterators have items to yield.
                 (Some((pending_key, _)), Some(committed)) => {
                     match pending_key.cmp(committed.key()) {
-                        // Pending item has a smaller key, so yield this one.
-                        cmp::Ordering::Less => {
+                        // Pending item has a larger key, so yield this one.
+                        cmp::Ordering::Greater => {
                             let (key, value) = self.next_pending.take().unwrap();
                             self.advance_pending();
                             self.last_yielded_key = Some(Either::Left(key));
@@ -135,8 +104,8 @@ where
                             // Loop again to check the next item without yielding anything this time.
                             continue;
                         }
-                        // Committed item has a smaller key, so we consider yielding this one.
-                        cmp::Ordering::Greater => {
+                        // Committed item has a larger key, so we consider yielding this one.
+                        cmp::Ordering::Less => {
                             let committed = self.next_committed.take().unwrap();
                             self.advance_committed(); // Prepare the next committed item for future iterations.
                             // Yield the committed item if it has not been yielded before.

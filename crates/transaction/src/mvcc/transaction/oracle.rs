@@ -21,9 +21,7 @@ pub(super) struct OracleInner<C> {
 
     pub last_cleanup_ts: u64,
 
-    /// Contains all committed writes (contains fingerprints
-    /// of keys written and their latest commit counter).
-    pub(super) committed_txns: Vec<CommittedTxn<C>>,
+    pub(super) committed: Vec<CommittedTxn<C>>,
 }
 
 pub(super) enum CreateCommitTimestampResult<C> {
@@ -41,7 +39,6 @@ pub(super) struct Oracle<C> {
 
     /// Used by DB
     pub(super) rx: WaterMark,
-
     /// Used to block new transaction, so all previous commits are visible to a new read.
     pub(super) tx: WaterMark,
 
@@ -61,7 +58,7 @@ where
     ) -> CreateCommitTimestampResult<C> {
         let mut inner = self.inner.lock().unwrap();
 
-        for committed_txn in inner.committed_txns.iter() {
+        for committed_txn in inner.committed.iter() {
             // If the committed_txn.ts is less than txn.read_ts that implies that the
             // committed_txn finished before the current transaction started.
             // We don't need to check for conflict in that case.
@@ -98,7 +95,7 @@ where
 
         // We should ensure that txns are not added to o.committedTxns slice when
         // conflict detection is disabled otherwise this slice would keep growing.
-        inner.committed_txns.push(CommittedTxn { ts, conflict_manager: Some(conflicts) });
+        inner.committed.push(CommittedTxn { ts, conflict_manager: Some(conflicts) });
 
         CreateCommitTimestampResult::Timestamp(ts)
     }
@@ -126,7 +123,7 @@ where
 
         inner.last_cleanup_ts = max_read_ts;
 
-        inner.committed_txns.retain(|txn| txn.ts > max_read_ts);
+        inner.committed.retain(|txn| txn.ts > max_read_ts);
     }
 }
 
@@ -142,7 +139,7 @@ impl<C> Oracle<C> {
             inner: Mutex::new(OracleInner {
                 next_txn_ts,
                 last_cleanup_ts: 0,
-                committed_txns: Vec::new(),
+                committed: Vec::new(),
             }),
             rx: WaterMark::new(rx_mark_name, closer.clone()),
             tx: WaterMark::new(tx_mark_name, closer.clone()),
@@ -199,6 +196,5 @@ impl<S> Drop for Oracle<S> {
 #[derive(Debug)]
 pub(super) struct CommittedTxn<C> {
     ts: u64,
-    /// Keeps track of the entries written at timestamp ts.
     conflict_manager: Option<C>,
 }

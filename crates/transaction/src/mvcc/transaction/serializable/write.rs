@@ -9,16 +9,16 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::transaction::scan::rev_range::TransactionRevRange;
+use crate::mvcc::transaction::range_rev::TransactionRevRange;
 
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::types::TransactionValue;
 use crate::mvcc::transaction::TransactionManagerTx;
-use crate::mvcc::transaction::scan::iter::TransactionIter;
-use crate::mvcc::transaction::scan::range::TransactionRange;
-use crate::mvcc::transaction::scan::rev_iter::TransactionRevIter;
+use crate::mvcc::transaction::iter::TransactionIter;
+use crate::mvcc::transaction::range::TransactionRange;
+use crate::mvcc::transaction::iter_rev::TransactionRevIter;
 use reifydb_persistence::{Key, Value};
 use std::ops::Bound;
 use std::ops::RangeBounds;
@@ -57,10 +57,11 @@ impl SerializableTransaction {
     ///    background upon successful completion of writes or any error during write.
 
     pub fn commit(&mut self) -> Result<(), MvccError> {
-        self.wtm.commit(|ents| {
-            self.db.inner.map.apply(ents);
-            Ok(())
-        })
+        // self.wtm.commit(|ents| {
+        //     self.db.inner.map.apply(ents);
+        //     Ok(())
+        // })
+        unimplemented!()
     }
 }
 
