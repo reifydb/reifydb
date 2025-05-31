@@ -68,7 +68,7 @@ impl crate::Rx for TransactionTx {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)))
+            self.scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)))
                 .unwrap()
                 // .scan(start_key..end_key) // range is [start_key, end_key)
                 .map(|r| Row::decode(&r.value()).unwrap())
@@ -100,7 +100,7 @@ impl crate::Tx for TransactionTx {
         rows: Vec<Row>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, table)))
+            .scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, table)))
             .unwrap()
             .count();
 
@@ -126,7 +126,7 @@ impl crate::Tx for TransactionTx {
         rows: Vec<Vec<Value>>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, series)))
+            .scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, series)))
             .unwrap()
             .count();
 

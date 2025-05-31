@@ -20,7 +20,7 @@ use crate::mvcc::types::Pending;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::either::Either;
 use reifydb_persistence::Key;
-use reifydb_storage::memory::RevRange;
+use reifydb_storage::memory::RangeRev;
 use std::collections::btree_map::Range as BTreeMapRange;
 use std::ops::RangeBounds;
 
@@ -28,7 +28,7 @@ pub struct TransactionRevRange<'a, R, C>
 where
     R: RangeBounds<Key> + 'a,
 {
-    pub(crate) committed: RevRange<'a, R>,
+    pub(crate) committed: RangeRev<'a, R>,
     pub(crate) pending: Rev<BTreeMapRange<'a, Key, Pending>>,
     next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<TransactionValue>,
@@ -53,9 +53,9 @@ where
     }
 
     pub fn new(
-        pending: Rev<BTreeMapRange<'a, Key, Pending>>,
-        committed: RevRange<'a, R>,
-        marker: Option<Marker<'a, C>>,
+		pending: Rev<BTreeMapRange<'a, Key, Pending>>,
+		committed: RangeRev<'a, R>,
+		marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = Self {
             pending,

@@ -14,12 +14,13 @@ use crate::mvcc::transaction::range_rev::TransactionRevRange;
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
-use crate::mvcc::types::TransactionValue;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::iter::TransactionIter;
-use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::iter_rev::TransactionRevIter;
+use crate::mvcc::transaction::range::TransactionRange;
+use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, Value};
+use reifydb_storage::{Contains, Get, Scan, ScanRange, ScanRangeRev, ScanRev};
 use std::ops::Bound;
 use std::ops::RangeBounds;
 
@@ -67,7 +68,6 @@ impl SerializableTransaction {
 
 impl SerializableTransaction {
     /// Returns the read version of the transaction.
-
     pub fn version(&self) -> u64 {
         self.wtm.version()
     }
@@ -85,12 +85,15 @@ impl SerializableTransaction {
         match self.wtm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.db.inner.map.contains_key(key, version)),
+            None => Ok(self.db.inner.map.contains(key, version)),
         }
     }
 
     /// Get a value from the database.
-    pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b Key) -> Result<Option<TransactionValue>, TransactionError> {
+    pub fn get<'a, 'b: 'a>(
+        &'a mut self,
+        key: &'b Key,
+    ) -> Result<Option<TransactionValue>, TransactionError> {
         let version = self.wtm.version();
         match self.wtm.get(key)? {
             Some(v) => {
@@ -115,34 +118,34 @@ impl SerializableTransaction {
     }
 
     /// Iterate over the entries of the write transaction.
-    pub fn iter(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
+    pub fn scan(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
 
         let start: Bound<Key> = Bound::Unbounded;
         let end: Bound<Key> = Bound::Unbounded;
         marker.mark_range((start, end));
-        let committed = self.db.inner.map.iter(version);
+        let committed = self.db.inner.map.scan(version);
         let pending = pm.iter();
 
         Ok(TransactionIter::new(pending, committed, None))
     }
 
     /// Iterate over the entries of the write transaction in reverse order.
-    pub fn iter_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
+    pub fn scan_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
         let start: Bound<Key> = Bound::Unbounded;
         let end: Bound<Key> = Bound::Unbounded;
         marker.mark_range((start, end));
-        let committed = self.db.inner.map.iter_rev(version);
+        let committed = self.db.inner.map.scan_rev(version);
         let pending = pm.iter().rev();
 
         Ok(TransactionRevIter::new(pending, committed, None))
     }
 
     /// Returns an iterator over the subset of entries of the database.
-    pub fn range<'a, R>(
+    pub fn scan_range<'a, R>(
         &'a mut self,
         range: R,
     ) -> Result<TransactionRange<'a, R, BTreeConflict>, TransactionError>
@@ -155,13 +158,13 @@ impl SerializableTransaction {
         let end = range.end_bound();
         marker.mark_range((start, end));
         let pending = pm.range_comparable((start, end));
-        let committed = self.db.inner.map.range(range, version);
+        let committed = self.db.inner.map.scan_range(range, version);
 
         Ok(TransactionRange::new(pending, committed, Some(marker)))
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev<'a, R>(
+    pub fn scan_range_rev<'a, R>(
         &'a mut self,
         range: R,
     ) -> Result<TransactionRevRange<'a, R, BTreeConflict>, TransactionError>
@@ -174,7 +177,7 @@ impl SerializableTransaction {
         let end = range.end_bound();
         marker.mark_range((start, end));
         let pending = pm.range_comparable((start, end)).rev();
-        let committed = self.db.inner.map.range_rev(range, version);
+        let committed = self.db.inner.map.scan_range_rev(range, version);
 
         Ok(TransactionRevRange::new(pending, committed, Some(marker)))
     }

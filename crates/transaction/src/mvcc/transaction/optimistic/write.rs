@@ -19,7 +19,7 @@ use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRevRange;
 use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, Value};
-use reifydb_storage::Version;
+use reifydb_storage::{Apply, Version};
 use std::ops::RangeBounds;
 
 /// A optimistic concurrency control transaction over the [`Optimistic`].
@@ -84,7 +84,7 @@ impl TransactionTx {
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.engine.inner.storage.contains_key(key, version)),
+            None => Ok(self.engine.inner.storage.contains(key, version)),
         }
     }
 
@@ -102,38 +102,33 @@ impl TransactionTx {
         }
     }
 
-    /// Set a new key-value pair.
     pub fn set(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
         self.tm.set(key, value)
     }
 
-    /// Remove a key.
     pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {
         self.tm.remove(key)
     }
 
-    /// Iterate over the entries of the write transaction.
-    pub fn iter(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
+    pub fn scan(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let pending = pm.iter();
-        let commited = self.engine.inner.storage.iter(version);
+        let commited = self.engine.inner.storage.scan(version);
 
         Ok(TransactionIter::new(pending, commited, Some(marker)))
     }
 
-    /// Iterate over the entries of the write transaction in reverse order.
-    pub fn iter_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
+    pub fn scan_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let pending = pm.iter().rev();
-        let commited = self.engine.inner.storage.iter_rev(version);
+        let commited = self.engine.inner.storage.scan_rev(version);
 
         Ok(TransactionRevIter::new(pending, commited, Some(marker)))
     }
 
-    /// Returns an iterator over the subset of entries of the database.
-    pub fn range<'a, R>(
+    pub fn scan_range<'a, R>(
         &'a mut self,
         range: R,
     ) -> Result<TransactionRange<'a, R, BTreeConflict>, TransactionError>
@@ -145,13 +140,12 @@ impl TransactionTx {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
-        let commited = self.engine.inner.storage.range(range, version);
+        let commited = self.engine.inner.storage.scan_range(range, version);
 
         Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
 
-    /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev<'a, R>(
+    pub fn scan_range_rev<'a, R>(
         &'a mut self,
         range: R,
     ) -> Result<TransactionRevRange<'a, R, BTreeConflict>, TransactionError>
@@ -163,7 +157,7 @@ impl TransactionTx {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
-        let commited = self.engine.inner.storage.range_rev(range, version);
+        let commited = self.engine.inner.storage.scan_range_rev(range, version);
 
         Ok(TransactionRevRange::new(pending.rev(), commited, Some(marker)))
     }

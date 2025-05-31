@@ -63,7 +63,7 @@ fn test_range2() {
 
     let one_to_four = (Included(as_key!(1)), Excluded(as_key!(4)));
 
-    let iter = txn.range(one_to_four.clone()).unwrap();
+    let iter = txn.scan_range(one_to_four.clone()).unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
@@ -74,7 +74,7 @@ fn test_range2() {
     }
     assert_eq!(count, 3);
 
-    let iter = txn.range_rev(one_to_four.clone()).unwrap();
+    let iter = txn.scan_range_rev(one_to_four.clone()).unwrap();
     let mut count = 3;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
@@ -93,7 +93,7 @@ fn test_range2() {
 
     let one_to_five = (Included(as_key!(1)), Excluded(as_key!(5)));
 
-    let iter = txn.range(one_to_five.clone()).unwrap();
+    let iter = txn.scan_range(one_to_five.clone()).unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
@@ -102,7 +102,7 @@ fn test_range2() {
     }
     assert_eq!(count, 4);
 
-    let iter = txn.range_rev(one_to_five.clone()).unwrap();
+    let iter = txn.scan_range_rev(one_to_five.clone()).unwrap();
     let mut count = 4;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
@@ -122,7 +122,7 @@ fn test_range3() {
 
     let four_to_seven = (Included(as_key!(4)), Excluded(as_key!(7)));
 
-    let iter = txn.range(four_to_seven.clone()).unwrap();
+    let iter = txn.scan_range(four_to_seven.clone()).unwrap();
     let mut count = 3;
     for sv in iter {
         count += 1;
@@ -132,7 +132,7 @@ fn test_range3() {
     }
     assert_eq!(count, 6);
 
-    let iter = txn.range_rev(four_to_seven.clone()).unwrap();
+    let iter = txn.scan_range_rev(four_to_seven.clone()).unwrap();
     let mut count = 6;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
@@ -151,7 +151,7 @@ fn test_range3() {
     txn.set(as_key!(2), as_value!(2)).unwrap();
     txn.set(as_key!(3), as_value!(3)).unwrap();
 
-    let iter = txn.range(one_to_five.clone()).unwrap();
+    let iter = txn.scan_range(one_to_five.clone()).unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
@@ -160,7 +160,7 @@ fn test_range3() {
     }
     assert_eq!(count, 4);
 
-    let iter = txn.range_rev(one_to_five.clone()).unwrap();
+    let iter = txn.scan_range_rev(one_to_five.clone()).unwrap();
     let mut count = 4;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
@@ -238,13 +238,13 @@ fn test_range_edge() {
     let one_to_ten = (Included(as_key!(1)), Excluded(as_key!(10)));
 
     let mut txn = engine.begin();
-    let itr = txn.range(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range(one_to_ten.clone()).unwrap();
     check_iter(itr, &[13, 32]);
-    let itr = txn.range_rev(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range_rev(one_to_ten.clone()).unwrap();
     check_rev_iter(itr, &[32, 13]);
 
     txn.as_of_version(5);
-    let itr = txn.range(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range(one_to_ten.clone()).unwrap();
     let mut count = 2;
     for sv in itr {
         dbg!(&sv);
@@ -258,7 +258,7 @@ fn test_range_edge() {
     }
     assert_eq!(0, count);
 
-    let itr = txn.range(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range(one_to_ten.clone()).unwrap();
     let mut count = 2;
     for sv in itr {
         if *sv.key() == as_key!(1) {
@@ -272,22 +272,22 @@ fn test_range_edge() {
     assert_eq!(0, count);
 
     txn.as_of_version(3);
-    let itr = txn.range(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range(one_to_ten.clone()).unwrap();
     check_iter(itr, &[13, 23, 32]);
 
-    let itr = txn.range_rev(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range_rev(one_to_ten.clone()).unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
     txn.as_of_version(2);
-    let itr = txn.range(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range(one_to_ten.clone()).unwrap();
     check_iter(itr, &[12, 32]);
 
-    let itr = txn.range_rev(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range_rev(one_to_ten.clone()).unwrap();
     check_rev_iter(itr, &[32, 12]);
 
     txn.as_of_version(1);
-    let itr = txn.range(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range(one_to_ten.clone()).unwrap();
     check_iter(itr, &[31]);
-    let itr = txn.range_rev(one_to_ten.clone()).unwrap();
+    let itr = txn.scan_range_rev(one_to_ten.clone()).unwrap();
     check_rev_iter(itr, &[31]);
 }

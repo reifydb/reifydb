@@ -12,9 +12,20 @@
 use crossbeam_skiplist::map::Iter as MapIter;
 use std::ops::Bound;
 
+use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
+use crate::storage::Scan;
 use crate::{StoredValue, Version};
 use reifydb_persistence::{Key, Value};
+
+impl Scan for Memory {
+    type ScanIter<'a> = Iter<'a>;
+
+    fn scan(&self, version: Version) -> Self::ScanIter<'_> {
+        let iter = self.memory.iter();
+        Iter { iter, version }
+    }
+}
 
 pub struct Iter<'a> {
     pub(crate) iter: MapIter<'a, Key, VersionedValues<Value>>,

@@ -20,12 +20,12 @@ use core::{cmp, iter::Rev};
 use crate::mvcc::types::Pending;
 use reifydb_core::either::Either;
 use reifydb_persistence::Key;
-use reifydb_storage::memory::RevIter;
+use reifydb_storage::memory::IterRev;
 use std::collections::btree_map::Iter as BTreeMapIter;
 
 pub struct TransactionRevIter<'a, C> {
     pending: Rev<BTreeMapIter<'a, Key, Pending>>,
-    committed: RevIter<'a>,
+    committed: IterRev<'a>,
     next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<TransactionValue>,
     last_yielded_key: Option<Either<&'a Key, TransactionValue>>,
@@ -48,9 +48,9 @@ where
     }
 
     pub fn new(
-        pending: Rev<BTreeMapIter<'a, Key, Pending>>,
-        committed: RevIter<'a>,
-        marker: Option<Marker<'a, C>>,
+		pending: Rev<BTreeMapIter<'a, Key, Pending>>,
+		committed: IterRev<'a>,
+		marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = TransactionRevIter {
             pending,

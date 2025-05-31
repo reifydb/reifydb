@@ -11,10 +11,25 @@
 
 use crossbeam_skiplist::map::Range as MapRange;
 
+use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
+use crate::storage::ScanRange;
 use crate::{StoredValue, Version};
 use reifydb_persistence::{Key, Value};
 use std::ops::{Bound, RangeBounds};
+
+impl<R> ScanRange<R> for Memory
+where
+    R: RangeBounds<Key>,
+{
+    type ScanRangeIter<'a>  = Range<'a, R>
+    where
+        Self: 'a;
+
+    fn scan_range(&self, range: R, version: Version) -> Self::ScanRangeIter<'_> {
+        Range { range: self.memory.range(range), version }
+    }
+}
 
 pub struct Range<'a, R>
 where

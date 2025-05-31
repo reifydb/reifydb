@@ -65,10 +65,10 @@ fn test_versions() {
         }
 
         // Try retrieving the latest version forward and reverse.
-        let itr = txn.iter().unwrap();
+        let itr = txn.scan().unwrap();
         check_iter(itr, idx);
 
-        let itr = txn.iter_rev().unwrap();
+        let itr = txn.scan_rev().unwrap();
         check_rev_iter(itr, idx);
     }
 

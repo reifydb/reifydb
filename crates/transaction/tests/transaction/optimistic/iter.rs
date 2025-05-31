@@ -56,7 +56,7 @@ fn test_iter2() {
     txn.set(as_key!(2), as_value!(2)).unwrap();
     txn.set(as_key!(3), as_value!(3)).unwrap();
 
-    let iter = txn.iter().unwrap();
+    let iter = txn.scan().unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
@@ -66,7 +66,7 @@ fn test_iter2() {
     }
     assert_eq!(count, 3);
 
-    let iter = txn.iter_rev().unwrap();
+    let iter = txn.scan_rev().unwrap();
     let mut count = 3;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
@@ -83,7 +83,7 @@ fn test_iter2() {
     txn.set(as_key!(5), as_value!(5)).unwrap();
     txn.set(as_key!(6), as_value!(6)).unwrap();
 
-    let iter = txn.iter().unwrap();
+    let iter = txn.scan().unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
@@ -93,7 +93,7 @@ fn test_iter2() {
     }
     assert_eq!(count, 6);
 
-    let iter = txn.iter_rev().unwrap();
+    let iter = txn.scan_rev().unwrap();
     let mut count = 6;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
@@ -111,7 +111,7 @@ fn test_iter3() {
     txn.set(as_key!(5), as_value!(5)).unwrap();
     txn.set(as_key!(6), as_value!(6)).unwrap();
 
-    let iter = txn.iter().unwrap();
+    let iter = txn.scan().unwrap();
     let mut count = 3;
     for sv in iter {
         count += 1;
@@ -121,7 +121,7 @@ fn test_iter3() {
     }
     assert_eq!(count, 6);
 
-    let iter = txn.iter_rev().unwrap();
+    let iter = txn.scan_rev().unwrap();
     let mut count = 6;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
@@ -138,7 +138,7 @@ fn test_iter3() {
     txn.set(as_key!(2), as_value!(2)).unwrap();
     txn.set(as_key!(3), as_value!(3)).unwrap();
 
-    let iter = txn.iter().unwrap();
+    let iter = txn.scan().unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
@@ -148,7 +148,7 @@ fn test_iter3() {
     }
     assert_eq!(count, 6);
 
-    let iter = txn.iter_rev().unwrap();
+    let iter = txn.scan_rev().unwrap();
     let mut count = 6;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
@@ -228,32 +228,32 @@ fn test_iter_edge_case() {
     };
 
     let mut txn = engine.begin();
-    let itr = txn.iter().unwrap();
-    let itr5 = txn4.iter().unwrap();
+    let itr = txn.scan().unwrap();
+    let itr5 = txn4.scan().unwrap();
     check_iter(itr, &[13, 32]);
     check_iter(itr5, &[13, 24]);
 
-    let itr = txn.iter_rev().unwrap();
-    let itr5 = txn4.iter_rev().unwrap();
+    let itr = txn.scan_rev().unwrap();
+    let itr5 = txn4.scan_rev().unwrap();
     check_rev_iter(itr, &[32, 13]);
     check_rev_iter(itr5, &[24, 13]);
 
     txn.as_of_version(3);
-    let itr = txn.iter().unwrap();
+    let itr = txn.scan().unwrap();
     check_iter(itr, &[13, 23, 32]);
-    let itr = txn.iter_rev().unwrap();
+    let itr = txn.scan_rev().unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
     txn.as_of_version(2);
-    let itr = txn.iter().unwrap();
+    let itr = txn.scan().unwrap();
     check_iter(itr, &[12, 32]);
-    let itr = txn.iter_rev().unwrap();
+    let itr = txn.scan_rev().unwrap();
     check_rev_iter(itr, &[32, 12]);
 
     txn.as_of_version(1);
-    let itr = txn.iter().unwrap();
+    let itr = txn.scan().unwrap();
     check_iter(itr, &[31]);
-    let itr = txn.iter_rev().unwrap();
+    let itr = txn.scan_rev().unwrap();
     check_rev_iter(itr, &[31]);
 }
 
@@ -319,28 +319,28 @@ fn test_iter_edge_case2() {
     };
 
     let mut txn = engine.begin();
-    let itr = txn.iter().unwrap();
+    let itr = txn.scan().unwrap();
     check_iter(itr, &[13, 32]);
-    let itr = txn.iter_rev().unwrap();
+    let itr = txn.scan_rev().unwrap();
     check_rev_iter(itr, &[32, 13]);
 
     txn.as_of_version(3);
-    let itr = txn.iter().unwrap();
+    let itr = txn.scan().unwrap();
     check_iter(itr, &[13, 23, 32]);
 
-    let itr = txn.iter_rev().unwrap();
+    let itr = txn.scan_rev().unwrap();
     check_rev_iter(itr, &[32, 23, 13]);
 
     txn.as_of_version(2);
-    let itr = txn.iter().unwrap();
+    let itr = txn.scan().unwrap();
     check_iter(itr, &[12, 32]);
 
-    let itr = txn.iter_rev().unwrap();
+    let itr = txn.scan_rev().unwrap();
     check_rev_iter(itr, &[32, 12]);
 
     txn.as_of_version(1);
-    let itr = txn.iter().unwrap();
+    let itr = txn.scan().unwrap();
     check_iter(itr, &[31]);
-    let itr = txn.iter_rev().unwrap();
+    let itr = txn.scan_rev().unwrap();
     check_rev_iter(itr, &[31]);
 }

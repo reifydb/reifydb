@@ -16,7 +16,7 @@ use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::Key;
 use std::ops::RangeBounds;
-use reifydb_storage::memory::{Iter, Range, RevIter, RevRange};
+use reifydb_storage::memory::{Iter, Range, IterRev, RangeRev};
 
 pub struct TransactionRx {
     pub(crate) engine: Optimistic,
@@ -51,13 +51,13 @@ impl TransactionRx {
     /// Returns an iterator over the entries of the database.
     pub fn iter(&self) -> Iter<'_> {
         let version = self.rtm.version();
-        self.engine.iter(version)
+        self.engine.scan(version)
     }
 
     /// Returns a reverse iterator over the entries of the database.
-    pub fn iter_rev(&self) -> RevIter<'_> {
+    pub fn iter_rev(&self) -> IterRev<'_> {
         let version = self.rtm.version();
-        self.engine.iter_rev(version)
+        self.engine.scan_rev(version)
     }
 
     /// Returns an iterator over the subset of entries of the database.
@@ -66,15 +66,15 @@ impl TransactionRx {
         R: RangeBounds<Key>,
     {
         let version = self.rtm.version();
-        self.engine.range(range, version)
+        self.engine.scan_range(range, version)
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev<R>(&self, range: R) -> RevRange<'_, R>
+    pub fn range_rev<R>(&self, range: R) -> RangeRev<'_, R>
     where
         R: RangeBounds<Key>,
     {
         let version = self.rtm.version();
-        self.engine.range_rev(range, version)
+        self.engine.scan_range_rev(range, version)
     }
 }

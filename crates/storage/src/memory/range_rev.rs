@@ -12,12 +12,28 @@
 use core::iter::Rev;
 use crossbeam_skiplist::map::Range as MapRange;
 
+use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
+use crate::storage::ScanRangeRev;
 use crate::{StoredValue, Version};
 use reifydb_persistence::{Key, Value};
 use std::ops::{Bound, RangeBounds};
 
-pub struct RevRange<'a, R>
+impl<R> ScanRangeRev<R> for Memory
+where
+    R: RangeBounds<Key>,
+{
+    type ScanRangeIterRev<'a>
+        = RangeRev<'a, R>
+    where
+        Self: 'a;
+
+    fn scan_range_rev(&self, range: R, version: Version) -> Self::ScanRangeIterRev<'_> {
+        RangeRev { range: self.memory.range(range).rev(), version }
+    }
+}
+
+pub struct RangeRev<'a, R>
 where
     R: RangeBounds<Key>,
 {
@@ -25,7 +41,7 @@ where
     pub(crate) version: Version,
 }
 
-impl<'a, R> Iterator for RevRange<'a, R>
+impl<'a, R> Iterator for RangeRev<'a, R>
 where
     R: RangeBounds<Key>,
 {

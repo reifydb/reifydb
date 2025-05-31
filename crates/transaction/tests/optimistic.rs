@@ -249,7 +249,7 @@ impl<'a> testscript::Runner for MvccRunner {
                         }
                     }
                     Transaction::Tx(tx) => {
-                        for item in tx.range(range).unwrap().into_iter() {
+                        for item in tx.scan_range(range).unwrap().into_iter() {
                             kvs.push((item.key().clone(), item.value().to_vec()));
                         }
                     }

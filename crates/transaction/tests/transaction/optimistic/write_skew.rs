@@ -96,7 +96,7 @@ fn test_black_white() {
 
     let mut white = engine.begin();
     let indices = white
-        .iter()
+        .scan()
         .unwrap()
         .filter_map(|sv| {
             if *sv.value() == as_value!("black".to_string()) {
@@ -113,7 +113,7 @@ fn test_black_white() {
 
     let mut black = engine.begin();
     let indices = black
-        .iter()
+        .scan()
         .unwrap()
         .filter_map(|sv| {
             if *sv.value() == as_value!("white".to_string()) {
@@ -192,7 +192,7 @@ fn test_primary_colors() {
 
     let mut red = engine.begin();
     let indices = red
-        .iter()
+        .scan()
         .unwrap()
         .filter_map(|sv| {
             if *sv.value() == as_value!("yellow".to_string()) {
@@ -208,7 +208,7 @@ fn test_primary_colors() {
 
     let mut yellow = engine.begin();
     let indices = yellow
-        .iter()
+        .scan()
         .unwrap()
         .filter_map(|sv| {
             if *sv.value() == as_value!("blue".to_string()) {
@@ -224,7 +224,7 @@ fn test_primary_colors() {
 
     let mut red_two = engine.begin();
     let indices = red_two
-        .iter()
+        .scan()
         .unwrap()
         .filter_map(|sv| {
             if *sv.value() == as_value!("blue".to_string()) {

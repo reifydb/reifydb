@@ -15,7 +15,7 @@ use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
 use reifydb_persistence::Key;
 use std::ops::RangeBounds;
-use reifydb_storage::memory::{Iter, Range, RevIter, RevRange};
+use reifydb_storage::memory::{Iter, Range, IterRev, RangeRev};
 
 pub struct ReadTransaction<C> {
     pub(crate) db: Serializable,
@@ -59,7 +59,7 @@ impl<C> ReadTransaction<C> {
     }
 
     /// Returns a reverse iterator over the entries of the database.
-    pub fn iter_rev(&self) -> RevIter<'_> {
+    pub fn iter_rev(&self) -> IterRev<'_> {
         let version = self.rx.version();
         // self.db.as_inner().iter_rev(version)
         unimplemented!()
@@ -76,7 +76,7 @@ impl<C> ReadTransaction<C> {
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev<R>(&self, range: R) -> RevRange<'_, R>
+    pub fn range_rev<R>(&self, range: R) -> RangeRev<'_, R>
     where
         R: RangeBounds<Key>,
     {

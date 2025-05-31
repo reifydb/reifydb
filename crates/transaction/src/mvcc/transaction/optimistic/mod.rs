@@ -19,8 +19,8 @@ use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
 use reifydb_persistence::Key;
-use reifydb_storage::Version;
-use reifydb_storage::memory::{Iter, Memory, Range, RevIter, RevRange};
+use reifydb_storage::memory::{Iter, IterRev, Memory, Range, RangeRev};
+use reifydb_storage::{Contains, Get, Scan, ScanRange, ScanRangeRev, ScanRev, Version};
 pub use write::TransactionTx;
 
 mod read;
@@ -102,28 +102,28 @@ impl Optimistic {
     }
 
     pub fn contains_key(&self, key: &Key, version: Version) -> bool {
-        self.storage.contains_key(key, version)
+        self.storage.contains(key, version)
     }
 
-    pub fn iter(&self, version: Version) -> Iter<'_> {
-        self.storage.iter(version)
+    pub fn scan(&self, version: Version) -> Iter<'_> {
+        self.storage.scan(version)
     }
 
-    pub fn iter_rev(&self, version: Version) -> RevIter<'_> {
-        self.storage.iter_rev(version)
+    pub fn scan_rev(&self, version: Version) -> IterRev<'_> {
+        self.storage.scan_rev(version)
     }
 
-    pub fn range<R>(&self, range: R, version: Version) -> Range<'_, R>
+    pub fn scan_range<R>(&self, range: R, version: Version) -> Range<'_, R>
     where
         R: RangeBounds<Key>,
     {
-        self.storage.range(range, version)
+        self.storage.scan_range(range, version)
     }
 
-    pub fn range_rev<R>(&self, range: R, version: Version) -> RevRange<'_, R>
+    pub fn scan_range_rev<R>(&self, range: R, version: Version) -> RangeRev<'_, R>
     where
         R: RangeBounds<Key>,
     {
-        self.storage.range_rev(range, version)
+        self.storage.scan_range_rev(range, version)
     }
 }

@@ -6,12 +6,14 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use error::Error;
 use reifydb_persistence::{Key, Value};
-use std::result;
+pub use storage::{
+    Apply, Contains, Get, Scan, ScanIterator, ScanIteratorRev, ScanRange, ScanRangeIterator,
+    ScanRangeIteratorRev, ScanRangeRev, ScanRev, Storage,
+};
 
-mod error;
 pub mod memory;
+mod storage;
 
 pub type Version = u64;
 
@@ -20,5 +22,3 @@ pub struct StoredValue {
     pub value: Value,
     pub version: Version,
 }
-
-pub type Result<T> = result::Result<T, Error>;
