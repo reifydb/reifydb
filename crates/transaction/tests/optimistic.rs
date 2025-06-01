@@ -17,6 +17,7 @@ use std::fmt::Write as _;
 use reifydb_core::CowVec;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
+use reifydb_persistence::KeyRange;
 use reifydb_testing::testscript;
 use reifydb_testing::util::parse_key_range;
 use reifydb_transaction::Tx;
@@ -228,8 +229,9 @@ impl<'a> testscript::Runner for MvccRunner {
             "scan" => {
                 let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
-                let range =
-                    parse_key_range(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."))?;
+                let range: KeyRange =
+                    parse_key_range(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."))?
+                        .into();
                 args.reject_rest()?;
 
                 let mut kvs = Vec::new();

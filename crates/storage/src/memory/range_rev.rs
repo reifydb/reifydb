@@ -16,35 +16,26 @@ use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
 use crate::storage::ScanRangeRev;
 use crate::{StoredValue, Version};
-use reifydb_persistence::{Key, Value};
-use std::ops::{Bound, RangeBounds};
+use reifydb_persistence::{Key, KeyRange, Value};
+use std::ops::Bound;
 
-impl<R> ScanRangeRev<R> for Memory
-where
-    R: RangeBounds<Key>,
-{
+impl ScanRangeRev for Memory {
     type ScanRangeIterRev<'a>
-        = RangeRev<'a, R>
+        = RangeRev<'a>
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: R, version: Version) -> Self::ScanRangeIterRev<'_> {
+    fn scan_range_rev(&self, range: KeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
         RangeRev { range: self.memory.range(range).rev(), version }
     }
 }
 
-pub struct RangeRev<'a, R>
-where
-    R: RangeBounds<Key>,
-{
-    pub(crate) range: Rev<MapRange<'a, Key, R, Key, VersionedValues<Value>>>,
+pub struct RangeRev<'a> {
+    pub(crate) range: Rev<MapRange<'a, Key, KeyRange, Key, VersionedValues<Value>>>,
     pub(crate) version: Version,
 }
 
-impl<'a, R> Iterator for RangeRev<'a, R>
-where
-    R: RangeBounds<Key>,
-{
+impl<'a> Iterator for RangeRev<'a> {
     type Item = StoredValue;
 
     fn next(&mut self) -> Option<Self::Item> {

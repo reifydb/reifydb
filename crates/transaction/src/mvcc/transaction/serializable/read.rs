@@ -10,12 +10,11 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::types::TransactionValue;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
-use reifydb_persistence::Key;
-use std::ops::RangeBounds;
-use reifydb_storage::memory::{Iter, Range, IterRev, RangeRev};
+use crate::mvcc::types::TransactionValue;
+use reifydb_persistence::{Key, KeyRange};
+use reifydb_storage::memory::{Iter, IterRev, Range, RangeRev};
 
 pub struct ReadTransaction<C> {
     pub(crate) db: Serializable,
@@ -66,20 +65,14 @@ impl<C> ReadTransaction<C> {
     }
 
     /// Returns an iterator over the subset of entries of the database.
-    pub fn range<R>(&self, range: R) -> Range<'_, R>
-    where
-        R: RangeBounds<Key>,
-    {
+    pub fn range(&self, range: KeyRange) -> Range<'_> {
         let version = self.rx.version();
         // self.db.as_inner().range(range, version)
         unimplemented!()
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev<R>(&self, range: R) -> RangeRev<'_, R>
-    where
-        R: RangeBounds<Key>,
-    {
+    pub fn range_rev(&self, range: KeyRange) -> RangeRev<'_> {
         let version = self.rx.version();
         // self.db.as_inner().range_rev(range, version)
         unimplemented!()

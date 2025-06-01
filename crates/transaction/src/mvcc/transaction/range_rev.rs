@@ -22,13 +22,9 @@ use reifydb_core::either::Either;
 use reifydb_persistence::Key;
 use reifydb_storage::memory::RangeRev;
 use std::collections::btree_map::Range as BTreeMapRange;
-use std::ops::RangeBounds;
 
-pub struct TransactionRevRange<'a, R, C>
-where
-    R: RangeBounds<Key> + 'a,
-{
-    pub(crate) committed: RangeRev<'a, R>,
+pub struct TransactionRevRange<'a, C> {
+    pub(crate) committed: RangeRev<'a>,
     pub(crate) pending: Rev<BTreeMapRange<'a, Key, Pending>>,
     next_pending: Option<(&'a Key, &'a Pending)>,
     next_committed: Option<TransactionValue>,
@@ -36,9 +32,8 @@ where
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, R, C> TransactionRevRange<'a, R, C>
+impl<'a, C> TransactionRevRange<'a, C>
 where
-    R: RangeBounds<Key> + 'a,
     C: Conflict,
 {
     fn advance_pending(&mut self) {
@@ -53,9 +48,9 @@ where
     }
 
     pub fn new(
-		pending: Rev<BTreeMapRange<'a, Key, Pending>>,
-		committed: RangeRev<'a, R>,
-		marker: Option<Marker<'a, C>>,
+        pending: Rev<BTreeMapRange<'a, Key, Pending>>,
+        committed: RangeRev<'a>,
+        marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = Self {
             pending,
@@ -73,9 +68,8 @@ where
     }
 }
 
-impl<'a, R, C> Iterator for TransactionRevRange<'a, R, C>
+impl<'a, C> Iterator for TransactionRevRange<'a, C>
 where
-    R: RangeBounds<Key> + 'a,
     C: Conflict,
 {
     type Item = TransactionValue;

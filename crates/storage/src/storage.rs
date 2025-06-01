@@ -2,13 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{StoredValue, Version};
-use reifydb_persistence::{Action, Key};
-use std::ops::RangeBounds;
+use reifydb_persistence::{Action, Key, KeyRange};
 
-pub trait Storage<R>:
-    Send + Sync + Apply + Get + Contains + Scan + ScanRev + ScanRange<R> + ScanRangeRev<R>
-where
-    R: RangeBounds<Key>,
+pub trait Storage:
+    Send + Sync + Apply + Get + Contains + Scan + ScanRev + ScanRange + ScanRangeRev
 {
 }
 
@@ -46,50 +43,26 @@ pub trait ScanRev {
     fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_>;
 }
 
-pub trait ScanRangeIterator<R>: Iterator<Item = StoredValue>
-where
-    R: RangeBounds<Key>,
-{
-}
+pub trait ScanRangeIterator: Iterator<Item = StoredValue> {}
 
-impl<T, R> ScanRangeIterator<R> for T
-where
-    T: Iterator<Item = StoredValue>,
-    R: RangeBounds<Key>,
-{
-}
+impl<T> ScanRangeIterator for T where T: Iterator<Item = StoredValue> {}
 
-pub trait ScanRange<R>
-where
-    R: RangeBounds<Key>,
-{
-    type ScanRangeIter<'a>: ScanRangeIterator<R>
+pub trait ScanRange {
+    type ScanRangeIter<'a>: ScanRangeIterator
     where
         Self: 'a;
 
-    fn scan_range(&self, range: R, version: Version) -> Self::ScanRangeIter<'_>;
+    fn scan_range(&self, range: KeyRange, version: Version) -> Self::ScanRangeIter<'_>;
 }
 
-pub trait ScanRangeIteratorRev<R>: Iterator<Item = StoredValue>
-where
-    R: RangeBounds<Key>,
-{
-}
+pub trait ScanRangeIteratorRev: Iterator<Item = StoredValue> {}
 
-impl<T, R> ScanRangeIteratorRev<R> for T
-where
-    T: Iterator<Item = StoredValue>,
-    R: RangeBounds<Key>,
-{
-}
+impl<T> ScanRangeIteratorRev for T where T: Iterator<Item = StoredValue> {}
 
-pub trait ScanRangeRev<R>
-where
-    R: RangeBounds<Key>,
-{
-    type ScanRangeIterRev<'a>: ScanRangeIteratorRev<R>
+pub trait ScanRangeRev {
+    type ScanRangeIterRev<'a>: ScanRangeIteratorRev
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: R, version: Version) -> Self::ScanRangeIterRev<'_>;
+    fn scan_range_rev(&self, range: KeyRange, version: Version) -> Self::ScanRangeIterRev<'_>;
 }

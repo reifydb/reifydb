@@ -15,34 +15,25 @@ use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
 use crate::storage::ScanRange;
 use crate::{StoredValue, Version};
-use reifydb_persistence::{Key, Value};
+use reifydb_persistence::{Key, KeyRange, Value};
 use std::ops::{Bound, RangeBounds};
 
-impl<R> ScanRange<R> for Memory
-where
-    R: RangeBounds<Key>,
-{
-    type ScanRangeIter<'a>  = Range<'a, R>
+impl ScanRange for Memory {
+    type ScanRangeIter<'a>  = Range<'a>
     where
         Self: 'a;
 
-    fn scan_range(&self, range: R, version: Version) -> Self::ScanRangeIter<'_> {
+    fn scan_range(&self, range: KeyRange, version: Version) -> Self::ScanRangeIter<'_> {
         Range { range: self.memory.range(range), version }
     }
 }
 
-pub struct Range<'a, R>
-where
-    R: RangeBounds<Key>,
-{
-    pub(crate) range: MapRange<'a, Key, R, Key, VersionedValues<Value>>,
+pub struct Range<'a> {
+    pub(crate) range: MapRange<'a, Key, KeyRange, Key, VersionedValues<Value>>,
     pub(crate) version: Version,
 }
 
-impl<'a, R> Iterator for Range<'a, R>
-where
-    R: RangeBounds<Key>,
-{
+impl<'a> Iterator for Range<'a> {
     type Item = StoredValue;
 
     fn next(&mut self) -> Option<Self::Item> {

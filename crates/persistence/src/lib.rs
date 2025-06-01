@@ -11,6 +11,7 @@ pub use lmdb::{Lmdb, LmdbBatch};
 pub use memory::{Memory, MemoryScanIter};
 pub use persistence::{BeginBatch, Persistence, PersistenceBatch};
 use reifydb_core::AsyncCowVec;
+use std::ops::{Bound, RangeBounds};
 use std::{cmp, result};
 
 mod error;
@@ -23,6 +24,28 @@ pub type Result<T> = result::Result<T, Error>;
 
 pub type Key = AsyncCowVec<u8>;
 pub type Value = AsyncCowVec<u8>;
+
+#[derive(Clone)]
+pub struct KeyRange {
+    pub start: Bound<Key>,
+    pub end: Bound<Key>,
+}
+
+impl RangeBounds<Key> for KeyRange {
+    fn start_bound(&self) -> Bound<&Key> {
+        self.start.as_ref()
+    }
+
+    fn end_bound(&self) -> Bound<&Key> {
+        self.end.as_ref()
+    }
+}
+
+impl From<(Bound<Key>, Bound<Key>)> for KeyRange {
+    fn from(value: (Bound<Key>, Bound<Key>)) -> Self {
+        Self { start: value.0, end: value.1 }
+    }
+}
 
 /// A scan iterator over key-value pairs, returned by [`reifydb_persistence::scan()`].
 pub trait ScanIterator: Iterator<Item = Result<(Key, Value)>> {}

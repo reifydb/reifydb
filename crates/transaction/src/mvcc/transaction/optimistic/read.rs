@@ -14,9 +14,8 @@ use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::types::TransactionValue;
-use reifydb_persistence::Key;
-use std::ops::RangeBounds;
-use reifydb_storage::memory::{Iter, Range, IterRev, RangeRev};
+use reifydb_persistence::{Key, KeyRange};
+use reifydb_storage::memory::{Iter, IterRev, Range, RangeRev};
 
 pub struct TransactionRx {
     pub(crate) engine: Optimistic,
@@ -61,19 +60,13 @@ impl TransactionRx {
     }
 
     /// Returns an iterator over the subset of entries of the database.
-    pub fn range<R>(&self, range: R) -> Range<'_, R>
-    where
-        R: RangeBounds<Key>,
-    {
+    pub fn range(&self, range: KeyRange) -> Range<'_> {
         let version = self.rtm.version();
         self.engine.scan_range(range, version)
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev<R>(&self, range: R) -> RangeRev<'_, R>
-    where
-        R: RangeBounds<Key>,
-    {
+    pub fn range_rev(&self, range: KeyRange) -> RangeRev<'_> {
         let version = self.rtm.version();
         self.engine.scan_range_rev(range, version)
     }

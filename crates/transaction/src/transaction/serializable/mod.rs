@@ -44,7 +44,7 @@ impl crate::Rx for ReadTransaction<BTreeConflict> {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)))
+            self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)).into())
                 .map(|r| Row::decode(&r.value).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -71,12 +71,14 @@ impl crate::Rx for SerializableTransaction {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)))
-                .unwrap()
-                // .scan(start_key..end_key) // range is [start_key, end_key)
-                .map(|r| Row::decode(&r.value()).unwrap())
-                .collect::<Vec<_>>()
-                .into_iter(),
+            self.scan_range(
+                keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)).into(),
+            )
+            .unwrap()
+            // .scan(start_key..end_key) // range is [start_key, end_key)
+            .map(|r| Row::decode(&r.value()).unwrap())
+            .collect::<Vec<_>>()
+            .into_iter(),
         ))
     }
 }
@@ -103,7 +105,7 @@ impl crate::Tx for SerializableTransaction {
         rows: Vec<Row>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, table)))
+            .scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, table)).into())
             .unwrap()
             .count();
 
@@ -129,7 +131,7 @@ impl crate::Tx for SerializableTransaction {
         rows: Vec<Vec<Value>>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, series)))
+            .scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, series)).into())
             .unwrap()
             .count();
 

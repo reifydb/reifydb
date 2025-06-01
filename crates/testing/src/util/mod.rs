@@ -13,12 +13,12 @@ use regex::Regex;
 use reifydb_core::AsyncCowVec;
 use reifydb_core::encoding::binary::decode_binary;
 use std::error::Error;
-use std::ops::{Bound, RangeBounds};
+use std::ops::Bound;
 
 /// Parses an binary key range, using Rust range syntax.
 pub fn parse_key_range(
     s: &str,
-) -> Result<impl RangeBounds<AsyncCowVec<u8>> + Clone, Box<dyn Error>> {
+) -> Result<(Bound<AsyncCowVec<u8>>, Bound<AsyncCowVec<u8>>), Box<dyn Error>> {
     let mut bound = (Bound::<AsyncCowVec<u8>>::Unbounded, Bound::<AsyncCowVec<u8>>::Unbounded);
     let re = Regex::new(r"^(\S+)?\.\.(=)?(\S+)?").expect("invalid regex");
     let groups = re.captures(s).ok_or_else(|| format!("invalid range {s}"))?;

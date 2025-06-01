@@ -37,4 +37,4 @@ impl Memory {
     }
 }
 
-impl<R> Storage<R> for Memory where R: RangeBounds<Key> {}
+impl Storage for Memory {}

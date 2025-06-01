@@ -19,7 +19,7 @@ use crate::mvcc::transaction::iter::TransactionIter;
 use crate::mvcc::transaction::iter_rev::TransactionRevIter;
 use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::types::TransactionValue;
-use reifydb_persistence::{Key, Value};
+use reifydb_persistence::{Key, KeyRange, Value};
 use reifydb_storage::{Contains, Get, Scan, ScanRange, ScanRangeRev, ScanRev};
 use std::ops::Bound;
 use std::ops::RangeBounds;
@@ -145,13 +145,10 @@ impl SerializableTransaction {
     }
 
     /// Returns an iterator over the subset of entries of the database.
-    pub fn scan_range<'a, R>(
+    pub fn scan_range<'a>(
         &'a mut self,
-        range: R,
-    ) -> Result<TransactionRange<'a, R, BTreeConflict>, TransactionError>
-    where
-        R: RangeBounds<Key> + 'a,
-    {
+        range: KeyRange,
+    ) -> Result<TransactionRange<'a, BTreeConflict>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -164,13 +161,10 @@ impl SerializableTransaction {
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn scan_range_rev<'a, R>(
+    pub fn scan_range_rev<'a>(
         &'a mut self,
-        range: R,
-    ) -> Result<TransactionRevRange<'a, R, BTreeConflict>, TransactionError>
-    where
-        R: RangeBounds<Key> + 'a,
-    {
+        range: KeyRange,
+    ) -> Result<TransactionRevRange<'a, BTreeConflict>, TransactionError> {
         let version = self.wtm.version();
         let (mut marker, pm) = self.wtm.marker_with_pending_writes();
         let start = range.start_bound();

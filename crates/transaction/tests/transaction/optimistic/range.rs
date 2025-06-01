@@ -15,6 +15,7 @@ use crate::keycode;
 use crate::{AsyncCowVec, as_value};
 use crate::{IntoValue, from_value};
 use Bound::{Excluded, Included};
+use reifydb_persistence::KeyRange;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::range::TransactionRange;
 use reifydb_transaction::mvcc::transaction::range_rev::TransactionRevRange;
@@ -29,7 +30,7 @@ fn test_range() {
     txn.set(as_key!(3), as_value!(3)).unwrap();
     txn.commit().unwrap();
 
-    let one_to_four = (Included(as_key!(1)), Excluded(as_key!(4)));
+    let one_to_four: KeyRange = (Included(as_key!(1)), Excluded(as_key!(4))).into();
 
     let txn = engine.begin_read_only();
     let iter = txn.range(one_to_four.clone());
@@ -61,7 +62,7 @@ fn test_range2() {
     txn.set(as_key!(2), as_value!(2)).unwrap();
     txn.set(as_key!(3), as_value!(3)).unwrap();
 
-    let one_to_four = (Included(as_key!(1)), Excluded(as_key!(4)));
+    let one_to_four: KeyRange = (Included(as_key!(1)), Excluded(as_key!(4))).into();
 
     let iter = txn.scan_range(one_to_four.clone()).unwrap();
     let mut count = 0;
@@ -91,7 +92,7 @@ fn test_range2() {
     txn.set(as_key!(5), as_value!(5)).unwrap();
     txn.set(as_key!(6), as_value!(6)).unwrap();
 
-    let one_to_five = (Included(as_key!(1)), Excluded(as_key!(5)));
+    let one_to_five: KeyRange = (Included(as_key!(1)), Excluded(as_key!(5))).into();
 
     let iter = txn.scan_range(one_to_five.clone()).unwrap();
     let mut count = 0;
@@ -120,7 +121,7 @@ fn test_range3() {
     txn.set(as_key!(5), as_value!(5)).unwrap();
     txn.set(as_key!(6), as_value!(6)).unwrap();
 
-    let four_to_seven = (Included(as_key!(4)), Excluded(as_key!(7)));
+    let four_to_seven: KeyRange = (Included(as_key!(4)), Excluded(as_key!(7))).into();
 
     let iter = txn.scan_range(four_to_seven.clone()).unwrap();
     let mut count = 3;
@@ -144,7 +145,7 @@ fn test_range3() {
 
     txn.commit().unwrap();
 
-    let one_to_five = (Included(as_key!(1)), Excluded(as_key!(5)));
+    let one_to_five: KeyRange = (Included(as_key!(1)), Excluded(as_key!(5))).into();
 
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_value!(1)).unwrap();
@@ -217,7 +218,7 @@ fn test_range_edge() {
         assert_eq!(4, engine.version());
     }
 
-    let check_iter = |itr: TransactionRange<'_, _, _>, expected: &[u64]| {
+    let check_iter = |itr: TransactionRange<'_, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));
@@ -226,7 +227,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevRange<'_, _, _>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionRevRange<'_, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));
@@ -235,7 +236,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let one_to_ten = (Included(as_key!(1)), Excluded(as_key!(10)));
+    let one_to_ten: KeyRange = (Included(as_key!(1)), Excluded(as_key!(10))).into();
 
     let mut txn = engine.begin();
     let itr = txn.scan_range(one_to_ten.clone()).unwrap();

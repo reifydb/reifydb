@@ -128,13 +128,10 @@ impl TransactionTx {
         Ok(TransactionRevIter::new(pending, commited, Some(marker)))
     }
 
-    pub fn scan_range<'a, R>(
+    pub fn scan_range<'a>(
         &'a mut self,
-        range: R,
-    ) -> Result<TransactionRange<'a, R, BTreeConflict>, TransactionError>
-    where
-        R: RangeBounds<Key> + 'a,
-    {
+        range: KeyRange,
+    ) -> Result<TransactionRange<'a, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -145,13 +142,10 @@ impl TransactionTx {
         Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
 
-    pub fn scan_range_rev<'a, R>(
+    pub fn scan_range_rev<'a>(
         &'a mut self,
-        range: R,
-    ) -> Result<TransactionRevRange<'a, R, BTreeConflict>, TransactionError>
-    where
-        R: RangeBounds<Key> + 'a,
-    {
+        range: KeyRange,
+    ) -> Result<TransactionRevRange<'a, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();

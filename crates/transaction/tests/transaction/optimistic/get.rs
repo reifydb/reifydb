@@ -15,11 +15,12 @@ use crate::keycode;
 use crate::{AsyncCowVec, as_value};
 use crate::{IntoValue, from_value};
 use Bound::{Excluded, Included};
+use reifydb_persistence::KeyRange;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
-use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::range::TransactionRange;
 use reifydb_transaction::mvcc::transaction::iter_rev::TransactionRevIter;
+use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
+use reifydb_transaction::mvcc::transaction::range::TransactionRange;
 use reifydb_transaction::mvcc::transaction::range_rev::TransactionRevRange;
 use std::ops::Bound;
 
@@ -285,7 +286,7 @@ fn test_range_edge() {
         assert_eq!(4, engine.version());
     }
 
-    let check_iter = |itr: TransactionRange<'_, _, _>, expected: &[u64]| {
+    let check_iter = |itr: TransactionRange<'_, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));
@@ -294,7 +295,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevRange<'_, _, _>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionRevRange<'_, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));
@@ -303,7 +304,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let one_to_ten = (Included(as_key!(1)), Excluded(as_key!(10)));
+    let one_to_ten = KeyRange { start: Included(as_key!(1)), end: Excluded(as_key!(10)) };
 
     let mut txn = engine.begin();
     let itr = txn.scan_range(one_to_ten.clone()).unwrap();

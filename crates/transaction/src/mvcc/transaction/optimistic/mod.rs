@@ -18,7 +18,7 @@ use crate::mvcc::transaction::TransactionManager;
 
 use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
-use reifydb_persistence::Key;
+use reifydb_persistence::{Key, KeyRange};
 use reifydb_storage::memory::{Iter, IterRev, Memory, Range, RangeRev};
 use reifydb_storage::{Contains, Get, Scan, ScanRange, ScanRangeRev, ScanRev, Version};
 pub use write::TransactionTx;
@@ -113,17 +113,11 @@ impl Optimistic {
         self.storage.scan_rev(version)
     }
 
-    pub fn scan_range<R>(&self, range: R, version: Version) -> Range<'_, R>
-    where
-        R: RangeBounds<Key>,
-    {
+    pub fn scan_range(&self, range: KeyRange, version: Version) -> Range<'_> {
         self.storage.scan_range(range, version)
     }
 
-    pub fn scan_range_rev<R>(&self, range: R, version: Version) -> RangeRev<'_, R>
-    where
-        R: RangeBounds<Key>,
-    {
+    pub fn scan_range_rev(&self, range: KeyRange, version: Version) -> RangeRev<'_> {
         self.storage.scan_range_rev(range, version)
     }
 }
