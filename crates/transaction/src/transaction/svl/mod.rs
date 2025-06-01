@@ -4,28 +4,30 @@
 use crate::transaction::svl::lock::RwLock;
 use crate::transaction::svl::transaction::{TransactionRx, TransactionTx};
 pub use error::Error;
+use reifydb_storage::Storage;
+use std::ops::Deref;
 
 mod error;
 mod lock;
 mod transaction;
 
-pub struct Svl<P: ::reifydb_persistence::Persistence> {
-    inner: RwLock<SvlInner<P>>,
+pub struct Svl<S: Storage> {
+    inner: RwLock<SvlInner<S>>,
 }
 
-pub struct SvlInner<P: ::reifydb_persistence::Persistence> {
-    pub persistence: P,
+pub struct SvlInner<S: Storage> {
+    pub storage: S,
 }
 
-impl<P: ::reifydb_persistence::Persistence> Svl<P> {
-    pub fn new(persistence: P) -> Self {
-        Self { inner: RwLock::new(SvlInner { persistence }) }
+impl<S: Storage> Svl<S> {
+    pub fn new(storage: S) -> Self {
+        Self { inner: RwLock::new(SvlInner { storage }) }
     }
 }
 
-impl<P: reifydb_persistence::Persistence> crate::Transaction<P> for Svl<P> {
-    type Rx = TransactionRx<P>;
-    type Tx = TransactionTx<P>;
+impl<S: Storage> crate::Transaction<S> for Svl<S> {
+    type Rx = TransactionRx<S>;
+    type Tx = TransactionTx<S>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         let guard = self.inner.read();

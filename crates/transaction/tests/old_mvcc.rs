@@ -42,13 +42,13 @@
 //     })
 // }
 //
-// pub struct MvccRunner<P: Persistence> {
-//     mvcc: Mvcc<Emit<P>>,
-//     txs: HashMap<String, Transaction<Emit<P>>>,
+// pub struct MvccRunner<S: Storage> {
+//     mvcc: Mvcc<Emit<S>>,
+//     txs: HashMap<String, Transaction<Emit<S>>>,
 //     operations: Receiver<Operation>,
 // }
 //
-// impl<P: Persistence> MvccRunner<P> {
+// impl<S: Storage> MvccRunner<S> {
 //     fn new(persistence: P) -> Self {
 //         let (tx, rx) = mpsc::channel();
 //         Self { mvcc: Mvcc::new(Emit::new(persistence, tx)), txs: HashMap::new(), operations: rx }
@@ -58,7 +58,7 @@
 //     fn get_tx(
 //         &mut self,
 //         prefix: &Option<String>,
-//     ) -> Result<&'_ mut Transaction<Emit<P>>, Box<dyn StdError>> {
+//     ) -> Result<&'_ mut Transaction<Emit<S>>, Box<dyn StdError>> {
 //         let name = Self::tx_name(prefix)?;
 //         self.txs.get_mut(name).ok_or(format!("unknown tx {name}").into())
 //     }

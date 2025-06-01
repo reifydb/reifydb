@@ -4,25 +4,25 @@
 use crate::DB;
 use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
-use reifydb_persistence::Persistence;
-use reifydb_transaction::{catalog_init, Transaction};
+use reifydb_storage::Storage;
+use reifydb_transaction::{Transaction, catalog_init};
 use tokio::task::spawn_blocking;
 
-pub struct Embedded<P: Persistence + 'static, T: Transaction<P> + 'static> {
-    engine: Engine<P, T>,
+pub struct Embedded<S: Storage + 'static, T: Transaction<S> + 'static> {
+    engine: Engine<S, T>,
 }
 
-impl<P, T> Clone for Embedded<P, T>
+impl<S, T> Clone for Embedded<S, T>
 where
-    P: Persistence,
-    T: Transaction<P>,
+    S: Storage,
+    T: Transaction<S>,
 {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
 
-impl<P: Persistence, T: Transaction<P>> Embedded<P, T> {
+impl<S: Storage, T: Transaction<S>> Embedded<S, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
         catalog_init();
@@ -30,7 +30,7 @@ impl<P: Persistence, T: Transaction<P>> Embedded<P, T> {
     }
 }
 
-impl<'a, P: Persistence + 'static, T: Transaction<P> + 'static> DB<'a> for Embedded<P, T> {
+impl<'a, S: Storage + 'static, T: Transaction<S> + 'static> DB<'a> for Embedded<S, T> {
     async fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();

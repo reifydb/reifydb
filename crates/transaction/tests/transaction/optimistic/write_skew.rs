@@ -17,6 +17,7 @@ use crate::{as_key, as_value, from_value};
 use MvccError::Transaction;
 use TransactionError::Conflict;
 use reifydb_persistence::Key;
+use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::MvccError;
 use reifydb_transaction::mvcc::error::TransactionError;
 use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
@@ -27,7 +28,7 @@ fn test_write_skew() {
     let a999: Key = as_key!(999);
     let a888: Key = as_key!(888);
 
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     // Set balance to $100 in each account.
     let mut txn = engine.begin();
@@ -36,7 +37,7 @@ fn test_write_skew() {
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
-    let get_bal = |txn: &mut TransactionTx, k: &Key| -> u64 {
+    let get_bal = |txn: &mut TransactionTx<Memory>, k: &Key| -> u64 {
         let sv = txn.get(k).unwrap().unwrap();
         let val = sv.value();
         from_value!(u64, val)
@@ -81,7 +82,7 @@ fn test_write_skew() {
 // https://wiki.postgresql.org/wiki/SSI#Black_and_White
 #[test]
 fn test_black_white() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     // Setup
     let mut txn = engine.begin();
@@ -144,7 +145,7 @@ fn test_black_white() {
 // https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
 #[test]
 fn test_overdraft_protection() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     let key = as_key!("karen");
 
@@ -175,7 +176,7 @@ fn test_overdraft_protection() {
 // https://wiki.postgresql.org/wiki/SSI#Primary_Colors
 #[test]
 fn test_primary_colors() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     // Setup
     let mut txn = engine.begin();
@@ -211,11 +212,7 @@ fn test_primary_colors() {
         .scan()
         .unwrap()
         .filter_map(|sv| {
-            if *sv.value() == as_value!("blue".to_string()) {
-                Some(sv.key().clone())
-            } else {
-                None
-            }
+            if *sv.value() == as_value!("blue".to_string()) { Some(sv.key().clone()) } else { None }
         })
         .collect::<Vec<_>>();
     for i in indices {
@@ -227,11 +224,7 @@ fn test_primary_colors() {
         .scan()
         .unwrap()
         .filter_map(|sv| {
-            if *sv.value() == as_value!("blue".to_string()) {
-                Some(sv.key().clone())
-            } else {
-                None
-            }
+            if *sv.value() == as_value!("blue".to_string()) { Some(sv.key().clone()) } else { None }
         })
         .collect::<Vec<_>>();
     for i in indices {

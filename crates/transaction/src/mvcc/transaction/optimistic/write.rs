@@ -23,19 +23,19 @@ use reifydb_storage::{Apply, Version};
 use std::ops::RangeBounds;
 
 /// A optimistic concurrency control transaction over the [`Optimistic`].
-pub struct TransactionTx {
-    engine: Optimistic,
+pub struct TransactionTx<S: Storage> {
+    engine: Optimistic<S>,
     tm: TransactionManagerTx<BTreeConflict, BTreePendingWrites>,
 }
 
-impl TransactionTx {
-    pub fn new(db: Optimistic) -> Self {
+impl<S: Storage> TransactionTx<S> {
+    pub fn new(db: Optimistic<S>) -> Self {
         let tm = db.inner.tm.write().unwrap();
         Self { engine: db, tm }
     }
 }
 
-impl TransactionTx {
+impl<S: Storage> TransactionTx<S> {
     /// Commits the transaction, following these steps:
     ///
     /// 1. If there are no writes, return immediately.
@@ -63,7 +63,7 @@ impl TransactionTx {
     }
 }
 
-impl TransactionTx {
+impl<S: Storage> TransactionTx<S> {
     /// Returns the read version of the transaction.
     pub fn version(&self) -> u64 {
         self.tm.version()
@@ -110,7 +110,7 @@ impl TransactionTx {
         self.tm.remove(key)
     }
 
-    pub fn scan(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
+    pub fn scan(&mut self) -> Result<TransactionIter<'_, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let pending = pm.iter();
@@ -119,7 +119,9 @@ impl TransactionTx {
         Ok(TransactionIter::new(pending, commited, Some(marker)))
     }
 
-    pub fn scan_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
+    pub fn scan_rev(
+        &mut self,
+    ) -> Result<TransactionRevIter<'_, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let pending = pm.iter().rev();
@@ -131,7 +133,7 @@ impl TransactionTx {
     pub fn scan_range<'a>(
         &'a mut self,
         range: KeyRange,
-    ) -> Result<TransactionRange<'a, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -145,7 +147,7 @@ impl TransactionTx {
     pub fn scan_range_rev<'a>(
         &'a mut self,
         range: KeyRange,
-    ) -> Result<TransactionRevRange<'a, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRevRange<'a, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();

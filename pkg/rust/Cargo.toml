@@ -17,7 +17,7 @@ embedded_blocking = []
 reifydb_auth = { workspace = true }
 reifydb_core = { workspace = true }
 reifydb_engine = { workspace = true }
-reifydb_persistence = { workspace = true }
+reifydb_storage = { workspace = true }
 reifydb_rql = { workspace = true }
 reifydb_transaction = { workspace = true }
 

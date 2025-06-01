@@ -4,47 +4,47 @@
 use crate::ExecutionResult;
 use crate::execute::{execute, execute_mut};
 use reifydb_auth::Principal;
-use reifydb_persistence::Persistence;
 use reifydb_rql::ast;
 use reifydb_rql::ast::Ast;
 use reifydb_rql::plan::{Plan, plan, plan_mut};
+use reifydb_storage::Storage;
 use reifydb_transaction::{Rx, Transaction, Tx};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub struct Engine<P: Persistence, T: Transaction<P>>(Arc<EngineInner<P, T>>);
+pub struct Engine<S: Storage, T: Transaction<S>>(Arc<EngineInner<S, T>>);
 
-impl<P, T> Clone for Engine<P, T>
+impl<S, T> Clone for Engine<S, T>
 where
-    P: Persistence,
-    T: Transaction<P>,
+    S: Storage,
+    T: Transaction<S>,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<P: Persistence, T: Transaction<P>> Deref for Engine<P, T> {
-    type Target = EngineInner<P, T>;
+impl<S: Storage, T: Transaction<S>> Deref for Engine<S, T> {
+    type Target = EngineInner<S, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct EngineInner<P: Persistence, T: Transaction<P>> {
+pub struct EngineInner<S: Storage, T: Transaction<S>> {
     transaction: T,
-    _marker: PhantomData<P>,
+    _marker: PhantomData<S>,
 }
 
-impl<P: Persistence, T: Transaction<P>> Engine<P, T> {
+impl<S: Storage, T: Transaction<S>> Engine<S, T> {
     pub fn new(transaction: T) -> Self {
         Self(Arc::new(EngineInner { transaction, _marker: PhantomData }))
     }
 }
 
-impl<P: Persistence, T: Transaction<P>> Engine<P, T> {
+impl<S: Storage, T: Transaction<S>> Engine<S, T> {
     fn begin(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin().unwrap())
     }

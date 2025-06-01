@@ -16,6 +16,7 @@ use crate::{AsyncCowVec, as_value};
 use crate::{IntoValue, from_value};
 use Bound::{Excluded, Included};
 use reifydb_persistence::KeyRange;
+use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::range::TransactionRange;
 use reifydb_transaction::mvcc::transaction::range_rev::TransactionRevRange;
@@ -23,7 +24,7 @@ use std::ops::Bound;
 
 #[test]
 fn test_range() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_value!(1)).unwrap();
     txn.set(as_key!(2), as_value!(2)).unwrap();
@@ -56,7 +57,7 @@ fn test_range() {
 
 #[test]
 fn test_range2() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_value!(1)).unwrap();
     txn.set(as_key!(2), as_value!(2)).unwrap();
@@ -115,7 +116,7 @@ fn test_range2() {
 
 #[test]
 fn test_range3() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(4), as_value!(4)).unwrap();
     txn.set(as_key!(5), as_value!(5)).unwrap();
@@ -178,7 +179,7 @@ fn test_range3() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_range_edge() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     // c1
     {
@@ -218,7 +219,7 @@ fn test_range_edge() {
         assert_eq!(4, engine.version());
     }
 
-    let check_iter = |itr: TransactionRange<'_, _>, expected: &[u64]| {
+    let check_iter = |itr: TransactionRange<'_, _, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));
@@ -227,7 +228,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevRange<'_, _>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionRevRange<'_, _, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));

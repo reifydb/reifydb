@@ -3,12 +3,13 @@
 
 use crate::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
 use reifydb_core::{Key, Row, RowIter, Value};
+use reifydb_storage::Storage;
 
 pub mod svl;
 mod optimistic;
 mod serializable;
 
-pub trait Transaction<P: reifydb_persistence::Persistence>: Send + Sync {
+pub trait Transaction<S: Storage>: Send + Sync {
     type Rx: Rx;
     type Tx: Tx;
 

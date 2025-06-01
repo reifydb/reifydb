@@ -14,14 +14,15 @@ use crate::as_key;
 use crate::keycode;
 use crate::{AsyncCowVec, as_value};
 use crate::{IntoValue, from_value};
+use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
-use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
 use reifydb_transaction::mvcc::transaction::iter_rev::TransactionRevIter;
+use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_iter() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_value!(1)).unwrap();
     txn.set(as_key!(2), as_value!(2)).unwrap();
@@ -50,7 +51,7 @@ fn test_iter() {
 
 #[test]
 fn test_iter2() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_value!(1)).unwrap();
     txn.set(as_key!(2), as_value!(2)).unwrap();
@@ -105,7 +106,7 @@ fn test_iter2() {
 
 #[test]
 fn test_iter3() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(4), as_value!(4)).unwrap();
     txn.set(as_key!(5), as_value!(5)).unwrap();
@@ -167,7 +168,7 @@ fn test_iter3() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_iter_edge_case() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     // c1
     {
@@ -209,7 +210,7 @@ fn test_iter_edge_case() {
         assert_eq!(4, engine.version());
     }
 
-    let check_iter = |itr: TransactionIter<'_, BTreeConflict>, expected: &[u64]| {
+    let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()), "read_vs={}", r.version());
@@ -218,7 +219,7 @@ fn test_iter_edge_case() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevIter<'_, BTreeConflict>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionRevIter<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()), "read_vs={}", r.version());
@@ -264,7 +265,7 @@ fn test_iter_edge_case() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_iter_edge_case2() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     // c1
     {
@@ -300,7 +301,7 @@ fn test_iter_edge_case2() {
         assert_eq!(4, engine.version());
     }
 
-    let check_iter = |itr: TransactionIter<'_, BTreeConflict>, expected: &[u64]| {
+    let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));
@@ -309,7 +310,7 @@ fn test_iter_edge_case2() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevIter<'_, BTreeConflict>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionRevIter<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));

@@ -15,21 +15,21 @@ use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, KeyRange};
-use reifydb_storage::memory::{Iter, IterRev, Range, RangeRev};
+use reifydb_storage::Storage;
 
-pub struct TransactionRx {
-    pub(crate) engine: Optimistic,
+pub struct TransactionRx<S: Storage> {
+    pub(crate) engine: Optimistic<S>,
     pub(crate) rtm: TransactionManagerRx<BTreeConflict, BTreePendingWrites>,
 }
 
-impl TransactionRx {
-    pub fn new(engine: Optimistic) -> Self {
+impl<S: Storage> TransactionRx<S> {
+    pub fn new(engine: Optimistic<S>) -> Self {
         let rtm = engine.inner.tm.read();
         Self { engine, rtm }
     }
 }
 
-impl TransactionRx {
+impl<S: Storage> TransactionRx<S> {
     /// Returns the version of the transaction.
     pub fn version(&self) -> u64 {
         self.rtm.version()
@@ -48,25 +48,25 @@ impl TransactionRx {
     }
 
     /// Returns an iterator over the entries of the database.
-    pub fn iter(&self) -> Iter<'_> {
+    pub fn iter(&self) -> S::ScanIter<'_> {
         let version = self.rtm.version();
         self.engine.scan(version)
     }
 
     /// Returns a reverse iterator over the entries of the database.
-    pub fn iter_rev(&self) -> IterRev<'_> {
+    pub fn iter_rev(&self) -> S::ScanIterRev<'_> {
         let version = self.rtm.version();
         self.engine.scan_rev(version)
     }
 
     /// Returns an iterator over the subset of entries of the database.
-    pub fn range(&self, range: KeyRange) -> Range<'_> {
+    pub fn range(&self, range: KeyRange) -> S::ScanRangeIter<'_> {
         let version = self.rtm.version();
         self.engine.scan_range(range, version)
     }
 
     /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev(&self, range: KeyRange) -> RangeRev<'_> {
+    pub fn range_rev(&self, range: KeyRange) -> S::ScanRangeIterRev<'_> {
         let version = self.rtm.version();
         self.engine.scan_range_rev(range, version)
     }

@@ -14,15 +14,16 @@ use crate::FromValue;
 use crate::keycode;
 use crate::{IntoValue, from_value};
 use crate::{as_key, as_value};
+use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
-use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
 use reifydb_transaction::mvcc::transaction::iter_rev::TransactionRevIter;
+use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 #[cfg(test)]
 fn test_versions() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     let k0 = as_key!(0);
 
@@ -33,7 +34,7 @@ fn test_versions() {
         assert_eq!(i, engine.version());
     }
 
-    let check_iter = |itr: TransactionIter<'_, BTreeConflict>, i: u64| {
+    let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, i: u64| {
         let mut count = 0;
         for sv in itr {
             assert_eq!(sv.key(), &k0);
@@ -44,7 +45,7 @@ fn test_versions() {
         assert_eq!(1, count) // should only loop once.
     };
 
-    let check_rev_iter = |itr: TransactionRevIter<'_, BTreeConflict>, i: u64| {
+    let check_rev_iter = |itr: TransactionRevIter<'_, _, BTreeConflict>, i: u64| {
         let mut count = 0;
         for sv in itr {
             let value = from_value!(u64, sv.value());

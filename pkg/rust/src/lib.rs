@@ -31,23 +31,21 @@ pub use reifydb_core::*;
 pub use reifydb_engine;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use reifydb_rql;
-use std::path::Path;
-
-use reifydb_engine::ExecutionResult;
-/// The underlying persistence responsible for data access.
-pub use reifydb_persistence;
-#[cfg(any(feature = "server", feature = "client"))]
-pub use tokio::*;
-
-pub use reifydb_transaction;
 
 #[cfg(feature = "embedded")]
 use crate::embedded::Embedded;
+use reifydb_engine::ExecutionResult;
+/// The underlying persistence responsible for data access.
+pub use reifydb_storage;
+use reifydb_storage::Storage;
+use reifydb_storage::memory::Memory;
+pub use reifydb_transaction;
+#[cfg(any(feature = "server", feature = "client"))]
+pub use tokio::*;
 
 #[cfg(feature = "server")]
 use crate::server::Server;
 
-use reifydb_persistence::{Lmdb, Memory, Persistence};
 use reifydb_transaction::Transaction;
 
 #[cfg(feature = "client")]
@@ -93,7 +91,7 @@ impl ReifyDB {
         Embedded<Memory, ::reifydb_transaction::mvcc::transaction::serializable::Serializable>,
         Principal,
     ) {
-        Embedded::new(serializable())
+        Embedded::new(serializable(Memory::new()))
     }
 
     #[cfg(feature = "embedded_blocking")]
@@ -104,7 +102,7 @@ impl ReifyDB {
         >,
         Principal,
     ) {
-        embedded_blocking::Embedded::new(serializable())
+        embedded_blocking::Embedded::new(serializable(Memory::new()))
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
@@ -119,56 +117,60 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<P: Persistence, T: Transaction<P>>(
+    pub fn embedded_with<S: Storage, T: Transaction<S>>(
         transaction: T,
-    ) -> (Embedded<P, T>, Principal) {
+    ) -> (Embedded<S, T>, Principal) {
         Embedded::new(transaction)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<P: Persistence, T: Transaction<P>>(
+    pub fn embedded_with<S: Storage, T: Transaction<S>>(
         transaction: T,
-    ) -> (embedded_blocking::Embedded<P, T>, Principal) {
+    ) -> (embedded_blocking::Embedded<S, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<P: Persistence, T: Transaction<P>>(
+    pub fn embedded_blocking_with<S: Storage, T: Transaction<S>>(
         transaction: T,
-    ) -> (embedded_blocking::Embedded<P, T>, Principal) {
+    ) -> (embedded_blocking::Embedded<S, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
     #[cfg(feature = "server")]
     pub fn server()
     -> Server<Memory, ::reifydb_transaction::mvcc::transaction::serializable::Serializable> {
-        Server::new(serializable())
+        Server::new(serializable(Memory::new()))
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<P: Persistence + 'static, T: Transaction<P> + 'static>(
+    pub fn server_with<S: Storage + 'static, T: Transaction<S> + 'static>(
         transaction: T,
-    ) -> Server<P, T> {
+    ) -> Server<S, T> {
         Server::new(transaction)
     }
 }
 
-pub fn svl<P: Persistence>(persistence: P) -> ::reifydb_transaction::svl::Svl<P> {
-    ::reifydb_transaction::svl::Svl::new(persistence)
+pub fn svl<S: Storage>(storage: S) -> ::reifydb_transaction::svl::Svl<S> {
+    ::reifydb_transaction::svl::Svl::new(storage)
 }
 
-pub fn serializable() -> ::reifydb_transaction::mvcc::transaction::serializable::Serializable {
+pub fn serializable<S: Storage>(
+    storage: S,
+) -> ::reifydb_transaction::mvcc::transaction::serializable::Serializable {
     ::reifydb_transaction::mvcc::transaction::serializable::Serializable::new()
 }
 
-pub fn optimistic() -> ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic {
-    ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic::new()
+pub fn optimistic<S: Storage>(
+    storage: S,
+) -> ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic<S> {
+    ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic::new(storage)
 }
 
 pub fn memory() -> Memory {
     Memory::default()
 }
 
-pub fn lmdb(path: &Path) -> Lmdb {
-    Lmdb::new(path).unwrap()
-}
+// pub fn lmdb(path: &Path) -> Lmdb {
+//     Lmdb::new(path).unwrap()
+// }

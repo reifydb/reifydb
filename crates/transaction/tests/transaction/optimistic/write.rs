@@ -13,14 +13,15 @@ use crate::FromValue;
 use crate::IntoValue;
 use crate::as_key;
 use crate::keycode;
-use crate::{AsyncCowVec, from_value, as_value};
+use crate::{AsyncCowVec, as_value, from_value};
+use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_write() {
     let key = as_key!("foo");
 
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     {
         let mut tx = engine.begin();
         assert_eq!(tx.version(), 0);
@@ -41,7 +42,7 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
     {
         let mut txn = engine.begin();

@@ -18,6 +18,7 @@ use reifydb_core::CowVec;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
 use reifydb_persistence::KeyRange;
+use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
 use reifydb_testing::util::parse_key_range;
 use reifydb_transaction::Tx;
@@ -31,16 +32,17 @@ test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_opt
 test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_optimistic }
 
 fn test_optimistic(path: &Path) {
-    testscript::run_path(&mut MvccRunner::new(Optimistic::new()), path).expect("test failed")
+    testscript::run_path(&mut MvccRunner::new(Optimistic::new(Memory::new())), path)
+        .expect("test failed")
 }
 
 pub struct MvccRunner {
-    engine: Optimistic,
-    transactions: HashMap<String, Transaction>,
+    engine: Optimistic<Memory>,
+    transactions: HashMap<String, Transaction<Memory>>,
 }
 
 impl MvccRunner {
-    fn new(optimistic: Optimistic) -> Self {
+    fn new(optimistic: Optimistic<Memory>) -> Self {
         Self { engine: optimistic, transactions: HashMap::new() }
     }
 
@@ -48,7 +50,7 @@ impl MvccRunner {
     fn get_transaction(
         &mut self,
         prefix: &Option<String>,
-    ) -> Result<&'_ mut Transaction, Box<dyn StdError>> {
+    ) -> Result<&'_ mut Transaction<Memory>, Box<dyn StdError>> {
         let name = Self::tx_name(prefix)?;
         self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
     }

@@ -26,8 +26,6 @@ pub enum Error {
     Encoding(encoding::Error),
     /// RQL related error
     RQL(reifydb_rql::Error),
-    /// Persistence related error
-    Persistence(reifydb_persistence::Error),
 }
 
 impl Display for Error {
@@ -35,7 +33,6 @@ impl Display for Error {
         match self {
             Error::Encoding(err) => f.write_fmt(format_args!("encoding error: {}", err)),
             Error::RQL(err) => f.write_fmt(format_args!("rql error: {}", err)),
-            Error::Persistence(err) => f.write_fmt(format_args!("persistence error: {}", err)),
         }
     }
 }
@@ -51,11 +48,5 @@ impl From<encoding::Error> for Error {
 impl From<reifydb_rql::Error> for Error {
     fn from(value: reifydb_rql::Error) -> Self {
         Self::RQL(value)
-    }
-}
-
-impl From<reifydb_persistence::Error> for Error {
-    fn from(value: reifydb_persistence::Error) -> Self {
-        Self::Persistence(value)
     }
 }

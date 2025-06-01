@@ -13,11 +13,12 @@ use crate::AsyncCowVec;
 use crate::IntoValue;
 use crate::keycode;
 use crate::{as_key, as_value};
+use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_rollback_same_tx() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_value!(1)).unwrap();
     txn.rollback().unwrap();
@@ -26,7 +27,7 @@ fn test_rollback_same_tx() {
 
 #[test]
 fn test_rollback_different_tx() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_value!(1)).unwrap();
     txn.rollback().unwrap();

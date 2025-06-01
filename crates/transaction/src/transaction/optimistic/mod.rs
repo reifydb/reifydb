@@ -8,10 +8,11 @@ use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode, keycode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_persistence::Persistence;
+use reifydb_storage::Storage;
 
-impl<P: Persistence> Transaction<P> for Optimistic {
-    type Rx = TransactionRx;
-    type Tx = TransactionTx;
+impl<S: Storage> Transaction<S> for Optimistic<S> {
+    type Rx = TransactionRx<S>;
+    type Tx = TransactionTx<S>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         Ok(self.begin_read_only())
@@ -22,7 +23,7 @@ impl<P: Persistence> Transaction<P> for Optimistic {
     }
 }
 
-impl crate::Rx for TransactionRx {
+impl<S: Storage> crate::Rx for TransactionRx<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -49,7 +50,7 @@ impl crate::Rx for TransactionRx {
     }
 }
 
-impl crate::Rx for TransactionTx {
+impl<S: Storage> crate::Rx for TransactionTx<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -72,7 +73,6 @@ impl crate::Rx for TransactionTx {
                 keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)).into(),
             )
             .unwrap()
-            // .scan(start_key..end_key) // range is [start_key, end_key)
             .map(|r| Row::decode(&r.value()).unwrap())
             .collect::<Vec<_>>()
             .into_iter(),
@@ -80,7 +80,7 @@ impl crate::Rx for TransactionTx {
     }
 }
 
-impl crate::Tx for TransactionTx {
+impl<S: Storage> crate::Tx for TransactionTx<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 

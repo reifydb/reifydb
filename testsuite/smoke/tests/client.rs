@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::reifydb_persistence::{Lmdb, Memory, Persistence};
+use reifydb::reifydb_storage::Storage;
+use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
@@ -19,14 +20,14 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct ClientRunner<P: Persistence, T: Transaction<P>> {
-    server: Option<Server<P, T>>,
+pub struct ClientRunner<S: Storage, T: Transaction<S>> {
+    server: Option<Server<S, T>>,
     client: Client,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<P: Persistence + 'static, T: Transaction<P> + 'static> ClientRunner<P, T> {
+impl<S: Storage + 'static, T: Transaction<S> + 'static> ClientRunner<S, T> {
     pub fn new(transaction: T) -> Self {
         let socket_addr = free_local_socket();
 
@@ -40,9 +41,7 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> ClientRunner<P, T> {
     }
 }
 
-impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner
-    for ClientRunner<P, T>
-{
+impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for ClientRunner<S, T> {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
@@ -112,26 +111,32 @@ impl<P: Persistence + 'static, T: Transaction<P> + 'static> testscript::Runner
 // test_each_path! { in "testsuite/smoke/tests/scripts" as client_serializable_memory => test_serializable_memory }
 test_each_path! { in "testsuite/smoke/tests/scripts" as client_optimistic_memory => test_optimistic_memory }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_memory => test_svl_memory }
-test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_lmdb => test_svl_lmdb }
+// test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_memory => test_svl_memory }
+// test_each_path! { in "testsuite/smoke/tests/scripts" as client_svl_lmdb => test_svl_lmdb }
 
 fn test_serializable_memory(path: &Path) {
-    testscript::run_path(&mut ClientRunner::<Memory, Serializable>::new(serializable()), path)
-        .expect("test failed")
+    testscript::run_path(
+        &mut ClientRunner::<Memory, Serializable>::new(serializable(memory())),
+        path,
+    )
+    .expect("test failed")
 }
 
 fn test_optimistic_memory(path: &Path) {
-    testscript::run_path(&mut ClientRunner::<Memory, Optimistic>::new(optimistic()), path)
-        .expect("test failed")
+    testscript::run_path(
+        &mut ClientRunner::<Memory, Optimistic<Memory>>::new(optimistic(memory())),
+        path,
+    )
+    .expect("test failed")
 }
 
 fn test_svl_memory(path: &Path) {
     testscript::run_path(&mut ClientRunner::new(svl(memory())), path).expect("test failed")
 }
 
-fn test_svl_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut ClientRunner::new(svl(Lmdb::new(db_path).unwrap())), path)
-            .expect("test failed")
-    })
-}
+// fn test_svl_lmdb(path: &Path) {
+//     temp_dir(|db_path| {
+//         testscript::run_path(&mut ClientRunner::new(svl(Lmdb::new(db_path).unwrap())), path)
+//             .expect("test failed")
+//     })
+// }

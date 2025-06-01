@@ -9,18 +9,19 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_begin_read_only() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let tx = engine.begin_read_only();
     assert_eq!(tx.version(), 0);
 }
 
 #[test]
 fn test_begin() {
-    let engine: Optimistic = Optimistic::new();
+    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let tx = engine.begin();
     assert_eq!(tx.version(), 0);
 }

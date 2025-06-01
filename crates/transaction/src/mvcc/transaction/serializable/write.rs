@@ -117,62 +117,62 @@ impl SerializableTransaction {
         self.wtm.remove(key)
     }
 
-    /// Iterate over the entries of the write transaction.
-    pub fn scan(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
-        let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-
-        let start: Bound<Key> = Bound::Unbounded;
-        let end: Bound<Key> = Bound::Unbounded;
-        marker.mark_range((start, end));
-        let committed = self.db.inner.map.scan(version);
-        let pending = pm.iter();
-
-        Ok(TransactionIter::new(pending, committed, None))
-    }
-
-    /// Iterate over the entries of the write transaction in reverse order.
-    pub fn scan_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
-        let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-        let start: Bound<Key> = Bound::Unbounded;
-        let end: Bound<Key> = Bound::Unbounded;
-        marker.mark_range((start, end));
-        let committed = self.db.inner.map.scan_rev(version);
-        let pending = pm.iter().rev();
-
-        Ok(TransactionRevIter::new(pending, committed, None))
-    }
-
-    /// Returns an iterator over the subset of entries of the database.
-    pub fn scan_range<'a>(
-        &'a mut self,
-        range: KeyRange,
-    ) -> Result<TransactionRange<'a, BTreeConflict>, TransactionError> {
-        let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-        let start = range.start_bound();
-        let end = range.end_bound();
-        marker.mark_range((start, end));
-        let pending = pm.range_comparable((start, end));
-        let committed = self.db.inner.map.scan_range(range, version);
-
-        Ok(TransactionRange::new(pending, committed, Some(marker)))
-    }
-
-    /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn scan_range_rev<'a>(
-        &'a mut self,
-        range: KeyRange,
-    ) -> Result<TransactionRevRange<'a, BTreeConflict>, TransactionError> {
-        let version = self.wtm.version();
-        let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-        let start = range.start_bound();
-        let end = range.end_bound();
-        marker.mark_range((start, end));
-        let pending = pm.range_comparable((start, end)).rev();
-        let committed = self.db.inner.map.scan_range_rev(range, version);
-
-        Ok(TransactionRevRange::new(pending, committed, Some(marker)))
-    }
+    // /// Iterate over the entries of the write transaction.
+    // pub fn scan(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
+    //     let version = self.wtm.version();
+    //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
+    // 
+    //     let start: Bound<Key> = Bound::Unbounded;
+    //     let end: Bound<Key> = Bound::Unbounded;
+    //     marker.mark_range((start, end));
+    //     let committed = self.db.inner.map.scan(version);
+    //     let pending = pm.iter();
+    // 
+    //     Ok(TransactionIter::new(pending, committed, None))
+    // }
+    // 
+    // /// Iterate over the entries of the write transaction in reverse order.
+    // pub fn scan_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
+    //     let version = self.wtm.version();
+    //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
+    //     let start: Bound<Key> = Bound::Unbounded;
+    //     let end: Bound<Key> = Bound::Unbounded;
+    //     marker.mark_range((start, end));
+    //     let committed = self.db.inner.map.scan_rev(version);
+    //     let pending = pm.iter().rev();
+    // 
+    //     Ok(TransactionRevIter::new(pending, committed, None))
+    // }
+    // 
+    // /// Returns an iterator over the subset of entries of the database.
+    // pub fn scan_range<'a>(
+    //     &'a mut self,
+    //     range: KeyRange,
+    // ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
+    //     let version = self.wtm.version();
+    //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
+    //     let start = range.start_bound();
+    //     let end = range.end_bound();
+    //     marker.mark_range((start, end));
+    //     let pending = pm.range_comparable((start, end));
+    //     let committed = self.db.inner.map.scan_range(range, version);
+    // 
+    //     Ok(TransactionRange::new(pending, committed, Some(marker)))
+    // }
+    // 
+    // /// Returns an iterator over the subset of entries of the database in reverse order.
+    // pub fn scan_range_rev<'a>(
+    //     &'a mut self,
+    //     range: KeyRange,
+    // ) -> Result<TransactionRevRange<'a, BTreeConflict>, TransactionError> {
+    //     let version = self.wtm.version();
+    //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
+    //     let start = range.start_bound();
+    //     let end = range.end_bound();
+    //     marker.mark_range((start, end));
+    //     let pending = pm.range_comparable((start, end)).rev();
+    //     let committed = self.db.inner.map.scan_range_rev(range, version);
+    // 
+    //     Ok(TransactionRevRange::new(pending, committed, Some(marker)))
+    // }
 }
