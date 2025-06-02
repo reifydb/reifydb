@@ -3,29 +3,28 @@
 
 use crate::AsyncCowVec;
 use crate::catalog::{Catalog, Schema};
-use crate::mvcc::transaction::serializable::read::ReadTransaction;
-use crate::mvcc::transaction::serializable::{Serializable, SerializableTransaction};
+use crate::mvcc::transaction::serializable::{Serializable, TransactionRx, TransactionTx};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::Value as _;
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_storage::KeyRange;
 use reifydb_storage::Storage;
 
-impl<S: Storage> Transaction<S> for Serializable {
-    type Rx = ReadTransaction<S>;
-    type Tx = SerializableTransaction;
+/// Serializable Snapshot Isolation (SSI)
+impl<S: Storage> Transaction<S> for Serializable<S> {
+    type Rx = TransactionRx<S>;
+    type Tx = TransactionTx<S>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
-        // Ok(self.read())
-        todo!()
+        Ok(self.begin_read_only())
     }
 
     fn begin(&self) -> crate::Result<Self::Tx> {
-        Ok(self.write())
+        Ok(self.begin())
     }
 }
 
-impl<S: Storage> crate::Rx for ReadTransaction<S> {
+impl<S: Storage> crate::Rx for TransactionRx<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -44,7 +43,7 @@ impl<S: Storage> crate::Rx for ReadTransaction<S> {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
+            self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
                 .map(|r| Row::decode(&r.value).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -52,7 +51,7 @@ impl<S: Storage> crate::Rx for ReadTransaction<S> {
     }
 }
 
-impl crate::Rx for SerializableTransaction {
+impl<S: Storage> crate::Rx for TransactionTx<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
@@ -84,7 +83,7 @@ impl crate::Rx for SerializableTransaction {
     }
 }
 
-impl crate::Tx for SerializableTransaction {
+impl<S: Storage> crate::Tx for TransactionTx<S> {
     type CatalogMut = Catalog;
     type SchemaMut = Schema;
 
@@ -154,14 +153,12 @@ impl crate::Tx for SerializableTransaction {
     }
 
     fn commit(mut self) -> crate::Result<()> {
-        SerializableTransaction::commit(&mut self).unwrap();
-
+        TransactionTx::commit(&mut self).unwrap();
         Ok(())
     }
 
     fn rollback(mut self) -> crate::Result<()> {
-        SerializableTransaction::rollback(&mut self).unwrap();
-
+        TransactionTx::rollback(&mut self).unwrap();
         Ok(())
     }
 }

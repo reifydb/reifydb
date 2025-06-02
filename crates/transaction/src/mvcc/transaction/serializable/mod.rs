@@ -9,11 +9,11 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use std::ops::Deref;
 use std::sync::Arc;
 
 pub use read::*;
-use reifydb_storage::{LocalClock, Version};
-use reifydb_storage::memory::Memory;
+use reifydb_storage::{Key, KeyRange, LocalClock, Storage, Version};
 pub use write::*;
 
 pub(crate) mod read;
@@ -22,18 +22,33 @@ mod write;
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::transaction::TransactionManager;
-use crate::mvcc::transaction::serializable::read::ReadTransaction;
+use crate::mvcc::transaction::{Committed, TransactionManager};
 
-struct Inner {
+pub struct Serializable<S: Storage>(Arc<Inner<S>>);
+
+pub struct Inner<S: Storage> {
     tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
-    storage: Memory,
+    storage: S,
 }
 
-impl Inner {
-    fn new(name: &str) -> Self {
+impl<S: Storage> Deref for Serializable<S> {
+    type Target = Inner<S>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<S: Storage> Clone for Serializable<S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<S: Storage> Inner<S> {
+    fn new(name: &str, storage: S) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
-        Self { tm, storage: Memory::new() }
+        Self { tm, storage }
     }
 
     fn version(&self) -> Version {
@@ -41,62 +56,54 @@ impl Inner {
     }
 }
 
-/// A concurrent MVCC in-memory key-value database.
-///
-/// `SerializableDb` requires key to be [`Ord`] and [`Clone`].
-/// The [`Clone`] bound here hints the user that the key should be cheap to clone,
-/// because it will be cloned at least one time during the write transaction.
-///
-/// Comparing to [`OptimisticDb`](crate::optimistic::OptimisticDb):
-/// 1. `SerializableDb` support full serializable snapshot isolation, which can detect both direct dependencies and indirect dependencies.
-/// 2. `SerializableDb` does not require key to implement [`Hash`](core::hash::Hash).
-/// 3. But, [`OptimisticDb`](crate::optimistic::OptimisticDb) has more flexible write transaction APIs.
-#[repr(transparent)]
-pub struct Serializable {
-    inner: Arc<Inner>,
-}
-
-impl Clone for Serializable {
-    fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+impl<S: Storage> Serializable<S> {
+    pub fn new(storage: S) -> Self {
+        Self(Arc::new(Inner::new(core::any::type_name::<Self>(), storage)))
     }
 }
 
-impl Default for Serializable {
-    /// Creates a new `SerializableDb` with the default options.
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Serializable {
-    /// Creates a new `SerializableDb`
-    pub fn new() -> Self {
-        Self { inner: Arc::new(Inner::new(core::any::type_name::<Self>())) }
-    }
-}
-
-impl Serializable {
-    /// Returns the current read version of the database.
+impl<S: Storage> Serializable<S> {
     pub fn version(&self) -> Version {
-        self.inner.version()
+        self.0.version()
     }
-
-    /// Create a read transaction.
-    pub fn read(&self) -> ReadTransaction<Memory> {
-        ReadTransaction::new(self.clone(), self.inner.tm.read())
+    pub fn begin_read_only(&self) -> TransactionRx<S> {
+        TransactionRx::new(self.clone())
     }
 }
 
-impl Serializable {
-    /// Create a serializable write transaction.
-    ///
-    /// Serializable write transaction is a totally Serializable Snapshot Isolation transaction.
-    /// It can handle all kinds of write skew anomaly, including indirect dependencies (logical dependencies).
-    /// If in your code, you do not care about indirect dependencies (logical dependencies), you can use
-    /// [`SerializableDb::optimistic_write`](Serializable::optimistic_write) instead.
+impl<S: Storage> Serializable<S> {
+    pub fn begin(&self) -> TransactionTx<S> {
+        TransactionTx::new(self.clone())
+    }
+}
 
-    pub fn write(&self) -> SerializableTransaction {
-        SerializableTransaction::new(self.clone())
+pub enum Transaction<S: Storage> {
+    Rx(TransactionRx<S>),
+    Tx(TransactionTx<S>),
+}
+
+impl<S: Storage> Serializable<S> {
+    pub fn get(&self, key: &Key, version: Version) -> Option<Committed> {
+        self.storage.get(key, version).map(|sv| sv.into())
+    }
+
+    pub fn contains_key(&self, key: &Key, version: Version) -> bool {
+        self.storage.contains(key, version)
+    }
+
+    pub fn scan(&self, version: Version) -> S::ScanIter<'_> {
+        self.storage.scan(version)
+    }
+
+    pub fn scan_rev(&self, version: Version) -> S::ScanIterRev<'_> {
+        self.storage.scan_rev(version)
+    }
+
+    pub fn scan_range(&self, range: KeyRange, version: Version) -> S::ScanRangeIter<'_> {
+        self.storage.scan_range(range, version)
+    }
+
+    pub fn scan_range_rev(&self, range: KeyRange, version: Version) -> S::ScanRangeIterRev<'_> {
+        self.storage.scan_range_rev(range, version)
     }
 }

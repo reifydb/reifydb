@@ -21,16 +21,15 @@ use crate::mvcc::types::TransactionValue;
 use reifydb_storage::{Key, KeyRange, Value, Version};
 use std::ops::RangeBounds;
 
-/// A optimistic concurrency control transaction over the [`Optimistic`].
 pub struct TransactionTx<S: Storage> {
     engine: Optimistic<S>,
     tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
 impl<S: Storage> TransactionTx<S> {
-    pub fn new(db: Optimistic<S>) -> Self {
-        let tm = db.tm.write().unwrap();
-        Self { engine: db, tm }
+    pub fn new(engine: Optimistic<S>) -> Self {
+        let tm = engine.tm.write().unwrap();
+        Self { engine, tm }
     }
 }
 
@@ -45,12 +44,6 @@ impl<S: Storage> TransactionTx<S> {
     ///
     /// 4. Batch up all writes, write them to database.
     ///
-    /// 5. If callback is provided, Badger will return immediately after checking
-    ///    for conflicts. Writes to the database will happen in the background.  If
-    ///    there is a conflict, an error will be returned and the callback will not
-    ///    run. If there are no conflicts, the callback will be called in the
-    ///    background upon successful completion of writes or any error during write.
-
     pub fn commit(&mut self) -> Result<(), MvccError> {
         self.tm.commit(|pending| {
             self.engine
@@ -62,7 +55,6 @@ impl<S: Storage> TransactionTx<S> {
 }
 
 impl<S: Storage> TransactionTx<S> {
-    /// Returns the read version of the transaction.
     pub fn version(&self) -> Version {
         self.tm.version()
     }
@@ -71,12 +63,10 @@ impl<S: Storage> TransactionTx<S> {
         self.tm.as_of_version(version);
     }
 
-    /// Rollback the transaction.
     pub fn rollback(&mut self) -> Result<(), TransactionError> {
         self.tm.rollback()
     }
 
-    /// Returns true if the given key exists in the database.
     pub fn contains_key(&mut self, key: &Key) -> Result<bool, TransactionError> {
         let version = self.tm.version();
         match self.tm.contains_key(key)? {

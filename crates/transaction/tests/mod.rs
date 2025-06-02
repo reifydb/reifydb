@@ -7,7 +7,7 @@ mod transaction;
 
 use reifydb_core::AsyncCowVec;
 use reifydb_core::encoding::{bincode, keycode};
-use reifydb_storage::Value;
+use reifydb_storage::{Key, Value};
 
 pub trait IntoValue {
     fn into_value(self) -> Value;
@@ -15,6 +15,10 @@ pub trait IntoValue {
 
 pub trait FromValue: Sized {
     fn from_value(value: &Value) -> Option<Self>;
+}
+
+pub trait FromKey: Sized {
+    fn from_key(key: &Key) -> Option<Self>;
 }
 
 #[macro_export]
@@ -34,11 +38,23 @@ macro_rules! from_value {
     };
 }
 
+#[macro_export]
+macro_rules! from_key {
+    ($t:ty, $val:expr) => {
+        <$t as FromKey>::from_key(&$val).unwrap()
+    };
+}
+
 macro_rules! impl_kv_for {
     ($t:ty) => {
         impl IntoValue for $t {
             fn into_value(self) -> Value {
                 AsyncCowVec::new(bincode::serialize(&self))
+            }
+        }
+        impl FromKey for $t {
+            fn from_key(key: &Key) -> Option<Self> {
+                keycode::deserialize(key).ok()
             }
         }
         impl FromValue for $t {

@@ -44,10 +44,11 @@ use reifydb_storage::Storage;
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
 pub use reifydb_transaction;
+use reifydb_transaction::Transaction;
+use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
+use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 #[cfg(any(feature = "server", feature = "client"))]
 pub use tokio::*;
-
-use reifydb_transaction::Transaction;
 
 #[cfg(feature = "client")]
 pub mod client;
@@ -80,29 +81,17 @@ pub trait DB<'a>: Sized {
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Vec<ExecutionResult>> + Send;
-
-    // fn session_read_only(&self, into: impl IntoSessionRx<'a, Self>) -> Result<SessionRx<'a, Self>>;
-    //
-    // fn session(&self, into: impl IntoSessionTx<'a, Self>) -> Result<SessionTx<'a, Self>>;
 }
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> (
-        Embedded<Memory, ::reifydb_transaction::mvcc::transaction::serializable::Serializable>,
-        Principal,
-    ) {
-        Embedded::new(serializable(Memory::new()))
+    pub fn embedded() -> (Embedded<Memory, Serializable<Memory>>, Principal) {
+        Embedded::new(serializable(memory()))
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking() -> (
-        embedded_blocking::Embedded<
-            Memory,
-            ::reifydb_transaction::mvcc::transaction::serializable::Serializable,
-        >,
-        Principal,
-    ) {
+    pub fn embedded_blocking()
+    -> (embedded_blocking::Embedded<Memory, Serializable<Memory>>, Principal) {
         embedded_blocking::Embedded::new(serializable(Memory::new()))
     }
 
@@ -140,8 +129,9 @@ impl ReifyDB {
 
     #[cfg(feature = "server")]
     pub fn server()
-    -> Server<Memory, ::reifydb_transaction::mvcc::transaction::serializable::Serializable> {
-        Server::new(serializable(Memory::new()))
+    -> Server<Memory, ::reifydb_transaction::mvcc::transaction::serializable::Serializable<Memory>>
+    {
+        Server::new(serializable(memory()))
     }
 
     #[cfg(feature = "server")]
@@ -152,16 +142,12 @@ impl ReifyDB {
     }
 }
 
-pub fn serializable<S: Storage>(
-    storage: S,
-) -> ::reifydb_transaction::mvcc::transaction::serializable::Serializable {
-    ::reifydb_transaction::mvcc::transaction::serializable::Serializable::new()
+pub fn serializable<S: Storage>(storage: S) -> Serializable<S> {
+    Serializable::new(storage)
 }
 
-pub fn optimistic<S: Storage>(
-    storage: S,
-) -> ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic<S> {
-    ::reifydb_transaction::mvcc::transaction::optimistic::Optimistic::new(storage)
+pub fn optimistic<S: Storage>(storage: S) -> Optimistic<S> {
+    Optimistic::new(storage)
 }
 
 pub fn memory() -> Memory {

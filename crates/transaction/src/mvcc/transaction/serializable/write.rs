@@ -11,29 +11,29 @@
 
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
-use crate::mvcc::pending::BTreePendingWrites;
+use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
+use crate::mvcc::transaction::iter::TransactionIter;
+use crate::mvcc::transaction::iter_rev::TransactionRevIter;
+use crate::mvcc::transaction::range::TransactionRange;
+use crate::mvcc::transaction::range_rev::TransactionRevRange;
 use crate::mvcc::types::TransactionValue;
 use reifydb_storage::{Key, Value};
-use reifydb_storage::{Contains, Get, ScanRange, ScanRangeRev, ScanRev};
+use std::ops::RangeBounds;
 
-#[cfg(test)]
-mod tests;
-
-/// A serializable snapshot isolation transaction over the [`Serializable`],
-pub struct SerializableTransaction {
-    pub(in crate::mvcc) db: Serializable,
-    pub(in crate::mvcc) tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
+pub struct TransactionTx<S: Storage> {
+    engine: Serializable<S>,
+    tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
-impl SerializableTransaction {
-    pub fn new(db: Serializable) -> Self {
-        let tm = db.inner.tm.write().unwrap();
-        Self { db, tm }
+impl<S: Storage> TransactionTx<S> {
+    pub fn new(engine: Serializable<S>) -> Self {
+        let tm = engine.tm.write().unwrap();
+        Self { engine, tm }
     }
 }
 
-impl SerializableTransaction {
+impl<S: Storage> TransactionTx<S> {
     /// Commits the transaction, following these steps:
     ///
     /// 1. If there are no writes, return immediately.
@@ -44,47 +44,39 @@ impl SerializableTransaction {
     ///
     /// 4. Batch up all writes, write them to database.
     ///
-    /// 5. If callback is provided, Badger will return immediately after checking
-    ///    for conflicts. Writes to the database will happen in the background.  If
-    ///    there is a conflict, an error will be returned and the callback will not
-    ///    run. If there are no conflicts, the callback will be called in the
-    ///    background upon successful completion of writes or any error during write.
-
     pub fn commit(&mut self) -> Result<(), MvccError> {
-        // self.wtm.commit(|ents| {
-        //     self.db.inner.map.apply(ents);
-        //     Ok(())
-        // })
-        unimplemented!()
+        self.tm.commit(|pending| {
+            self.engine
+                .storage
+                .apply((pending.into_iter().map(|p| (p.action, p.version)).collect()));
+            Ok(())
+        })
     }
 }
 
-impl SerializableTransaction {
-    /// Returns the read version of the transaction.
+impl<S: Storage> TransactionTx<S> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }
 
-    /// Rollback the transaction.
+    pub fn as_of_version(&mut self, version: Version) {
+        self.tm.as_of_version(version);
+    }
+
     pub fn rollback(&mut self) -> Result<(), TransactionError> {
         self.tm.rollback()
     }
 
-    /// Returns true if the given key exists in the database.
     pub fn contains_key(&mut self, key: &Key) -> Result<bool, TransactionError> {
         let version = self.tm.version();
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.db.inner.storage.contains(key, version)),
+            None => Ok(self.engine.storage.contains(key, version)),
         }
     }
 
-    /// Get a value from the database.
-    pub fn get<'a, 'b: 'a>(
-        &'a mut self,
-        key: &'b Key,
-    ) -> Result<Option<TransactionValue>, TransactionError> {
+    pub fn get(&mut self, key: &Key) -> Result<Option<TransactionValue>, TransactionError> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {
@@ -94,76 +86,71 @@ impl SerializableTransaction {
                     Ok(None)
                 }
             }
-            None => Ok(self.db.inner.storage.get(key, version).map(Into::into)),
+            None => Ok(self.engine.storage.get(key, version).map(Into::into)),
         }
     }
 
-    /// Insert a new key-value pair.
     pub fn set(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
         self.tm.set(key, value)
     }
 
-    /// Remove a key.
     pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {
         self.tm.remove(key)
     }
 
-    // /// Iterate over the entries of the write transaction.
-    // pub fn scan(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
-    //     let version = self.wtm.version();
-    //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-    //
-    //     let start: Bound<Key> = Bound::Unbounded;
-    //     let end: Bound<Key> = Bound::Unbounded;
-    //     marker.mark_range((start, end));
-    //     let committed = self.db.inner.map.scan(version);
-    //     let pending = pm.iter();
-    //
-    //     Ok(TransactionIter::new(pending, committed, None))
-    // }
-    //
-    // /// Iterate over the entries of the write transaction in reverse order.
-    // pub fn scan_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
-    //     let version = self.wtm.version();
-    //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-    //     let start: Bound<Key> = Bound::Unbounded;
-    //     let end: Bound<Key> = Bound::Unbounded;
-    //     marker.mark_range((start, end));
-    //     let committed = self.db.inner.map.scan_rev(version);
-    //     let pending = pm.iter().rev();
-    //
-    //     Ok(TransactionRevIter::new(pending, committed, None))
-    // }
-    //
-    // /// Returns an iterator over the subset of entries of the database.
-    // pub fn scan_range<'a>(
-    //     &'a mut self,
-    //     range: KeyRange,
-    // ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
-    //     let version = self.wtm.version();
-    //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-    //     let start = range.start_bound();
-    //     let end = range.end_bound();
-    //     marker.mark_range((start, end));
-    //     let pending = pm.range_comparable((start, end));
-    //     let committed = self.db.inner.map.scan_range(range, version);
-    //
-    //     Ok(TransactionRange::new(pending, committed, Some(marker)))
-    // }
-    //
-    // /// Returns an iterator over the subset of entries of the database in reverse order.
-    // pub fn scan_range_rev<'a>(
-    //     &'a mut self,
-    //     range: KeyRange,
-    // ) -> Result<TransactionRevRange<'a, BTreeConflict>, TransactionError> {
-    //     let version = self.wtm.version();
-    //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-    //     let start = range.start_bound();
-    //     let end = range.end_bound();
-    //     marker.mark_range((start, end));
-    //     let pending = pm.range_comparable((start, end)).rev();
-    //     let committed = self.db.inner.map.scan_range_rev(range, version);
-    //
-    //     Ok(TransactionRevRange::new(pending, committed, Some(marker)))
-    // }
+    pub fn scan(&mut self) -> Result<TransactionIter<'_, S, BTreeConflict>, TransactionError> {
+        let version = self.tm.version();
+        let (mut marker, pm) = self.tm.marker_with_pending_writes();
+        let pending = pm.iter();
+
+        marker.mark_range(KeyRange::all());
+        let commited = self.engine.storage.scan(version);
+
+        Ok(TransactionIter::new(pending, commited, Some(marker)))
+    }
+
+    pub fn scan_rev(
+        &mut self,
+    ) -> Result<TransactionRevIter<'_, S, BTreeConflict>, TransactionError> {
+        let version = self.tm.version();
+        let (mut marker, pm) = self.tm.marker_with_pending_writes();
+        let pending = pm.iter().rev();
+
+        marker.mark_range(KeyRange::all());
+        let commited = self.engine.storage.scan_rev(version);
+
+        Ok(TransactionRevIter::new(pending, commited, Some(marker)))
+    }
+
+    pub fn scan_range<'a>(
+        &'a mut self,
+        range: KeyRange,
+    ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
+        let version = self.tm.version();
+        let (mut marker, pm) = self.tm.marker_with_pending_writes();
+        let start = range.start_bound();
+        let end = range.end_bound();
+
+        marker.mark_range(range.clone());
+        let pending = pm.range_comparable((start, end));
+        let commited = self.engine.storage.scan_range(range, version);
+
+        Ok(TransactionRange::new(pending, commited, Some(marker)))
+    }
+
+    pub fn scan_range_rev<'a>(
+        &'a mut self,
+        range: KeyRange,
+    ) -> Result<TransactionRevRange<'a, S, BTreeConflict>, TransactionError> {
+        let version = self.tm.version();
+        let (mut marker, pm) = self.tm.marker_with_pending_writes();
+        let start = range.start_bound();
+        let end = range.end_bound();
+
+        marker.mark_range(range.clone());
+        let pending = pm.range_comparable((start, end));
+        let commited = self.engine.storage.scan_range_rev(range, version);
+
+        Ok(TransactionRevRange::new(pending.rev(), commited, Some(marker)))
+    }
 }

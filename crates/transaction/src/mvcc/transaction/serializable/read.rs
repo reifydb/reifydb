@@ -15,73 +15,52 @@ use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::types::TransactionValue;
 use reifydb_storage::{Key, KeyRange};
-use reifydb_storage::memory::{Iter, IterRev, Range, RangeRev};
 use reifydb_storage::{LocalClock, Storage, Version};
-use std::marker::PhantomData;
 
-pub struct ReadTransaction<S>
-where
-    S: Storage,
-{
-    pub(crate) db: Serializable,
-    pub(crate) rx: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
-    pub(crate) _marker: PhantomData<S>, // FIXME gone when storage engine is integrated
+pub struct TransactionRx<S: Storage> {
+    pub(crate) engine: Serializable<S>,
+    pub(crate) tm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
-impl<S: Storage> ReadTransaction<S> {
-    pub(in crate::mvcc::transaction) fn new(
-        db: Serializable,
-        rtm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
-    ) -> Self {
-        Self { db, rx: rtm, _marker: Default::default() }
+impl<S: Storage> TransactionRx<S> {
+    pub fn new(engine: Serializable<S>) -> Self {
+        let tm = engine.tm.read();
+        Self { engine, tm }
     }
 }
 
-impl<S: Storage> ReadTransaction<S> {
-    /// Returns the version of the transaction.
+impl<S: Storage> TransactionRx<S> {
     pub fn version(&self) -> Version {
-        self.rx.version()
+        self.tm.version()
     }
 
-    /// Get a value from the database.
     pub fn get(&self, key: &Key) -> Option<TransactionValue> {
-        let version = self.rx.version();
-        // self.db.as_inner().get(key, version).map(Into::into)
-        unimplemented!()
+        let version = self.tm.version();
+        self.engine.get(key, version).map(Into::into)
     }
 
-    /// Returns true if the given key exists in the database.
     pub fn contains_key(&self, key: &Key) -> bool {
-        let version = self.rx.version();
-        // self.db.as_inner().contains_key(key, version)
-        unimplemented!()
+        let version = self.tm.version();
+        self.engine.contains_key(key, version)
     }
 
-    /// Returns an iterator over the entries of the database.
-    pub fn iter(&self) -> Iter<'_> {
-        let version = self.rx.version();
-        // self.db.as_inner().iter(version)
-        unimplemented!()
+    pub fn scan(&self) -> S::ScanIter<'_> {
+        let version = self.tm.version();
+        self.engine.scan(version)
     }
 
-    /// Returns a reverse iterator over the entries of the database.
-    pub fn iter_rev(&self) -> IterRev<'_> {
-        let version = self.rx.version();
-        // self.db.as_inner().iter_rev(version)
-        unimplemented!()
+    pub fn scan_rev(&self) -> S::ScanIterRev<'_> {
+        let version = self.tm.version();
+        self.engine.scan_rev(version)
     }
 
-    /// Returns an iterator over the subset of entries of the database.
-    pub fn range(&self, range: KeyRange) -> Range<'_> {
-        let version = self.rx.version();
-        // self.db.as_inner().range(range, version)
-        unimplemented!()
+    pub fn scan_range(&self, range: KeyRange) -> S::ScanRangeIter<'_> {
+        let version = self.tm.version();
+        self.engine.scan_range(range, version)
     }
 
-    /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev(&self, range: KeyRange) -> RangeRev<'_> {
-        let version = self.rx.version();
-        // self.db.as_inner().range_rev(range, version)
-        unimplemented!()
+    pub fn scan_range_rev(&self, range: KeyRange) -> S::ScanRangeIterRev<'_> {
+        let version = self.tm.version();
+        self.engine.scan_range_rev(range, version)
     }
 }

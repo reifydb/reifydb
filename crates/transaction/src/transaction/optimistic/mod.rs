@@ -10,6 +10,7 @@ use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
 use reifydb_storage::KeyRange;
 use reifydb_storage::Storage;
 
+/// Optimistic Concurrency Control
 impl<S: Storage> Transaction<S> for Optimistic<S> {
     type Rx = TransactionRx<S>;
     type Tx = TransactionTx<S>;

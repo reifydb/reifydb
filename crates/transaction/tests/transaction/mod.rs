@@ -2,3 +2,4 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 mod optimistic;
+mod serializable;
