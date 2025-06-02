@@ -1,0 +1,44 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+# originally licensed under the Apache License, Version 2.0.
+# Original copyright:
+#   Copyright (c) 2024 Erik Grinaker
+#
+# The original Apache License can be found at:
+#   http://www.apache.org/licenses/LICENSE-2.0
+
+# Removes should work on both existing, missing, and removed keys.
+
+import a=1 b=1 x=
+---
+ok
+
+# Remove an existing, missing, and removed key. Show engine operations.
+t1: begin
+t1: remove a m x
+---
+ok
+
+t1: scan
+---
+t1: "b" => "1"
+
+# Set and then remove a key, both an existing an missing one.
+t1: set b=2 c=2
+---
+ok
+
+t1: scan
+---
+t1: "b" => "2"
+t1: "c" => "2"
+
+t1: remove b c
+---
+ok
+
+t1: scan
+---
+ok
