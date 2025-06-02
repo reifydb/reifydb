@@ -162,7 +162,7 @@ impl Conflict for BTreeConflict {
 }
 
 impl ConflictRange for BTreeConflict {
-    fn mark_range(&mut self, range: impl RangeBounds<Key>) {
+    fn mark_range(&mut self, range: KeyRange) {
         let start = match range.start_bound() {
             Bound::Included(k) => Bound::Included(k.clone()),
             Bound::Excluded(k) => Bound::Excluded(k.clone()),

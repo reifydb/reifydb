@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::ops::{Deref, RangeBounds};
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::mvcc::conflict::BTreeConflict;
@@ -18,14 +18,30 @@ use crate::mvcc::transaction::TransactionManager;
 
 use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
-use reifydb_storage::{Key, KeyRange};
 use reifydb_storage::LocalClock;
 use reifydb_storage::Storage;
 use reifydb_storage::Version;
+use reifydb_storage::{Key, KeyRange};
 pub use write::TransactionTx;
 
 mod read;
 mod write;
+
+pub struct Optimistic<S: Storage>(Arc<Inner<S>>);
+
+impl<S: Storage> Deref for Optimistic<S> {
+    type Target = Inner<S>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<S: Storage> Clone for Optimistic<S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 pub struct Inner<S: Storage> {
     tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
@@ -43,38 +59,16 @@ impl<S: Storage> Inner<S> {
     }
 }
 
-pub struct Optimistic<S: Storage> {
-    inner: Arc<Inner<S>>,
-}
-
-impl<S: Storage> Deref for Optimistic<S> {
-    type Target = Inner<S>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<S: Storage> Clone for Optimistic<S> {
-    fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
-    }
-}
-
 impl<S: Storage> Optimistic<S> {
     pub fn new(storage: S) -> Self {
-        let inner = Arc::new(Inner::new(core::any::type_name::<Self>(), storage));
-        Self { inner }
+        Self(Arc::new(Inner::new(core::any::type_name::<Self>(), storage)))
     }
 }
 
 impl<S: Storage> Optimistic<S> {
-    /// Returns the current read version of the database.
     pub fn version(&self) -> Version {
-        self.inner.version()
+        self.0.version()
     }
-
-    /// Create a read transaction.
     pub fn begin_read_only(&self) -> TransactionRx<S> {
         TransactionRx::new(self.clone())
     }

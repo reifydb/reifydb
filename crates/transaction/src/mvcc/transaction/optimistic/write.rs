@@ -29,7 +29,7 @@ pub struct TransactionTx<S: Storage> {
 
 impl<S: Storage> TransactionTx<S> {
     pub fn new(db: Optimistic<S>) -> Self {
-        let tm = db.inner.tm.write().unwrap();
+        let tm = db.tm.write().unwrap();
         Self { engine: db, tm }
     }
 }
@@ -54,7 +54,6 @@ impl<S: Storage> TransactionTx<S> {
     pub fn commit(&mut self) -> Result<(), MvccError> {
         self.tm.commit(|pending| {
             self.engine
-                .inner
                 .storage
                 .apply((pending.into_iter().map(|p| (p.action, p.version)).collect()));
             Ok(())
@@ -83,7 +82,7 @@ impl<S: Storage> TransactionTx<S> {
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.engine.inner.storage.contains(key, version)),
+            None => Ok(self.engine.storage.contains(key, version)),
         }
     }
 
@@ -97,7 +96,7 @@ impl<S: Storage> TransactionTx<S> {
                     Ok(None)
                 }
             }
-            None => Ok(self.engine.inner.storage.get(key, version).map(Into::into)),
+            None => Ok(self.engine.storage.get(key, version).map(Into::into)),
         }
     }
 
@@ -113,7 +112,7 @@ impl<S: Storage> TransactionTx<S> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let pending = pm.iter();
-        let commited = self.engine.inner.storage.scan(version);
+        let commited = self.engine.storage.scan(version);
 
         Ok(TransactionIter::new(pending, commited, Some(marker)))
     }
@@ -124,7 +123,7 @@ impl<S: Storage> TransactionTx<S> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let pending = pm.iter().rev();
-        let commited = self.engine.inner.storage.scan_rev(version);
+        let commited = self.engine.storage.scan_rev(version);
 
         Ok(TransactionRevIter::new(pending, commited, Some(marker)))
     }
@@ -138,7 +137,7 @@ impl<S: Storage> TransactionTx<S> {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
-        let commited = self.engine.inner.storage.scan_range(range, version);
+        let commited = self.engine.storage.scan_range(range, version);
 
         Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
@@ -152,7 +151,7 @@ impl<S: Storage> TransactionTx<S> {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pm.range_comparable((start, end));
-        let commited = self.engine.inner.storage.scan_range_rev(range, version);
+        let commited = self.engine.storage.scan_range_rev(range, version);
 
         Ok(TransactionRevRange::new(pending.rev(), commited, Some(marker)))
     }

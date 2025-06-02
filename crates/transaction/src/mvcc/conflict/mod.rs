@@ -12,38 +12,28 @@
 use std::ops::RangeBounds;
 
 pub use btree::BTreeConflict;
-use reifydb_storage::Key;
+use reifydb_storage::{Key, KeyRange};
 
 mod btree;
 
-/// The conflict manager that can be used to manage the conflicts in a transaction.
 pub trait Conflict: Default + Sized {
-    /// Create a new conflict manager.
     fn new() -> Self;
-    /// Mark the key is read.
     fn mark_read(&mut self, key: &Key);
-    /// Mark the key is .
     fn mark_conflict(&mut self, key: &Key);
-    /// Returns true if we have a conflict.
     fn has_conflict(&self, other: &Self) -> bool;
-    /// Rollback the conflict manager.
     fn rollback(&mut self);
 }
 
-/// A extended trait of the [`Conflict`] trait that can be used to manage the range of keys.
 pub trait ConflictRange: Conflict + Sized {
-    /// Mark the range is read.
-    fn mark_range(&mut self, range: impl RangeBounds<Key>);
+    fn mark_range(&mut self, range: KeyRange);
 }
 
-/// A extended trait of the [`Conflict`] trait that can be used to manage the iterator of keys.
 pub trait ConflictIter: Conflict + Sized {
-    /// Mark the iterator is operated, this is useful to detect the indirect conflict.
     fn mark_iter(&mut self);
 }
 
 impl<T: ConflictRange> ConflictIter for T {
     fn mark_iter(&mut self) {
-        self.mark_range(..);
+        self.mark_range(KeyRange::all());
     }
 }

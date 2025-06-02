@@ -19,48 +19,48 @@ use reifydb_storage::{LocalClock, Storage, Version};
 
 pub struct TransactionRx<S: Storage> {
     pub(crate) engine: Optimistic<S>,
-    pub(crate) rtm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
+    pub(crate) tm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
 impl<S: Storage> TransactionRx<S> {
     pub fn new(engine: Optimistic<S>) -> Self {
-        let rtm = engine.inner.tm.read();
-        Self { engine, rtm }
+        let tm = engine.tm.read();
+        Self { engine, tm }
     }
 }
 
 impl<S: Storage> TransactionRx<S> {
     pub fn version(&self) -> Version {
-        self.rtm.version()
+        self.tm.version()
     }
 
     pub fn get(&self, key: &Key) -> Option<TransactionValue> {
-        let version = self.rtm.version();
+        let version = self.tm.version();
         self.engine.get(key, version).map(Into::into)
     }
 
     pub fn contains_key(&self, key: &Key) -> bool {
-        let version = self.rtm.version();
+        let version = self.tm.version();
         self.engine.contains_key(key, version)
     }
 
     pub fn scan(&self) -> S::ScanIter<'_> {
-        let version = self.rtm.version();
+        let version = self.tm.version();
         self.engine.scan(version)
     }
 
     pub fn scan_rev(&self) -> S::ScanIterRev<'_> {
-        let version = self.rtm.version();
+        let version = self.tm.version();
         self.engine.scan_rev(version)
     }
 
     pub fn scan_range(&self, range: KeyRange) -> S::ScanRangeIter<'_> {
-        let version = self.rtm.version();
+        let version = self.tm.version();
         self.engine.scan_range(range, version)
     }
 
     pub fn scan_range_rev(&self, range: KeyRange) -> S::ScanRangeIterRev<'_> {
-        let version = self.rtm.version();
+        let version = self.tm.version();
         self.engine.scan_range_rev(range, version)
     }
 }

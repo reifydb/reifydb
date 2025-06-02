@@ -10,32 +10,26 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::conflict::{Conflict, ConflictRange};
-use core::{hash::Hash, ops::RangeBounds};
-use reifydb_storage::Key;
+use reifydb_storage::{Key, KeyRange};
 
-/// A marker used to mark the keys that are read.
 pub struct Marker<'a, C> {
     marker: &'a mut C,
 }
 
 impl<'a, C> Marker<'a, C> {
-    /// Returns a new marker.
-
     pub fn new(marker: &'a mut C) -> Self {
         Self { marker }
     }
 }
 
 impl<C: Conflict> Marker<'_, C> {
-    /// Marks a key is operated.
     pub fn mark(&mut self, k: &Key) {
         self.marker.mark_read(k);
     }
 }
 
 impl<C: ConflictRange> Marker<'_, C> {
-    /// Marks a key is operated.
-    pub fn mark_range(&mut self, range: impl RangeBounds<Key>) {
+    pub fn mark_range(&mut self, range: KeyRange) {
         self.marker.mark_range(range);
     }
 }
