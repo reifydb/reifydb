@@ -3,18 +3,15 @@
 
 use reifydb::embedded_blocking::Embedded;
 use reifydb::reifydb_storage::Storage;
-use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb::{DB, Principal, ReifyDB, memory, optimistic, serializable, lmdb};
+use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic};
+use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
-use reifydb_testing::tempdir::temp_dir;
 
 pub struct Runner<S: Storage + 'static, T: Transaction<S> + 'static> {
     engine: Embedded<S, T>,

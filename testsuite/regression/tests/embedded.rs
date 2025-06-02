@@ -3,11 +3,8 @@
 
 use reifydb::embedded::Embedded;
 use reifydb::reifydb_storage::Storage;
-use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb::{DB, Principal, ReifyDB, memory, optimistic, serializable, lmdb};
+use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;

@@ -217,15 +217,15 @@
 //                 }
 //             }
 //
-//             // tx: scan_prefix PREFIX
-//             "scan_prefix" => {
+//             // tx: scan_range PREFIX
+//             "scan_range" => {
 //                 let tx = self.get_tx(&command.prefix)?;
 //                 let mut args = command.consume_args();
 //                 let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
 //                 args.reject_rest()?;
 //
 //                 let mut kvs = Vec::new();
-//                 for item in tx.scan_prefix(&prefix) {
+//                 for item in tx.scan_range(&prefix) {
 //                     let (key, value) = item?;
 //                     kvs.push((key, value));
 //                 }

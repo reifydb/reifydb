@@ -25,7 +25,7 @@ t2: begin
 ---
 ok
 
-t1: scan_prefix b
+t1: scan_range b
 ---
 t1: "ba" → "0"
 t1: "bb" → "0"
@@ -36,7 +36,7 @@ t2: commit
 ---
 ok
 
-t1: scan_prefix b
+t1: scan_range b
 ---
 t1: "ba" → "0"
 t1: "bb" → "0"

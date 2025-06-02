@@ -4,12 +4,9 @@
 use reifydb::client::Client;
 use reifydb::reifydb_storage::Storage;
 use reifydb::reifydb_storage::lmdb::Lmdb;
-use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{ReifyDB, memory, optimistic, serializable};
+use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;

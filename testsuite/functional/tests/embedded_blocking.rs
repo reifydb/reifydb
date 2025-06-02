@@ -3,12 +3,8 @@
 
 use reifydb::embedded_blocking::Embedded;
 use reifydb::reifydb_storage::Storage;
-use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic, serializable};
-use reifydb_testing::tempdir::temp_dir;
+use reifydb::{Principal, ReifyDB, memory, optimistic, serializable};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;

@@ -10,57 +10,50 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::encoding::binary::decode_binary;
-use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_persistence::{Memory, Persistence};
+use reifydb_core::encoding::{format, keycode};
+use reifydb_persistence::{Action, KeyRange};
+use reifydb_storage::Storage;
+use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
 use reifydb_testing::util::parse_key_range;
 use std::error::Error as StdError;
 use std::fmt::Write;
-use std::ops::Deref;
+use std::ops::{Bound, Deref};
 use std::path::Path;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/persistence/tests/persistence" as memory => test_memory }
+test_each_path! { in "crates/storage/tests/scripts" as memory => test_memory }
 
 fn test_memory(path: &Path) {
-    testscript::run_path(&mut PersistenceRunner::new(Memory::default()), path).expect("test failed")
+    testscript::run_path(&mut Runner::new(Memory::default()), path).expect("test failed")
 }
 
 /// Runs engine tests.
-pub struct PersistenceRunner<P: Persistence> {
-    persistence: P,
+pub struct Runner<S: Storage> {
+    storage: S,
 }
 
-impl<P: Persistence> PersistenceRunner<P> {
-    fn new(persistence: P) -> Self {
-        Self { persistence }
+impl<S: Storage> Runner<S> {
+    fn new(storage: S) -> Self {
+        Self { storage }
     }
 }
 
-impl<P: Persistence> testscript::Runner for PersistenceRunner<P> {
+impl<S: Storage> testscript::Runner for Runner<S> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {
-            // remove KEY
-            "remove" => {
-                let mut args = command.consume_args();
-                let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
-                args.reject_rest()?;
-
-                self.persistence.remove(&key)?;
-            }
-
             // // get KEY
             "get" => {
                 let mut args = command.consume_args();
                 let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
                 args.reject_rest()?;
-                let value = self.persistence.get(&key)?;
-                writeln!(output, "{}", format::Raw::key_maybe_value(&key, value.as_deref()))?;
+                let value = self.storage.get(&key, 0).map(|sv| sv.value.to_vec());
+                writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
             }
 
-            // scan [reverse=BOOL] RANGE
+            // scan [reverse=BOOL]
             "scan" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
@@ -68,10 +61,11 @@ impl<P: Persistence> testscript::Runner for PersistenceRunner<P> {
                     parse_key_range(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."))?;
                 args.reject_rest()?;
 
+                let range = KeyRange { start: range.0, end: range.1 };
+
                 let mut kvs = Vec::new();
-                for item in self.persistence.scan(range) {
-                    let (key, value) = item?;
-                    kvs.push((key, value));
+                for sv in self.storage.scan_range(range, 0) {
+                    kvs.push((sv.key, sv.value));
                 }
 
                 if reverse {
@@ -83,15 +77,18 @@ impl<P: Persistence> testscript::Runner for PersistenceRunner<P> {
                     writeln!(output, "{fmtkv}")?;
                 }
             }
-            // scan_range PREFIX
+            // scan_range [reverse=BOOL] PREFIX
             "scan_range" => {
                 let mut args = command.consume_args();
                 let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
                 args.reject_rest()?;
 
-                let mut scan = self.persistence.scan_range(&prefix);
-                while let Some((key, value)) = scan.next().transpose()? {
-                    let fmtkv = format::Raw::key_value(&key, &value.deref());
+                let range = keycode::prefix_range(&prefix);
+                let range: KeyRange = range.into();
+
+                let mut scan = self.storage.scan_range(range, 1);
+                while let Some(sv) = scan.next() {
+                    let fmtkv = format::Raw::key_value(&sv.key, &sv.value.deref());
                     writeln!(output, "{fmtkv}")?;
                 }
             }
@@ -104,14 +101,18 @@ impl<P: Persistence> testscript::Runner for PersistenceRunner<P> {
                 let value = decode_binary(&kv.value);
                 args.reject_rest()?;
 
-                self.persistence.set(&key, value)?;
+                self.storage.apply(vec![(Action::Set { key, value }, 0)])
             }
 
-            // status
-            // "status" => {
-            //     command.consume_args().reject_rest()?;
-            //     writeln!(output, "{:#?}", self.reifydb_engine.status()?)?;
-            // }
+            // remove KEY
+            "remove" => {
+                let mut args = command.consume_args();
+                let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+                args.reject_rest()?;
+
+                self.storage.apply(vec![(Action::Remove { key }, 0)])
+            }
+
             name => return Err(format!("invalid command {name}").into()),
         }
         Ok(output)

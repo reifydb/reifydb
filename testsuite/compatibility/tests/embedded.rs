@@ -6,19 +6,12 @@
 
 use reifydb::embedded::Embedded;
 use reifydb::reifydb_storage::Storage;
-use reifydb::reifydb_storage::lmdb::Lmdb;
-use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic, serializable};
-use reifydb_testing::tempdir::temp_dir;
+use reifydb::{DB, Principal, ReifyDB};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
 use std::fmt::Write;
-use std::path::Path;
-use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
 pub struct Runner<S: Storage + 'static, T: Transaction<S> + 'static> {
@@ -73,5 +66,3 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
         Ok(output)
     }
 }
-
-

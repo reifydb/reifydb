@@ -25,7 +25,7 @@ pub type Result<T> = result::Result<T, Error>;
 pub type Key = AsyncCowVec<u8>;
 pub type Value = AsyncCowVec<u8>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KeyRange {
     pub start: Bound<Key>,
     pub end: Bound<Key>,
