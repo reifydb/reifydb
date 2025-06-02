@@ -50,10 +50,9 @@ where
     P: PendingWrites,
 {
     pub fn write(&self) -> Result<TransactionManagerTx<C, P>, TransactionError> {
-        let read_ts = self.inner.read_ts();
         Ok(TransactionManagerTx {
             oracle: self.inner.clone(),
-            version: read_ts,
+            version: self.inner.version(),
             size: 0,
             count: 0,
             conflicts: C::new(),
@@ -69,14 +68,13 @@ impl<C, P> TransactionManager<C, P> {
     pub fn new(name: &str, current_version: Version) -> Self {
         Self {
             inner: Arc::new({
-                let next_ts = current_version;
                 let orc = Oracle::new(
                     format!("{}.pending_reads", name).into(),
                     format!("{}.txn_timestamps", name).into(),
-                    next_ts,
+                    current_version,
                 );
-                orc.rx.done(next_ts);
-                orc.tx.done(next_ts);
+                orc.rx.done(current_version);
+                orc.tx.done(current_version);
                 orc.increment_next_ts();
                 orc
             }),
@@ -84,17 +82,17 @@ impl<C, P> TransactionManager<C, P> {
         }
     }
 
-    pub fn version(&self) -> u64 {
-        self.inner.read_ts()
+    pub fn version(&self) -> Version {
+        self.inner.version()
     }
 }
 
 impl<C, P> TransactionManager<C, P> {
-    pub fn discard_hint(&self) -> u64 {
+    pub fn discard_hint(&self) -> Version {
         self.inner.discard_at_or_below()
     }
 
     pub fn read(&self) -> TransactionManagerRx<C, P> {
-        TransactionManagerRx { db: self.clone(), version: self.inner.read_ts() }
+        TransactionManagerRx { db: self.clone(), version: self.inner.version() }
     }
 }

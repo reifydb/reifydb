@@ -12,20 +12,21 @@
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::watermark::{Closer, WaterMark};
 use core::ops::AddAssign;
+use reifydb_storage::Version;
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard};
 
 #[derive(Debug)]
 pub(super) struct OracleInner<C> {
-    pub next_txn_ts: u64,
+    pub next_version: Version,
 
-    pub last_cleanup_ts: u64,
+    pub last_cleanup: Version,
 
     pub(super) committed: Vec<CommittedTxn<C>>,
 }
 
-pub(super) enum CreateCommitTimestampResult<C> {
-    Timestamp(u64),
+pub(super) enum CreateCommitResult<C> {
+    Success(Version),
     Conflict(C),
 }
 
@@ -50,12 +51,12 @@ impl<C> Oracle<C>
 where
     C: Conflict,
 {
-    pub(super) fn new_commit_ts(
+    pub(super) fn new_commit(
         &self,
         done_read: &mut bool,
-        read_ts: u64,
-        mut conflicts: C,
-    ) -> CreateCommitTimestampResult<C> {
+        version: Version,
+        conflicts: C,
+    ) -> CreateCommitResult<C> {
         let mut inner = self.inner.lock().unwrap();
 
         for committed_txn in inner.committed.iter() {
@@ -65,39 +66,39 @@ where
             // This change assumes linearizability. Lack of linearizability could
             // cause the read ts of a new txn to be lower than the commit ts of
             // a txn before it (@mrjn).
-            if committed_txn.ts <= read_ts {
+            if committed_txn.version <= version {
                 continue;
             }
 
             if let Some(old_conflicts) = &committed_txn.conflict_manager {
                 if conflicts.has_conflict(old_conflicts) {
-                    return CreateCommitTimestampResult::Conflict(conflicts);
+                    return CreateCommitResult::Conflict(conflicts);
                 }
             }
         }
 
-        let ts = {
+        let version = {
             if !*done_read {
-                self.rx.done(read_ts);
+                self.rx.done(version);
                 *done_read = true;
             }
 
             self.cleanup_committed_transactions(true, &mut inner);
 
             // This is the general case, when user doesn't specify the read and commit ts.
-            let ts = inner.next_txn_ts;
-            inner.next_txn_ts += 1;
+            let ts = inner.next_version;
+            inner.next_version += 1;
             self.tx.begin(ts);
             ts
         };
 
-        assert!(ts >= inner.last_cleanup_ts);
+        assert!(version >= inner.last_cleanup);
 
         // We should ensure that txns are not added to o.committedTxns slice when
         // conflict detection is disabled otherwise this slice would keep growing.
-        inner.committed.push(CommittedTxn { ts, conflict_manager: Some(conflicts) });
+        inner.committed.push(CommittedTxn { version, conflict_manager: Some(conflicts) });
 
-        CreateCommitTimestampResult::Timestamp(ts)
+        CreateCommitResult::Success(version)
     }
 
     fn cleanup_committed_transactions(
@@ -113,17 +114,17 @@ where
 
         let max_read_ts = self.rx.done_until();
 
-        assert!(max_read_ts >= inner.last_cleanup_ts);
+        assert!(max_read_ts >= inner.last_cleanup);
 
         // do not run clean up if the max_read_ts (read timestamp of the
         // oldest transaction that is still in flight) has not increased
-        if max_read_ts == inner.last_cleanup_ts {
+        if max_read_ts == inner.last_cleanup {
             return;
         }
 
-        inner.last_cleanup_ts = max_read_ts;
+        inner.last_cleanup = max_read_ts;
 
-        inner.committed.retain(|txn| txn.ts > max_read_ts);
+        inner.committed.retain(|txn| txn.version > max_read_ts);
     }
 }
 
@@ -131,43 +132,39 @@ impl<C> Oracle<C> {
     pub fn new(
         rx_mark_name: Cow<'static, str>,
         tx_mark_name: Cow<'static, str>,
-        next_txn_ts: u64,
+        next_version: Version,
     ) -> Self {
         let closer = Closer::new(2);
         Self {
             write_serialize_lock: Mutex::new(()),
-            inner: Mutex::new(OracleInner {
-                next_txn_ts,
-                last_cleanup_ts: 0,
-                committed: Vec::new(),
-            }),
+            inner: Mutex::new(OracleInner { next_version, last_cleanup: 0, committed: Vec::new() }),
             rx: WaterMark::new(rx_mark_name, closer.clone()),
             tx: WaterMark::new(tx_mark_name, closer.clone()),
             closer,
         }
     }
 
-    pub(super) fn read_ts(&self) -> u64 {
-        let read_ts = {
+    pub(super) fn version(&self) -> Version {
+        let version = {
             let inner = self.inner.lock().unwrap();
 
-            let read_ts = inner.next_txn_ts - 1;
-            self.rx.begin(read_ts);
-            read_ts
+            let version = inner.next_version - 1;
+            self.rx.begin(version);
+            version
         };
 
         // Wait for all txns which have no conflicts, have been assigned a commit
         // timestamp and are going through the write to value log and LSM tree
         // process. Not waiting here could mean that some txns which have been
         // committed would not be read.
-        if let Err(e) = self.tx.wait_for_mark(read_ts) {
+        if let Err(e) = self.tx.wait_for_mark(version) {
             panic!("{e}");
         }
-        read_ts
+        version
     }
 
     pub(super) fn increment_next_ts(&self) {
-        self.inner.lock().unwrap().next_txn_ts.add_assign(1);
+        self.inner.lock().unwrap().next_version.add_assign(1);
     }
 
     pub(super) fn discard_at_or_below(&self) -> u64 {
@@ -195,6 +192,6 @@ impl<S> Drop for Oracle<S> {
 
 #[derive(Debug)]
 pub(super) struct CommittedTxn<C> {
-    ts: u64,
+    version: Version,
     conflict_manager: Option<C>,
 }

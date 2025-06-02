@@ -40,7 +40,7 @@ impl<C, P> Drop for TransactionManagerTx<C, P> {
 
 impl<C, P> TransactionManagerTx<C, P> {
     /// Returns the version of the transaction.
-    pub fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         self.version
     }
 
@@ -311,20 +311,20 @@ where
 
         let conflict_manager = mem::take(&mut self.conflicts);
 
-        match self.oracle.new_commit_ts(&mut self.done_read, self.version, conflict_manager) {
-            CreateCommitTimestampResult::Conflict(conflicts) => {
+        match self.oracle.new_commit(&mut self.done_read, self.version, conflict_manager) {
+            CreateCommitResult::Conflict(conflicts) => {
                 // If there is a conflict, we should not send the updates to the write channel.
                 // Instead, we should return the conflict error to the user.
                 self.conflicts = conflicts;
                 Err(TransactionError::Conflict)
             }
-            CreateCommitTimestampResult::Timestamp(commit_ts) => {
+            CreateCommitResult::Success(version) => {
                 let pending_writes = mem::take(&mut self.pending_writes);
                 let duplicate_writes = mem::take(&mut self.duplicates);
                 let mut all = Vec::with_capacity(pending_writes.len() + self.duplicates.len());
 
                 let process = |entries: &mut Vec<Pending>, mut pending: Pending| {
-                    pending.version = commit_ts;
+                    pending.version = version;
                     entries.push(pending);
                 };
 
@@ -344,9 +344,9 @@ where
                 duplicate_writes.into_iter().for_each(|item| process(&mut all, item));
 
                 // CommitTs should not be zero if we're inserting transaction markers.
-                debug_assert_ne!(commit_ts, 0);
+                debug_assert_ne!(version, 0);
 
-                Ok((commit_ts, all))
+                Ok((version, all))
             }
         }
     }

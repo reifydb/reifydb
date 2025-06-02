@@ -19,7 +19,7 @@ use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRevRange;
 use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, Value};
-use reifydb_storage::{Apply, Version};
+use reifydb_storage::Version;
 use std::ops::RangeBounds;
 
 /// A optimistic concurrency control transaction over the [`Optimistic`].
