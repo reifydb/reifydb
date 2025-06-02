@@ -25,7 +25,7 @@ use std::ops::RangeBounds;
 /// A optimistic concurrency control transaction over the [`Optimistic`].
 pub struct TransactionTx<S: Storage> {
     engine: Optimistic<S>,
-    tm: TransactionManagerTx<BTreeConflict, BTreePendingWrites>,
+    tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
 impl<S: Storage> TransactionTx<S> {
@@ -65,7 +65,7 @@ impl<S: Storage> TransactionTx<S> {
 
 impl<S: Storage> TransactionTx<S> {
     /// Returns the read version of the transaction.
-    pub fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         self.tm.version()
     }
 

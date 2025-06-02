@@ -6,12 +6,14 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
+pub use clock::{LocalClock, LogicalClock};
 use reifydb_persistence::{Key, Value};
 pub use storage::{
     Apply, Contains, Get, Scan, ScanIterator, ScanIteratorRev, ScanRange, ScanRangeIterator,
     ScanRangeIteratorRev, ScanRangeRev, ScanRev, Storage,
 };
 
+mod clock;
 pub mod memory;
 mod storage;
 

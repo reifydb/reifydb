@@ -97,13 +97,13 @@ impl WatermarkInner {
                 Ok(mark) => {
                   if let Some(wait_tx) = mark.waiter {
                       let done_until = self.done_until.load(Ordering::SeqCst);
-                      if done_until >= mark.index {
+                      if done_until >= mark.version {
                         let _ = wait_tx; // Close channel.
                       } else {
-                        waiters.borrow_mut().entry(mark.index).or_default().push(wait_tx);
+                        waiters.borrow_mut().entry(mark.version).or_default().push(wait_tx);
                       }
                   } else {
-                      process_one(mark.index, mark.done)
+                      process_one(mark.version, mark.done)
                   }
                 },
                 Err(_) => {

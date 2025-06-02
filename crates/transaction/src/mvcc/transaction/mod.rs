@@ -31,25 +31,36 @@ use crate::mvcc::conflict::Conflict;
 use crate::mvcc::error::TransactionError;
 use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::read::TransactionManagerRx;
-use reifydb_storage::Version;
+use reifydb_storage::{LogicalClock, Version};
 
-pub struct TransactionManager<C, P> {
-    inner: Arc<Oracle<C>>,
+pub struct TransactionManager<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
+    inner: Arc<Oracle<C, L>>,
     _phantom: std::marker::PhantomData<(P)>,
 }
 
-impl<C, P> Clone for TransactionManager<C, P> {
+impl<C, L, P> Clone for TransactionManager<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone(), _phantom: std::marker::PhantomData }
     }
 }
 
-impl<C, P> TransactionManager<C, P>
+impl<C, L, P> TransactionManager<C, L, P>
 where
     C: Conflict,
+    L: LogicalClock,
     P: PendingWrites,
 {
-    pub fn write(&self) -> Result<TransactionManagerTx<C, P>, TransactionError> {
+    pub fn write(&self) -> Result<TransactionManagerTx<C, L, P>, TransactionError> {
         Ok(TransactionManagerTx {
             oracle: self.inner.clone(),
             version: self.inner.version(),
@@ -64,19 +75,24 @@ where
     }
 }
 
-impl<C, P> TransactionManager<C, P> {
-    pub fn new(name: &str, current_version: Version) -> Self {
+impl<C, L, P> TransactionManager<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
+    pub fn new(name: &str, clock: L) -> Self {
+        let version = clock.next();
         Self {
             inner: Arc::new({
-                let orc = Oracle::new(
+                let oracle = Oracle::new(
                     format!("{}.pending_reads", name).into(),
                     format!("{}.txn_timestamps", name).into(),
-                    current_version,
+                    clock,
                 );
-                orc.rx.done(current_version);
-                orc.tx.done(current_version);
-                orc.increment_next_ts();
-                orc
+                oracle.rx.done(version);
+                oracle.tx.done(version);
+                oracle
             }),
             _phantom: std::marker::PhantomData,
         }
@@ -87,12 +103,17 @@ impl<C, P> TransactionManager<C, P> {
     }
 }
 
-impl<C, P> TransactionManager<C, P> {
+impl<C, L, P> TransactionManager<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
     pub fn discard_hint(&self) -> Version {
         self.inner.discard_at_or_below()
     }
 
-    pub fn read(&self) -> TransactionManagerRx<C, P> {
-        TransactionManagerRx { db: self.clone(), version: self.inner.version() }
+    pub fn read(&self) -> TransactionManagerRx<C, L, P> {
+        TransactionManagerRx { engine: self.clone(), version: self.inner.version() }
     }
 }

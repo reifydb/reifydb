@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 pub use read::*;
+use reifydb_storage::{LocalClock, Version};
 use reifydb_storage::memory::Memory;
 pub use write::*;
 
@@ -25,17 +26,17 @@ use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::transaction::serializable::read::ReadTransaction;
 
 struct Inner {
-    tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
-    map: Memory,
+    tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
+    storage: Memory,
 }
 
 impl Inner {
     fn new(name: &str) -> Self {
-        let tm = TransactionManager::new(name, 0);
-        Self { tm, map: Memory::new() }
+        let tm = TransactionManager::new(name, LocalClock::new());
+        Self { tm, storage: Memory::new() }
     }
 
-    fn version(&self) -> u64 {
+    fn version(&self) -> Version {
         self.tm.version()
     }
 }
@@ -54,7 +55,6 @@ impl Inner {
 pub struct Serializable {
     inner: Arc<Inner>,
 }
-
 
 impl Clone for Serializable {
     fn clone(&self) -> Self {
@@ -78,12 +78,12 @@ impl Serializable {
 
 impl Serializable {
     /// Returns the current read version of the database.
-    pub fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         self.inner.version()
     }
 
     /// Create a read transaction.
-    pub fn read(&self) -> ReadTransaction<BTreeConflict> {
+    pub fn read(&self) -> ReadTransaction<Memory> {
         ReadTransaction::new(self.clone(), self.inner.tm.read())
     }
 }

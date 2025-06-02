@@ -9,30 +9,37 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, KeyRange};
 use reifydb_storage::memory::{Iter, IterRev, Range, RangeRev};
+use reifydb_storage::{LocalClock, Storage, Version};
+use std::marker::PhantomData;
 
-pub struct ReadTransaction<C> {
+pub struct ReadTransaction<S>
+where
+    S: Storage,
+{
     pub(crate) db: Serializable,
-    pub(crate) rx: TransactionManagerRx<C, BTreePendingWrites>,
+    pub(crate) rx: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
+    pub(crate) _marker: PhantomData<S>, // FIXME gone when storage engine is integrated
 }
 
-impl<C> ReadTransaction<C> {
+impl<S: Storage> ReadTransaction<S> {
     pub(in crate::mvcc::transaction) fn new(
         db: Serializable,
-        rtm: TransactionManagerRx<C, BTreePendingWrites>,
+        rtm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
     ) -> Self {
-        Self { db, rx: rtm }
+        Self { db, rx: rtm, _marker: Default::default() }
     }
 }
 
-impl<C> ReadTransaction<C> {
+impl<S: Storage> ReadTransaction<S> {
     /// Returns the version of the transaction.
-    pub fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         self.rx.version()
     }
 

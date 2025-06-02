@@ -9,20 +9,13 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::transaction::range_rev::TransactionRevRange;
-
 use super::*;
 use crate::mvcc::error::{MvccError, TransactionError};
-use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
+use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::TransactionManagerTx;
-use crate::mvcc::transaction::iter::TransactionIter;
-use crate::mvcc::transaction::iter_rev::TransactionRevIter;
-use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::types::TransactionValue;
-use reifydb_persistence::{Key, KeyRange, Value};
-use reifydb_storage::{Contains, Get, Scan, ScanRange, ScanRangeRev, ScanRev};
-use std::ops::Bound;
-use std::ops::RangeBounds;
+use reifydb_persistence::{Key, Value};
+use reifydb_storage::{Contains, Get, ScanRange, ScanRangeRev, ScanRev};
 
 #[cfg(test)]
 mod tests;
@@ -30,13 +23,13 @@ mod tests;
 /// A serializable snapshot isolation transaction over the [`Serializable`],
 pub struct SerializableTransaction {
     pub(in crate::mvcc) db: Serializable,
-    pub(in crate::mvcc) wtm: TransactionManagerTx<BTreeConflict, BTreePendingWrites>,
+    pub(in crate::mvcc) tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
 impl SerializableTransaction {
     pub fn new(db: Serializable) -> Self {
-        let wtm = db.inner.tm.write().unwrap();
-        Self { db, wtm }
+        let tm = db.inner.tm.write().unwrap();
+        Self { db, tm }
     }
 }
 
@@ -68,24 +61,22 @@ impl SerializableTransaction {
 
 impl SerializableTransaction {
     /// Returns the read version of the transaction.
-    pub fn version(&self) -> u64 {
-        self.wtm.version()
+    pub fn version(&self) -> Version {
+        self.tm.version()
     }
 
     /// Rollback the transaction.
-
     pub fn rollback(&mut self) -> Result<(), TransactionError> {
-        self.wtm.rollback()
+        self.tm.rollback()
     }
 
     /// Returns true if the given key exists in the database.
-
     pub fn contains_key(&mut self, key: &Key) -> Result<bool, TransactionError> {
-        let version = self.wtm.version();
-        match self.wtm.contains_key(key)? {
+        let version = self.tm.version();
+        match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.db.inner.map.contains(key, version)),
+            None => Ok(self.db.inner.storage.contains(key, version)),
         }
     }
 
@@ -94,8 +85,8 @@ impl SerializableTransaction {
         &'a mut self,
         key: &'b Key,
     ) -> Result<Option<TransactionValue>, TransactionError> {
-        let version = self.wtm.version();
-        match self.wtm.get(key)? {
+        let version = self.tm.version();
+        match self.tm.get(key)? {
             Some(v) => {
                 if v.value().is_some() {
                     Ok(Some(v.into()))
@@ -103,34 +94,34 @@ impl SerializableTransaction {
                     Ok(None)
                 }
             }
-            None => Ok(self.db.inner.map.get(key, version).map(Into::into)),
+            None => Ok(self.db.inner.storage.get(key, version).map(Into::into)),
         }
     }
 
     /// Insert a new key-value pair.
     pub fn set(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
-        self.wtm.set(key, value)
+        self.tm.set(key, value)
     }
 
     /// Remove a key.
     pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {
-        self.wtm.remove(key)
+        self.tm.remove(key)
     }
 
     // /// Iterate over the entries of the write transaction.
     // pub fn scan(&mut self) -> Result<TransactionIter<'_, BTreeConflict>, TransactionError> {
     //     let version = self.wtm.version();
     //     let (mut marker, pm) = self.wtm.marker_with_pending_writes();
-    // 
+    //
     //     let start: Bound<Key> = Bound::Unbounded;
     //     let end: Bound<Key> = Bound::Unbounded;
     //     marker.mark_range((start, end));
     //     let committed = self.db.inner.map.scan(version);
     //     let pending = pm.iter();
-    // 
+    //
     //     Ok(TransactionIter::new(pending, committed, None))
     // }
-    // 
+    //
     // /// Iterate over the entries of the write transaction in reverse order.
     // pub fn scan_rev(&mut self) -> Result<TransactionRevIter<'_, BTreeConflict>, TransactionError> {
     //     let version = self.wtm.version();
@@ -140,10 +131,10 @@ impl SerializableTransaction {
     //     marker.mark_range((start, end));
     //     let committed = self.db.inner.map.scan_rev(version);
     //     let pending = pm.iter().rev();
-    // 
+    //
     //     Ok(TransactionRevIter::new(pending, committed, None))
     // }
-    // 
+    //
     // /// Returns an iterator over the subset of entries of the database.
     // pub fn scan_range<'a>(
     //     &'a mut self,
@@ -156,10 +147,10 @@ impl SerializableTransaction {
     //     marker.mark_range((start, end));
     //     let pending = pm.range_comparable((start, end));
     //     let committed = self.db.inner.map.scan_range(range, version);
-    // 
+    //
     //     Ok(TransactionRange::new(pending, committed, Some(marker)))
     // }
-    // 
+    //
     // /// Returns an iterator over the subset of entries of the database in reverse order.
     // pub fn scan_range_rev<'a>(
     //     &'a mut self,
@@ -172,7 +163,7 @@ impl SerializableTransaction {
     //     marker.mark_range((start, end));
     //     let pending = pm.range_comparable((start, end)).rev();
     //     let committed = self.db.inner.map.scan_range_rev(range, version);
-    // 
+    //
     //     Ok(TransactionRevRange::new(pending, committed, Some(marker)))
     // }
 }

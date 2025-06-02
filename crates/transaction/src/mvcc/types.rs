@@ -57,7 +57,7 @@ impl TransactionValue {
         }
     }
 
-    pub fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         match self {
             Self::PendingIter { version, .. } => *version,
             Self::Pending(item) => item.version(),
@@ -161,7 +161,7 @@ impl Pending {
         &self.action
     }
 
-    pub fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         self.version
     }
 

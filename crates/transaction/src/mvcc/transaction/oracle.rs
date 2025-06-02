@@ -11,14 +11,17 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::watermark::{Closer, WaterMark};
-use core::ops::AddAssign;
-use reifydb_storage::Version;
+use reifydb_storage::{LogicalClock, Version};
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard};
 
 #[derive(Debug)]
-pub(super) struct OracleInner<C> {
-    pub next_version: Version,
+pub(super) struct OracleInner<C, L>
+where
+    C: Conflict,
+    L: LogicalClock,
+{
+    pub clock: L,
 
     pub last_cleanup: Version,
 
@@ -31,12 +34,16 @@ pub(super) enum CreateCommitResult<C> {
 }
 
 #[derive(Debug)]
-pub(super) struct Oracle<C> {
+pub(super) struct Oracle<C, L>
+where
+    C: Conflict,
+    L: LogicalClock,
+{
     // write_serialize_lock is for ensuring that transactions go to the write
     // channel in the same order as their commit timestamps.
     pub(super) write_serialize_lock: Mutex<()>,
 
-    pub(super) inner: Mutex<OracleInner<C>>,
+    pub(super) inner: Mutex<OracleInner<C, L>>,
 
     /// Used by DB
     pub(super) rx: WaterMark,
@@ -47,9 +54,10 @@ pub(super) struct Oracle<C> {
     closer: Closer,
 }
 
-impl<C> Oracle<C>
+impl<C, L> Oracle<C, L>
 where
     C: Conflict,
+    L: LogicalClock,
 {
     pub(super) fn new_commit(
         &self,
@@ -86,10 +94,9 @@ where
             self.cleanup_committed_transactions(true, &mut inner);
 
             // This is the general case, when user doesn't specify the read and commit ts.
-            let ts = inner.next_version;
-            inner.next_version += 1;
-            self.tx.begin(ts);
-            ts
+            let version = inner.clock.next();
+            self.tx.begin(version);
+            version
         };
 
         assert!(version >= inner.last_cleanup);
@@ -104,7 +111,7 @@ where
     fn cleanup_committed_transactions(
         &self,
         detect_conflicts: bool,
-        inner: &mut MutexGuard<OracleInner<C>>,
+        inner: &mut MutexGuard<OracleInner<C, L>>,
     ) {
         if !detect_conflicts {
             // When detect_conflicts is set to false, we do not store any
@@ -128,16 +135,16 @@ where
     }
 }
 
-impl<C> Oracle<C> {
-    pub fn new(
-        rx_mark_name: Cow<'static, str>,
-        tx_mark_name: Cow<'static, str>,
-        next_version: Version,
-    ) -> Self {
+impl<C, L> Oracle<C, L>
+where
+    C: Conflict,
+    L: LogicalClock,
+{
+    pub fn new(rx_mark_name: Cow<'static, str>, tx_mark_name: Cow<'static, str>, clock: L) -> Self {
         let closer = Closer::new(2);
         Self {
             write_serialize_lock: Mutex::new(()),
-            inner: Mutex::new(OracleInner { next_version, last_cleanup: 0, committed: Vec::new() }),
+            inner: Mutex::new(OracleInner { clock, last_cleanup: 0, committed: Vec::new() }),
             rx: WaterMark::new(rx_mark_name, closer.clone()),
             tx: WaterMark::new(tx_mark_name, closer.clone()),
             closer,
@@ -148,7 +155,7 @@ impl<C> Oracle<C> {
         let version = {
             let inner = self.inner.lock().unwrap();
 
-            let version = inner.next_version - 1;
+            let version = inner.clock.current() - 1;
             self.rx.begin(version);
             version
         };
@@ -161,10 +168,6 @@ impl<C> Oracle<C> {
             panic!("{e}");
         }
         version
-    }
-
-    pub(super) fn increment_next_ts(&self) {
-        self.inner.lock().unwrap().next_version.add_assign(1);
     }
 
     pub(super) fn discard_at_or_below(&self) -> u64 {
@@ -184,7 +187,11 @@ impl<C> Oracle<C> {
     }
 }
 
-impl<S> Drop for Oracle<S> {
+impl<C, L> Drop for Oracle<C, L>
+where
+    C: Conflict,
+    L: LogicalClock,
+{
     fn drop(&mut self) {
         self.stop();
     }

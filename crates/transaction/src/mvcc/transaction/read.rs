@@ -9,24 +9,39 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_storage::Version;
 use crate::mvcc::transaction::*;
+use reifydb_storage::Version;
 
 /// TransactionManagerRx is a read-only transaction manager.
-pub struct TransactionManagerRx<C, P> {
-    pub(crate) db: TransactionManager<C, P>,
+pub struct TransactionManagerRx<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
+    pub(crate) engine: TransactionManager<C, L, P>,
     pub(crate) version: Version,
 }
 
-impl<C, P> TransactionManagerRx<C, P> {
+impl<C, L, P> TransactionManagerRx<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
     /// Returns the version of this read transaction.
-    pub fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         self.version
     }
 }
 
-impl<C, P> Drop for TransactionManagerRx<C, P> {
+impl<C, L, P> Drop for TransactionManagerRx<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
     fn drop(&mut self) {
-        self.db.inner.done_read(self.version);
+        self.engine.inner.done_read(self.version);
     }
 }

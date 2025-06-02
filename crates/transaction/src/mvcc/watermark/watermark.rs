@@ -11,6 +11,7 @@
 
 use crate::mvcc::watermark::{Closer, WaterMarkError};
 use crossbeam_channel::{Receiver, Sender, bounded};
+use reifydb_storage::Version;
 use std::ops::Deref;
 use std::{
     borrow::Cow,
@@ -33,7 +34,7 @@ pub struct WatermarkInner {
 
 #[derive(Debug)]
 pub(crate) struct Mark {
-    pub(crate) index: u64,
+    pub(crate) version: Version,
     pub(crate) waiter: Option<Sender<()>>,
     pub(crate) done: bool,
 }
@@ -75,14 +76,14 @@ impl WaterMark {
     }
 
     /// Sets the last index to the given value.
-    pub fn begin(&self, index: u64) {
-        self.last_index.store(index, Ordering::SeqCst);
-        self.tx.send(Mark { index, waiter: None, done: false }).unwrap()
+    pub fn begin(&self, version: Version) {
+        self.last_index.store(version, Ordering::SeqCst);
+        self.tx.send(Mark { version, waiter: None, done: false }).unwrap()
     }
 
     /// Sets a single index as done.
     pub fn done(&self, index: u64) {
-        self.tx.send(Mark { index, waiter: None, done: true }).unwrap() // unwrap is safe because self also holds a receiver
+        self.tx.send(Mark { version: index, waiter: None, done: true }).unwrap() // unwrap is safe because self also holds a receiver
     }
 
     /// Returns the maximum index that has the property that all indices
@@ -99,7 +100,7 @@ impl WaterMark {
             }
 
             let (wait_tx, wait_rx) = bounded(1);
-            self.tx.send(Mark { index, waiter: Some(wait_tx), done: false }).unwrap(); // unwrap is safe because self also holds a receiver
+            self.tx.send(Mark { version: index, waiter: Some(wait_tx), done: false }).unwrap(); // unwrap is safe because self also holds a receiver
 
             let _ = wait_rx.recv();
         })

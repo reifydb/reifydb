@@ -15,11 +15,11 @@ use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::types::TransactionValue;
 use reifydb_persistence::{Key, KeyRange};
-use reifydb_storage::Storage;
+use reifydb_storage::{LocalClock, Storage, Version};
 
 pub struct TransactionRx<S: Storage> {
     pub(crate) engine: Optimistic<S>,
-    pub(crate) rtm: TransactionManagerRx<BTreeConflict, BTreePendingWrites>,
+    pub(crate) rtm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
 impl<S: Storage> TransactionRx<S> {
@@ -31,7 +31,7 @@ impl<S: Storage> TransactionRx<S> {
 
 impl<S: Storage> TransactionRx<S> {
     /// Returns the version of the transaction.
-    pub fn version(&self) -> u64 {
+    pub fn version(&self) -> Version {
         self.rtm.version()
     }
 

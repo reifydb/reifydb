@@ -16,11 +16,16 @@ use crate::mvcc::types::Pending;
 use reifydb_persistence::{Action, Key, Value};
 use reifydb_storage::Version;
 
-pub struct TransactionManagerTx<C, P> {
+pub struct TransactionManagerTx<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
     pub(super) version: Version,
     pub(super) size: u64,
     pub(super) count: u64,
-    pub(super) oracle: Arc<Oracle<C>>,
+    pub(super) oracle: Arc<Oracle<C, L>>,
     pub(super) conflicts: C,
     // stores any writes done by tx
     pub(super) pending_writes: P,
@@ -30,7 +35,12 @@ pub struct TransactionManagerTx<C, P> {
     pub(super) done_read: bool,
 }
 
-impl<C, P> Drop for TransactionManagerTx<C, P> {
+impl<C, L, P> Drop for TransactionManagerTx<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
     fn drop(&mut self) {
         if !self.discarded {
             self.discard();
@@ -38,7 +48,12 @@ impl<C, P> Drop for TransactionManagerTx<C, P> {
     }
 }
 
-impl<C, P> TransactionManagerTx<C, P> {
+impl<C, L, P> TransactionManagerTx<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
     /// Returns the version of the transaction.
     pub fn version(&self) -> Version {
         self.version
@@ -61,9 +76,11 @@ impl<C, P> TransactionManagerTx<C, P> {
     }
 }
 
-impl<C, P> TransactionManagerTx<C, P>
+impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
 {
     /// This method is used to create a marker for the keys that are operated.
     /// It must be used to mark keys when end user is implementing iterators to
@@ -89,9 +106,10 @@ where
     }
 }
 
-impl<C, P> TransactionManagerTx<C, P>
+impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
+    L: LogicalClock,
     P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
@@ -182,9 +200,10 @@ where
     }
 }
 
-impl<C, P> TransactionManagerTx<C, P>
+impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
+    L: LogicalClock,
     P: PendingWrites,
 {
     /// Commits the transaction, following these steps:
@@ -216,7 +235,7 @@ where
             return Ok(());
         }
 
-        let (commit_ts, entries) = self.commit_entries().map_err(|e| match e {
+        let (commit_ts, entries) = self.commit_pending().map_err(|e| match e {
             TransactionError::Conflict => e,
             _ => {
                 self.discard();
@@ -226,20 +245,21 @@ where
 
         apply(entries)
             .map(|_| {
-                self.orc().done_commit(commit_ts);
+                self.oracle().done_commit(commit_ts);
                 self.discard();
             })
             .map_err(|e| {
-                self.orc().done_commit(commit_ts);
+                self.oracle().done_commit(commit_ts);
                 self.discard();
                 MvccError::commit(e)
             })
     }
 }
 
-impl<C, P> TransactionManagerTx<C, P>
+impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
+    L: LogicalClock,
     P: PendingWrites,
 {
     fn insert_with_in(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
@@ -293,12 +313,13 @@ where
     }
 }
 
-impl<C, P> TransactionManagerTx<C, P>
+impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
+    L: LogicalClock,
     P: PendingWrites,
 {
-    fn commit_entries(&mut self) -> Result<(u64, Vec<Pending>), TransactionError> {
+    fn commit_pending(&mut self) -> Result<(Version, Vec<Pending>), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -343,7 +364,7 @@ where
 
                 duplicate_writes.into_iter().for_each(|item| process(&mut all, item));
 
-                // CommitTs should not be zero if we're inserting transaction markers.
+                // version should not be zero if we're inserting transaction markers.
                 debug_assert_ne!(version, 0);
 
                 Ok((version, all))
@@ -352,15 +373,20 @@ where
     }
 }
 
-impl<C, P> TransactionManagerTx<C, P> {
+impl<C, L, P> TransactionManagerTx<C, L, P>
+where
+    C: Conflict,
+    L: LogicalClock,
+    P: PendingWrites,
+{
     fn done_read(&mut self) {
         if !self.done_read {
             self.done_read = true;
-            self.orc().rx.done(self.version);
+            self.oracle().rx.done(self.version);
         }
     }
 
-    fn orc(&self) -> &Oracle<C> {
+    fn oracle(&self) -> &Oracle<C, L> {
         &self.oracle
     }
 
@@ -379,81 +405,5 @@ impl<C, P> TransactionManagerTx<C, P> {
 
     pub fn is_discard(&self) -> bool {
         self.discarded
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeSet;
-
-    #[test]
-    #[ignore]
-    fn test_transaction_manager_with_btree_pending_writes() {
-        // let tm = TransactionManager::<
-        //     Arc<u64>,
-        //     u64,
-        //     TestConflict<Arc<u64>>,
-        //     BTreePendingWrites<Arc<u64>, u64>,
-        // >::new("test", 0);
-        // let mut wtm = tm.write().unwrap();
-        // assert!(!wtm.is_discard());
-        //
-        // let mut marker = wtm.marker();
-        //
-        // let one = Arc::new(1);
-        // let two = Arc::new(2);
-        // let three = Arc::new(3);
-        // let four = Arc::new(4);
-        // let five = Arc::new(5);
-        // marker.mark(&one);
-        // marker.mark_conflict(&two);
-        // wtm.mark_read(&two);
-        // wtm.mark_conflict(&one);
-        //
-        // wtm.set(five.clone(), 5).unwrap();
-    }
-
-    struct TestConflict {
-        conflict_keys: BTreeSet<Key>,
-        reads: BTreeSet<Key>,
-    }
-
-    impl Default for TestConflict {
-        fn default() -> Self {
-            TestConflict::new()
-        }
-    }
-
-    impl Conflict for TestConflict {
-        fn new() -> Self {
-            Self { conflict_keys: BTreeSet::new(), reads: BTreeSet::new() }
-        }
-
-        fn mark_read(&mut self, key: &Key) {
-            self.reads.insert(key.clone());
-        }
-
-        fn mark_conflict(&mut self, key: &Key) {
-            self.conflict_keys.insert(key.clone());
-        }
-
-        fn has_conflict(&self, other: &Self) -> bool {
-            if self.reads.is_empty() {
-                return false;
-            }
-
-            for ro in self.reads.iter() {
-                if other.conflict_keys.contains(ro) {
-                    return true;
-                }
-            }
-            false
-        }
-
-        fn rollback(&mut self) {
-            self.conflict_keys.clear();
-            self.reads.clear();
-        }
     }
 }

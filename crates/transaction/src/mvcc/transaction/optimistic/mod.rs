@@ -19,24 +19,26 @@ use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
 use reifydb_persistence::{Key, KeyRange};
-use reifydb_storage::{Contains, Get, Scan, ScanRange, ScanRangeRev, ScanRev, Storage, Version};
+use reifydb_storage::LocalClock;
+use reifydb_storage::Storage;
+use reifydb_storage::Version;
 pub use write::TransactionTx;
 
 mod read;
 mod write;
 
 pub struct Inner<S: Storage> {
-    tm: TransactionManager<BTreeConflict, BTreePendingWrites>,
+    tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
     storage: S,
 }
 
 impl<S: Storage> Inner<S> {
     fn new(name: &str, storage: S) -> Self {
-        let tm = TransactionManager::new(name, 0);
+        let tm = TransactionManager::new(name, LocalClock::new());
         Self { tm, storage }
     }
 
-    fn version(&self) -> u64 {
+    fn version(&self) -> Version {
         self.tm.version()
     }
 }
