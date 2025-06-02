@@ -305,7 +305,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let one_to_ten = KeyRange { start: Included(as_key!(1)), end: Excluded(as_key!(10)) };
+    let one_to_ten = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(10)));
 
     let mut txn = engine.begin();
     let itr = txn.scan_range(one_to_ten.clone()).unwrap();

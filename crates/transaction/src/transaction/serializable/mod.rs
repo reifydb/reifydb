@@ -6,9 +6,9 @@ use crate::catalog::{Catalog, Schema};
 use crate::mvcc::transaction::serializable::read::ReadTransaction;
 use crate::mvcc::transaction::serializable::{Serializable, SerializableTransaction};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
-use reifydb_core::encoding::{Value as _, keycode};
+use reifydb_core::encoding::Value as _;
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
-use reifydb_persistence::Persistence;
+use reifydb_persistence::{KeyRange, Persistence};
 use reifydb_storage::Storage;
 
 impl<S: Storage> Transaction<S> for Serializable {
@@ -44,7 +44,7 @@ impl<S: Storage> crate::Rx for ReadTransaction<S> {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)).into())
+            self.range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
                 .map(|r| Row::decode(&r.value).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),

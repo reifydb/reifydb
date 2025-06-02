@@ -5,9 +5,9 @@ use crate::AsyncCowVec;
 use crate::catalog::{Catalog, Schema};
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
-use reifydb_core::encoding::{Value as _, bincode, keycode};
+use reifydb_core::encoding::{Value as _, bincode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
-use reifydb_persistence::Persistence;
+use reifydb_persistence::{KeyRange, Persistence};
 use reifydb_storage::Storage;
 
 impl<S: Storage> Transaction<S> for Optimistic<S> {
@@ -42,7 +42,7 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)).into())
+            self.range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
                 .map(|r| Row::decode(&r.value).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -69,13 +69,11 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.scan_range(
-                keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, store)).into(),
-            )
-            .unwrap()
-            .map(|r| Row::decode(&r.value()).unwrap())
-            .collect::<Vec<_>>()
-            .into_iter(),
+            self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)).into())
+                .unwrap()
+                .map(|r| Row::decode(&r.value()).unwrap())
+                .collect::<Vec<_>>()
+                .into_iter(),
         ))
     }
 }
@@ -102,7 +100,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         rows: Vec<Row>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, table)).into())
+            .scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, table)))
             .unwrap()
             .count();
 
@@ -128,7 +126,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         rows: Vec<Vec<Value>>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .scan_range(keycode::prefix_range(&key_prefix!("{}::{}::row::", schema, series)).into())
+            .scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, series)))
             .unwrap()
             .count();
 

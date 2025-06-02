@@ -23,6 +23,7 @@ set "\xff"=f
 set "\xff\xff"=ff
 set "\xff\xff\xff"=fff
 set "\xff\xff\xff\xff"=ffff
+
 scan
 ---
 "a" → "1"
@@ -38,3 +39,19 @@ scan
 "\xff\xff" → "ff"
 "\xff\xff\xff" → "fff"
 "\xff\xff\xff\xff" → "ffff"
+
+scan reverse=true
+---
+"\xff\xff\xff\xff" → "ffff"
+"\xff\xff\xff" → "fff"
+"\xff\xff" → "ff"
+"\xff" → "f"
+"c" → "3"
+"b\xff\xff" → "2ff"
+"b\xffb" → "2fb"
+"b\xff\x00" → "2f0"
+"b\xff" → "2f"
+"bb" → "22"
+"ba" → "21"
+"b" → "2"
+"a" → "1"

@@ -1307,6 +1307,7 @@ name = "reifydb_persistence"
 version = "0.0.1"
 dependencies = [
  "heed",
+ "regex",
  "reifydb_core",
  "reifydb_testing",
  "test_each_file",

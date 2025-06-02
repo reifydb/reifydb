@@ -53,6 +53,10 @@ pub trait ScanRange {
         Self: 'a;
 
     fn scan_range(&self, range: KeyRange, version: Version) -> Self::ScanRangeIter<'_>;
+
+    fn scan_prefix(&self, prefix: &Key, version: Version) -> Self::ScanRangeIter<'_> {
+        self.scan_range(KeyRange::prefix(prefix), version)
+    }
 }
 
 pub trait ScanRangeIteratorRev: Iterator<Item = StoredValue> {}
@@ -65,4 +69,8 @@ pub trait ScanRangeRev {
         Self: 'a;
 
     fn scan_range_rev(&self, range: KeyRange, version: Version) -> Self::ScanRangeIterRev<'_>;
+
+    fn scan_prefix_rev(&self, prefix: &Key, version: Version) -> Self::ScanRangeIterRev<'_> {
+        self.scan_range_rev(KeyRange::prefix(prefix), version)
+    }
 }

@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 reifydb_core = { workspace = true }
 heed = { workspace = true }
+regex = "1.11.1"
 
 [dev-dependencies]
 reifydb_testing = { workspace = true }

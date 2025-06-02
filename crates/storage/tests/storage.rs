@@ -10,16 +10,15 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::encoding::binary::decode_binary;
+use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_core::encoding::{format, keycode};
 use reifydb_persistence::{Action, KeyRange};
-use reifydb_storage::Storage;
 use reifydb_storage::memory::Memory;
+use reifydb_storage::{Storage, StoredValue};
 use reifydb_testing::testscript;
-use reifydb_testing::util::parse_key_range;
 use std::error::Error as StdError;
 use std::fmt::Write;
-use std::ops::{Bound, Deref};
+use std::ops::Deref;
 use std::path::Path;
 use test_each_file::test_each_path;
 
@@ -57,40 +56,41 @@ impl<S: Storage> testscript::Runner for Runner<S> {
             "scan" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-                let range =
-                    parse_key_range(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."))?;
                 args.reject_rest()?;
 
-                let range = KeyRange { start: range.0, end: range.1 };
-
-                let mut kvs = Vec::new();
-                for sv in self.storage.scan_range(range, 0) {
-                    kvs.push((sv.key, sv.value));
-                }
-
-                if reverse {
-                    kvs.reverse();
-                }
-
-                for (key, value) in kvs {
-                    let fmtkv = format::Raw::key_value(&key, &value.deref());
-                    writeln!(output, "{fmtkv}")?;
-                }
+                if !reverse {
+                    print(&mut output, self.storage.scan(0))
+                } else {
+                    print(&mut output, self.storage.scan_rev(0))
+                };
             }
-            // scan_range [reverse=BOOL] PREFIX
+            // scan_range RANGE [reverse=BOOL]
             "scan_range" => {
                 let mut args = command.consume_args();
+                let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
+                let range =
+                    KeyRange::parse(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."));
+                args.reject_rest()?;
+
+                if !reverse {
+                    print(&mut output, self.storage.scan_range(range, 0))
+                } else {
+                    print(&mut output, self.storage.scan_range_rev(range, 0))
+                };
+            }
+
+            // scan_prefix PREFIX [reverse=BOOL]
+            "scan_prefix" => {
+                let mut args = command.consume_args();
+                let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
                 let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
                 args.reject_rest()?;
 
-                let range = keycode::prefix_range(&prefix);
-                let range: KeyRange = range.into();
-
-                let mut scan = self.storage.scan_range(range, 1);
-                while let Some(sv) = scan.next() {
-                    let fmtkv = format::Raw::key_value(&sv.key, &sv.value.deref());
-                    writeln!(output, "{fmtkv}")?;
-                }
+                if !reverse {
+                    print(&mut output, self.storage.scan_prefix(&prefix, 0))
+                } else {
+                    print(&mut output, self.storage.scan_prefix_rev(&prefix, 0))
+                };
             }
 
             // set KEY=VALUE
@@ -116,5 +116,12 @@ impl<S: Storage> testscript::Runner for Runner<S> {
             name => return Err(format!("invalid command {name}").into()),
         }
         Ok(output)
+    }
+}
+
+fn print<I: Iterator<Item = StoredValue>>(output: &mut String, mut iter: I) {
+    while let Some(sv) = iter.next() {
+        let fmtkv = format::Raw::key_value(&sv.key, &sv.value.deref());
+        writeln!(output, "{fmtkv}").unwrap();
     }
 }

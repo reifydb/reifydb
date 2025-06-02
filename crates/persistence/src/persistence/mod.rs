@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{Key, Value};
-use reifydb_core::encoding::keycode;
 use std::ops::RangeBounds;
 
 pub trait BeginBatch {
@@ -45,7 +44,8 @@ pub trait Persistence: Send + Sync {
     /// # Returns
     /// A [`ScanIter`] over key-value pairs whose keys start with the prefix.
     fn scan_range(&self, prefix: &Key) -> Self::ScanIter<'_> {
-        self.scan(keycode::prefix_range(prefix))
+        // self.scan(keycode::prefix_range(prefix))
+        unimplemented!()
     }
     /// Inserts or updates the given `value` at the specified `key`.
     ///
