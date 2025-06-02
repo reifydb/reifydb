@@ -14,13 +14,10 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
 
-use reifydb_core::CowVec;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
-use reifydb_testing::util::parse_key_range;
 use reifydb_transaction::Tx;
 use reifydb_transaction::mvcc::transaction::optimistic::{
     Optimistic, Transaction, TransactionRx, TransactionTx,

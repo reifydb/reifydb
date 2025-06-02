@@ -54,6 +54,11 @@ impl Conflict for BTreeConflict {
     }
 
     fn has_conflict(&self, other: &Self) -> bool {
+        // Dirty write detection: write-write conflict
+        if self.conflict_keys.iter().any(|k| other.conflict_keys.contains(k)) {
+            return true;
+        }
+    
         if self.reads.is_empty() {
             return false;
         }

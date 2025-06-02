@@ -1,0 +1,27 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+# originally licensed under the Apache License, Version 2.0.
+# Original copyright:
+#   Copyright (c) 2024 Erik Grinaker
+#
+# The original Apache License can be found at:
+#   http://www.apache.org/licenses/LICENSE-2.0
+
+# A dirty write is when t2 overwrites an uncommitted value written by t1.
+
+t1: begin
+t1: remove key
+---
+ok
+
+t2: begin
+t2: set key=23
+---
+ok
+
+t1: commit
+t2: !commit
+---
+t2: Error: transaction error: transaction conflict, please try again

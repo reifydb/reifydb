@@ -118,7 +118,7 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        self.insert_with_in(key, value)
+        self.set_internal(key, value)
     }
 
     /// Removes a key.
@@ -262,7 +262,7 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    fn insert_with_in(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
+    fn set_internal(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
