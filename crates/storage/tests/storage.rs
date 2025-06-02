@@ -43,7 +43,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {
-            // // get KEY [version=VERSION]
+            // get KEY [version=VERSION]
             "get" => {
                 let mut args = command.consume_args();
                 let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
@@ -51,6 +51,15 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 args.reject_rest()?;
                 let value = self.storage.get(&key, version).map(|sv| sv.value.to_vec());
                 writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
+            }
+            // contains KEY [version=VERSION]
+            "contains" => {
+                let mut args = command.consume_args();
+                let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+                let version = args.lookup_parse("version")?.unwrap_or(0u64);
+                args.reject_rest()?;
+                let contains = self.storage.contains(&key, version);
+                writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
             }
 
             // scan [reverse=BOOL] [version=VERSION]
