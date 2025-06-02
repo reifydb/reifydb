@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::mvcc;
-use crate::transaction::svl;
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors related to transactions, the mem-table, or persistence.
@@ -12,8 +11,6 @@ pub enum Error {
     Mvcc(mvcc::MvccError),
     /// Persistence-layer error
     Persistence(reifydb_persistence::Error),
-    /// SVL concurrency error
-    Svl(svl::Error),
 }
 
 impl Display for Error {
@@ -21,7 +18,6 @@ impl Display for Error {
         match self {
             Error::Mvcc(err) => write!(f, "{}", err),
             Error::Persistence(err) => write!(f, "{}", err),
-            Error::Svl(err) => write!(f, "{}", err),
         }
     }
 }
@@ -40,14 +36,5 @@ impl From<mvcc::MvccError> for Error {
 impl From<reifydb_persistence::Error> for Error {
     fn from(err: reifydb_persistence::Error) -> Self {
         Error::Persistence(err)
-    }
-}
-
-impl From<svl::Error> for Error {
-    fn from(err: svl::Error) -> Self {
-        match err {
-            svl::Error::Persistence(err) => Self::Persistence(err),
-            _ => Self::Svl(err),
-        }
     }
 }

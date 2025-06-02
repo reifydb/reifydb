@@ -151,10 +151,6 @@ impl ReifyDB {
     }
 }
 
-pub fn svl<S: Storage>(storage: S) -> ::reifydb_transaction::svl::Svl<S> {
-    ::reifydb_transaction::svl::Svl::new(storage)
-}
-
 pub fn serializable<S: Storage>(
     storage: S,
 ) -> ::reifydb_transaction::mvcc::transaction::serializable::Serializable {

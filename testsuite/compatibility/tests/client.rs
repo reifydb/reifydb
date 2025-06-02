@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 use reifydb::client::Client;
 use reifydb::reifydb_storage::Storage;
 use reifydb::reifydb_storage::memory::Memory;
@@ -8,9 +11,8 @@ use reifydb::reifydb_transaction::Transaction;
 use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{ReifyDB, memory, optimistic, serializable, svl};
+use reifydb::{ReifyDB, memory, optimistic, serializable};
 use reifydb_testing::network::free_local_socket;
-use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -131,10 +133,6 @@ fn test_optimistic_memory(path: &Path) {
         path,
     )
     .expect("test failed")
-}
-
-fn test_svl_memory(path: &Path) {
-    testscript::run_path(&mut ClientRunner::new(svl(memory())), path).expect("test failed")
 }
 
 // fn test_svl_lmdb(path: &Path) {

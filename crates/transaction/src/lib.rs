@@ -15,14 +15,13 @@ pub use error::Error;
 use reifydb_core::AsyncCowVec;
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
-pub use transaction::{InsertResult, Rx, Transaction, Tx, svl};
+pub use transaction::{InsertResult, Rx, Transaction, Tx};
 
 mod catalog;
 mod error;
 pub mod mvcc;
 
 mod transaction;
-
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -5,7 +5,6 @@ use crate::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
 use reifydb_core::{Key, Row, RowIter, Value};
 use reifydb_storage::Storage;
 
-pub mod svl;
 mod optimistic;
 mod serializable;
 
