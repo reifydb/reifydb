@@ -1,7 +1,7 @@
 # Functional Tests for ReifyDB
 
-This module contains functional tests to ensure the entire database system behaves correctly across
-different variations/ implementations.
+This module contains functional tests to ensure the entire database system behaves according to the 
+specification.
 
 ## 🧪 What’s Tested
 
