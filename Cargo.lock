@@ -356,6 +356,7 @@ dependencies = [
  "reifydb",
  "reifydb_testing",
  "test_each_file",
+ "tokio",
 ]
 
 [[package]]
@@ -1335,6 +1336,7 @@ version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
+ "heed",
  "log",
  "reifydb_core",
  "reifydb_persistence",

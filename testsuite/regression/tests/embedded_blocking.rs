@@ -7,13 +7,14 @@ use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb::{DB, Principal, ReifyDB, memory, optimistic, serializable};
+use reifydb::{DB, Principal, ReifyDB, memory, optimistic, serializable, lmdb};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
+use reifydb_testing::tempdir::temp_dir;
 
 pub struct Runner<S: Storage + 'static, T: Transaction<S> + 'static> {
     engine: Embedded<S, T>,
@@ -58,15 +59,16 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
     }
 }
 
-// test_each_path! { in "testsuite/regression/tests/scripts" as embedded_blocking_serializable_memory => test_serializable_memory }
 test_each_path! { in "testsuite/regression/tests/scripts" as embedded_blocking_optimistic_memory => test_optimistic_memory }
-
-fn test_serializable_memory(path: &Path) {
-    testscript::run_path(&mut Runner::<Memory, Serializable>::new(serializable(memory())), path)
-        .expect("test failed")
-}
+test_each_path! { in "testsuite/regression/tests/scripts" as embedded_optimistic_lmdb => test_optimistic_lmdb }
 
 fn test_optimistic_memory(path: &Path) {
-    testscript::run_path(&mut Runner::<Memory, Optimistic<Memory>>::new(optimistic(memory())), path)
-        .expect("test failed")
+    testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
+}
+
+fn test_optimistic_lmdb(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut Runner::new(optimistic(lmdb(db_path))), path)
+            .expect("test failed")
+    })
 }

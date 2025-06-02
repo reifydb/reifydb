@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 reifydb_core = { workspace = true }
 reifydb_persistence = { workspace = true }
+heed = { workspace = true }
 
 crossbeam-channel = { workspace = true }
 crossbeam-skiplist = { workspace = true }

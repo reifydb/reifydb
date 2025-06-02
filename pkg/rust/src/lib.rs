@@ -31,20 +31,21 @@ pub use reifydb_core::*;
 pub use reifydb_engine;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
 pub use reifydb_rql;
+use std::path::Path;
 
 #[cfg(feature = "embedded")]
 use crate::embedded::Embedded;
+#[cfg(feature = "server")]
+use crate::server::Server;
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 pub use reifydb_storage;
 use reifydb_storage::Storage;
+use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
 pub use reifydb_transaction;
 #[cfg(any(feature = "server", feature = "client"))]
 pub use tokio::*;
-
-#[cfg(feature = "server")]
-use crate::server::Server;
 
 use reifydb_transaction::Transaction;
 
@@ -167,6 +168,6 @@ pub fn memory() -> Memory {
     Memory::default()
 }
 
-// pub fn lmdb(path: &Path) -> Lmdb {
-//     Lmdb::new(path).unwrap()
-// }
+pub fn lmdb(path: &Path) -> Lmdb {
+    Lmdb::new(path)
+}

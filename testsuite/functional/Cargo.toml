@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dev-dependencies]
-reifydb = { workspace = true, features = ["embedded_blocking"] }
+reifydb = { workspace = true, features = ["server", "client", "embedded", "embedded_blocking"] }
 reifydb_testing = { workspace = true }
 test_each_file = { workspace = true }
+tokio = { workspace = true }

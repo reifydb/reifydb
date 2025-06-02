@@ -3,6 +3,7 @@
 
 use reifydb::client::Client;
 use reifydb::reifydb_storage::Storage;
+use reifydb::reifydb_storage::lmdb::Lmdb;
 use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
@@ -10,6 +11,7 @@ use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::{ReifyDB, memory, optimistic, serializable};
 use reifydb_testing::network::free_local_socket;
+use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -110,21 +112,16 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for C
     }
 }
 
-// test_each_path! { in "testsuite/regression/tests/scripts" as client_serializable_memory => test_serializable_memory }
 test_each_path! { in "testsuite/regression/tests/scripts" as client_optimistic_memory => test_optimistic_memory }
-
-fn test_serializable_memory(path: &Path) {
-    testscript::run_path(
-        &mut ClientRunner::<Memory, Serializable>::new(serializable(memory())),
-        path,
-    )
-    .expect("test failed")
-}
+test_each_path! { in "testsuite/regression/tests/scripts" as client_optimistic_lmdb => test_optimistic_lmdb }
 
 fn test_optimistic_memory(path: &Path) {
-    testscript::run_path(
-        &mut ClientRunner::<Memory, Optimistic<Memory>>::new(optimistic(memory())),
-        path,
-    )
-    .expect("test failed")
+    testscript::run_path(&mut ClientRunner::new(optimistic(memory())), path).expect("test failed")
+}
+
+fn test_optimistic_lmdb(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut ClientRunner::new(optimistic(Lmdb::new(db_path))), path)
+            .expect("test failed")
+    })
 }

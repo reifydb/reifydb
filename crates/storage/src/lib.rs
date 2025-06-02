@@ -14,6 +14,7 @@ pub use storage::{
 };
 
 mod clock;
+pub mod lmdb;
 pub mod memory;
 mod storage;
 

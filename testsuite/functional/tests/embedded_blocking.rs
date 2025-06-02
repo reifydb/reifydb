@@ -62,16 +62,8 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
     }
 }
 
-test_each_path! { in "testsuite/compatibility/tests/scripts" as embedded_blocking_optimistic_memory => test_optimistic_memory }
-test_each_path! { in "testsuite/compatibility/tests/scripts" as embedded_optimistic_lmdb => test_optimistic_lmdb }
+test_each_path! { in "testsuite/functional/tests/scripts" as embedded_blocking_optimistic_memory => test_optimistic_memory }
 
 fn test_optimistic_memory(path: &Path) {
     testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
-}
-
-fn test_optimistic_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut Runner::new(optimistic(lmdb(db_path))), path)
-            .expect("test failed")
-    })
 }

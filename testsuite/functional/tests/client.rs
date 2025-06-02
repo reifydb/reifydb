@@ -1,17 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 use reifydb::client::Client;
 use reifydb::reifydb_storage::Storage;
-use reifydb::reifydb_storage::lmdb::Lmdb;
-use reifydb::reifydb_storage::memory::Memory;
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb::reifydb_transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{ReifyDB, memory, optimistic, serializable};
+use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::free_local_socket;
-use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -75,6 +73,9 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for C
                     }
                 });
             }
+            "list_schema" => {
+                writeln!(output, "test")?;
+            }
             name => return Err(format!("invalid command {name}").into()),
         }
 
@@ -83,7 +84,7 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for C
 
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
-        let (shutdown_tx, _shutdown_rx) = oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let server = self.server.take().unwrap();
 
         runtime.spawn(async move {
@@ -109,16 +110,8 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for C
     }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as client_optimistic_memory => test_optimistic_memory }
-test_each_path! { in "testsuite/smoke/tests/scripts" as client_optimistic_lmdb => test_optimistic_lmdb }
+test_each_path! { in "testsuite/functional/tests/scripts" as client_optimistic_memory => test_optimistic_memory }
 
 fn test_optimistic_memory(path: &Path) {
     testscript::run_path(&mut ClientRunner::new(optimistic(memory())), path).expect("test failed")
-}
-
-fn test_optimistic_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut ClientRunner::new(optimistic(Lmdb::new(db_path))), path)
-            .expect("test failed")
-    })
 }
