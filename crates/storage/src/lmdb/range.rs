@@ -2,11 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{ScanRange, StoredValue, Version};
+use crate::{Key, KeyRange, ScanRange, StoredValue, Version};
 use heed::types::Bytes;
 use heed::{Database, Env};
 use reifydb_core::AsyncCowVec;
-use reifydb_persistence::{Key, KeyRange};
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;

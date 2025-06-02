@@ -7,7 +7,7 @@ use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, Transactio
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode};
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
-use reifydb_persistence::{KeyRange, Persistence};
+use reifydb_storage::KeyRange;
 use reifydb_storage::Storage;
 
 impl<S: Storage> Transaction<S> for Optimistic<S> {
@@ -42,7 +42,7 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
+            self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
                 .map(|r| Row::decode(&r.value).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),

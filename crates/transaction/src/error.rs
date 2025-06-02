@@ -9,15 +9,12 @@ use std::fmt::{Display, Formatter};
 pub enum Error {
     /// MVCC-related error
     Mvcc(mvcc::MvccError),
-    /// Persistence-layer error
-    Persistence(reifydb_persistence::Error),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Mvcc(err) => write!(f, "{}", err),
-            Error::Persistence(err) => write!(f, "{}", err),
         }
     }
 }
@@ -27,14 +24,7 @@ impl std::error::Error for Error {}
 impl From<mvcc::MvccError> for Error {
     fn from(err: mvcc::MvccError) -> Self {
         match err {
-            mvcc::MvccError::Persistence(err) => Self::Persistence(err),
             _ => Self::Mvcc(err),
         }
-    }
-}
-
-impl From<reifydb_persistence::Error> for Error {
-    fn from(err: reifydb_persistence::Error) -> Self {
-        Error::Persistence(err)
     }
 }

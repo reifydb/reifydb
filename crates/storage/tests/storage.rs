@@ -12,9 +12,9 @@
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_persistence::{Action, KeyRange};
+use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
-use reifydb_storage::{Storage, StoredValue};
+use reifydb_storage::{Action, Storage, StoredValue};
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;

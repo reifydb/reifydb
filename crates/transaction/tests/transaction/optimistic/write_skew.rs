@@ -16,7 +16,7 @@ use crate::keycode;
 use crate::{as_key, as_value, from_value};
 use MvccError::Transaction;
 use TransactionError::Conflict;
-use reifydb_persistence::Key;
+use reifydb_storage::Key;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::MvccError;
 use reifydb_transaction::mvcc::error::TransactionError;
@@ -134,7 +134,7 @@ fn test_black_white() {
     assert_eq!(err, Transaction(Conflict));
 
     let rx = engine.begin_read_only();
-    let result: Vec<_> = rx.iter().collect();
+    let result: Vec<_> = rx.scan().collect();
     assert_eq!(result.len(), 10);
 
     result.iter().for_each(|sv| {
@@ -239,7 +239,7 @@ fn test_primary_colors() {
     assert_eq!(err, Transaction(Conflict));
 
     let rx = engine.begin_read_only();
-    let result: Vec<_> = rx.iter().collect();
+    let result: Vec<_> = rx.scan().collect();
     assert_eq!(result.len(), 9000);
 
     let mut red_count = 0;

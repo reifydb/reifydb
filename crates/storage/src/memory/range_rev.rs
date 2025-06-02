@@ -15,8 +15,7 @@ use crossbeam_skiplist::map::Range as MapRange;
 use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
 use crate::storage::ScanRangeRev;
-use crate::{StoredValue, Version};
-use reifydb_persistence::{Key, KeyRange, Value};
+use crate::{Key, KeyRange, StoredValue, Value, Version};
 use std::ops::Bound;
 
 impl ScanRangeRev for Memory {

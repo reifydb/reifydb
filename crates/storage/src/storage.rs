@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{StoredValue, Version};
-use reifydb_persistence::{Action, Key, KeyRange};
+use crate::{Action, Key, KeyRange, StoredValue, Version};
 
 pub trait Storage:
     Send + Sync + Apply + Get + Contains + Scan + ScanRev + ScanRange + ScanRangeRev

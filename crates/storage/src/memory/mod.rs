@@ -16,10 +16,9 @@ mod range;
 mod range_rev;
 mod value;
 
-use crate::Storage;
 use crate::memory::value::VersionedValues;
+use crate::{Key, Storage, Value};
 use crossbeam_skiplist::SkipMap;
-use reifydb_persistence::{Key, Value};
 
 pub struct Memory {
     memory: SkipMap<Key, VersionedValues<Value>>,

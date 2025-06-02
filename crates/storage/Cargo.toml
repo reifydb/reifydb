@@ -7,13 +7,12 @@ repository.workspace = true
 
 [dependencies]
 reifydb_core = { workspace = true }
-reifydb_persistence = { workspace = true }
 heed = { workspace = true }
 
 crossbeam-channel = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 log = { workspace = true }
-
+regex = { workspace = true }
 [dev-dependencies]
 reifydb_testing = { workspace = true }
 test_each_file = { workspace = true }

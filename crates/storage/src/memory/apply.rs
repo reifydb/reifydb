@@ -3,8 +3,7 @@
 
 use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
-use crate::{Apply, Version};
-use reifydb_persistence::Action;
+use crate::{Action, Apply, Version};
 
 impl Apply for Memory {
     fn apply(&self, actions: Vec<(Action, Version)>) {

@@ -14,7 +14,7 @@ use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::types::TransactionValue;
-use reifydb_persistence::{Key, Value};
+use reifydb_storage::{Key, Value};
 use reifydb_storage::{Contains, Get, ScanRange, ScanRangeRev, ScanRev};
 
 #[cfg(test)]

@@ -40,8 +40,6 @@ pub enum MvccError {
     Commit(String),
     /// Returned if the transaction error occurs.
     Transaction(TransactionError),
-    /// Persistence-layer error
-    Persistence(reifydb_persistence::Error),
 }
 
 impl core::fmt::Display for MvccError {
@@ -49,7 +47,6 @@ impl core::fmt::Display for MvccError {
         match self {
             Self::Transaction(err) => write!(f, "transaction error: {err}"),
             Self::Commit(err) => write!(f, "commit error: {err}"),
-            MvccError::Persistence(_) => unimplemented!(),
         }
     }
 }

@@ -15,7 +15,7 @@ use crate::keycode;
 use crate::{AsyncCowVec, as_value};
 use crate::{IntoValue, from_value};
 use Bound::{Excluded, Included};
-use reifydb_persistence::KeyRange;
+use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;

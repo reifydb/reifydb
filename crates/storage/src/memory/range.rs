@@ -14,12 +14,12 @@ use crossbeam_skiplist::map::Range as MapRange;
 use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
 use crate::storage::ScanRange;
-use crate::{StoredValue, Version};
-use reifydb_persistence::{Key, KeyRange, Value};
-use std::ops::{Bound, RangeBounds};
+use crate::{Key, KeyRange, StoredValue, Value, Version};
+use std::ops::Bound;
 
 impl ScanRange for Memory {
-    type ScanRangeIter<'a>  = Range<'a>
+    type ScanRangeIter<'a>
+        = Range<'a>
     where
         Self: 'a;
 

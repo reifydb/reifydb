@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{ScanRangeRev, StoredValue, Version};
-use reifydb_persistence::KeyRange;
+use crate::{KeyRange, ScanRangeRev, StoredValue, Version};
 
 impl ScanRangeRev for Lmdb {
     type ScanRangeIterRev<'a> = RangeRev;

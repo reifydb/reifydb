@@ -11,7 +11,7 @@
 
 use crate::mvcc::conflict::{Conflict, ConflictRange};
 use core::{hash::Hash, ops::RangeBounds};
-use reifydb_persistence::Key;
+use reifydb_storage::Key;
 
 /// A marker used to mark the keys that are read.
 pub struct Marker<'a, C> {

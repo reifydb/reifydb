@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{Apply, Version};
-use reifydb_persistence::Action;
+use crate::{Action, Apply, Version};
 
 impl Apply for Lmdb {
     fn apply(&self, actions: Vec<(Action, Version)>) {

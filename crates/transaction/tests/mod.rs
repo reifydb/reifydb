@@ -7,7 +7,7 @@ mod transaction;
 
 use reifydb_core::AsyncCowVec;
 use reifydb_core::encoding::{bincode, keycode};
-use reifydb_persistence::Value;
+use reifydb_storage::Value;
 
 pub trait IntoValue {
     fn into_value(self) -> Value;

@@ -8,7 +8,7 @@ use crate::mvcc::transaction::serializable::{Serializable, SerializableTransacti
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::Value as _;
 use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
-use reifydb_persistence::{KeyRange, Persistence};
+use reifydb_storage::KeyRange;
 use reifydb_storage::Storage;
 
 impl<S: Storage> Transaction<S> for Serializable {

@@ -15,8 +15,7 @@ use crossbeam_skiplist::map::Iter as MapIter;
 use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
 use crate::storage::ScanRev;
-use crate::{StoredValue, Version};
-use reifydb_persistence::{Key, Value};
+use crate::{Key, StoredValue, Value, Version};
 use std::ops::Bound;
 
 impl ScanRev for Memory {

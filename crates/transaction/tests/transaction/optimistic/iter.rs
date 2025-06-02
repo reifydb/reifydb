@@ -30,7 +30,7 @@ fn test_iter() {
     txn.commit().unwrap();
 
     let txn = engine.begin_read_only();
-    let iter = txn.iter();
+    let iter = txn.scan();
     let mut count = 0;
     for sv in iter {
         count += 1;
@@ -39,7 +39,7 @@ fn test_iter() {
     }
     assert_eq!(count, 3);
 
-    let iter = txn.iter_rev();
+    let iter = txn.scan_rev();
     let mut count = 3;
     for sv in iter {
         assert_eq!(sv.key, as_key!(count));

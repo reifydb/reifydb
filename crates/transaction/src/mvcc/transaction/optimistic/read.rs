@@ -14,7 +14,7 @@ use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::types::TransactionValue;
-use reifydb_persistence::{Key, KeyRange};
+use reifydb_storage::{Key, KeyRange};
 use reifydb_storage::{LocalClock, Storage, Version};
 
 pub struct TransactionRx<S: Storage> {
@@ -30,43 +30,36 @@ impl<S: Storage> TransactionRx<S> {
 }
 
 impl<S: Storage> TransactionRx<S> {
-    /// Returns the version of the transaction.
     pub fn version(&self) -> Version {
         self.rtm.version()
     }
 
-    /// Get a value from the database.
     pub fn get(&self, key: &Key) -> Option<TransactionValue> {
         let version = self.rtm.version();
         self.engine.get(key, version).map(Into::into)
     }
 
-    /// Returns true if the given key exists in the database.
     pub fn contains_key(&self, key: &Key) -> bool {
         let version = self.rtm.version();
         self.engine.contains_key(key, version)
     }
 
-    /// Returns an iterator over the entries of the database.
-    pub fn iter(&self) -> S::ScanIter<'_> {
+    pub fn scan(&self) -> S::ScanIter<'_> {
         let version = self.rtm.version();
         self.engine.scan(version)
     }
 
-    /// Returns a reverse iterator over the entries of the database.
-    pub fn iter_rev(&self) -> S::ScanIterRev<'_> {
+    pub fn scan_rev(&self) -> S::ScanIterRev<'_> {
         let version = self.rtm.version();
         self.engine.scan_rev(version)
     }
 
-    /// Returns an iterator over the subset of entries of the database.
-    pub fn range(&self, range: KeyRange) -> S::ScanRangeIter<'_> {
+    pub fn scan_range(&self, range: KeyRange) -> S::ScanRangeIter<'_> {
         let version = self.rtm.version();
         self.engine.scan_range(range, version)
     }
 
-    /// Returns an iterator over the subset of entries of the database in reverse order.
-    pub fn range_rev(&self, range: KeyRange) -> S::ScanRangeIterRev<'_> {
+    pub fn scan_range_rev(&self, range: KeyRange) -> S::ScanRangeIterRev<'_> {
         let version = self.rtm.version();
         self.engine.scan_range_rev(range, version)
     }

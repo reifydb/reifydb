@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::memory::Memory;
-use crate::{Get, StoredValue, Version};
-use reifydb_persistence::Key;
+use crate::{Get, Key, StoredValue, Version};
 use std::collections::Bound;
 
 impl Get for Memory {

@@ -18,7 +18,7 @@ use crate::mvcc::transaction::TransactionManager;
 
 use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
-use reifydb_persistence::{Key, KeyRange};
+use reifydb_storage::{Key, KeyRange};
 use reifydb_storage::LocalClock;
 use reifydb_storage::Storage;
 use reifydb_storage::Version;

@@ -15,8 +15,8 @@
 // use std::error::Error as StdError;
 // use std::fmt::Write as _;
 //
-// use reifydb_persistence::test::Emit;
-// use reifydb_persistence::{Lmdb, Memory, Operation, Persistence};
+// use reifydb_storage::test::Emit;
+// use reifydb_storage::{Lmdb, Memory, Operation, Persistence};
 // use reifydb_testing::tempdir::temp_dir;
 // use reifydb_testing::testscript;
 // use reifydb_testing::util::parse_key_range;

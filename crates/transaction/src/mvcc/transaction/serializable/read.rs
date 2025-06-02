@@ -14,7 +14,7 @@ use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::types::TransactionValue;
-use reifydb_persistence::{Key, KeyRange};
+use reifydb_storage::{Key, KeyRange};
 use reifydb_storage::memory::{Iter, IterRev, Range, RangeRev};
 use reifydb_storage::{LocalClock, Storage, Version};
 use std::marker::PhantomData;

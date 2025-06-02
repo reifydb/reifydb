@@ -9,8 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_persistence::{Action, Key, Value};
-use reifydb_storage::{StoredValue, Version};
+use reifydb_storage::{Key, Value};
+use reifydb_storage::{Action, StoredValue, Version};
 use std::cmp;
 use std::cmp::Reverse;
 

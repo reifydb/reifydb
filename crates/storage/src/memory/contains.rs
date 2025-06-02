@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::memory::Memory;
-use crate::{Contains, Version};
-use reifydb_persistence::Key;
+use crate::{Contains, Key, Version};
 use std::collections::Bound;
 
 impl Contains for Memory {

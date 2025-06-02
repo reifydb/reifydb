@@ -12,7 +12,7 @@
 use std::ops::RangeBounds;
 
 pub use btree::BTreeConflict;
-use reifydb_persistence::Key;
+use reifydb_storage::Key;
 
 mod btree;
 

@@ -13,8 +13,8 @@ use super::*;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
-use reifydb_persistence::{Action, Key, Value};
-use reifydb_storage::Version;
+use reifydb_storage::{Key, Value};
+use reifydb_storage::{Action, Version};
 
 pub struct TransactionManagerTx<C, L, P>
 where

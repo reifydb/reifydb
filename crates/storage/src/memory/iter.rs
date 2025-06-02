@@ -15,8 +15,7 @@ use std::ops::Bound;
 use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
 use crate::storage::Scan;
-use crate::{StoredValue, Version};
-use reifydb_persistence::{Key, Value};
+use crate::{Key, StoredValue, Value, Version};
 
 impl Scan for Memory {
     type ScanIter<'a> = Iter<'a>;

@@ -11,7 +11,7 @@
 
 use super::*;
 use core::ops::Bound;
-use reifydb_persistence::Key;
+use reifydb_storage::Key;
 use std::collections::BTreeSet;
 
 #[derive(Clone, Debug)]

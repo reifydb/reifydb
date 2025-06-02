@@ -9,13 +9,12 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::FromValue;
 use crate::as_key;
 use crate::keycode;
-use crate::{AsyncCowVec, as_value};
-use crate::{IntoValue, from_value};
-use Bound::{Excluded, Included};
-use reifydb_persistence::KeyRange;
+use crate::FromValue;
+use crate::{as_value, AsyncCowVec};
+use crate::{from_value, IntoValue};
+use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::range::TransactionRange;
@@ -31,10 +30,10 @@ fn test_range() {
     txn.set(as_key!(3), as_value!(3)).unwrap();
     txn.commit().unwrap();
 
-    let one_to_four: KeyRange = (Included(as_key!(1)), Excluded(as_key!(4))).into();
+    let one_to_four = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(4)));
 
     let txn = engine.begin_read_only();
-    let iter = txn.range(one_to_four.clone());
+    let iter = txn.scan_range(one_to_four.clone());
     let mut count = 0;
     for sv in iter {
         count += 1;
@@ -44,7 +43,7 @@ fn test_range() {
     }
     assert_eq!(count, 3);
 
-    let iter = txn.range_rev(one_to_four);
+    let iter = txn.scan_range_rev(one_to_four);
     let mut count = 3;
     for sv in iter {
         assert_eq!(sv.key, as_key!(count));
@@ -63,7 +62,7 @@ fn test_range2() {
     txn.set(as_key!(2), as_value!(2)).unwrap();
     txn.set(as_key!(3), as_value!(3)).unwrap();
 
-    let one_to_four: KeyRange = (Included(as_key!(1)), Excluded(as_key!(4))).into();
+    let one_to_four = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(4)));
 
     let iter = txn.scan_range(one_to_four.clone()).unwrap();
     let mut count = 0;
@@ -93,7 +92,7 @@ fn test_range2() {
     txn.set(as_key!(5), as_value!(5)).unwrap();
     txn.set(as_key!(6), as_value!(6)).unwrap();
 
-    let one_to_five: KeyRange = (Included(as_key!(1)), Excluded(as_key!(5))).into();
+    let one_to_five = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(5)));
 
     let iter = txn.scan_range(one_to_five.clone()).unwrap();
     let mut count = 0;
@@ -122,7 +121,7 @@ fn test_range3() {
     txn.set(as_key!(5), as_value!(5)).unwrap();
     txn.set(as_key!(6), as_value!(6)).unwrap();
 
-    let four_to_seven: KeyRange = (Included(as_key!(4)), Excluded(as_key!(7))).into();
+    let four_to_seven = KeyRange::start_end(Some(as_key!(4)), Some(as_key!(7)));
 
     let iter = txn.scan_range(four_to_seven.clone()).unwrap();
     let mut count = 3;
@@ -146,7 +145,7 @@ fn test_range3() {
 
     txn.commit().unwrap();
 
-    let one_to_five: KeyRange = (Included(as_key!(1)), Excluded(as_key!(5))).into();
+    let one_to_five = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(5)));
 
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_value!(1)).unwrap();
@@ -237,7 +236,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let one_to_ten: KeyRange = (Included(as_key!(1)), Excluded(as_key!(10))).into();
+    let one_to_ten = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(10)));
 
     let mut txn = engine.begin();
     let itr = txn.scan_range(one_to_ten.clone()).unwrap();

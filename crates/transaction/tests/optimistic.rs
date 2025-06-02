@@ -17,7 +17,7 @@ use std::fmt::Write as _;
 use reifydb_core::CowVec;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_persistence::KeyRange;
+use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
 use reifydb_testing::util::parse_key_range;
@@ -227,33 +227,22 @@ impl<'a> testscript::Runner for MvccRunner {
                 }
             }
 
-            // tx: scan [RANGE]
+            // tx: scan
             "scan" => {
                 let t = self.get_transaction(&command.prefix)?;
-                let mut args = command.consume_args();
-                let range: KeyRange =
-                    parse_key_range(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."))?
-                        .into();
+                let args = command.consume_args();
                 args.reject_rest()?;
 
                 let mut kvs = Vec::new();
-                // for item in tx.range(range) {
-                //     let (key, value) = item;
-                //     kvs.push((key, value));
-                // }
-                //
-                // for (key, value) in kvs {
-                //     writeln!(output, "{}", format::Raw::key_value(&Keyey, &value))?;
-                // }
 
                 match t {
                     Transaction::Rx(rx) => {
-                        for sv in rx.range(range).into_iter() {
+                        for sv in rx.scan().into_iter() {
                             kvs.push((sv.key.clone(), sv.value.to_vec()));
                         }
                     }
                     Transaction::Tx(tx) => {
-                        for item in tx.scan_range(range).unwrap().into_iter() {
+                        for item in tx.scan().unwrap().into_iter() {
                             kvs.push((item.key().clone(), item.value().to_vec()));
                         }
                     }

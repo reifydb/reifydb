@@ -19,7 +19,7 @@ use crate::mvcc::types::TransactionValue;
 use core::cmp;
 
 use reifydb_core::either::Either;
-use reifydb_persistence::Key;
+use reifydb_storage::Key;
 use reifydb_storage::Storage;
 use std::collections::btree_map::Iter as BTreeMapIter;
 

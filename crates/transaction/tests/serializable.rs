@@ -16,7 +16,7 @@
 // 
 // use reifydb_core::encoding::format;
 // use reifydb_core::encoding::format::Formatter;
-// use reifydb_persistence::Operation;
+// use reifydb_storage::Operation;
 // use reifydb_testing::testscript;
 // use reifydb_testing::util::parse_key_range;
 // use reifydb_transaction::Tx;
