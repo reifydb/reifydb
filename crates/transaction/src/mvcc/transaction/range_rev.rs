@@ -23,7 +23,7 @@ use reifydb_storage::Key;
 use reifydb_storage::Storage;
 use std::collections::btree_map::Range as BTreeMapRange;
 
-pub struct TransactionRevRange<'a, S, C>
+pub struct TransactionRangeRev<'a, S, C>
 where
     S: Storage + 'a,
 {
@@ -35,7 +35,7 @@ where
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, S, C> TransactionRevRange<'a, S, C>
+impl<'a, S, C> TransactionRangeRev<'a, S, C>
 where
     C: Conflict,
     S: Storage + 'a,
@@ -72,7 +72,7 @@ where
     }
 }
 
-impl<'a, S, C> Iterator for TransactionRevRange<'a, S, C>
+impl<'a, S, C> Iterator for TransactionRangeRev<'a, S, C>
 where
     C: Conflict,
     S: Storage + 'a,

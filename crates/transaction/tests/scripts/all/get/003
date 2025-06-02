@@ -9,15 +9,24 @@
 # The original Apache License can be found at:
 #   http://www.apache.org/licenses/LICENSE-2.0
 
-# A dirty write is when t2 overwrites an uncommitted value written by t1.
-# Snapshot isolation prevents this.
+# Get should return the correct latest value.
 
-t1: begin
-t1: set key=1
+import key=1 updated=1 removed=1 tombstone=
+import updated=2 removed=
 ---
 ok
 
-t2: begin
-t2: !set key=2
+t1: begin readonly
+t1: scan
 ---
-t2: Error: transaction serialization conflict occurred, retry transaction
+t1: "key" => "1"
+t1: "updated" => "2"
+
+# Get results should mirror scan.
+t1: get key updated removed tombstone missing
+---
+t1: "key" => "1"
+t1: "updated" => "2"
+t1: "removed" => None
+t1: "tombstone" => None
+t1: "missing" => None

@@ -14,9 +14,9 @@ use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::iter::TransactionIter;
-use crate::mvcc::transaction::iter_rev::TransactionRevIter;
+use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
-use crate::mvcc::transaction::range_rev::TransactionRevRange;
+use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
 use reifydb_storage::{Key, KeyRange, Value, Version};
 use std::ops::RangeBounds;
@@ -109,13 +109,13 @@ impl<S: Storage> TransactionTx<S> {
 
     pub fn scan_rev(
         &mut self,
-    ) -> Result<TransactionRevIter<'_, S, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionIterRev<'_, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let pending = pm.iter().rev();
         let commited = self.engine.storage.scan_rev(version);
 
-        Ok(TransactionRevIter::new(pending, commited, Some(marker)))
+        Ok(TransactionIterRev::new(pending, commited, Some(marker)))
     }
 
     pub fn scan_range<'a>(
@@ -135,7 +135,7 @@ impl<S: Storage> TransactionTx<S> {
     pub fn scan_range_rev<'a>(
         &'a mut self,
         range: KeyRange,
-    ) -> Result<TransactionRevRange<'a, S, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRangeRev<'a, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pm) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -143,6 +143,20 @@ impl<S: Storage> TransactionTx<S> {
         let pending = pm.range_comparable((start, end));
         let commited = self.engine.storage.scan_range_rev(range, version);
 
-        Ok(TransactionRevRange::new(pending.rev(), commited, Some(marker)))
+        Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))
+    }
+
+    pub fn scan_prefix<'a>(
+        &'a mut self,
+        prefix: &Key,
+    ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
+        self.scan_range(KeyRange::prefix(prefix))
+    }
+
+    pub fn scan_prefix_rev<'a>(
+        &'a mut self,
+        prefix: &Key,
+    ) -> Result<TransactionRangeRev<'a, S, BTreeConflict>, TransactionError> {
+        self.scan_range_rev(KeyRange::prefix(prefix))
     }
 }

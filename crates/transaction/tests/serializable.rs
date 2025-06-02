@@ -10,24 +10,25 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::encoding::binary::decode_binary;
-use std::collections::HashMap;
-use std::error::Error as StdError;
-use std::fmt::Write as _;
-
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
+use reifydb_storage::StoredValue;
 use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
 use reifydb_transaction::Tx;
 use reifydb_transaction::mvcc::transaction::serializable::{
     Serializable, Transaction, TransactionRx, TransactionTx,
 };
+use reifydb_transaction::mvcc::types::TransactionValue;
+use std::collections::HashMap;
+use std::error::Error as StdError;
+use std::fmt::Write as _;
+use std::ops::Deref;
 use std::path::Path;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_serializable }
 test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_serializable }
-test_each_path! { in "crates/transaction/tests/scripts/serializable" as serializable => test_serializable }
 
 fn test_serializable(path: &Path) {
     testscript::run_path(&mut MvccRunner::new(Serializable::new(Memory::new())), path)
@@ -129,18 +130,6 @@ impl<'a> testscript::Runner for MvccRunner {
                 args.reject_rest()?;
             }
 
-            // dump
-            // "dump" => {
-            //     command.consume_args().reject_rest()?;
-            //     let mut persistence = self.mvcc.persistence.lock().unwrap();
-            //     let mut scan = persistence.scan(..);
-            //     while let Some((key, value)) = scan.next().transpose()? {
-            //         let fmtkv = MVCC::<format::Raw>::key_value(&Keyey, &value);
-            //         let rawkv = format::Raw::key_value(&Keyey, &value);
-            //         writeln!(output, "{fmtkv} [{rawkv}]")?;
-            //     }
-            // }
-            // tx: version
             "version" => {
                 command.consume_args().reject_rest()?;
                 let t = self.get_transaction(&command.prefix)?;
@@ -150,6 +139,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 };
                 writeln!(output, "{}", version)?;
             }
+
             // tx: get KEY...
             "get" => {
                 let t = self.get_transaction(&command.prefix)?;
@@ -167,35 +157,13 @@ impl<'a> testscript::Runner for MvccRunner {
                 args.reject_rest()?;
             }
 
-            // get_unversioned KEY...
-            // "get_unversioned" => {
-            //     Self::no_tx(command)?;
-            //     let mut args = command.consume_args();
-            //     for arg in args.rest_pos() {
-            //         let key = decode_binary(&arg.value);
-            //         let value = self.mvcc.get_unversioned(&Keyey)?;
-            //         let fmtkv = format::Raw::key_maybe_value(&Keyey, value.as_deref());
-            //         writeln!(output, "{fmtkv}")?;
-            //     }
-            //     args.reject_rest()?;
-            // }
-
             // import [VERSION] KEY=VALUE...
             "import" => {
                 Self::no_tx(command)?;
                 let mut args = command.consume_args();
-                let version = args.next_pos().map(|a| a.parse()).transpose()?;
                 // let mut tx = self.mvcc.begin()?;
                 let mut tx = TransactionTx::new(self.engine.clone());
-                if let Some(version) = version {
-                    if tx.version() > version {
-                        return Err(format!("version {version} already used").into());
-                    }
-                    while tx.version() < version {
-                        // tx = self.mvcc.begin()?;
-                        tx = TransactionTx::new(self.engine.clone());
-                    }
-                }
+                
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
                     let value = decode_binary(&kv.value);
@@ -251,23 +219,32 @@ impl<'a> testscript::Runner for MvccRunner {
                 }
             }
 
-            // tx: scan_range PREFIX
-            // "scan_range" => {
-            //     let tx = self.get_tx(&command.prefix)?;
-            //     let mut args = command.consume_args();
-            //     let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
-            //     args.reject_rest()?;
-            //
-            //     let mut kvs = Vec::new();
-            //     for item in tx.scan_range(&prefix) {
-            //         let (key, value) = item?;
-            //         kvs.push((key, value));
-            //     }
-            //
-            //     for (key, value) in kvs {
-            //         writeln!(output, "{}", format::Raw::key_value(&Keyey, &value))?;
-            //     }
-            // }
+            // scan_prefix PREFIX [reverse=BOOL] [version=VERSION]
+            "scan_prefix" => {
+                let t = self.get_transaction(&command.prefix)?;
+
+                let mut args = command.consume_args();
+                let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
+                let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
+                args.reject_rest()?;
+
+                match t {
+                    Transaction::Rx(rx) => {
+                        if !reverse {
+                            print_rx(&mut output, rx.scan_prefix(&prefix).into_iter())
+                        } else {
+                            print_rx(&mut output, rx.scan_prefix_rev(&prefix).into_iter())
+                        }
+                    }
+                    Transaction::Tx(tx) => {
+                        if !reverse {
+                            print_tx(&mut output, tx.scan_prefix(&prefix).unwrap().into_iter())
+                        } else {
+                            print_tx(&mut output, tx.scan_prefix_rev(&prefix).unwrap().into_iter())
+                        }
+                    }
+                };
+            }
 
             // tx: set KEY=VALUE...
             "set" => {
@@ -288,59 +265,9 @@ impl<'a> testscript::Runner for MvccRunner {
                 args.reject_rest()?;
             }
 
-            // // set_unversioned KEY=VALUE...
-            // "set_unversioned" => {
-            //     Self::no_tx(command)?;
-            //     let mut args = command.consume_args();
-            //     for kv in args.rest_key() {
-            //         let key = decode_binary(kv.key.as_ref().unwrap());
-            //         let value = decode_binary(&Keyv.value);
-            //         self.mvcc.set_unversioned(&Keyey, value)?;
-            //     }
-            //     args.reject_rest()?;
-            // }
-
-            // tx: state
-            // "state" => {
-            //     command.consume_args().reject_rest()?;
-            //     let tx = self.get_tx(&command.prefix)?;
-            //     let state = tx.state();
-            //
-            //     write!(
-            //         output,
-            //         "v{} {} active={{{}}}",
-            //         state.version,
-            //         if state.read_only { "ro" } else { "rw" },
-            //         {
-            //             let mut v: Vec<_> = state.active.iter().collect();
-            //             v.sort();
-            //             v.into_iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
-            //         }
-            //     )?;
-            // }
-
-            // status
-            // "status" => writeln!(output, "{:#?}", self.mvcc.status()?)?,
             name => return Err(format!("invalid command {name}").into()),
         }
 
-        // If requested, output reifydb_engine operations.
-        // if tags.remove("ops") {
-        //     while let Ok(op) = self.operations.try_recv() {
-        //         match op {
-        //             Operation::Remove { key } => {
-        //                 let fmtkey = MVCC::<format::Raw>::key(&Keyey);
-        //                 let rawkey = format::Raw::key(&Keyey);
-        //                 writeln!(output, "reifydb_engine remove {fmtkey} [{rawkey}]")?
-        //             }
-        //             Operation::Set { key, value } => {
-        //                 let fmtkv = MVCC::<format::Raw>::key_value(&Keyey, &value);
-        //                 let rawkv = format::Raw::key_value(&Keyey, &value);
-        //                 writeln!(output, "reifydb_engine set {fmtkv} [{rawkv}]")?
-        //             }
-        //         }
-        //     }
-        // }
 
         if let Some(tag) = tags.iter().next() {
             return Err(format!("unknown tag {tag}").into());
@@ -348,10 +275,19 @@ impl<'a> testscript::Runner for MvccRunner {
 
         Ok(output)
     }
+    
+}
 
-    // Drain unhandled reifydb_engine operations.
-    // fn end_command(&mut self, _: &testscript::Command) -> Result<String, Box<dyn StdError>> {
-    //     while self.operations.try_recv().is_ok() {}
-    //     Ok(String::new())
-    // }
+fn print_rx<I: Iterator<Item = StoredValue>>(output: &mut String, mut iter: I) {
+    while let Some(sv) = iter.next() {
+        let fmtkv = format::Raw::key_value(&sv.key, &sv.value.deref());
+        writeln!(output, "{fmtkv}").unwrap();
+    }
+}
+
+fn print_tx<I: Iterator<Item = TransactionValue>>(output: &mut String, mut iter: I) {
+    while let Some(tv) = iter.next() {
+        let fmtkv = format::Raw::key_value(tv.key(), tv.value().deref());
+        writeln!(output, "{fmtkv}").unwrap();
+    }
 }

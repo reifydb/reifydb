@@ -9,15 +9,15 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::FromValue;
-use crate::as_key;
-use crate::keycode;
-use crate::{AsyncCowVec, as_value};
-use crate::{IntoValue, from_value};
+use crate::transaction::AsyncCowVec;
+use crate::transaction::FromValue;
+use crate::transaction::IntoValue;
+use crate::transaction::keycode;
+use crate::{as_key, as_value, from_value};
 use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::range::TransactionRange;
-use reifydb_transaction::mvcc::transaction::range_rev::TransactionRevRange;
+use reifydb_transaction::mvcc::transaction::range_rev::TransactionRangeRev;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
@@ -226,7 +226,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevRange<'_, _, _>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionRangeRev<'_, _, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));

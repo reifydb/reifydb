@@ -23,7 +23,7 @@ use reifydb_storage::Key;
 use reifydb_storage::Storage;
 use std::collections::btree_map::Iter as BTreeMapIter;
 
-pub struct TransactionRevIter<'a, S, C>
+pub struct TransactionIterRev<'a, S, C>
 where
     S: Storage + 'a,
 {
@@ -35,7 +35,7 @@ where
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, S, C> TransactionRevIter<'a, S, C>
+impl<'a, S, C> TransactionIterRev<'a, S, C>
 where
     C: Conflict,
     S: Storage + 'a,
@@ -56,7 +56,7 @@ where
         committed: S::ScanIterRev<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
-        let mut iterator = TransactionRevIter {
+        let mut iterator = TransactionIterRev {
             pending,
             committed,
             next_pending: None,
@@ -72,7 +72,7 @@ where
     }
 }
 
-impl<'a, S, C> Iterator for TransactionRevIter<'a, S, C>
+impl<'a, S, C> Iterator for TransactionIterRev<'a, S, C>
 where
     C: Conflict,
     S: Storage + 'a,

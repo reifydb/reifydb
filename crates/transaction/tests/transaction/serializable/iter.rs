@@ -9,15 +9,15 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::FromValue;
-use crate::as_key;
-use crate::keycode;
-use crate::{AsyncCowVec, as_value};
-use crate::{IntoValue, from_value};
+use crate::transaction::FromValue;
+use crate::transaction::AsyncCowVec;
+use crate::transaction::IntoValue;
+use crate::transaction::keycode;
+use crate::{as_key, as_value, from_value};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::iter_rev::TransactionRevIter;
+use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
@@ -219,7 +219,7 @@ fn test_iter_edge_case() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevIter<'_, _, BTreeConflict>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()), "read_vs={}", r.version());
@@ -310,7 +310,7 @@ fn test_iter_edge_case2() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevIter<'_, _, BTreeConflict>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));

@@ -9,10 +9,10 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
-use crate::AsyncCowVec;
-use crate::FromValue;
-use crate::IntoValue;
-use crate::keycode;
+use crate::transaction::AsyncCowVec;
+use crate::transaction::FromValue;
+use crate::transaction::IntoValue;
+use crate::transaction::keycode;
 use crate::{as_key, as_value, from_value};
 use MvccError::Transaction;
 use TransactionError::Conflict;

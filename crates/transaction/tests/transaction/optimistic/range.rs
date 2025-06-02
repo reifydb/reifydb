@@ -10,16 +10,17 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::as_key;
-use crate::keycode;
-use crate::FromValue;
-use crate::{as_value, AsyncCowVec};
-use crate::{from_value, IntoValue};
+use crate::as_value;
+use crate::from_value;
+use crate::transaction::AsyncCowVec;
+use crate::transaction::FromValue;
+use crate::transaction::IntoValue;
+use crate::transaction::keycode;
 use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::range::TransactionRange;
-use reifydb_transaction::mvcc::transaction::range_rev::TransactionRevRange;
-use std::ops::Bound;
+use reifydb_transaction::mvcc::transaction::range_rev::TransactionRangeRev;
 
 #[test]
 fn test_range() {
@@ -227,7 +228,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionRevRange<'_, _, _>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionRangeRev<'_, _, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_value!(u64, *r.value()));

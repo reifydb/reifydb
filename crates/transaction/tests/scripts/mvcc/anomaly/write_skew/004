@@ -10,9 +10,7 @@
 #   http://www.apache.org/licenses/LICENSE-2.0
 
 # Write skew is when t1 reads a and writes it to b while t2 reads b and writes
-# it to a. Snapshot isolation does not prevent this, which is expected, so we
-# assert the anomalous behavior. Fixing this would require implementing
-# serializable snapshot isolation.
+# it to a.
 
 # Write some initial data.
 import a=1 b=2
@@ -36,12 +34,12 @@ t2: set a=2
 ok
 
 t1: commit
-t2: commit
+t2: !commit
 ---
-ok
+t2: Error: transaction error: transaction conflict, please try again
 
 t3: begin readonly
 t3: scan
 ---
-t3: "a" => "2"
+t3: "a" => "1"
 t3: "b" => "1"

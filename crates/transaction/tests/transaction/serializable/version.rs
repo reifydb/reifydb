@@ -9,15 +9,16 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::AsyncCowVec;
-use crate::FromValue;
-use crate::keycode;
-use crate::{IntoValue, from_value};
+use crate::from_value;
+use crate::transaction::AsyncCowVec;
+use crate::transaction::FromValue;
+use crate::transaction::IntoValue;
+use crate::transaction::keycode;
 use crate::{as_key, as_value};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::iter_rev::TransactionRevIter;
+use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
@@ -45,7 +46,7 @@ fn test_versions() {
         assert_eq!(1, count) // should only loop once.
     };
 
-    let check_rev_iter = |itr: TransactionRevIter<'_, _, BTreeConflict>, i: u64| {
+    let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, i: u64| {
         let mut count = 0;
         for sv in itr {
             let value = from_value!(u64, sv.value());

@@ -63,4 +63,12 @@ impl<S: Storage> TransactionRx<S> {
         let version = self.tm.version();
         self.engine.scan_range_rev(range, version)
     }
+
+    pub fn scan_prefix(&self, prefix: &Key) -> S::ScanRangeIter<'_> {
+        self.scan_range(KeyRange::prefix(prefix))
+    }
+
+    pub fn scan_prefix_rev(&self, prefix: &Key) -> S::ScanRangeIterRev<'_> {
+        self.scan_range_rev(KeyRange::prefix(prefix))
+    }
 }
