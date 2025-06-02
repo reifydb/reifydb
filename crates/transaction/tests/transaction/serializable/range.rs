@@ -247,7 +247,6 @@ fn test_range_edge() {
     let itr = txn.scan_range(one_to_ten.clone()).unwrap();
     let mut count = 2;
     for sv in itr {
-        dbg!(&sv);
         if *sv.key() == as_key!(1) {
             count -= 1;
         }

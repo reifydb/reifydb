@@ -163,7 +163,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let mut args = command.consume_args();
                 // let mut tx = self.mvcc.begin()?;
                 let mut tx = TransactionTx::new(self.engine.clone());
-                
+
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
                     let value = decode_binary(&kv.value);
@@ -268,14 +268,12 @@ impl<'a> testscript::Runner for MvccRunner {
             name => return Err(format!("invalid command {name}").into()),
         }
 
-
         if let Some(tag) = tags.iter().next() {
             return Err(format!("unknown tag {tag}").into());
         }
 
         Ok(output)
     }
-    
 }
 
 fn print_rx<I: Iterator<Item = StoredValue>>(output: &mut String, mut iter: I) {

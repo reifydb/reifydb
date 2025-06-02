@@ -100,8 +100,8 @@ impl<S: Storage> TransactionTx<S> {
 
     pub fn scan(&mut self) -> Result<TransactionIter<'_, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
-        let (mut marker, pm) = self.tm.marker_with_pending_writes();
-        let pending = pm.iter();
+        let (mut marker, pw) = self.tm.marker_with_pending_writes();
+        let pending = pw.iter();
 
         marker.mark_range(KeyRange::all());
         let commited = self.engine.storage.scan(version);
@@ -113,8 +113,8 @@ impl<S: Storage> TransactionTx<S> {
         &mut self,
     ) -> Result<TransactionIterRev<'_, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
-        let (mut marker, pm) = self.tm.marker_with_pending_writes();
-        let pending = pm.iter().rev();
+        let (mut marker, pw) = self.tm.marker_with_pending_writes();
+        let pending = pw.iter().rev();
 
         marker.mark_range(KeyRange::all());
         let commited = self.engine.storage.scan_rev(version);
@@ -127,12 +127,12 @@ impl<S: Storage> TransactionTx<S> {
         range: KeyRange,
     ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
-        let (mut marker, pm) = self.tm.marker_with_pending_writes();
+        let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
 
         marker.mark_range(range.clone());
-        let pending = pm.range_comparable((start, end));
+        let pending = pw.range_comparable((start, end));
         let commited = self.engine.storage.scan_range(range, version);
 
         Ok(TransactionRange::new(pending, commited, Some(marker)))
@@ -143,12 +143,12 @@ impl<S: Storage> TransactionTx<S> {
         range: KeyRange,
     ) -> Result<TransactionRangeRev<'a, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
-        let (mut marker, pm) = self.tm.marker_with_pending_writes();
+        let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
 
         marker.mark_range(range.clone());
-        let pending = pm.range_comparable((start, end));
+        let pending = pw.range_comparable((start, end));
         let commited = self.engine.storage.scan_range_rev(range, version);
 
         Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))

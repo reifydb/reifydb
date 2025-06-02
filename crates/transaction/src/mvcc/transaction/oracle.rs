@@ -77,7 +77,7 @@ where
             if committed_txn.version <= version {
                 continue;
             }
-
+            
             if let Some(old_conflicts) = &committed_txn.conflict_manager {
                 if conflicts.has_conflict(old_conflicts) {
                     return CreateCommitResult::Conflict(conflicts);
