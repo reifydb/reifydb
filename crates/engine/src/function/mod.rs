@@ -46,7 +46,7 @@ pub trait Function: Send + Sync {
 pub trait FunctionExecutor: Send + Sync {
     fn name(&self) -> &str;
 
-    /// For scalar input → scalar output
+    /// For scalar input => scalar output
     fn eval_scalar(
         &self,
         _columns: &[Column],
@@ -58,7 +58,7 @@ pub trait FunctionExecutor: Send + Sync {
         })
     }
 
-    /// For scalar inputs → output rows (like `generate_series`)
+    /// For scalar inputs => output rows (like `generate_series`)
     fn eval_generator(&self, _args: &[Value]) -> Result<RowIter, FunctionError> {
         Err(FunctionError::UnsupportedMode {
             function: self.name().to_string(),
@@ -66,7 +66,7 @@ pub trait FunctionExecutor: Send + Sync {
         })
     }
 
-    /// For row streams → aggregated output (like `avg`)
+    /// For row streams => aggregated output (like `avg`)
     fn eval_aggregate(&mut self, _row: &[Value]) -> Result<(), FunctionError> {
         Err(FunctionError::UnsupportedMode {
             function: self.name().to_string(),

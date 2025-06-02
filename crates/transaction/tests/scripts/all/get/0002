@@ -10,4 +10,4 @@ t1: commit
 t2: begin
 t2: get a
 ---
-t2: "a" → "1"
+t2: "a" => "1"

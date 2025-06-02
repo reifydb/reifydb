@@ -24,7 +24,7 @@ ok
 
 t2: get key
 ---
-t2: "key" → "0"
+t2: "key" => "0"
 
 t1: set key=1
 t1: commit
@@ -33,4 +33,4 @@ ok
 
 t2: get key
 ---
-t2: "key" → "0"
+t2: "key" => "0"

@@ -43,74 +43,80 @@ impl<S: Storage> testscript::Runner for Runner<S> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {
-            // // get KEY
+            // // get KEY [version=VERSION]
             "get" => {
                 let mut args = command.consume_args();
                 let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+                let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
-                let value = self.storage.get(&key, 0).map(|sv| sv.value.to_vec());
+                let value = self.storage.get(&key, version).map(|sv| sv.value.to_vec());
                 writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
             }
 
-            // scan [reverse=BOOL]
+            // scan [reverse=BOOL] [version=VERSION]
             "scan" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
+                let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan(0))
+                    print(&mut output, self.storage.scan(version))
                 } else {
-                    print(&mut output, self.storage.scan_rev(0))
+                    print(&mut output, self.storage.scan_rev(version))
                 };
             }
-            // scan_range RANGE [reverse=BOOL]
+            // scan_range RANGE [reverse=BOOL] [version=VERSION]
             "scan_range" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
                 let range =
                     KeyRange::parse(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."));
+                let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_range(range, 0))
+                    print(&mut output, self.storage.scan_range(range, version))
                 } else {
-                    print(&mut output, self.storage.scan_range_rev(range, 0))
+                    print(&mut output, self.storage.scan_range_rev(range, version))
                 };
             }
 
-            // scan_prefix PREFIX [reverse=BOOL]
+            // scan_prefix PREFIX [reverse=BOOL] [version=VERSION]
             "scan_prefix" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
+                let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_prefix(&prefix, 0))
+                    print(&mut output, self.storage.scan_prefix(&prefix, version))
                 } else {
-                    print(&mut output, self.storage.scan_prefix_rev(&prefix, 0))
+                    print(&mut output, self.storage.scan_prefix_rev(&prefix, version))
                 };
             }
 
-            // set KEY=VALUE
+            // set KEY=VALUE [version=VERSION]
             "set" => {
                 let mut args = command.consume_args();
                 let kv = args.next_key().ok_or("key=value not given")?.clone();
                 let key = decode_binary(&kv.key.unwrap());
                 let value = decode_binary(&kv.value);
+                let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(vec![(Action::Set { key, value }, 0)])
+                self.storage.apply(vec![(Action::Set { key, value }, version)])
             }
 
-            // remove KEY
+            // remove KEY [version=VERSION]
             "remove" => {
                 let mut args = command.consume_args();
                 let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+                let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(vec![(Action::Remove { key }, 0)])
+                self.storage.apply(vec![(Action::Remove { key }, version)])
             }
 
             name => return Err(format!("invalid command {name}").into()),

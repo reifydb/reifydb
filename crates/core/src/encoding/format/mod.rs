@@ -29,6 +29,6 @@ pub trait Formatter {
     fn key_maybe_value(key: &[u8], value: Option<impl AsRef<[u8]>>) -> String {
         let fmtkey = Self::key(key);
         let fmtvalue = value.map_or("None".to_string(), |v| Self::value(key, v.as_ref()));
-        format!("{fmtkey} → {fmtvalue}")
+        format!("{fmtkey} => {fmtvalue}")
     }
 }

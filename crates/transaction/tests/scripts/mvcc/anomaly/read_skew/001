@@ -11,7 +11,7 @@ t1: commit
 t2: begin
 t2: get stock
 ---
-t2: "stock" → "50"
+t2: "stock" => "50"
 
 t3: begin
 t3: set stock=30
@@ -19,7 +19,7 @@ t3: commit
 
 t2: get stock
 ---
-t2: "stock" → "50"
+t2: "stock" => "50"
 
 t2: commit
 ---

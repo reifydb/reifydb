@@ -18,10 +18,10 @@ ok
 t3: begin
 t3: scan
 ---
-t3: "a" → "1"
+t3: "a" => "1"
 
 
 t4: begin readonly
 t4: scan
 ---
-t4: "a" → "1"
+t4: "a" => "1"

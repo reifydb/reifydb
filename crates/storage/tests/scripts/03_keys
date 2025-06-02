@@ -17,15 +17,15 @@ set a=1
 get a
 get A
 ---
-"a" → "1"
-"A" → None
+"a" => "1"
+"A" => None
 
 set A=2
 get a
 get A
 ---
-"a" → "1"
-"A" → "2"
+"a" => "1"
+"A" => "2"
 
 remove a
 remove A
@@ -39,8 +39,8 @@ get ""
 scan
 remove ""
 ---
-"" → ""
-"" → ""
+"" => ""
+"" => ""
 
 scan
 ---
@@ -52,8 +52,8 @@ get "\0"
 scan
 remove "\0"
 ---
-"\x00" → "\x00"
-"\x00" → "\x00"
+"\x00" => "\x00"
+"\x00" => "\x00"
 
 scan
 ---
@@ -65,8 +65,8 @@ get "👋"
 scan
 remove "👋"
 ---
-"\xf0\x9f\x91\x8b" → "\xf0\x9f\x91\x8b"
-"\xf0\x9f\x91\x8b" → "\xf0\x9f\x91\x8b"
+"\xf0\x9f\x91\x8b" => "\xf0\x9f\x91\x8b"
+"\xf0\x9f\x91\x8b" => "\xf0\x9f\x91\x8b"
 
 scan
 ---

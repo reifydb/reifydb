@@ -19,32 +19,21 @@ set C=3
 ---
 ok
 
-# Inclusive and exclusive ranges.
-scan_range b..bb
+# Forward and reverse scans.
+scan
 ---
-"b" → "2"
-"ba" → "21"
+"C" => "3"
+"a" => "1"
+"b" => "2"
+"ba" => "21"
+"bb" => "22"
+"c" => "3"
 
-scan_range "b..=bb"
+scan reverse=true
 ---
-"b" → "2"
-"ba" → "21"
-"bb" → "22"
-
-scan_range "b..=bb" reverse=true
----
-"bb" → "22"
-"ba" → "21"
-"b" → "2"
-
-# Open ranges.
-scan_range bb..
----
-"bb" → "22"
-"c" → "3"
-
-scan_range "..=b"
----
-"C" → "3"
-"a" → "1"
-"b" → "2"
+"c" => "3"
+"bb" => "22"
+"ba" => "21"
+"b" => "2"
+"a" => "1"
+"C" => "3"

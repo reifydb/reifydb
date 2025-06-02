@@ -32,16 +32,16 @@ ok
 
 dump
 ---
-mvcc:NextVersion → 4 ["\x00" → "\x04"]
-mvcc:TxActive(1) → "" ["\x01\x00\x00\x00\x00\x00\x00\x00\x01" → ""]
-mvcc:TxActive(3) → "" ["\x01\x00\x00\x00\x00\x00\x00\x00\x03" → ""]
-mvcc:TxActiveSnapshot(2) → {1} ["\x02\x00\x00\x00\x00\x00\x00\x00\x02" → "\x01\x01"]
-mvcc:TxActiveSnapshot(3) → {1} ["\x02\x00\x00\x00\x00\x00\x00\x00\x03" → "\x01\x01"]
-mvcc:TxWrite(1, "other") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x01other\x00\x00" → ""]
-mvcc:TxWrite(3, "key") → "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x03key\x00\x00" → ""]
-mvcc:Version("key", 2) → "2" ["\x04key\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" → "\x01\x012"]
-mvcc:Version("key", 3) → "3" ["\x04key\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03" → "\x01\x013"]
-mvcc:Version("other", 1) → "1" ["\x04other\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01" → "\x01\x011"]
+mvcc:NextVersion => 4 ["\x00" => "\x04"]
+mvcc:TxActive(1) => "" ["\x01\x00\x00\x00\x00\x00\x00\x00\x01" => ""]
+mvcc:TxActive(3) => "" ["\x01\x00\x00\x00\x00\x00\x00\x00\x03" => ""]
+mvcc:TxActiveSnapshot(2) => {1} ["\x02\x00\x00\x00\x00\x00\x00\x00\x02" => "\x01\x01"]
+mvcc:TxActiveSnapshot(3) => {1} ["\x02\x00\x00\x00\x00\x00\x00\x00\x03" => "\x01\x01"]
+mvcc:TxWrite(1, "other") => "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x01other\x00\x00" => ""]
+mvcc:TxWrite(3, "key") => "" ["\x03\x00\x00\x00\x00\x00\x00\x00\x03key\x00\x00" => ""]
+mvcc:Version("key", 2) => "2" ["\x04key\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02" => "\x01\x012"]
+mvcc:Version("key", 3) => "3" ["\x04key\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03" => "\x01\x013"]
+mvcc:Version("other", 1) => "1" ["\x04other\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01" => "\x01\x011"]
 
 # Start a read-only transaction as-of version 3. It should only see key=2
 # because t1 and t3 haven't committed yet. It shouldn't write any state.
@@ -52,7 +52,7 @@ t4: v3 ro active={1}
 
 t4: scan
 ---
-t4: "key" → "2"
+t4: "key" => "2"
 
 # Writes should error.
 t4: !set foo=bar
@@ -70,7 +70,7 @@ ok
 
 t4: scan
 ---
-t4: "key" → "2"
+t4: "key" => "2"
 
 # A new transaction t5 running as-of v3 shouldn't see them either.
 t5: begin readonly as_of=3
@@ -80,7 +80,7 @@ t5: v3 ro active={1}
 
 t5: scan
 ---
-t5: "key" → "2"
+t5: "key" => "2"
 
 # Committing and rolling back readonly txns is a noop.
 t4: commit [ops]
@@ -101,8 +101,8 @@ t6: v4 rw active={}
 t7: begin readonly as_of=4
 t7: scan
 ---
-t7: "key" → "3"
-t7: "other" → "1"
+t7: "key" => "3"
+t7: "other" => "1"
 
 # Running as_of future versions should error, including the next version.
 t8: !begin readonly as_of=5

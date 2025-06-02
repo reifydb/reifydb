@@ -21,16 +21,16 @@ ok
 t3: begin
 t3: scan
 ---
-t3: "a" → "1"
+t3: "a" => "1"
 
 # Everything is rolled back for a new TX
 t4: begin
 t4: scan
 ---
-t4: "a" → "1"
+t4: "a" => "1"
 
 # Everything is rolled back for a new RX
 t5: begin readonly
 t5: scan
 ---
-t5: "a" → "1"
+t5: "a" => "1"

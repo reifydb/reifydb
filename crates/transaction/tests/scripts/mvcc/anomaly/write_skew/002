@@ -13,16 +13,16 @@ t2: get doctor1
 t2: get doctor2
 t2: set doctor1=off
 ---
-t2: "doctor1" → "on"
-t2: "doctor2" → "on"
+t2: "doctor1" => "on"
+t2: "doctor2" => "on"
 
 t3: begin
 t3: get doctor1
 t3: get doctor2
 t3: set doctor2=off
 ---
-t3: "doctor1" → "on"
-t3: "doctor2" → "on"
+t3: "doctor1" => "on"
+t3: "doctor2" => "on"
 
 t2: commit
 t3: !commit

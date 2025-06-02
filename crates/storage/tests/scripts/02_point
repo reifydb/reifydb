@@ -14,7 +14,7 @@
 # Getting a missing key in an empty store should return None.
 get a
 ---
-"a" → None
+"a" => None
 
 # Write a couple of keys.
 set a=1
@@ -27,38 +27,38 @@ get a
 get b
 get c
 ---
-"a" → "1"
-"b" → "2"
-"c" → None
+"a" => "1"
+"b" => "2"
+"c" => None
 
 # Replacing a key should return the new value.
 set a=foo
 get a
 ---
-"a" → "foo"
+"a" => "foo"
 
 # Deleting a key should remove it, but not affect other keys.
 remove a
 get a
 get b
 ---
-"a" → None
-"b" → "2"
+"a" => None
+"b" => "2"
 
 # removes are idempotent.
 remove a
 get a
 ---
-"a" → None
+"a" => None
 
 # Writing a removed key works fine.
 set a=1
 get a
 ---
-"a" → "1"
+"a" => "1"
 
 # Scan the final state.
 scan
 ---
-"a" → "1"
-"b" → "2"
+"a" => "1"
+"b" => "2"

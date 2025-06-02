@@ -11,13 +11,13 @@ t2: begin
 t2: get balance
 t2: set balance=70 # balance - 30
 ---
-t2: "balance" → "100"
+t2: "balance" => "100"
 
 t3: begin
 t3: get balance
 t3: set balance=50 # balance - 50
 ---
-t3: "balance" → "100"
+t3: "balance" => "100"
 
 t2: commit
 t3: !commit
@@ -27,4 +27,4 @@ t3: Error: transaction error: transaction conflict, please try again
 t4: begin readonly
 t4: get balance
 ---
-t4: "balance" → "70"
+t4: "balance" => "70"

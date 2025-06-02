@@ -76,10 +76,10 @@ impl KeyRange {
     /// - `<end>` is the upper bound (optional).
     ///
     /// Examples:
-    /// - `"a..z"`       → start = Included("a"), end = Excluded("z")
-    /// - `"a..=z"`      → start = Included("a"), end = Included("z")
-    /// - `"..z"`        → start = Unbounded,     end = Excluded("z")
-    /// - `"a.."`        → start = Included("a"), end = Unbounded
+    /// - `"a..z"`       => start = Included("a"), end = Excluded("z")
+    /// - `"a..=z"`      => start = Included("a"), end = Included("z")
+    /// - `"..z"`        => start = Unbounded,     end = Excluded("z")
+    /// - `"a.."`        => start = Included("a"), end = Unbounded
     ///
     /// If parsing fails, it defaults to a degenerate range from `0xff` to `0xff` (empty).
     pub fn parse(str: &str) -> Self {

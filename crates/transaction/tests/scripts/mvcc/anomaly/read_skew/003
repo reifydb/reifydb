@@ -12,7 +12,7 @@ t1: commit
 t2: begin
 t2: get temp
 ---
-t2: "temp" → "22"
+t2: "temp" => "22"
 
 t3: begin
 t3: set temp=24
@@ -21,7 +21,7 @@ t3: commit
 
 t2: get pressure
 ---
-t2: "pressure" → "101"
+t2: "pressure" => "101"
 
 t2: commit
 ---

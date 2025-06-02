@@ -1,0 +1,58 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+set a=1     version=1
+set b=2     version=2
+set ba=21   version=3
+set bb=22   version=4
+set c=3     version=5
+set C=3     version=6
+---
+ok
+
+scan_range b..bb version=2
+---
+"b" => "2"
+
+scan_range b..bb reverse=true version=2
+---
+"b" => "2"
+
+scan_range "b..=bb" version=3
+---
+"b" => "2"
+"ba" => "21"
+
+scan_range "b..=bb" reverse=true version=3
+---
+"ba" => "21"
+"b" => "2"
+
+
+scan_range bb.. version=6
+---
+"bb" => "22"
+"c" => "3"
+
+scan_range bb.. reverse=true version=6
+---
+"c" => "3"
+"bb" => "22"
+
+
+scan_range bb.. version=3
+---
+ok
+
+scan_range bb.. reverse=true version=3
+---
+ok
+
+scan_range bb.. version=4
+---
+"bb" => "22"
+
+
+scan_range bb.. reverse=true version=4
+---
+"bb" => "22"

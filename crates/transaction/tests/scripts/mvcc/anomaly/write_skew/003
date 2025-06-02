@@ -16,10 +16,10 @@ t1: get blue
 t1: set red=off
 t1: get red
 ---
-t1: "red" → "on"
-t1: "green" → "on"
-t1: "blue" → "on"
-t1: "red" → "off"
+t1: "red" => "on"
+t1: "green" => "on"
+t1: "blue" => "on"
+t1: "red" => "off"
 
 # Transaction 2 reads all, disables green
 t2: begin
@@ -29,10 +29,10 @@ t2: get blue
 t2: set green=off
 t2: get green
 ---
-t2: "red" → "on"
-t2: "green" → "on"
-t2: "blue" → "on"
-t2: "green" → "off"
+t2: "red" => "on"
+t2: "green" => "on"
+t2: "blue" => "on"
+t2: "green" => "off"
 
 # Transaction 3 reads all, disables blue
 t3: begin
@@ -42,10 +42,10 @@ t3: get blue
 t3: set blue=off
 t3: get blue
 ---
-t3: "red" → "on"
-t3: "green" → "on"
-t3: "blue" → "on"
-t3: "blue" → "off"
+t3: "red" => "on"
+t3: "green" => "on"
+t3: "blue" => "on"
+t3: "blue" => "off"
 
 # Now try to commit them all
 t1: commit

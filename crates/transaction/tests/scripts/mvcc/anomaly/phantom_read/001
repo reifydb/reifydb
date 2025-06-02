@@ -10,7 +10,7 @@ t1: commit
 t2: begin
 t2: scan
 ---
-t2: "user1" → "Alice"
+t2: "user1" => "Alice"
 
 t3: begin
 t3: set user2=Bob
@@ -18,7 +18,7 @@ t3: commit
 
 t2: scan
 ---
-t2: "user1" → "Alice"
+t2: "user1" => "Alice"
 
 t2: commit
 ---

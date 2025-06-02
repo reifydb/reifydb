@@ -9,10 +9,10 @@ ok
 
 get a
 ---
-"a" → "1"
+"a" => "1"
 
 # not found
 
 get b
 ---
-"b" → None
+"b" => None

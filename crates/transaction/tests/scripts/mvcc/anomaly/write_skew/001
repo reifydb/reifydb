@@ -11,13 +11,13 @@ t2: begin
 t2: get kevin
 t2: set kevin=900
 ---
-t2: "kevin" → "1000"
+t2: "kevin" => "1000"
 
 t3: begin
 t3: get kevin
 t3: set kevin=900
 ---
-t3: "kevin" → "1000"
+t3: "kevin" => "1000"
 
 t2: commit
 t3: !commit

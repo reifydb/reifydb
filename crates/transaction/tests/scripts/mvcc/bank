@@ -21,9 +21,9 @@ ok
 alice: begin
 alice: scan
 ---
-alice: "A" → "100"
-alice: "B" → "100"
-alice: "C" → "100"
+alice: "A" => "100"
+alice: "B" => "100"
+alice: "C" => "100"
 
 # She then subtracts 100 from B, and is about to add 100 to A.
 alice: set B=0
@@ -39,18 +39,18 @@ ok
 bob: begin
 bob: scan
 ---
-bob: "A" → "100"
-bob: "B" → "100"
-bob: "C" → "100"
+bob: "A" => "100"
+bob: "B" => "100"
+bob: "C" => "100"
 
 # Alice now completes the transfer by adding 100 to A and committing to finalize
 # the transaction.
 alice: set A=200
 alice: scan
 ---
-alice: "A" → "200"
-alice: "B" → "0"
-alice: "C" → "100"
+alice: "A" => "200"
+alice: "B" => "0"
+alice: "C" => "100"
 
 alice: commit
 ---
@@ -75,6 +75,6 @@ bob: Error: transaction error: transaction conflict, please try again
 bob: begin
 bob: scan
 ---
-bob: "A" → "200"
-bob: "B" → "0"
-bob: "C" → "100"
+bob: "A" => "200"
+bob: "B" => "0"
+bob: "C" => "100"
