@@ -5,8 +5,8 @@ use crate::AsyncCowVec;
 use crate::catalog::{Catalog, Schema};
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
-use reifydb_core::encoding::{Value as _, bincode};
-use reifydb_core::{Row, RowIter, Value, key_prefix};
+use reifydb_core::encoding::bincode;
+use reifydb_core::{Row, RowIter, Value, deserialize_row, key_prefix};
 use reifydb_storage::Storage;
 use reifydb_storage::{Key, KeyRange};
 
@@ -44,7 +44,7 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
-                .map(|r| Row::decode(&r.value).unwrap())
+                .map(|r| deserialize_row(&r.value).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))
@@ -72,7 +72,7 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
         Ok(Box::new(
             self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)).into())
                 .unwrap()
-                .map(|r| Row::decode(&r.value()).unwrap())
+                .map(|r| deserialize_row(&r.value()).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))

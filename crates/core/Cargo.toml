@@ -8,7 +8,6 @@ repository.workspace = true
 
 [dependencies]
 bincode = { workspace = true }
-dyn-clone = { workspace = true }
 hex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }

@@ -1,3 +1,6 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
 (tx 'create schema test')
 (tx 'create table test.arith(id: int2, value: int2, num: int2)')
 (tx 'insert (1,1,5), (1,1,10), (1,2,15), (2,1,10), (2,1,30) into test.arith(id,value,num)')

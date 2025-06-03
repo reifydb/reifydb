@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::StoreToCreate;
-use crate::catalog::{Column, Store};
 use reifydb_core::StoreKind;
 use std::collections::HashMap;
 use std::ops::Deref;
+use crate::catalog::{Column, Store};
 
 #[derive(Debug)]
 pub struct Schema {
@@ -44,7 +44,7 @@ impl crate::SchemaTx for Schema {
                         kind: StoreKind::Series,
                         columns: columns
                             .into_iter()
-                            .map(|c| Column { name: c.name, value: c.value, default: c.default })
+                            .map(|c| Column { name: c.name, value: c.value })
                             .collect::<Vec<_>>(),
                     },
                 );
@@ -59,7 +59,7 @@ impl crate::SchemaTx for Schema {
                         kind: StoreKind::Table,
                         columns: columns
                             .into_iter()
-                            .map(|c| Column { name: c.name, value: c.value, default: c.default })
+                            .map(|c| Column { name: c.name, value: c.value })
                             .collect::<Vec<_>>(),
                     },
                 );

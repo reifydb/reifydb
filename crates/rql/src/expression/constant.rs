@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -8,8 +11,10 @@ use std::fmt::{Display, Formatter};
 pub enum ConstantExpression {
     Undefined,
     Bool(bool),
+    // any number
     Number(String),
-    String(String),
+    // any textual representation can be String, Text, ...
+    Text(String),
 }
 
 impl Display for ConstantExpression {
@@ -18,7 +23,7 @@ impl Display for ConstantExpression {
             ConstantExpression::Undefined => write!(f, "undefined"),
             ConstantExpression::Bool(b) => write!(f, "{b}"),
             ConstantExpression::Number(n) => write!(f, "{n}"),
-            ConstantExpression::String(s) => write!(f, "\"{s}\""),
+            ConstantExpression::Text(s) => write!(f, "\"{s}\""),
         }
     }
 }

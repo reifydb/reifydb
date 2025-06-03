@@ -3,7 +3,7 @@
 
 pub use error::Error;
 pub use key::Key;
-pub use value::Value;
+// pub use value::Value;
 
 pub mod binary;
 pub mod bincode;

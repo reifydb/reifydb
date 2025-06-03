@@ -6,23 +6,23 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{ReifyDB, lmdb, optimistic};
-use std::path::Path;
+use reifydb::{ReifyDB, memory, optimistic};
 
 fn main() {
-    let (db, root) = ReifyDB::embedded_blocking_with(optimistic(lmdb(&Path::new("/tmp/db"))));
+    // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(lmdb(&Path::new("/tmp/db"))));
+    let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
     // ReifyDB::embedded_blocking_with::<Memory, Serializable>(serializable());
     db.tx_as(&root, r#"create schema test"#);
-    db.tx_as(&root, r#"create table test.item(field_one: int1, field_two: int1)"#);
+    db.tx_as(&root, r#"create table test.arith(id: int2, num: int2)"#);
     db.tx_as(
         &root,
         r#"
-    insert (1,-1), (-2,2), (3,3), (-4,-4) into test.item (field_one, field_two)"#,
+    insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#,
     );
 
     // let start = Instant::now();
     // for l in db.rx_as(&root, r#"from test.test"#) {
-    for l in db.rx_as(&root, r#"from test.item select field_one, field_two"#) {
+    for l in db.rx_as(&root, r#"from test.arith select id + 42, id + id + id"#) {
         println!("{}", l);
     }
     // println!("took {:?}", start.elapsed());

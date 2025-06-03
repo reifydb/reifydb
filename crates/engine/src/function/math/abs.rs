@@ -36,6 +36,17 @@ impl FunctionExecutor for AbsExecutor {
         let column = columns.get(0).unwrap();
 
         match &column.data {
+            ColumnValues::Int1(vals, valid) => {
+                let mut values = Vec::with_capacity(vals.len());
+
+                for i in 0..row_count {
+                    if valid.get(i).copied().unwrap_or(false) {
+                        values.push(if vals[i] < 0 { vals[i] * -1 } else { vals[i] });
+                    }
+                }
+
+                Ok(ColumnValues::int1_with_validity(values, valid.clone()))
+            }
             ColumnValues::Int2(vals, valid) => {
                 let mut values = Vec::with_capacity(vals.len());
 

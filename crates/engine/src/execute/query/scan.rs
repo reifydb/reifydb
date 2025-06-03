@@ -35,11 +35,8 @@ impl Executor {
             })
             .collect();
             
-        dbg!(&columns);
-
         let mut frame = Frame::new(columns);
         for row in rx.scan_table(schema, store)?.into_iter() {
-            dbg!(&row);
             frame.append(row)?;
         }
 

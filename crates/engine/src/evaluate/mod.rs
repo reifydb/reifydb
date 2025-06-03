@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::expression::Expression;
+use reifydb_rql::expression::Expression;
 use reifydb_frame::{Column, ColumnValues};
 
 use crate::function::{FunctionRegistry, math};

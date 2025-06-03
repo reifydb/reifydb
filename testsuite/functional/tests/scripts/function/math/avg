@@ -1,3 +1,6 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
 # avg can be used to calculate a scalar value
 
 (tx 'create schema test')

@@ -1,3 +1,6 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
 # The last statement works if it is sent as rx => tx must behave the same way
 
 (tx 'create schema test')

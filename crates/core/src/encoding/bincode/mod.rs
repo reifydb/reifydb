@@ -63,3 +63,16 @@ pub fn maybe_deserialize_from<R: Read, T: DeserializeOwned>(
         Err(err) => Err(err.into()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // use crate::encoding::{Value as _, bincode};
+    // use crate::{Row, Value};
+    // 
+    // #[test]
+    // fn test() {
+    //     let encoded = bincode::serialize(&vec![vec![Value::Int1(1)]]);
+    //     let r = Row::decode(&encoded);
+    //     dbg!(&r);
+    // }
+}

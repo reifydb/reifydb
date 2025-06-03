@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use reifydb_core::expression::{AliasExpression, ColumnExpression, Expression};
+use reifydb_rql::expression::{AliasExpression, ColumnExpression, Expression};
 use reifydb_frame::aggregate::Aggregate;
 
 impl Executor {

@@ -9,7 +9,7 @@
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
 pub use error::Error;
 pub use key::{SortDirection, SortKey};
-pub use row::{Row, RowIter, RowIterator};
+pub use row::{Row, RowIter, RowIterator, deserialize_row};
 pub use row_meta::RowMeta;
 pub use value::{Value, ValueKind};
 
@@ -17,7 +17,6 @@ mod cowvec;
 pub mod either;
 pub mod encoding;
 mod error;
-pub mod expression;
 mod key;
 pub mod ordered_float;
 mod row;

@@ -3,7 +3,6 @@
 
 use crate::ExecutionResult;
 use crate::execute::Executor;
-use reifydb_core::expression::Expression;
 use reifydb_rql::plan::InsertIntoSeriesPlan;
 use reifydb_transaction::Tx;
 
@@ -15,22 +14,23 @@ impl Executor {
     ) -> crate::Result<ExecutionResult> {
         match plan {
             InsertIntoSeriesPlan::Values { schema, series, columns, rows_to_insert } => {
-                let mut rows = Vec::with_capacity(rows_to_insert.len());
-
-                for row in rows_to_insert {
-                    let mut row_values = Vec::with_capacity(row.len());
-                    for expr in row {
-                        match expr {
-                            Expression::Constant(value) => row_values.push(value),
-                            _ => unimplemented!(),
-                        }
-                    }
-                    rows.push(row_values);
-                }
-
-                let result = tx.insert_into_series(schema.as_str(), series.as_str(), rows).unwrap();
-
-                Ok(ExecutionResult::InsertIntoSeries { schema, series, inserted: result.inserted })
+                // let mut rows = Vec::with_capacity(rows_to_insert.len());
+                //
+                // for row in rows_to_insert {
+                //     let mut row_values = Vec::with_capacity(row.len());
+                //     for expr in row {
+                //         match expr {
+                //             Expression::Constant(value) => row_values.push(value),
+                //             _ => unimplemented!(),
+                //         }
+                //     }
+                //     rows.push(row_values);
+                // }
+                //
+                // let result = tx.insert_into_series(schema.as_str(), series.as_str(), rows).unwrap();
+                //
+                // Ok(ExecutionResult::InsertIntoSeries { schema, series, inserted: result.inserted })
+                unimplemented!()
             }
         }
     }

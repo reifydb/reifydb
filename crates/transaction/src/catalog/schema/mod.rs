@@ -7,7 +7,6 @@ mod r#impl;
 
 use crate::catalog::store::{StoreRx, StoreTx};
 use reifydb_core::ValueKind;
-use reifydb_core::expression::Expression;
 
 pub trait SchemaRx {
     type StoreRx: StoreRx;
@@ -24,7 +23,7 @@ pub trait SchemaRx {
 pub struct ColumnToCreate {
     pub name: String,
     pub value: ValueKind,
-    pub default: Option<Expression>,
+    // pub default: Option<Expression>,
 }
 
 pub enum StoreToCreate {

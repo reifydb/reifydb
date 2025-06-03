@@ -2,20 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{Value, encoding};
-use dyn_clone::DynClone;
+use crate::encoding::bincode::deserialize;
 
 /// A row of values.
 pub type Row = Vec<Value>;
 
-impl encoding::Value for Row {}
+pub fn deserialize_row(data: &[u8]) -> crate::encoding::Result<Row> {
+	deserialize(data)
+}
+
+// impl encoding::Value for Row {}
 
 /// A boxed row iterator.
 pub type RowIter = Box<dyn RowIterator>;
 
-/// A row iterator trait, which requires the iterator to be clonable and
-/// object-safe. Cloning enables us to reset an iterator back to an initial state,
-pub trait RowIterator: Iterator<Item = Row> + DynClone {}
+pub trait RowIterator: Iterator<Item = Row> {}
 
-dyn_clone::clone_trait_object!(RowIterator);
-
-impl<I: Iterator<Item = Row> + DynClone> RowIterator for I {}
+impl<I: Iterator<Item = Row>> RowIterator for I {}
