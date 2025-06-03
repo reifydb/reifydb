@@ -3,8 +3,9 @@
 
 use crate::ast::lex::Literal;
 use crate::ast::parse::Parser;
-use crate::ast::{parse, AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralText, AstLiteralUndefined};
-use std::str::FromStr;
+use crate::ast::{
+    AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralText, AstLiteralUndefined, parse,
+};
 
 impl Parser {
     pub(crate) fn parse_literal_number(&mut self) -> parse::Result<AstLiteral> {
@@ -35,10 +36,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::lex;
-    use crate::ast::parse::parse;
     use crate::ast::Ast::Literal;
     use crate::ast::AstLiteral;
+    use crate::ast::lex::lex;
+    use crate::ast::parse::parse;
 
     #[test]
     fn test_text() {

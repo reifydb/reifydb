@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{
-    Ast, AstCreate, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstSelect, AstStatement,
-    AstType, InfixOperator,
+	Ast, AstCreate, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstPrefix, AstSelect,
+	AstStatement, InfixOperator,
 };
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -11,8 +11,8 @@ use std::ops::Deref;
 use crate::ast;
 pub use error::Error;
 use reifydb_core::expression::{
-    AddExpression, AliasExpression, CallExpression, ColumnExpression, Expression, IdentExpression,
-    PrefixExpression, PrefixOperator, TupleExpression,
+	AddExpression, AliasExpression, CallExpression, ColumnExpression, Expression, IdentExpression,
+	PrefixExpression, PrefixOperator, TupleExpression,
 };
 use reifydb_core::{SortDirection, SortKey, StoreKind, Value, ValueKind};
 use reifydb_transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
@@ -140,23 +140,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
 
                                     columns.push(ColumnToCreate {
                                         name: name.value().to_string(),
-                                        value: match ty {
-                                            AstType::Boolean(_) => ValueKind::Bool,
-                                            AstType::Float4(_) => ValueKind::Float4,
-                                            AstType::Float8(_) => ValueKind::Float8,
-                                            AstType::Int1(_) => ValueKind::Int1,
-                                            AstType::Int2(_) => ValueKind::Int2,
-                                            AstType::Int4(_) => ValueKind::Int4,
-                                            AstType::Int8(_) => ValueKind::Int8,
-                                            AstType::Int16(_) => ValueKind::Int16,
-                                            AstType::Number(_) => unimplemented!(),
-                                            AstType::Text(_) => ValueKind::String,
-                                            AstType::Uint1(_) => ValueKind::Uint1,
-                                            AstType::Uint2(_) => ValueKind::Uint2,
-                                            AstType::Uint4(_) => ValueKind::Uint4,
-                                            AstType::Uint8(_) => ValueKind::Uint8,
-                                            AstType::Uint16(_) => ValueKind::Uint16,
-                                        },
+                                        value: ty.kind(),
                                         default: None,
                                     })
                                 }
@@ -182,23 +166,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
 
                                     columns.push(ColumnToCreate {
                                         name: name.value().to_string(),
-                                        value: match ty {
-                                            AstType::Boolean(_) => ValueKind::Bool,
-                                            AstType::Float4(_) => unimplemented!(),
-                                            AstType::Float8(_) => unimplemented!(),
-                                            AstType::Int1(_) => unimplemented!(),
-                                            AstType::Int2(_) => ValueKind::Int2,
-                                            AstType::Int4(_) => unimplemented!(),
-                                            AstType::Int8(_) => unimplemented!(),
-                                            AstType::Int16(_) => unimplemented!(),
-                                            AstType::Number(_) => unimplemented!(),
-                                            AstType::Text(_) => ValueKind::String,
-                                            AstType::Uint1(_) => unimplemented!(),
-                                            AstType::Uint2(_) => ValueKind::Uint2,
-                                            AstType::Uint4(_) => unimplemented!(),
-                                            AstType::Uint8(_) => unimplemented!(),
-                                            AstType::Uint16(_) => unimplemented!(),
-                                        },
+                                        value: ty.kind(),
                                         default: None,
                                     })
                                 }
@@ -251,32 +219,37 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                         // Now reorder the row expressions to match store_schema.column order
                         let rows_to_insert = rows
                             .into_iter()
-                            .map(|row| {
+                            .map(|tuple| {
                                 let mut values = vec![None; columns.len()];
+                                let mut nodes = tuple.nodes;
 
-                                for (col_idx, col) in
-                                    store_schema.list_columns().unwrap().iter().enumerate()
-                                {
+                                for (col_idx, col) in store_schema.list_columns().unwrap().iter().rev().enumerate() {
                                     if let Some(&input_idx) = insert_index_map.get(&col.name) {
-                                        let expr = match &row.nodes[input_idx] {
+                                        let node = nodes.remove(input_idx);
+                                        let expr = match node {
                                             Ast::Literal(AstLiteral::Boolean(ast)) => {
                                                 Expression::Constant(Value::Bool(ast.value()))
                                             }
                                             Ast::Literal(AstLiteral::Number(ast)) => {
-                                                Expression::Constant(Value::Int2(
-                                                    ast.value().parse().unwrap(),
-                                                ))
+                                                Expression::Constant(Value::Int2(ast.value().parse().unwrap()))
                                             }
                                             Ast::Literal(AstLiteral::Text(ast)) => {
-                                                Expression::Constant(Value::String(
-                                                    ast.value().to_string(),
-                                                ))
+                                                Expression::Constant(Value::String(ast.value().to_string()))
                                             }
-                                            _ => unimplemented!(),
+                                            Ast::Prefix(AstPrefix { operator, node }) => {
+                                                Expression::Prefix(PrefixExpression {
+                                                    operator: match operator {
+                                                        ast::PrefixOperator::Plus(_) => PrefixOperator::Plus,
+                                                        ast::PrefixOperator::Negate(_) => PrefixOperator::Minus,
+                                                        ast::PrefixOperator::Not(_) => unimplemented!(),
+                                                    },
+                                                    expression: Box::new(expression(*node).unwrap()),
+                                                })
+                                            }
+                                            node => unimplemented!("{:?}", node),
                                         };
                                         values[col_idx] = Some(expr);
                                     } else {
-                                        // Not provided in INSERT, use default
                                         unimplemented!()
                                     }
                                 }

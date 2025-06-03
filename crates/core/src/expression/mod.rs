@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Value;
+pub use constant::ConstantExpression;
+
+mod constant;
+
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -23,8 +26,7 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
-    /// A constant value.
-    Constant(Value),
+    Constant(ConstantExpression),
 
     Column(ColumnExpression),
 

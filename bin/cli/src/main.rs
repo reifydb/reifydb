@@ -13,25 +13,16 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(optimistic(lmdb(&Path::new("/tmp/db"))));
     // ReifyDB::embedded_blocking_with::<Memory, Serializable>(serializable());
     db.tx_as(&root, r#"create schema test"#);
-    db.tx_as(&root, r#"create series test.test(timestamp: int2, value: int2)"#);
+    db.tx_as(&root, r#"create table test.item(field_one: int1, field_two: int1)"#);
     db.tx_as(
         &root,
         r#"
-        insert
-            (1,1),
-            (2,2),
-            (3,3),
-            (4,4),
-            (5,5),
-            (6,6),
-            (7,7),
-            (8,8)
-        into test.test(timestamp, value)"#,
+    insert (1,-1), (-2,2), (3,3), (-4,-4) into test.item (field_one, field_two)"#,
     );
 
     // let start = Instant::now();
     // for l in db.rx_as(&root, r#"from test.test"#) {
-    for l in db.rx_as(&root, r#"from test.test group by timestamp select timestamp, avg(value)"#) {
+    for l in db.rx_as(&root, r#"from test.item select field_one, field_two"#) {
         println!("{}", l);
     }
     // println!("took {:?}", start.elapsed());

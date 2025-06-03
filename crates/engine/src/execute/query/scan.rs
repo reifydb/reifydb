@@ -15,17 +15,31 @@ impl Executor {
             .map(|col| {
                 let name = col.name.clone();
                 let data = match col.value {
-                    ValueKind::Int2 => ColumnValues::int2(vec![]),
-                    ValueKind::String => ColumnValues::string(vec![]),
                     ValueKind::Bool => ColumnValues::bool(vec![]),
-                    _ => ColumnValues::Undefined(0),
+                    ValueKind::Float4 => ColumnValues::float4(vec![]),
+                    ValueKind::Float8 => ColumnValues::float8(vec![]),
+                    ValueKind::Int1 => ColumnValues::int1(vec![]),
+                    ValueKind::Int2 => ColumnValues::int2(vec![]),
+                    ValueKind::Int4 => ColumnValues::int4(vec![]),
+                    ValueKind::Int8 => ColumnValues::int8(vec![]),
+                    ValueKind::Int16 => ColumnValues::int16(vec![]),
+                    ValueKind::String => ColumnValues::string(vec![]),
+                    ValueKind::Uint1 => ColumnValues::uint1(vec![]),
+                    ValueKind::Uint2 => ColumnValues::uint2(vec![]),
+                    ValueKind::Uint4 => ColumnValues::uint4(vec![]),
+                    ValueKind::Uint8 => ColumnValues::uint8(vec![]),
+                    ValueKind::Uint16 => ColumnValues::uint16(vec![]),
+                    ValueKind::Undefined => ColumnValues::Undefined(0),
                 };
                 Column { name, data }
             })
             .collect();
+            
+        dbg!(&columns);
 
         let mut frame = Frame::new(columns);
         for row in rx.scan_table(schema, store)?.into_iter() {
+            dbg!(&row);
             frame.append(row)?;
         }
 

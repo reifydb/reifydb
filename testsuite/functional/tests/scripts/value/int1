@@ -1,0 +1,5 @@
+(tx 'create schema test')
+(tx 'create table test.item(field_one: int1, field_two: int1)')
+(tx 'insert (1,-1), (-2,2), (3,3), (-4,-4) into test.item (field_one, field_two)')
+---
+ok

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use reifydb_core::Value;
+use reifydb_core::ValueKind;
 use std::ops::Index;
 
 #[derive(Debug)]
@@ -312,14 +312,6 @@ impl AstLiteralNumber {
     }
 }
 
-impl TryFrom<AstLiteralNumber> for Value {
-    type Error = ();
-
-    fn try_from(value: AstLiteralNumber) -> Result<Self, Self::Error> {
-        Ok(Value::Int2(value.value().parse::<i16>().unwrap()).into())
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub struct AstLiteralText(pub Token);
 
@@ -454,6 +446,26 @@ impl AstType {
 impl AstType {
     pub fn value(&self) -> &str {
         self.token().value()
+    }
+
+    pub fn kind(&self) -> ValueKind {
+        match self {
+            AstType::Boolean(_) => ValueKind::Bool,
+            AstType::Float4(_) => ValueKind::Float4,
+            AstType::Float8(_) => ValueKind::Float8,
+            AstType::Int1(_) => ValueKind::Int1,
+            AstType::Int2(_) => ValueKind::Int2,
+            AstType::Int4(_) => ValueKind::Int4,
+            AstType::Int8(_) => ValueKind::Int8,
+            AstType::Int16(_) => ValueKind::Int16,
+            AstType::Number(_) => unimplemented!(),
+            AstType::Text(_) => ValueKind::String,
+            AstType::Uint1(_) => ValueKind::Uint1,
+            AstType::Uint2(_) => ValueKind::Uint2,
+            AstType::Uint4(_) => ValueKind::Uint4,
+            AstType::Uint8(_) => ValueKind::Uint8,
+            AstType::Uint16(_) => ValueKind::Uint16,
+        }
     }
 }
 
