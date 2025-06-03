@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::watermark::{Closer, WaterMarkError};
+use crate::mvcc::watermark::Closer;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use reifydb_storage::Version;
 use std::ops::Deref;
@@ -20,8 +20,6 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
 };
-
-type Result<T> = std::result::Result<T, WaterMarkError>;
 
 #[derive(Debug)]
 pub struct WatermarkInner {
@@ -93,21 +91,15 @@ impl WaterMark {
     }
 
     /// Waits until the given index is marked as done.
-    pub fn wait_for_mark(&self, index: u64) -> Result<()> {
-        self.check().map(|_| {
-            if self.done_until.load(Ordering::SeqCst) >= index {
-                return;
-            }
+    pub fn wait_for_mark(&self, index: u64) {
+        if self.done_until.load(Ordering::SeqCst) >= index {
+            return;
+        }
 
-            let (wait_tx, wait_rx) = bounded(1);
-            self.tx.send(Mark { version: index, waiter: Some(wait_tx), done: false }).unwrap(); // unwrap is safe because self also holds a receiver
+        let (wait_tx, wait_rx) = bounded(1);
+        self.tx.send(Mark { version: index, waiter: Some(wait_tx), done: false }).unwrap(); // unwrap is safe because self also holds a receiver
 
-            let _ = wait_rx.recv();
-        })
-    }
-
-    fn check(&self) -> Result<()> {
-        Ok(())
+        let _ = wait_rx.recv();
     }
 }
 
@@ -146,8 +138,8 @@ mod tests {
             assert_eq!(watermark.done_until(), 0);
 
             watermark.done(1);
-            watermark.wait_for_mark(1).unwrap();
-            watermark.wait_for_mark(3).unwrap();
+            watermark.wait_for_mark(1);
+            watermark.wait_for_mark(3);
             assert_eq!(watermark.done_until(), 3);
         });
     }

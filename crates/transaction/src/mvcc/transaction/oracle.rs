@@ -77,7 +77,7 @@ where
             if committed_txn.version <= version {
                 continue;
             }
-            
+
             if let Some(old_conflicts) = &committed_txn.conflict_manager {
                 if conflicts.has_conflict(old_conflicts) {
                     return CreateCommitResult::Conflict(conflicts);
@@ -164,22 +164,20 @@ where
         // timestamp and are going through the write to value log and LSM tree
         // process. Not waiting here could mean that some txns which have been
         // committed would not be read.
-        if let Err(e) = self.tx.wait_for_mark(version) {
-            panic!("{e}");
-        }
+        self.tx.wait_for_mark(version);
         version
     }
 
-    pub(super) fn discard_at_or_below(&self) -> u64 {
+    pub(super) fn discard_at_or_below(&self) -> Version {
         self.rx.done_until()
     }
 
-    pub(super) fn done_read(&self, read_ts: u64) {
-        self.rx.done(read_ts)
+    pub(super) fn done_read(&self, version: Version) {
+        self.rx.done(version)
     }
 
-    pub(super) fn done_commit(&self, cts: u64) {
-        self.tx.done(cts)
+    pub(super) fn done_commit(&self, version: Version) {
+        self.tx.done(version)
     }
 
     fn stop(&self) {

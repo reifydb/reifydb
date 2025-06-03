@@ -23,8 +23,8 @@ pub struct TransactionRx<S: Storage> {
 }
 
 impl<S: Storage> TransactionRx<S> {
-    pub fn new(engine: Serializable<S>) -> Self {
-        let tm = engine.tm.read();
+    pub fn new(engine: Serializable<S>, version: Option<Version>) -> Self {
+        let tm = engine.tm.read(version);
         Self { engine, tm }
     }
 }

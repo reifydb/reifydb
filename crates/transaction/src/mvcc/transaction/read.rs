@@ -12,6 +12,11 @@
 use crate::mvcc::transaction::*;
 use reifydb_storage::Version;
 
+pub enum TransactionKind {
+    Current(Version),
+    TimeTravel(Version),
+}
+
 /// TransactionManagerRx is a read-only transaction manager.
 pub struct TransactionManagerRx<C, L, P>
 where
@@ -19,8 +24,8 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    pub(crate) engine: TransactionManager<C, L, P>,
-    pub(crate) version: Version,
+    engine: TransactionManager<C, L, P>,
+    transaction: TransactionKind,
 }
 
 impl<C, L, P> TransactionManagerRx<C, L, P>
@@ -29,9 +34,19 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    /// Returns the version of this read transaction.
+    pub fn new_current(engine: TransactionManager<C, L, P>, version: Version) -> Self {
+        Self { engine, transaction: TransactionKind::Current(version) }
+    }
+
+    pub fn new_time_travel(engine: TransactionManager<C, L, P>, version: Version) -> Self {
+        Self { engine, transaction: TransactionKind::TimeTravel(version) }
+    }
+
     pub fn version(&self) -> Version {
-        self.version
+        match self.transaction {
+            TransactionKind::Current(version) => version,
+            TransactionKind::TimeTravel(version) => version,
+        }
     }
 }
 
@@ -42,6 +57,9 @@ where
     P: PendingWrites,
 {
     fn drop(&mut self) {
-        self.engine.inner.done_read(self.version);
+        // time travel transaction have no effect on mvcc
+        if let TransactionKind::Current(version) = self.transaction {
+            self.engine.inner.done_read(version);
+        }
     }
 }

@@ -67,7 +67,7 @@ impl<S: Storage> Serializable<S> {
         self.0.version()
     }
     pub fn begin_read_only(&self) -> TransactionRx<S> {
-        TransactionRx::new(self.clone())
+        TransactionRx::new(self.clone(), None)
     }
 }
 

@@ -12,8 +12,8 @@
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_storage::StoredValue;
 use reifydb_storage::memory::Memory;
+use reifydb_storage::{KeyRange, StoredValue};
 use reifydb_testing::testscript;
 use reifydb_transaction::Tx;
 use reifydb_transaction::mvcc::transaction::serializable::{
@@ -86,10 +86,11 @@ impl<'a> testscript::Runner for MvccRunner {
                     None => false,
                     Some(v) => return Err(format!("invalid argument {v}").into()),
                 };
+                let version = args.lookup_parse("version")?;
                 args.reject_rest()?;
 
                 let tx = match readonly {
-                    true => Transaction::Rx(TransactionRx::new(self.engine.clone())),
+                    true => Transaction::Rx(TransactionRx::new(self.engine.clone(), version)),
                     false => Transaction::Tx(TransactionTx::new(self.engine.clone())),
                 };
                 self.transactions.insert(name.to_string(), tx);
@@ -218,7 +219,33 @@ impl<'a> testscript::Runner for MvccRunner {
                     writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
                 }
             }
+            // scan_range RANGE [reverse=BOOL]
+            "scan_range" => {
+                let t = self.get_transaction(&command.prefix)?;
 
+                let mut args = command.consume_args();
+                let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
+                let range =
+                    KeyRange::parse(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."));
+                args.reject_rest()?;
+
+                match t {
+                    Transaction::Rx(rx) => {
+                        if !reverse {
+                            print_rx(&mut output, rx.scan_range(range).into_iter())
+                        } else {
+                            print_rx(&mut output, rx.scan_range_rev(range).into_iter())
+                        }
+                    }
+                    Transaction::Tx(tx) => {
+                        if !reverse {
+                            print_tx(&mut output, tx.scan_range(range).unwrap().into_iter())
+                        } else {
+                            print_tx(&mut output, tx.scan_range_rev(range).unwrap().into_iter())
+                        }
+                    }
+                };
+            }
             // scan_prefix PREFIX [reverse=BOOL] [version=VERSION]
             "scan_prefix" => {
                 let t = self.get_transaction(&command.prefix)?;

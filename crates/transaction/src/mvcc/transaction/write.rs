@@ -13,8 +13,8 @@ use super::*;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
-use reifydb_storage::{Key, Value};
 use reifydb_storage::{Action, Version};
+use reifydb_storage::{Key, Value};
 
 pub struct TransactionManagerTx<C, L, P>
 where
@@ -60,7 +60,6 @@ where
     }
 
     /// Sets the current version of the transaction manager.
-    /// This should be used only for testing purposes.
     pub fn as_of_version(&mut self, version: Version) {
         self.version = version;
     }

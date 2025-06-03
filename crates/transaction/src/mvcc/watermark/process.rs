@@ -99,6 +99,9 @@ impl WatermarkInner {
                       let done_until = self.done_until.load(Ordering::SeqCst);
                       if done_until >= mark.version {
                         let _ = wait_tx; // Close channel.
+                      } else if mark.version + 100 < done_until {
+                         // Version is so old we know it’s irrelevant; skip waiter registration
+                         let _ = wait_tx;
                       } else {
                         waiters.borrow_mut().entry(mark.version).or_default().push(wait_tx);
                       }

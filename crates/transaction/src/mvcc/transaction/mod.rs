@@ -113,7 +113,11 @@ where
         self.inner.discard_at_or_below()
     }
 
-    pub fn read(&self) -> TransactionManagerRx<C, L, P> {
-        TransactionManagerRx { engine: self.clone(), version: self.inner.version() }
+    pub fn read(&self, version: Option<Version>) -> TransactionManagerRx<C, L, P> {
+        if let Some(version) = version {
+            TransactionManagerRx::new_time_travel(self.clone(), version)
+        } else {
+            TransactionManagerRx::new_current(self.clone(), self.inner.version())
+        }
     }
 }
