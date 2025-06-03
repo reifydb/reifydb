@@ -8,7 +8,7 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ConstantExpression {
+pub enum ExpressionConstant {
     Undefined,
     Bool(bool),
     // any number
@@ -17,13 +17,13 @@ pub enum ConstantExpression {
     Text(String),
 }
 
-impl Display for ConstantExpression {
+impl Display for ExpressionConstant {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ConstantExpression::Undefined => write!(f, "undefined"),
-            ConstantExpression::Bool(b) => write!(f, "{b}"),
-            ConstantExpression::Number(n) => write!(f, "{n}"),
-            ConstantExpression::Text(s) => write!(f, "\"{s}\""),
+            ExpressionConstant::Undefined => write!(f, "undefined"),
+            ExpressionConstant::Bool(b) => write!(f, "{b}"),
+            ExpressionConstant::Number(n) => write!(f, "{n}"),
+            ExpressionConstant::Text(s) => write!(f, "\"{s}\""),
         }
     }
 }

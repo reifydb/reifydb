@@ -9,10 +9,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use crate::ast;
-use crate::expression::{
-    AddExpression, AliasExpression, CallExpression, ColumnExpression, ConstantExpression,
-    Expression, IdentExpression, PrefixExpression, PrefixOperator, TupleExpression,
-};
+use crate::expression::{AliasExpression, Expression, ExpressionAdd, ExpressionCall, ExpressionColumn, ExpressionConstant, ExpressionDivide, ExpressionModulo, ExpressionMultiply, ExpressionPrefix, ExpressionSubtract, ExpressionTuple, IdentExpression, PrefixOperator};
 pub use error::Error;
 use reifydb_core::{SortDirection, SortKey, StoreKind, ValueKind};
 use reifydb_transaction::{CatalogRx, ColumnToCreate, SchemaRx, StoreRx};
@@ -226,24 +223,24 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                     if let Some(&input_idx) = insert_index_map.get(&col.name) {
                                         let expr = match &row.nodes[input_idx] {
                                             Ast::Literal(AstLiteral::Boolean(ast)) => {
-                                                Expression::Constant(ConstantExpression::Bool(
+                                                Expression::Constant(ExpressionConstant::Bool(
                                                     ast.value(),
                                                 ))
                                             }
                                             Ast::Literal(AstLiteral::Number(ast)) => {
-                                                Expression::Constant(ConstantExpression::Number(
+                                                Expression::Constant(ExpressionConstant::Number(
                                                     ast.value().to_string(),
                                                 ))
                                             }
                                             Ast::Literal(AstLiteral::Text(ast)) => {
-                                                Expression::Constant(ConstantExpression::Text(
+                                                Expression::Constant(ExpressionConstant::Text(
                                                     ast.value().to_string(),
                                                 ))
                                             }
                                             Ast::Prefix(AstPrefix { operator, node }) => {
                                                 let a = node.deref();
 
-                                                Expression::Prefix(PrefixExpression {
+                                                Expression::Prefix(ExpressionPrefix {
                                                     operator: match operator {
                                                         ast::PrefixOperator::Plus(_) => {
                                                             PrefixOperator::Plus
@@ -259,28 +256,28 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                                         Ast::Literal(lit) => match lit {
                                                             AstLiteral::Boolean(n) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Bool(
+                                                                    ExpressionConstant::Bool(
                                                                         n.value(),
                                                                     ),
                                                                 )
                                                             }
                                                             AstLiteral::Number(n) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Number(
+                                                                    ExpressionConstant::Number(
                                                                         n.value().to_string(),
                                                                     ),
                                                                 )
                                                             }
                                                             AstLiteral::Text(t) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Text(
+                                                                    ExpressionConstant::Text(
                                                                         t.value().to_string(),
                                                                     ),
                                                                 )
                                                             }
                                                             AstLiteral::Undefined(_) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Undefined,
+                                                                    ExpressionConstant::Undefined,
                                                                 )
                                                             }
                                                         },
@@ -387,7 +384,7 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                     .map(|ast| match ast {
                         Ast::Identifier(node) => AliasExpression {
                             alias: Some(node.value().to_string()),
-                            expression: Expression::Column(ColumnExpression(
+                            expression: Expression::Column(ExpressionColumn(
                                 node.value().to_string(),
                             )),
                         },
@@ -407,7 +404,7 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                 .map(|ast| match ast {
                     Ast::Identifier(node) => AliasExpression {
                         alias: Some(node.value().to_string()),
-                        expression: Expression::Column(ColumnExpression(node.value().to_string())),
+                        expression: Expression::Column(ExpressionColumn(node.value().to_string())),
                     },
                     ast => unimplemented!("{ast:?}"),
                 })
@@ -440,7 +437,7 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 // Ast::From(_) => {}
                 Ast::Identifier(node) => AliasExpression {
                     alias: Some(node.value().to_string()),
-                    expression: Expression::Column(ColumnExpression(node.value().to_string())),
+                    expression: Expression::Column(ExpressionColumn(node.value().to_string())),
                 },
                 Ast::Infix(node) => {
                     AliasExpression { alias: None, expression: expression_infix(node).unwrap() }
@@ -448,28 +445,28 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 Ast::Literal(node) => match node {
                     AstLiteral::Boolean(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Bool(node.value())),
+                        expression: Expression::Constant(ExpressionConstant::Bool(node.value())),
                     },
                     AstLiteral::Number(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Number(
+                        expression: Expression::Constant(ExpressionConstant::Number(
                             node.value().to_string(),
                         )),
                     },
                     AstLiteral::Text(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Text(
+                        expression: Expression::Constant(ExpressionConstant::Text(
                             node.value().to_string(),
                         )),
                     },
                     AstLiteral::Undefined(_) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Undefined),
+                        expression: Expression::Constant(ExpressionConstant::Undefined),
                     },
                 },
                 Ast::Prefix(node) => AliasExpression {
                     alias: None,
-                    expression: Expression::Prefix(PrefixExpression {
+                    expression: Expression::Prefix(ExpressionPrefix {
                         operator: match node.operator {
                             ast::PrefixOperator::Plus(_) => PrefixOperator::Plus,
                             ast::PrefixOperator::Negate(_) => PrefixOperator::Minus,
@@ -489,12 +486,12 @@ fn expression(ast: Ast) -> Result<Expression> {
     match ast {
         Ast::Literal(literal) => match literal {
             AstLiteral::Number(literal) => {
-                Ok(Expression::Constant(ConstantExpression::Number(literal.value().to_string())))
+                Ok(Expression::Constant(ExpressionConstant::Number(literal.value().to_string())))
             }
             _ => unimplemented!(),
         },
         Ast::Identifier(identifier) => {
-            Ok(Expression::Column(ColumnExpression(identifier.value().to_string())))
+            Ok(Expression::Column(ExpressionColumn(identifier.value().to_string())))
         }
         Ast::Infix(infix) => expression_infix(infix),
         Ast::Tuple(tuple) => {
@@ -504,10 +501,10 @@ fn expression(ast: Ast) -> Result<Expression> {
                 expressions.push(expression(ast)?);
             }
 
-            Ok(Expression::Tuple(TupleExpression { expressions }))
+            Ok(Expression::Tuple(ExpressionTuple { expressions }))
         }
         Ast::Prefix(prefix) => {
-            Ok(Expression::Prefix(PrefixExpression {
+            Ok(Expression::Prefix(ExpressionPrefix {
                 operator: match prefix.operator {
                     ast::PrefixOperator::Plus(_) => PrefixOperator::Plus,
                     ast::PrefixOperator::Negate(_) => PrefixOperator::Minus,
@@ -525,16 +522,48 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
         InfixOperator::Add(_) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
-            Ok(Expression::Add(AddExpression { left: Box::new(left), right: Box::new(right) }))
+            Ok(Expression::Add(ExpressionAdd { left: Box::new(left), right: Box::new(right) }))
+        }
+        InfixOperator::Divide(_) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+            Ok(Expression::Divide(ExpressionDivide {
+                left: Box::new(left),
+                right: Box::new(right),
+            }))
+        }
+        InfixOperator::Subtract(_) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+            Ok(Expression::Subtract(ExpressionSubtract {
+                left: Box::new(left),
+                right: Box::new(right),
+            }))
+        }
+        InfixOperator::Modulo(_) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+            Ok(Expression::Modulo(ExpressionModulo {
+                left: Box::new(left),
+                right: Box::new(right),
+            }))
+        }
+        InfixOperator::Multiply(_) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+            Ok(Expression::Multiply(ExpressionMultiply {
+                left: Box::new(left),
+                right: Box::new(right),
+            }))
         }
         InfixOperator::Call(_) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
 
-            let Expression::Column(ColumnExpression(name)) = left else { panic!() };
+            let Expression::Column(ExpressionColumn(name)) = left else { panic!() };
             let Expression::Tuple(tuple) = right else { panic!() };
 
-            Ok(Expression::Call(CallExpression {
+            Ok(Expression::Call(ExpressionCall {
                 func: IdentExpression { name },
                 args: tuple.expressions,
             }))

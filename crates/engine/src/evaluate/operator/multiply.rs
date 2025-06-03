@@ -3,17 +3,17 @@
 
 use crate::evaluate::Evaluator;
 use reifydb_frame::{Column, ColumnValues};
-use reifydb_rql::expression::ExpressionAdd;
+use reifydb_rql::expression::ExpressionMultiply;
 
 impl Evaluator {
-    pub(crate) fn add(
+    pub(crate) fn multiply(
         &mut self,
-        add: ExpressionAdd,
+        mul: ExpressionMultiply,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let left = self.evaluate(*add.left, columns, row_count)?;
-        let right = self.evaluate(*add.right, columns, row_count)?;
+        let left = self.evaluate(*mul.left, columns, row_count)?;
+        let right = self.evaluate(*mul.right, columns, row_count)?;
 
         match (&left, &right) {
             (ColumnValues::Int2(l_vals, l_valid), ColumnValues::Int1(r_vals, r_valid)) => {
@@ -21,7 +21,7 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] + r_vals[i] as i16);
+                        values.push(l_vals[i] * r_vals[i] as i16);
                         valid.push(true);
                     } else {
                         values.push(0); // Placeholder
@@ -36,7 +36,7 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] as i16 + r_vals[i]);
+                        values.push(l_vals[i] as i16 * r_vals[i]);
                         valid.push(true);
                     } else {
                         values.push(0); // Placeholder
@@ -51,7 +51,7 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] + r_vals[i]);
+                        values.push(l_vals[i] * r_vals[i]);
                         valid.push(true);
                     } else {
                         values.push(0); // Placeholder
@@ -65,7 +65,7 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] + r_vals[i]);
+                        values.push(l_vals[i] * r_vals[i]);
                         valid.push(true);
                     } else {
                         values.push(0); // Placeholder
@@ -80,7 +80,7 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] + r_vals[i]);
+                        values.push(l_vals[i] * r_vals[i]);
                         valid.push(true);
                     } else {
                         values.push(0); // Placeholder
@@ -94,7 +94,7 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] + r_vals[i]);
+                        values.push(l_vals[i] * r_vals[i]);
                         valid.push(true);
                     } else {
                         values.push(0); // Placeholder
@@ -108,7 +108,7 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] + r_vals[i]);
+                        values.push(l_vals[i] * r_vals[i]);
                         valid.push(true);
                     } else {
                         values.push(0); // Placeholder

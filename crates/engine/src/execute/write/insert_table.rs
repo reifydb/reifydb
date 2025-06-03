@@ -4,7 +4,7 @@
 use crate::ExecutionResult;
 use crate::execute::Executor;
 use reifydb_core::{Value, ValueKind};
-use reifydb_rql::expression::{ConstantExpression, Expression, PrefixExpression, PrefixOperator};
+use reifydb_rql::expression::{ExpressionConstant, Expression, ExpressionPrefix, PrefixOperator};
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_transaction::Tx;
 
@@ -27,22 +27,27 @@ impl Executor {
 
                         match expr {
                             Expression::Constant(const_expr) => row_values.push(match const_expr {
-                                ConstantExpression::Bool(bool) => Value::Bool(bool),
-                                ConstantExpression::Number(number) => match column.value {
+                                ExpressionConstant::Bool(bool) => Value::Bool(bool),
+                                ExpressionConstant::Number(number) => match column.value {
                                     ValueKind::Int1 => Value::Int1(number.parse::<i8>().unwrap()),
                                     ValueKind::Int2 => Value::Int2(number.parse::<i16>().unwrap()),
+                                    ValueKind::Int4 => Value::Int4(number.parse::<i32>().unwrap()),
+                                    ValueKind::Int8 => Value::Int8(number.parse::<i64>().unwrap()),
+                                    ValueKind::Int16 => {
+                                        Value::Int16(number.parse::<i128>().unwrap())
+                                    }
                                     _ => unimplemented!(),
                                 },
-                                ConstantExpression::Text(string) => Value::String(string),
-                                ConstantExpression::Undefined => Value::Undefined,
+                                ExpressionConstant::Text(string) => Value::String(string),
+                                ExpressionConstant::Undefined => Value::Undefined,
                             }),
-                            Expression::Prefix(PrefixExpression { operator, expression }) => {
+                            Expression::Prefix(ExpressionPrefix { operator, expression }) => {
                                 match operator {
                                     PrefixOperator::Minus => match *expression {
                                         Expression::Constant(const_expr) => {
                                             row_values.push(match const_expr {
-                                                ConstantExpression::Bool(bool) => Value::Bool(bool),
-                                                ConstantExpression::Number(number) => {
+                                                ExpressionConstant::Bool(bool) => Value::Bool(bool),
+                                                ExpressionConstant::Number(number) => {
                                                     match column.value {
                                                         ValueKind::Int1 => Value::Int1(
                                                             -1 * number.parse::<i8>().unwrap(),
@@ -50,13 +55,22 @@ impl Executor {
                                                         ValueKind::Int2 => Value::Int2(
                                                             -1 * number.parse::<i16>().unwrap(),
                                                         ),
+                                                        ValueKind::Int4 => Value::Int4(
+                                                            -1 * number.parse::<i32>().unwrap(),
+                                                        ),
+                                                        ValueKind::Int8 => Value::Int8(
+                                                            -1 * number.parse::<i64>().unwrap(),
+                                                        ),
+                                                        ValueKind::Int16 => Value::Int16(
+                                                            -1 * number.parse::<i128>().unwrap(),
+                                                        ),
                                                         _ => unimplemented!(),
                                                     }
                                                 }
-                                                ConstantExpression::Text(string) => {
+                                                ExpressionConstant::Text(string) => {
                                                     Value::String(string)
                                                 }
-                                                ConstantExpression::Undefined => Value::Undefined,
+                                                ExpressionConstant::Undefined => Value::Undefined,
                                             })
 
                                             // row_values.push(match const_expr {

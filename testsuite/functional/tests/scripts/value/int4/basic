@@ -1,10 +1,10 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later
 
- # basic Int1 tests
+ # basic Int4 tests
 
 (tx 'create schema test')
-(tx 'create table test.item(field_one: int1, field_two: int1)')
+(tx 'create table test.item(field_one: int4, field_two: int4)')
 (tx 'insert (1,-1), (-2,2), (3,3), (-4,-4) into test.item (field_one, field_two)')
 ---
 ok
