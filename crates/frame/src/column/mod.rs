@@ -7,6 +7,7 @@ mod extend;
 mod get;
 mod push;
 mod values;
+mod reorder;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Column {

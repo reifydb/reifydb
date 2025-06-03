@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ValueRef;
-use reifydb_core::{CowVec, Value};
+use reifydb_core::{CowVec, Value, ValueKind};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
@@ -255,72 +254,6 @@ impl ColumnValues {
     }
 }
 
-impl ColumnValues {
-    pub fn reorder(&mut self, indices: &[usize]) {
-        match self {
-            ColumnValues::Bool(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Float4(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Float8(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Int1(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Int2(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Int4(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Int8(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Int16(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::String(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Uint1(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Uint2(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Uint4(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Uint8(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Uint16(v, valid) => {
-                v.reorder(indices);
-                valid.reorder(indices);
-            }
-            ColumnValues::Undefined(len) => {
-                *len = indices.len();
-            }
-        }
-    }
-}
-
 impl From<Value> for ColumnValues {
     fn from(value: Value) -> Self {
         match value {
@@ -365,6 +298,27 @@ impl ColumnValues {
     }
 }
 
+impl ColumnValues {
+    pub fn kind(&self) -> ValueKind {
+        match self {
+            ColumnValues::Bool(_, _) => ValueKind::Bool,
+            ColumnValues::Float4(_, _) => ValueKind::Float4,
+            ColumnValues::Float8(_, _) => ValueKind::Float8,
+            ColumnValues::Int1(_, _) => ValueKind::Int1,
+            ColumnValues::Int2(_, _) => ValueKind::Int2,
+            ColumnValues::Int4(_, _) => ValueKind::Int4,
+            ColumnValues::Int8(_, _) => ValueKind::Int8,
+            ColumnValues::Int16(_, _) => ValueKind::Int16,
+            ColumnValues::String(_, _) => ValueKind::String,
+            ColumnValues::Uint1(_, _) => ValueKind::Uint1,
+            ColumnValues::Uint2(_, _) => ValueKind::Uint2,
+            ColumnValues::Uint4(_, _) => ValueKind::Uint4,
+            ColumnValues::Uint8(_, _) => ValueKind::Uint8,
+            ColumnValues::Uint16(_, _) => ValueKind::Uint16,
+            ColumnValues::Undefined(_) => ValueKind::Undefined,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

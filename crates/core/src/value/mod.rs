@@ -180,3 +180,25 @@ impl Value {
         }
     }
 }
+
+impl Value {
+    pub fn kind(&self) -> ValueKind {
+        match self {
+            Value::Undefined => ValueKind::Undefined,
+            Value::Bool(_) => ValueKind::Bool,
+            Value::Float4(_) => ValueKind::Float4,
+            Value::Float8(_) => ValueKind::Float8,
+            Value::Int1(_) => ValueKind::Int1,
+            Value::Int2(_) => ValueKind::Int2,
+            Value::Int4(_) => ValueKind::Int4,
+            Value::Int8(_) => ValueKind::Int8,
+            Value::Int16(_) => ValueKind::Int16,
+            Value::String(_) => ValueKind::String,
+            Value::Uint1(_) => ValueKind::Uint1,
+            Value::Uint2(_) => ValueKind::Uint2,
+            Value::Uint4(_) => ValueKind::Uint4,
+            Value::Uint8(_) => ValueKind::Uint8,
+            Value::Uint16(_) => ValueKind::Uint16,
+        }
+    }
+}
