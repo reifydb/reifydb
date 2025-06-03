@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ordered_float::error::OrderedFloatError;
-use serde::{Deserialize, Serialize};
+use serde::de::Visitor;
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -10,8 +11,47 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct OrderedF64(f64);
+
+impl Serialize for OrderedF64 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_f64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for OrderedF64 {
+    fn deserialize<D>(deserializer: D) -> Result<OrderedF64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct F64Visitor;
+
+        impl<'de> Visitor<'de> for F64Visitor {
+            type Value = OrderedF64;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a 64-bit floating point number")
+            }
+
+            fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
+                Ok(OrderedF64(value))
+            }
+
+            fn visit_f32<E>(self, value: f32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(OrderedF64(value as f64))
+            }
+        }
+
+        deserializer.deserialize_f64(F64Visitor)
+    }
+}
 
 impl OrderedF64 {
     pub fn value(&self) -> f64 {

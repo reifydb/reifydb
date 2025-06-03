@@ -52,11 +52,11 @@ impl Append<Row> for Frame {
                     valid.push(false);
                 }
 
-                (ColumnValues::Text(vec, valid), Value::Text(v)) => {
+                (ColumnValues::String(vec, valid), Value::String(v)) => {
                     vec.push(v);
                     valid.push(true);
                 }
-                (ColumnValues::Text(vec, valid), Value::Undefined) => {
+                (ColumnValues::String(vec, valid), Value::Undefined) => {
                     vec.push(String::new());
                     valid.push(false);
                 }
@@ -85,14 +85,14 @@ impl Append<Row> for Frame {
 
                             ColumnValues::int2_with_validity(values, validity)
                         }
-                        Value::Text(s) => {
+                        Value::String(s) => {
                             let mut values = CowVec::new(vec!["".to_string(); *n]);
                             values.extend(vec![s]);
 
                             let mut validity = CowVec::new(vec![false; *n]);
                             validity.extend([true]);
 
-                            ColumnValues::text_with_validity(values, validity)
+                            ColumnValues::string_with_validity(values, validity)
                         }
                         Value::Bool(b) => {
                             let mut values = CowVec::new(vec![false; *n]);
@@ -107,6 +107,7 @@ impl Append<Row> for Frame {
                         Value::Float8(_) => unimplemented!(),
                         Value::Uint2(_) => unimplemented!(),
                         Value::Undefined => unreachable!(), // already matched above
+                        _ => unimplemented!()
                     };
 
                     std::mem::swap(&mut col.data, &mut new_column);
@@ -166,16 +167,16 @@ mod tests {
         #[test]
         fn test_append_text() {
             let mut test_instance1 =
-                Frame::new(vec![Column::text_with_validity("id", ["a", "b"], [true, true])]);
+                Frame::new(vec![Column::string_with_validity("id", ["a", "b"], [true, true])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::text_with_validity("id", ["c", "d"], [true, false])]);
+                Frame::new(vec![Column::string_with_validity("id", ["c", "d"], [true, false])]);
 
             test_instance1.append(test_instance2).unwrap();
 
             assert_eq!(
                 test_instance1.columns[0],
-                Column::text_with_validity("id", ["a", "b", "c", "d"], [true, true, true, false])
+                Column::string_with_validity("id", ["a", "b", "c", "d"], [true, true, true, false])
             );
         }
 
@@ -214,7 +215,7 @@ mod tests {
             let mut test_instance1 = Frame::new(vec![Column::int2("id", [1])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::int2("id", [2]), Column::text("name", ["Bob"])]);
+                Frame::new(vec![Column::int2("id", [2]), Column::string("name", ["Bob"])]);
 
             let result = test_instance1.append(test_instance2);
             assert!(result.is_err());
@@ -234,7 +235,7 @@ mod tests {
         fn test_append_fails_on_type_mismatch() {
             let mut test_instance1 = Frame::new(vec![Column::int2("id", [1])]);
 
-            let test_instance2 = Frame::new(vec![Column::text("id", ["A"])]);
+            let test_instance2 = Frame::new(vec![Column::string("id", ["A"])]);
 
             let result = test_instance1.append(test_instance2);
             assert!(result.is_err());
@@ -249,7 +250,7 @@ mod tests {
         fn test_append_to_empty() {
             let mut test_instance = Frame::new(vec![]);
 
-            let row = vec![Value::Int2(2), Value::Text("Bob".into()), Value::Bool(false)];
+            let row = vec![Value::Int2(2), Value::String("Bob".into()), Value::Bool(false)];
 
             let err = test_instance.append(row).err().unwrap();
             assert_eq!(err.to_string(), "mismatched column count: expected 0, got 3");
@@ -259,14 +260,14 @@ mod tests {
         fn test_append_row_matching_types() {
             let mut test_instance = test_instance_with_columns();
 
-            let row = vec![Value::Int2(2), Value::Text("Bob".into()), Value::Bool(false)];
+            let row = vec![Value::Int2(2), Value::String("Bob".into()), Value::Bool(false)];
 
             test_instance.append(row).unwrap();
 
             assert_eq!(test_instance.columns[0].data, ColumnValues::int2([1, 2]));
             assert_eq!(
                 test_instance.columns[1].data,
-                ColumnValues::text(["Alice".to_string(), "Bob".to_string()])
+                ColumnValues::string(["Alice".to_string(), "Bob".to_string()])
             );
             assert_eq!(test_instance.columns[2].data, ColumnValues::bool([true, false]));
         }
@@ -275,7 +276,7 @@ mod tests {
         fn test_append_row_with_undefined() {
             let mut test_instance = test_instance_with_columns();
 
-            let row = vec![Value::Undefined, Value::Text("Karen".into()), Value::Undefined];
+            let row = vec![Value::Undefined, Value::String("Karen".into()), Value::Undefined];
 
             test_instance.append(row).unwrap();
 
@@ -285,7 +286,7 @@ mod tests {
             );
             assert_eq!(
                 test_instance.columns[1].data,
-                ColumnValues::text_with_validity(
+                ColumnValues::string_with_validity(
                     ["Alice".to_string(), "Karen".to_string()],
                     [true, true]
                 )
@@ -301,9 +302,9 @@ mod tests {
             let mut test_instance = test_instance_with_columns();
 
             let row = vec![
-                Value::Bool(true), // should be Int2
-                Value::Text("Eve".into()),
-                Value::Bool(false),
+				Value::Bool(true), // should be Int2
+				Value::String("Eve".into()),
+				Value::Bool(false),
             ];
 
             let result = test_instance.append(row);
@@ -316,10 +317,10 @@ mod tests {
             let mut test_instance = test_instance_with_columns();
 
             let row = vec![
-                Value::Int2(42),
-                Value::Text("X".into()),
-                Value::Bool(true),
-                Value::Bool(false),
+				Value::Int2(42),
+				Value::String("X".into()),
+				Value::Bool(true),
+				Value::Bool(false),
             ];
 
             let result = test_instance.append(row);
@@ -334,7 +335,7 @@ mod tests {
                 Column { name: "name".into(), data: ColumnValues::Undefined(1) },
             ]);
 
-            let row = vec![Value::Int2(30), Value::Text("Zoe".into())];
+            let row = vec![Value::Int2(30), Value::String("Zoe".into())];
             test_instance.append(row).unwrap();
 
             assert_eq!(
@@ -343,7 +344,7 @@ mod tests {
             );
             assert_eq!(
                 test_instance.columns[1].data,
-                ColumnValues::text_with_validity(
+                ColumnValues::string_with_validity(
                     vec!["".to_string(), "Zoe".to_string()],
                     vec![false, true]
                 )
@@ -353,7 +354,7 @@ mod tests {
         fn test_instance_with_columns() -> Frame {
             Frame::new(vec![
                 Column { name: "int2".into(), data: ColumnValues::int2(vec![1]) },
-                Column { name: "text".into(), data: ColumnValues::text(vec!["Alice".to_string()]) },
+                Column { name: "text".into(), data: ColumnValues::string(vec!["Alice".to_string()]) },
                 Column { name: "bool".into(), data: ColumnValues::bool(vec![true]) },
             ])
         }

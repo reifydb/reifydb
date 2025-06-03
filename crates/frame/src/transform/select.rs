@@ -90,9 +90,9 @@ mod tests {
 
     fn make_test_instance() -> Frame {
         Frame::new(vec![
-            Column::int2("id", [1, 2]),
-            Column::text("name", ["Alice", "Bob"]),
-            Column::int2("score", [23, 32]),
+			Column::int2("id", [1, 2]),
+			Column::string("name", ["Alice", "Bob"]),
+			Column::int2("score", [23, 32]),
         ])
     }
 }

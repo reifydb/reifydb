@@ -6,9 +6,9 @@ use crate::catalog::{Catalog, Schema};
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode};
-use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
-use reifydb_storage::KeyRange;
+use reifydb_core::{Row, RowIter, Value, key_prefix};
 use reifydb_storage::Storage;
+use reifydb_storage::{Key, KeyRange};
 
 /// Optimistic Concurrency Control
 impl<S: Storage> Transaction<S> for Optimistic<S> {

@@ -8,7 +8,7 @@
 
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
 pub use error::Error;
-pub use key::{Key, KeyError, SortDirection, SortKey};
+pub use key::{SortDirection, SortKey};
 pub use row::{Row, RowIter, RowIterator};
 pub use row_meta::RowMeta;
 pub use value::{Value, ValueKind};

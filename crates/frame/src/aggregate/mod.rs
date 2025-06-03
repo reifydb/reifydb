@@ -51,12 +51,20 @@ impl Aggregate {
                     indices.len()
                 } else {
                     match &col(col_name)?.data {
-                        ColumnValues::Float8(_, valid) => {
-                            indices.iter().filter(|&&i| valid[i]).count()
-                        }
-                        ColumnValues::Int2(_, valid)
-                        | ColumnValues::Bool(_, valid)
-                        | ColumnValues::Text(_, valid) => {
+                        ColumnValues::Bool(_, valid)
+                        | ColumnValues::Float4(_, valid)
+                        | ColumnValues::Float8(_, valid)
+                        | ColumnValues::Int1(_, valid)
+                        | ColumnValues::Int2(_, valid)
+                        | ColumnValues::Int4(_, valid)
+                        | ColumnValues::Int8(_, valid)
+                        | ColumnValues::Int16(_, valid)
+                        | ColumnValues::Uint1(_, valid)
+                        | ColumnValues::Uint2(_, valid)
+                        | ColumnValues::Uint4(_, valid)
+                        | ColumnValues::Uint8(_, valid)
+                        | ColumnValues::Uint16(_, valid)
+                        | ColumnValues::String(_, valid) => {
                             indices.iter().filter(|&&i| valid[i]).count()
                         }
                         ColumnValues::Undefined(_) => 0,
@@ -64,7 +72,6 @@ impl Aggregate {
                 };
                 Ok(ColumnValues::int2(vec![count as i16]))
             }
-
             Aggregate::Min(col_name) => match &col(col_name)?.data {
                 ColumnValues::Int2(vals, valid) => {
                     let min = indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).min();

@@ -48,7 +48,7 @@ impl serde::ser::Serializer for &mut Serializer {
         self.output.extend(&bytes);
         Ok(())
     }
-    
+
     /// i16 uses the big-endian two's complement encoding, with the sign bit flipped
     /// to make the byte representation lexicographically ordered.
     ///
@@ -60,7 +60,6 @@ impl serde::ser::Serializer for &mut Serializer {
         self.output.extend(&bytes);
         Ok(())
     }
-
 
     /// i32 uses the big-endian two's complement encoding, but flips the sign bit
     /// of the most significant byte to enforce correct ordering.
@@ -89,16 +88,33 @@ impl serde::ser::Serializer for &mut Serializer {
         Ok(())
     }
 
-    fn serialize_u8(self, _: u8) -> encoding::Result<()> {
-        unimplemented!()
+    /// i128 uses the big-endian two's complement encoding, but flips the
+    /// left-most sign bit such that negative numbers are ordered before
+    /// positive numbers.
+    ///
+    /// The relative ordering of the remaining bits is already correct: -1, the
+    /// largest negative integer, is encoded as 0111...1111, ordered after all
+    /// other negative integers but before positive integers.
+    fn serialize_i128(self, v: i128) -> encoding::Result<()> {
+        let mut bytes = v.to_be_bytes();
+        bytes[0] ^= 1 << 7; // flip sign bit
+        self.output.extend(&bytes);
+        Ok(())
     }
 
-    fn serialize_u16(self, _: u16) -> encoding::Result<()> {
-        unimplemented!()
+    fn serialize_u8(self, v: u8) -> encoding::Result<()> {
+        self.output.extend(v.to_be_bytes());
+        Ok(())
     }
 
-    fn serialize_u32(self, _: u32) -> encoding::Result<()> {
-        unimplemented!()
+    fn serialize_u16(self, v: u16) -> encoding::Result<()> {
+        self.output.extend(v.to_be_bytes());
+        Ok(())
+    }
+
+    fn serialize_u32(self, v: u32) -> encoding::Result<()> {
+        self.output.extend(v.to_be_bytes());
+        Ok(())
     }
 
     /// u64 simply uses the big-endian encoding.
@@ -107,8 +123,19 @@ impl serde::ser::Serializer for &mut Serializer {
         Ok(())
     }
 
-    fn serialize_f32(self, _: f32) -> encoding::Result<()> {
-        unimplemented!()
+    fn serialize_u128(self, v: u128) -> encoding::Result<()> {
+        self.output.extend(v.to_be_bytes());
+        Ok(())
+    }
+
+    fn serialize_f32(self, v: f32) -> encoding::Result<()> {
+        let mut bytes = v.to_be_bytes();
+        match v.is_sign_negative() {
+            false => bytes[0] ^= 1 << 7, // positive, flip sign bit
+            true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
+        }
+        self.output.extend(bytes);
+        Ok(())
     }
 
     /// f64 is encoded in big-endian IEEE 754 form, but it flips the sign bit to

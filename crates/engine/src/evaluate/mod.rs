@@ -20,6 +20,12 @@ pub(crate) struct Evaluator {
     functions: FunctionRegistry,
 }
 
+impl Default for Evaluator {
+    fn default() -> Self {
+        Self { functions: FunctionRegistry::new() }
+    }
+}
+
 impl Evaluator {
     pub(crate) fn evaluate(
         &mut self,

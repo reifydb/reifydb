@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::server::grpc::grpc_db::{QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult};
+use crate::server::grpc::grpc_db::{
+    Int128, QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult, UInt128,
+};
 use crate::server::grpc::{AuthenticatedUser, grpc_db};
 use reifydb_core::Value;
 use reifydb_transaction::{Rx, Transaction};
@@ -190,18 +192,22 @@ fn value_to_query_value(value: &Value) -> grpc_db::Value {
             Value::Bool(v) => Kind::BoolValue(*v),
             Value::Float4(v) => Kind::Float32Value(v.value()),
             Value::Float8(v) => Kind::Float64Value(v.value()),
-            // Int1(v) => Kind::Int1Value(*v as i32),
+            Value::Int1(v) => Kind::Int1Value(*v as i32),
             Value::Int2(v) => Kind::Int2Value(*v as i32),
-            // Int4(v) => Kind::Int4Value(*v),
-            // Int8(v) => Kind::Int8Value(*v),
-            // Int16(v) => Kind::Int16Value(v.to_string()),
-            // Uint1(v) => Kind::Uint1Value(*v as u32),
+            Value::Int4(v) => Kind::Int4Value(*v),
+            Value::Int8(v) => Kind::Int8Value(*v),
+            Value::Int16(v) => {
+                Kind::Int16Value(Int128 { high: ((*v) >> 64) as u64, low: *v as u64 })
+            }
+            Value::String(s) => Kind::StringValue(s.clone()),
+            Value::Uint1(v) => Kind::Uint1Value(*v as u32),
             Value::Uint2(v) => Kind::Uint2Value(*v as u32),
-            // Uint4(v) => Kind::Uint4Value(*v),
-            // Uint8(v) => Kind::Uint8Value(*v),
-            // Uint16(v) => Kind::Uint16Value(v.to_string()),
-            Value::Text(s) => Kind::TextValue(s.clone()),
-            Value::Undefined => unimplemented!(),
+            Value::Uint4(v) => Kind::Uint4Value(*v),
+            Value::Uint8(v) => Kind::Uint8Value(*v),
+            Value::Uint16(v) => {
+                Kind::Uint16Value(UInt128 { high: (v >> 64) as u64, low: *v as u64 })
+            }
+            Value::Undefined => Kind::UndefinedValue(false),
         }),
     }
 }

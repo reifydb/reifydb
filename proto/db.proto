@@ -2,109 +2,79 @@ syntax = "proto3";
 
 package grpc_db;
 
-service DB {
-  rpc Tx(TxRequest) returns (stream TxResult);
-  rpc Rx(RxRequest) returns (stream RxResult);
-}
+service DB {rpc Tx(TxRequest) returns (stream TxResult);
+  rpc Rx(RxRequest) returns (stream RxResult);}
 
-message TxRequest {
-  string query = 1;
-}
+message TxRequest {string query = 1;}
 
-message RxRequest{
-  string query = 1;
-}
+message RxRequest{string query = 1;}
 
-message Column {
-  string name = 1;
-  uint32 value = 2;
-}
+message Column {string name = 1;
+  uint32 value = 2;}
 
 message Int128 {
-  int64 high = 1;
-  int64 low = 2;
-  }
-
-message UInt128 {
   uint64 high = 1;
   uint64 low = 2;
 }
 
-message Value {
-  oneof kind {
+message UInt128 {uint64 high = 1;
+  uint64 low = 2;}
 
-    bool bool_value = 1;
+message Value {oneof kind {
 
-    int32 int1_value = 2;
-    int32 int2_value = 3;
-    int32 int4_value = 4;
-    int64 int8_value = 5;
-    Int128 int16_value = 6;
+  bool bool_value = 1;
 
-    uint32 uint1_value = 7;
-    uint32 uint2_value = 8;
-    uint32 uint4_value = 9;
-    uint64 uint8_value = 10;
-    UInt128 uint16_value = 11;
+  int32 int1_value = 2;
+  int32 int2_value = 3;
+  int32 int4_value = 4;
+  int64 int8_value = 5;
+  Int128 int16_value = 6;
 
-    string text_value = 12;
+  uint32 uint1_value = 7;
+  uint32 uint2_value = 8;
+  uint32 uint4_value = 9;
+  uint64 uint8_value = 10;
+  UInt128 uint16_value = 11;
 
-    float float32_value = 13;
-    double float64_value = 14;
+  string string_value = 12;
 
-  }
- }
+  float float32_value = 13;
+  double float64_value = 14;
+
+  bool undefined_value = 15;
+
+}}
 
 message Row {repeated Value values = 1;}
 
 
-message CreateSchema {
-  string schema = 1;
-}
+message CreateSchema {string schema = 1;}
 
-message CreateSeries {
-  string schema = 1;
+message CreateSeries {string schema = 1;
+  string series = 2;}
+
+message CreateTable {string schema = 1;
+  string table = 2;}
+
+message InsertIntoSeries {string schema = 1;
   string series = 2;
-}
+  uint32 inserted = 3;}
 
-message CreateTable {
-  string schema = 1;
+message InsertIntoTable {string schema = 1;
   string table = 2;
-}
+  uint32 inserted = 3;}
 
-message InsertIntoSeries {
-  string schema = 1;
-  string series = 2;
-  uint32 inserted = 3;
-}
-
-message InsertIntoTable {
-  string schema = 1;
-  string table = 2;
-  uint32 inserted = 3;
-}
-
-message QueryResult {
-  repeated Column columns = 1;
-  repeated Row rows = 2;
-}
+message QueryResult {repeated Column columns = 1;
+  repeated Row rows = 2;}
 
 
-message TxResult {
-  oneof result {
-    CreateSchema create_schema = 1;
-    CreateTable create_table = 2;
-    InsertIntoSeries insert_into_series = 3;
-    InsertIntoTable insert_into_table = 4;
-    QueryResult query = 5;
-    string error = 6;
-  }
-}
+message TxResult {oneof result {CreateSchema create_schema = 1;
+  CreateTable create_table = 2;
+  InsertIntoSeries insert_into_series = 3;
+  InsertIntoTable insert_into_table = 4;
+  QueryResult query = 5;
+  string error = 6;}}
 
-message RxResult {
-  oneof result {
-    QueryResult query = 4;
-    string error = 5;
-  }
-}
+message RxResult {oneof result {QueryResult query = 4;
+  string error = 5;}}
 

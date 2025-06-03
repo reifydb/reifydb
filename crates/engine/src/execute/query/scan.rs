@@ -16,7 +16,7 @@ impl Executor {
                 let name = col.name.clone();
                 let data = match col.value {
                     ValueKind::Int2 => ColumnValues::int2(vec![]),
-                    ValueKind::Text => ColumnValues::text(vec![]),
+                    ValueKind::String => ColumnValues::string(vec![]),
                     ValueKind::Bool => ColumnValues::bool(vec![]),
                     _ => ColumnValues::Undefined(0),
                 };

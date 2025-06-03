@@ -19,20 +19,40 @@ impl<'df> RowRef<'df> {
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum ValueRef<'a> {
-    Float8(&'a f64),
-    Int2(&'a i16),
-    Text(&'a str),
     Bool(&'a bool),
+    Float4(&'a f32),
+    Float8(&'a f64),
+    Int1(&'a i8),
+    Int2(&'a i16),
+    Int4(&'a i32),
+    Int8(&'a i64),
+    Int16(&'a i128),
+    String(&'a str),
+    Uint1(&'a u8),
+    Uint2(&'a u16),
+    Uint4(&'a u32),
+    Uint8(&'a u64),
+    Uint16(&'a u128),
     Undefined,
 }
 
 impl<'a> ValueRef<'a> {
     pub fn as_value(&self) -> Value {
         match self {
-            ValueRef::Float8(v) => Value::float8(**v),
-            ValueRef::Int2(v) => Value::Int2(**v),
-            ValueRef::Text(s) => Value::Text(s.to_string()),
             ValueRef::Bool(b) => Value::Bool(**b),
+            ValueRef::Float4(v) => Value::float4(**v),
+            ValueRef::Float8(v) => Value::float8(**v),
+            ValueRef::Int1(v) => Value::Int1(**v),
+            ValueRef::Int2(v) => Value::Int2(**v),
+            ValueRef::Int4(v) => Value::Int4(**v),
+            ValueRef::Int8(v) => Value::Int8(**v),
+            ValueRef::Int16(v) => Value::Int16(**v),
+            ValueRef::Uint1(v) => Value::Uint1(**v),
+            ValueRef::Uint2(v) => Value::Uint2(**v),
+            ValueRef::Uint4(v) => Value::Uint4(**v),
+            ValueRef::Uint8(v) => Value::Uint8(**v),
+            ValueRef::Uint16(v) => Value::Uint16(**v),
+            ValueRef::String(s) => Value::String(s.to_string()),
             ValueRef::Undefined => Value::Undefined,
         }
     }
@@ -41,10 +61,20 @@ impl<'a> ValueRef<'a> {
 impl<'a> ToString for ValueRef<'a> {
     fn to_string(&self) -> String {
         match self {
-            ValueRef::Float8(v) => v.to_string(),
-            ValueRef::Int2(v) => v.to_string(),
-            ValueRef::Text(v) => v.to_string(),
             ValueRef::Bool(v) => v.to_string(),
+            ValueRef::Float4(v) => v.to_string(),
+            ValueRef::Float8(v) => v.to_string(),
+            ValueRef::Int1(v) => v.to_string(),
+            ValueRef::Int2(v) => v.to_string(),
+            ValueRef::Int4(v) => v.to_string(),
+            ValueRef::Int8(v) => v.to_string(),
+            ValueRef::Int16(v) => v.to_string(),
+            ValueRef::Uint1(v) => v.to_string(),
+            ValueRef::Uint2(v) => v.to_string(),
+            ValueRef::Uint4(v) => v.to_string(),
+            ValueRef::Uint8(v) => v.to_string(),
+            ValueRef::Uint16(v) => v.to_string(),
+            ValueRef::String(v) => v.to_string(),
             ValueRef::Undefined => "Undefined".to_string(),
         }
     }

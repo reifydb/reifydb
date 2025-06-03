@@ -31,9 +31,30 @@ impl Frame {
 
             for col in &key_columns {
                 let value = match col {
+                    ColumnValues::Bool(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Bool(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Float4(data, valid) => {
+                        if valid[row_idx] {
+                            Value::float4(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
                     ColumnValues::Float8(data, valid) => {
                         if valid[row_idx] {
                             Value::float8(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Int1(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Int1(data[row_idx])
                         } else {
                             Value::Undefined
                         }
@@ -45,22 +66,72 @@ impl Frame {
                             Value::Undefined
                         }
                     }
-                    ColumnValues::Text(data, valid) => {
+                    ColumnValues::Int4(data, valid) => {
                         if valid[row_idx] {
-                            Value::Text(data[row_idx].clone())
+                            Value::Int4(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
-                    ColumnValues::Bool(data, valid) => {
+                    ColumnValues::Int8(data, valid) => {
                         if valid[row_idx] {
-                            Value::Bool(data[row_idx])
+                            Value::Int8(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Int16(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Int16(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Uint1(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Uint1(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Uint2(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Uint2(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Uint4(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Uint4(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Uint8(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Uint8(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Uint16(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Uint16(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::String(data, valid) => {
+                        if valid[row_idx] {
+                            Value::String(data[row_idx].clone())
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Undefined(_) => Value::Undefined,
                 };
+
                 values.push(value);
             }
 

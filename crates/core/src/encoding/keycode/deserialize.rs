@@ -73,16 +73,22 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
         })
     }
 
-    fn deserialize_i8<V: Visitor<'de>>(self, _: V) -> encoding::Result<V::Value> {
-        unimplemented!()
+    fn deserialize_i8<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        let mut byte = self.take_bytes(1)?[0];
+        byte ^= 1 << 7; // flip sign bit
+        visitor.visit_i8(byte as i8)
     }
 
-    fn deserialize_i16<V: Visitor<'de>>(self, _: V) -> encoding::Result<V::Value> {
-        unimplemented!()
+    fn deserialize_i16<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        let mut bytes = self.take_bytes(2)?.to_vec();
+        bytes[0] ^= 1 << 7; // flip sign bit
+        visitor.visit_i16(i16::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
-    fn deserialize_i32<V: Visitor<'de>>(self, _: V) -> encoding::Result<V::Value> {
-        unimplemented!()
+    fn deserialize_i32<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        let mut bytes = self.take_bytes(4)?.to_vec();
+        bytes[0] ^= 1 << 7; // flip sign bit
+        visitor.visit_i32(i32::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_i64<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
@@ -91,24 +97,40 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
         visitor.visit_i64(i64::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
-    fn deserialize_u8<V: Visitor<'de>>(self, _: V) -> encoding::Result<V::Value> {
-        unimplemented!()
+    fn deserialize_i128<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        let mut bytes = self.take_bytes(16)?.to_vec();
+        bytes[0] ^= 1 << 7; // flip sign bit
+        visitor.visit_i128(i128::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
-    fn deserialize_u16<V: Visitor<'de>>(self, _: V) -> encoding::Result<V::Value> {
-        unimplemented!()
+    fn deserialize_u8<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        visitor.visit_u8(self.take_bytes(1)?[0])
     }
 
-    fn deserialize_u32<V: Visitor<'de>>(self, _: V) -> encoding::Result<V::Value> {
-        unimplemented!()
+    fn deserialize_u16<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        visitor.visit_u16(u16::from_be_bytes(self.take_bytes(2)?.try_into()?))
+    }
+
+    fn deserialize_u32<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        visitor.visit_u32(u32::from_be_bytes(self.take_bytes(4)?.try_into()?))
     }
 
     fn deserialize_u64<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         visitor.visit_u64(u64::from_be_bytes(self.take_bytes(8)?.try_into()?))
     }
 
-    fn deserialize_f32<V: Visitor<'de>>(self, _: V) -> encoding::Result<V::Value> {
-        unimplemented!()
+    fn deserialize_u128<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        visitor.visit_u128(u128::from_be_bytes(self.take_bytes(16)?.try_into()?))
+    }
+
+    fn deserialize_f32<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
+        let mut bytes = self.take_bytes(4)?.to_vec();
+        match bytes[0] >> 7 {
+            0 => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
+            1 => bytes[0] ^= 1 << 7,                      // positive, flip sign bit
+            _ => panic!("bits can only be 0 or 1"),
+        }
+        visitor.visit_f32(f32::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_f64<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {

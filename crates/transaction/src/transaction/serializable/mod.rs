@@ -6,9 +6,9 @@ use crate::catalog::{Catalog, Schema};
 use crate::mvcc::transaction::serializable::{Serializable, TransactionRx, TransactionTx};
 use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
 use reifydb_core::encoding::{Value as _, bincode};
-use reifydb_core::{Key, Row, RowIter, Value, key_prefix};
-use reifydb_storage::KeyRange;
+use reifydb_core::{Row, RowIter, Value, key_prefix};
 use reifydb_storage::Storage;
+use reifydb_storage::{Key, KeyRange};
 
 /// Serializable Concurrency Control
 impl<S: Storage> Transaction<S> for Serializable<S> {
@@ -113,7 +113,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
                 key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
                 AsyncCowVec::new(bincode::serialize(row)),
             )
-                .unwrap();
+            .unwrap();
         }
         // let mut persistence = self.persistence.lock().unwrap();
         // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
@@ -139,7 +139,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
                 key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)).clone(),
                 AsyncCowVec::new(bincode::serialize(row)),
             )
-                .unwrap();
+            .unwrap();
         }
         // let mut persistence = self.persistence.lock().unwrap();
         // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();

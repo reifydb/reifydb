@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::ordered_float::OrderedF64;
+use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
 use reifydb_core::{Value, ValueKind};
+use reifydb_engine::{Column, ExecutionResult};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -10,7 +11,6 @@ use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep};
 use tonic::Streaming;
 use tonic::metadata::MetadataValue;
-use reifydb_engine::{Column, ExecutionResult};
 
 pub(crate) mod grpc_db {
     tonic::include_proto!("grpc_db");
@@ -51,16 +51,36 @@ pub async fn parse_rx_query_result(
                     .map(|r| {
                         r.values
                             .into_iter()
-                            .map(|v| match v.kind.unwrap() {
+                            .map(|v| match v.kind.unwrap_or_else(|| panic!("Missing value kind")) {
                                 grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
+                                grpc_db::value::Kind::Float32Value(f) => OrderedF32::try_from(f)
+                                    .ok()
+                                    .map(Value::Float4)
+                                    .unwrap_or(Value::Undefined),
                                 grpc_db::value::Kind::Float64Value(f) => OrderedF64::try_from(f)
                                     .ok()
-                                    .map(|v| Value::Float8(v))
+                                    .map(Value::Float8)
                                     .unwrap_or(Value::Undefined),
+                                grpc_db::value::Kind::Int1Value(i) => Value::Int1(i as i8),
                                 grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
+                                grpc_db::value::Kind::Int4Value(i) => Value::Int4(i),
+                                grpc_db::value::Kind::Int8Value(i) => Value::Int8(i),
+                                grpc_db::value::Kind::Int16Value(i) => {
+                                    Value::Int16(((i.high as i128) << 64) | i.low as i128)
+                                }
+
+                                grpc_db::value::Kind::Uint1Value(u) => Value::Uint1(u as u8),
                                 grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
-                                grpc_db::value::Kind::TextValue(t) => Value::Text(t),
-                                _ => unimplemented!("Value kind not yet supported"),
+                                grpc_db::value::Kind::Uint4Value(u) => Value::Uint4(u),
+                                grpc_db::value::Kind::Uint8Value(u) => Value::Uint8(u),
+                                grpc_db::value::Kind::Uint16Value(u) => {
+                                    Value::Uint16(((u.high as u128) << 64) | u.low as u128)
+                                }
+
+                                grpc_db::value::Kind::StringValue(s) => Value::String(s),
+                                grpc_db::value::Kind::UndefinedValue(_) => Value::Undefined,
+
+                                kind => unimplemented!("Value kind {:?} not yet supported", kind),
                             })
                             .collect()
                     })
@@ -143,18 +163,49 @@ impl Client {
                         .map(|r| {
                             r.values
                                 .into_iter()
-                                .map(|v| match v.kind.unwrap() {
-                                    grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
-                                    grpc_db::value::Kind::Float64Value(f) => {
-                                        OrderedF64::try_from(f)
-                                            .ok()
-                                            .map(|v| Value::Float8(v))
-                                            .unwrap_or(Value::Undefined)
+                                .map(|v| {
+                                    match v.kind.unwrap_or_else(|| panic!("Missing value kind")) {
+                                        grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
+                                        grpc_db::value::Kind::Float32Value(f) => {
+                                            OrderedF32::try_from(f)
+                                                .ok()
+                                                .map(Value::Float4)
+                                                .unwrap_or(Value::Undefined)
+                                        }
+                                        grpc_db::value::Kind::Float64Value(f) => {
+                                            OrderedF64::try_from(f)
+                                                .ok()
+                                                .map(Value::Float8)
+                                                .unwrap_or(Value::Undefined)
+                                        }
+                                        grpc_db::value::Kind::Int1Value(i) => Value::Int1(i as i8),
+                                        grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
+                                        grpc_db::value::Kind::Int4Value(i) => Value::Int4(i),
+                                        grpc_db::value::Kind::Int8Value(i) => Value::Int8(i),
+                                        grpc_db::value::Kind::Int16Value(i) => {
+                                            Value::Int16(((i.high as i128) << 64) | i.low as i128)
+                                        }
+
+                                        grpc_db::value::Kind::Uint1Value(u) => {
+                                            Value::Uint1(u as u8)
+                                        }
+                                        grpc_db::value::Kind::Uint2Value(u) => {
+                                            Value::Uint2(u as u16)
+                                        }
+                                        grpc_db::value::Kind::Uint4Value(u) => Value::Uint4(u),
+                                        grpc_db::value::Kind::Uint8Value(u) => Value::Uint8(u),
+                                        grpc_db::value::Kind::Uint16Value(u) => {
+                                            Value::Uint16(((u.high as u128) << 64) | u.low as u128)
+                                        }
+
+                                        grpc_db::value::Kind::StringValue(s) => Value::String(s),
+                                        grpc_db::value::Kind::UndefinedValue(_) => Value::Undefined,
+
+                                        kind => unimplemented!(
+                                            "Value kind {:?} not yet supported",
+                                            kind
+                                        ),
                                     }
-                                    grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
-                                    grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
-                                    grpc_db::value::Kind::TextValue(t) => Value::Text(t),
-                                    _ => unimplemented!("Unhandled value kind"),
                                 })
                                 .collect()
                         })

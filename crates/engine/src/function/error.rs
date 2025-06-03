@@ -160,11 +160,11 @@ mod tests {
             function: "sqrt".to_string(),
             index: 4,
             expected_one_of: vec![ValueKind::Int2],
-            actual: ValueKind::Text,
+            actual: ValueKind::String,
         };
         assert_eq!(
             err.to_string(),
-            "function 'sqrt' 5th argument has unexpected type: expected INT2, got TEXT"
+            "function 'sqrt' 5th argument has unexpected type: expected INT2, got STRING"
         );
     }
 
@@ -174,11 +174,11 @@ mod tests {
             function: "if".to_string(),
             index: 1,
             expected_one_of: vec![ValueKind::Bool, ValueKind::Int2],
-            actual: ValueKind::Text,
+            actual: ValueKind::String,
         };
         assert_eq!(
             err.to_string(),
-            "function 'if' 2nd argument has unexpected type: expected one of [BOOL, INT2], got TEXT"
+            "function 'if' 2nd argument has unexpected type: expected one of [BOOL, INT2], got STRING"
         );
     }
 

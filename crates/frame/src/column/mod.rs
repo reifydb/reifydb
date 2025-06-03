@@ -4,6 +4,8 @@
 pub use values::ColumnValues;
 
 mod extend;
+mod get;
+mod push;
 mod values;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -11,7 +13,6 @@ pub struct Column {
     pub name: String,
     pub data: ColumnValues,
 }
-
 
 impl Column {
     pub fn bool(name: &str, values: impl IntoIterator<Item = bool>) -> Self {
@@ -26,6 +27,18 @@ impl Column {
         Self { name: name.to_string(), data: ColumnValues::bool_with_validity(values, validity) }
     }
 
+    pub fn float4(name: &str, values: impl IntoIterator<Item = f32>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::float4(values) }
+    }
+
+    pub fn float4_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = f32>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::float4_with_validity(values, validity) }
+    }
+
     pub fn float8(name: &str, values: impl IntoIterator<Item = f64>) -> Self {
         Self { name: name.to_string(), data: ColumnValues::float8(values) }
     }
@@ -36,6 +49,18 @@ impl Column {
         validity: impl IntoIterator<Item = bool>,
     ) -> Self {
         Self { name: name.to_string(), data: ColumnValues::float8_with_validity(values, validity) }
+    }
+
+    pub fn int1(name: &str, values: impl IntoIterator<Item = i8>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int1(values) }
+    }
+
+    pub fn int1_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = i8>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int1_with_validity(values, validity) }
     }
 
     pub fn int2(name: &str, values: impl IntoIterator<Item = i16>) -> Self {
@@ -50,21 +75,117 @@ impl Column {
         Self { name: name.to_string(), data: ColumnValues::int2_with_validity(values, validity) }
     }
 
-    pub fn text<'a>(name: &str, values: impl IntoIterator<Item = &'a str>) -> Self {
+    pub fn int4(name: &str, values: impl IntoIterator<Item = i32>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int4(values) }
+    }
+
+    pub fn int4_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = i32>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int4_with_validity(values, validity) }
+    }
+
+    pub fn int8(name: &str, values: impl IntoIterator<Item = i64>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int8(values) }
+    }
+
+    pub fn int8_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = i64>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int8_with_validity(values, validity) }
+    }
+
+    pub fn int16(name: &str, values: impl IntoIterator<Item = i128>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int16(values) }
+    }
+
+    pub fn int16_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = i128>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::int16_with_validity(values, validity) }
+    }
+
+    pub fn uint1(name: &str, values: impl IntoIterator<Item = u8>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint1(values) }
+    }
+
+    pub fn uint1_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = u8>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint1_with_validity(values, validity) }
+    }
+
+    pub fn uint2(name: &str, values: impl IntoIterator<Item = u16>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint2(values) }
+    }
+
+    pub fn uint2_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = u16>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint2_with_validity(values, validity) }
+    }
+
+    pub fn uint4(name: &str, values: impl IntoIterator<Item = u32>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint4(values) }
+    }
+
+    pub fn uint4_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = u32>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint4_with_validity(values, validity) }
+    }
+
+    pub fn uint8(name: &str, values: impl IntoIterator<Item = u64>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint8(values) }
+    }
+
+    pub fn uint8_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = u64>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint8_with_validity(values, validity) }
+    }
+
+    pub fn uint16(name: &str, values: impl IntoIterator<Item = u128>) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint16(values) }
+    }
+
+    pub fn uint16_with_validity(
+        name: &str,
+        values: impl IntoIterator<Item = u128>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        Self { name: name.to_string(), data: ColumnValues::uint16_with_validity(values, validity) }
+    }
+
+    pub fn string<'a>(name: &str, values: impl IntoIterator<Item = &'a str>) -> Self {
         Self {
             name: name.to_string(),
-            data: ColumnValues::text(values.into_iter().map(|s| s.to_string())),
+            data: ColumnValues::string(values.into_iter().map(|s| s.to_string())),
         }
     }
 
-    pub fn text_with_validity<'a>(
+    pub fn string_with_validity<'a>(
         name: &str,
         values: impl IntoIterator<Item = &'a str>,
         validity: impl IntoIterator<Item = bool>,
     ) -> Self {
         Self {
             name: name.to_string(),
-            data: ColumnValues::text_with_validity(
+            data: ColumnValues::string_with_validity(
                 values.into_iter().map(|s| s.to_string()),
                 validity,
             ),

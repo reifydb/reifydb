@@ -150,7 +150,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                             AstType::Int8(_) => unimplemented!(),
                                             AstType::Int16(_) => unimplemented!(),
                                             AstType::Number(_) => unimplemented!(),
-                                            AstType::Text(_) => ValueKind::Text,
+                                            AstType::Text(_) => ValueKind::String,
                                             AstType::Uint1(_) => unimplemented!(),
                                             AstType::Uint2(_) => ValueKind::Uint2,
                                             AstType::Uint4(_) => unimplemented!(),
@@ -192,7 +192,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                             AstType::Int8(_) => unimplemented!(),
                                             AstType::Int16(_) => unimplemented!(),
                                             AstType::Number(_) => unimplemented!(),
-                                            AstType::Text(_) => ValueKind::Text,
+                                            AstType::Text(_) => ValueKind::String,
                                             AstType::Uint1(_) => unimplemented!(),
                                             AstType::Uint2(_) => ValueKind::Uint2,
                                             AstType::Uint4(_) => unimplemented!(),
@@ -268,7 +268,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                                 ))
                                             }
                                             Ast::Literal(AstLiteral::Text(ast)) => {
-                                                Expression::Constant(Value::Text(
+                                                Expression::Constant(Value::String(
                                                     ast.value().to_string(),
                                                 ))
                                             }
@@ -448,7 +448,7 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                     },
                     AstLiteral::Text(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(Value::Text(node.value().to_string())),
+                        expression: Expression::Constant(Value::String(node.value().to_string())),
                     },
                     AstLiteral::Undefined(_) => AliasExpression {
                         alias: None,
