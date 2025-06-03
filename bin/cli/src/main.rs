@@ -13,11 +13,11 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
     // ReifyDB::embedded_blocking_with::<Memory, Serializable>(serializable());
     db.tx_as(&root, r#"create schema test"#);
-    db.tx_as(&root, r#"create table test.item(field_one: int8, field_two: int8)"#);
+    db.tx_as(&root, r#"create table test.item(field_one: uint1, field_two: uint1)"#);
     db.tx_as(
         &root,
         r#"
-    insert (1,-1), (-2,2), (3,3), (-4,-4) into test.item (field_one, field_two)"#,
+    insert (1,1), (2,2), (3,3), (4,4) into test.item (field_one, field_two)"#,
     );
 
     // let start = Instant::now();
