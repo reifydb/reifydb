@@ -1,0 +1,40 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+# originally licensed under the Apache License, Version 2.0.
+# Original copyright:
+#   Copyright (c) 2024 Erik Grinaker
+#
+# The original Apache License can be found at:
+#   http://www.apache.org/licenses/LICENSE-2.0
+
+# Sets should work on both existing, missing, and removed keys.
+
+import a=1 b=1 x=
+---
+ok
+
+# Can replace an existing key and tombstone.
+t1: begin
+t1: set a=2 x=2 
+---
+ok
+
+t1: scan
+---
+t1: "a" => "2"
+t1: "b" => "1"
+t1: "x" => "2"
+
+# Can write a new key, replace it, and be idempotent.
+t1: set c=1 c=2 c=2
+---
+ok
+
+t1: scan
+---
+t1: "a" => "2"
+t1: "b" => "1"
+t1: "c" => "2"
+t1: "x" => "2"

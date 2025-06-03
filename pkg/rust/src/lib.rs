@@ -99,7 +99,7 @@ impl ReifyDB {
     pub fn embedded() -> (
         embedded_blocking::Embedded<
             Memory,
-            ::reifydb_transaction::mvcc::transaction::serializable::Serializable,
+            ::reifydb_transaction::mvcc::transaction::serializable::Serializable<Memory>,
         >,
         Principal,
     ) {

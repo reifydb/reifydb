@@ -18,28 +18,28 @@
 # 1   B1   a1   x                   c1
 #     B    a    b    ba   bb   bc   c
 
-import 1 B=B1 a=a1 b= c=c1
-import 2 a= ba=ba2 bb=bb2 bc=bc2
-import 3 B= a=a3 b=b3 bb=
-import 4 b= ba=ba4
+import B=B1 a=a1 b= c=c1
+import a= ba=ba2 bb=bb2 bc=bc2
+import B= a=a3 b=b3 bb=
+import b= ba=ba4
 ---
 ok
 
 # Full scans at all timestamps.
-t1: begin readonly as_of=1
-t1: scan_range ""
+t1: begin readonly version=0
+t1: scan_prefix ""
 ---
 ok
 
-t2: begin readonly as_of=2
-t2: scan_range ""
+t2: begin readonly version=1
+t2: scan_prefix ""
 ---
 t2: "B" => "B1"
 t2: "a" => "a1"
 t2: "c" => "c1"
 
-t3: begin readonly as_of=3
-t3: scan_range ""
+t3: begin readonly version=2
+t3: scan_prefix ""
 ---
 t3: "B" => "B1"
 t3: "ba" => "ba2"
@@ -47,8 +47,8 @@ t3: "bb" => "bb2"
 t3: "bc" => "bc2"
 t3: "c" => "c1"
 
-t4: begin readonly as_of=4
-t4: scan_range ""
+t4: begin readonly version=3
+t4: scan_prefix ""
 ---
 t4: "a" => "a3"
 t4: "b" => "b3"
@@ -57,43 +57,43 @@ t4: "bc" => "bc2"
 t4: "c" => "c1"
 
 t5: begin readonly
-t5: scan_range ""
+t5: scan_prefix ""
 ---
 t5: "a" => "a3"
 t5: "ba" => "ba4"
 t5: "bc" => "bc2"
 t5: "c" => "c1"
 
-# Various prefixes at version 3.
-t3: scan_range B
+# Various prefixes at version 2.
+t3: scan_prefix B
 ---
 t3: "B" => "B1"
 
-t3: scan_range b
+t3: scan_prefix b
 ---
 t3: "ba" => "ba2"
 t3: "bb" => "bb2"
 t3: "bc" => "bc2"
 
-t3: scan_range bb
+t3: scan_prefix bb
 ---
 t3: "bb" => "bb2"
 
-t3: scan_range bbb
+t3: scan_prefix bbb
 ---
 ok
 
-# Various prefixes at version 4.
-t4: scan_range B
+# Various prefixes at version 3.
+t4: scan_prefix B
 ---
 ok
 
-t4: scan_range b
+t4: scan_prefix b
 ---
 t4: "b" => "b3"
 t4: "ba" => "ba2"
 t4: "bc" => "bc2"
 
-t4: scan_range bb
+t4: scan_prefix bb
 ---
 ok

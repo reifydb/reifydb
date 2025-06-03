@@ -1,0 +1,43 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+# originally licensed under the Apache License, Version 2.0.
+# Original copyright:
+#   Copyright (c) 2024 Erik Grinaker
+#
+# The original Apache License can be found at:
+#   http://www.apache.org/licenses/LICENSE-2.0
+
+# Tests that the key encoding is resistant to key/version overlap.
+# For example, a naïve concatenation of keys and versions would
+# produce incorrect ordering in this case:
+#
+# 00|00 00 00 00 00 00 00 01
+# 00 00 00 00 00 00 00 00 02|00 00 00 00 00 00 00 02
+# 00|00 00 00 00 00 00 00 03
+
+t1: begin
+t1: set "\x00"="\x01"
+t1: commit
+---
+ok
+
+t2: begin
+t2: set "\x00"="\x02"
+t2: set "\x00\x00\x00\x00\x00\x00\x00\x00\x02"="\x02"
+t2: commit
+---
+ok
+
+t3: begin
+t3: set "\x00"="\x03"
+t3: commit
+---
+ok
+
+t4: begin readonly
+t4: scan
+---
+t4: "\x00" => "\x03"
+t4: "\x00\x00\x00\x00\x00\x00\x00\x00\x02" => "\x02"
