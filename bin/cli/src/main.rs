@@ -13,16 +13,13 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
     // ReifyDB::embedded_blocking_with::<Memory, Serializable>(serializable());
     db.tx_as(&root, r#"create schema test"#);
-    db.tx_as(&root, r#"create table test.item(field_one: uint1, field_two: uint1)"#);
-    db.tx_as(
-        &root,
-        r#"
-    insert (1,1), (2,2), (3,3), (4,4) into test.item (field_one, field_two)"#,
-    );
+    db.tx_as(&root, r#"create table test.users(id: int2, name: text, is_premium: bool)"#);
+    db.tx_as(&root, r#"insert (1,true,'Alice') into test.users(id,is_premium, name)"#);
+    // db.tx_as(&root, r#"insert (1,'Alice',true) into test.users(id,name, is_premium)"#);
 
     // let start = Instant::now();
     // for l in db.rx_as(&root, r#"from test.test"#) {
-    for l in db.rx_as(&root, r#"from test.item select field_one % field_two"#) {
+    for l in db.rx_as(&root, r#"from test.users limit 1 select id, name, name, is_premium, id"#) {
         println!("{}", l);
     }
     // println!("took {:?}", start.elapsed());

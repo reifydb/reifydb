@@ -34,7 +34,7 @@ impl Executor {
                 Column { name, data }
             })
             .collect();
-            
+
         let mut frame = Frame::new(columns);
         for row in rx.scan_table(schema, store)?.into_iter() {
             frame.append(row)?;

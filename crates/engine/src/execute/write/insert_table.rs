@@ -27,42 +27,9 @@ impl Executor {
                         let column = &columns[idx];
 
                         match expr {
-                            Expression::Constant(const_expr) => row_values.push(match const_expr {
-                                ExpressionConstant::Bool(bool) => Value::Bool(bool),
-                                ExpressionConstant::Number(number) => match column.value {
-                                    ValueKind::Float4 => Value::Float4(
-                                        OrderedF32::try_from(number.parse::<f32>().unwrap())
-                                            .unwrap(),
-                                    ),
-                                    ValueKind::Float8 => Value::Float8(
-                                        OrderedF64::try_from(number.parse::<f64>().unwrap())
-                                            .unwrap(),
-                                    ),
-                                    ValueKind::Int1 => Value::Int1(number.parse::<i8>().unwrap()),
-                                    ValueKind::Int2 => Value::Int2(number.parse::<i16>().unwrap()),
-                                    ValueKind::Int4 => Value::Int4(number.parse::<i32>().unwrap()),
-                                    ValueKind::Int8 => Value::Int8(number.parse::<i64>().unwrap()),
-                                    ValueKind::Int16 => {
-                                        Value::Int16(number.parse::<i128>().unwrap())
-                                    }
-                                    ValueKind::Uint1 => Value::Uint1(number.parse::<u8>().unwrap()),
-                                    ValueKind::Uint2 => {
-                                        Value::Uint2(number.parse::<u16>().unwrap())
-                                    }
-                                    ValueKind::Uint4 => {
-                                        Value::Uint4(number.parse::<u32>().unwrap())
-                                    }
-                                    ValueKind::Uint8 => {
-                                        Value::Uint8(number.parse::<u64>().unwrap())
-                                    }
-                                    ValueKind::Uint16 => {
-                                        Value::Uint16(number.parse::<u128>().unwrap())
-                                    }
-                                    _ => unimplemented!(),
-                                },
-                                ExpressionConstant::Text(string) => Value::String(string),
-                                ExpressionConstant::Undefined => Value::Undefined,
-                            }),
+                            Expression::Constant(const_expr) => {
+                                row_values.push(const_expr.into_value(column.value))
+                            }
                             Expression::Prefix(ExpressionPrefix { operator, expression }) => {
                                 match operator {
                                     PrefixOperator::Minus => match *expression {

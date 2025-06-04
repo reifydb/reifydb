@@ -199,7 +199,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                             .collect::<Vec<_>>();
 
                         // Lookup actual columns from the store
-                        let mut columns: Vec<_> = insert_column_names
+                        let mut columns_to_insert: Vec<_> = insert_column_names
                             .iter()
                             .map(|name| store_schema.get_column(name.deref()).unwrap())
                             .collect::<Vec<_>>();
@@ -215,10 +215,9 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                         let rows_to_insert = rows
                             .into_iter()
                             .map(|row| {
-                                let mut values = vec![None; columns.len()];
+                                let mut values = vec![None; columns_to_insert.len()];
 
-                                for (col_idx, col) in
-                                    store_schema.list_columns().unwrap().iter().enumerate()
+                                for (col_idx, col) in store_schema.list_columns().unwrap().iter().enumerate()
                                 {
                                     if let Some(&input_idx) = insert_index_map.get(&col.name) {
                                         let expr = match &row.nodes[input_idx] {
@@ -287,18 +286,24 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                             }
                                             node => unimplemented!("{node:?}"),
                                         };
+                                        
+                                        
                                         values[col_idx] = Some(expr);
+                                        
+                                        
                                     } else {
                                         // Not provided in INSERT, use default
                                         unimplemented!()
                                     }
                                 }
-
+                                
                                 values.into_iter().map(|v| v.unwrap()).collect::<Vec<_>>()
                             })
                             .collect::<Vec<_>>();
 
                         let s = catalog.get(&schema).unwrap().get(&store).unwrap();
+
+                        let columns = store_schema.list_columns().unwrap();
 
                         match s.kind().unwrap() {
                             StoreKind::Series => {
