@@ -4,13 +4,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb_catalog::{Column, OverflowPolicy, PolicyError, UnderflowPolicy};
+use reifydb_core::num::{ParseError, parse_float, parse_int, parse_uint};
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
 use reifydb_core::{Value, ValueKind};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ExpressionConstant {
+pub enum ConstantExpression {
     Undefined,
     Bool(bool),
     // any number
@@ -19,274 +21,253 @@ pub enum ExpressionConstant {
     Text(String),
 }
 
-impl Display for ExpressionConstant {
+impl Display for ConstantExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ExpressionConstant::Undefined => write!(f, "undefined"),
-            ExpressionConstant::Bool(b) => write!(f, "{b}"),
-            ExpressionConstant::Number(n) => write!(f, "{n}"),
-            ExpressionConstant::Text(s) => write!(f, "\"{s}\""),
+            ConstantExpression::Undefined => write!(f, "undefined"),
+            ConstantExpression::Bool(b) => write!(f, "{b}"),
+            ConstantExpression::Number(n) => write!(f, "{n}"),
+            ConstantExpression::Text(s) => write!(f, "\"{s}\""),
         }
     }
 }
 
-impl ExpressionConstant {
-    pub fn into_value(self, kind: ValueKind) -> Value {
+impl ConstantExpression {
+    pub fn into_column_value(self, column: &Column) -> Result<Value, PolicyError> {
+        let kind = column.value;
+
         match self {
-            ExpressionConstant::Bool(b) => {
+            ConstantExpression::Bool(b) => {
                 if kind == ValueKind::Bool {
-                    Value::Bool(b)
+                    Ok(Value::Bool(b))
                 } else {
-                    Value::Undefined
+                    Ok(Value::Undefined)
                 }
             }
-            ExpressionConstant::Number(n) => match kind {
-                ValueKind::Float4 => n
-                    .parse::<f32>()
-                    .ok()
-                    .and_then(|f| OrderedF32::try_from(f).ok())
-                    .map(Value::Float4)
-                    .unwrap_or(Value::Undefined),
-                ValueKind::Float8 => n
-                    .parse::<f64>()
-                    .ok()
-                    .and_then(|f| OrderedF64::try_from(f).ok())
-                    .map(Value::Float8)
-                    .unwrap_or(Value::Undefined),
-                ValueKind::Int1 => {
-                    n.parse::<i8>().ok().map(Value::Int1).unwrap_or(Value::Undefined)
+            ConstantExpression::Number(input) => {
+                let overflow = column.overflow_policy();
+                let underflow = column.underflow_policy();
+
+                let result = match kind {
+                    ValueKind::Float4 => parse_float::<f32>(&input).map(|v| {
+                        OrderedF32::try_from(v).map(Value::Float4).unwrap_or(Value::Undefined)
+                    }),
+                    ValueKind::Float8 => parse_float::<f64>(&input).map(|v| {
+                        OrderedF64::try_from(v).map(Value::Float8).unwrap_or(Value::Undefined)
+                    }),
+
+                    ValueKind::Int1 => parse_int::<i8>(&input).map(Value::Int1),
+                    ValueKind::Int2 => parse_int::<i16>(&input).map(Value::Int2),
+                    ValueKind::Int4 => parse_int::<i32>(&input).map(Value::Int4),
+                    ValueKind::Int8 => parse_int::<i64>(&input).map(Value::Int8),
+                    ValueKind::Int16 => parse_int::<i128>(&input).map(Value::Int16),
+
+                    ValueKind::Uint1 => parse_uint::<u8>(&input).map(Value::Uint1),
+                    ValueKind::Uint2 => parse_uint::<u16>(&input).map(Value::Uint2),
+                    ValueKind::Uint4 => parse_uint::<u32>(&input).map(Value::Uint4),
+                    ValueKind::Uint8 => parse_uint::<u64>(&input).map(Value::Uint8),
+                    ValueKind::Uint16 => parse_uint::<u128>(&input).map(Value::Uint16),
+
+                    _ => Ok(Value::Undefined),
+                };
+
+                if matches!(result, Err(ParseError::Invalid(_))) {
+                    return Ok(Value::Undefined);
                 }
-                ValueKind::Int2 => {
-                    n.parse::<i16>().ok().map(Value::Int2).unwrap_or(Value::Undefined)
-                }
-                ValueKind::Int4 => {
-                    n.parse::<i32>().ok().map(Value::Int4).unwrap_or(Value::Undefined)
-                }
-                ValueKind::Int8 => {
-                    n.parse::<i64>().ok().map(Value::Int8).unwrap_or(Value::Undefined)
-                }
-                ValueKind::Int16 => {
-                    n.parse::<i128>().ok().map(Value::Int16).unwrap_or(Value::Undefined)
-                }
-                ValueKind::Uint1 => {
-                    n.parse::<u8>().ok().map(Value::Uint1).unwrap_or(Value::Undefined)
-                }
-                ValueKind::Uint2 => {
-                    n.parse::<u16>().ok().map(Value::Uint2).unwrap_or(Value::Undefined)
-                }
-                ValueKind::Uint4 => {
-                    n.parse::<u32>().ok().map(Value::Uint4).unwrap_or(Value::Undefined)
-                }
-                ValueKind::Uint8 => {
-                    n.parse::<u64>().ok().map(Value::Uint8).unwrap_or(Value::Undefined)
-                }
-                ValueKind::Uint16 => {
-                    n.parse::<u128>().ok().map(Value::Uint16).unwrap_or(Value::Undefined)
-                }
-                _ => Value::Undefined,
-            },
-            ExpressionConstant::Text(s) => {
+
+                result.map_err(|err| match err {
+                    ParseError::Overflow(_) => match overflow {
+                        OverflowPolicy::Error => PolicyError::Overflow {
+                            column: column.name.clone(),
+                            value: kind,
+                            input,
+                        },
+                    },
+                    ParseError::Underflow(_) => match underflow {
+                        UnderflowPolicy::Error => PolicyError::Underflow {
+                            column: column.name.clone(),
+                            value: kind,
+                            input,
+                        },
+                    },
+                    ParseError::Invalid(_) => unreachable!(),
+                })
+            }
+            ConstantExpression::Text(s) => {
                 if kind == ValueKind::String {
-                    Value::String(s)
+                    Ok(Value::String(s))
                 } else {
-                    Value::Undefined
+                    Ok(Value::Undefined)
                 }
             }
-            ExpressionConstant::Undefined => Value::Undefined,
+            ConstantExpression::Undefined => Ok(Value::Undefined),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::expression::ConstantExpression;
+    use reifydb_catalog::{Column, OverflowPolicy, Policy, PolicyError, UnderflowPolicy};
+    use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
+    use reifydb_core::{Value, ValueKind};
 
-    #[test]
-    fn test_bool_true() {
-        let expr = ExpressionConstant::Bool(true);
-        assert_eq!(expr.into_value(ValueKind::Bool), Value::Bool(true));
+    fn column_error_policy(name: &str, kind: ValueKind) -> Column {
+        Column {
+            name: name.to_string(),
+            value: kind,
+            policies: vec![
+                Policy::Overflow(OverflowPolicy::Error),
+                Policy::Underflow(UnderflowPolicy::Error),
+            ],
+        }
     }
 
     #[test]
-    fn test_bool_not_boolean() {
-        let expr = ExpressionConstant::Bool(false);
-        assert_eq!(expr.into_value(ValueKind::Float4), Value::Undefined);
+    fn test_bool() {
+        let expr = ConstantExpression::Bool(true);
+        let col = column_error_policy("bool_col", ValueKind::Bool);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Bool(true)));
     }
 
     #[test]
-    fn test_text_string() {
-        let expr = ExpressionConstant::Text("hello".to_string());
-        assert_eq!(expr.into_value(ValueKind::String), Value::String("hello".to_string()));
+    fn test_float4_error_policy() {
+        let expr = ConstantExpression::Number("3.14".into());
+        let col = column_error_policy("f4", ValueKind::Float4);
+        assert_eq!(
+            expr.into_column_value(&col),
+            Ok(Value::Float4(OrderedF32::try_from(3.14f32).unwrap()))
+        );
     }
 
     #[test]
-    fn test_text_not_text() {
-        let expr = ExpressionConstant::Text("ignored".to_string());
-        assert_eq!(expr.into_value(ValueKind::Int4), Value::Undefined);
+    fn test_float4_error_policy_overflow() {
+        let expr = ConstantExpression::Number("3.14".into());
+        let col = column_error_policy("f4", ValueKind::Float4);
+        assert_eq!(
+            expr.into_column_value(&col),
+            Ok(Value::Float4(OrderedF32::try_from(3.14f32).unwrap()))
+        );
+    }
+
+
+    #[test]
+    fn test_float8_error_policy() {
+        let expr = ConstantExpression::Number("2.718281828".into());
+        let col = column_error_policy("f8", ValueKind::Float8);
+        assert_eq!(
+            expr.into_column_value(&col),
+            Ok(Value::Float8(OrderedF64::try_from(2.718281828f64).unwrap()))
+        );
     }
 
     #[test]
-    fn test_number_float4_valid() {
-        let expr = ExpressionConstant::Number("1.5".to_string());
-        let value = expr.into_value(ValueKind::Float4);
-        assert!(!matches!(value, Value::Undefined));
+    fn test_error_policy_invalid_number_returns_undefined() {
+        let expr = ConstantExpression::Number("not_a_number".into());
+        let col = column_error_policy("invalid", ValueKind::Int4);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Undefined));
     }
 
     #[test]
-    fn test_number_float4_invalid() {
-        let expr = ExpressionConstant::Number("invalid".to_string());
-        assert_eq!(expr.into_value(ValueKind::Float4), Value::Undefined);
+    fn test_error_policy_overflow() {
+        let expr = ConstantExpression::Number("128".into());
+        let col = column_error_policy("i1", ValueKind::Int1);
+        assert!(matches!(
+        expr.into_column_value(&col),
+        Err(PolicyError::Overflow { column, value: ValueKind::Int1, input }) if column == "i1" && input == "128"
+    ));
     }
 
     #[test]
-    fn test_number_float8_valid() {
-        let expr = ExpressionConstant::Number("1.5".to_string());
-        let value = expr.into_value(ValueKind::Float8);
-        assert!(!matches!(value, Value::Undefined));
+    fn test_error_policy_underflow() {
+        let expr = ConstantExpression::Number("-1".into());
+        let col = column_error_policy("u1", ValueKind::Uint1);
+        assert!(matches!(
+        expr.into_column_value(&col),
+        Err(PolicyError::Underflow { column, value: ValueKind::Uint1, input }) if column == "u1" && input == "-1"
+    ));
     }
 
     #[test]
-    fn test_number_float8_invalid() {
-        let expr = ExpressionConstant::Number("invalid".to_string());
-        assert_eq!(expr.into_value(ValueKind::Float8), Value::Undefined);
+    fn test_int2_error_policy() {
+        let expr = ConstantExpression::Number("32767".into());
+        let col = column_error_policy("i2", ValueKind::Int2);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Int2(32767)));
     }
 
     #[test]
-    fn test_number_int1_valid() {
-        let expr = ExpressionConstant::Number("127".to_string());
-        let value = expr.into_value(ValueKind::Int1);
-        assert!(!matches!(value, Value::Undefined));
+    fn test_int4_error_policy() {
+        let expr = ConstantExpression::Number("-2147483648".into());
+        let col = column_error_policy("i4", ValueKind::Int4);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Int4(-2147483648)));
     }
 
     #[test]
-    fn test_number_int1_invalid() {
-        let expr = ExpressionConstant::Number("128".to_string());
-        assert_eq!(expr.into_value(ValueKind::Int1), Value::Undefined);
+    fn test_int8_error_policy() {
+        let expr = ConstantExpression::Number("9223372036854775807".into());
+        let col = column_error_policy("i8", ValueKind::Int8);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Int8(9223372036854775807)));
     }
 
     #[test]
-    fn test_number_int2_valid() {
-        let expr = ExpressionConstant::Number("32767".to_string());
-        let value = expr.into_value(ValueKind::Int2);
-        assert!(!matches!(value, Value::Undefined));
+    fn test_int16_error_policy() {
+        let expr = ConstantExpression::Number("-170141183460469231731687303715884105728".into());
+        let col = column_error_policy("i16", ValueKind::Int16);
+        assert_eq!(
+            expr.into_column_value(&col),
+            Ok(Value::Int16(-170141183460469231731687303715884105728i128))
+        );
     }
 
     #[test]
-    fn test_number_int2_invalid() {
-        let expr = ExpressionConstant::Number("32768".to_string());
-        assert_eq!(expr.into_value(ValueKind::Int2), Value::Undefined);
+    fn test_string_error_policy() {
+        let expr = ConstantExpression::Text("hello world".into());
+        let col = column_error_policy("txt", ValueKind::String);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::String("hello world".into())));
     }
 
     #[test]
-    fn test_number_int4_valid() {
-        let expr = ExpressionConstant::Number("2147483647".to_string());
-        let value = expr.into_value(ValueKind::Int4);
-        assert!(!matches!(value, Value::Undefined));
+    fn test_uint1_error_policy() {
+        let expr = ConstantExpression::Number("255".into());
+        let col = column_error_policy("u1", ValueKind::Uint1);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Uint1(255)));
     }
 
     #[test]
-    fn test_number_int4_invalid() {
-        let expr = ExpressionConstant::Number("2147483648".to_string());
-        assert_eq!(expr.into_value(ValueKind::Int4), Value::Undefined);
+    fn test_uint2_error_policy() {
+        let expr = ConstantExpression::Number("65535".into());
+        let col = column_error_policy("u2", ValueKind::Uint2);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Uint2(65535)));
     }
 
     #[test]
-    fn test_number_int8_valid() {
-        let expr = ExpressionConstant::Number("9223372036854775807".to_string());
-        let value = expr.into_value(ValueKind::Int8);
-        assert!(!matches!(value, Value::Undefined));
+    fn test_uint4_error_policy() {
+        let expr = ConstantExpression::Number("4294967295".into());
+        let col = column_error_policy("u4", ValueKind::Uint4);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Uint4(4294967295)));
     }
 
     #[test]
-    fn test_number_int8_invalid() {
-        let expr = ExpressionConstant::Number("9223372036854775808".to_string());
-        assert_eq!(expr.into_value(ValueKind::Int8), Value::Undefined);
+    fn test_uint8_error_policy() {
+        let expr = ConstantExpression::Number("18446744073709551615".into());
+        let col = column_error_policy("u8", ValueKind::Uint8);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Uint8(18446744073709551615)));
     }
 
     #[test]
-    fn test_number_int16_valid() {
-        let expr =
-            ExpressionConstant::Number("170141183460469231731687303715884105727".to_string());
-        let value = expr.into_value(ValueKind::Int16);
-        assert!(!matches!(value, Value::Undefined));
+    fn test_uint16_error_policy() {
+        let expr = ConstantExpression::Number("340282366920938463463374607431768211455".into());
+        let col = column_error_policy("u16", ValueKind::Uint16);
+        assert_eq!(
+            expr.into_column_value(&col),
+            Ok(Value::Uint16(340282366920938463463374607431768211455u128))
+        );
     }
 
     #[test]
-    fn test_number_int16_invalid() {
-        let expr =
-            ExpressionConstant::Number("170141183460469231731687303715884105728".to_string());
-        assert_eq!(expr.into_value(ValueKind::Int16), Value::Undefined);
-    }
-
-    #[test]
-    fn test_number_uint1_valid() {
-        let expr = ExpressionConstant::Number("255".to_string());
-        let value = expr.into_value(ValueKind::Uint1);
-        assert!(!matches!(value, Value::Undefined));
-    }
-
-    #[test]
-    fn test_number_uint1_invalid() {
-        let expr = ExpressionConstant::Number("-1".to_string());
-        assert_eq!(expr.into_value(ValueKind::Uint1), Value::Undefined);
-    }
-
-    #[test]
-    fn test_number_uint2_valid() {
-        let expr = ExpressionConstant::Number("65535".to_string());
-        let value = expr.into_value(ValueKind::Uint2);
-        assert!(!matches!(value, Value::Undefined));
-    }
-
-    #[test]
-    fn test_number_uint2_invalid() {
-        let expr = ExpressionConstant::Number("-1".to_string());
-        assert_eq!(expr.into_value(ValueKind::Uint2), Value::Undefined);
-    }
-
-    #[test]
-    fn test_number_uint4_valid() {
-        let expr = ExpressionConstant::Number("4294967295".to_string());
-        let value = expr.into_value(ValueKind::Uint4);
-        assert!(!matches!(value, Value::Undefined));
-    }
-
-    #[test]
-    fn test_number_uint4_invalid() {
-        let expr = ExpressionConstant::Number("-1".to_string());
-        assert_eq!(expr.into_value(ValueKind::Uint4), Value::Undefined);
-    }
-
-    #[test]
-    fn test_number_uint8_valid() {
-        let expr = ExpressionConstant::Number("18446744073709551615".to_string());
-        let value = expr.into_value(ValueKind::Uint8);
-        assert!(!matches!(value, Value::Undefined));
-    }
-
-    #[test]
-    fn test_number_uint8_invalid() {
-        let expr = ExpressionConstant::Number("-1".to_string());
-        assert_eq!(expr.into_value(ValueKind::Uint8), Value::Undefined);
-    }
-
-    #[test]
-    fn test_number_uint16_valid() {
-        let expr =
-            ExpressionConstant::Number("340282366920938463463374607431768211455".to_string());
-        let value = expr.into_value(ValueKind::Uint16);
-        assert!(!matches!(value, Value::Undefined));
-    }
-
-    #[test]
-    fn test_number_uint16_invalid() {
-        let expr = ExpressionConstant::Number("-1".to_string());
-        assert_eq!(expr.into_value(ValueKind::Uint16), Value::Undefined);
-    }
-
-    #[test]
-    fn test_undefined_always_returns_undefined() {
-        let expr = ExpressionConstant::Undefined;
-        assert_eq!(expr.into_value(ValueKind::Int4), Value::Undefined);
+    fn test_undefined() {
+        let expr = ConstantExpression::Number("123".into());
+        let col = column_error_policy("undef", ValueKind::Undefined);
+        assert_eq!(expr.into_column_value(&col), Ok(Value::Undefined));
     }
 }

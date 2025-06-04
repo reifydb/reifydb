@@ -10,5 +10,5 @@ pub use error::Error;
 
 pub mod ast;
 mod error;
-pub mod plan;
 pub mod expression;
+pub mod plan;

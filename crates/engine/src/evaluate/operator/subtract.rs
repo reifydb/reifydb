@@ -3,12 +3,12 @@
 
 use crate::evaluate::Evaluator;
 use reifydb_frame::{Column, ColumnValues};
-use reifydb_rql::expression::ExpressionSubtract;
+use reifydb_rql::expression::SubstractExpression;
 
 impl Evaluator {
     pub(crate) fn subtract(
         &mut self,
-        sub: ExpressionSubtract,
+        sub: SubstractExpression,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {

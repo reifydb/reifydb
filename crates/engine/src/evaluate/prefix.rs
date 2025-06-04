@@ -3,13 +3,13 @@
 
 use crate::evaluate;
 use crate::evaluate::{Evaluator, evaluate};
-use reifydb_rql::expression::{ExpressionPrefix, PrefixOperator};
+use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 use reifydb_frame::{Column, ColumnValues};
 
 impl Evaluator {
     pub(crate) fn prefix(
         &mut self,
-        prefix: ExpressionPrefix,
+        prefix: PrefixExpression,
         columns: &[&Column],
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {

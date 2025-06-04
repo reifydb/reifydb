@@ -3,7 +3,7 @@
 
 use crate::evaluate::Evaluator;
 use reifydb_frame::{Column, ColumnValues};
-use reifydb_rql::expression::ExpressionDivide;
+use reifydb_rql::expression::DivideExpression;
 
 const EPSILON32: f32 = 1e-7;
 const EPSILON64: f64 = 1e-14;
@@ -11,7 +11,7 @@ const EPSILON64: f64 = 1e-14;
 impl Evaluator {
     pub(crate) fn divide(
         &mut self,
-        div: ExpressionDivide,
+        div: DivideExpression,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {

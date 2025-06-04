@@ -3,12 +3,12 @@
 
 use crate::evaluate::Evaluator;
 use reifydb_frame::{Column, ColumnValues};
-use reifydb_rql::expression::ExpressionMultiply;
+use reifydb_rql::expression::MultiplyExpression;
 
 impl Evaluator {
     pub(crate) fn multiply(
         &mut self,
-        mul: ExpressionMultiply,
+        mul: MultiplyExpression,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {

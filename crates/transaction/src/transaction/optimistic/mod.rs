@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::AsyncCowVec;
-use crate::catalog::{Catalog, Schema};
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
-use crate::{CATALOG, CatalogRx, CatalogTx, InsertResult, Transaction};
+use crate::{CATALOG, InsertResult, Transaction};
+use reifydb_catalog::{Catalog, CatalogRx, CatalogTx, Schema};
 use reifydb_core::encoding::bincode;
 use reifydb_core::{Row, RowIter, Value, deserialize_row, key_prefix};
 use reifydb_storage::Storage;
@@ -80,15 +80,15 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
 }
 
 impl<S: Storage> crate::Tx for TransactionTx<S> {
-    type CatalogMut = Catalog;
-    type SchemaMut = Schema;
+    type CatalogTx = Catalog;
+    type SchemaTx = Schema;
 
-    fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut> {
+    fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogTx> {
         // FIXME replace this
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
-    fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaMut> {
+    fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaTx> {
         let schema = self.catalog_mut().unwrap().get_mut(schema).unwrap();
 
         Ok(schema)

@@ -3,12 +3,12 @@
 
 use crate::evaluate::Evaluator;
 use reifydb_frame::{Column, ColumnValues};
-use reifydb_rql::expression::ExpressionModulo;
+use reifydb_rql::expression::ModuloExpression;
 
 impl Evaluator {
     pub(crate) fn modulo(
         &mut self,
-        mo: ExpressionModulo,
+        mo: ModuloExpression,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {

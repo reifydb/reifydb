@@ -5,14 +5,8 @@ pub use r#impl::Store;
 
 mod r#impl;
 
-use reifydb_core::{StoreKind, ValueKind};
-
-#[derive(Debug, Clone)]
-pub struct Column {
-    pub name: String,
-    pub value: ValueKind,
-    // pub default: Option<Expression>,
-}
+use crate::Column;
+use reifydb_core::StoreKind;
 
 pub trait StoreRx {
     fn kind(&self) -> crate::Result<StoreKind>;

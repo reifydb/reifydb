@@ -7,12 +7,6 @@ use std::fmt::{Display, Formatter};
 use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 
-/// Represents errors that may occur during encoding or decoding operations
-/// within key-value store or network protocol contexts.
-///
-/// This enum captures encoding-related failures such as malformed input,
-/// unsupported data formats, or internal encoding bugs. It is designed to provide
-/// precise error feedback for low-level serialization and deserialization logic.
 #[derive(Debug, PartialEq)]
 pub struct Error(pub String);
 

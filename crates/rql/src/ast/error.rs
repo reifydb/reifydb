@@ -4,14 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-/// Represents all possible errors that can occur within the RQL (Reify Query Language) layer.
-///
-/// RQL is the high-level query and execution engine of ReifyDB, responsible for parsing,
-/// planning, optimizing, and executing queries over a low-level key-value store. This error type
-/// encapsulates issues encountered at any stage of query lifecycle—from malformed syntax to failed
-/// execution.
 #[derive(Debug, PartialEq)]
-
 pub enum Error {}
 
 impl Display for Error {

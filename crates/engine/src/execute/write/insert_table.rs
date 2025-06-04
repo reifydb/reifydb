@@ -3,9 +3,8 @@
 
 use crate::ExecutionResult;
 use crate::execute::Executor;
-use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
-use reifydb_core::{Value, ValueKind};
-use reifydb_rql::expression::{Expression, ExpressionConstant, ExpressionPrefix, PrefixOperator};
+use reifydb_core::Value;
+use reifydb_rql::expression::{ConstantExpression, Expression, PrefixExpression, PrefixOperator};
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_transaction::Tx;
 
@@ -28,72 +27,21 @@ impl Executor {
 
                         match expr {
                             Expression::Constant(const_expr) => {
-                                row_values.push(const_expr.into_value(column.value))
+                                row_values.push(const_expr.into_column_value(column)?)
                             }
-                            Expression::Prefix(ExpressionPrefix { operator, expression }) => {
+                            Expression::Prefix(PrefixExpression { operator, expression }) => {
                                 match operator {
                                     PrefixOperator::Minus => match *expression {
                                         Expression::Constant(const_expr) => {
                                             row_values.push(match const_expr {
-                                                ExpressionConstant::Bool(bool) => Value::Bool(bool),
-                                                ExpressionConstant::Number(number) => {
-                                                    match column.value {
-                                                        ValueKind::Float4 => Value::Float4(
-                                                            OrderedF32::try_from(
-                                                                -1.0f32
-                                                                    * number
-                                                                        .parse::<f32>()
-                                                                        .unwrap(),
-                                                            )
-                                                            .unwrap(),
-                                                        ),
-                                                        ValueKind::Float8 => Value::Float8(
-                                                            OrderedF64::try_from(
-                                                                -1.0f64
-                                                                    * number
-                                                                        .parse::<f64>()
-                                                                        .unwrap(),
-                                                            )
-                                                            .unwrap(),
-                                                        ),
-                                                        ValueKind::Int1 => Value::Int1(
-                                                            -1 * number.parse::<i8>().unwrap(),
-                                                        ),
-                                                        ValueKind::Int2 => Value::Int2(
-                                                            -1 * number.parse::<i16>().unwrap(),
-                                                        ),
-                                                        ValueKind::Int4 => Value::Int4(
-                                                            -1 * number.parse::<i32>().unwrap(),
-                                                        ),
-                                                        ValueKind::Int8 => Value::Int8(
-                                                            -1 * number.parse::<i64>().unwrap(),
-                                                        ),
-                                                        ValueKind::Int16 => Value::Int16(
-                                                            -1 * number.parse::<i128>().unwrap(),
-                                                        ),
-                                                        _ => unimplemented!(),
-                                                    }
+                                                ConstantExpression::Undefined => Value::Undefined,
+                                                ConstantExpression::Bool(_) => Value::Undefined,
+                                                ConstantExpression::Number(n) => {
+                                                    ConstantExpression::Number(format!("-{n}"))
+                                                        .into_column_value(column)?
                                                 }
-                                                ExpressionConstant::Text(string) => {
-                                                    Value::String(string)
-                                                }
-                                                ExpressionConstant::Undefined => Value::Undefined,
+                                                ConstantExpression::Text(_) => Value::Undefined,
                                             })
-
-                                            // row_values.push(match const_expr {
-                                            //     Value::Float4(v) => {
-                                            //         Value::float4(-1.0f32 * v.value())
-                                            //     }
-                                            //     Value::Float8(v) => {
-                                            //         Value::float8(-1.0f64 * v.value())
-                                            //     }
-                                            //     Value::Int1(v) => Value::Int1(-1 * v),
-                                            //     Value::Int2(v) => Value::Int2(-1 * v),
-                                            //     Value::Int4(v) => Value::Int4(-1 * v),
-                                            //     Value::Int8(v) => Value::Int8(-1 * v),
-                                            //     Value::Int16(v) => Value::Int16(-1 * v),
-                                            //     _ => unreachable!(),
-                                            // })
                                         }
                                         _ => unimplemented!(),
                                     },

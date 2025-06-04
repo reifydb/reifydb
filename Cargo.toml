@@ -4,6 +4,7 @@ resolver = "2"
 members = ["bin/cli",
     "bin/server",
     "crates/auth",
+    "crates/catalog",
     "crates/core",
     "crates/frame",
     "crates/engine",
@@ -21,6 +22,7 @@ members = ["bin/cli",
 default-members = ["bin/cli",
     "bin/server",
     "crates/auth",
+    "crates/catalog",
     "crates/core",
     "crates/frame",
     "crates/engine",
@@ -68,6 +70,7 @@ panic = "unwind"
 [workspace.dependencies]
 reifydb = { path = "pkg/rust", version = "0.0.1" }
 reifydb_auth = { path = "crates/auth", version = "0.0.1" }
+reifydb_catalog = { path = "crates/catalog", version = "0.0.1" }
 reifydb_core = { path = "crates/core", version = "0.0.1" }
 reifydb_frame = { path = "crates/frame", version = "0.0.1" }
 reifydb_engine = { path = "crates/engine", version = "0.0.1" }

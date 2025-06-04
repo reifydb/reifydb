@@ -3,13 +3,13 @@
 
 use crate::evaluate;
 use crate::evaluate::Evaluator;
-use reifydb_rql::expression::{ExpressionCall, Expression};
+use reifydb_rql::expression::{CallExpression, Expression};
 use reifydb_frame::{Column, ColumnValues};
 
 impl Evaluator {
     pub(crate) fn call(
         &mut self,
-        call: ExpressionCall,
+        call: CallExpression,
         columns: &[&Column],
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {

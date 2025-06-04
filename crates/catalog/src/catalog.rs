@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::catalog::Schema;
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use crate::Schema;
 use std::collections::HashMap;
 
 #[derive(Debug)]

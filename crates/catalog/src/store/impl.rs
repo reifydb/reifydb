@@ -8,7 +8,7 @@
 //     pub default: Option<Expression>,
 // }
 
-use crate::catalog::Column;
+use crate::Column;
 use reifydb_core::StoreKind;
 
 #[derive(Debug)]

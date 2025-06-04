@@ -1273,6 +1273,13 @@ name = "reifydb_auth"
 version = "0.0.1"
 
 [[package]]
+name = "reifydb_catalog"
+version = "0.0.1"
+dependencies = [
+ "reifydb_core",
+]
+
+[[package]]
 name = "reifydb_cli"
 version = "0.0.1"
 dependencies = [
@@ -1296,6 +1303,7 @@ version = "0.0.1"
 dependencies = [
  "log",
  "reifydb_auth",
+ "reifydb_catalog",
  "reifydb_core",
  "reifydb_frame",
  "reifydb_rql",
@@ -1318,6 +1326,7 @@ version = "0.0.1"
 dependencies = [
  "nom",
  "nom_locate",
+ "reifydb_catalog",
  "reifydb_core",
  "reifydb_transaction",
  "serde",
@@ -1365,6 +1374,7 @@ dependencies = [
  "crossbeam-skiplist",
  "log",
  "rand 0.9.1",
+ "reifydb_catalog",
  "reifydb_core",
  "reifydb_storage",
  "reifydb_testing",

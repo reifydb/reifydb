@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 reifydb_auth = { workspace = true }
+reifydb_catalog = { workspace = true }
 reifydb_core = { workspace = true }
 reifydb_frame = { workspace = true }
 reifydb_rql = { workspace = true }

@@ -4,7 +4,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub use constant::ExpressionConstant;
+pub use constant::ConstantExpression;
 
 mod constant;
 
@@ -29,77 +29,77 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
-    Constant(ExpressionConstant),
+    Constant(ConstantExpression),
 
-    Column(ExpressionColumn),
+    Column(ColumnExpression),
 
-    Add(ExpressionAdd),
+    Add(AddExpression),
 
-    Divide(ExpressionDivide),
+    Divide(DivideExpression),
 
-    Call(ExpressionCall),
+    Call(CallExpression),
 
-    Modulo(ExpressionModulo),
+    Modulo(ModuloExpression),
 
-    Multiply(ExpressionMultiply),
+    Multiply(MultiplyExpression),
 
-    Subtract(ExpressionSubtract),
+    Subtract(SubstractExpression),
 
-    Tuple(ExpressionTuple),
+    Tuple(TupleExpression),
 
-    Prefix(ExpressionPrefix),
+    Prefix(PrefixExpression),
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionAdd {
+pub struct AddExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionDivide {
+pub struct DivideExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionSubtract {
+pub struct SubstractExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionModulo {
+pub struct ModuloExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionMultiply {
+pub struct MultiplyExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionColumn(pub String);
+pub struct ColumnExpression(pub String);
 
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Constant(val) => write!(f, "{}", val),
-            Expression::Column(ExpressionColumn(name)) => write!(f, "{}", name),
-            Expression::Add(ExpressionAdd { left, right }) => write!(f, "({} + {})", left, right),
-            Expression::Divide(ExpressionDivide { left, right }) => {
+            Expression::Column(ColumnExpression(name)) => write!(f, "{}", name),
+            Expression::Add(AddExpression { left, right }) => write!(f, "({} + {})", left, right),
+            Expression::Divide(DivideExpression { left, right }) => {
                 write!(f, "({} / {})", left, right)
             }
             Expression::Call(call) => write!(f, "{}", call),
-            Expression::Modulo(ExpressionModulo { left, right }) => {
+            Expression::Modulo(ModuloExpression { left, right }) => {
                 write!(f, "({} % {})", left, right)
             }
-            Expression::Multiply(ExpressionMultiply { left, right }) => {
+            Expression::Multiply(MultiplyExpression { left, right }) => {
                 write!(f, "({} * {})", left, right)
             }
-            Expression::Subtract(ExpressionSubtract { left, right }) => {
+            Expression::Subtract(SubstractExpression { left, right }) => {
                 write!(f, "({} - {})", left, right)
             }
             Expression::Tuple(tuple) => write!(f, "({})", tuple),
@@ -109,12 +109,12 @@ impl Display for Expression {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionCall {
+pub struct CallExpression {
     pub func: IdentExpression,
     pub args: Vec<Expression>,
 }
 
-impl Display for ExpressionCall {
+impl Display for CallExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = self.args.iter().map(|arg| format!("{}", arg)).collect::<Vec<_>>().join(", ");
         write!(f, "{}({})", self.func, args)
@@ -148,23 +148,23 @@ impl Display for PrefixOperator {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionPrefix {
+pub struct PrefixExpression {
     pub operator: PrefixOperator,
     pub expression: Box<Expression>,
 }
 
-impl Display for ExpressionPrefix {
+impl Display for PrefixExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({}{})", self.operator, self.expression)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionTuple {
+pub struct TupleExpression {
     pub expressions: Vec<Expression>,
 }
 
-impl Display for ExpressionTuple {
+impl Display for TupleExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let items =
             self.expressions.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(", ");

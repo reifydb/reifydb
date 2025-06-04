@@ -18,6 +18,7 @@ pub mod either;
 pub mod encoding;
 mod error;
 mod key;
+pub mod num;
 pub mod ordered_float;
 mod row;
 mod row_meta;

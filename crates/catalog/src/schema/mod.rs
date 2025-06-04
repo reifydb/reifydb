@@ -5,7 +5,7 @@ pub use r#impl::Schema;
 
 mod r#impl;
 
-use crate::catalog::store::{StoreRx, StoreTx};
+use crate::{StoreRx, StoreTx};
 use reifydb_core::ValueKind;
 
 pub trait SchemaRx {

@@ -2,12 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
+use reifydb_catalog::{SchemaRx, StoreRx};
 use reifydb_core::ValueKind;
 use reifydb_frame::{Append, Column, ColumnValues, Frame};
-use reifydb_transaction::{Rx, SchemaRx, StoreRx};
+use reifydb_transaction::Rx;
 
 impl Executor {
-    pub(crate) fn scan(&mut self, rx: &mut impl Rx, schema: &str, store: &str) -> crate::Result<()> {
+    pub(crate) fn scan(
+        &mut self,
+        rx: &mut impl Rx,
+        schema: &str,
+        store: &str,
+    ) -> crate::Result<()> {
         let columns = rx.schema(schema)?.get(store)?.list_columns()?;
 
         let columns: Vec<Column> = columns

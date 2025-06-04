@@ -4,22 +4,6 @@
 use reifydb_core::encoding;
 use std::fmt::{Display, Formatter};
 
-/// Represents all possible errors that can occur within the ReifyDB system.
-///
-/// This unified error type aggregates failures across the different layers of the system,
-/// including encoding, query processing (RQL), and low-level store. It enables consistent
-/// error propagation and simplifies error handling across subsystems.
-///
-/// # Variants
-///
-/// - `Encoding`: An error occurred during serialization or deserialization of data.  
-///
-/// - `RQL`: A failure occurred in the Reify Query Language layer.  
-///   This can include parsing errors, logical plan issues, optimization failures, or runtime execution faults.
-///
-/// - `Store`: A low-level store engine error was encountered.
-///   This includes I/O errors, key-value corruption, encoding issues at the store level, or internal store bugs.
-///
 #[derive(Debug, PartialEq)]
 pub enum Error {
     /// encoding related error

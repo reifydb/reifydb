@@ -68,7 +68,7 @@ impl<S: Storage, T: Transaction<S>> Engine<S, T> {
                 }
                 _ => {
                     let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
-                    let er = execute_mut(plan, &mut tx).unwrap();
+                    let er = execute_mut(plan, &mut tx)?;
                     result.push(er);
                 }
             }

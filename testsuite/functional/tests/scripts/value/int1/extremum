@@ -1,0 +1,11 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+ # Int1 extremum tests - valid value edge cases
+
+
+(tx 'create schema test')
+(tx 'create table test.item(field: int1)')
+(tx 'insert (-128),(1),(0),(1),(127) into test.item (field)')
+---
+ok

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
+use reifydb_catalog::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
 use reifydb_core::{Row, RowIter, Value};
 use reifydb_storage::{Key, Storage};
 
@@ -42,12 +42,12 @@ pub struct InsertResult {
 
 /// A Tx executes transactional read & write operations on stores.
 pub trait Tx: Rx {
-    type CatalogMut: CatalogTx;
-    type SchemaMut: SchemaTx;
+    type CatalogTx: CatalogTx;
+    type SchemaTx: SchemaTx;
 
-    fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogMut>;
+    fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogTx>;
 
-    fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaMut>;
+    fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaTx>;
 
     fn insert_into_table(
         &mut self,

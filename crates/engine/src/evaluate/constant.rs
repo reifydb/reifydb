@@ -4,18 +4,18 @@
 use crate::evaluate;
 use crate::evaluate::Evaluator;
 use reifydb_frame::ColumnValues;
-use reifydb_rql::expression::ExpressionConstant;
+use reifydb_rql::expression::ConstantExpression;
 
 impl Evaluator {
     pub(crate) fn constant(
         &mut self,
-        expr: ExpressionConstant,
+        expr: ConstantExpression,
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
         Ok(match expr {
-            ExpressionConstant::Undefined => ColumnValues::Undefined(row_count),
-            ExpressionConstant::Bool(v) => ColumnValues::bool(vec![v; row_count]),
-            ExpressionConstant::Number(s) => {
+            ConstantExpression::Undefined => ColumnValues::Undefined(row_count),
+            ConstantExpression::Bool(v) => ColumnValues::bool(vec![v; row_count]),
+            ConstantExpression::Number(s) => {
                 // FIXME that does not look right..
                 // Try parsing in order from most specific to most general
                 if let Ok(v) = s.parse::<i8>() {
@@ -45,7 +45,7 @@ impl Evaluator {
                     unimplemented!()
                 }
             }
-            ExpressionConstant::Text(s) => {
+            ConstantExpression::Text(s) => {
                 ColumnValues::string(std::iter::repeat(s).take(row_count))
             }
         })

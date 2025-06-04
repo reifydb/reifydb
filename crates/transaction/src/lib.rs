@@ -6,18 +6,13 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use crate::catalog::Catalog;
-pub use catalog::{
-    CatalogRx, CatalogTx, ColumnToCreate, NopStore, SchemaRx, SchemaTx, StoreRx, StoreToCreate,
-    StoreTx,
-};
 pub use error::Error;
+use reifydb_catalog::Catalog;
 use reifydb_core::AsyncCowVec;
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
 pub use transaction::{InsertResult, Rx, Transaction, Tx};
 
-mod catalog;
 mod error;
 pub mod mvcc;
 
