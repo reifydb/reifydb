@@ -1,0 +1,17 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Int8 overflow tests
+
+(tx 'create schema test')
+(tx 'create table test.item(field: int8)')
+!tx 'insert (9223372036854775808) into test.item (field)'
+---
+> error[PO0001]: value overflows column `field` type `INT8`
+>   1 │ insert (9223372036854775808) into test.item (field)
+>     │         ^
+>     = value `9223372036854775808` does not fit into `INT8` (range: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807)
+> 
+> note: column `field` is of type `INT8`
+> 
+> help: reduce the value, change the column type to a wider type or change the overflow policy

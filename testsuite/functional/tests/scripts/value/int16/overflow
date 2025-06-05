@@ -1,0 +1,17 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Int16 overflow tests
+
+(tx 'create schema test')
+(tx 'create table test.item(field: int16)')
+!tx 'insert (170141183460469231731687303715884105728) into test.item (field)'
+---
+> error[PO0001]: value overflows column `field` type `INT16`
+>   1 │ insert (170141183460469231731687303715884105728) into test.item (field)
+>     │         ^
+>     = value `170141183460469231731687303715884105728` does not fit into `INT16` (range: -170141183460469231731687303715884105728 to 170141183460469231731687303715884105727)
+> 
+> note: column `field` is of type `INT16`
+> 
+> help: reduce the value, change the column type to a wider type or change the overflow policy

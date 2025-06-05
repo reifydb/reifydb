@@ -1,0 +1,15 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+(tx 'create schema test')
+(tx 'create table test.item(field: uint8)')
+!tx 'insert (18446744073709551616) into test.item (field)'
+---
+> error[PO0001]: value overflows column `field` type `UINT8`
+>   1 │ insert (18446744073709551616) into test.item (field)
+>     │         ^
+>     = value `18446744073709551616` does not fit into `UINT8` (range: 0 to 18,446,744,073,709,551,615)
+> 
+> note: column `field` is of type `UINT8`
+> 
+> help: reduce the value, change the column type to a wider type or change the overflow policy

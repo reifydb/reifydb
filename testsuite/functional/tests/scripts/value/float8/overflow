@@ -1,0 +1,17 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Float8 overflow tests
+
+(tx 'create schema test')
+(tx 'create table test.item(field: float8)')
+!tx 'insert (1.9e308) into test.item (field)'
+---
+> error[PO0001]: value overflows column `field` type `FLOAT8`
+>   1 │ insert (1.9e308) into test.item (field)
+>     │         ^
+>     = value `1.9e308` does not fit into `FLOAT8` (range: -1.8e308 to +1.8e308)
+> 
+> note: column `field` is of type `FLOAT8`
+> 
+> help: reduce the value, change the column type to a wider type or change the overflow policy

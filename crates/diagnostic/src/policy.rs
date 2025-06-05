@@ -13,7 +13,9 @@ pub struct ColumnOverflow {
 pub fn column_overflow<'a>(co: ColumnOverflow) -> Diagnostic {
     let label = Some(format!(
         "value `{}` does not fit into `{}` (range: {})",
-        &co.span.fragment, co.column_value, "-128 to 127"
+        &co.span.fragment,
+        co.column_value,
+        column_range(co.column_value)
     ));
 
     Diagnostic {
@@ -46,7 +48,7 @@ pub fn column_underflow<'a>(co: ColumnUnderflow) -> Diagnostic {
         message: format!("value underflows column `{}` type `{}`", co.column_name, co.column_value),
         span: Some(co.span),
         label,
-        help: Some("reduce the value, change the column type to a wider type or change the underflow policy".to_string()),
+        help: Some("increase the value, change the column type to a wider type or change the underflow policy".to_string()),
         notes: vec![],
         column: Some(DiagnosticColumn { name: co.column_name, value: co.column_value }),
     }

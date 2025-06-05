@@ -1,0 +1,17 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Int4 overflow tests
+
+(tx 'create schema test')
+(tx 'create table test.item(field: int4)')
+!tx 'insert (2147483648) into test.item (field)'
+---
+> error[PO0001]: value overflows column `field` type `INT4`
+>   1 │ insert (2147483648) into test.item (field)
+>     │         ^
+>     = value `2147483648` does not fit into `INT4` (range: -2,147,483,648 to 2,147,483,647)
+> 
+> note: column `field` is of type `INT4`
+> 
+> help: reduce the value, change the column type to a wider type or change the overflow policy

@@ -1,0 +1,17 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Uint4 overflow tests
+
+(tx 'create schema test')
+(tx 'create table test.item(field: uint4)')
+!tx 'insert (4294967296) into test.item (field)'
+---
+> error[PO0001]: value overflows column `field` type `UINT4`
+>   1 │ insert (4294967296) into test.item (field)
+>     │         ^
+>     = value `4294967296` does not fit into `UINT4` (range: 0 to 4,294,967,295)
+> 
+> note: column `field` is of type `UINT4`
+> 
+> help: reduce the value, change the column type to a wider type or change the overflow policy
