@@ -1,6 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
     /// The offset represents the position of the fragment relatively to
@@ -14,10 +17,10 @@ pub struct Span {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Offset(pub usize);
+pub struct Offset(pub u32);
 
-impl PartialEq<usize> for Offset {
-    fn eq(&self, other: &usize) -> bool {
+impl PartialEq<u32> for Offset {
+    fn eq(&self, other: &u32) -> bool {
         self.0 == *other
     }
 }

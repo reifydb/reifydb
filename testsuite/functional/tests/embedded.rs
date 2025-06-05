@@ -1,26 +1,28 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb::embedded_blocking::Embedded;
+use reifydb::embedded::Embedded;
 use reifydb::reifydb_storage::Storage;
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::{Principal, ReifyDB, memory, optimistic};
+use reifydb::{DB, Principal, ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
 pub struct Runner<S: Storage + 'static, T: Transaction<S> + 'static> {
     engine: Embedded<S, T>,
     root: Principal,
+    runtime: Option<Runtime>,
 }
 
 impl<S: Storage + 'static, T: Transaction<S> + 'static> Runner<S, T> {
     pub fn new(transaction: T) -> Self {
-        let (engine, root) = ReifyDB::embedded_blocking_with(transaction);
-        Self { engine, root }
+        let (engine, root) = ReifyDB::embedded_with(transaction);
+        Self { engine, root, runtime: None }
     }
 }
 
@@ -34,9 +36,14 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 println!("tx: {query}");
 
-                for line in self.engine.tx_as(&self.root, query.as_str())? {
-                    writeln!(output, "{}", line);
-                }
+                let Some(runtime) = &self.runtime else { panic!() };
+                runtime.block_on(async {
+                    for line in self.engine.tx_as(&self.root, query.as_str()).await? {
+                        writeln!(output, "{}", line);
+                    }
+
+                    Ok::<(), reifydb::Error>(())
+                })?;
             }
             "rx" => {
                 let query =
@@ -44,9 +51,13 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 println!("rx: {query}");
 
-                for line in self.engine.rx_as(&self.root, query.as_str()) {
-                    writeln!(output, "{}", line);
-                }
+                let Some(runtime) = &self.runtime else { panic!() };
+                runtime.block_on(async {
+                    for line in self.engine.rx_as(&self.root, query.as_str()).await? {
+                        writeln!(output, "{}", line).unwrap();
+                    }
+                    Ok::<(), reifydb::Error>(())
+                })?;
             }
             "list_schema" => {
                 writeln!(output, "test")?;
@@ -55,6 +66,19 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
         }
 
         Ok(output)
+    }
+
+    fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
+        let runtime = Runtime::new()?;
+        self.runtime = Some(runtime);
+        Ok(())
+    }
+
+    fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
+        if let Some(runtime) = self.runtime.take() {
+            drop(runtime);
+        }
+        Ok(())
     }
 }
 

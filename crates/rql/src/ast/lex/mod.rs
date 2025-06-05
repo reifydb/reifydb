@@ -45,8 +45,6 @@ impl From<Token> for Span {
     }
 }
 
-
-
 impl Token {
     pub fn is_eof(&self) -> bool {
         self.kind == EOF
@@ -107,7 +105,7 @@ fn token(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 
 pub(crate) fn as_span(value: LocatedSpan<&str>) -> Span {
     Span {
-        offset: Offset(value.location_offset()),
+        offset: Offset(value.location_offset() as u32),
         line: Line(value.location_line()),
         fragment: value.fragment().to_string(),
     }

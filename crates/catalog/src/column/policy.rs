@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::ValueKind;
 use reifydb_diagnostic::Diagnostic;
 
 #[derive(Debug, Clone)]
@@ -29,15 +28,15 @@ pub enum UnderflowPolicy {
 
 #[derive(Debug, PartialEq)]
 pub enum PolicyError {
-    Overflow { column: String, value: ValueKind, input: String, diagnostic: Diagnostic },
-    Underflow { column: String, value: ValueKind, input: String },
+    Overflow(Diagnostic),
+    Underflow(Diagnostic),
 }
 
 impl PolicyError {
     pub fn diagnostic(self) -> Diagnostic {
         match self {
-            PolicyError::Overflow { diagnostic, .. } => diagnostic,
-            PolicyError::Underflow { .. } => unimplemented!(),
+            PolicyError::Overflow(diagnostic) => diagnostic,
+            PolicyError::Underflow(diagnostic) => diagnostic,
         }
     }
 }

@@ -89,7 +89,8 @@ pub async fn parse_rx_query_result(
                 return Ok(ExecutionResult::Query { columns: labels, rows });
             }
             Some(grpc_db::rx_result::Result::Error(e)) => {
-                return Err(tonic::Status::internal(e));
+                // return Err(tonic::Status::internal(e));
+                unimplemented!()
             }
             None => {
                 return Err(tonic::Status::internal("empty rx_result"));
@@ -101,7 +102,7 @@ pub async fn parse_rx_query_result(
 }
 
 impl Client {
-    pub async fn rx(&self, query: &str) -> Vec<ExecutionResult> {
+    pub async fn rx(&self, query: &str) -> crate::Result<Vec<ExecutionResult>> {
         // FIXME this is quite expensive and should only used in tests
         // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
 
@@ -117,10 +118,11 @@ impl Client {
 
         let stream = client.rx(request).await.unwrap().into_inner();
         let result = parse_rx_query_result(stream).await.unwrap();
-        vec![result]
+
+        Ok(vec![result])
     }
 
-    pub async fn tx(&self, query: &str) -> Vec<ExecutionResult> {
+    pub async fn tx(&self, query: &str) -> crate::Result<Vec<ExecutionResult>> {
         // FIXME this is quite expensive and should only used in tests
         // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
         wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await;
@@ -141,6 +143,12 @@ impl Client {
             use grpc_db::tx_result::Result::*;
 
             let result = match msg.result {
+                Some(Error(diagnostic)) => {
+                    return Err(crate::Error {
+                        diagnostic: unmap_diagnostic(diagnostic),
+                        source: query.to_string(),
+                    });
+                }
                 Some(CreateSchema(cs)) => ExecutionResult::CreateSchema { schema: cs.schema },
                 Some(CreateTable(ct)) => {
                     ExecutionResult::CreateTable { schema: ct.schema, table: ct.table }
@@ -213,6 +221,7 @@ impl Client {
 
                     ExecutionResult::Query { columns: labels, rows }
                 }
+
                 // Some(Error(e)) => return Err(tonic::Status::internal(e)),
                 // None => return Err(tonic::Status::internal("empty tx_result")),
                 _ => unimplemented!("Unhandled value kind"),
@@ -221,6 +230,42 @@ impl Client {
             results.push(result);
         }
 
-        results
+        Ok(results)
+    }
+}
+
+fn unmap_diagnostic(grpc: grpc_db::Diagnostic) -> reifydb_diagnostic::Diagnostic {
+    reifydb_diagnostic::Diagnostic {
+        code: grpc.code,
+        message: grpc.message,
+        span: grpc.span.map(|s| reifydb_diagnostic::Span {
+            offset: reifydb_diagnostic::Offset(s.offset),
+            line: reifydb_diagnostic::Line(s.line),
+            fragment: s.fragment,
+        }),
+        label: if grpc.label.is_empty() { None } else { Some(grpc.label) },
+        help: if grpc.help.is_empty() { None } else { Some(grpc.help) },
+        notes: grpc.notes,
+        column: grpc.column.map(|c| reifydb_diagnostic::DiagnosticColumn {
+            name: c.name,
+            value: match c.value {
+                0 => ValueKind::Bool,
+                1 => ValueKind::Float4,
+                2 => ValueKind::Float8,
+                3 => ValueKind::Int1,
+                4 => ValueKind::Int2,
+                5 => ValueKind::Int4,
+                6 => ValueKind::Int8,
+                7 => ValueKind::Int16,
+                8 => ValueKind::String,
+                9 => ValueKind::Uint1,
+                10 => ValueKind::Uint2,
+                11 => ValueKind::Uint4,
+                12 => ValueKind::Uint8,
+                13 => ValueKind::Uint16,
+                14 => ValueKind::Undefined,
+                _ => ValueKind::Undefined,
+            },
+        }),
     }
 }

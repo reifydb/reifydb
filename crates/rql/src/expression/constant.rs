@@ -1,11 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_catalog::{Column, OverflowPolicy, PolicyError, UnderflowPolicy};
+use PolicyError::Overflow;
+use policy::ColumnOverflow;
+use reifydb_catalog::PolicyError::Underflow;
+use reifydb_catalog::{Column, PolicyError};
 use reifydb_core::num::{ParseError, parse_float, parse_int, parse_uint};
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
 use reifydb_core::{Value, ValueKind};
-use reifydb_diagnostic::{DiagnosticColumn, Span, overflow_diagnostic};
+use reifydb_diagnostic::policy::{ColumnUnderflow, column_overflow, column_underflow};
+use reifydb_diagnostic::{Span, policy};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -44,8 +48,8 @@ impl ConstantExpression {
             }
             ConstantExpression::Number(span) => {
                 let input = &span.fragment;
-                let overflow = column.overflow_policy();
-                let underflow = column.underflow_policy();
+                let _overflow = column.overflow_policy();
+                let _underflow = column.underflow_policy();
 
                 let result = match kind {
                     ValueKind::Float4 => parse_float::<f32>(&input).map(|v| {
@@ -70,32 +74,24 @@ impl ConstantExpression {
                     _ => Ok(Value::Undefined),
                 };
 
-                if matches!(result, Err(ParseError::Invalid(_))) {
-                    return Ok(Value::Undefined);
+                match result {
+                    Ok(value) => Ok(value),
+                    Err(error) => match error {
+                        ParseError::Invalid(_) => Ok(Value::Undefined),
+                        ParseError::Overflow(_) => Err(Overflow(column_overflow(ColumnOverflow {
+                            span,
+                            column_name: column.name.clone(),
+                            column_value: column.value,
+                        }))),
+                        ParseError::Underflow(_) => {
+                            Err(Underflow(column_underflow(ColumnUnderflow {
+                                span,
+                                column_name: column.name.clone(),
+                                column_value: column.value,
+                            })))
+                        }
+                    },
                 }
-
-                result.map_err(|err| match err {
-                    ParseError::Overflow(_) => match overflow {
-                        OverflowPolicy::Error => PolicyError::Overflow {
-                            column: column.name.clone(),
-                            value: kind,
-                            input: input.clone(),
-                            diagnostic: overflow_diagnostic(
-                                span.clone(),
-                                input,
-                                DiagnosticColumn { name: column.name.clone(), value: column.value },
-                            ),
-                        },
-                    },
-                    ParseError::Underflow(_) => match underflow {
-                        UnderflowPolicy::Error => PolicyError::Underflow {
-                            column: column.name.clone(),
-                            value: kind,
-                            input: input.clone(),
-                        },
-                    },
-                    ParseError::Invalid(_) => unreachable!(),
-                })
             }
             ConstantExpression::Text(s) => {
                 if kind == ValueKind::String {
@@ -115,7 +111,7 @@ mod tests {
     use reifydb_catalog::{Column, OverflowPolicy, Policy, PolicyError, UnderflowPolicy};
     use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
     use reifydb_core::{Value, ValueKind};
-    use reifydb_diagnostic::{Line, Offset, Span};
+    use reifydb_diagnostic::{DiagnosticColumn, Line, Offset, Span};
 
     fn column_error_policy(name: &str, kind: ValueKind) -> Column {
         Column {
@@ -176,20 +172,40 @@ mod tests {
     fn test_error_policy_overflow() {
         let expr = ConstantExpression::Number(make_span("128"));
         let col = column_error_policy("i1", ValueKind::Int1);
-        assert!(matches!(
-            expr.into_column_value(&col),
-            Err(PolicyError::Overflow { column, value: ValueKind::Int1, input, diagnostic: _ }) if column == "i1" && input == "128"
-        ));
+        let Err(PolicyError::Overflow(diagnostic)) = expr.into_column_value(&col) else {
+            unreachable!()
+        };
+
+        assert_eq!(diagnostic.code, "PO0001");
+        assert_eq!(
+            diagnostic.column,
+            Some(DiagnosticColumn { name: "i1".to_string(), value: ValueKind::Int1 })
+        );
+
+        assert_eq!(
+            diagnostic.label.unwrap().as_str(),
+            "value `128` does not fit into `INT1` (range: -128 to 127)"
+        );
     }
 
     #[test]
     fn test_error_policy_underflow() {
         let expr = ConstantExpression::Number(make_span("-1"));
         let col = column_error_policy("u1", ValueKind::Uint1);
-        assert!(matches!(
-            expr.into_column_value(&col),
-            Err(PolicyError::Underflow { column, value: ValueKind::Uint1, input }) if column == "u1" && input == "-1"
-        ));
+        let Err(PolicyError::Underflow(diagnostic)) = expr.into_column_value(&col) else {
+            unreachable!()
+        };
+
+        assert_eq!(diagnostic.code, "PO0002");
+        assert_eq!(
+            diagnostic.column,
+            Some(DiagnosticColumn { name: "u1".to_string(), value: ValueKind::Uint1 })
+        );
+
+        assert_eq!(
+            diagnostic.label.unwrap().as_str(),
+            "value `-1` does not fit into `UINT1` (range: 0 to 255)"
+        );
     }
 
     #[test]

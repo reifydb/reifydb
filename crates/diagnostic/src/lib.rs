@@ -10,11 +10,12 @@ use reifydb_core::ValueKind;
 pub use span::{Line, Offset, Span};
 
 pub mod plan;
+pub mod policy;
 mod span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
-    pub code: &'static str,
+    pub code: String,
     pub message: String,
     pub column: Option<DiagnosticColumn>,
 
@@ -37,49 +38,8 @@ pub struct DiagnosticTable {
     pub columns: Vec<DiagnosticColumn>,
 }
 
-// pub fn render_diagnostic(d: &Diagnostic, source: &str) {
-//     println!("error[{}]: {}", d.code, d.message);
-//
-//     if let Some(span) = &d.span {
-//         let line = span.line.0;
-//         let col = span.offset.0;
-//         println!(" --> line {}:", line);
-//         println!("  {} | {}", line, get_line(source.trim(), line));
-//         println!("    | {}^", " ".repeat(col));
-//         if let Some(label) = &d.label {
-//             println!("      = {}", label);
-//         }
-//     }
-//
-//     if let Some(help) = &d.help {
-//         println!("help: {}", help);
-//     }
-//
-//     for note in &d.notes {
-//         println!("note: {}", note);
-//     }
-// }
-
 pub fn get_line(source: &str, line: u32) -> &str {
     source.lines().nth((line - 1) as usize).unwrap_or("")
-}
-
-pub fn overflow_diagnostic(span: Span, value: &str, column: DiagnosticColumn) -> Diagnostic {
-    let target_type = column.value;
-    Diagnostic {
-        code: "E0101",
-        message: format!("value overflows column type `{}`", target_type),
-        span: Some(span),
-        label: Some(format!(
-            "value `{}` does not fit into `{}` (range: {})",
-            value, target_type, "-128 to 127"
-        )),
-        help: Some(format!(
-            "reduce the value, change the column type to a wider type or change the overflow policy"
-        )),
-        notes: vec![],
-        column: Some(column),
-    }
 }
 
 pub trait DiagnosticRenderer {
@@ -102,7 +62,6 @@ impl DiagnosticRenderer for DefaultRenderer {
             let line_content = get_line(source, line);
             let line_number_width = line.to_string().len().max(2);
 
-            let _ = writeln!(&mut output, " {0:>width$} {1}", "", "-->", width = line_number_width);
             let _ = writeln!(
                 &mut output,
                 " {0:>width$} │ {1}",
@@ -114,7 +73,7 @@ impl DiagnosticRenderer for DefaultRenderer {
                 &mut output,
                 " {0:>width$} │ {1}^",
                 "",
-                " ".repeat(col),
+                " ".repeat(col as usize),
                 width = line_number_width
             );
             let _ = writeln!(
@@ -146,7 +105,6 @@ impl DiagnosticRenderer for DefaultRenderer {
 impl Diagnostic {
     pub fn to_string(&self, source: &str) -> String {
         match self.code {
-            // "E0101" => OverflowRenderer.render(self, source),
             _ => DefaultRenderer.render(self, source),
         }
     }

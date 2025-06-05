@@ -4,7 +4,7 @@
 use reifydb::embedded::Embedded;
 use reifydb::reifydb_storage::Storage;
 use reifydb::reifydb_transaction::Transaction;
-use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic, serializable};
+use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic, serializable, reifydb_engine};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -39,10 +39,11 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.tx_as(&self.root, query.as_str()).await {
-                        writeln!(output, "{}", line);
+                    for line in engine.tx_as(&self.root, query.as_str()).await? {
+                        writeln!(output, "{}", line).unwrap();
                     }
-                });
+                    Ok::<(), reifydb::Error>(())
+                })?;
             }
             "rx" => {
                 let query =
@@ -52,10 +53,11 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.rx_as(&self.root, query.as_str()).await {
-                        writeln!(output, "{}", line);
+                    for line in engine.rx_as(&self.root, query.as_str()).await? {
+                        writeln!(output, "{}", line).unwrap();
                     }
-                });
+                    Ok::<(), reifydb::Error>(())
+                })?;
             }
             name => return Err(format!("invalid command {name}").into()),
         }

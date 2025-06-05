@@ -50,10 +50,11 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for C
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.tx(&query).await {
+                    for line in self.client.tx(&query).await? {
                         writeln!(output, "{}", line).unwrap();
                     }
-                });
+                    Ok::<(), reifydb::Error>(())
+                })?;
             }
 
             "rx" => {
@@ -65,10 +66,11 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for C
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.rx(&query).await {
+                    for line in self.client.rx(&query).await? {
                         writeln!(output, "{}", line).unwrap();
                     }
-                });
+                    Ok::<(), reifydb::Error>(())
+                })?;
             }
             "list_schema" => {
                 writeln!(output, "test")?;

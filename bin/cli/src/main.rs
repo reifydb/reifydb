@@ -6,15 +6,19 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{memory, optimistic, ReifyDB};
+use reifydb::{ReifyDB, memory, optimistic};
 
 fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(lmdb(&Path::new("/tmp/db"))));
     let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
     // ReifyDB::embedded_blocking_with::<Memory, Serializable>(serializable());
-    db.tx_as(&root, r#"create schema test"#);
-    db.tx_as(&root, r#"create table test.item(field_one: Int1, field_two: Int0)"#);
-    db.tx_as(&root, r#"insert (12900,2) into test.item (field_one, field_two)"#);
+    db.tx_as(&root, r#"create schema test"#).unwrap();
+    db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
+    let Err(error) = db.tx_as(&root, r#"insert (129) into test.item (field)"#)
+    else {
+        panic!()
+    };
+    println!("{}", error);
 
     // let start = Instant::now();
     // for l in db.rx_as(&root, r#"from test.test"#) {

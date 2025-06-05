@@ -10,7 +10,7 @@ impl Error {
     pub fn diagnostic(self) -> Diagnostic {
         match self {
             UnexpectedToken { expected, got } => Diagnostic {
-                code: "PA0001",
+                code: "PA0001".to_string(),
                 message: format!("unexpected token: expected `{}`", expected),
                 span: Some(got.span.clone()),
                 label: Some(format!("found `{}`", got.span.fragment)),
@@ -19,7 +19,7 @@ impl Error {
                 notes: vec![],
             },
             UnsupportedToken { got } => Diagnostic {
-                code: "PA0002",
+                code: "PA0002".to_string(),
                 message: format!("unsupported token `{}`", got.span.fragment),
                 span: Some(got.span.clone()),
                 label: Some("this token is not allowed here".to_string()),
@@ -28,7 +28,7 @@ impl Error {
                 notes: vec![],
             },
             InvalidType { got } => Diagnostic {
-                code: "PA0003",
+                code: "PA0003".to_string(),
                 message: format!("invalid type name: `{}`", got.span.fragment),
                 span: Some(got.span.clone()),
                 label: Some("not a recognized type".to_string()),
@@ -37,7 +37,7 @@ impl Error {
                 notes: vec![],
             },
             UnexpectedEndOfFile => Diagnostic {
-                code: "PA9999",
+                code: "PA9999".to_string(),
                 message: "unexpected end of input".to_string(),
                 span: None,
                 label: None,

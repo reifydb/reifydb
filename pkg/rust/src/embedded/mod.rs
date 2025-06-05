@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::DB;
+use crate::{DB, Error};
 use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
 use reifydb_storage::Storage;
@@ -31,26 +31,31 @@ impl<S: Storage, T: Transaction<S>> Embedded<S, T> {
 }
 
 impl<'a, S: Storage + 'static, T: Transaction<S> + 'static> DB<'a> for Embedded<S, T> {
-    async fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+    async fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let rql = rql.to_string();
         let principal = principal.clone();
+
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            let result = engine.tx_as(&principal, &rql).unwrap();
-
-            result
+            engine.tx_as(&principal, &rql).map_err(|err| {
+                let diagnostic = err.diagnostic();
+                Error { diagnostic, source: rql.to_string() }
+            })
         })
         .await
         .unwrap()
     }
 
-    async fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+    async fn rx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let rql = rql.to_string();
         let principal = principal.clone();
+
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            let result = engine.rx_as(&principal, &rql).unwrap();
-            result
+            engine.rx_as(&principal, &rql).map_err(|err| {
+                let diagnostic = err.diagnostic();
+                Error { diagnostic, source: rql.to_string() }
+            })
         })
         .await
         .unwrap()

@@ -39,10 +39,11 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.tx_as(&self.root, query.as_str()).await {
+                    for line in engine.tx_as(&self.root, query.as_str()).await? {
                         writeln!(output, "{}", line).unwrap();
                     }
-                });
+                    Ok::<(), reifydb::Error>(())
+                })?;
             }
             "rx" => {
                 let query =
@@ -52,10 +53,11 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.rx_as(&self.root, query.as_str()).await {
+                    for line in engine.rx_as(&self.root, query.as_str()).await? {
                         writeln!(output, "{}", line).unwrap();
                     }
-                });
+                    Ok::<(), reifydb::Error>(())
+                })?;
             }
             "list_schema" => {
                 writeln!(output, "test")?;

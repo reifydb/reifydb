@@ -7,8 +7,6 @@
 !tx 'create table test.item(field_one: Int1, field_two: Int0)'
 ---
 error[PL0001]: invalid type name: `Int0`
-    -->
   1 │ create table test.item(field_one: Int1, field_two: Int0)
     │                                                    ^
     = not a recognized type
-
