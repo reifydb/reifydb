@@ -1,9 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
-
 use reifydb::embedded::Embedded;
 use reifydb::reifydb_storage::Storage;
 use reifydb::reifydb_transaction::Transaction;

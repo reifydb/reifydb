@@ -1,0 +1,12 @@
+[package]
+name = "reifydb_diagnostic"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reifydb_core = { workspace = true}
+
+[dev-dependencies]

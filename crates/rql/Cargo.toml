@@ -7,8 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb_catalog = { workspace = true }
 reifydb_core = { workspace = true }
+reifydb_diagnostic = { workspace = true }
+reifydb_catalog = { workspace = true }
 reifydb_transaction = { workspace = true}
 
 nom = { workspace = true }

@@ -1,9 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
-
 use reifydb_catalog::{Column, OverflowPolicy, PolicyError, UnderflowPolicy};
 use reifydb_core::num::{ParseError, parse_float, parse_int, parse_uint};
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};

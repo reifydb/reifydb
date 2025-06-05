@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::{Token, TokenKind};
+use crate::ast::lex::{Token, TokenKind, as_span};
 use nom::branch::alt;
 use nom::bytes::tag;
 use nom::combinator::value;
@@ -34,16 +34,24 @@ separator! {
 pub(crate) fn parse_separator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     let start = input;
 
-    let parser =
-        alt((alt((value(Separator::Semicolon, tag(";")), value(Separator::Comma, tag(",")), value(Separator::NewLine, tag("\n")))),));
+    let parser = alt((alt((
+        value(Separator::Semicolon, tag(";")),
+        value(Separator::Comma, tag(",")),
+        value(Separator::NewLine, tag("\n")),
+    )),));
 
-    parser.map(|sep| Token { kind: TokenKind::Separator(sep), span: start.take(sep.as_str().len()).into() }).parse(input)
+    parser
+        .map(|sep| Token {
+            kind: TokenKind::Separator(sep),
+            span: as_span(start.take(sep.as_str().len())),
+        })
+        .parse(input)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::separator::{parse_separator, Separator};
     use crate::ast::lex::TokenKind;
+    use crate::ast::lex::separator::{Separator, parse_separator};
     use nom_locate::LocatedSpan;
 
     #[test]

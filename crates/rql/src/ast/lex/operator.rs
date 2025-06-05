@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::{Token, TokenKind};
+use crate::ast::lex::{as_span, Token, TokenKind};
 use nom::branch::alt;
 use nom::bytes::tag;
 use nom::combinator::value;
@@ -98,7 +98,7 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
         )),
     ));
 
-    parser.map(|op| Token { kind: TokenKind::Operator(op), span: start.take(op.as_str().len()).into() }).parse(input)
+    parser.map(|op| Token { kind: TokenKind::Operator(op), span: as_span(start.take(op.as_str().len())) }).parse(input)
 }
 
 #[cfg(test)]

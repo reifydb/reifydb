@@ -1298,6 +1298,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb_diagnostic"
+version = "0.0.1"
+dependencies = [
+ "reifydb_core",
+]
+
+[[package]]
 name = "reifydb_engine"
 version = "0.0.1"
 dependencies = [
@@ -1328,6 +1335,7 @@ dependencies = [
  "nom_locate",
  "reifydb_catalog",
  "reifydb_core",
+ "reifydb_diagnostic",
  "reifydb_transaction",
  "serde",
 ]

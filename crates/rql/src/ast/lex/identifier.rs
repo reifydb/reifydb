@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::{Token, TokenKind};
+use crate::ast::lex::{Token, TokenKind, as_span};
 use nom::bytes::complete::take_while1;
 use nom::bytes::take_while;
 use nom::combinator::{complete, recognize};
@@ -10,8 +10,10 @@ use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
 
 pub(crate) fn parse_identifier(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = complete(recognize(pair(take_while1(is_identifier_start), take_while(is_identifier_char)))).parse(input)?;
-    Ok((rest, Token { kind: TokenKind::Identifier, span: span.into() }))
+    let (rest, span) =
+        complete(recognize(pair(take_while1(is_identifier_start), take_while(is_identifier_char))))
+            .parse(input)?;
+    Ok((rest, Token { kind: TokenKind::Identifier, span: as_span(span) }))
 }
 
 fn is_identifier_start(c: char) -> bool {
@@ -24,8 +26,8 @@ fn is_identifier_char(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::identifier::parse_identifier;
     use crate::ast::lex::TokenKind;
+    use crate::ast::lex::identifier::parse_identifier;
     use nom_locate::LocatedSpan;
 
     #[test]

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::{Error, Token, TokenKind};
+use crate::ast::lex::{Error, Token, TokenKind, as_span};
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::tag_no_case;
@@ -179,7 +179,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
     parser
         .map(|kw| Token {
             kind: TokenKind::Keyword(kw),
-            span: start.take(kw.as_str().len()).into(),
+            span: as_span(start.take(kw.as_str().len())),
         })
         .parse(input)
 }

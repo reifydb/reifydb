@@ -10,17 +10,17 @@ pub use keyword::Keyword;
 pub use operator::Operator;
 pub use separator::Separator;
 
+use crate::ast::lex::TokenKind::EOF;
 use crate::ast::lex::identifier::parse_identifier;
 use crate::ast::lex::keyword::parse_keyword;
 use crate::ast::lex::literal::parse_literal;
 use crate::ast::lex::operator::parse_operator;
 use crate::ast::lex::separator::parse_separator;
-use crate::ast::lex::TokenKind::EOF;
 use nom::combinator::complete;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
-use span::Span;
+use reifydb_diagnostic::{Line, Offset, Span};
 
 mod error;
 mod identifier;
@@ -28,7 +28,6 @@ mod keyword;
 mod literal;
 mod operator;
 mod separator;
-pub mod span;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -89,7 +88,19 @@ pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> Result<Vec<Token>> {
 }
 
 fn token(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    complete(preceded(multispace0(), alt((parse_keyword, parse_operator, parse_literal, parse_identifier, parse_separator)))).parse(input)
+    complete(preceded(
+        multispace0(),
+        alt((parse_keyword, parse_operator, parse_literal, parse_identifier, parse_separator)),
+    ))
+    .parse(input)
+}
+
+pub(crate) fn as_span(value: LocatedSpan<&str>) -> Span {
+    Span {
+        offset: Offset(value.location_offset()),
+        line: Line(value.location_line()),
+        fragment: value.fragment().to_string(),
+    }
 }
 
 #[cfg(test)]

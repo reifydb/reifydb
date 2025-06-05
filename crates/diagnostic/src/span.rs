@@ -1,4 +1,5 @@
-use nom_locate::LocatedSpan;
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
@@ -10,12 +11,6 @@ pub struct Span {
     pub line: Line,
 
     pub fragment: String,
-}
-
-impl<'a> From<LocatedSpan<& str>> for Span {
-    fn from(value: LocatedSpan<& str>) -> Self {
-        Self { offset: Offset(value.location_offset()), line: Line(value.location_line()), fragment: value.fragment().to_string() }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
