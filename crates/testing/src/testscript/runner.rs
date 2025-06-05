@@ -204,7 +204,7 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
                 Ok(Ok(output)) => output,
 
                 // Expected error, output it.
-                Ok(Err(e)) if command.fail => format!("Error: {e}"),
+                Ok(Err(e)) if command.fail => format!("{e}"),
 
                 // Unexpected error, return it.
                 Ok(Err(e)) => {

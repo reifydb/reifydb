@@ -41,7 +41,7 @@ impl Parser {
             AstType::Uint16
         } else {
             let token = self.current()?;
-            return Err(InvalidType(token.clone()));
+            return Err(InvalidType { got: token.clone() });
         };
 
         // consume only after confirming match
@@ -62,7 +62,7 @@ mod tests {
         let tokens = lex("something_different").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_type();
-        let Err(InvalidType(_)) = result else { panic!() };
+        let Err(InvalidType { .. }) = result else { panic!() };
     }
 
     #[test]

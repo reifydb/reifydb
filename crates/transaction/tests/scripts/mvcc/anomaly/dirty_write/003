@@ -24,4 +24,4 @@ ok
 t1: commit
 t2: !commit
 ---
-t2: Error: transaction error: transaction conflict, please try again
+t2: transaction error: transaction conflict, please try again

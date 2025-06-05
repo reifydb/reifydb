@@ -98,12 +98,6 @@ keyword! {
     Table  => "TABLE",
 }
 
-impl Display for Keyword {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 type Span<'a> = LocatedSpan<&'a str>;
 
 fn keyword_tag<'a>(

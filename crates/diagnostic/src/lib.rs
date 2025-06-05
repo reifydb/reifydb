@@ -9,6 +9,7 @@
 use reifydb_core::ValueKind;
 pub use span::{Line, Offset, Span};
 
+pub mod plan;
 mod span;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,43 +83,71 @@ pub fn overflow_diagnostic(span: Span, value: &str, column: DiagnosticColumn) ->
 }
 
 pub trait DiagnosticRenderer {
-    fn render(&self, diagnostic: &Diagnostic, source: &str);
+    fn render(&self, diagnostic: &Diagnostic, source: &str) -> String;
 }
 
-pub struct OverflowRenderer;
+pub struct DefaultRenderer;
 
-impl DiagnosticRenderer for OverflowRenderer {
-    fn render(&self, d: &Diagnostic, source: &str) {
-        println!("error[{}]: {}", d.code, d.message);
+use std::fmt::Write;
+
+impl DiagnosticRenderer for DefaultRenderer {
+    fn render(&self, d: &Diagnostic, source: &str) -> String {
+        let mut output = String::new();
+
+        let _ = writeln!(&mut output, "error[{}]: {}", d.code, d.message);
 
         if let Some(span) = &d.span {
             let line = span.line.0;
-            println!(" --> line {}:", line);
-            println!("  {} | {}", line, get_line(source, line));
             let col = span.offset.0;
-            println!("      | {}^", " ".repeat(col));
-            println!("      = {}", d.label.as_deref().unwrap_or("value exceeds type bounds"));
+            let line_content = get_line(source, line);
+            let line_number_width = line.to_string().len().max(2);
+
+            let _ = writeln!(&mut output, " {0:>width$} {1}", "", "-->", width = line_number_width);
+            let _ = writeln!(
+                &mut output,
+                " {0:>width$} │ {1}",
+                line,
+                line_content,
+                width = line_number_width
+            );
+            let _ = writeln!(
+                &mut output,
+                " {0:>width$} │ {1}^",
+                "",
+                " ".repeat(col),
+                width = line_number_width
+            );
+            let _ = writeln!(
+                &mut output,
+                " {0:>width$} = {1}",
+                "",
+                d.label.as_deref().unwrap_or("value exceeds type bounds"),
+                width = line_number_width
+            );
         }
 
         if let Some(col) = &d.column {
-            println!("note: column `{}` is of type `{}`", col.name, col.value);
+            let _ =
+                writeln!(&mut output, "\nnote: column `{}` is of type `{}`", col.name, col.value);
         }
 
         if let Some(help) = &d.help {
-            println!("help: {}", help);
+            let _ = writeln!(&mut output, "\nhelp: {}", help);
         }
 
         for note in &d.notes {
-            println!("note: {}", note);
+            let _ = writeln!(&mut output, "\nnote: {}", note);
         }
+
+        output
     }
 }
 
 impl Diagnostic {
-    pub fn render(&self, source: &str) {
+    pub fn to_string(&self, source: &str) -> String {
         match self.code {
-            "E0101" => OverflowRenderer.render(self, source),
-            _ => unimplemented!(),
+            // "E0101" => OverflowRenderer.render(self, source),
+            _ => DefaultRenderer.render(self, source),
         }
     }
 }

@@ -15,6 +15,7 @@ mod primary;
 mod select;
 mod tuple;
 mod r#type;
+mod diagnostic;
 
 pub use error::*;
 

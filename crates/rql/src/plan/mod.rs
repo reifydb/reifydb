@@ -18,6 +18,7 @@ pub use error::Error;
 use reifydb_catalog::{CatalogRx, Column, ColumnToCreate, SchemaRx, StoreRx};
 use reifydb_core::{SortDirection, SortKey, StoreKind};
 
+mod diagnostic;
 mod error;
 pub mod node;
 mod planner;
@@ -119,29 +120,30 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                         if_not_exists: false,
                     })),
                     AstCreate::Series { schema, name, definitions, .. } => {
-                        let mut columns: Vec<ColumnToCreate> = vec![];
-
-                        for definition in &definitions.nodes {
-                            match definition {
-                                Ast::Infix(ast) => {
-                                    let name = ast.left.as_identifier();
-                                    let ty = ast.right.as_type();
-
-                                    columns.push(ColumnToCreate {
-                                        name: name.value().to_string(),
-                                        value: ty.kind(),
-                                    })
-                                }
-                                _ => unimplemented!(),
-                            }
-                        }
-
-                        Ok(Plan::CreateSeries(CreateSeriesPlan {
-                            schema: schema.value().to_string(),
-                            series: name.value().to_string(),
-                            if_not_exists: false,
-                            columns,
-                        }))
+                        // let mut columns: Vec<ColumnToCreate> = vec![];
+                        //
+                        // for definition in &definitions.nodes {
+                        //     match definition {
+                        //         Ast::Infix(ast) => {
+                        //             let name = ast.left.as_identifier();
+                        //             let ty = ast.right.as_type();
+                        //
+                        //             columns.push(ColumnToCreate {
+                        //                 name: name.value().to_string(),
+                        //                 value: ty.kind(),
+                        //             })
+                        //         }
+                        //         _ => unimplemented!(),
+                        //     }
+                        // }
+                        //
+                        // Ok(Plan::CreateSeries(CreateSeriesPlan {
+                        //     schema: schema.value().to_string(),
+                        //     series: name.value().to_string(),
+                        //     if_not_exists: false,
+                        //     columns,
+                        // }))
+                        unimplemented!()
                     }
                     AstCreate::Table { schema, name, definitions, .. } => {
                         let mut columns: Vec<ColumnToCreate> = vec![];
@@ -150,12 +152,16 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                             match definition {
                                 Ast::Infix(ast) => {
                                     let name = ast.left.as_identifier();
-                                    let ty = ast.right.as_type();
-
-                                    columns.push(ColumnToCreate {
-                                        name: name.value().to_string(),
-                                        value: ty.kind(),
-                                    })
+                                    if let Ast::Type(ty) = ast.right.deref() {
+                                        columns.push(ColumnToCreate {
+                                            name: name.value().to_string(),
+                                            value: ty.kind(),
+                                        })
+                                    } else {
+                                        return Err(Error::InvalidType {
+                                            got: ast.right.token().clone(),
+                                        });
+                                    }
                                 }
                                 _ => unimplemented!(),
                             }

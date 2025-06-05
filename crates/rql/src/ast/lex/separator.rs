@@ -7,6 +7,7 @@ use nom::bytes::tag;
 use nom::combinator::value;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
+use std::fmt::{Display, Formatter};
 
 macro_rules! separator {
     (
@@ -30,6 +31,7 @@ separator! {
     Comma => ",",
     NewLine => "\n"
 }
+
 
 pub(crate) fn parse_separator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     let start = input;

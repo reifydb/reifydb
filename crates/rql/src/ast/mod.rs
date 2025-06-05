@@ -12,7 +12,8 @@ mod error;
 mod lex;
 mod parse;
 
-pub fn parse(str: &str) -> Vec<AstStatement> {
-    let tokens = lex(str).unwrap();
-    vec![AstStatement(parse::parse(tokens).unwrap())]
+pub fn parse(str: &str) -> Result<Vec<AstStatement>, Error> {
+    let tokens = lex(str)?;
+    let statement = parse::parse(tokens)?;
+    Ok(vec![AstStatement(statement)])
 }

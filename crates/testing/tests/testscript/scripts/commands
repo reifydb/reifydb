@@ -36,12 +36,12 @@ b: Command { name: "bar", args: [Argument { key: Some("key"), value: "value" }],
 # Failing commands.
 ! foo bar
 ---
-Error: Command { name: "foo", args: [Argument { key: None, value: "bar" }], prefix: None, tags: {}, silent: false, fail: true, line_number: 37 }
+Command { name: "foo", args: [Argument { key: None, value: "bar" }], prefix: None, tags: {}, silent: false, fail: true, line_number: 37 }
 
 # Command with tags, prefixes, and failures.
 prefix:[tag]! foo bar
 ---
-prefix: Error: Command { name: "foo", args: [Argument { key: None, value: "bar" }], prefix: Some("prefix"), tags: {"tag"}, silent: false, fail: true, line_number: 42 }
+prefix: Command { name: "foo", args: [Argument { key: None, value: "bar" }], prefix: Some("prefix"), tags: {"tag"}, silent: false, fail: true, line_number: 42 }
 
 # Prefixes, commands, and keys can be empty.
 "": "" ""=""
@@ -80,9 +80,9 @@ prefix: > command arg
 prefix:[tag]!> command arg
 ---
 prefix: Command { name: "command arg", args: [], prefix: Some("prefix"), tags: {}, silent: false, fail: false, line_number: 77 }
-Error: Command { name: "command arg", args: [], prefix: None, tags: {}, silent: false, fail: true, line_number: 78 }
+Command { name: "command arg", args: [], prefix: None, tags: {}, silent: false, fail: true, line_number: 78 }
 Command { name: "command arg", args: [], prefix: None, tags: {"tag"}, silent: false, fail: false, line_number: 79 }
-prefix: Error: Command { name: "command arg", args: [], prefix: Some("prefix"), tags: {"tag"}, silent: false, fail: true, line_number: 80 }
+prefix: Command { name: "command arg", args: [], prefix: Some("prefix"), tags: {"tag"}, silent: false, fail: true, line_number: 80 }
 
 # > respects \ line continuation, but it can't be escaped by \\.
 > a very \

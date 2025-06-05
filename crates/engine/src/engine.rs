@@ -55,19 +55,19 @@ impl<S: Storage, T: Transaction<S>> Engine<S, T> {
 
     pub fn tx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let mut result = vec![];
-        let statements = ast::parse(rql);
+        let statements = ast::parse(rql)?;
 
         let mut tx = self.begin().unwrap();
 
         for statement in statements {
             match &statement.0[0] {
                 Ast::From(_) | Ast::Select(_) => {
-                    let plan = plan(statement).unwrap();
-                    let er = execute_mut(plan, &mut tx).unwrap();
+                    let plan = plan(statement)?;
+                    let er = execute_mut(plan, &mut tx)?;
                     result.push(er);
                 }
                 _ => {
-                    let plan = plan_mut(tx.catalog().unwrap(), statement).unwrap();
+                    let plan = plan_mut(tx.catalog().unwrap(), statement)?;
                     let er = execute_mut(plan, &mut tx)?;
                     result.push(er);
                 }
@@ -82,7 +82,7 @@ impl<S: Storage, T: Transaction<S>> Engine<S, T> {
 
     pub fn rx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let mut result = vec![];
-        let statements = ast::parse(rql);
+        let statements = ast::parse(rql)?;
 
         let mut rx = self.begin_read_only().unwrap();
         for statement in statements {

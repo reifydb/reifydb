@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::{as_span, Token, TokenKind};
+use std::fmt::{Display, Formatter};
+use crate::ast::lex::{as_span, Keyword, Token, TokenKind};
 use nom::branch::alt;
 use nom::bytes::tag;
 use nom::combinator::value;

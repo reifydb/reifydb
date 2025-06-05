@@ -2,13 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate;
+use reifydb_diagnostic::Diagnostic;
+use reifydb_rql::{ast, plan};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum Error {
+    Ast(ast::Error),
     Catalog(reifydb_catalog::Error),
     Evaluation(evaluate::Error),
     Frame(reifydb_frame::Error),
+    Plan(plan::Error),
     Policy(reifydb_catalog::PolicyError),
     Transaction(reifydb_transaction::Error),
 }
@@ -16,6 +20,12 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
+    }
+}
+
+impl From<ast::Error> for Error {
+    fn from(value: ast::Error) -> Self {
+        Self::Ast(value)
     }
 }
 
@@ -37,6 +47,12 @@ impl From<reifydb_frame::Error> for Error {
     }
 }
 
+impl From<plan::Error> for Error {
+    fn from(value: plan::Error) -> Self {
+        Self::Plan(value)
+    }
+}
+
 impl From<reifydb_catalog::PolicyError> for Error {
     fn from(value: reifydb_catalog::PolicyError) -> Self {
         Self::Policy(value)
@@ -50,3 +66,17 @@ impl From<reifydb_transaction::Error> for Error {
 }
 
 impl std::error::Error for Error {}
+
+impl Error {
+    pub fn diagnostic(self) -> Diagnostic {
+        match self {
+            Error::Ast(err) => err.diagnostic(),
+            Error::Catalog(_) => unimplemented!(),
+            Error::Evaluation(_) => unimplemented!(),
+            Error::Frame(_) => unimplemented!(),
+            Error::Plan(err) => err.diagnostic(),
+            Error::Policy(err) => err.diagnostic(),
+            Error::Transaction(_) => unimplemented!(),
+        }
+    }
+}

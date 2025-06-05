@@ -22,7 +22,7 @@ t3: "balance" => "100"
 t2: commit
 t3: !commit
 ---
-t3: Error: transaction error: transaction conflict, please try again
+t3: transaction error: transaction conflict, please try again
 
 t4: begin readonly
 t4: get balance

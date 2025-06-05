@@ -56,30 +56,8 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
     }
 }
 
-test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_blocking_optimistic_memory => test_optimistic_memory }
-test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_blocking_optimistic_lmdb => test_optimistic_lmdb }
+test_each_path! { in "testsuite/diagnostic/tests/scripts" as diagnostic => test_diagnostic }
 
-fn test_optimistic_memory(path: &Path) {
+fn test_diagnostic(path: &Path) {
     testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
-}
-
-fn test_optimistic_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut Runner::new(optimistic(lmdb(db_path))), path)
-            .expect("test failed")
-    })
-}
-
-test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_blocking_serializable_memory => test_serializable_memory }
-test_each_path! { in "testsuite/smoke/tests/scripts" as embedded_blocking_serializable_lmdb => test_serializable_lmdb }
-
-fn test_serializable_memory(path: &Path) {
-    testscript::run_path(&mut Runner::new(serializable(memory())), path).expect("test failed")
-}
-
-fn test_serializable_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut Runner::new(serializable(lmdb(db_path))), path)
-            .expect("test failed")
-    })
 }

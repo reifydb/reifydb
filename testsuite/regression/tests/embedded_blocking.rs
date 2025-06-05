@@ -35,7 +35,7 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 println!("tx: {query}");
 
-                for line in self.engine.tx_as(&self.root, query.as_str()) {
+                for line in self.engine.tx_as(&self.root, query.as_str())? {
                     writeln!(output, "{}", line);
                 }
             }
@@ -69,7 +69,6 @@ fn test_optimistic_lmdb(path: &Path) {
             .expect("test failed")
     })
 }
-
 
 test_each_path! { in "testsuite/regression/tests/scripts" as embedded_blocking_serializable_memory => test_serializable_memory }
 test_each_path! { in "testsuite/regression/tests/scripts" as embedded_blocking_serializable_lmdb => test_serializable_lmdb }

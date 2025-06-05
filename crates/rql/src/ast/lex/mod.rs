@@ -5,6 +5,7 @@ pub use error::Error;
 use nom::branch::alt;
 use nom::character::multispace0;
 use nom::multi::many0;
+use std::fmt::Display;
 
 pub use keyword::Keyword;
 pub use operator::Operator;
@@ -22,6 +23,7 @@ use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
 use reifydb_diagnostic::{Line, Offset, Span};
 
+mod display;
 mod error;
 mod identifier;
 mod keyword;
@@ -36,6 +38,14 @@ pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
 }
+
+impl From<Token> for Span {
+    fn from(value: Token) -> Self {
+        value.span
+    }
+}
+
+
 
 impl Token {
     pub fn is_eof(&self) -> bool {

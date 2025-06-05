@@ -5,14 +5,10 @@ use crate::ast::lex::{Token, TokenKind};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    // InvalidIdentifier(Token),
-    // InvalidKind(Token),
-    InvalidType(Token),
+    InvalidType { got: Token },
     UnexpectedEndOfFile,
     UnexpectedToken { expected: TokenKind, got: Token },
-    // UnsupportedNumber(String),
     UnsupportedToken { got: Token },
-    // UnknownType(Token),
 }
 
 impl Error {

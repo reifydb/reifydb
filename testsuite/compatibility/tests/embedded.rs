@@ -37,9 +37,9 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 println!("tx: {query}");
 
-                let reifydb_engine = self.engine.clone();
+                let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in reifydb_engine.tx_as(&self.root, query.as_str()).await {
+                    for line in engine.tx_as(&self.root, query.as_str()).await {
                         writeln!(output, "{}", line).unwrap();
                     }
                 });
@@ -50,9 +50,9 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
 
                 println!("rx: {query}");
 
-                let reifydb_engine = self.engine.clone();
+                let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in reifydb_engine.rx_as(&self.root, query.as_str()).await {
+                    for line in engine.rx_as(&self.root, query.as_str()).await {
                         writeln!(output, "{}", line).unwrap();
                     }
                 });

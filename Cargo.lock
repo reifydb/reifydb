@@ -275,6 +275,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
+name = "diagnostic"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
+ "reifydb_testing",
+ "test_each_file",
+ "tokio",
+]
+
+[[package]]
 name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1311,15 +1321,14 @@ dependencies = [
 name = "reifydb_engine"
 version = "0.0.1"
 dependencies = [
- "log",
  "reifydb_auth",
  "reifydb_catalog",
  "reifydb_core",
+ "reifydb_diagnostic",
  "reifydb_frame",
  "reifydb_rql",
  "reifydb_storage",
  "reifydb_transaction",
- "serde",
 ]
 
 [[package]]
@@ -1357,7 +1366,6 @@ dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
  "heed",
- "log",
  "regex",
  "reifydb_core",
  "reifydb_testing",
@@ -1383,7 +1391,6 @@ version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
- "log",
  "rand 0.9.1",
  "reifydb_catalog",
  "reifydb_core",

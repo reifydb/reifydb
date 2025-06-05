@@ -34,9 +34,9 @@ impl<'a, S: Storage + 'static, T: Transaction<S> + 'static> DB<'a> for Embedded<
     async fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();
-        let reifydb_engine = self.engine.clone();
+        let engine = self.engine.clone();
         spawn_blocking(move || {
-            let result = reifydb_engine.tx_as(&principal, &rql).unwrap();
+            let result = engine.tx_as(&principal, &rql).unwrap();
 
             result
         })
@@ -47,9 +47,9 @@ impl<'a, S: Storage + 'static, T: Transaction<S> + 'static> DB<'a> for Embedded<
     async fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
         let rql = rql.to_string();
         let principal = principal.clone();
-        let reifydb_engine = self.engine.clone();
+        let engine = self.engine.clone();
         spawn_blocking(move || {
-            let result = reifydb_engine.rx_as(&principal, &rql).unwrap();
+            let result = engine.rx_as(&principal, &rql).unwrap();
             result
         })
         .await

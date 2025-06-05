@@ -16,6 +16,7 @@ members = ["bin/cli",
     "pkg/python",
     "pkg/rust",
     "testsuite/compatibility",
+    "testsuite/diagnostic",
     "testsuite/functional",
     "testsuite/regression",
     "testsuite/smoke"]
@@ -34,6 +35,7 @@ default-members = ["bin/cli",
     "crates/transaction",
     "pkg/rust",
     "testsuite/compatibility",
+    "testsuite/diagnostic",
     "testsuite/functional",
     "testsuite/regression",
     "testsuite/smoke"]
@@ -88,7 +90,6 @@ crossbeam-channel = { version = "0.5.15" }
 goldenfile = { version = "1.8.0" }
 heed = { version = "0.22.0", features = ["preserve_order"] }
 hex = { version = "0.4.3" }
-log = { version = "0.4.27" }
 nom = { version = "8.0.0" }
 nom_locate = { version = "5.0.0" }
 prost = "0.13.5"

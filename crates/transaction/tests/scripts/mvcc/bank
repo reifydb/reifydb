@@ -69,7 +69,7 @@ ok
 # MVCC caught the conflict
 bob: !commit
 ---
-bob: Error: transaction error: transaction conflict, please try again
+bob: transaction error: transaction conflict, please try again
 
 # He then finds there's no money left in B anymore, and can't make the transfer.
 bob: begin

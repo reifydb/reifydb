@@ -12,7 +12,6 @@
 use crate::mvcc::watermark::Closer;
 use crate::mvcc::watermark::watermark::WatermarkInner;
 use crossbeam_channel::{Sender, select};
-use log::error;
 use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -111,7 +110,7 @@ impl WatermarkInner {
                 },
                 Err(_) => {
                   // Channel closed.
-                  error!("watermark has been dropped.");
+                  println!("watermark has been dropped.");
                   closer.done();
                   return;
                 }

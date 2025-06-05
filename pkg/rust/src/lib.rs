@@ -67,6 +67,8 @@ mod session;
 
 pub struct ReifyDB {}
 
+pub type Result<T> = std::result::Result<T, Error>;
+
 pub trait DB<'a>: Sized {
     /// runs tx
     fn tx_as(

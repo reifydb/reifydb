@@ -32,3 +32,12 @@ pub enum PolicyError {
     Overflow { column: String, value: ValueKind, input: String, diagnostic: Diagnostic },
     Underflow { column: String, value: ValueKind, input: String },
 }
+
+impl PolicyError {
+    pub fn diagnostic(self) -> Diagnostic {
+        match self {
+            PolicyError::Overflow { diagnostic, .. } => diagnostic,
+            PolicyError::Underflow { .. } => unimplemented!(),
+        }
+    }
+}
