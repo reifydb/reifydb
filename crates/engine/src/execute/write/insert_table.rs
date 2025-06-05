@@ -36,8 +36,9 @@ impl Executor {
                                             row_values.push(match const_expr {
                                                 ConstantExpression::Undefined => Value::Undefined,
                                                 ConstantExpression::Bool(_) => Value::Undefined,
-                                                ConstantExpression::Number(n) => {
-                                                    ConstantExpression::Number(format!("-{n}"))
+                                                ConstantExpression::Number(mut span) => {
+                                                    span.fragment = format!("-{}", span.fragment);
+                                                    ConstantExpression::Number(span)
                                                         .into_column_value(column)?
                                                 }
                                                 ConstantExpression::Text(_) => Value::Undefined,

@@ -8,5 +8,6 @@ repository.workspace = true
 
 [dependencies]
 reifydb_core = { workspace = true}
+reifydb_diagnostic = { workspace = true}
 
 [dev-dependencies]

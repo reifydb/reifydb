@@ -303,7 +303,7 @@ pub struct AstInsert {
     pub rows: Vec<AstTuple>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct AstLiteralNumber(pub Token);
 
 impl AstLiteralNumber {

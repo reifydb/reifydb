@@ -1247,7 +1247,9 @@ version = "0.0.1"
 dependencies = [
  "prost",
  "reifydb_auth",
+ "reifydb_catalog",
  "reifydb_core",
+ "reifydb_diagnostic",
  "reifydb_engine",
  "reifydb_rql",
  "reifydb_storage",
@@ -1277,6 +1279,7 @@ name = "reifydb_catalog"
 version = "0.0.1"
 dependencies = [
  "reifydb_core",
+ "reifydb_diagnostic",
 ]
 
 [[package]]

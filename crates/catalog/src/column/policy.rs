@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_core::ValueKind;
+use reifydb_diagnostic::Diagnostic;
 
 #[derive(Debug, Clone)]
 pub enum Policy {
@@ -28,6 +29,6 @@ pub enum UnderflowPolicy {
 
 #[derive(Debug, PartialEq)]
 pub enum PolicyError {
-    Overflow { column: String, value: ValueKind, input: String },
+    Overflow { column: String, value: ValueKind, input: String, diagnostic: Diagnostic },
     Underflow { column: String, value: ValueKind, input: String },
 }

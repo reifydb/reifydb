@@ -3,6 +3,7 @@
 
 pub use crate::ast::ast::*;
 use crate::ast::lex::lex;
+pub use crate::ast::lex::{Token, TokenKind};
 pub use error::Error;
 use std::vec;
 

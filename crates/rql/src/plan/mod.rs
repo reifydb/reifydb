@@ -10,9 +10,9 @@ use std::ops::Deref;
 
 use crate::ast;
 use crate::expression::{
-    AliasExpression, Expression, AddExpression, CallExpression, ColumnExpression,
-    ConstantExpression, DivideExpression, ModuloExpression, MultiplyExpression, PrefixExpression,
-    SubstractExpression, TupleExpression, IdentExpression, PrefixOperator,
+    AddExpression, AliasExpression, CallExpression, ColumnExpression, ConstantExpression,
+    DivideExpression, Expression, IdentExpression, ModuloExpression, MultiplyExpression,
+    PrefixExpression, PrefixOperator, SubstractExpression, TupleExpression,
 };
 pub use error::Error;
 use reifydb_catalog::{CatalogRx, Column, ColumnToCreate, SchemaRx, StoreRx};
@@ -221,7 +221,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                             }
                                             Ast::Literal(AstLiteral::Number(ast)) => {
                                                 Expression::Constant(ConstantExpression::Number(
-                                                    ast.value().to_string(),
+                                                    ast.0.span.clone(),
                                                 ))
                                             }
                                             Ast::Literal(AstLiteral::Text(ast)) => {
@@ -256,7 +256,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                                             AstLiteral::Number(n) => {
                                                                 Expression::Constant(
                                                                     ConstantExpression::Number(
-                                                                        n.value().to_string(),
+                                                                        n.0.span.clone(),
                                                                     ),
                                                                 )
                                                             }
@@ -438,9 +438,7 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                     },
                     AstLiteral::Number(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Number(
-                            node.value().to_string(),
-                        )),
+                        expression: Expression::Constant(ConstantExpression::Number(node.0.span)),
                     },
                     AstLiteral::Text(node) => AliasExpression {
                         alias: None,
@@ -475,7 +473,7 @@ fn expression(ast: Ast) -> Result<Expression> {
     match ast {
         Ast::Literal(literal) => match literal {
             AstLiteral::Number(literal) => {
-                Ok(Expression::Constant(ConstantExpression::Number(literal.value().to_string())))
+                Ok(Expression::Constant(ConstantExpression::Number(literal.0.span)))
             }
             _ => unimplemented!(),
         },

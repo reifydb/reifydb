@@ -16,6 +16,7 @@ impl Evaluator {
             ConstantExpression::Undefined => ColumnValues::Undefined(row_count),
             ConstantExpression::Bool(v) => ColumnValues::bool(vec![v; row_count]),
             ConstantExpression::Number(s) => {
+                let s = s.fragment;
                 // FIXME that does not look right..
                 // Try parsing in order from most specific to most general
                 if let Ok(v) = s.parse::<i8>() {

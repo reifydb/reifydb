@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_auth::Principal;
-use reifydb_engine::{Engine, ExecutionResult};
+use reifydb_catalog::PolicyError;
+use reifydb_engine::{Engine, Error, ExecutionResult};
 use reifydb_storage::Storage;
 use reifydb_transaction::{Transaction, catalog_init};
 
@@ -30,8 +31,24 @@ impl<S: Storage, T: Transaction<S>> Embedded<S, T> {
 
 impl<'a, S: Storage + 'static, T: Transaction<S> + 'static> Embedded<S, T> {
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        let result = self.engine.tx_as(principal, rql).unwrap();
-        result
+        // let result = self.engine.tx_as(principal, rql).unwrap();
+        // result
+
+        match self.engine.tx_as(principal, rql) {
+            Ok(result) => result,
+            Err(err) => match err {
+                Error::Policy(err) => match err {
+                    PolicyError::Overflow { column, value, input, diagnostic } => {
+                        diagnostic.render(rql);
+                        vec![]
+                    }
+                    PolicyError::Underflow { .. } => {
+                        unimplemented!()
+                    }
+                },
+                _ => unimplemented!(),
+            },
+        }
     }
 
     pub fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {

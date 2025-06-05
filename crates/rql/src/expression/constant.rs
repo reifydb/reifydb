@@ -5,6 +5,7 @@ use reifydb_catalog::{Column, OverflowPolicy, PolicyError, UnderflowPolicy};
 use reifydb_core::num::{ParseError, parse_float, parse_int, parse_uint};
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
 use reifydb_core::{Value, ValueKind};
+use reifydb_diagnostic::{DiagnosticColumn, Span, overflow_diagnostic};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -13,7 +14,7 @@ pub enum ConstantExpression {
     Undefined,
     Bool(bool),
     // any number
-    Number(String),
+    Number(Span),
     // any textual representation can be String, Text, ...
     Text(String),
 }
@@ -23,7 +24,7 @@ impl Display for ConstantExpression {
         match self {
             ConstantExpression::Undefined => write!(f, "undefined"),
             ConstantExpression::Bool(b) => write!(f, "{b}"),
-            ConstantExpression::Number(n) => write!(f, "{n}"),
+            ConstantExpression::Number(span) => write!(f, "{}", span.fragment),
             ConstantExpression::Text(s) => write!(f, "\"{s}\""),
         }
     }
@@ -41,7 +42,8 @@ impl ConstantExpression {
                     Ok(Value::Undefined)
                 }
             }
-            ConstantExpression::Number(input) => {
+            ConstantExpression::Number(span) => {
+                let input = &span.fragment;
                 let overflow = column.overflow_policy();
                 let underflow = column.underflow_policy();
 
@@ -77,14 +79,19 @@ impl ConstantExpression {
                         OverflowPolicy::Error => PolicyError::Overflow {
                             column: column.name.clone(),
                             value: kind,
-                            input,
+                            input: input.clone(),
+                            diagnostic: overflow_diagnostic(
+                                span.clone(),
+                                input,
+                                DiagnosticColumn { name: column.name.clone(), value: column.value },
+                            ),
                         },
                     },
                     ParseError::Underflow(_) => match underflow {
                         UnderflowPolicy::Error => PolicyError::Underflow {
                             column: column.name.clone(),
                             value: kind,
-                            input,
+                            input: input.clone(),
                         },
                     },
                     ParseError::Invalid(_) => unreachable!(),
@@ -108,6 +115,7 @@ mod tests {
     use reifydb_catalog::{Column, OverflowPolicy, Policy, PolicyError, UnderflowPolicy};
     use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
     use reifydb_core::{Value, ValueKind};
+    use reifydb_diagnostic::{Line, Offset, Span};
 
     fn column_error_policy(name: &str, kind: ValueKind) -> Column {
         Column {
@@ -129,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_float4_error_policy() {
-        let expr = ConstantExpression::Number("3.14".into());
+        let expr = ConstantExpression::Number(make_span("3.14"));
         let col = column_error_policy("f4", ValueKind::Float4);
         assert_eq!(
             expr.into_column_value(&col),
@@ -139,7 +147,7 @@ mod tests {
 
     #[test]
     fn test_float4_error_policy_overflow() {
-        let expr = ConstantExpression::Number("3.14".into());
+        let expr = ConstantExpression::Number(make_span("3.14"));
         let col = column_error_policy("f4", ValueKind::Float4);
         assert_eq!(
             expr.into_column_value(&col),
@@ -147,10 +155,9 @@ mod tests {
         );
     }
 
-
     #[test]
     fn test_float8_error_policy() {
-        let expr = ConstantExpression::Number("2.718281828".into());
+        let expr = ConstantExpression::Number(make_span("2.718281828"));
         let col = column_error_policy("f8", ValueKind::Float8);
         assert_eq!(
             expr.into_column_value(&col),
@@ -160,55 +167,56 @@ mod tests {
 
     #[test]
     fn test_error_policy_invalid_number_returns_undefined() {
-        let expr = ConstantExpression::Number("not_a_number".into());
+        let expr = ConstantExpression::Number(make_span("not_a_number"));
         let col = column_error_policy("invalid", ValueKind::Int4);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Undefined));
     }
 
     #[test]
     fn test_error_policy_overflow() {
-        let expr = ConstantExpression::Number("128".into());
+        let expr = ConstantExpression::Number(make_span("128"));
         let col = column_error_policy("i1", ValueKind::Int1);
         assert!(matches!(
-        expr.into_column_value(&col),
-        Err(PolicyError::Overflow { column, value: ValueKind::Int1, input }) if column == "i1" && input == "128"
-    ));
+            expr.into_column_value(&col),
+            Err(PolicyError::Overflow { column, value: ValueKind::Int1, input, diagnostic: _ }) if column == "i1" && input == "128"
+        ));
     }
 
     #[test]
     fn test_error_policy_underflow() {
-        let expr = ConstantExpression::Number("-1".into());
+        let expr = ConstantExpression::Number(make_span("-1"));
         let col = column_error_policy("u1", ValueKind::Uint1);
         assert!(matches!(
-        expr.into_column_value(&col),
-        Err(PolicyError::Underflow { column, value: ValueKind::Uint1, input }) if column == "u1" && input == "-1"
-    ));
+            expr.into_column_value(&col),
+            Err(PolicyError::Underflow { column, value: ValueKind::Uint1, input }) if column == "u1" && input == "-1"
+        ));
     }
 
     #[test]
     fn test_int2_error_policy() {
-        let expr = ConstantExpression::Number("32767".into());
+        let expr = ConstantExpression::Number(make_span("32767"));
         let col = column_error_policy("i2", ValueKind::Int2);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Int2(32767)));
     }
 
     #[test]
     fn test_int4_error_policy() {
-        let expr = ConstantExpression::Number("-2147483648".into());
+        let expr = ConstantExpression::Number(make_span("-2147483648"));
         let col = column_error_policy("i4", ValueKind::Int4);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Int4(-2147483648)));
     }
 
     #[test]
     fn test_int8_error_policy() {
-        let expr = ConstantExpression::Number("9223372036854775807".into());
+        let expr = ConstantExpression::Number(make_span("9223372036854775807"));
         let col = column_error_policy("i8", ValueKind::Int8);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Int8(9223372036854775807)));
     }
 
     #[test]
     fn test_int16_error_policy() {
-        let expr = ConstantExpression::Number("-170141183460469231731687303715884105728".into());
+        let expr =
+            ConstantExpression::Number(make_span("-170141183460469231731687303715884105728"));
         let col = column_error_policy("i16", ValueKind::Int16);
         assert_eq!(
             expr.into_column_value(&col),
@@ -225,35 +233,35 @@ mod tests {
 
     #[test]
     fn test_uint1_error_policy() {
-        let expr = ConstantExpression::Number("255".into());
+        let expr = ConstantExpression::Number(make_span("255"));
         let col = column_error_policy("u1", ValueKind::Uint1);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Uint1(255)));
     }
 
     #[test]
     fn test_uint2_error_policy() {
-        let expr = ConstantExpression::Number("65535".into());
+        let expr = ConstantExpression::Number(make_span("65535"));
         let col = column_error_policy("u2", ValueKind::Uint2);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Uint2(65535)));
     }
 
     #[test]
     fn test_uint4_error_policy() {
-        let expr = ConstantExpression::Number("4294967295".into());
+        let expr = ConstantExpression::Number(make_span("4294967295"));
         let col = column_error_policy("u4", ValueKind::Uint4);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Uint4(4294967295)));
     }
 
     #[test]
     fn test_uint8_error_policy() {
-        let expr = ConstantExpression::Number("18446744073709551615".into());
+        let expr = ConstantExpression::Number(make_span("18446744073709551615"));
         let col = column_error_policy("u8", ValueKind::Uint8);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Uint8(18446744073709551615)));
     }
 
     #[test]
     fn test_uint16_error_policy() {
-        let expr = ConstantExpression::Number("340282366920938463463374607431768211455".into());
+        let expr = ConstantExpression::Number(make_span("340282366920938463463374607431768211455"));
         let col = column_error_policy("u16", ValueKind::Uint16);
         assert_eq!(
             expr.into_column_value(&col),
@@ -263,8 +271,12 @@ mod tests {
 
     #[test]
     fn test_undefined() {
-        let expr = ConstantExpression::Number("123".into());
+        let expr = ConstantExpression::Number(make_span("123"));
         let col = column_error_policy("undef", ValueKind::Undefined);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Undefined));
+    }
+
+    fn make_span(value: &str) -> Span {
+        Span { offset: Offset(0), line: Line(1), fragment: value.to_string() }
     }
 }
