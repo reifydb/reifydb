@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub use policy::{OverflowPolicy, Policy, PolicyError, UnderflowPolicy};
+pub use policy::{ColumnOverflowPolicy, ColumnPolicy, ColumnPolicyError, ColumnUnderflowPolicy};
 use reifydb_core::ValueKind;
 
 mod policy;
@@ -11,7 +11,7 @@ pub struct Column {
     pub name: String,
     pub value: ValueKind,
     // pub default: Option<Expression>,
-    pub policies: Vec<Policy>,
+    pub policies: Vec<ColumnPolicy>,
 }
 
 impl Column {
@@ -21,11 +21,11 @@ impl Column {
 }
 
 impl Column {
-    pub fn overflow_policy(&self) -> OverflowPolicy {
-        OverflowPolicy::Error
+    pub fn overflow_policy(&self) -> ColumnOverflowPolicy {
+        ColumnOverflowPolicy::Error
     }
 
-    pub fn underflow_policy(&self) -> UnderflowPolicy {
-        UnderflowPolicy::Error
+    pub fn underflow_policy(&self) -> ColumnUnderflowPolicy {
+        ColumnUnderflowPolicy::Error
     }
 }

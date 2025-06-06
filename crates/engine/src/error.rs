@@ -13,7 +13,7 @@ pub enum Error {
     Evaluation(evaluate::Error),
     Frame(reifydb_frame::Error),
     Plan(plan::Error),
-    Policy(reifydb_catalog::PolicyError),
+    Policy(reifydb_catalog::ColumnPolicyError),
     Transaction(reifydb_transaction::Error),
 }
 
@@ -53,8 +53,8 @@ impl From<plan::Error> for Error {
     }
 }
 
-impl From<reifydb_catalog::PolicyError> for Error {
-    fn from(value: reifydb_catalog::PolicyError) -> Self {
+impl From<reifydb_catalog::ColumnPolicyError> for Error {
+    fn from(value: reifydb_catalog::ColumnPolicyError) -> Self {
         Self::Policy(value)
     }
 }

@@ -30,7 +30,9 @@ impl Executor {
                                         column: Some(EvaluationColumn {
                                             name: column.name.clone(),
                                             value: column.value,
+                                            policies: column.policies.clone(),
                                         }),
+                                        frame: None,
                                     },
                                     &[],
                                     1,

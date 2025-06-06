@@ -1,10 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub use constant::ConstantExpression;
-
-mod constant;
-
 use reifydb_diagnostic::Span;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -46,6 +42,27 @@ pub enum Expression {
     Tuple(TupleExpression),
 
     Prefix(PrefixExpression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConstantExpression {
+    Undefined(Span),
+    Bool(Span),
+    // any number
+    Number(Span),
+    // any textual representation can be String, Text, ...
+    Text(Span),
+}
+
+impl Display for ConstantExpression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ConstantExpression::Undefined(_) => write!(f, "undefined"),
+            ConstantExpression::Bool(span) => write!(f, "{}", span.fragment),
+            ConstantExpression::Number(span) => write!(f, "{}", span.fragment),
+            ConstantExpression::Text(span) => write!(f, "\"{}\"", span.fragment),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

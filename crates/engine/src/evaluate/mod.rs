@@ -6,11 +6,13 @@ use reifydb_rql::expression::Expression;
 
 use crate::function::{FunctionRegistry, math};
 pub use error::Error;
-use reifydb_core::ValueKind;
+
+pub(crate) use context::{Context, EvaluationColumn};
 
 mod call;
 mod column;
 mod constant;
+mod context;
 mod error;
 mod operator;
 mod prefix;
@@ -40,7 +42,7 @@ impl Evaluator {
             Expression::Divide(expr) => self.divide(expr, ctx, columns, row_count),
             Expression::Call(expr) => self.call(expr, ctx, columns, row_count),
             Expression::Column(expr) => self.column(expr, ctx, columns, row_count),
-            Expression::Constant(expr) => self.constant(expr, ctx, row_count),
+            Expression::Constant(expr) => self.constant(expr, ctx),
             Expression::Modulo(expr) => self.modulo(expr, ctx, columns, row_count),
             Expression::Multiply(expr) => self.multiply(expr, ctx, columns, row_count),
             Expression::Prefix(expr) => self.prefix(expr, ctx, columns, row_count),
@@ -48,20 +50,6 @@ impl Evaluator {
             expr => unimplemented!("{expr:?}"),
         }
     }
-}
-
-pub(crate) struct EvaluationColumn {
-    pub(crate) name: String,
-    pub(crate) value: ValueKind,
-}
-
-pub(crate) struct Context {
-    pub(crate) column: Option<EvaluationColumn>,
-    // column
-    // value
-    // policies
-
-    // frame
 }
 
 pub fn evaluate(

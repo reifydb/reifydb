@@ -6,7 +6,7 @@ use crate::{Column, ColumnValues, ValueRef};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Frame {
     pub columns: Vec<Column>,
     pub index: HashMap<String, usize>,
@@ -50,6 +50,10 @@ impl Frame {
             row_total: self.shape().0,
             column_index: Arc::new(col_names),
         }
+    }
+
+    pub fn row_count(&self) -> usize {
+        self.columns.first().map_or(0, |col| col.data.len())
     }
 }
 

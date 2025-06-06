@@ -14,7 +14,7 @@ impl Executor {
             for (idx, expr) in expressions.into_iter().enumerate() {
                 let expr = expr.expression;
 
-                let value = evaluate(expr, &Context { column: None }, &[], 1)?;
+                let value = evaluate(expr, &Context { column: None, frame: None }, &[], 1)?;
                 columns.push(Column { name: format!("{}", idx + 1), data: value });
             }
 
@@ -22,20 +22,40 @@ impl Executor {
             return Ok(());
         }
 
-        self.frame.project(|columns, row_count| {
-            let mut new_columns = Vec::with_capacity(expressions.len());
+        let row_count = self.frame.columns.first().map_or(0, |col| col.data.len());
+        let columns: Vec<&Column> = self.frame.columns.iter().map(|c| c).collect();
 
-            for expression in expressions {
-                let expr = expression.expression;
-                let name = expression.alias.unwrap_or(expr.to_string());
+        let mut new_columns = Vec::with_capacity(expressions.len());
 
-                let evaluated_column =
-                    evaluate(expr, &Context { column: None }, &columns, row_count)?;
-                new_columns.push(Column { name: name.into(), data: evaluated_column });
-            }
+        for expression in expressions {
+            let expr = expression.expression;
+            let name = expression.alias.unwrap_or(expr.to_string());
 
-            Ok(new_columns)
-        })?;
+            let evaluated_column = evaluate(
+                expr,
+                &Context { column: None, frame: Some(self.frame.clone()) },
+                &columns,
+                row_count,
+            )?;
+            new_columns.push(Column { name: name.into(), data: evaluated_column });
+        }
+
+        self.frame.columns = new_columns;
+
+        // self.frame.project(|columns, row_count| {
+        //     let mut new_columns = Vec::with_capacity(expressions.len());
+        //
+        //     for expression in expressions {
+        //         let expr = expression.expression;
+        //         let name = expression.alias.unwrap_or(expr.to_string());
+        //
+        //         let evaluated_column =
+        //             evaluate(expr, &Context { column: None, frame: Some(self.frame)}, &columns, row_count)?;
+        //         new_columns.push(Column { name: name.into(), data: evaluated_column });
+        //     }
+        //
+        //     Ok(new_columns)
+        // })?;
 
         Ok(())
     }

@@ -4,14 +4,13 @@
 use reifydb_diagnostic::Diagnostic;
 
 #[derive(Debug, Clone)]
-pub enum Policy {
-    Default(),
-    Overflow(OverflowPolicy),
-    Underflow(UnderflowPolicy),
+pub enum ColumnPolicy {
+    Overflow(ColumnOverflowPolicy),
+    Underflow(ColumnUnderflowPolicy),
 }
 
 #[derive(Debug, Clone)]
-pub enum OverflowPolicy {
+pub enum ColumnOverflowPolicy {
     Error,
     // Saturate,
     // Wrap,
@@ -19,7 +18,7 @@ pub enum OverflowPolicy {
 }
 
 #[derive(Debug, Clone)]
-pub enum UnderflowPolicy {
+pub enum ColumnUnderflowPolicy {
     Error,
     // Saturate,
     // Wrap,
@@ -27,16 +26,16 @@ pub enum UnderflowPolicy {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum PolicyError {
+pub enum ColumnPolicyError {
     Overflow(Diagnostic),
     Underflow(Diagnostic),
 }
 
-impl PolicyError {
+impl ColumnPolicyError {
     pub fn diagnostic(self) -> Diagnostic {
         match self {
-            PolicyError::Overflow(diagnostic) => diagnostic,
-            PolicyError::Underflow(diagnostic) => diagnostic,
+            ColumnPolicyError::Overflow(diagnostic) => diagnostic,
+            ColumnPolicyError::Underflow(diagnostic) => diagnostic,
         }
     }
 }

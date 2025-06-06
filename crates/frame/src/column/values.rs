@@ -254,25 +254,31 @@ impl ColumnValues {
     }
 }
 
-impl From<Value> for ColumnValues {
-    fn from(value: Value) -> Self {
+impl ColumnValues {
+    pub fn from_many(value: Value, row_count: usize) -> Self {
         match value {
-            Value::Bool(v) => ColumnValues::bool([v]),
+            Value::Bool(v) => ColumnValues::bool(vec![v; row_count]),
             Value::Float4(v) => ColumnValues::float4([v.value()]),
             Value::Float8(v) => ColumnValues::float8([v.value()]),
-            Value::Int1(v) => ColumnValues::int1([v]),
-            Value::Int2(v) => ColumnValues::int2([v]),
-            Value::Int4(v) => ColumnValues::int4([v]),
-            Value::Int8(v) => ColumnValues::int8([v]),
-            Value::Int16(v) => ColumnValues::int16([v]),
-            Value::String(v) => ColumnValues::string([v]),
-            Value::Uint1(v) => ColumnValues::uint1([v]),
-            Value::Uint2(v) => ColumnValues::uint2([v]),
-            Value::Uint4(v) => ColumnValues::uint4([v]),
-            Value::Uint8(v) => ColumnValues::uint8([v]),
-            Value::Uint16(v) => ColumnValues::uint16([v]),
-            Value::Undefined => ColumnValues::undefined(1),
+            Value::Int1(v) => ColumnValues::int1(vec![v; row_count]),
+            Value::Int2(v) => ColumnValues::int2(vec![v; row_count]),
+            Value::Int4(v) => ColumnValues::int4(vec![v; row_count]),
+            Value::Int8(v) => ColumnValues::int8(vec![v; row_count]),
+            Value::Int16(v) => ColumnValues::int16(vec![v; row_count]),
+            Value::String(v) => ColumnValues::string(vec![v; row_count]),
+            Value::Uint1(v) => ColumnValues::uint1(vec![v; row_count]),
+            Value::Uint2(v) => ColumnValues::uint2(vec![v; row_count]),
+            Value::Uint4(v) => ColumnValues::uint4(vec![v; row_count]),
+            Value::Uint8(v) => ColumnValues::uint8(vec![v; row_count]),
+            Value::Uint16(v) => ColumnValues::uint16(vec![v; row_count]),
+            Value::Undefined => ColumnValues::undefined(row_count),
         }
+    }
+}
+
+impl From<Value> for ColumnValues {
+    fn from(value: Value) -> Self {
+        Self::from_many(value, 1)
     }
 }
 
