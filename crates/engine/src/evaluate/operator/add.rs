@@ -2,25 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use reifydb_catalog::ColumnOverflowPolicy;
-use reifydb_core::ValueKind;
 use reifydb_diagnostic::Span;
-use reifydb_diagnostic::policy::{ColumnOverflow, column_overflow};
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::AddExpression;
-
-fn apply_add(a: i8, b: i8, span: Span, policy: ColumnOverflowPolicy) -> crate::evaluate::Result<i8> {
-    match policy {
-        ColumnOverflowPolicy::Error => a.checked_add(b).ok_or_else(|| {
-            crate::evaluate::Error(column_overflow(ColumnOverflow {
-                span,
-                column: "field".to_string(),
-                value: ValueKind::Int1,
-            }))
-        }), // OverflowPolicy::Saturate => Ok(a.saturating_add(b)),
-            // OverflowPolicy::Wrap => Ok(a.wrapping_add(b)),
-    }
-}
 
 impl Evaluator {
     pub(crate) fn add(
@@ -30,10 +14,9 @@ impl Evaluator {
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
+        let span = Span::merge_all([add.left.span(), &add.span, add.right.span()]);
         let left = self.evaluate(*add.left, ctx, columns, row_count)?;
         let right = self.evaluate(*add.right, ctx, columns, row_count)?;
-
-        dbg!(&ctx);        
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {
@@ -101,17 +84,15 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        // values.push(l_vals[i] + r_vals[i]);
-                        values.push(apply_add(
-                            l_vals[i],
-                            r_vals[i],
-                            add.span.clone(),
-                            ColumnOverflowPolicy::Error,
-                        )?);
-
-                        valid.push(true);
+                        if let Some(value) = ctx.add(l_vals[i], r_vals[i], &span)? {
+                            values.push(value);
+                            valid.push(true);
+                        } else {
+                            values.push(0);
+                            valid.push(false);
+                        }
                     } else {
-                        values.push(0); // Placeholder
+                        values.push(0);
                         valid.push(false);
                     }
                 }

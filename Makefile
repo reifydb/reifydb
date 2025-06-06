@@ -15,8 +15,7 @@ clean:
 	done
 
 .PHONY: test
-test:
-	cargo nextest run --all-targets --no-fail-fast --status-level fail --final-status-level fail
+test: testlocal testsuite
 
 .PHONY: test
 build:
@@ -41,6 +40,11 @@ TEST_SUITES := \
 	functional \
 	regression \
 	smoke
+
+.PHONY: testlocal
+testlocal:
+	cargo nextest run --all-targets --no-fail-fast --status-level fail --final-status-level fail
+
 
 .PHONY: testsuite
 testsuite: $(TEST_SUITES)

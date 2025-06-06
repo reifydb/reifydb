@@ -44,6 +44,28 @@ pub enum Expression {
     Prefix(PrefixExpression),
 }
 
+impl Expression {
+    pub fn span(&self) -> &Span {
+        match self {
+            Expression::Constant(expr) => match expr {
+                ConstantExpression::Undefined(span) => span,
+                ConstantExpression::Bool(span) => span,
+                ConstantExpression::Number(span) => span,
+                ConstantExpression::Text(span) => span,
+            },
+            Expression::Column(expr) => &expr.0,
+            Expression::Add(expr) => &expr.span,
+            Expression::Divide(expr) => &expr.span,
+            Expression::Call(expr) => &expr.span,
+            Expression::Modulo(expr) => &expr.span,
+            Expression::Multiply(expr) => &expr.span,
+            Expression::Subtract(expr) => &expr.span,
+            Expression::Tuple(expr) => &expr.span,
+            Expression::Prefix(expr) => &expr.span,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstantExpression {
     Undefined(Span),
