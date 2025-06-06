@@ -80,8 +80,8 @@ impl ConstantExpression {
                         ParseError::Invalid(_) => Ok(Value::Undefined),
                         ParseError::Overflow(_) => Err(Overflow(column_overflow(ColumnOverflow {
                             span,
-                            column_name: column.name.clone(),
-                            column_value: column.value,
+                            column: column.name.clone(),
+                            value: column.value,
                         }))),
                         ParseError::Underflow(_) => {
                             Err(Underflow(column_underflow(ColumnUnderflow {

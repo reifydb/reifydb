@@ -6,26 +6,26 @@ use reifydb_core::ValueKind;
 
 pub struct ColumnOverflow {
     pub span: Span,
-    pub column_name: String,
-    pub column_value: ValueKind,
+    pub column: String,
+    pub value: ValueKind,
 }
 
 pub fn column_overflow<'a>(co: ColumnOverflow) -> Diagnostic {
     let label = Some(format!(
         "value `{}` does not fit into `{}` (range: {})",
         &co.span.fragment,
-        co.column_value,
-        column_range(co.column_value)
+        co.value,
+        column_range(co.value)
     ));
 
     Diagnostic {
         code: "PO0001".to_string(),
-        message: format!("value overflows column `{}` type `{}`", co.column_name, co.column_value),
+        message: format!("value overflows column `{}` type `{}`", co.column, co.value),
         span: Some(co.span),
         label,
         help: Some("reduce the value, change the column type to a wider type or change the overflow policy".to_string()),
         notes: vec![],
-        column: Some(DiagnosticColumn { name: co.column_name, value: co.column_value }),
+        column: Some(DiagnosticColumn { name: co.column, value: co.value }),
     }
 }
 

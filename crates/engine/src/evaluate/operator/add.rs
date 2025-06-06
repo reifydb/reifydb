@@ -4,19 +4,19 @@
 use crate::evaluate::Evaluator;
 use reifydb_catalog::OverflowPolicy;
 use reifydb_core::ValueKind;
+use reifydb_diagnostic::Span;
 use reifydb_diagnostic::policy::{ColumnOverflow, column_overflow};
-use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::AddExpression;
 
-fn apply_add(a: i8, b: i8, span: Span, policy: OverflowPolicy) -> Result<i8, Diagnostic> {
+fn apply_add(a: i8, b: i8, span: Span, policy: OverflowPolicy) -> crate::evaluate::Result<i8> {
     match policy {
         OverflowPolicy::Error => a.checked_add(b).ok_or_else(|| {
-            column_overflow(ColumnOverflow {
+            crate::evaluate::Error(column_overflow(ColumnOverflow {
                 span,
-                column_name: "".to_string(),
-                column_value: ValueKind::Int1,
-            })
+                column: "field".to_string(),
+                value: ValueKind::Int1,
+            }))
         }), // OverflowPolicy::Saturate => Ok(a.saturating_add(b)),
             // OverflowPolicy::Wrap => Ok(a.wrapping_add(b)),
     }
@@ -99,15 +99,12 @@ impl Evaluator {
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
                         // values.push(l_vals[i] + r_vals[i]);
-                        values.push(
-                            apply_add(
-                                l_vals[i],
-                                r_vals[i],
-                                add.span.clone(),
-                                OverflowPolicy::Error,
-                            )
-                            .unwrap(),
-                        );
+                        values.push(apply_add(
+                            l_vals[i],
+                            r_vals[i],
+                            add.span.clone(),
+                            OverflowPolicy::Error,
+                        )?);
 
                         valid.push(true);
                     } else {

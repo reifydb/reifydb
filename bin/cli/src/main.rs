@@ -14,7 +14,14 @@ fn main() {
     // ReifyDB::embedded_blocking_with::<Memory, Serializable>(serializable());
     db.tx_as(&root, r#"create schema test"#).unwrap();
     db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
-    db.tx_as(&root, r#"insert (127 + 1) into test.item (field)"#).unwrap();
+    
+    // db.tx_as(&root, r#"insert (127 + 1) into test.item (field)"#).unwrap();
+    // if let Err(e) = db.tx_as(&root, r#"insert (127 + 1) into test.item (field)"#){
+    if let Err(e) = db.tx_as(&root, r#"insert (127 + 1),(23 + 1) into test.item (field)"#){
+        println!("{}", e);
+    }
+    
+    
     // let start = Instant::now();
     // for l in db.rx_as(&root, r#"from test.test"#) {
     for l in db.rx_as(&root, r#"from test.item select field"#) {

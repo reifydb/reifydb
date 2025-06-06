@@ -18,6 +18,13 @@ impl Executor {
         match plan {
             InsertIntoTablePlan::Values { schema, table, columns, rows_to_insert } => {
                 let mut rows = Vec::with_capacity(rows_to_insert.len());
+                
+                dbg!(&columns);
+                dbg!(&rows_to_insert);
+                
+                // turn columns + row_to_insert into dataframe
+                // evaluate dataframe
+                // write row-wise 
 
                 let num_rows = rows_to_insert.len();
 
@@ -53,7 +60,7 @@ impl Executor {
                                 PrefixOperator::Plus(_) => {}
                             },
                             expr => {
-                                let r = evaluate(expr, &[], num_rows).unwrap();
+                                let r = evaluate(expr, &[], num_rows)?;
                                 dbg!(&r);
                             }
                         }

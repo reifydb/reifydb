@@ -16,7 +16,8 @@ impl Evaluator {
         let values = evaluate(*prefix.expression, columns, row_count)?;
 
         match values {
-            ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
+            // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
+            ColumnValues::Bool(_, _) => unimplemented!(),
 
             ColumnValues::Int1(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
@@ -123,7 +124,8 @@ impl Evaluator {
                 Ok(ColumnValues::float8_with_validity(result, valid))
             }
 
-            ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
+            // ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
+            ColumnValues::String(_, _) => unimplemented!(),
 
             ColumnValues::Uint1(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
@@ -183,8 +185,11 @@ impl Evaluator {
                 }
                 Ok(ColumnValues::int16_with_validity(result, valid))
             }
+            // ColumnValues::Undefined(_) => {
+            //     Err("Cannot apply prefix operator to undefined values".into())
+            // }
             ColumnValues::Undefined(_) => {
-                Err("Cannot apply prefix operator to undefined values".into())
+                unimplemented!()
             }
         }
     }

@@ -72,7 +72,7 @@ impl Error {
         match self {
             Error::Ast(err) => err.diagnostic(),
             Error::Catalog(_) => unimplemented!(),
-            Error::Evaluation(_) => unimplemented!(),
+            Error::Evaluation(err) => err.diagnostic(),
             Error::Frame(_) => unimplemented!(),
             Error::Plan(err) => err.diagnostic(),
             Error::Policy(err) => err.diagnostic(),
