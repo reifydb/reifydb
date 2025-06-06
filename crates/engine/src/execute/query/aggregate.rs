@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use reifydb_rql::expression::{AliasExpression, ColumnExpression, Expression};
 use reifydb_frame::aggregate::Aggregate;
+use reifydb_rql::expression::{AliasExpression, ColumnExpression, Expression};
 
 impl Executor {
     pub(crate) fn aggregate(
@@ -16,7 +16,7 @@ impl Executor {
 
         for gb in group_by {
             match &gb.expression {
-                Expression::Column(ColumnExpression(c)) => keys.push(c.as_str()),
+                Expression::Column(ColumnExpression(c)) => keys.push(c.fragment.as_str()),
                 _ => unimplemented!(),
             }
         }
@@ -24,13 +24,13 @@ impl Executor {
         for p in project {
             match &p.expression {
                 Expression::Call(call) => {
-                    let func = call.func.name.as_str();
+                    let func = call.func.0.fragment.as_str();
 
                     match call.args.first().unwrap() {
                         Expression::Column(ColumnExpression(c)) => match func {
-                            "avg" => aggregates.push(Aggregate::Avg(c.to_string())),
-                            "sum" => aggregates.push(Aggregate::Sum(c.to_string())),
-                            "count" => aggregates.push(Aggregate::Count(c.to_string())),
+                            "avg" => aggregates.push(Aggregate::Avg(c.fragment.to_string())),
+                            "sum" => aggregates.push(Aggregate::Sum(c.fragment.to_string())),
+                            "count" => aggregates.push(Aggregate::Count(c.fragment.to_string())),
                             _ => unimplemented!(),
                         },
                         _ => unimplemented!(),

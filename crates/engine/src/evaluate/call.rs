@@ -15,7 +15,7 @@ impl Evaluator {
     ) -> evaluate::Result<ColumnValues> {
         let virtual_columns = self.evaluate_virtual_column(call.args, &columns, row_count).unwrap();
 
-        let functor = self.functions.get(call.func.name.as_str()).unwrap();
+        let functor = self.functions.get(call.func.0.fragment.as_str()).unwrap();
         let exec = functor.prepare().unwrap();
 
         Ok(exec.eval_scalar(&virtual_columns, row_count).unwrap())

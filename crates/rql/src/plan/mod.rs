@@ -6,13 +6,14 @@ use crate::ast::{
     AstStatement, InfixOperator,
 };
 use std::collections::HashMap;
+use std::mem;
 use std::ops::Deref;
 
 use crate::ast;
 use crate::expression::{
     AddExpression, AliasExpression, CallExpression, ColumnExpression, ConstantExpression,
     DivideExpression, Expression, IdentExpression, ModuloExpression, MultiplyExpression,
-    PrefixExpression, PrefixOperator, SubstractExpression, TupleExpression,
+    PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
 };
 pub use error::Error;
 use reifydb_catalog::{CatalogRx, Column, ColumnToCreate, SchemaRx, StoreRx};
@@ -212,17 +213,20 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                         // Now reorder the row expressions to match store_schema.column order
                         let rows_to_insert = rows
                             .into_iter()
-                            .map(|row| {
+                            .map(|mut row| {
                                 let mut values = vec![None; columns_to_insert.len()];
 
                                 for (col_idx, col) in
                                     store_schema.list_columns().unwrap().iter().enumerate()
                                 {
                                     if let Some(&input_idx) = insert_index_map.get(&col.name) {
-                                        let expr = match &row.nodes[input_idx] {
+                                        let expr =
+                                            mem::replace(&mut row.nodes[input_idx], Ast::Nop);
+
+                                        let expr = match expr {
                                             Ast::Literal(AstLiteral::Boolean(ast)) => {
                                                 Expression::Constant(ConstantExpression::Bool(
-                                                    ast.value(),
+                                                    ast.0.span,
                                                 ))
                                             }
                                             Ast::Literal(AstLiteral::Number(ast)) => {
@@ -232,30 +236,34 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                             }
                                             Ast::Literal(AstLiteral::Text(ast)) => {
                                                 Expression::Constant(ConstantExpression::Text(
-                                                    ast.value().to_string(),
+                                                    ast.0.span,
                                                 ))
                                             }
                                             Ast::Prefix(AstPrefix { operator, node }) => {
                                                 let a = node.deref();
 
+                                                let (span, operator) = match operator {
+                                                    ast::PrefixOperator::Plus(token) => (
+                                                        token.span.clone(),
+                                                        PrefixOperator::Plus(token.span),
+                                                    ),
+                                                    ast::PrefixOperator::Negate(token) => (
+                                                        token.span.clone(),
+                                                        PrefixOperator::Minus(token.span),
+                                                    ),
+                                                    ast::PrefixOperator::Not(token) => {
+                                                        unimplemented!()
+                                                    }
+                                                };
+
                                                 Expression::Prefix(PrefixExpression {
-                                                    operator: match operator {
-                                                        ast::PrefixOperator::Plus(_) => {
-                                                            PrefixOperator::Plus
-                                                        }
-                                                        ast::PrefixOperator::Negate(_) => {
-                                                            PrefixOperator::Minus
-                                                        }
-                                                        ast::PrefixOperator::Not(_) => {
-                                                            unimplemented!()
-                                                        }
-                                                    },
+                                                    operator,
                                                     expression: Box::new(match a {
                                                         Ast::Literal(lit) => match lit {
                                                             AstLiteral::Boolean(n) => {
                                                                 Expression::Constant(
                                                                     ConstantExpression::Bool(
-                                                                        n.value(),
+                                                                        n.0.span.clone(),
                                                                     ),
                                                                 )
                                                             }
@@ -269,20 +277,24 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                                             AstLiteral::Text(t) => {
                                                                 Expression::Constant(
                                                                     ConstantExpression::Text(
-                                                                        t.value().to_string(),
+                                                                        t.0.span.clone(),
                                                                     ),
                                                                 )
                                                             }
-                                                            AstLiteral::Undefined(_) => {
+                                                            AstLiteral::Undefined(t) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Undefined,
+                                                                    ConstantExpression::Undefined(
+                                                                        t.0.span.clone(),
+                                                                    ),
                                                                 )
                                                             }
                                                         },
                                                         _ => unimplemented!(),
                                                     }),
+                                                    span,
                                                 })
                                             }
+                                            Ast::Infix(infix) => expression_infix(infix).unwrap(),
                                             node => unimplemented!("{node:?}"),
                                         };
 
@@ -379,9 +391,7 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                     .map(|ast| match ast {
                         Ast::Identifier(node) => AliasExpression {
                             alias: Some(node.value().to_string()),
-                            expression: Expression::Column(ColumnExpression(
-                                node.value().to_string(),
-                            )),
+                            expression: Expression::Column(ColumnExpression(node.0.span)),
                         },
                         _ => unimplemented!(),
                     })
@@ -399,7 +409,7 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                 .map(|ast| match ast {
                     Ast::Identifier(node) => AliasExpression {
                         alias: Some(node.value().to_string()),
-                        expression: Expression::Column(ColumnExpression(node.value().to_string())),
+                        expression: Expression::Column(ColumnExpression(node.0.span)),
                     },
                     ast => unimplemented!("{ast:?}"),
                 })
@@ -432,7 +442,7 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 // Ast::From(_) => {}
                 Ast::Identifier(node) => AliasExpression {
                     alias: Some(node.value().to_string()),
-                    expression: Expression::Column(ColumnExpression(node.value().to_string())),
+                    expression: Expression::Column(ColumnExpression(node.0.span)),
                 },
                 Ast::Infix(node) => {
                     AliasExpression { alias: None, expression: expression_infix(node).unwrap() }
@@ -440,7 +450,7 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 Ast::Literal(node) => match node {
                     AstLiteral::Boolean(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Bool(node.value())),
+                        expression: Expression::Constant(ConstantExpression::Bool(node.0.span)),
                     },
                     AstLiteral::Number(node) => AliasExpression {
                         alias: None,
@@ -448,26 +458,35 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                     },
                     AstLiteral::Text(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Text(
-                            node.value().to_string(),
+                        expression: Expression::Constant(ConstantExpression::Text(node.0.span)),
+                    },
+                    AstLiteral::Undefined(node) => AliasExpression {
+                        alias: None,
+                        expression: Expression::Constant(ConstantExpression::Undefined(
+                            node.0.span,
                         )),
                     },
-                    AstLiteral::Undefined(_) => AliasExpression {
+                },
+                Ast::Prefix(node) => {
+                    let (span, operator) = match node.operator {
+                        ast::PrefixOperator::Plus(token) => {
+                            (token.span.clone(), PrefixOperator::Plus(token.span))
+                        }
+                        ast::PrefixOperator::Negate(token) => {
+                            (token.span.clone(), PrefixOperator::Minus(token.span))
+                        }
+                        ast::PrefixOperator::Not(token) => unimplemented!(),
+                    };
+
+                    AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Undefined),
-                    },
-                },
-                Ast::Prefix(node) => AliasExpression {
-                    alias: None,
-                    expression: Expression::Prefix(PrefixExpression {
-                        operator: match node.operator {
-                            ast::PrefixOperator::Plus(_) => PrefixOperator::Plus,
-                            ast::PrefixOperator::Negate(_) => PrefixOperator::Minus,
-                            ast::PrefixOperator::Not(_) => unimplemented!(),
-                        },
-                        expression: Box::new(expression(*node.node).unwrap()), //FIXME
-                    }),
-                },
+                        expression: Expression::Prefix(PrefixExpression {
+                            operator,
+                            expression: Box::new(expression(*node.node).unwrap()), //FIXME
+                            span,
+                        }),
+                    }
+                }
                 ast => unimplemented!("{:?}", ast),
             })
             .collect(),
@@ -483,9 +502,7 @@ fn expression(ast: Ast) -> Result<Expression> {
             }
             _ => unimplemented!(),
         },
-        Ast::Identifier(identifier) => {
-            Ok(Expression::Column(ColumnExpression(identifier.value().to_string())))
-        }
+        Ast::Identifier(identifier) => Ok(Expression::Column(ColumnExpression(identifier.0.span))),
         Ast::Infix(infix) => expression_infix(infix),
         Ast::Tuple(tuple) => {
             let mut expressions = Vec::with_capacity(tuple.len());
@@ -494,16 +511,23 @@ fn expression(ast: Ast) -> Result<Expression> {
                 expressions.push(expression(ast)?);
             }
 
-            Ok(Expression::Tuple(TupleExpression { expressions }))
+            Ok(Expression::Tuple(TupleExpression { expressions, span: tuple.token.span }))
         }
         Ast::Prefix(prefix) => {
+            let (span, operator) = match prefix.operator {
+                ast::PrefixOperator::Plus(token) => {
+                    (token.span.clone(), PrefixOperator::Plus(token.span))
+                }
+                ast::PrefixOperator::Negate(token) => {
+                    (token.span.clone(), PrefixOperator::Minus(token.span))
+                }
+                ast::PrefixOperator::Not(token) => unimplemented!(),
+            };
+
             Ok(Expression::Prefix(PrefixExpression {
-                operator: match prefix.operator {
-                    ast::PrefixOperator::Plus(_) => PrefixOperator::Plus,
-                    ast::PrefixOperator::Negate(_) => PrefixOperator::Minus,
-                    ast::PrefixOperator::Not(_) => unimplemented!(),
-                }, // FIXME ast and expression share the same operator --> use the same enum
+                operator,
                 expression: Box::new(expression(*prefix.node)?),
+                span,
             }))
         }
         _ => unimplemented!("{ast:#?}"),
@@ -512,53 +536,62 @@ fn expression(ast: Ast) -> Result<Expression> {
 
 fn expression_infix(infix: AstInfix) -> Result<Expression> {
     match infix.operator {
-        InfixOperator::Add(_) => {
+        InfixOperator::Add(token) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
-            Ok(Expression::Add(AddExpression { left: Box::new(left), right: Box::new(right) }))
+            Ok(Expression::Add(AddExpression {
+                left: Box::new(left),
+                right: Box::new(right),
+                span: token.span,
+            }))
         }
-        InfixOperator::Divide(_) => {
+        InfixOperator::Divide(token) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
             Ok(Expression::Divide(DivideExpression {
                 left: Box::new(left),
                 right: Box::new(right),
+                span: token.span,
             }))
         }
-        InfixOperator::Subtract(_) => {
+        InfixOperator::Subtract(token) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
-            Ok(Expression::Subtract(SubstractExpression {
+            Ok(Expression::Subtract(SubtractExpression {
                 left: Box::new(left),
                 right: Box::new(right),
+                span: token.span,
             }))
         }
-        InfixOperator::Modulo(_) => {
+        InfixOperator::Modulo(token) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
             Ok(Expression::Modulo(ModuloExpression {
                 left: Box::new(left),
                 right: Box::new(right),
+                span: token.span,
             }))
         }
-        InfixOperator::Multiply(_) => {
+        InfixOperator::Multiply(token) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
             Ok(Expression::Multiply(MultiplyExpression {
                 left: Box::new(left),
                 right: Box::new(right),
+                span: token.span,
             }))
         }
-        InfixOperator::Call(_) => {
+        InfixOperator::Call(token) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
 
-            let Expression::Column(ColumnExpression(name)) = left else { panic!() };
+            let Expression::Column(ColumnExpression(span)) = left else { panic!() };
             let Expression::Tuple(tuple) = right else { panic!() };
 
             Ok(Expression::Call(CallExpression {
-                func: IdentExpression { name },
+                func: IdentExpression(span),
                 args: tuple.expressions,
+                span: token.span,
             }))
         }
         operator => unimplemented!("not implemented: {operator:?}"),

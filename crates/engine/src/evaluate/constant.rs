@@ -13,8 +13,10 @@ impl Evaluator {
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
         Ok(match expr {
-            ConstantExpression::Undefined => ColumnValues::Undefined(row_count),
-            ConstantExpression::Bool(v) => ColumnValues::bool(vec![v; row_count]),
+            ConstantExpression::Undefined(_) => ColumnValues::Undefined(row_count),
+            ConstantExpression::Bool(v) => {
+                ColumnValues::bool(vec![v.fragment == "true"; row_count])
+            }
             ConstantExpression::Number(s) => {
                 let s = s.fragment;
                 // FIXME that does not look right..
@@ -47,7 +49,7 @@ impl Evaluator {
                 }
             }
             ConstantExpression::Text(s) => {
-                ColumnValues::string(std::iter::repeat(s).take(row_count))
+                ColumnValues::string(std::iter::repeat(s.fragment).take(row_count))
             }
         })
     }

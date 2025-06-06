@@ -2,8 +2,25 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::Evaluator;
+use reifydb_catalog::OverflowPolicy;
+use reifydb_core::ValueKind;
+use reifydb_diagnostic::policy::{ColumnOverflow, column_overflow};
+use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::AddExpression;
+
+fn apply_add(a: i8, b: i8, span: Span, policy: OverflowPolicy) -> Result<i8, Diagnostic> {
+    match policy {
+        OverflowPolicy::Error => a.checked_add(b).ok_or_else(|| {
+            column_overflow(ColumnOverflow {
+                span,
+                column_name: "".to_string(),
+                column_value: ValueKind::Int1,
+            })
+        }), // OverflowPolicy::Saturate => Ok(a.saturating_add(b)),
+            // OverflowPolicy::Wrap => Ok(a.wrapping_add(b)),
+    }
+}
 
 impl Evaluator {
     pub(crate) fn add(
@@ -81,7 +98,17 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] + r_vals[i]);
+                        // values.push(l_vals[i] + r_vals[i]);
+                        values.push(
+                            apply_add(
+                                l_vals[i],
+                                r_vals[i],
+                                add.span.clone(),
+                                OverflowPolicy::Error,
+                            )
+                            .unwrap(),
+                        );
+
                         valid.push(true);
                     } else {
                         values.push(0); // Placeholder

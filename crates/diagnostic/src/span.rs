@@ -1,9 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
     /// The offset represents the position of the fragment relatively to

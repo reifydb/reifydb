@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ExecutionResult;
+use crate::evaluate::evaluate;
 use crate::execute::Executor;
 use reifydb_core::Value;
 use reifydb_rql::expression::{ConstantExpression, Expression, PrefixExpression, PrefixOperator};
@@ -18,6 +19,8 @@ impl Executor {
             InsertIntoTablePlan::Values { schema, table, columns, rows_to_insert } => {
                 let mut rows = Vec::with_capacity(rows_to_insert.len());
 
+                let num_rows = rows_to_insert.len();
+
                 // FIXME do not evaluate expression in here - you general evaluator and try to operate on columns
                 for row in rows_to_insert {
                     let mut row_values = Vec::with_capacity(row.len());
@@ -29,27 +32,30 @@ impl Executor {
                             Expression::Constant(const_expr) => {
                                 row_values.push(const_expr.into_column_value(column)?)
                             }
-                            Expression::Prefix(PrefixExpression { operator, expression }) => {
-                                match operator {
-                                    PrefixOperator::Minus => match *expression {
-                                        Expression::Constant(const_expr) => {
-                                            row_values.push(match const_expr {
-                                                ConstantExpression::Undefined => Value::Undefined,
-                                                ConstantExpression::Bool(_) => Value::Undefined,
-                                                ConstantExpression::Number(mut span) => {
-                                                    span.fragment = format!("-{}", span.fragment);
-                                                    ConstantExpression::Number(span)
-                                                        .into_column_value(column)?
-                                                }
-                                                ConstantExpression::Text(_) => Value::Undefined,
-                                            })
-                                        }
-                                        _ => unimplemented!(),
-                                    },
-                                    PrefixOperator::Plus => {}
-                                }
+                            Expression::Prefix(PrefixExpression {
+                                operator, expression, ..
+                            }) => match operator {
+                                PrefixOperator::Minus(_) => match *expression {
+                                    Expression::Constant(const_expr) => {
+                                        row_values.push(match const_expr {
+                                            ConstantExpression::Undefined(_) => Value::Undefined,
+                                            ConstantExpression::Bool(_) => Value::Undefined,
+                                            ConstantExpression::Number(mut span) => {
+                                                span.fragment = format!("-{}", span.fragment);
+                                                ConstantExpression::Number(span)
+                                                    .into_column_value(column)?
+                                            }
+                                            ConstantExpression::Text(_) => Value::Undefined,
+                                        })
+                                    }
+                                    _ => unimplemented!(),
+                                },
+                                PrefixOperator::Plus(_) => {}
+                            },
+                            expr => {
+                                let r = evaluate(expr, &[], num_rows).unwrap();
+                                dbg!(&r);
                             }
-                            expr => unimplemented!("{expr:?}"),
                         }
                     }
                     rows.push(row_values);

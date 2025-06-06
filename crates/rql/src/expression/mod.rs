@@ -5,6 +5,7 @@ pub use constant::ConstantExpression;
 
 mod constant;
 
+use reifydb_diagnostic::Span;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -40,7 +41,7 @@ pub enum Expression {
 
     Multiply(MultiplyExpression),
 
-    Subtract(SubstractExpression),
+    Subtract(SubtractExpression),
 
     Tuple(TupleExpression),
 
@@ -51,52 +52,59 @@ pub enum Expression {
 pub struct AddExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct DivideExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct SubstractExpression {
+pub struct SubtractExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct ModuloExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct MultiplyExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct ColumnExpression(pub String);
+pub struct ColumnExpression(pub Span);
 
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::Constant(val) => write!(f, "{}", val),
-            Expression::Column(ColumnExpression(name)) => write!(f, "{}", name),
-            Expression::Add(AddExpression { left, right }) => write!(f, "({} + {})", left, right),
-            Expression::Divide(DivideExpression { left, right }) => {
+            Expression::Constant(span) => write!(f, "{}", span),
+            Expression::Column(ColumnExpression(span)) => write!(f, "{}", span.fragment),
+            Expression::Add(AddExpression { left, right, .. }) => {
+                write!(f, "({} + {})", left, right)
+            }
+            Expression::Divide(DivideExpression { left, right, .. }) => {
                 write!(f, "({} / {})", left, right)
             }
             Expression::Call(call) => write!(f, "{}", call),
-            Expression::Modulo(ModuloExpression { left, right }) => {
+            Expression::Modulo(ModuloExpression { left, right, .. }) => {
                 write!(f, "({} % {})", left, right)
             }
-            Expression::Multiply(MultiplyExpression { left, right }) => {
+            Expression::Multiply(MultiplyExpression { left, right, .. }) => {
                 write!(f, "({} * {})", left, right)
             }
-            Expression::Subtract(SubstractExpression { left, right }) => {
+            Expression::Subtract(SubtractExpression { left, right, .. }) => {
                 write!(f, "({} - {})", left, right)
             }
             Expression::Tuple(tuple) => write!(f, "({})", tuple),
@@ -109,6 +117,7 @@ impl Display for Expression {
 pub struct CallExpression {
     pub func: IdentExpression,
     pub args: Vec<Expression>,
+    pub span: Span,
 }
 
 impl Display for CallExpression {
@@ -119,27 +128,31 @@ impl Display for CallExpression {
 }
 
 #[derive(Debug, Clone)]
-pub struct IdentExpression {
-    pub name: String,
+pub struct IdentExpression(pub Span);
+
+impl IdentExpression {
+    pub fn name(&self) -> &str {
+        &self.0.fragment
+    }
 }
 
 impl Display for IdentExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.0.fragment)
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum PrefixOperator {
-    Minus,
-    Plus,
+    Minus(Span),
+    Plus(Span),
 }
 
 impl Display for PrefixOperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            PrefixOperator::Minus => write!(f, "-"),
-            PrefixOperator::Plus => write!(f, "+"),
+            PrefixOperator::Minus(_) => write!(f, "-"),
+            PrefixOperator::Plus(_) => write!(f, "+"),
         }
     }
 }
@@ -148,6 +161,7 @@ impl Display for PrefixOperator {
 pub struct PrefixExpression {
     pub operator: PrefixOperator,
     pub expression: Box<Expression>,
+    pub span: Span,
 }
 
 impl Display for PrefixExpression {
@@ -159,6 +173,7 @@ impl Display for PrefixExpression {
 #[derive(Debug, Clone)]
 pub struct TupleExpression {
     pub expressions: Vec<Expression>,
+    pub span: Span,
 }
 
 impl Display for TupleExpression {

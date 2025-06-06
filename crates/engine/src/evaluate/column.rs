@@ -3,8 +3,8 @@
 
 use crate::evaluate;
 use crate::evaluate::Evaluator;
-use reifydb_rql::expression::ColumnExpression;
 use reifydb_frame::{Column, ColumnValues};
+use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
     pub(crate) fn column(
@@ -15,7 +15,7 @@ impl Evaluator {
     ) -> evaluate::Result<ColumnValues> {
         Ok(columns
             .iter()
-            .find(|c| c.name == *column.0)
+            .find(|c| c.name == *column.0.fragment)
             .cloned()
             .cloned()
             .map(|c| c.data)

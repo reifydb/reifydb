@@ -15,21 +15,21 @@ use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstantExpression {
-    Undefined,
-    Bool(bool),
+    Undefined(Span),
+    Bool(Span),
     // any number
     Number(Span),
     // any textual representation can be String, Text, ...
-    Text(String),
+    Text(Span),
 }
 
 impl Display for ConstantExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ConstantExpression::Undefined => write!(f, "undefined"),
-            ConstantExpression::Bool(b) => write!(f, "{b}"),
+            ConstantExpression::Undefined(_) => write!(f, "undefined"),
+            ConstantExpression::Bool(span) => write!(f, "{}", span.fragment),
             ConstantExpression::Number(span) => write!(f, "{}", span.fragment),
-            ConstantExpression::Text(s) => write!(f, "\"{s}\""),
+            ConstantExpression::Text(span) => write!(f, "\"{}\"", span.fragment),
         }
     }
 }
@@ -41,7 +41,7 @@ impl ConstantExpression {
         match self {
             ConstantExpression::Bool(b) => {
                 if kind == ValueKind::Bool {
-                    Ok(Value::Bool(b))
+                    Ok(Value::Bool(b.fragment == "true"))
                 } else {
                     Ok(Value::Undefined)
                 }
@@ -95,12 +95,12 @@ impl ConstantExpression {
             }
             ConstantExpression::Text(s) => {
                 if kind == ValueKind::String {
-                    Ok(Value::String(s))
+                    Ok(Value::String(s.fragment))
                 } else {
                     Ok(Value::Undefined)
                 }
             }
-            ConstantExpression::Undefined => Ok(Value::Undefined),
+            ConstantExpression::Undefined(_) => Ok(Value::Undefined),
         }
     }
 }
@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_bool() {
-        let expr = ConstantExpression::Bool(true);
+        let expr = ConstantExpression::Bool(make_span("true"));
         let col = column_error_policy("bool_col", ValueKind::Bool);
         assert_eq!(expr.into_column_value(&col), Ok(Value::Bool(true)));
     }
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_string_error_policy() {
-        let expr = ConstantExpression::Text("hello world".into());
+        let expr = ConstantExpression::Text(make_span("hello world"));
         let col = column_error_policy("txt", ValueKind::String);
         assert_eq!(expr.into_column_value(&col), Ok(Value::String("hello world".into())));
     }

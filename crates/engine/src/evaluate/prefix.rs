@@ -3,8 +3,8 @@
 
 use crate::evaluate;
 use crate::evaluate::{Evaluator, evaluate};
-use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 use reifydb_frame::{Column, ColumnValues};
+use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
     pub(crate) fn prefix(
@@ -23,8 +23,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     if valid.get(idx).copied().unwrap_or(false) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus => -*val,
-                            PrefixOperator::Plus => *val,
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
                         });
                     } else {
                         result.push(0);
@@ -38,8 +38,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     if valid.get(idx).copied().unwrap_or(false) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus => -*val,
-                            PrefixOperator::Plus => *val,
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
                         });
                     } else {
                         result.push(0);
@@ -53,8 +53,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     if valid.get(idx).copied().unwrap_or(false) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus => -*val,
-                            PrefixOperator::Plus => *val,
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
                         });
                     } else {
                         result.push(0);
@@ -68,8 +68,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     if valid.get(idx).copied().unwrap_or(false) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus => -*val,
-                            PrefixOperator::Plus => *val,
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
                         });
                     } else {
                         result.push(0);
@@ -83,8 +83,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     if valid.get(idx).copied().unwrap_or(false) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus => -*val,
-                            PrefixOperator::Plus => *val,
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
                         });
                     } else {
                         result.push(0);
@@ -98,8 +98,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     if valid.get(idx).copied().unwrap_or(false) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus => -*val,
-                            PrefixOperator::Plus => *val,
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
                         });
                     } else {
                         result.push(0.0);
@@ -113,8 +113,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     if valid.get(idx).copied().unwrap_or(false) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus => -*val,
-                            PrefixOperator::Plus => *val,
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
                         });
                     } else {
                         result.push(0.0);
@@ -130,8 +130,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     let signed = *val as i8;
                     result.push(match prefix.operator {
-                        PrefixOperator::Minus => -signed,
-                        PrefixOperator::Plus => signed,
+                        PrefixOperator::Minus(_) => -signed,
+                        PrefixOperator::Plus(_) => signed,
                     });
                 }
                 Ok(ColumnValues::int1_with_validity(result, valid))
@@ -142,8 +142,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     let signed = *val as i16;
                     result.push(match prefix.operator {
-                        PrefixOperator::Minus => -signed,
-                        PrefixOperator::Plus => signed,
+                        PrefixOperator::Minus(_) => -signed,
+                        PrefixOperator::Plus(_) => signed,
                     });
                 }
                 Ok(ColumnValues::int2_with_validity(result, valid))
@@ -154,8 +154,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     let signed = *val as i32;
                     result.push(match prefix.operator {
-                        PrefixOperator::Minus => -signed,
-                        PrefixOperator::Plus => signed,
+                        PrefixOperator::Minus(_) => -signed,
+                        PrefixOperator::Plus(_) => signed,
                     });
                 }
                 Ok(ColumnValues::int4_with_validity(result, valid))
@@ -166,8 +166,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     let signed = *val as i64;
                     result.push(match prefix.operator {
-                        PrefixOperator::Minus => -signed,
-                        PrefixOperator::Plus => signed,
+                        PrefixOperator::Minus(_) => -signed,
+                        PrefixOperator::Plus(_) => signed,
                     });
                 }
                 Ok(ColumnValues::int8_with_validity(result, valid))
@@ -177,8 +177,8 @@ impl Evaluator {
                 for (idx, val) in values.iter().enumerate() {
                     let signed = *val as i128;
                     result.push(match prefix.operator {
-                        PrefixOperator::Minus => -signed,
-                        PrefixOperator::Plus => signed,
+                        PrefixOperator::Minus(_) => -signed,
+                        PrefixOperator::Plus(_) => signed,
                     });
                 }
                 Ok(ColumnValues::int16_with_validity(result, valid))
