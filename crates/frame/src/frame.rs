@@ -3,7 +3,6 @@
 
 use crate::iterator::FrameIter;
 use crate::{Column, ColumnValues, ValueRef};
-use reifydb_core::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -21,6 +20,10 @@ impl Frame {
         let index = columns.iter().enumerate().map(|(i, col)| (col.name.clone(), i)).collect();
 
         Self { columns, index }
+    }
+
+    pub fn empty() -> Self {
+        Self { columns: vec![], index: HashMap::new() }
     }
 
     pub fn shape(&self) -> (usize, usize) {

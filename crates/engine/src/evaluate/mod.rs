@@ -6,6 +6,7 @@ use reifydb_rql::expression::Expression;
 
 use crate::function::{FunctionRegistry, math};
 pub use error::Error;
+use reifydb_core::ValueKind;
 
 mod call;
 mod column;
@@ -30,31 +31,51 @@ impl Evaluator {
     pub(crate) fn evaluate(
         &mut self,
         expr: Expression,
+        ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> Result<ColumnValues> {
         match expr {
-            Expression::Add(expr) => self.add(expr, columns, row_count),
-            Expression::Divide(expr) => self.divide(expr, columns, row_count),
-            Expression::Call(expr) => self.call(expr, columns, row_count),
-            Expression::Column(expr) => self.column(expr, columns, row_count),
-            Expression::Constant(v) => self.constant(v, row_count),
-            Expression::Modulo(expr) => self.modulo(expr, columns, row_count),
-            Expression::Multiply(expr) => self.multiply(expr, columns, row_count),
-            Expression::Prefix(expr) => self.prefix(expr, columns, row_count),
-            Expression::Subtract(expr) => self.subtract(expr, columns, row_count),
+            Expression::Add(expr) => self.add(expr, ctx, columns, row_count),
+            Expression::Divide(expr) => self.divide(expr, ctx, columns, row_count),
+            Expression::Call(expr) => self.call(expr, ctx, columns, row_count),
+            Expression::Column(expr) => self.column(expr, ctx, columns, row_count),
+            Expression::Constant(expr) => self.constant(expr, ctx, row_count),
+            Expression::Modulo(expr) => self.modulo(expr, ctx, columns, row_count),
+            Expression::Multiply(expr) => self.multiply(expr, ctx, columns, row_count),
+            Expression::Prefix(expr) => self.prefix(expr, ctx, columns, row_count),
+            Expression::Subtract(expr) => self.subtract(expr, ctx, columns, row_count),
             expr => unimplemented!("{expr:?}"),
         }
     }
 }
 
-pub fn evaluate(expr: Expression, columns: &[&Column], row_count: usize) -> Result<ColumnValues> {
+pub(crate) struct EvaluationColumn {
+    pub(crate) name: String,
+    pub(crate) value: ValueKind,
+}
+
+pub(crate) struct Context {
+    pub(crate) column: Option<EvaluationColumn>,
+    // column
+    // value
+    // policies
+
+    // frame
+}
+
+pub fn evaluate(
+    expr: Expression,
+    ctx: &Context,
+    columns: &[&Column],
+    row_count: usize,
+) -> Result<ColumnValues> {
     let mut evaluator = Evaluator { functions: FunctionRegistry::new() };
 
     evaluator.functions.register(math::AbsFunction {});
     evaluator.functions.register(math::AvgFunction {});
 
-    evaluator.evaluate(expr, columns, row_count)
+    evaluator.evaluate(expr, ctx, columns, row_count)
 }
 
 #[cfg(test)]

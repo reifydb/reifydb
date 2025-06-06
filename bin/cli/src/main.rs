@@ -13,18 +13,20 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
     // ReifyDB::embedded_blocking_with::<Memory, Serializable>(serializable());
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
     
-    // db.tx_as(&root, r#"insert (127 + 1) into test.item (field)"#).unwrap();
-    // if let Err(e) = db.tx_as(&root, r#"insert (127 + 1) into test.item (field)"#){
-    if let Err(e) = db.tx_as(&root, r#"insert (127 + 1),(23 + 1) into test.item (field)"#){
+    
+    // db.tx_as(&root, r#"create table test.arith(id: int2, num: int2)"#).unwrap();
+    // db.tx_as(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#).unwrap();
+    
+    db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
+    if let Err(e) = db.tx_as(&root, r#"insert (-128) into test.item (field)"#){
         println!("{}", e);
     }
     
     
     // let start = Instant::now();
-    // for l in db.rx_as(&root, r#"from test.test"#) {
-    for l in db.rx_as(&root, r#"from test.item select field"#) {
+    for l in db.rx_as(&root, r#"from test.item"#) {
+    // for l in db.tx_as(&root, r#"from test.arith select id + 42, id + id + id"#).unwrap() {
         println!("{}", l);
     }
     // println!("took {:?}", start.elapsed());

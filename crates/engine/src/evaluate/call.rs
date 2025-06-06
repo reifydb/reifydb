@@ -2,18 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate;
-use crate::evaluate::Evaluator;
-use reifydb_rql::expression::{CallExpression, Expression};
+use crate::evaluate::{Context, Evaluator};
 use reifydb_frame::{Column, ColumnValues};
+use reifydb_rql::expression::{CallExpression, Expression};
 
 impl Evaluator {
     pub(crate) fn call(
         &mut self,
         call: CallExpression,
+        ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
-        let virtual_columns = self.evaluate_virtual_column(call.args, &columns, row_count).unwrap();
+        let virtual_columns =
+            self.evaluate_virtual_column(call.args, ctx, &columns, row_count).unwrap();
 
         let functor = self.functions.get(call.func.0.fragment.as_str()).unwrap();
         let exec = functor.prepare().unwrap();
@@ -24,6 +26,7 @@ impl Evaluator {
     fn evaluate_virtual_column<'a>(
         &mut self,
         expressions: Vec<Expression>,
+        ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::Result<Vec<Column>> {
@@ -32,7 +35,7 @@ impl Evaluator {
         for expression in expressions {
             result.push(Column {
                 name: expression.to_string(),
-                data: self.evaluate(expression, columns, row_count)?,
+                data: self.evaluate(expression, ctx, columns, row_count)?,
             })
         }
 

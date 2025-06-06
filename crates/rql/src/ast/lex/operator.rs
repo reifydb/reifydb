@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use std::fmt::{Display, Formatter};
-use crate::ast::lex::{as_span, Keyword, Token, TokenKind};
+use crate::ast::lex::{Token, TokenKind, as_span};
 use nom::branch::alt;
 use nom::bytes::tag;
 use nom::combinator::value;
@@ -99,13 +98,18 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
         )),
     ));
 
-    parser.map(|op| Token { kind: TokenKind::Operator(op), span: as_span(start.take(op.as_str().len())) }).parse(input)
+    parser
+        .map(|op| Token {
+            kind: TokenKind::Operator(op),
+            span: as_span(start.take(op.as_str().len())),
+        })
+        .parse(input)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::operator::{parse_operator, Operator};
     use crate::ast::lex::TokenKind;
+    use crate::ast::lex::operator::{Operator, parse_operator};
     use nom_locate::LocatedSpan;
 
     #[test]

@@ -86,27 +86,29 @@ mod tests {
 
     #[test]
     fn test_plus() {
-        let tokens = lex("+2").unwrap();
+        let tokens = lex("+(2)").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
         let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
         assert!(matches!(*operator, PrefixOperator::Plus(_)));
 
-        let Literal(AstLiteral::Number(node)) = node.deref() else { panic!() };
+        let Ast::Tuple(tuple) = node.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = &tuple.nodes.get(0).unwrap() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
     #[test]
     fn test_negate() {
-        let tokens = lex("-2").unwrap();
+        let tokens = lex("-(2)").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
         let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
         assert!(matches!(*operator, PrefixOperator::Negate(_)));
 
-        let Literal(AstLiteral::Number(node)) = node.deref() else { panic!() };
+        let Ast::Tuple(tuple) = node.deref() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = &tuple.nodes.get(0).unwrap() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 

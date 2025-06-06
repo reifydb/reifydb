@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate;
-use crate::evaluate::{Evaluator, evaluate};
+use crate::evaluate::{Context, Evaluator, evaluate};
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
@@ -10,10 +10,13 @@ impl Evaluator {
     pub(crate) fn prefix(
         &mut self,
         prefix: PrefixExpression,
+        ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
-        let values = evaluate(*prefix.expression, columns, row_count)?;
+    
+    
+        let values = evaluate(*prefix.expression, ctx, columns, row_count)?;
 
         match values {
             // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),

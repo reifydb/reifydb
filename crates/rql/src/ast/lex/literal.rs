@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::Literal::{False, Number, Text, True, Undefined};
-use crate::ast::lex::{as_span, Token, TokenKind};
+use crate::ast::lex::{Token, TokenKind, as_span};
+use TokenKind::Literal;
 use nom::branch::alt;
 use nom::bytes::{is_not, tag, tag_no_case, take_while1};
 use nom::character::{char, digit1, multispace0};
@@ -11,17 +12,23 @@ use nom::number::double;
 use nom::sequence::{delimited, pair, preceded};
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
-use TokenKind::Literal;
 
 /// Parses any literal
 pub(crate) fn parse_literal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    preceded(multispace0(), alt((parse_text, parse_number, parse_boolean, parse_undefined))).parse(input)
+    preceded(multispace0(), alt((parse_text, parse_number, parse_boolean, parse_undefined)))
+        .parse(input)
 }
 
 fn parse_boolean(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     alt((
-        map(tag_no_case("true"), |span: LocatedSpan<&str>| Token { kind: Literal(True), span: as_span(span) }),
-        map(tag_no_case("false"), |span: LocatedSpan<&str>| Token { kind: Literal(False), span: as_span(span) }),
+        map(tag_no_case("true"), |span: LocatedSpan<&str>| Token {
+            kind: Literal(True),
+            span: as_span(span),
+        }),
+        map(tag_no_case("false"), |span: LocatedSpan<&str>| Token {
+            kind: Literal(False),
+            span: as_span(span),
+        }),
     ))
     .parse(input)
 }
@@ -38,32 +45,56 @@ fn parse_number(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 }
 
 fn parse_hex(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = complete(recognize(preceded(tag("0x"), take_while1(|c: char| c.is_ascii_hexdigit())))).parse(input)?;
+    let inner = recognize(preceded(tag("0x"), take_while1(|c: char| c.is_ascii_hexdigit())));
+    let (rest, span) = complete(with_optional_sign(inner)).parse(input)?;
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
 fn parse_octal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = complete(recognize(preceded(tag("0o"), take_while1(|c: char| c >= '0' && c <= '7')))).parse(input)?;
+    let inner = recognize(preceded(tag("0o"), take_while1(|c: char| c >= '0' && c <= '7')));
+    let (rest, span) = complete(with_optional_sign(inner)).parse(input)?;
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
 fn parse_binary(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = complete(recognize(preceded(tag("0b"), take_while1(|c: char| c == '0' || c == '1')))).parse(input)?;
+    let inner = recognize(preceded(tag("0b"), take_while1(|c: char| c == '0' || c == '1')));
+    let (rest, span) = complete(with_optional_sign(inner)).parse(input)?;
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
 fn parse_float(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = complete(recognize(double())).parse(input)?;
+    let (rest, span) = complete(with_optional_sign(recognize(double()))).parse(input)?;
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
 fn parse_decimal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = complete(recognize(pair(opt(char('-')), digit1()))).parse(input)?;
+    let (rest, span) = complete(with_optional_sign(digit1())).parse(input)?;
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
 fn parse_undefined(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    alt((map(tag_no_case("undefined"), |span: LocatedSpan<&str>| Token { kind: Literal(Undefined), span: as_span(span) }),)).parse(input)
+    alt((map(tag_no_case("undefined"), |span: LocatedSpan<&str>| Token {
+        kind: Literal(Undefined),
+        span: as_span(span),
+    }),))
+    .parse(input)
+}
+
+fn with_optional_sign<'a, F>(
+    inner: F,
+) -> impl Parser<
+    LocatedSpan<&'a str>,
+    Output = LocatedSpan<&'a str>,
+    Error = nom::error::Error<LocatedSpan<&'a str>>,
+>
+where
+    F: Parser<
+            LocatedSpan<&'a str>,
+            Output = LocatedSpan<&'a str>,
+            Error = nom::error::Error<LocatedSpan<&'a str>>,
+        >,
+{
+    recognize(pair(opt(char('-')), inner))
 }
 
 #[cfg(test)]
@@ -88,30 +119,70 @@ mod tests {
     fn test_number_hex() {
         let (_rest, token) = parse_literal(LocatedSpan::new("0x2A")).unwrap();
         assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "0x2A");
+    }
+
+    #[test]
+    fn test_number_hex_negative() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("-0x2A")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "-0x2A");
     }
 
     #[test]
     fn test_number_octal() {
         let (_rest, token) = parse_literal(LocatedSpan::new("0o777")).unwrap();
         assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "0o777");
+    }
+
+    #[test]
+    fn test_number_octal_negative() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("-0o777")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "-0o777");
     }
 
     #[test]
     fn test_number_binary() {
         let (_rest, token) = parse_literal(LocatedSpan::new("0b1010")).unwrap();
         assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "0b1010");
+    }
+
+    #[test]
+    fn test_number_binary_negative() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("-0b1010")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "-0b1010");
     }
 
     #[test]
     fn test_number_decimal() {
         let (_rest, token) = parse_literal(LocatedSpan::new("100")).unwrap();
         assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "100");
+    }
+
+    #[test]
+    fn test_number_decimal_negative() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("-100")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "-100");
     }
 
     #[test]
     fn test_number_float() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("42.5")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "42.5");
+    }
+
+    #[test]
+    fn test_number_float_negative() {
         let (_rest, token) = parse_literal(LocatedSpan::new("-42.5")).unwrap();
         assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "-42.5");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::evaluate::Evaluator;
+use crate::evaluate::{Context, Evaluator};
 use reifydb_catalog::OverflowPolicy;
 use reifydb_core::ValueKind;
 use reifydb_diagnostic::Span;
@@ -26,11 +26,12 @@ impl Evaluator {
     pub(crate) fn add(
         &mut self,
         add: AddExpression,
+        ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let left = self.evaluate(*add.left, columns, row_count)?;
-        let right = self.evaluate(*add.right, columns, row_count)?;
+        let left = self.evaluate(*add.left, ctx, columns, row_count)?;
+        let right = self.evaluate(*add.right, ctx, columns, row_count)?;
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {

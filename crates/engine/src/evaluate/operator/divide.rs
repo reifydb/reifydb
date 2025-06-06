@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::evaluate::Evaluator;
+use crate::evaluate::{Context, Evaluator};
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::DivideExpression;
 
@@ -12,11 +12,12 @@ impl Evaluator {
     pub(crate) fn divide(
         &mut self,
         div: DivideExpression,
+        ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let left = self.evaluate(*div.left, columns, row_count)?;
-        let right = self.evaluate(*div.right, columns, row_count)?;
+        let left = self.evaluate(*div.left, ctx, columns, row_count)?;
+        let right = self.evaluate(*div.right, ctx, columns, row_count)?;
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {

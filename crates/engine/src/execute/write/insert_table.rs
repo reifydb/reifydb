@@ -2,10 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ExecutionResult;
-use crate::evaluate::evaluate;
+use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
-use reifydb_core::Value;
-use reifydb_rql::expression::{ConstantExpression, Expression, PrefixExpression, PrefixOperator};
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_transaction::Tx;
 
@@ -18,50 +16,31 @@ impl Executor {
         match plan {
             InsertIntoTablePlan::Values { schema, table, columns, rows_to_insert } => {
                 let mut rows = Vec::with_capacity(rows_to_insert.len());
-                
-                dbg!(&columns);
-                dbg!(&rows_to_insert);
-                
-                // turn columns + row_to_insert into dataframe
-                // evaluate dataframe
-                // write row-wise 
 
-                let num_rows = rows_to_insert.len();
-
-                // FIXME do not evaluate expression in here - you general evaluator and try to operate on columns
                 for row in rows_to_insert {
                     let mut row_values = Vec::with_capacity(row.len());
-
                     for (idx, expr) in row.into_iter().enumerate() {
                         let column = &columns[idx];
 
                         match expr {
-                            Expression::Constant(const_expr) => {
-                                row_values.push(const_expr.into_column_value(column)?)
-                            }
-                            Expression::Prefix(PrefixExpression {
-                                operator, expression, ..
-                            }) => match operator {
-                                PrefixOperator::Minus(_) => match *expression {
-                                    Expression::Constant(const_expr) => {
-                                        row_values.push(match const_expr {
-                                            ConstantExpression::Undefined(_) => Value::Undefined,
-                                            ConstantExpression::Bool(_) => Value::Undefined,
-                                            ConstantExpression::Number(mut span) => {
-                                                span.fragment = format!("-{}", span.fragment);
-                                                ConstantExpression::Number(span)
-                                                    .into_column_value(column)?
-                                            }
-                                            ConstantExpression::Text(_) => Value::Undefined,
-                                        })
+                            expr => {
+                                let cvs = evaluate(
+                                    expr,
+                                    &Context {
+                                        column: Some(EvaluationColumn {
+                                            name: column.name.clone(),
+                                            value: column.value,
+                                        }),
+                                    },
+                                    &[],
+                                    1,
+                                )?;
+                                match cvs.len() {
+                                    1 => {
+                                        row_values.push(cvs.get(0).as_value());
                                     }
                                     _ => unimplemented!(),
-                                },
-                                PrefixOperator::Plus(_) => {}
-                            },
-                            expr => {
-                                let r = evaluate(expr, &[], num_rows)?;
-                                dbg!(&r);
+                                }
                             }
                         }
                     }

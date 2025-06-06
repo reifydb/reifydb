@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::evaluate::evaluate;
+use crate::evaluate::{Context, evaluate};
 use crate::execute::Executor;
-use reifydb_rql::expression::AliasExpression;
 use reifydb_frame::{Column, Frame};
+use reifydb_rql::expression::AliasExpression;
 
 impl Executor {
     pub(crate) fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {
@@ -14,7 +14,7 @@ impl Executor {
             for (idx, expr) in expressions.into_iter().enumerate() {
                 let expr = expr.expression;
 
-                let value = evaluate(expr, &[], 1)?;
+                let value = evaluate(expr, &Context { column: None }, &[], 1)?;
                 columns.push(Column { name: format!("{}", idx + 1), data: value });
             }
 
@@ -29,7 +29,8 @@ impl Executor {
                 let expr = expression.expression;
                 let name = expression.alias.unwrap_or(expr.to_string());
 
-                let evaluated_column = evaluate(expr, &columns, row_count)?;
+                let evaluated_column =
+                    evaluate(expr, &Context { column: None }, &columns, row_count)?;
                 new_columns.push(Column { name: name.into(), data: evaluated_column });
             }
 

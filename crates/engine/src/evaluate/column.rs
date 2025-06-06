@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate;
-use crate::evaluate::Evaluator;
+use crate::evaluate::{Context, Evaluator};
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::ColumnExpression;
 
@@ -10,6 +10,7 @@ impl Evaluator {
     pub(crate) fn column(
         &mut self,
         column: ColumnExpression,
+        ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
