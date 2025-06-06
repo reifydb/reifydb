@@ -1,4 +1,4 @@
-name: Test Suites
+name: Test Suite
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
 
     strategy:
       matrix:
-#        suite: [ compatibility, diagnostic, functional, regression, smoke ]
+        #        suite: [ compatibility, diagnostic, functional, regression, smoke ]
         suite: [ smoke ]
 
     steps:
@@ -27,6 +27,9 @@ jobs:
         run: |
           git clone https://x-access-token:${{ secrets.GH_REPO_PAT }}@github.com/reifydb/testsuite.git testsuite
 
+      - name: 🧰 Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: 🛠️ Install Rust and nextest
         uses: dtolnay/rust-toolchain@stable
       - run: cargo install cargo-nextest
@@ -36,4 +39,4 @@ jobs:
           echo "▶ Running ${{ matrix.suite }}"
           export CARGO_TARGET_DIR=$(realpath reifydb/target)
           cd testsuite/${{ matrix.suite }}
-          cargo nextest run --no-fail-fast
+          ~/.cargo/bin/cargo nextest run --no-fail-fast
