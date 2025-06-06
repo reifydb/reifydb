@@ -1,5 +1,5 @@
 .PHONY: all
-all: check clean test build push
+all: check clean test testsuite build push
 
 .PHONY: check
 check:
@@ -32,7 +32,7 @@ push: check
 
 
 # Path to the test suites directory
-TESTSUITES_DIR := ../testsuite
+TEST_SUITE_DIR := ../testsuite
 
 # List of test suites
 TEST_SUITES := \
@@ -42,14 +42,16 @@ TEST_SUITES := \
 	regression \
 	smoke
 
-# Default target: run all test suites
 .PHONY: testsuite
 testsuite: $(TEST_SUITES)
 
-# Rule to run cargo nextest for each suite
 $(TEST_SUITES):
-	@echo "🔍 Running $@ tests in $(TESTSUITES_DIR)/$@ ..."
-	@cd $(TESTSUITES_DIR)/$@ && cargo nextest run --no-fail-fast
+	@if [ -d "$(TEST_SUITE_DIR)/$@" ]; then \
+		echo "🔍 Running $@ tests in $(TEST_SUITE_DIR)/$@ ..."; \
+		cd $(TEST_SUITE_DIR)/$@ && cargo nextest run --no-fail-fast; \
+	else \
+		echo "⚠️ Skipping $@ – directory $(TEST_SUITE_DIR)/$@ not found"; \
+	fi
 
 # Individual targets
 .PHONY: compatibility diagnostic functional regression smoke
