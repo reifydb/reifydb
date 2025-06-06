@@ -210,16 +210,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "compatibility"
-version = "0.0.1"
-dependencies = [
- "reifydb",
- "reifydb_testing",
- "test_each_file",
- "tokio",
-]
-
-[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,16 +263,6 @@ name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
-
-[[package]]
-name = "diagnostic"
-version = "0.0.1"
-dependencies = [
- "reifydb",
- "reifydb_testing",
- "test_each_file",
- "tokio",
-]
 
 [[package]]
 name = "displaydoc"
@@ -357,16 +337,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "functional"
-version = "0.0.1"
-dependencies = [
- "reifydb",
- "reifydb_testing",
- "test_each_file",
- "tokio",
 ]
 
 [[package]]
@@ -1242,16 +1212,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
-name = "regression"
-version = "0.0.1"
-dependencies = [
- "reifydb",
- "reifydb_testing",
- "test_each_file",
- "tokio",
-]
-
-[[package]]
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
@@ -1526,16 +1486,6 @@ name = "smallvec"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8917285742e9f3e1683f0a9c4e6b57960b7314d0b08d30d1ecd426713ee2eee9"
-
-[[package]]
-name = "smoke"
-version = "0.0.1"
-dependencies = [
- "reifydb",
- "reifydb_testing",
- "test_each_file",
- "tokio",
-]
 
 [[package]]
 name = "socket2"

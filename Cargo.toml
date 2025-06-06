@@ -15,11 +15,7 @@ members = ["bin/cli",
     "crates/transaction",
     "pkg/python",
     "pkg/rust",
-    "testsuite/compatibility",
-    "testsuite/diagnostic",
-    "testsuite/functional",
-    "testsuite/regression",
-    "testsuite/smoke"]
+]
 
 default-members = ["bin/cli",
     "bin/server",
@@ -34,11 +30,7 @@ default-members = ["bin/cli",
     "crates/testing",
     "crates/transaction",
     "pkg/rust",
-    "testsuite/compatibility",
-    "testsuite/diagnostic",
-    "testsuite/functional",
-    "testsuite/regression",
-    "testsuite/smoke"]
+]
 
 [workspace.package]
 authors = ["Dev <dominique@reifydb.com>"]

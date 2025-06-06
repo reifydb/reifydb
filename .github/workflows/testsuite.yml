@@ -1,0 +1,39 @@
+name: Test Suites
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+#        suite: [ compatibility, diagnostic, functional, regression, smoke ]
+        suite: [ smoke ]
+
+    steps:
+      - name: ⬇️ Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          path: reifydb
+
+      - name: ⬇️ Checkout private test suite repo
+        run: |
+          git clone https://x-access-token:${{ secrets.GH_REPO_PAT }}@github.com/reifydb/testsuite.git testsuite
+
+      - name: 🛠️ Install Rust and nextest
+        uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-nextest
+
+      - name: 🧪 Run test suite
+        run: |
+          echo "▶ Running ${{ matrix.suite }}"
+          export CARGO_TARGET_DIR=$(realpath reifydb/target)
+          cd testsuite/${{ matrix.suite }}
+          cargo nextest run --no-fail-fast

@@ -16,7 +16,6 @@ clean:
 
 .PHONY: test
 test:
-	cargo nextest run -p smoke --all-targets --no-fail-fast --status-level fail --final-status-level fail
 	cargo nextest run --all-targets --no-fail-fast --status-level fail --final-status-level fail
 
 .PHONY: test
@@ -31,3 +30,26 @@ coverage:
 push: check
 	git push
 
+
+# Path to the test suites directory
+TESTSUITES_DIR := ../testsuite
+
+# List of test suites
+TEST_SUITES := \
+	compatibility \
+	diagnostic \
+	functional \
+	regression \
+	smoke
+
+# Default target: run all test suites
+.PHONY: testsuite
+testsuite: $(TEST_SUITES)
+
+# Rule to run cargo nextest for each suite
+$(TEST_SUITES):
+	@echo "🔍 Running $@ tests in $(TESTSUITES_DIR)/$@ ..."
+	@cd $(TESTSUITES_DIR)/$@ && cargo nextest run --no-fail-fast
+
+# Individual targets
+.PHONY: compatibility diagnostic functional regression smoke
