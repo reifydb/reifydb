@@ -87,6 +87,11 @@ nom_locate = { version = "5.0.0" }
 prost = "0.13.5"
 rand = { version = "0.9.1" }
 regex = { version = "1.11.1" }
+
+rusqlite = { version = "0.36.0", features = ["bundled"] }
+r2d2 = {version = "0.8.10"}
+r2d2_sqlite = {version = "0.29.0"}
+
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = { version = "0.11.17" }
 serde_json = { version = "1.0.140" }

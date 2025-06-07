@@ -9,11 +9,10 @@ repository.workspace = true
 reifydb_core = { workspace = true }
 heed = { workspace = true }
 
-rusqlite = { version = "0.36.0", features = ["bundled"] }
-r2d2 = {version = "0.8.10"}
-r2d2_sqlite = {version = "0.29.0"}
+rusqlite = { workspace = true, features = ["bundled"] }
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
 
-crossbeam-channel = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 regex = { workspace = true }
 [dev-dependencies]

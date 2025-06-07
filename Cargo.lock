@@ -1434,7 +1434,6 @@ dependencies = [
 name = "reifydb_storage"
 version = "0.0.1"
 dependencies = [
- "crossbeam-channel",
  "crossbeam-skiplist",
  "heed",
  "r2d2",
@@ -1464,14 +1463,10 @@ name = "reifydb_transaction"
 version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
- "crossbeam-skiplist",
- "rand 0.9.1",
  "reifydb_catalog",
  "reifydb_core",
  "reifydb_storage",
  "reifydb_testing",
- "serde",
- "serde_bytes",
  "test_each_file",
 ]
 
