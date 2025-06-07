@@ -15,6 +15,18 @@ pub(crate) struct EvaluationColumn {
     pub(crate) policies: Vec<ColumnPolicy>,
 }
 
+impl EvaluationColumn {
+    pub(crate) fn overflow_policy(&self) -> &ColumnOverflowPolicy {
+        self.policies
+            .iter()
+            .find_map(|p| match p {
+                ColumnPolicy::Overflow(policy) => Some(policy),
+                _ => None,
+            })
+            .unwrap_or(&DEFAULT_COLUMN_OVERFLOW_POLICY)
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Context {
     pub(crate) column: Option<EvaluationColumn>,
@@ -27,18 +39,7 @@ impl Context {
     }
 
     pub(crate) fn overflow_policy(&self) -> &ColumnOverflowPolicy {
-        self.column
-            .as_ref()
-            .map(|c| {
-                c.policies
-                    .iter()
-                    .find_map(|p| match p {
-                        ColumnPolicy::Overflow(policy) => Some(policy),
-                        _ => None,
-                    })
-                    .unwrap_or(&DEFAULT_COLUMN_OVERFLOW_POLICY)
-            })
-            .unwrap_or(&DEFAULT_COLUMN_OVERFLOW_POLICY)
+        self.column.as_ref().map(|c| c.overflow_policy()).unwrap_or(&DEFAULT_COLUMN_OVERFLOW_POLICY)
     }
 }
 

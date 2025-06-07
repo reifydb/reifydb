@@ -10,7 +10,7 @@ use nom::combinator::{map, not, peek};
 use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
 
 macro_rules! keyword {
     (
@@ -96,6 +96,7 @@ keyword! {
     Schema => "SCHEMA",
     Series  => "SERIES",
     Table  => "TABLE",
+    Policy => "POLICY",
 }
 
 type Span<'a> = LocatedSpan<&'a str>;
@@ -167,6 +168,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Schema, "SCHEMA"),
             keyword_tag(Keyword::Series, "SERIES"),
             keyword_tag(Keyword::Table, "TABLE"),
+            keyword_tag(Keyword::Policy, "POLICY"),
         )),
     ));
 
@@ -270,6 +272,7 @@ mod tests {
         test_keyword_schema => (Schema, "SCHEMA"),
         test_keyword_series => (Series, "SERIES"),
         test_keyword_table => (Table, "TABLE"),
+        test_keyword_policy => (Policy, "POLICY"),
     }
 
     fn check_no_keyword(repr: &str) {
@@ -345,5 +348,6 @@ mod tests {
         test_not_keyword_schema => ( "schema"),
         test_not_keyword_series => ( "series"),
         test_not_keyword_table => ( "table"),
+        test_not_keyword_policy => ( "policy")
     }
 }

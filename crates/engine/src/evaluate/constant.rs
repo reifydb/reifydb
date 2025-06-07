@@ -4,6 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::context::EvaluationColumn;
 use crate::evaluate::{Context, Evaluator};
+use reifydb_catalog::ColumnOverflowPolicy;
 use reifydb_catalog::ColumnPolicyError::{Overflow, Underflow};
 use reifydb_core::num::{ParseError, parse_float, parse_int, parse_uint};
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
@@ -71,11 +72,16 @@ impl Evaluator {
                     Ok(value) => Ok(value),
                     Err(error) => match error {
                         ParseError::Invalid(_) => Ok(Value::Undefined),
-                        ParseError::Overflow(_) => Err(Overflow(column_overflow(ColumnOverflow {
-                            span,
-                            column: column.name.clone(),
-                            value: column.value,
-                        }))),
+                        ParseError::Overflow(_) => match column.overflow_policy() {
+                            ColumnOverflowPolicy::Error => {
+                                Err(Overflow(column_overflow(ColumnOverflow {
+                                    span,
+                                    column: column.name.clone(),
+                                    value: column.value,
+                                })))
+                            }
+                            ColumnOverflowPolicy::Undefined => Ok(Value::Undefined),
+                        },
                         ParseError::Underflow(_) => {
                             Err(Underflow(column_underflow(ColumnUnderflow {
                                 span,

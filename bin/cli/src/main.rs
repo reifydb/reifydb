@@ -17,8 +17,8 @@ fn main() {
     // db.tx_as(&root, r#"create table test.arith(id: int2, num: int2)"#).unwrap();
     // db.tx_as(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#).unwrap();
 
-    db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
-    if let Err(e) = db.tx_as(&root, r#"insert (127 + 1) into test.item (field)"#) {
+    db.tx_as(&root, r#"create table test.item(field: int1 policy (overflow undefined))"#).unwrap();
+    if let Err(e) = db.tx_as(&root, r#"insert (129) into test.item (field)"#) {
         println!("{}", e);
     }
 

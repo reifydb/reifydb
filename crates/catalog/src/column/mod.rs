@@ -15,8 +15,8 @@ pub struct Column {
 }
 
 impl Column {
-    pub fn new(name: String, value: ValueKind) -> Self {
-        Self { name, value, policies: Vec::new() }
+    pub fn new(name: String, value: ValueKind, policies: Vec<ColumnPolicy>) -> Self {
+        Self { name, value, policies }
     }
 }
 

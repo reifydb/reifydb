@@ -3,7 +3,7 @@
 
 use crate::ast::parse::Error;
 use crate::ast::parse::Error::{InvalidType, UnexpectedToken, UnsupportedToken};
-use Error::UnexpectedEndOfFile;
+use Error::{InvalidPolicy, UnexpectedEndOfFile};
 use reifydb_diagnostic::Diagnostic;
 
 impl Error {
@@ -33,6 +33,18 @@ impl Error {
                 span: Some(got.span.clone()),
                 label: Some("not a recognized type".to_string()),
                 help: None,
+                column: None,
+                notes: vec![],
+            },
+            InvalidPolicy { got } => Diagnostic {
+                code: "PA0004".to_string(),
+                message: format!("invalid policy: `{}`", got.span.fragment),
+                span: Some(got.span.clone()),
+                label: Some("not a recognized policy".to_string()),
+                help: Some(
+                    "expected one of: `overflow`, `underflow`, `default`, `not undefined`"
+                        .to_string(),
+                ),
                 column: None,
                 notes: vec![],
             },

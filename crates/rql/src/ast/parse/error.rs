@@ -7,6 +7,7 @@ use crate::ast::lex::{Token, TokenKind};
 pub enum Error {
     InvalidType { got: Token },
     UnexpectedEndOfFile,
+    InvalidPolicy { got: Token },
     UnexpectedToken { expected: TokenKind, got: Token },
     UnsupportedToken { got: Token },
 }
@@ -14,6 +15,9 @@ pub enum Error {
 impl Error {
     pub(crate) fn eof() -> Self {
         Self::UnexpectedEndOfFile
+    }
+    pub(crate) fn invalid_policy(got: Token) -> Self {
+        Self::InvalidPolicy { got }
     }
     pub(crate) fn unexpected(expected: TokenKind, got: Token) -> Self {
         Self::UnexpectedToken { expected, got }

@@ -29,6 +29,8 @@ pub enum Ast {
     Literal(AstLiteral),
     Nop,
     OrderBy(AstOrderBy),
+    Policy(AstPolicy),
+    PolicyBlock(AstPolicyBlock),
     Prefix(AstPrefix),
     Select(AstSelect),
     Tuple(AstTuple),
@@ -54,6 +56,8 @@ impl Ast {
             },
             Ast::Nop => unreachable!(),
             Ast::OrderBy(node) => &node.token,
+            Ast::Policy(node) => &node.token,
+            Ast::PolicyBlock(node) => &node.token,
             Ast::Prefix(node) => &node.node.token(),
             Ast::Select(node) => &node.token,
             Ast::Tuple(node) => &node.token,
@@ -161,11 +165,36 @@ impl Ast {
         }
     }
 
+    pub fn is_literal_undefined(&self) -> bool {
+        matches!(self, Ast::Literal(AstLiteral::Undefined(_)))
+    }
+
+    pub fn as_literal_undefined(&self) -> &AstLiteralUndefined {
+        if let Ast::Literal(AstLiteral::Undefined(result)) = self {
+            result
+        } else {
+            panic!("not literal undefined")
+        }
+    }
+    
     pub fn is_order_by(&self) -> bool {
         matches!(self, Ast::OrderBy(_))
     }
     pub fn as_order_by(&self) -> &AstOrderBy {
         if let Ast::OrderBy(result) = self { result } else { panic!("not order by") }
+    }
+    pub fn is_policy(&self) -> bool {
+        matches!(self, Ast::Policy(_))
+    }
+    pub fn as_policy(&self) -> &AstPolicy {
+        if let Ast::Policy(result) = self { result } else { panic!("not policy") }
+    }
+
+    pub fn is_policy_block(&self) -> bool {
+        matches!(self, Ast::PolicyBlock(_))
+    }
+    pub fn as_policy_block(&self) -> &AstPolicyBlock {
+        if let Ast::PolicyBlock(result) = self { result } else { panic!("not policy block") }
     }
 
     pub fn is_prefix(&self) -> bool {
@@ -343,6 +372,27 @@ impl AstLiteralUndefined {
 pub struct AstOrderBy {
     pub token: Token,
     pub columns: Vec<Ast>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum AstPolicyKind {
+    Overflow,
+    Underflow,
+    Default,
+    NotUndefined,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstPolicy {
+    pub token: Token,
+    pub policy: AstPolicyKind,
+    pub value: Box<Ast>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstPolicyBlock {
+    pub token: Token,
+    pub policies: Vec<AstPolicy>,
 }
 
 #[derive(Debug, PartialEq)]

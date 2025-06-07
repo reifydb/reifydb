@@ -5,7 +5,7 @@ pub use r#impl::Schema;
 
 mod r#impl;
 
-use crate::{StoreRx, StoreTx};
+use crate::{ColumnPolicy, StoreRx, StoreTx};
 use reifydb_core::ValueKind;
 
 pub trait SchemaRx {
@@ -23,7 +23,7 @@ pub trait SchemaRx {
 pub struct ColumnToCreate {
     pub name: String,
     pub value: ValueKind,
-    // pub default: Option<Expression>,
+    pub policies: Vec<ColumnPolicy>,
 }
 
 pub enum StoreToCreate {

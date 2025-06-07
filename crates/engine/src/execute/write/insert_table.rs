@@ -21,7 +21,7 @@ impl Executor {
                     let mut row_values = Vec::with_capacity(row.len());
                     for (idx, expr) in row.into_iter().enumerate() {
                         let column = &columns[idx];
-
+                        
                         match expr {
                             expr => {
                                 let cvs = evaluate(

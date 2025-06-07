@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{
-    Ast, AstCreate, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstPrefix, AstSelect,
-    AstStatement, InfixOperator,
+    Ast, AstCreate, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstPolicy, AstPolicyKind,
+    AstPrefix, AstSelect, AstStatement, InfixOperator,
 };
 use std::collections::HashMap;
 use std::mem;
@@ -16,7 +16,10 @@ use crate::expression::{
     PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
 };
 pub use error::Error;
-use reifydb_catalog::{CatalogRx, Column, ColumnToCreate, SchemaRx, StoreRx};
+use reifydb_catalog::{
+    CatalogRx, Column, ColumnOverflowPolicy, ColumnPolicy, ColumnToCreate, ColumnUnderflowPolicy,
+    SchemaRx, StoreRx,
+};
 use reifydb_core::{SortDirection, SortKey, StoreKind};
 
 mod diagnostic;
@@ -146,25 +149,79 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                         // }))
                         unimplemented!()
                     }
+                    // AstCreate::Table { schema, name, definitions, .. } => {
+                    //     let mut columns: Vec<ColumnToCreate> = vec![];
+                    //
+                    //     for definition in &definitions.nodes {
+                    //         match definition {
+                    //             Ast::Infix(ast) => {
+                    //                 let name = ast.left.as_identifier();
+                    //                 if let Ast::Type(ty) = ast.right.deref() {
+                    //                     columns.push(ColumnToCreate {
+                    //                         name: name.value().to_string(),
+                    //                         value: ty.kind(),
+                    //                     })
+                    //                 } else {
+                    //                     return Err(Error::InvalidType {
+                    //                         got: ast.right.token().clone(),
+                    //                     });
+                    //                 }
+                    //             }
+                    //             _ => unimplemented!(),
+                    //         }
+                    //     }
+                    //
+                    //     Ok(Plan::CreateTable(CreateTablePlan {
+                    //         schema: schema.value().to_string(),
+                    //         table: name.value().to_string(),
+                    //         if_not_exists: false,
+                    //         columns,
+                    //     }))
+                    // }
                     AstCreate::Table { schema, name, definitions, .. } => {
                         let mut columns: Vec<ColumnToCreate> = vec![];
+                        let mut iter = definitions.nodes.iter().peekable();
 
-                        for definition in &definitions.nodes {
-                            match definition {
+                        while let Some(def) = iter.next() {
+                            match def {
                                 Ast::Infix(ast) => {
-                                    let name = ast.left.as_identifier();
-                                    if let Ast::Type(ty) = ast.right.deref() {
-                                        columns.push(ColumnToCreate {
-                                            name: name.value().to_string(),
-                                            value: ty.kind(),
-                                        })
-                                    } else {
-                                        return Err(Error::InvalidType {
-                                            got: ast.right.token().clone(),
-                                        });
+                                    let column_name = ast.left.as_identifier();
+                                    let column_type = match ast.right.deref() {
+                                        Ast::Type(ty) => ty,
+                                        _ => {
+                                            return Err(Error::InvalidType {
+                                                got: ast.right.token().clone(),
+                                            });
+                                        }
+                                    };
+
+                                    // Look ahead: see if next node is a policy block
+                                    let maybe_policy = match iter.peek() {
+                                        Some(Ast::PolicyBlock(pb)) => Some(pb.clone()),
+                                        _ => None,
+                                    };
+
+                                    // Consume the policy block if it exists
+                                    let mut policies = vec![];
+                                    if maybe_policy.is_some() {
+                                        let block = iter.next().unwrap().as_policy_block();
+                                        for policy in &block.policies {
+                                            policies.push(convert_policy(policy));
+                                        }
                                     }
+
+                                    columns.push(ColumnToCreate {
+                                        name: column_name.value().to_string(),
+                                        value: column_type.kind(),
+                                        policies,
+                                    });
                                 }
-                                _ => unimplemented!(),
+                                _ => {
+                                    // return Err(Error::UnexpectedDefinition {
+                                    //     got: def.token().clone(),
+                                    // });
+                                    unimplemented!()
+                                }
                             }
                         }
 
@@ -343,6 +400,39 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
     }
 
     unreachable!()
+}
+
+pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicy {
+    use ColumnPolicy::*;
+
+    match ast.policy {
+        AstPolicyKind::Overflow => {
+            if ast.value.is_literal_undefined() {
+                return Overflow(ColumnOverflowPolicy::Undefined);
+            }
+            let ident = ast.value.as_identifier().value();
+            match ident {
+                "error" => Overflow(ColumnOverflowPolicy::Error),
+                // "saturate" => Some(Overflow(Saturate)),
+                // "wrap" => Some(Overflow(Wrap)),
+                // "zero" => Some(Overflow(Zero)),
+                _ => unimplemented!(),
+            }
+        }
+        AstPolicyKind::Underflow => {
+            let ident = ast.value.as_identifier().value();
+            match ident {
+                "error" => Underflow(ColumnUnderflowPolicy::Error),
+                // "saturate" => Some(Underflow(Saturate)),
+                // "wrap" => Some(Underflow(Wrap)),
+                // "zero" => Some(Underflow(Zero)),
+                // _ => Some(Underflow(ColumnUnderflowPolicy::Undefined)),
+                _ => unimplemented!(),
+            }
+        }
+        AstPolicyKind::Default => unimplemented!(),
+        AstPolicyKind::NotUndefined => unimplemented!(),
+    }
 }
 
 pub fn plan(statement: AstStatement) -> Result<Plan> {

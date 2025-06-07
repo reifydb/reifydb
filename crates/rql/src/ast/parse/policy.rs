@@ -1,0 +1,137 @@
+// Copyright (c) nyanbot.com 2025.
+// This file is licensed under the AGPL-3.0-or-later.
+
+use crate::ast::lex::Keyword::Policy;
+use crate::ast::lex::{Literal, Operator, Separator};
+use crate::ast::parse::{Parser, Precedence};
+use crate::ast::{AstPolicy, AstPolicyBlock, AstPolicyKind, Token, TokenKind, parse};
+use Separator::Comma;
+use TokenKind::Identifier;
+use parse::Error;
+
+impl Parser {
+    pub(crate) fn parse_policy_block(&mut self) -> parse::Result<AstPolicyBlock> {
+        let block_token = self.consume_keyword(Policy)?;
+        self.consume_operator(Operator::OpenParen)?;
+
+        let mut policies = Vec::new();
+        loop {
+            let (token, policy) = self.parse_policy_kind()?;
+            let value = Box::new(self.parse_node(Precedence::None)?);
+
+            policies.push(AstPolicy { token, policy, value });
+
+            if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+                break;
+            }
+        }
+
+        self.consume_operator(Operator::CloseParen)?;
+        Ok(AstPolicyBlock { token: block_token, policies })
+    }
+
+    fn parse_policy_kind(&mut self) -> parse::Result<(Token, AstPolicyKind)> {
+        let identifier = self.consume(Identifier)?;
+        let kind = match identifier.span.fragment.as_str() {
+            "overflow" => AstPolicyKind::Overflow,
+            "underflow" => AstPolicyKind::Underflow,
+            "default" => AstPolicyKind::Default,
+            "not" => {
+                self.consume_literal(Literal::Undefined)?;
+                AstPolicyKind::NotUndefined
+            }
+            _ => return Err(Error::invalid_policy(identifier)),
+        };
+
+        Ok((identifier, kind))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ast::lex::lex;
+    use crate::ast::parse::Parser;
+    use crate::ast::{AstCreate, AstPolicyKind, InfixOperator};
+
+    #[test]
+    fn test_overflow_error() {
+        let tokens = lex(r#"policy (overflow error)"#).unwrap();
+
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse_policy_block().unwrap();
+        assert_eq!(result.policies.len(), 1);
+
+        let policies = result.policies;
+        assert_eq!(policies.len(), 1);
+
+        let overflow = &policies[0];
+        assert!(matches!(overflow.policy, AstPolicyKind::Overflow));
+        assert_eq!(overflow.value.as_identifier().value(), "error");
+    }
+
+    #[test]
+    fn test_overflow_undefined() {
+        let tokens = lex(r#"policy (overflow undefined)"#).unwrap();
+
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse_policy_block().unwrap();
+        assert_eq!(result.policies.len(), 1);
+
+        let policies = result.policies;
+        assert_eq!(policies.len(), 1);
+
+        let overflow = &policies[0];
+        assert!(matches!(overflow.policy, AstPolicyKind::Overflow));
+        assert_eq!(overflow.value.as_literal_undefined().value(), "undefined");
+    }
+
+    #[test]
+    fn test_table_with_policy_block() {
+        let tokens = lex(r#"
+        create table test.items(
+            field:  int2
+                    policy (
+                        overflow error,
+                        default 0
+                    )
+        )
+    "#)
+        .unwrap();
+
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let create = result.as_create();
+
+        match create {
+            AstCreate::Table { name, schema, definitions, .. } => {
+                assert_eq!(schema.value(), "test");
+                assert_eq!(name.value(), "items");
+                assert_eq!(definitions.nodes.len(), 2);
+
+                let def = &definitions.nodes[0];
+                let id = def.as_infix();
+                let identifier = id.left.as_identifier();
+                assert_eq!(identifier.value(), "field");
+                assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
+
+                let ty = id.right.as_type();
+                assert_eq!(ty.value(), "int2");
+
+                let policies = &definitions.nodes[1].as_policy_block();
+                assert_eq!(policies.policies.len(), 2);
+
+                let overflow = &policies.policies[0];
+                assert!(matches!(overflow.policy, AstPolicyKind::Overflow));
+                assert_eq!(overflow.value.as_identifier().value(), "error");
+
+                let default = &policies.policies[1];
+                assert!(matches!(default.policy, AstPolicyKind::Default));
+                assert_eq!(default.value.value(), "0");
+            }
+            _ => unreachable!(),
+        }
+    }
+}

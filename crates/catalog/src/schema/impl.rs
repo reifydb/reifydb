@@ -43,7 +43,7 @@ impl crate::SchemaTx for Schema {
                         kind: StoreKind::Series,
                         columns: columns
                             .into_iter()
-                            .map(|c| Column::new(c.name, c.value))
+                            .map(|c| Column::new(c.name, c.value, vec![]))
                             .collect::<Vec<_>>(),
                     },
                 );
@@ -58,7 +58,7 @@ impl crate::SchemaTx for Schema {
                         kind: StoreKind::Table,
                         columns: columns
                             .into_iter()
-                            .map(|c| Column::new(c.name, c.value))
+                            .map(|c| Column::new(c.name, c.value, c.policies))
                             .collect::<Vec<_>>(),
                     },
                 );
