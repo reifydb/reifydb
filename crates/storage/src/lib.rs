@@ -6,8 +6,8 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use delta::Delta;
 pub use clock::{LocalClock, LogicalClock};
+pub use delta::Delta;
 pub use key::{Key, KeyRange};
 pub use storage::{
     Apply, Contains, Get, Scan, ScanIterator, ScanIteratorRev, ScanRange, ScanRangeIterator,
@@ -15,11 +15,12 @@ pub use storage::{
 };
 pub use value::{StoredValue, Value};
 
-mod delta;
 mod clock;
+mod delta;
 mod key;
 pub mod lmdb;
 pub mod memory;
+pub mod sqlite;
 mod storage;
 mod value;
 

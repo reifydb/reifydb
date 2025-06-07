@@ -40,13 +40,14 @@ use crate::server::Server;
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 pub use reifydb_storage;
+use reifydb_storage::Storage;
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
-use reifydb_storage::Storage;
+use reifydb_storage::sqlite::Sqlite;
 pub use reifydb_transaction;
+use reifydb_transaction::Transaction;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb_transaction::Transaction;
 #[cfg(any(feature = "server", feature = "client"))]
 pub use tokio::*;
 
@@ -158,4 +159,8 @@ pub fn memory() -> Memory {
 
 pub fn lmdb(path: &Path) -> Lmdb {
     Lmdb::new(path)
+}
+
+pub fn sqlite(path: &Path) -> Sqlite {
+    Sqlite::new(path)
 }

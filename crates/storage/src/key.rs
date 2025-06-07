@@ -11,8 +11,8 @@ pub type Key = AsyncCowVec<u8>;
 
 #[derive(Clone, Debug)]
 pub struct KeyRange {
-    start: Bound<Key>,
-    end: Bound<Key>,
+    pub(crate) start: Bound<Key>,
+    pub(crate) end: Bound<Key>,
 }
 
 impl KeyRange {
