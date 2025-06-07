@@ -2,17 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{Action, Apply, Version};
+use crate::{Delta, Apply, Version};
 
 impl Apply for Lmdb {
-    fn apply(&self, actions: Vec<(Action, Version)>) {
+    fn apply(&self, actions: Vec<(Delta, Version)>) {
         let mut tx = self.env.write_txn().unwrap();
-        for (action, version) in actions {
-            match action {
-                Action::Set { key, value } => {
+        for (delta, version) in actions {
+            match delta {
+                Delta::Set { key, value } => {
                     self.db.put(&mut tx, &key[..], &value).unwrap();
                 }
-                Action::Remove { key } => {
+                Delta::Remove { key } => {
                     self.db.delete(&mut tx, &key[..]).unwrap();
                 }
             }

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Action, Key, KeyRange, StoredValue, Version};
+use crate::{Delta, Key, KeyRange, StoredValue, Version};
 
 pub trait Storage:
     Send + Sync + Apply + Get + Contains + Scan + ScanRev + ScanRange + ScanRangeRev
@@ -9,7 +9,7 @@ pub trait Storage:
 }
 
 pub trait Apply {
-    fn apply(&self, actions: Vec<(Action, Version)>);
+    fn apply(&self, actions: Vec<(Delta, Version)>);
 }
 
 pub trait Get {

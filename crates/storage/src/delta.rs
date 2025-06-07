@@ -6,24 +6,24 @@ use std::cmp;
 
 /// Operation on a key-value pair.
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub enum Action {
+pub enum Delta {
     Set { key: Key, value: Value },
     Remove { key: Key },
 }
 
-impl PartialOrd for Action {
+impl PartialOrd for Delta {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for Action {
+impl Ord for Delta {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.key().cmp(other.key())
     }
 }
 
-impl Action {
+impl Delta {
     /// Returns the key
     pub fn key(&self) -> &Key {
         match self {
@@ -41,7 +41,7 @@ impl Action {
     }
 }
 
-impl Clone for Action {
+impl Clone for Delta {
     fn clone(&self) -> Self {
         match self {
             Self::Set { key, value } => Self::Set { key: key.clone(), value: value.clone() },

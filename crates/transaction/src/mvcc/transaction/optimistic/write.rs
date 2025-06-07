@@ -48,7 +48,7 @@ impl<S: Storage> TransactionTx<S> {
         self.tm.commit(|pending| {
             self.engine
                 .storage
-                .apply((pending.into_iter().map(|p| (p.action, p.version)).collect()));
+                .apply((pending.into_iter().map(|p| (p.delta, p.version)).collect()));
             Ok(())
         })
     }

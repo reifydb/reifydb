@@ -14,7 +14,7 @@ use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
 use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
-use reifydb_storage::{Action, Storage, StoredValue};
+use reifydb_storage::{Delta, Storage, StoredValue};
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
@@ -115,7 +115,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(vec![(Action::Set { key, value }, version)])
+                self.storage.apply(vec![(Delta::Set { key, value }, version)])
             }
 
             // remove KEY [version=VERSION]
@@ -125,7 +125,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(vec![(Action::Remove { key }, version)])
+                self.storage.apply(vec![(Delta::Remove { key }, version)])
             }
 
             name => return Err(format!("invalid command {name}").into()),

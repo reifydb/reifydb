@@ -13,7 +13,7 @@ use super::*;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
-use reifydb_storage::{Action, Version};
+use reifydb_storage::{Delta, Version};
 use reifydb_storage::{Key, Value};
 
 pub struct TransactionManagerTx<C, L, P>
@@ -129,7 +129,7 @@ where
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
-        self.modify(Pending { action: Action::Remove { key }, version: 0 })
+        self.modify(Pending { delta: Delta::Remove { key }, version: 0 })
     }
 
     /// Rolls back the transaction.
@@ -184,9 +184,9 @@ where
 
             // Fulfill from buffer.
             Ok(Some(Pending {
-                action: match v.value() {
-                    Some(value) => Action::Set { key: key.clone(), value: value.clone() },
-                    None => Action::Remove { key: key.clone() },
+                delta: match v.value() {
+                    Some(value) => Delta::Set { key: key.clone(), value: value.clone() },
+                    None => Delta::Remove { key: key.clone() },
                 },
                 version: v.version,
             }))
@@ -266,7 +266,7 @@ where
             return Err(TransactionError::Discarded);
         }
 
-        self.modify(Pending { action: Action::Set { key, value }, version: self.version })
+        self.modify(Pending { delta: Delta::Set { key, value }, version: self.version })
     }
 
     fn modify(&mut self, pending: Pending) -> Result<(), TransactionError> {
@@ -298,9 +298,9 @@ where
         if let Some((old_key, old_value)) = pending_writes.remove_entry(&key) {
             if old_value.version != version {
                 self.duplicates.push(Pending {
-                    action: match value {
-                        Some(value) => Action::Set { key: old_key, value: value.clone() },
-                        None => Action::Remove { key: old_key },
+                    delta: match value {
+                        Some(value) => Delta::Set { key: old_key, value: value.clone() },
+                        None => Delta::Remove { key: old_key },
                     },
                     version,
                 })
@@ -352,9 +352,9 @@ where
                     process(
                         &mut all,
                         Pending {
-                            action: match v.value() {
-                                Some(value) => Action::Set { key: k, value: value.clone() },
-                                None => Action::Remove { key: k },
+                            delta: match v.value() {
+                                Some(value) => Delta::Set { key: k, value: value.clone() },
+                                None => Delta::Remove { key: k },
                             },
                             version: v.version,
                         },

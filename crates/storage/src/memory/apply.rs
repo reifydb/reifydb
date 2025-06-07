@@ -3,20 +3,20 @@
 
 use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
-use crate::{Action, Apply, Version};
+use crate::{Delta, Apply, Version};
 
 impl Apply for Memory {
-    fn apply(&self, actions: Vec<(Action, Version)>) {
-        for (action, version) in actions {
-            match action {
-                Action::Set { key, value } => {
+    fn apply(&self, actions: Vec<(Delta, Version)>) {
+        for (delta, version) in actions {
+            match delta {
+                Delta::Set { key, value } => {
                     let item = self.memory.get_or_insert_with(key, || VersionedValues::new());
                     let val = item.value();
                     val.lock();
                     val.insert(version, Some(value));
                     val.unlock();
                 }
-                Action::Remove { key } => {
+                Delta::Remove { key } => {
                     if let Some(values) = self.memory.get(&key) {
                         let values = values.value();
                         if !values.is_empty() {

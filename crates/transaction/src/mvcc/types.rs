@@ -9,8 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use reifydb_storage::{Delta, StoredValue, Version};
 use reifydb_storage::{Key, Value};
-use reifydb_storage::{Action, StoredValue, Version};
 use std::cmp;
 use std::cmp::Reverse;
 
@@ -40,7 +40,7 @@ impl Clone for TransactionValue {
     fn clone(&self) -> Self {
         match self {
             Self::Committed(item) => Self::Committed(item.clone()),
-            Self::Pending(action) => Self::Pending(action.clone()),
+            Self::Pending(delta) => Self::Pending(delta.clone()),
             Self::PendingIter { version, key, value } => {
                 Self::PendingIter { version: *version, key: key.clone(), value: value.clone() }
             }
@@ -91,8 +91,8 @@ impl From<(Version, &Key, &Value)> for TransactionValue {
 }
 
 impl From<Pending> for TransactionValue {
-    fn from(action: Pending) -> Self {
-        Self::Pending(action)
+    fn from(pending: Pending) -> Self {
+        Self::Pending(pending)
     }
 }
 
@@ -131,7 +131,7 @@ impl Committed {
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Pending {
-    pub action: Action,
+    pub delta: Delta,
     pub version: Version,
 }
 
@@ -143,41 +143,41 @@ impl PartialOrd for Pending {
 
 impl Ord for Pending {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.action
+        self.delta
             .key()
-            .cmp(other.action.key())
+            .cmp(other.delta.key())
             .then_with(|| Reverse(self.version).cmp(&Reverse(other.version)))
     }
 }
 
 impl Clone for Pending {
     fn clone(&self) -> Self {
-        Self { version: self.version, action: self.action.clone() }
+        Self { version: self.version, delta: self.delta.clone() }
     }
 }
 
 impl Pending {
-    pub fn action(&self) -> &Action {
-        &self.action
+    pub fn delta(&self) -> &Delta {
+        &self.delta
     }
 
     pub fn version(&self) -> Version {
         self.version
     }
 
-    pub fn into_components(self) -> (u64, Action) {
-        (self.version, self.action)
+    pub fn into_components(self) -> (u64, Delta) {
+        (self.version, self.delta)
     }
 
     pub fn key(&self) -> &Key {
-        &self.action.key()
+        &self.delta.key()
     }
 
     pub fn value(&self) -> Option<&Value> {
-        self.action.value()
+        self.delta.value()
     }
 
     pub fn was_removed(&self) -> bool {
-        matches!(self.action, Action::Remove { .. })
+        matches!(self.delta, Delta::Remove { .. })
     }
 }
