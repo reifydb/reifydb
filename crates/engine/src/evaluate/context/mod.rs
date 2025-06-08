@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_catalog::{ColumnSaturationPolicy, ColumnPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
+use reifydb_catalog::{ColumnPolicy, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
 use reifydb_core::ValueKind;
-use reifydb_core::num::SafeAdd;
+use reifydb_core::num::{SafeAdd, SafeSubtract};
 use reifydb_diagnostic::Span;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 use reifydb_frame::Frame;
@@ -39,7 +39,10 @@ impl Context {
     }
 
     pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
-        self.column.as_ref().map(|c| c.saturation_policy()).unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
+        self.column
+            .as_ref()
+            .map(|c| c.saturation_policy())
+            .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
     }
 }
 
@@ -53,6 +56,33 @@ impl Context {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => l
                 .checked_add(r)
+                .ok_or_else(|| {
+                    if let Some(column) = &self.column {
+                        return crate::evaluate::Error(column_saturation(ColumnSaturation {
+                            span: span.clone(),
+                            column: column.name.to_string(),
+                            value: column.value,
+                        }));
+                    }
+                    // expression_saturation
+                    unimplemented!()
+                })
+                .map(Some),
+            // SaturationPolicy::Saturate => Ok(a.saturating_add(b)),
+            // SaturationPolicy::Wrap => Ok(a.wrapping_add(b)),
+            ColumnSaturationPolicy::Undefined => Ok(None),
+        }
+    }
+
+    pub(crate) fn sub<T: SafeSubtract>(
+        &self,
+        l: T,
+        r: T,
+        span: &Span,
+    ) -> crate::evaluate::Result<Option<T>> {
+        match self.saturation_policy() {
+            ColumnSaturationPolicy::Error => l
+                .checked_sub(r)
                 .ok_or_else(|| {
                     if let Some(column) = &self.column {
                         return crate::evaluate::Error(column_saturation(ColumnSaturation {

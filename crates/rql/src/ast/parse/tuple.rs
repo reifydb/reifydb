@@ -4,7 +4,8 @@
 use crate::ast::lex::Operator::CloseParen;
 use crate::ast::lex::{Operator, Separator, Token, TokenKind};
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{parse, AstTuple};
+use crate::ast::{AstTuple, parse};
+use Separator::Comma;
 
 impl Parser {
     pub(crate) fn parse_tuple(&mut self) -> parse::Result<AstTuple> {
@@ -21,7 +22,9 @@ impl Parser {
                 break;
             }
             nodes.push(self.parse_node(Precedence::None)?);
-            self.consume_if(TokenKind::Separator(Separator::Comma))?;
+            if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+                break;
+            };
         }
 
         self.consume_operator(CloseParen)?;
@@ -31,14 +34,14 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::lex;
-    use crate::ast::parse::parse;
     use crate::ast::Ast::{Identifier, Infix, Literal, Type};
     use crate::ast::AstLiteral::Number;
-    use crate::ast::{AstInfix, AstType, InfixOperator};
+    use crate::ast::lex::lex;
+    use crate::ast::parse::parse;
+    use crate::ast::{AstInfix, AstType, InfixOperator, PrefixOperator};
 
     #[test]
-    fn empty_tuple() {
+    fn test_empty_tuple() {
         let tokens = lex("()").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -48,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn tuple_with_number() {
+    fn test_tuple_with_number() {
         let tokens = lex("(9924)").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -60,7 +63,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_tuple() {
+    fn test_nested_tuple() {
         let tokens = lex("(1 * ( 2 + 3 ))").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -84,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn tuple_with_identifier() {
+    fn test_tuple_with_identifier() {
         let tokens = lex("(u)").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -96,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn tuple_with_identifier_and_type() {
+    fn test_tuple_with_identifier_and_type() {
         let tokens = lex("(u: Bool)").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -112,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn tuple_with_multiple_identifiers() {
+    fn test_tuple_with_multiple_identifiers() {
         let tokens = lex("(u,v)").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -127,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn tuple_with_identifiers_and_types() {
+    fn test_tuple_with_identifiers_and_types() {
         let tokens = lex("(u: Bool, v: Text)").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -148,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn tuple_with_identifiers_and_declaration() {
+    fn test_tuple_with_identifiers_and_declaration() {
         let tokens = lex("(u = 1, v = 2)").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -173,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn multiline_tuple() {
+    fn test_multiline_tuple() {
         let tokens = lex(r#"(
         u: Bool,
         v: Text
@@ -195,5 +198,28 @@ mod tests {
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "v");
         let Type(AstType::Text(_)) = right.as_ref() else { panic!() };
+    }
+
+    #[test]
+    fn test_regression() {
+        let tokens = lex("(-1 -2)").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let node = result[0].as_tuple();
+        assert_eq!(node.nodes.len(), 1);
+
+        let infix = node.nodes[0].as_infix();
+
+        let left = infix.left.as_prefix();
+        assert!(matches!(left.operator, PrefixOperator::Negate(_)));
+
+        let left_number = left.node.as_literal_number();
+        assert_eq!(left_number.value(), "1");
+
+        assert!(matches!(infix.operator, InfixOperator::Subtract(_)));
+
+        let right_number = infix.right.as_literal_number();
+        assert_eq!(right_number.value(), "2");
     }
 }

@@ -12,7 +12,7 @@ impl Parser {
         let token = self.consume_keyword(Keyword::From)?;
 
         if self.current()?.is_operator(OpenParen) {
-            Ok(AstFrom::Query { token, query: self.parse_tuple()? })
+            Ok(AstFrom::Query { token, query: self.parse_block()? })
         } else {
             let schema = self.parse_identifier()?;
             self.consume_operator(Operator::Dot)?;
@@ -60,10 +60,10 @@ mod tests {
         match from {
             AstFrom::Store { store, schema, .. } => unreachable!(),
             AstFrom::Query { query, .. } => {
-                let tuple = query;
-                assert_eq!(tuple.len(), 2);
+                let block = query;
+                assert_eq!(block.len(), 2);
 
-                let from = tuple[0].as_from();
+                let from = block[0].as_from();
                 match from {
                     AstFrom::Store { store, schema, .. } => {
                         assert_eq!(store.value(), "users");
@@ -72,7 +72,7 @@ mod tests {
                     AstFrom::Query { .. } => unreachable!(),
                 }
 
-                let select = tuple[1].as_select();
+                let select = block[1].as_select();
                 assert_eq!(select.columns.len(), 1);
                 let column = select.columns[0].as_identifier();
                 assert_eq!(column.value(), "name");

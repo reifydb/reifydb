@@ -28,7 +28,7 @@ impl Parser {
                     let operator = self.parse_prefix_operator()?;
                     Ok(Ast::Prefix(AstPrefix {
                         operator,
-                        node: Box::new(self.parse_node(Precedence::None)?),
+                        node: Box::new(self.parse_node(Precedence::Prefix)?),
                     }))
                 }
                 Operator::Asterisk => Ok(Ast::Wildcard(AstWildcard(self.advance()?))),
@@ -97,6 +97,19 @@ mod tests {
         let Ast::Tuple(tuple) = node.deref() else { panic!() };
         let Literal(AstLiteral::Number(node)) = &tuple.nodes.get(0).unwrap() else { panic!() };
         assert_eq!(node.value(), "2");
+    }
+    
+    #[test]
+    fn test_negative() {
+        let tokens = lex("-2").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
+        assert!(matches!(*operator, PrefixOperator::Negate(_)));
+
+        let number = &node.as_literal_number() else { panic!() };
+        assert_eq!(number.value(), "2");
     }
 
     #[test]

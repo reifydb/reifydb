@@ -50,7 +50,7 @@ impl Parser {
 mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
-    use crate::ast::{AstCreate, AstPolicyKind, InfixOperator};
+    use crate::ast::{AstCreate, AstPolicyKind};
 
     #[test]
     fn test_saturation_error() {
@@ -105,21 +105,16 @@ mod tests {
         let create = result.as_create();
 
         match create {
-            AstCreate::Table { name, schema, definitions, .. } => {
+            AstCreate::Table { name, schema, columns, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "items");
-                assert_eq!(definitions.nodes.len(), 2);
+                assert_eq!(columns.len(), 1);
 
-                let def = &definitions.nodes[0];
-                let id = def.as_infix();
-                let identifier = id.left.as_identifier();
-                assert_eq!(identifier.value(), "field");
-                assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
+                let col = &columns[0];
+                assert_eq!(col.name.value(), "field");
+                assert_eq!(col.ty.value(), "int2");
 
-                let ty = id.right.as_type();
-                assert_eq!(ty.value(), "int2");
-
-                let policies = &definitions.nodes[1].as_policy_block();
+                let policies = col.policies.as_ref().unwrap();
                 assert_eq!(policies.policies.len(), 2);
 
                 let saturation = &policies.policies[0];

@@ -98,7 +98,7 @@ pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> Result<Vec<Token>> {
 fn token(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     complete(preceded(
         multispace0(),
-        alt((parse_keyword, parse_literal, parse_operator, parse_identifier, parse_separator)),
+        alt((parse_keyword, parse_operator, parse_literal, parse_identifier, parse_separator)),
     ))
     .parse(input)
 }
@@ -144,9 +144,10 @@ mod tests {
 
     #[test]
     fn test_number_negative() {
-        let (_rest, token) = token(span("-42")).unwrap();
-        assert_eq!(token.kind, Literal(Number));
-        assert_eq!(token.span.fragment.as_str(), "-42");
+        let (rest, token) = token(span("-42")).unwrap();
+        assert_eq!(token.kind, TokenKind::Operator(Operator::Minus));
+        assert_eq!(token.span.fragment.as_str(), "-");
+        assert_eq!(rest.fragment().to_string(), "42");
     }
 
     #[test]

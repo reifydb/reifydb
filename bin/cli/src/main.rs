@@ -6,20 +6,21 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{ReifyDB, optimistic, sqlite};
+use reifydb::{ReifyDB, optimistic, sqlite, memory};
 use std::path::Path;
 
 fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(lmdb(&Path::new("/tmp/db"))));
-    let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
+    // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
+    let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
     // ReifyDB::embedded_blocking_with::<Memory, Serializable>(serializable());
     db.tx_as(&root, r#"create schema test"#).unwrap();
 
     // db.tx_as(&root, r#"create table test.arith(id: int2, num: int2)"#).unwrap();
     // db.tx_as(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#).unwrap();
 
-    db.tx_as(&root, r#"create table test.item(field: int1 policy (saturation undefined))"#).unwrap();
-    if let Err(e) = db.tx_as(&root, r#"insert (127) into test.item (field)"#) {
+    db.tx_as(&root, r#"create table test.item(field: int1 policy (saturation error))"#).unwrap();
+    if let Err(e) = db.tx_as(&root, r#"insert (-1 -2) into test.item (field)"#) {
         println!("{}", e);
     }
 

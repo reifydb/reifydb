@@ -3,7 +3,7 @@
 
 use crate::ast::lex::{Operator, TokenKind};
 use crate::ast::parse::{Error, Parser};
-use crate::ast::{parse, Ast, AstInfix, InfixOperator};
+use crate::ast::{Ast, AstInfix, InfixOperator, parse};
 
 impl Parser {
     pub(crate) fn parse_infix(&mut self, left: Ast) -> parse::Result<AstInfix> {
@@ -20,7 +20,12 @@ impl Parser {
             self.parse_node(precedence)?
         };
 
-        Ok(AstInfix { token: left.token().clone(), left: Box::new(left), operator, right: Box::new(right) })
+        Ok(AstInfix {
+            token: left.token().clone(),
+            left: Box::new(left),
+            operator,
+            right: Box::new(right),
+        })
     }
 
     pub(crate) fn parse_infix_operator(&mut self) -> parse::Result<InfixOperator> {
@@ -55,11 +60,11 @@ impl Parser {
 mod tests {
     use std::ops::Deref;
 
+    use crate::ast::Ast::{Infix, Literal};
     use crate::ast::lex::lex;
     use crate::ast::parse::infix::{AstInfix, InfixOperator};
     use crate::ast::parse::parse;
-    use crate::ast::Ast::{Infix, Literal};
-    use crate::ast::{AstLiteral, AstTuple};
+    use crate::ast::{AstLiteral, AstTuple, PrefixOperator};
 
     #[test]
     fn test_add() {
@@ -79,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn test_substract() {
+    fn test_subtract() {
         let tokens = lex("1 - 2").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -93,6 +98,26 @@ mod tests {
 
         let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
+    }
+
+    #[test]
+    fn test_subtract_negative() {
+        let tokens = lex("-1 -2").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let AstInfix { left, operator, right, .. } = result[0].as_infix();
+        
+        let left = left.as_prefix();
+        assert!(matches!(left.operator, PrefixOperator::Negate(_)));
+        
+        let left_number = left.node.as_literal_number();
+        assert_eq!(left_number.value(), "1");
+        
+        assert!(matches!(operator, InfixOperator::Subtract(_)));
+        
+        let right_number = right.as_literal_number();
+        assert_eq!(right_number.value(), "2");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::ast::lex::Operator::OpenParen;
 use crate::ast::parse::Error::InvalidType;
 use crate::ast::parse::Parser;
 use crate::ast::{AstType, parse};
@@ -46,6 +47,12 @@ impl Parser {
 
         // consume only after confirming match
         let token = self.advance()?;
+
+        if !self.is_eof() && self.current()?.is_operator(OpenParen) {
+            // For now simply ignore additional type information like TEXT(255)
+            self.parse_tuple()?;
+        }
+
         Ok(constructor(token))
     }
 }
@@ -167,5 +174,14 @@ mod tests {
         let mut parser = Parser::new(tokens);
         let result = parser.parse_type().unwrap();
         let AstType::Text(_) = result else { panic!() };
+    }
+
+    #[test]
+    fn test_type_text_bound() {
+        let tokens = lex("Text(255)").unwrap();
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse_type().unwrap();
+        let AstType::Text(_) = result else { panic!() };
+        assert!(parser.is_eof())
     }
 }

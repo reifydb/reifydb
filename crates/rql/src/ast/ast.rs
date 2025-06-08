@@ -19,6 +19,7 @@ impl IntoIterator for AstStatement {
 
 #[derive(Debug, PartialEq)]
 pub enum Ast {
+    Block(AstBlock),
     Create(AstCreate),
     From(AstFrom),
     GroupBy(AstGroupBy),
@@ -41,6 +42,7 @@ pub enum Ast {
 impl Ast {
     pub fn token(&self) -> &Token {
         match self {
+            Ast::Block(node) => &node.token,
             Ast::Create(node) => &node.token(),
             Ast::From(node) => &node.token(),
             Ast::GroupBy(node) => &node.token,
@@ -72,6 +74,13 @@ impl Ast {
 }
 
 impl Ast {
+    pub fn is_block(&self) -> bool {
+        matches!(self, Ast::Block(_))
+    }
+    pub fn as_block(&self) -> &AstBlock {
+        if let Ast::Block(result) = self { result } else { panic!("not block") }
+    }
+
     pub fn is_create(&self) -> bool {
         matches!(self, Ast::Create(_))
     }
@@ -230,10 +239,51 @@ impl Ast {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct AstBlock {
+    pub token: Token,
+    pub nodes: Vec<Ast>,
+}
+
+impl AstBlock {
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+}
+
+impl Index<usize> for AstBlock {
+    type Output = Ast;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.nodes[index]
+    }
+}
+
+
+#[derive(Debug, PartialEq)]
 pub enum AstCreate {
-    Schema { token: Token, name: AstIdentifier },
-    Series { token: Token, schema: AstIdentifier, name: AstIdentifier, definitions: AstTuple },
-    Table { token: Token, schema: AstIdentifier, name: AstIdentifier, definitions: AstTuple },
+    Schema {
+        token: Token,
+        name: AstIdentifier,
+    },
+    Series {
+        token: Token,
+        schema: AstIdentifier,
+        name: AstIdentifier,
+        columns: Vec<AstColumnToCreate>,
+    },
+    Table {
+        token: Token,
+        schema: AstIdentifier,
+        name: AstIdentifier,
+        columns: Vec<AstColumnToCreate>,
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstColumnToCreate {
+    pub name: AstIdentifier,
+    pub ty: AstType,
+    pub policies: Option<AstPolicyBlock>,
 }
 
 impl AstCreate {
@@ -249,7 +299,7 @@ impl AstCreate {
 #[derive(Debug, PartialEq)]
 pub enum AstFrom {
     Store { token: Token, schema: AstIdentifier, store: AstIdentifier },
-    Query { token: Token, query: AstTuple },
+    Query { token: Token, query: AstBlock },
 }
 
 #[derive(Debug, PartialEq)]

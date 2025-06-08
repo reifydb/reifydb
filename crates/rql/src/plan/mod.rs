@@ -122,7 +122,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                         schema: name.value().to_string(),
                         if_not_exists: false,
                     })),
-                    AstCreate::Series { schema, name, definitions, .. } => {
+                    AstCreate::Series { schema, name, columns: definitions, .. } => {
                         // let mut columns: Vec<ColumnToCreate> = vec![];
                         //
                         // for definition in &definitions.nodes {
@@ -148,87 +148,35 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                         // }))
                         unimplemented!()
                     }
-                    // AstCreate::Table { schema, name, definitions, .. } => {
-                    //     let mut columns: Vec<ColumnToCreate> = vec![];
-                    //
-                    //     for definition in &definitions.nodes {
-                    //         match definition {
-                    //             Ast::Infix(ast) => {
-                    //                 let name = ast.left.as_identifier();
-                    //                 if let Ast::Type(ty) = ast.right.deref() {
-                    //                     columns.push(ColumnToCreate {
-                    //                         name: name.value().to_string(),
-                    //                         value: ty.kind(),
-                    //                     })
-                    //                 } else {
-                    //                     return Err(Error::InvalidType {
-                    //                         got: ast.right.token().clone(),
-                    //                     });
-                    //                 }
-                    //             }
-                    //             _ => unimplemented!(),
-                    //         }
-                    //     }
-                    //
-                    //     Ok(Plan::CreateTable(CreateTablePlan {
-                    //         schema: schema.value().to_string(),
-                    //         table: name.value().to_string(),
-                    //         if_not_exists: false,
-                    //         columns,
-                    //     }))
-                    // }
-                    AstCreate::Table { schema, name, definitions, .. } => {
-                        let mut columns: Vec<ColumnToCreate> = vec![];
-                        let mut iter = definitions.nodes.iter().peekable();
+                    AstCreate::Table { schema, name, columns, .. } => {
+                        let mut result_columns: Vec<ColumnToCreate> = vec![];
 
-                        while let Some(def) = iter.next() {
-                            match def {
-                                Ast::Infix(ast) => {
-                                    let column_name = ast.left.as_identifier();
-                                    let column_type = match ast.right.deref() {
-                                        Ast::Type(ty) => ty,
-                                        _ => {
-                                            return Err(Error::InvalidType {
-                                                got: ast.right.token().clone(),
-                                            });
-                                        }
-                                    };
+                        for col in columns.iter() {
+                            let column_name = col.name.value().to_string();
+                            let column_type = col.ty.kind();
 
-                                    // Look ahead: see if next node is a policy block
-                                    let maybe_policy = match iter.peek() {
-                                        Some(Ast::PolicyBlock(pb)) => Some(pb.clone()),
-                                        _ => None,
-                                    };
+                            let policies = if let Some(policy_block) = &col.policies {
+                                policy_block
+                                    .policies
+                                    .iter()
+                                    .map(convert_policy)
+                                    .collect::<Vec<ColumnPolicy>>()
+                            } else {
+                                vec![]
+                            };
 
-                                    // Consume the policy block if it exists
-                                    let mut policies = vec![];
-                                    if maybe_policy.is_some() {
-                                        let block = iter.next().unwrap().as_policy_block();
-                                        for policy in &block.policies {
-                                            policies.push(convert_policy(policy));
-                                        }
-                                    }
-
-                                    columns.push(ColumnToCreate {
-                                        name: column_name.value().to_string(),
-                                        value: column_type.kind(),
-                                        policies,
-                                    });
-                                }
-                                _ => {
-                                    // return Err(Error::UnexpectedDefinition {
-                                    //     got: def.token().clone(),
-                                    // });
-                                    unimplemented!()
-                                }
-                            }
+                            result_columns.push(ColumnToCreate {
+                                name: column_name,
+                                value: column_type,
+                                policies,
+                            });
                         }
 
                         Ok(Plan::CreateTable(CreateTablePlan {
                             schema: schema.value().to_string(),
                             table: name.value().to_string(),
                             if_not_exists: false,
-                            columns,
+                            columns: result_columns,
                         }))
                     }
                 };

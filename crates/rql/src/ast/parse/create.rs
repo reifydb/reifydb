@@ -2,10 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::Keyword::{Series, Table};
+use crate::ast::lex::Operator::CloseParen;
+use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, Operator, Token, TokenKind};
 use crate::ast::parse::Parser;
-use crate::ast::{AstCreate, parse};
+use crate::ast::{AstColumnToCreate, AstCreate, parse};
 use Keyword::{Create, Schema};
+use Operator::Colon;
 
 impl Parser {
     pub(crate) fn parse_create(&mut self) -> parse::Result<AstCreate> {
@@ -34,18 +37,51 @@ impl Parser {
         let schema = self.parse_identifier()?;
         self.consume_operator(Operator::Dot)?;
         let name = self.parse_identifier()?;
-        let definition = self.parse_tuple()?;
+        let columns = self.parse_columns()?;
 
-        Ok(AstCreate::Series { token, name, schema, definitions: definition })
+        Ok(AstCreate::Series { token, name, schema, columns })
     }
 
     fn parse_table(&mut self, token: Token) -> parse::Result<AstCreate> {
         let schema = self.parse_identifier()?;
         self.consume_operator(Operator::Dot)?;
         let name = self.parse_identifier()?;
-        let definition = self.parse_tuple()?;
+        let columns = self.parse_columns()?;
 
-        Ok(AstCreate::Table { token, name, schema, definitions: definition })
+        Ok(AstCreate::Table { token, name, schema, columns })
+    }
+
+    fn parse_columns(&mut self) -> parse::Result<Vec<AstColumnToCreate>> {
+        let mut result = Vec::new();
+
+        self.consume_operator(Operator::OpenParen)?;
+        loop {
+            self.skip_new_line()?;
+
+            if self.current()?.is_operator(CloseParen) {
+                break;
+            }
+            result.push(self.parse_column()?);
+            if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+                break;
+            };
+        }
+        self.consume_operator(CloseParen)?;
+        Ok(result)
+    }
+
+    fn parse_column(&mut self) -> parse::Result<AstColumnToCreate> {
+        let name = self.parse_identifier()?;
+        self.consume_operator(Colon)?;
+        let ty = self.parse_type()?;
+
+        let policies = if self.current()?.is_keyword(Keyword::Policy) {
+            Some(self.parse_policy_block()?)
+        } else {
+            None
+        };
+
+        Ok(AstColumnToCreate { name, ty, policies })
     }
 }
 
@@ -53,8 +89,7 @@ impl Parser {
 mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
-    use crate::ast::{AstCreate, AstPolicyKind, InfixOperator};
-    use std::ops::Deref;
+    use crate::ast::{AstCreate, AstPolicyKind};
 
     #[test]
     fn test_create_schema() {
@@ -88,22 +123,14 @@ mod tests {
         let create = result.as_create();
 
         match create {
-            AstCreate::Series { name, schema, definitions, .. } => {
+            AstCreate::Series { name, schema, columns, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "metrics");
 
-                assert_eq!(definitions.nodes.len(), 1);
+                assert_eq!(columns.len(), 1);
 
-                {
-                    let id = definitions.nodes[0].as_infix();
-                    let identifier = id.left.as_identifier();
-                    assert_eq!(identifier.value(), "value");
-
-                    assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
-
-                    let ty = id.right.as_type();
-                    assert_eq!(ty.value(), "Int2")
-                }
+                assert_eq!(columns[0].name.value(), "value");
+                assert_eq!(columns[0].ty.value(), "Int2");
             }
             _ => unreachable!(),
         }
@@ -112,8 +139,8 @@ mod tests {
     #[test]
     fn test_create_table() {
         let tokens = lex(r#"
-            create table test.users(id: int2, name: text(255), is_premium: bool)
-        "#)
+        create table test.users(id: int2, name: text(255), is_premium: bool)
+    "#)
         .unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
@@ -123,54 +150,29 @@ mod tests {
         let create = result.as_create();
 
         match create {
-            AstCreate::Table { name, schema, definitions, .. } => {
+            AstCreate::Table { name, schema, columns, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "users");
-
-                assert_eq!(definitions.nodes.len(), 3);
+                assert_eq!(columns.len(), 3);
 
                 {
-                    let id = definitions.nodes[0].as_infix();
-                    let identifier = id.left.as_identifier();
-                    assert_eq!(identifier.value(), "id");
-
-                    assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
-
-                    let ty = id.right.as_type();
-                    assert_eq!(ty.value(), "int2")
+                    let col = &columns[0];
+                    assert_eq!(col.name.value(), "id");
+                    assert_eq!(col.ty.value(), "int2");
+                    assert!(col.policies.is_none());
                 }
 
                 {
-                    let name = definitions.nodes[1].as_infix();
-                    let left = name.left.as_infix();
-                    {
-                        let identifier = left.left.as_identifier();
-                        assert_eq!(identifier.value(), "name");
-
-                        assert!(matches!(left.operator, InfixOperator::TypeAscription(_)));
-
-                        let ty = left.right.as_type();
-                        assert_eq!(ty.value(), "text")
-                    }
-
-                    assert!(matches!(name.operator, InfixOperator::Call(_)));
-
-                    let tuple = name.right.deref().as_tuple();
-                    assert_eq!(tuple.nodes.len(), 1);
-
-                    let size = tuple.nodes[0].as_literal_number();
-                    assert_eq!(size.value(), "255");
+                    let col = &columns[1];
+                    assert_eq!(col.name.value(), "name");
+                    assert_eq!(col.ty.value(), "text");
                 }
 
                 {
-                    let is_premium = definitions.nodes[2].as_infix();
-                    let identifier = is_premium.left.as_identifier();
-                    assert_eq!(identifier.value(), "is_premium");
-
-                    assert!(matches!(is_premium.operator, InfixOperator::TypeAscription(_)));
-
-                    let ty = is_premium.right.as_type();
-                    assert_eq!(ty.value(), "bool")
+                    let col = &columns[2];
+                    assert_eq!(col.name.value(), "is_premium");
+                    assert_eq!(col.ty.value(), "bool");
+                    assert!(col.policies.is_none());
                 }
             }
             _ => unreachable!(),
@@ -180,8 +182,8 @@ mod tests {
     #[test]
     fn test_create_table_with_saturation_policy() {
         let tokens = lex(r#"
-            create table test.items(field: int2 policy (saturation error) )
-        "#)
+        create table test.items(field: int2 policy (saturation error) )
+    "#)
         .unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
@@ -191,29 +193,21 @@ mod tests {
         let create = result.as_create();
 
         match create {
-            AstCreate::Table { name, schema, definitions, .. } => {
+            AstCreate::Table { name, schema, columns, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "items");
 
-                assert_eq!(definitions.nodes.len(), 2);
+                assert_eq!(columns.len(), 1);
 
-                {
-                    let id = definitions.nodes[0].as_infix();
-                    let identifier = id.left.as_identifier();
-                    assert_eq!(identifier.value(), "field");
+                let mut col = &columns[0];
+                assert_eq!(col.name.value(), "field");
+                assert_eq!(col.ty.value(), "int2");
 
-                    assert!(matches!(id.operator, InfixOperator::TypeAscription(_)));
-
-                    let ty = id.right.as_type();
-                    assert_eq!(ty.value(), "int2");
-
-                    let policies = &definitions.nodes[1].as_policy_block();
-                    assert_eq!(policies.policies.len(), 1);
-
-                    let saturation = &policies.policies[0];
-                    assert!(matches!(saturation.policy, AstPolicyKind::Saturation));
-                    assert_eq!(saturation.value.as_identifier().value(), "error");
-                }
+                let policies = &col.policies.as_ref().unwrap().policies;
+                assert_eq!(policies.len(), 1);
+                let policy = &policies[0];
+                assert!(matches!(policy.policy, AstPolicyKind::Saturation));
+                assert_eq!(policy.value.as_identifier().value(), "error");
             }
             _ => unreachable!(),
         }

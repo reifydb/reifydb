@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 mod create;
+mod diagnostic;
 mod error;
 mod from;
 mod group_by;
@@ -11,12 +12,12 @@ mod insert;
 mod limit;
 mod literal;
 mod order_by;
+mod policy;
 mod primary;
 mod select;
 mod tuple;
 mod r#type;
-mod diagnostic;
-mod policy;
+mod block;
 
 pub use error::*;
 
@@ -37,6 +38,7 @@ pub(crate) enum Precedence {
     Comparison,
     Term,
     Factor,
+    Prefix,
     Unary,
     Call,
     Primary,
