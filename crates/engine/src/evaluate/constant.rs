@@ -35,12 +35,12 @@ impl Evaluator {
     ) -> evaluate::Result<ColumnValues> {
         let kind = column.value;
         let value = match expr {
-            ConstantExpression::Bool(b) => match kind {
-                ValueKind::Bool => Ok(Value::Bool(b.fragment == "true")),
-                ValueKind::String => Ok(Value::String(b.fragment)),
+            ConstantExpression::Bool { span } => match kind {
+                ValueKind::Bool => Ok(Value::Bool(span.fragment == "true")),
+                ValueKind::String => Ok(Value::String(span.fragment)),
                 _ => Ok(Value::Undefined),
             },
-            ConstantExpression::Number(span) => {
+            ConstantExpression::Number { span } => {
                 let input = &span.fragment;
 
                 let result = match kind {
@@ -83,14 +83,14 @@ impl Evaluator {
                     },
                 }
             }
-            ConstantExpression::Text(s) => {
+            ConstantExpression::Text { span } => {
                 if kind == ValueKind::String {
-                    Ok(Value::String(s.fragment))
+                    Ok(Value::String(span.fragment))
                 } else {
                     Ok(Value::Undefined)
                 }
             }
-            ConstantExpression::Undefined(_) => Ok(Value::Undefined),
+            ConstantExpression::Undefined { .. } => Ok(Value::Undefined),
         };
 
         Ok(ColumnValues::from_many(value?, row_count))
@@ -101,11 +101,11 @@ impl Evaluator {
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
         Ok(match expr {
-            ConstantExpression::Bool(v) => {
-                ColumnValues::bool(vec![v.fragment == "true"; row_count])
+            ConstantExpression::Bool { span } => {
+                ColumnValues::bool(vec![span.fragment == "true"; row_count])
             }
-            ConstantExpression::Number(s) => {
-                let s = s.fragment;
+            ConstantExpression::Number { span } => {
+                let s = span.fragment;
                 // Try parsing in order from most specific to most general
                 if let Ok(v) = s.parse::<i8>() {
                     ColumnValues::int1(vec![v; row_count])
@@ -125,10 +125,10 @@ impl Evaluator {
                     ColumnValues::Undefined(row_count)
                 }
             }
-            ConstantExpression::Text(s) => {
-                ColumnValues::string(std::iter::repeat(s.fragment).take(row_count))
+            ConstantExpression::Text { span } => {
+                ColumnValues::string(std::iter::repeat(span.fragment).take(row_count))
             }
-            ConstantExpression::Undefined(_) => ColumnValues::Undefined(row_count),
+            ConstantExpression::Undefined { .. } => ColumnValues::Undefined(row_count),
         })
     }
 }
@@ -150,7 +150,7 @@ mod tests {
 
         #[test]
         fn test_bool() {
-            let expr = ConstantExpression::Bool(make_span("true"));
+            let expr = ConstantExpression::Bool { span: make_span("true") };
             let col = column_error_policy("bool_col", ValueKind::Bool);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::bool([true])));
@@ -158,7 +158,7 @@ mod tests {
 
         #[test]
         fn test_bool_expression_but_expected_text() {
-            let expr = ConstantExpression::Bool(make_span("true"));
+            let expr = ConstantExpression::Bool { span: make_span("true") };
             let col = column_error_policy("bool_col", ValueKind::String);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::string(["true".to_string()])));
@@ -166,7 +166,7 @@ mod tests {
 
         #[test]
         fn test_float4_error_policy() {
-            let expr = ConstantExpression::Number(make_span("3.14"));
+            let expr = ConstantExpression::Number { span: make_span("3.14") };
             let col = column_error_policy("f4", ValueKind::Float4);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::float4([3.14])));
@@ -174,7 +174,7 @@ mod tests {
 
         #[test]
         fn test_float8_error_policy() {
-            let expr = ConstantExpression::Number(make_span("2.718281828"));
+            let expr = ConstantExpression::Number { span: make_span("2.718281828") };
             let col = column_error_policy("f8", ValueKind::Float8);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::float8([2.718281828f64])));
@@ -182,7 +182,7 @@ mod tests {
 
         #[test]
         fn test_int1_error_policy() {
-            let expr = ConstantExpression::Number(make_span("127"));
+            let expr = ConstantExpression::Number { span: make_span("127") };
             let col = column_error_policy("i2", ValueKind::Int1);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::int1([127])));
@@ -190,7 +190,7 @@ mod tests {
 
         #[test]
         fn test_int2_error_policy() {
-            let expr = ConstantExpression::Number(make_span("32767"));
+            let expr = ConstantExpression::Number { span: make_span("32767") };
             let col = column_error_policy("i2", ValueKind::Int2);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::int2([32767])));
@@ -198,7 +198,7 @@ mod tests {
 
         #[test]
         fn test_int4_error_policy() {
-            let expr = ConstantExpression::Number(make_span("-2147483648"));
+            let expr = ConstantExpression::Number { span: make_span("-2147483648") };
             let col = column_error_policy("i4", ValueKind::Int4);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::int4([-2147483648])));
@@ -206,7 +206,7 @@ mod tests {
 
         #[test]
         fn test_int8_error_policy() {
-            let expr = ConstantExpression::Number(make_span("9223372036854775807"));
+            let expr = ConstantExpression::Number { span: make_span("9223372036854775807") };
             let col = column_error_policy("i8", ValueKind::Int8);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::int8([9223372036854775807])));
@@ -214,8 +214,9 @@ mod tests {
 
         #[test]
         fn test_int16_error_policy() {
-            let expr =
-                ConstantExpression::Number(make_span("-170141183460469231731687303715884105728"));
+            let expr = ConstantExpression::Number {
+                span: make_span("-170141183460469231731687303715884105728"),
+            };
             let col = column_error_policy("i16", ValueKind::Int16);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(
@@ -226,7 +227,7 @@ mod tests {
 
         #[test]
         fn test_uint1_error_policy() {
-            let expr = ConstantExpression::Number(make_span("255"));
+            let expr = ConstantExpression::Number { span: make_span("255") };
             let col = column_error_policy("u1", ValueKind::Uint1);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::uint1([255])));
@@ -234,7 +235,7 @@ mod tests {
 
         #[test]
         fn test_uint2_error_policy() {
-            let expr = ConstantExpression::Number(make_span("65535"));
+            let expr = ConstantExpression::Number { span: make_span("65535") };
             let col = column_error_policy("u2", ValueKind::Uint2);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::uint2([65535])));
@@ -242,7 +243,7 @@ mod tests {
 
         #[test]
         fn test_uint4_error_policy() {
-            let expr = ConstantExpression::Number(make_span("4294967295"));
+            let expr = ConstantExpression::Number { span: make_span("4294967295") };
             let col = column_error_policy("u4", ValueKind::Uint4);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::uint4([4294967295])));
@@ -250,7 +251,7 @@ mod tests {
 
         #[test]
         fn test_uint8_error_policy() {
-            let expr = ConstantExpression::Number(make_span("18446744073709551615"));
+            let expr = ConstantExpression::Number { span: make_span("18446744073709551615") };
             let col = column_error_policy("u8", ValueKind::Uint8);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(result, Ok(ColumnValues::uint8([18446744073709551615])));
@@ -258,8 +259,9 @@ mod tests {
 
         #[test]
         fn test_uint16_error_policy() {
-            let expr =
-                ConstantExpression::Number(make_span("340282366920938463463374607431768211455"));
+            let expr = ConstantExpression::Number {
+                span: make_span("340282366920938463463374607431768211455"),
+            };
             let col = column_error_policy("u16", ValueKind::Uint16);
             let result = Evaluator::constant_column(expr, &col, 1);
             assert_eq!(
@@ -270,7 +272,7 @@ mod tests {
 
         #[test]
         fn test_error_policy_saturation() {
-            let expr = ConstantExpression::Number(make_span("128"));
+            let expr = ConstantExpression::Number { span: make_span("128") };
             let col = column_error_policy("i1", ValueKind::Int1);
             let result = Evaluator::constant_column(expr, &col, 1);
             let Err(Error(diagnostic)) = result else { unreachable!() };
@@ -289,7 +291,7 @@ mod tests {
 
         #[test]
         fn test_error_policy_underflow() {
-            let expr = ConstantExpression::Number(make_span("-1"));
+            let expr = ConstantExpression::Number { span: make_span("-1") };
             let col = column_error_policy("u1", ValueKind::Uint1);
             let result = Evaluator::constant_column(expr, &col, 1);
             let Err(Error(diagnostic)) = result else { unreachable!() };
@@ -315,78 +317,79 @@ mod tests {
 
         #[test]
         fn test_bool_true() {
-            let expr = ConstantExpression::Bool(make_span("true"));
+            let expr = ConstantExpression::Bool { span: make_span("true") };
             let col = Evaluator::constant_value(expr, 3).unwrap();
             assert_eq!(col, ColumnValues::bool(vec![true; 3]));
         }
 
         #[test]
         fn test_bool_false() {
-            let expr = ConstantExpression::Bool(make_span("false"));
+            let expr = ConstantExpression::Bool { span: make_span("false") };
             let col = Evaluator::constant_value(expr, 2).unwrap();
             assert_eq!(col, ColumnValues::bool(vec![false; 2]));
         }
 
         #[test]
         fn test_int1() {
-            let expr = ConstantExpression::Number(make_span("127"));
+            let expr = ConstantExpression::Number { span: make_span("127") };
             let col = Evaluator::constant_value(expr, 1).unwrap();
             assert_eq!(col, ColumnValues::int1(vec![127]));
         }
 
         #[test]
         fn test_int2() {
-            let expr = ConstantExpression::Number(make_span("32767"));
+            let expr = ConstantExpression::Number { span: make_span("32767") };
             let col = Evaluator::constant_value(expr, 2).unwrap();
             assert_eq!(col, ColumnValues::int2(vec![32767; 2]));
         }
 
         #[test]
         fn test_int4() {
-            let expr = ConstantExpression::Number(make_span("2147483647"));
+            let expr = ConstantExpression::Number { span: make_span("2147483647") };
             let col = Evaluator::constant_value(expr, 1).unwrap();
             assert_eq!(col, ColumnValues::int4(vec![2147483647]));
         }
 
         #[test]
         fn test_int8() {
-            let expr = ConstantExpression::Number(make_span("9223372036854775807"));
+            let expr = ConstantExpression::Number { span: make_span("9223372036854775807") };
             let col = Evaluator::constant_value(expr, 1).unwrap();
             assert_eq!(col, ColumnValues::int8(vec![9223372036854775807]));
         }
 
         #[test]
         fn test_int16() {
-            let expr =
-                ConstantExpression::Number(make_span("170141183460469231731687303715884105727"));
+            let expr = ConstantExpression::Number {
+                span: make_span("170141183460469231731687303715884105727"),
+            };
             let col = Evaluator::constant_value(expr, 1).unwrap();
             assert_eq!(col, ColumnValues::int16(vec![170141183460469231731687303715884105727i128]));
         }
 
         #[test]
         fn test_uint16() {
-            let expr = ConstantExpression::Number(make_span(&u128::MAX.to_string()));
+            let expr = ConstantExpression::Number { span: make_span(&u128::MAX.to_string()) };
             let col = Evaluator::constant_value(expr, 1).unwrap();
             assert_eq!(col, ColumnValues::uint16(vec![340282366920938463463374607431768211455]));
         }
 
         #[test]
         fn test_float8() {
-            let expr = ConstantExpression::Number(make_span("3.14"));
+            let expr = ConstantExpression::Number { span: make_span("3.14") };
             let col = Evaluator::constant_value(expr, 2).unwrap();
             assert_eq!(col, ColumnValues::float8(vec![3.14; 2]));
         }
 
         #[test]
         fn test_invalid_number_fallback_to_undefined() {
-            let expr = ConstantExpression::Number(make_span("not_a_number"));
+            let expr = ConstantExpression::Number { span: make_span("not_a_number") };
             let col = Evaluator::constant_value(expr, 1).unwrap();
             assert_eq!(col, ColumnValues::Undefined(1));
         }
 
         #[test]
         fn test_string() {
-            let expr = ConstantExpression::Text(make_span("hello"));
+            let expr = ConstantExpression::Text { span: make_span("hello") };
             let col = Evaluator::constant_value(expr, 3).unwrap();
             assert_eq!(
                 col,
@@ -400,7 +403,7 @@ mod tests {
 
         #[test]
         fn test_undefined() {
-            let expr = ConstantExpression::Undefined(make_span(""));
+            let expr = ConstantExpression::Undefined { span: make_span("") };
             let col = Evaluator::constant_value(expr, 2).unwrap();
             assert_eq!(col, ColumnValues::Undefined(2));
         }

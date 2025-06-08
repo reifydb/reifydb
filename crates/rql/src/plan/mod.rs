@@ -229,19 +229,19 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
 
                                         let expr = match expr {
                                             Ast::Literal(AstLiteral::Boolean(ast)) => {
-                                                Expression::Constant(ConstantExpression::Bool(
-                                                    ast.0.span,
-                                                ))
+                                                Expression::Constant(ConstantExpression::Bool {
+                                                    span: ast.0.span,
+                                                })
                                             }
                                             Ast::Literal(AstLiteral::Number(ast)) => {
-                                                Expression::Constant(ConstantExpression::Number(
-                                                    ast.0.span.clone(),
-                                                ))
+                                                Expression::Constant(ConstantExpression::Number {
+                                                    span: ast.0.span,
+                                                })
                                             }
                                             Ast::Literal(AstLiteral::Text(ast)) => {
-                                                Expression::Constant(ConstantExpression::Text(
-                                                    ast.0.span,
-                                                ))
+                                                Expression::Constant(ConstantExpression::Text {
+                                                    span: ast.0.span,
+                                                })
                                             }
                                             Ast::Prefix(AstPrefix { operator, node }) => {
                                                 let a = node.deref();
@@ -266,30 +266,30 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                                         Ast::Literal(lit) => match lit {
                                                             AstLiteral::Boolean(n) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Bool(
-                                                                        n.0.span.clone(),
-                                                                    ),
+                                                                    ConstantExpression::Bool {
+                                                                        span: n.0.span.clone(),
+                                                                    },
                                                                 )
                                                             }
                                                             AstLiteral::Number(n) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Number(
-                                                                        n.0.span.clone(),
-                                                                    ),
+                                                                    ConstantExpression::Number {
+                                                                        span: n.0.span.clone(),
+                                                                    },
                                                                 )
                                                             }
                                                             AstLiteral::Text(t) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Text(
-                                                                        t.0.span.clone(),
-                                                                    ),
+                                                                    ConstantExpression::Text {
+                                                                        span: t.0.span.clone(),
+                                                                    },
                                                                 )
                                                             }
                                                             AstLiteral::Undefined(t) => {
                                                                 Expression::Constant(
-                                                                    ConstantExpression::Undefined(
-                                                                        t.0.span.clone(),
-                                                                    ),
+                                                                    ConstantExpression::Undefined {
+                                                                        span: t.0.span.clone(),
+                                                                    },
                                                                 )
                                                             }
                                                         },
@@ -476,21 +476,27 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 Ast::Literal(node) => match node {
                     AstLiteral::Boolean(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Bool(node.0.span)),
+                        expression: Expression::Constant(ConstantExpression::Bool {
+                            span: node.0.span,
+                        }),
                     },
                     AstLiteral::Number(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Number(node.0.span)),
+                        expression: Expression::Constant(ConstantExpression::Number {
+                            span: node.0.span,
+                        }),
                     },
                     AstLiteral::Text(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Text(node.0.span)),
+                        expression: Expression::Constant(ConstantExpression::Text {
+                            span: node.0.span,
+                        }),
                     },
                     AstLiteral::Undefined(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Undefined(
-                            node.0.span,
-                        )),
+                        expression: Expression::Constant(ConstantExpression::Undefined {
+                            span: node.0.span,
+                        }),
                     },
                 },
                 Ast::Prefix(node) => {
@@ -524,7 +530,7 @@ fn expression(ast: Ast) -> Result<Expression> {
     match ast {
         Ast::Literal(literal) => match literal {
             AstLiteral::Number(literal) => {
-                Ok(Expression::Constant(ConstantExpression::Number(literal.0.span)))
+                Ok(Expression::Constant(ConstantExpression::Number { span: literal.0.span }))
             }
             _ => unimplemented!(),
         },

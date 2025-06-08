@@ -48,10 +48,10 @@ impl Expression {
     pub fn span(&self) -> &Span {
         match self {
             Expression::Constant(expr) => match expr {
-                ConstantExpression::Undefined(span) => span,
-                ConstantExpression::Bool(span) => span,
-                ConstantExpression::Number(span) => span,
-                ConstantExpression::Text(span) => span,
+                ConstantExpression::Undefined { span } => span,
+                ConstantExpression::Bool { span } => span,
+                ConstantExpression::Number { span } => span,
+                ConstantExpression::Text { span } => span,
             },
             Expression::Column(expr) => &expr.0,
             Expression::Add(expr) => &expr.span,
@@ -68,21 +68,21 @@ impl Expression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstantExpression {
-    Undefined(Span),
-    Bool(Span),
+    Undefined { span: Span },
+    Bool { span: Span },
     // any number
-    Number(Span),
+    Number { span: Span },
     // any textual representation can be String, Text, ...
-    Text(Span),
+    Text { span: Span },
 }
 
 impl Display for ConstantExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ConstantExpression::Undefined(_) => write!(f, "undefined"),
-            ConstantExpression::Bool(span) => write!(f, "{}", span.fragment),
-            ConstantExpression::Number(span) => write!(f, "{}", span.fragment),
-            ConstantExpression::Text(span) => write!(f, "\"{}\"", span.fragment),
+            ConstantExpression::Undefined { .. } => write!(f, "undefined"),
+            ConstantExpression::Bool { span } => write!(f, "{}", span.fragment),
+            ConstantExpression::Number { span } => write!(f, "{}", span.fragment),
+            ConstantExpression::Text { span } => write!(f, "\"{}\"", span.fragment),
         }
     }
 }
