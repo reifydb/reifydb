@@ -4,13 +4,13 @@
 use crate::{Diagnostic, DiagnosticColumn, Span};
 use reifydb_core::ValueKind;
 
-pub struct ColumnOverflow {
+pub struct ColumnSaturation {
     pub span: Span,
     pub column: String,
     pub value: ValueKind,
 }
 
-pub fn column_overflow<'a>(co: ColumnOverflow) -> Diagnostic {
+pub fn column_saturation<'a>(co: ColumnSaturation) -> Diagnostic {
     let label = Some(format!(
         "value `{}` does not fit into `{}` (range: {})",
         &co.span.fragment,
@@ -20,37 +20,12 @@ pub fn column_overflow<'a>(co: ColumnOverflow) -> Diagnostic {
 
     Diagnostic {
         code: "PO0001".to_string(),
-        message: format!("value overflows column `{}` type `{}`", co.column, co.value),
+        message: format!("value saturation in column `{}` type `{}`", co.column, co.value),
         span: Some(co.span),
         label,
-        help: Some("reduce the value, change the column type to a wider type or change the overflow policy".to_string()),
+        help: Some("reduce the value, change the column type to a wider type or change the saturation policy".to_string()),
         notes: vec![],
         column: Some(DiagnosticColumn { name: co.column, value: co.value }),
-    }
-}
-
-pub struct ColumnUnderflow {
-    pub span: Span,
-    pub column_name: String,
-    pub column_value: ValueKind,
-}
-
-pub fn column_underflow<'a>(co: ColumnUnderflow) -> Diagnostic {
-    let label = Some(format!(
-        "value `{}` does not fit into `{}` (range: {})",
-        &co.span.fragment,
-        co.column_value,
-        column_range(co.column_value)
-    ));
-
-    Diagnostic {
-        code: "PO0002".to_string(),
-        message: format!("value underflows column `{}` type `{}`", co.column_name, co.column_value),
-        span: Some(co.span),
-        label,
-        help: Some("increase the value, change the column type to a wider type or change the underflow policy".to_string()),
-        notes: vec![],
-        column: Some(DiagnosticColumn { name: co.column_name, value: co.column_value }),
     }
 }
 

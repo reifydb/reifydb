@@ -33,8 +33,7 @@ impl Parser {
     fn parse_policy_kind(&mut self) -> parse::Result<(Token, AstPolicyKind)> {
         let identifier = self.consume(Identifier)?;
         let kind = match identifier.span.fragment.as_str() {
-            "overflow" => AstPolicyKind::Overflow,
-            "underflow" => AstPolicyKind::Underflow,
+            "saturation" => AstPolicyKind::Saturation,
             "default" => AstPolicyKind::Default,
             "not" => {
                 self.consume_literal(Literal::Undefined)?;
@@ -54,8 +53,8 @@ mod tests {
     use crate::ast::{AstCreate, AstPolicyKind, InfixOperator};
 
     #[test]
-    fn test_overflow_error() {
-        let tokens = lex(r#"policy (overflow error)"#).unwrap();
+    fn test_saturation_error() {
+        let tokens = lex(r#"policy (saturation error)"#).unwrap();
 
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse_policy_block().unwrap();
@@ -64,14 +63,14 @@ mod tests {
         let policies = result.policies;
         assert_eq!(policies.len(), 1);
 
-        let overflow = &policies[0];
-        assert!(matches!(overflow.policy, AstPolicyKind::Overflow));
-        assert_eq!(overflow.value.as_identifier().value(), "error");
+        let saturation = &policies[0];
+        assert!(matches!(saturation.policy, AstPolicyKind::Saturation));
+        assert_eq!(saturation.value.as_identifier().value(), "error");
     }
 
     #[test]
-    fn test_overflow_undefined() {
-        let tokens = lex(r#"policy (overflow undefined)"#).unwrap();
+    fn test_saturation_undefined() {
+        let tokens = lex(r#"policy (saturation undefined)"#).unwrap();
 
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse_policy_block().unwrap();
@@ -80,9 +79,9 @@ mod tests {
         let policies = result.policies;
         assert_eq!(policies.len(), 1);
 
-        let overflow = &policies[0];
-        assert!(matches!(overflow.policy, AstPolicyKind::Overflow));
-        assert_eq!(overflow.value.as_literal_undefined().value(), "undefined");
+        let saturation = &policies[0];
+        assert!(matches!(saturation.policy, AstPolicyKind::Saturation));
+        assert_eq!(saturation.value.as_literal_undefined().value(), "undefined");
     }
 
     #[test]
@@ -91,7 +90,7 @@ mod tests {
         create table test.items(
             field:  int2
                     policy (
-                        overflow error,
+                        saturation error,
                         default 0
                     )
         )
@@ -123,9 +122,9 @@ mod tests {
                 let policies = &definitions.nodes[1].as_policy_block();
                 assert_eq!(policies.policies.len(), 2);
 
-                let overflow = &policies.policies[0];
-                assert!(matches!(overflow.policy, AstPolicyKind::Overflow));
-                assert_eq!(overflow.value.as_identifier().value(), "error");
+                let saturation = &policies.policies[0];
+                assert!(matches!(saturation.policy, AstPolicyKind::Saturation));
+                assert_eq!(saturation.value.as_identifier().value(), "error");
 
                 let default = &policies.policies[1];
                 assert!(matches!(default.policy, AstPolicyKind::Default));

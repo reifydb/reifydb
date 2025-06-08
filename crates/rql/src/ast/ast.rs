@@ -176,7 +176,7 @@ impl Ast {
             panic!("not literal undefined")
         }
     }
-    
+
     pub fn is_order_by(&self) -> bool {
         matches!(self, Ast::OrderBy(_))
     }
@@ -376,8 +376,7 @@ pub struct AstOrderBy {
 
 #[derive(Debug, PartialEq)]
 pub enum AstPolicyKind {
-    Overflow,
-    Underflow,
+    Saturation,
     Default,
     NotUndefined,
 }

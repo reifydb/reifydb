@@ -4,14 +4,12 @@
 use crate::evaluate;
 use crate::evaluate::context::EvaluationColumn;
 use crate::evaluate::{Context, Evaluator};
-use reifydb_catalog::ColumnOverflowPolicy;
-use reifydb_catalog::ColumnPolicyError::{Overflow, Underflow};
+use reifydb_catalog::ColumnPolicyError::Saturation;
+use reifydb_catalog::ColumnSaturationPolicy;
 use reifydb_core::num::{ParseError, parse_float, parse_int, parse_uint};
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
 use reifydb_core::{Value, ValueKind};
-use reifydb_diagnostic::policy::{
-    ColumnOverflow, ColumnUnderflow, column_overflow, column_underflow,
-};
+use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 use reifydb_frame::ColumnValues;
 use reifydb_rql::expression::ConstantExpression;
 
@@ -72,23 +70,16 @@ impl Evaluator {
                     Ok(value) => Ok(value),
                     Err(error) => match error {
                         ParseError::Invalid(_) => Ok(Value::Undefined),
-                        ParseError::Overflow(_) => match column.overflow_policy() {
-                            ColumnOverflowPolicy::Error => {
-                                Err(Overflow(column_overflow(ColumnOverflow {
+                        ParseError::Saturation(_) => match column.saturation_policy() {
+                            ColumnSaturationPolicy::Error => {
+                                Err(Saturation(column_saturation(ColumnSaturation {
                                     span,
                                     column: column.name.clone(),
                                     value: column.value,
                                 })))
                             }
-                            ColumnOverflowPolicy::Undefined => Ok(Value::Undefined),
+                            ColumnSaturationPolicy::Undefined => Ok(Value::Undefined),
                         },
-                        ParseError::Underflow(_) => {
-                            Err(Underflow(column_underflow(ColumnUnderflow {
-                                span,
-                                column_name: column.name.clone(),
-                                column_value: column.value,
-                            })))
-                        }
                     },
                 }
             }
@@ -145,7 +136,7 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::EvaluationColumn;
-    use reifydb_catalog::{ColumnOverflowPolicy, ColumnPolicy, ColumnUnderflowPolicy};
+    use reifydb_catalog::{ColumnPolicy, ColumnSaturationPolicy};
     use reifydb_core::ValueKind;
     use reifydb_diagnostic::{Line, Offset, Span};
 
@@ -278,7 +269,7 @@ mod tests {
         }
 
         #[test]
-        fn test_error_policy_overflow() {
+        fn test_error_policy_saturation() {
             let expr = ConstantExpression::Number(make_span("128"));
             let col = column_error_policy("i1", ValueKind::Int1);
             let result = Evaluator::constant_column(expr, &col, 1);
@@ -303,7 +294,7 @@ mod tests {
             let result = Evaluator::constant_column(expr, &col, 1);
             let Err(Error(diagnostic)) = result else { unreachable!() };
 
-            assert_eq!(diagnostic.code, "PO0002");
+            assert_eq!(diagnostic.code, "PO0001");
             assert_eq!(
                 diagnostic.column,
                 Some(DiagnosticColumn { name: "u1".to_string(), value: ValueKind::Uint1 })
@@ -423,10 +414,7 @@ mod tests {
         EvaluationColumn {
             name: name.to_string(),
             value: kind,
-            policies: vec![
-                ColumnPolicy::Overflow(ColumnOverflowPolicy::Error),
-                ColumnPolicy::Underflow(ColumnUnderflowPolicy::Error),
-            ],
+            policies: vec![ColumnPolicy::Saturation(ColumnSaturationPolicy::Error)],
         }
     }
 }

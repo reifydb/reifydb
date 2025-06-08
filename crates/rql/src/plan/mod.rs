@@ -17,8 +17,7 @@ use crate::expression::{
 };
 pub use error::Error;
 use reifydb_catalog::{
-    CatalogRx, Column, ColumnOverflowPolicy, ColumnPolicy, ColumnToCreate, ColumnUnderflowPolicy,
-    SchemaRx, StoreRx,
+    CatalogRx, Column, ColumnPolicy, ColumnSaturationPolicy, ColumnToCreate, SchemaRx, StoreRx,
 };
 use reifydb_core::{SortDirection, SortKey, StoreKind};
 
@@ -406,27 +405,16 @@ pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicy {
     use ColumnPolicy::*;
 
     match ast.policy {
-        AstPolicyKind::Overflow => {
+        AstPolicyKind::Saturation => {
             if ast.value.is_literal_undefined() {
-                return Overflow(ColumnOverflowPolicy::Undefined);
+                return Saturation(ColumnSaturationPolicy::Undefined);
             }
             let ident = ast.value.as_identifier().value();
             match ident {
-                "error" => Overflow(ColumnOverflowPolicy::Error),
-                // "saturate" => Some(Overflow(Saturate)),
-                // "wrap" => Some(Overflow(Wrap)),
-                // "zero" => Some(Overflow(Zero)),
-                _ => unimplemented!(),
-            }
-        }
-        AstPolicyKind::Underflow => {
-            let ident = ast.value.as_identifier().value();
-            match ident {
-                "error" => Underflow(ColumnUnderflowPolicy::Error),
-                // "saturate" => Some(Underflow(Saturate)),
-                // "wrap" => Some(Underflow(Wrap)),
-                // "zero" => Some(Underflow(Zero)),
-                // _ => Some(Underflow(ColumnUnderflowPolicy::Undefined)),
+                "error" => Saturation(ColumnSaturationPolicy::Error),
+                // "saturate" => Some(Saturation(Saturate)),
+                // "wrap" => Some(Saturation(Wrap)),
+                // "zero" => Some(Saturation(Zero)),
                 _ => unimplemented!(),
             }
         }

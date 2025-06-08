@@ -10,16 +10,14 @@ use std::num::IntErrorKind;
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
     Invalid(String),
-    Overflow(String),
-    Underflow(String),
+    Saturation(String),
 }
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ParseError::Invalid(input) => write!(f, "invalid number: '{}'", input),
-            ParseError::Overflow(input) => write!(f, "value overflow: '{}'", input),
-            ParseError::Underflow(input) => write!(f, "value underflow: '{}'", input),
+            ParseError::Saturation(input) => write!(f, "value saturation: '{}'", input),
         }
     }
 }
@@ -34,9 +32,9 @@ where
     let value = parse_i128(s)?;
 
     if value < min {
-        return Err(ParseError::Underflow(s.to_string()));
+        return Err(ParseError::Saturation(s.to_string()));
     } else if value > max {
-        return Err(ParseError::Overflow(s.to_string()));
+        return Err(ParseError::Saturation(s.to_string()));
     };
 
     let casted = if TypeId::of::<T>() == TypeId::of::<i8>() {
@@ -64,7 +62,7 @@ where
     let value = parse_u128(s)?;
 
     if value > max {
-        return Err(ParseError::Overflow(s.to_string()));
+        return Err(ParseError::Saturation(s.to_string()));
     }
 
     let casted = if TypeId::of::<T>() == TypeId::of::<u8>() {
@@ -93,9 +91,9 @@ where
     let value = parse_f64(s)?;
 
     if value < min {
-        return Err(ParseError::Underflow(s.to_string()));
+        return Err(ParseError::Saturation(s.to_string()));
     } else if value > max {
-        return Err(ParseError::Overflow(s.to_string()));
+        return Err(ParseError::Saturation(s.to_string()));
     };
 
     let casted = if TypeId::of::<T>() == TypeId::of::<f32>() {
@@ -123,9 +121,9 @@ fn parse_f64(s: &str) -> Result<f64, ParseError> {
     match s.parse::<f64>() {
         Ok(v) => {
             if v == f64::INFINITY {
-                Err(ParseError::Overflow(s.to_string()))
+                Err(ParseError::Saturation(s.to_string()))
             } else if v == f64::NEG_INFINITY {
-                Err(ParseError::Underflow(s.to_string()))
+                Err(ParseError::Saturation(s.to_string()))
             } else {
                 Ok(v)
             }
@@ -140,8 +138,8 @@ fn parse_i128(s: &str) -> Result<i128, ParseError> {
         Err(err) => match err.kind() {
             IntErrorKind::Empty => Err(ParseError::Invalid(s.to_string())),
             IntErrorKind::InvalidDigit => Err(ParseError::Invalid(s.to_string())),
-            IntErrorKind::PosOverflow => Err(ParseError::Overflow(s.to_string())),
-            IntErrorKind::NegOverflow => Err(ParseError::Underflow(s.to_string())),
+            IntErrorKind::PosOverflow => Err(ParseError::Saturation(s.to_string())),
+            IntErrorKind::NegOverflow => Err(ParseError::Saturation(s.to_string())),
             IntErrorKind::Zero => Err(ParseError::Invalid(s.to_string())),
             &_ => unreachable!("{}", err),
         },
@@ -153,13 +151,13 @@ fn parse_u128(s: &str) -> Result<u128, ParseError> {
         Ok(v) => Ok(v),
         Err(err) => {
             if s.contains("-") {
-                return Err(ParseError::Underflow(s.to_string()));
+                return Err(ParseError::Saturation(s.to_string()));
             }
             match err.kind() {
                 IntErrorKind::Empty => Err(ParseError::Invalid(s.to_string())),
                 IntErrorKind::InvalidDigit => Err(ParseError::Invalid(s.to_string())),
-                IntErrorKind::PosOverflow => Err(ParseError::Overflow(s.to_string())),
-                IntErrorKind::NegOverflow => Err(ParseError::Underflow(s.to_string())),
+                IntErrorKind::PosOverflow => Err(ParseError::Saturation(s.to_string())),
+                IntErrorKind::NegOverflow => Err(ParseError::Saturation(s.to_string())),
                 IntErrorKind::Zero => Err(ParseError::Invalid(s.to_string())),
                 &_ => unreachable!("{}", err),
             }
@@ -170,7 +168,7 @@ fn parse_u128(s: &str) -> Result<u128, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ParseError::{Invalid, Overflow, Underflow};
+    use ParseError::{Invalid, Saturation};
 
     #[test]
     fn test_parse_float_valid_f32() {
@@ -187,27 +185,27 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_float_overflow_f32() {
+    fn test_parse_float_saturation_f32() {
         let val = "3.5e38";
-        assert_eq!(parse_float::<f32>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_float::<f32>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
-    fn test_parse_float_overflow_f64() {
+    fn test_parse_float_saturation_f64() {
         let val = "1e400";
-        assert_eq!(parse_float::<f64>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_float::<f64>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
     fn test_parse_float_underflow_f32() {
         let val = "-3.5e38";
-        assert_eq!(parse_float::<f32>(val), Err(Underflow(val.to_string())));
+        assert_eq!(parse_float::<f32>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
     fn test_parse_float_underflow_f64() {
         let val = "-1e400";
-        assert_eq!(parse_float::<f64>(val), Err(Underflow(val.to_string())));
+        assert_eq!(parse_float::<f64>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -230,15 +228,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_int_overflow_i8() {
+    fn test_parse_int_saturation_i8() {
         let val = "128";
-        assert_eq!(parse_int::<i8>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_int::<i8>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
     fn test_parse_int_underflow_i8() {
         let val = "-129";
-        assert_eq!(parse_int::<i8>(val), Err(Underflow(val.to_string())));
+        assert_eq!(parse_int::<i8>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -248,15 +246,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_int_overflow_i16() {
+    fn test_parse_int_saturation_i16() {
         let val = "32768";
-        assert_eq!(parse_int::<i16>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_int::<i16>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
     fn test_parse_int_underflow_i16() {
         let val = "-32769";
-        assert_eq!(parse_int::<i16>(val), Err(Underflow(val.to_string())));
+        assert_eq!(parse_int::<i16>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -266,15 +264,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_int_overflow_i32() {
+    fn test_parse_int_saturation_i32() {
         let val = "2147483648";
-        assert_eq!(parse_int::<i32>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_int::<i32>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
     fn test_parse_int_underflow_i32() {
         let val = "-2147483649";
-        assert_eq!(parse_int::<i32>(val), Err(Underflow(val.to_string())));
+        assert_eq!(parse_int::<i32>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -284,15 +282,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_int_overflow_i64() {
+    fn test_parse_int_saturation_i64() {
         let val = "9223372036854775808";
-        assert_eq!(parse_int::<i64>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_int::<i64>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
     fn test_parse_int_underflow_i64() {
         let val = "-9223372036854775809";
-        assert_eq!(parse_int::<i64>(val), Err(Underflow(val.to_string())));
+        assert_eq!(parse_int::<i64>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -302,15 +300,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_int_overflow_i128() {
+    fn test_parse_int_saturation_i128() {
         let val = "170141183460469231731687303715884105728";
-        assert_eq!(parse_int::<i128>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_int::<i128>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
     fn test_parse_int_underflow_i128() {
         let val = "-170141183460469231731687303715884105729";
-        assert_eq!(parse_int::<i128>(val), Err(Underflow(val.to_string())));
+        assert_eq!(parse_int::<i128>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -326,15 +324,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_uint_overflow_u8() {
+    fn test_parse_uint_saturation_u8() {
         let val = "256"; // u8::MAX + 1
-        assert_eq!(parse_uint::<u8>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_uint::<u8>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
     fn test_parse_uint_underflow_u8() {
         let val = "-1";
-        assert_eq!(parse_uint::<u8>(val), Err(Underflow(val.to_string())));
+        assert_eq!(parse_uint::<u8>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -344,9 +342,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_uint_overflow_u16() {
+    fn test_parse_uint_saturation_u16() {
         let val = "65536";
-        assert_eq!(parse_uint::<u16>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_uint::<u16>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -355,9 +353,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_uint_overflow_u32() {
+    fn test_parse_uint_saturation_u32() {
         let val = "4294967296";
-        assert_eq!(parse_uint::<u32>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_uint::<u32>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -366,9 +364,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_uint_overflow_u64() {
+    fn test_parse_uint_saturation_u64() {
         let val = "18446744073709551616";
-        assert_eq!(parse_uint::<u64>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_uint::<u64>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -377,9 +375,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_uint_overflow_u128() {
+    fn test_parse_uint_saturation_u128() {
         let val = "340282366920938463463374607431768211456";
-        assert_eq!(parse_uint::<u128>(val), Err(Overflow(val.to_string())));
+        assert_eq!(parse_uint::<u128>(val), Err(Saturation(val.to_string())));
     }
 
     #[test]
@@ -413,13 +411,13 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_f64_overflow() {
-        assert_eq!(parse_f64("1e400"), Err(Overflow("1e400".to_string())));
+    fn test_parse_f64_saturation() {
+        assert_eq!(parse_f64("1e400"), Err(Saturation("1e400".to_string())));
     }
 
     #[test]
     fn test_parse_f64_underflow() {
-        assert_eq!(parse_f64("-1e400"), Err(Underflow("-1e400".to_string())));
+        assert_eq!(parse_f64("-1e400"), Err(Saturation("-1e400".to_string())));
     }
 
     #[test]
@@ -438,15 +436,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_i128_overflow() {
+    fn test_parse_i128_saturation() {
         let too_large = "170141183460469231731687303715884105728";
-        assert_eq!(parse_i128(too_large), Err(Overflow(too_large.to_string())));
+        assert_eq!(parse_i128(too_large), Err(Saturation(too_large.to_string())));
     }
 
     #[test]
     fn test_parse_i128_underflow() {
         let too_small = "-170141183460469231731687303715884105729";
-        assert_eq!(parse_i128(too_small), Err(Underflow(too_small.to_string())));
+        assert_eq!(parse_i128(too_small), Err(Saturation(too_small.to_string())));
     }
 
     #[test]
@@ -464,14 +462,14 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_u128_overflow() {
+    fn test_parse_u128_saturation() {
         let too_large = "340282366920938463463374607431768211456";
-        assert_eq!(parse_u128(too_large), Err(Overflow(too_large.to_string())));
+        assert_eq!(parse_u128(too_large), Err(Saturation(too_large.to_string())));
     }
 
     #[test]
     fn test_parse_u128_underflow() {
         let negative = "-1";
-        assert_eq!(parse_u128(negative), Err(Underflow(negative.to_string())));
+        assert_eq!(parse_u128(negative), Err(Saturation(negative.to_string())));
     }
 }

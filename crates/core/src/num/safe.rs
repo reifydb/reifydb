@@ -1,6 +1,7 @@
 // Copyright (c) nyanbot.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
+
 pub trait SafeAdd: Sized {
     fn checked_add(self, rhs: Self) -> Option<Self>;
     fn saturating_add(self, rhs: Self) -> Self;

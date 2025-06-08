@@ -42,7 +42,7 @@ impl Error {
                 span: Some(got.span.clone()),
                 label: Some("not a recognized policy".to_string()),
                 help: Some(
-                    "expected one of: `overflow`, `underflow`, `default`, `not undefined`"
+                    "expected one of: `saturation`, `underflow`, `default`, `not undefined`"
                         .to_string(),
                 ),
                 column: None,

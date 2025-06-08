@@ -5,42 +5,27 @@ use reifydb_diagnostic::Diagnostic;
 
 #[derive(Debug, Clone)]
 pub enum ColumnPolicy {
-    Overflow(ColumnOverflowPolicy),
-    Underflow(ColumnUnderflowPolicy),
+    Saturation(ColumnSaturationPolicy),
 }
 
 impl ColumnPolicy {
-    pub fn default_overflow_policy() -> Self {
-        Self::Overflow(ColumnOverflowPolicy::default())
+    pub fn default_saturation_policy() -> Self {
+        Self::Saturation(ColumnSaturationPolicy::default())
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum ColumnOverflowPolicy {
+pub enum ColumnSaturationPolicy {
     Error,
     // Saturate,
     // Wrap,
     // Zero,
-    Undefined
+    Undefined,
 }
 
-pub const DEFAULT_COLUMN_OVERFLOW_POLICY: ColumnOverflowPolicy = ColumnOverflowPolicy::Error;
+pub const DEFAULT_COLUMN_SATURATION_POLICY: ColumnSaturationPolicy = ColumnSaturationPolicy::Error;
 
-impl Default for ColumnOverflowPolicy {
-    fn default() -> Self {
-        Self::Error
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ColumnUnderflowPolicy {
-    Error,
-    // Saturate,
-    // Wrap,
-    // Zero,
-}
-
-impl Default for ColumnUnderflowPolicy {
+impl Default for ColumnSaturationPolicy {
     fn default() -> Self {
         Self::Error
     }
@@ -48,15 +33,13 @@ impl Default for ColumnUnderflowPolicy {
 
 #[derive(Debug, PartialEq)]
 pub enum ColumnPolicyError {
-    Overflow(Diagnostic),
-    Underflow(Diagnostic),
+    Saturation(Diagnostic),
 }
 
 impl ColumnPolicyError {
     pub fn diagnostic(self) -> Diagnostic {
         match self {
-            ColumnPolicyError::Overflow(diagnostic) => diagnostic,
-            ColumnPolicyError::Underflow(diagnostic) => diagnostic,
+            ColumnPolicyError::Saturation(diagnostic) => diagnostic,
         }
     }
 }

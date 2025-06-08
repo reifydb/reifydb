@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub use policy::{ColumnOverflowPolicy, ColumnPolicy, ColumnPolicyError, ColumnUnderflowPolicy, DEFAULT_COLUMN_OVERFLOW_POLICY};
+pub use policy::{
+    ColumnPolicy, ColumnPolicyError, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY,
+};
 use reifydb_core::ValueKind;
 
 mod policy;
@@ -21,11 +23,7 @@ impl Column {
 }
 
 impl Column {
-    pub fn overflow_policy(&self) -> ColumnOverflowPolicy {
-        ColumnOverflowPolicy::Error
-    }
-
-    pub fn underflow_policy(&self) -> ColumnUnderflowPolicy {
-        ColumnUnderflowPolicy::Error
+    pub fn saturation_policy(&self) -> ColumnSaturationPolicy {
+        ColumnSaturationPolicy::Error
     }
 }
