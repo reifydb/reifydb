@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_diagnostic::Span;
+mod span;
+
+use reifydb_diagnostic::{IntoSpan, Span};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -42,29 +44,6 @@ pub enum Expression {
     Tuple(TupleExpression),
 
     Prefix(PrefixExpression),
-}
-
-impl Expression {
-    // FIXME this should return a Span which is the entire expression
-    pub fn span(&self) -> &Span {
-        match self {
-            Expression::Constant(expr) => match expr {
-                ConstantExpression::Undefined { span } => span,
-                ConstantExpression::Bool { span } => span,
-                ConstantExpression::Number { span } => span,
-                ConstantExpression::Text { span } => span,
-            },
-            Expression::Column(expr) => &expr.0,
-            Expression::Add(expr) => &expr.span,
-            Expression::Divide(expr) => &expr.span,
-            Expression::Call(expr) => &expr.span,
-            Expression::Modulo(expr) => &expr.span,
-            Expression::Multiply(expr) => &expr.span,
-            Expression::Subtract(expr) => &expr.span,
-            Expression::Tuple(expr) => &expr.span,
-            Expression::Prefix(expr) => &expr.span,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

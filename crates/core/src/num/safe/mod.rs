@@ -3,4 +3,5 @@
 
 pub mod add;
 pub mod demote;
+pub mod promote;
 pub mod subtract;

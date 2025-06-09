@@ -8,13 +8,13 @@ use reifydb_rql::expression::MultiplyExpression;
 impl Evaluator {
     pub(crate) fn multiply(
         &mut self,
-        mul: MultiplyExpression,
+        mul: &MultiplyExpression,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let left = self.evaluate(*mul.left, ctx, columns, row_count)?;
-        let right = self.evaluate(*mul.right, ctx, columns, row_count)?;
+        let left = self.evaluate(&mul.left, ctx, columns, row_count)?;
+        let right = self.evaluate(&mul.right, ctx, columns, row_count)?;
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {

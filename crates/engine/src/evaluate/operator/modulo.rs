@@ -8,13 +8,13 @@ use reifydb_rql::expression::ModuloExpression;
 impl Evaluator {
     pub(crate) fn modulo(
         &mut self,
-        mo: ModuloExpression,
+        mo: &ModuloExpression,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let left = self.evaluate(*mo.left, ctx, columns, row_count)?;
-        let right = self.evaluate(*mo.right, ctx, columns, row_count)?;
+        let left = self.evaluate(&mo.left, ctx, columns, row_count)?;
+        let right = self.evaluate(&mo.right, ctx, columns, row_count)?;
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {

@@ -7,7 +7,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 use reifydb_core::ValueKind;
-pub use span::{Line, Offset, Span};
+pub use span::{IntoSpan, Line, Offset, Span};
 
 pub mod plan;
 pub mod policy;

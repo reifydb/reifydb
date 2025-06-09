@@ -9,14 +9,12 @@ use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 impl Evaluator {
     pub(crate) fn prefix(
         &mut self,
-        prefix: PrefixExpression,
+        prefix: &PrefixExpression,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
-    
-    
-        let values = evaluate(*prefix.expression, ctx, columns, row_count)?;
+        let values = evaluate(&prefix.expression, ctx, columns, row_count)?;
 
         match values {
             // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),

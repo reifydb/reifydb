@@ -3,8 +3,8 @@
 
 use reifydb_catalog::{ColumnPolicy, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
 use reifydb_core::ValueKind;
-use reifydb_core::num::{SafeAdd, SafeDemote, SafeSubtract};
-use reifydb_diagnostic::Span;
+use reifydb_core::num::{SafeAdd, SafeDemote, SafePromote, SafeSubtract};
+use reifydb_diagnostic::IntoSpan;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 use reifydb_frame::Frame;
 
@@ -50,7 +50,7 @@ impl Context {
     pub(crate) fn demote<From, To>(
         &self,
         val: From,
-        span: &Span,
+        span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeDemote<To> + Copy,
@@ -61,7 +61,7 @@ impl Context {
                 ColumnSaturationPolicy::Error => {
                     if let Some(column) = &self.column {
                         Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
-                            span: span.clone(),
+                            span: span.into_span(),
                             column: column.name.to_string(),
                             value: column.value,
                         })))
@@ -73,12 +73,39 @@ impl Context {
             },
         }
     }
-    
+
+    pub(crate) fn promote<From, To>(
+        &self,
+        val: From,
+        span: impl IntoSpan,
+    ) -> crate::evaluate::Result<Option<To>>
+    where
+        From: SafePromote<To> + Copy,
+    {
+        match val.promote() {
+            Some(v) => Ok(Some(v)),
+            None => match self.saturation_policy() {
+                ColumnSaturationPolicy::Error => {
+                    if let Some(column) = &self.column {
+                        Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
+                            span: span.into_span(),
+                            column: column.name.to_string(),
+                            value: column.value,
+                        })))
+                    } else {
+                        unimplemented!()
+                    }
+                }
+                ColumnSaturationPolicy::Undefined => Ok(None),
+            },
+        }
+    }
+
     pub(crate) fn add<T: SafeAdd>(
         &self,
         l: T,
         r: T,
-        span: &Span,
+        span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<T>> {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => l
@@ -86,7 +113,7 @@ impl Context {
                 .ok_or_else(|| {
                     if let Some(column) = &self.column {
                         return crate::evaluate::Error(column_saturation(ColumnSaturation {
-                            span: span.clone(),
+                            span: span.into_span(),
                             column: column.name.to_string(),
                             value: column.value,
                         }));
@@ -105,7 +132,7 @@ impl Context {
         &self,
         l: T,
         r: T,
-        span: &Span,
+        span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<T>> {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => l
@@ -113,7 +140,7 @@ impl Context {
                 .ok_or_else(|| {
                     if let Some(column) = &self.column {
                         return crate::evaluate::Error(column_saturation(ColumnSaturation {
-                            span: span.clone(),
+                            span: span.into_span(),
                             column: column.name.to_string(),
                             value: column.value,
                         }));

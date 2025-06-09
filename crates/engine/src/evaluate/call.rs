@@ -9,13 +9,13 @@ use reifydb_rql::expression::{CallExpression, Expression};
 impl Evaluator {
     pub(crate) fn call(
         &mut self,
-        call: CallExpression,
+        call: &CallExpression,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
         let virtual_columns =
-            self.evaluate_virtual_column(call.args, ctx, &columns, row_count).unwrap();
+            self.evaluate_virtual_column(&call.args, ctx, &columns, row_count).unwrap();
 
         let functor = self.functions.get(call.func.0.fragment.as_str()).unwrap();
         let exec = functor.prepare().unwrap();
@@ -25,7 +25,7 @@ impl Evaluator {
 
     fn evaluate_virtual_column<'a>(
         &mut self,
-        expressions: Vec<Expression>,
+        expressions: &Vec<Expression>,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,
@@ -35,7 +35,7 @@ impl Evaluator {
         for expression in expressions {
             result.push(Column {
                 name: expression.to_string(),
-                data: self.evaluate(expression, ctx, columns, row_count)?,
+                data: self.evaluate(&expression, ctx, columns, row_count)?,
             })
         }
 

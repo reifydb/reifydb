@@ -18,13 +18,18 @@ fn main() {
     // db.tx_as(&root, r#"create table test.arith(id: int2, num: int2)"#).unwrap();
     // db.tx_as(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#).unwrap();
 
-    db.tx_as(&root, r#"create table test.item(field: int1 policy (saturation error))"#).unwrap();
-    if let Err(e) = db.tx_as(&root, r#"insert (-128) into test.item (field)"#) {
+    db.tx_as(&root, r#"create table test.item(field_one: int1 policy (saturation undefined), field_two: int2, field_three: int1)"#).unwrap();
+    // if let Err(e) = db.tx_as(&root, r#"insert (-127 - 2, -255 - 255, -120 - 3) into test.item (field_one, field_two, field_three)"#) {
+    if let Err(e) = db.tx_as(
+        &root,
+        r#"insert (1,2,3),(132,4,5),(2,6,7) into test.item (field_one, field_two, field_three)"#,
+    ) {
         println!("{}", e);
     }
 
     // let start = Instant::now();
-    for l in db.tx_as(&root, r#"from test.item select field"#).unwrap() {
+    for l in db.tx_as(&root, r#"from test.item select field_one, field_two, field_three"#).unwrap()
+    {
         // for l in db.tx_as(&root, r#"from test.arith select id + 42, id + id + id"#).unwrap() {
         println!("{}", l);
     }

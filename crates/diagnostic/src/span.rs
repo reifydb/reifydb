@@ -3,6 +3,32 @@
 
 use std::cmp::Ordering;
 
+/// Trait to provide a `Span` either directly or lazily (via closure).
+pub trait IntoSpan {
+    fn into_span(self) -> Span;
+}
+
+impl IntoSpan for Span {
+    fn into_span(self) -> Span {
+        self
+    }
+}
+
+impl<'a> IntoSpan for &'a Span {
+    fn into_span(self) -> Span {
+        self.clone()
+    }
+}
+
+impl<F> IntoSpan for F
+where
+    F: Fn() -> Span,
+{
+    fn into_span(self) -> Span {
+        self()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Span {
     /// The offset represents the position of the fragment relatively to
@@ -49,8 +75,8 @@ impl PartialEq<i32> for Line {
 
 impl Span {
     /// Merge multiple spans (in any order) into one encompassing span.
-    pub fn merge_all<'a>(spans: impl IntoIterator<Item = &'a Span>) -> Span {
-        let mut spans: Vec<&Span> = spans.into_iter().collect();
+    pub fn merge_all(spans: impl IntoIterator<Item = Span>) -> Span {
+        let mut spans: Vec<Span> = spans.into_iter().collect();
         assert!(!spans.is_empty());
 
         spans.sort();
@@ -78,7 +104,7 @@ mod tests {
                 Span { offset: Offset(6), line: Line(1), fragment: "world".into() },
             ];
 
-            let merged = Span::merge_all(&spans);
+            let merged = Span::merge_all(spans);
 
             assert_eq!(merged.offset, Offset(0));
             assert_eq!(merged.line, Line(1));
@@ -92,7 +118,7 @@ mod tests {
                 Span { offset: Offset(0), line: Line(1), fragment: "hello ".into() },
             ];
 
-            let merged = Span::merge_all(&spans);
+            let merged = Span::merge_all(spans);
 
             assert_eq!(merged.offset, Offset(0));
             assert_eq!(merged.fragment, "hello world");
@@ -102,7 +128,7 @@ mod tests {
         fn test_single_span_returns_same() {
             let span = Span { offset: Offset(5), line: Line(3), fragment: "solo".into() };
 
-            let merged = Span::merge_all(&[span.clone()]);
+            let merged = Span::merge_all([span.clone()]);
 
             assert_eq!(merged, span);
         }
@@ -113,7 +139,7 @@ mod tests {
             let span2 = Span { offset: Offset(0), line: Line(1), fragment: "hello ".into() };
             let span3 = Span { offset: Offset(6), line: Line(1), fragment: "beautiful ".into() };
 
-            let merged = Span::merge_all(&[span1, span2, span3]);
+            let merged = Span::merge_all([span1, span2, span3]);
 
             assert_eq!(merged.offset, Offset(0));
             assert_eq!(merged.line, Line(1));
@@ -127,7 +153,7 @@ mod tests {
                 Span { offset: Offset(2), line: Line(1), fragment: "cde".into() },
             ];
 
-            let merged = Span::merge_all(&spans);
+            let merged = Span::merge_all(spans);
 
             assert_eq!(merged.offset, Offset(0));
             assert_eq!(merged.fragment, "abccde");

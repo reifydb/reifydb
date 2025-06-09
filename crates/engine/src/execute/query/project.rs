@@ -14,7 +14,7 @@ impl Executor {
             for (idx, expr) in expressions.into_iter().enumerate() {
                 let expr = expr.expression;
 
-                let value = evaluate(expr, &Context { column: None, frame: None }, &[], 1)?;
+                let value = evaluate(&expr, &Context { column: None, frame: None }, &[], 1)?;
                 columns.push(Column { name: format!("{}", idx + 1), data: value });
             }
 
@@ -32,7 +32,7 @@ impl Executor {
             let name = expression.alias.unwrap_or(expr.to_string());
 
             let evaluated_column = evaluate(
-                expr,
+                &expr,
                 &Context { column: None, frame: Some(self.frame.clone()) },
                 &columns,
                 row_count,

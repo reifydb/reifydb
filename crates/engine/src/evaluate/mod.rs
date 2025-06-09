@@ -32,7 +32,7 @@ impl Default for Evaluator {
 impl Evaluator {
     pub(crate) fn evaluate(
         &mut self,
-        expr: Expression,
+        expr: &Expression,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,
@@ -53,7 +53,7 @@ impl Evaluator {
 }
 
 pub fn evaluate(
-    expr: Expression,
+    expr: &Expression,
     ctx: &Context,
     columns: &[&Column],
     row_count: usize,

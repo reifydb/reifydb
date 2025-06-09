@@ -2,21 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use reifydb_diagnostic::Span;
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::SubtractExpression;
 
 impl Evaluator {
     pub(crate) fn subtract(
         &mut self,
-        sub: SubtractExpression,
+        sub: &SubtractExpression,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let span = Span::merge_all([sub.left.span(), &sub.span, sub.right.span()]);
-        let left = self.evaluate(*sub.left, ctx, columns, row_count)?;
-        let right = self.evaluate(*sub.right, ctx, columns, row_count)?;
+        let left = self.evaluate(&sub.left, ctx, columns, row_count)?;
+        let right = self.evaluate(&sub.right, ctx, columns, row_count)?;
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {
@@ -83,7 +81,9 @@ impl Evaluator {
                 let mut valid = Vec::with_capacity(row_count);
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        if let Some(value) = ctx.sub(l_vals[i], r_vals[i], &span)? {
+                    
+                    
+                        if let Some(value) = ctx.sub(l_vals[i], r_vals[i], &sub.span())? {
                             values.push(value);
                             valid.push(true);
                         } else {

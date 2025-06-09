@@ -9,7 +9,7 @@ use reifydb_rql::expression::ColumnExpression;
 impl Evaluator {
     pub(crate) fn column(
         &mut self,
-        column: ColumnExpression,
+        column: &ColumnExpression,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,

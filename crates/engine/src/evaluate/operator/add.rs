@@ -3,21 +3,19 @@
 
 use crate::evaluate::{Context, Evaluator};
 use reifydb_core::ValueKind;
-use reifydb_diagnostic::Span;
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::AddExpression;
 
 impl Evaluator {
     pub(crate) fn add(
         &mut self,
-        add: AddExpression,
+        add: &AddExpression,
         ctx: &Context,
         columns: &[&Column],
         row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let span = Span::merge_all([add.left.span(), &add.span, add.right.span()]);
-        let left = self.evaluate(*add.left, ctx, columns, row_count)?;
-        let right = self.evaluate(*add.right, ctx, columns, row_count)?;
+        let left = self.evaluate(&add.left, ctx, columns, row_count)?;
+        let right = self.evaluate(&add.right, ctx, columns, row_count)?;
 
         let column_value = ValueKind::promote(left.kind(), right.kind());
 
@@ -89,7 +87,10 @@ impl Evaluator {
 
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        if let Some(value) = ctx.add(l_vals[i] as i16, r_vals[i] as i16, &span)? {
+                        // FIXME
+                        if let Some(value) =
+                            ctx.add(l_vals[i] as i16, r_vals[i] as i16, &add.span)?
+                        {
                             result.push_i16(value);
                             // values.push(value);
                             // valid.push(true);
