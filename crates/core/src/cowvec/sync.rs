@@ -38,7 +38,11 @@ impl<T: Clone + PartialEq> Clone for CowVec<T> {
 
 impl<T: Clone + PartialEq> CowVec<T> {
     pub fn new(vec: Vec<T>) -> Self {
-        CowVec { inner: Rc::new(vec) }
+        Self { inner: Rc::new(vec) }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { inner: Rc::new(Vec::with_capacity(capacity)) }
     }
 
     pub fn from_rc(rc: Rc<Vec<T>>) -> Self {

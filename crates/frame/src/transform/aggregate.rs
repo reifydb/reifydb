@@ -22,7 +22,7 @@ impl Frame {
             // Populate key column values
             for (i, value) in group_key.into_iter().enumerate() {
                 let column = &mut key_columns.get_mut(i).unwrap().data;
-                column.push(value);
+                column.push_value(value);
             }
 
             // Populate aggregation results

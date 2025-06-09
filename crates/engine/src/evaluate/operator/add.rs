@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
+use reifydb_core::{Value, ValueKind};
 use reifydb_diagnostic::Span;
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::AddExpression;
@@ -17,6 +18,8 @@ impl Evaluator {
         let span = Span::merge_all([add.left.span(), &add.span, add.right.span()]);
         let left = self.evaluate(*add.left, ctx, columns, row_count)?;
         let right = self.evaluate(*add.right, ctx, columns, row_count)?;
+
+        let column_value = ValueKind::promote(left.kind(), right.kind());
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {
@@ -80,23 +83,47 @@ impl Evaluator {
             }
 
             (ColumnValues::Int1(l_vals, l_valid), ColumnValues::Int1(r_vals, r_valid)) => {
-                let mut values = Vec::with_capacity(row_count);
-                let mut valid = Vec::with_capacity(row_count);
+                assert_eq!(l_vals.len(), r_vals.len());
+                assert_eq!(l_valid.len(), r_valid.len());
+                let mut result = ColumnValues::with_capacity(column_value, l_vals.len());
+
                 for i in 0..row_count {
                     if l_valid[i] && r_valid[i] {
-                        if let Some(value) = ctx.add(l_vals[i], r_vals[i], &span)? {
-                            values.push(value);
-                            valid.push(true);
+                        if let Some(value) = ctx.add(l_vals[i] as i16, r_vals[i] as i16, &span)? {
+                            result.push_i16(value);
+                            // values.push(value);
+                            // valid.push(true);
                         } else {
-                            values.push(0);
-                            valid.push(false);
+                            // values.push(0);
+                            // valid.push(false);
+                            result.push_value(Value::Undefined)
                         }
                     } else {
-                        values.push(0);
-                        valid.push(false);
+                        result.push_value(Value::Undefined)
+                        // values.push(0);
+                        // valid.push(false);
                     }
                 }
-                Ok(ColumnValues::int1_with_validity(values, valid))
+
+                //
+                // let mut values = Vec::with_capacity(row_count);
+                // let mut valid = Vec::with_capacity(row_count);
+                // for i in 0..row_count {
+                //     if l_valid[i] && r_valid[i] {
+                //         if let Some(value) = ctx.add(l_vals[i] as i16, r_vals[i] as i16, &span)? {
+                //             values.push(value);
+                //             valid.push(true);
+                //         } else {
+                //             values.push(0);
+                //             valid.push(false);
+                //         }
+                //     } else {
+                //         values.push(0);
+                //         valid.push(false);
+                //     }
+                // }
+                // Ok(ColumnValues::int2_with_validity(values, valid))
+                Ok(result)
             }
             (ColumnValues::Int2(l_vals, l_valid), ColumnValues::Int2(r_vals, r_valid)) => {
                 let mut values = Vec::with_capacity(row_count);

@@ -4,6 +4,8 @@
 use crate::ExecutionResult;
 use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
+use reifydb_core::CowVec;
+use reifydb_frame::ColumnValues;
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_transaction::Tx;
 
@@ -21,25 +23,42 @@ impl Executor {
                     let mut row_values = Vec::with_capacity(row.len());
                     for (idx, expr) in row.into_iter().enumerate() {
                         let column = &columns[idx];
-                        
+
+                        let context = Context {
+                            column: Some(EvaluationColumn {
+                                name: column.name.clone(),
+                                value: column.value,
+                                policies: column.policies.clone(),
+                            }),
+                            frame: None,
+                        };
+
+                        let span = expr.span().clone();
                         match expr {
                             expr => {
-                                let cvs = evaluate(
-                                    expr,
-                                    &Context {
-                                        column: Some(EvaluationColumn {
-                                            name: column.name.clone(),
-                                            value: column.value,
-                                            policies: column.policies.clone(),
-                                        }),
-                                        frame: None,
-                                    },
-                                    &[],
-                                    1,
-                                )?;
+                                let cvs = evaluate(expr, &context, &[], 1)?;
                                 match cvs.len() {
                                     1 => {
-                                        row_values.push(cvs.get(0).as_value());
+                                        // FIXME ensure its the right value
+                                        // otherwise try to demote
+                                        // otherwise saturate according to the policy
+                                        dbg!(&cvs);
+                                        let r = match cvs {
+                                            ColumnValues::Int2(values, validity) => {
+                                                let slice = values.as_slice();
+                                                // let v = demote_i16_to_i8_checked(slice).unwrap();
+                                                let mut out = Vec::with_capacity(slice.len());
+
+                                                for (i, &val) in slice.iter().enumerate() {
+                                                    out.push(context.demote(val, &span)?.unwrap());
+                                                }
+
+                                                ColumnValues::Int1(CowVec::new(out), validity)
+                                            }
+                                            _ => unimplemented!(),
+                                        };
+
+                                        row_values.push(r.get(0).as_value());
                                     }
                                     _ => unimplemented!(),
                                 }
@@ -54,4 +73,17 @@ impl Executor {
             }
         }
     }
+}
+
+fn demote_i16_to_i8_checked(input: &[i16]) -> Result<Vec<i8>, usize> {
+    let mut out = Vec::with_capacity(input.len());
+    for (i, &val) in input.iter().enumerate() {
+        match i8::try_from(val) {
+            Ok(v) => out.push(v),
+            Err(err) => {
+                dbg!(err);
+            }
+        }
+    }
+    Ok(out)
 }

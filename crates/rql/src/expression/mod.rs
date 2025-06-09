@@ -45,6 +45,7 @@ pub enum Expression {
 }
 
 impl Expression {
+    // FIXME this should return a Span which is the entire expression
     pub fn span(&self) -> &Span {
         match self {
             Expression::Constant(expr) => match expr {

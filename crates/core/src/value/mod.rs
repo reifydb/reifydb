@@ -1,13 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+mod promote;
+
 use crate::ordered_float::{OrderedF32, OrderedF64};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
 /// All possible RQL value types
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ValueKind {
     /// A boolean: true or false.
     Bool,

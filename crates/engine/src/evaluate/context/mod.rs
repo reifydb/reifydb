@@ -47,6 +47,26 @@ impl Context {
 }
 
 impl Context {
+    pub(crate) fn demote(&self, val: i16, span: &Span) -> crate::evaluate::Result<Option<i8>> {
+        match i8::try_from(val) {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => match self.saturation_policy() {
+                ColumnSaturationPolicy::Error => {
+                    if let Some(column) = &self.column {
+                        Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
+                            span: span.clone(),
+                            column: column.name.to_string(),
+                            value: column.value,
+                        })))
+                    } else {
+                        unimplemented!()
+                    }
+                }
+                ColumnSaturationPolicy::Undefined => Ok(None),
+            },
+        }
+    }
+
     pub(crate) fn add<T: SafeAdd>(
         &self,
         l: T,

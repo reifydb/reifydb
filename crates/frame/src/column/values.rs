@@ -25,10 +25,36 @@ pub enum ColumnValues {
 }
 
 impl ColumnValues {
+    pub fn with_capacity(value: ValueKind, capacity: usize) -> Self {
+        match value {
+            ValueKind::Bool => Self::bool_with_capacity(capacity),
+            ValueKind::Float4 => Self::float4_with_capacity(capacity),
+            ValueKind::Float8 => Self::float4_with_capacity(capacity),
+            ValueKind::Int1 => Self::int1_with_capacity(capacity),
+            ValueKind::Int2 => Self::int2_with_capacity(capacity),
+            ValueKind::Int4 => Self::int4_with_capacity(capacity),
+            ValueKind::Int8 => Self::int8_with_capacity(capacity),
+            ValueKind::Int16 => Self::int16_with_capacity(capacity),
+            ValueKind::String => Self::string_with_capacity(capacity),
+            ValueKind::Uint1 => Self::uint1_with_capacity(capacity),
+            ValueKind::Uint2 => Self::uint2_with_capacity(capacity),
+            ValueKind::Uint4 => Self::uint4_with_capacity(capacity),
+            ValueKind::Uint8 => Self::uint8_with_capacity(capacity),
+            ValueKind::Uint16 => Self::uint16_with_capacity(capacity),
+            ValueKind::Undefined => Self::undefined(capacity),
+        }
+    }
+}
+
+impl ColumnValues {
     pub fn bool(values: impl IntoIterator<Item = bool>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
         ColumnValues::Bool(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn bool_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Bool(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
     pub fn bool_with_validity(
@@ -47,6 +73,10 @@ impl ColumnValues {
         ColumnValues::Float4(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
+    pub fn float4_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Float4(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
     pub fn float4_with_validity(
         values: impl IntoIterator<Item = f32>,
         validity: impl IntoIterator<Item = bool>,
@@ -61,6 +91,10 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
         ColumnValues::Float8(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn float8_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Float8(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
     pub fn float8_with_validity(
@@ -79,6 +113,10 @@ impl ColumnValues {
         ColumnValues::Int1(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
+    pub fn int1_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Int1(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
     pub fn int1_with_validity(
         values: impl IntoIterator<Item = i8>,
         validity: impl IntoIterator<Item = bool>,
@@ -93,6 +131,10 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
         ColumnValues::Int2(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn int2_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Int2(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
     pub fn int2_with_validity(
@@ -111,6 +153,10 @@ impl ColumnValues {
         ColumnValues::Int4(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
+    pub fn int4_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Int4(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
     pub fn int4_with_validity(
         values: impl IntoIterator<Item = i32>,
         validity: impl IntoIterator<Item = bool>,
@@ -125,6 +171,10 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
         ColumnValues::Int8(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn int8_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Int8(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
     pub fn int8_with_validity(
@@ -143,6 +193,10 @@ impl ColumnValues {
         ColumnValues::Int16(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
+    pub fn int16_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Int1(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
     pub fn int16_with_validity(
         values: impl IntoIterator<Item = i128>,
         validity: impl IntoIterator<Item = bool>,
@@ -157,6 +211,10 @@ impl ColumnValues {
         let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let len = values.len();
         ColumnValues::String(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn string_with_capacity(capacity: usize) -> Self {
+        ColumnValues::String(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
     pub fn string_with_validity<'a>(
@@ -175,6 +233,10 @@ impl ColumnValues {
         ColumnValues::Uint1(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
+    pub fn uint1_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Uint1(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
     pub fn uint1_with_validity(
         values: impl IntoIterator<Item = u8>,
         validity: impl IntoIterator<Item = bool>,
@@ -189,6 +251,10 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
         ColumnValues::Uint2(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn uint2_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Uint2(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
     pub fn uint2_with_validity(
@@ -207,6 +273,10 @@ impl ColumnValues {
         ColumnValues::Uint4(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
+    pub fn uint4_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Uint4(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
     pub fn uint4_with_validity(
         values: impl IntoIterator<Item = u32>,
         validity: impl IntoIterator<Item = bool>,
@@ -223,6 +293,10 @@ impl ColumnValues {
         ColumnValues::Uint8(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
+    pub fn uint8_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Uint8(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
     pub fn uint8_with_validity(
         values: impl IntoIterator<Item = u64>,
         validity: impl IntoIterator<Item = bool>,
@@ -237,6 +311,10 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
         ColumnValues::Uint16(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn uint16_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Uint16(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
     pub fn uint16_with_validity(

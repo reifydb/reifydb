@@ -1,11 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ColumnValues;
 use reifydb_core::Value;
+use crate::ColumnValues;
 
 impl ColumnValues {
-    pub fn push(&mut self, value: Value) {
+    pub fn push_i16(&mut self, value: i16) {
+        match self {
+            ColumnValues::Int2(values, validity) => {
+                values.push(value);
+                validity.push(true);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn push_value(&mut self, value: Value) {
         match self {
             ColumnValues::Bool(values, validity) => match value {
                 Value::Bool(v) => {

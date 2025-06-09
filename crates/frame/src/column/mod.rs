@@ -6,8 +6,8 @@ pub use values::ColumnValues;
 mod extend;
 mod get;
 mod push;
-mod values;
 mod reorder;
+mod values;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Column {
