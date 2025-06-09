@@ -1,10 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::Value;
 use crate::ColumnValues;
+use reifydb_core::Value;
 
 impl ColumnValues {
+    pub fn push_i8(&mut self, value: i8) {
+        match self {
+            ColumnValues::Int1(values, validity) => {
+                values.push(value);
+                validity.push(true);
+            }
+            _ => unreachable!(),
+        }
+    }
+
     pub fn push_i16(&mut self, value: i16) {
         match self {
             ColumnValues::Int2(values, validity) => {
@@ -12,6 +22,59 @@ impl ColumnValues {
                 validity.push(true);
             }
             _ => unreachable!(),
+        }
+    }
+
+    pub fn push_undefined(&mut self) {
+        match self {
+            ColumnValues::Bool(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Float4(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Float8(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Int1(values, validity) => {
+                values.push(0);
+                validity.push(false);
+            }
+            ColumnValues::Int2(values, validity) => {
+                values.push(0);
+                validity.push(false);
+            }
+            ColumnValues::Int4(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Int8(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Int16(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::String(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Uint1(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Uint2(values, validity) => {
+                values.push(0);
+                validity.push(false);
+            }
+            ColumnValues::Uint4(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Uint8(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Uint16(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Undefined(_) => {
+                unimplemented!()
+            }
         }
     }
 
@@ -49,6 +112,10 @@ impl ColumnValues {
                 Value::Int2(v) => {
                     values.push(v);
                     validity.push(true);
+                }
+                Value::Undefined => {
+                    values.push(0);
+                    validity.push(false);
                 }
                 _ => unimplemented!(),
             },

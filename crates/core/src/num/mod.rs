@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 pub use parse::{ParseError, parse_float, parse_int, parse_uint};
-pub use safe::{SafeAdd, SafeSubtract};
+pub use safe::{add::SafeAdd, demote::SafeDemote, subtract::SafeSubtract};
 
 mod bound;
 mod cast;

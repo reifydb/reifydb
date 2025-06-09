@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use reifydb_core::{Value, ValueKind};
+use reifydb_core::ValueKind;
 use reifydb_diagnostic::Span;
 use reifydb_frame::{Column, ColumnValues};
 use reifydb_rql::expression::AddExpression;
@@ -96,10 +96,11 @@ impl Evaluator {
                         } else {
                             // values.push(0);
                             // valid.push(false);
-                            result.push_value(Value::Undefined)
+                            // result.push_value(Value::Undefined)
+                            result.push_undefined()
                         }
                     } else {
-                        result.push_value(Value::Undefined)
+                        result.push_undefined()
                         // values.push(0);
                         // valid.push(false);
                     }

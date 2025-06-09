@@ -3,7 +3,7 @@
 
 use reifydb_catalog::{ColumnPolicy, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
 use reifydb_core::ValueKind;
-use reifydb_core::num::{SafeAdd, SafeSubtract};
+use reifydb_core::num::{SafeAdd, SafeDemote, SafeSubtract};
 use reifydb_diagnostic::Span;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 use reifydb_frame::Frame;
@@ -47,10 +47,17 @@ impl Context {
 }
 
 impl Context {
-    pub(crate) fn demote(&self, val: i16, span: &Span) -> crate::evaluate::Result<Option<i8>> {
-        match i8::try_from(val) {
-            Ok(v) => Ok(Some(v)),
-            Err(_) => match self.saturation_policy() {
+    pub(crate) fn demote<From, To>(
+        &self,
+        val: From,
+        span: &Span,
+    ) -> crate::evaluate::Result<Option<To>>
+    where
+        From: SafeDemote<To> + Copy,
+    {
+        match val.demote() {
+            Some(v) => Ok(Some(v)),
+            None => match self.saturation_policy() {
                 ColumnSaturationPolicy::Error => {
                     if let Some(column) = &self.column {
                         Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
@@ -66,7 +73,7 @@ impl Context {
             },
         }
     }
-
+    
     pub(crate) fn add<T: SafeAdd>(
         &self,
         l: T,

@@ -19,7 +19,7 @@ fn main() {
     // db.tx_as(&root, r#"insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#).unwrap();
 
     db.tx_as(&root, r#"create table test.item(field: int1 policy (saturation error))"#).unwrap();
-    if let Err(e) = db.tx_as(&root, r#"insert (1 + 126) into test.item (field)"#) {
+    if let Err(e) = db.tx_as(&root, r#"insert (-128) into test.item (field)"#) {
         println!("{}", e);
     }
 
