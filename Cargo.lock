@@ -1399,6 +1399,7 @@ dependencies = [
  "reifydb_frame",
  "reifydb_rql",
  "reifydb_storage",
+ "reifydb_testing",
  "reifydb_transaction",
 ]
 
@@ -1454,6 +1455,7 @@ dependencies = [
  "nom_locate",
  "regex",
  "reifydb_core",
+ "reifydb_diagnostic",
  "test_each_file",
  "uuid",
 ]

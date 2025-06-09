@@ -7,6 +7,7 @@ repository.workspace = true
 
 [dependencies]
 reifydb_core = {workspace = true}
+reifydb_diagnostic = {workspace = true}
 
 goldenfile = { workspace = true }
 nom = { workspace = true }

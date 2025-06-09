@@ -1,12 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+pub use slice::AsSlice;
 pub use values::ColumnValues;
 
 mod extend;
 mod get;
 mod push;
 mod reorder;
+mod slice;
+mod validity;
 mod values;
 
 #[derive(Clone, Debug, PartialEq)]

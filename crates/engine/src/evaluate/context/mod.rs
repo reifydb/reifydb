@@ -1,9 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+pub use demote::Demote;
+pub use promote::Promote;
+
+mod demote;
+mod promote;
+
 use reifydb_catalog::{ColumnPolicy, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
 use reifydb_core::ValueKind;
-use reifydb_core::num::{SafeAdd, SafeDemote, SafePromote, SafeSubtract};
+use reifydb_core::num::{SafeAdd, SafeSubtract};
 use reifydb_diagnostic::IntoSpan;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 use reifydb_frame::Frame;
@@ -47,60 +53,6 @@ impl Context {
 }
 
 impl Context {
-    pub(crate) fn demote<From, To>(
-        &self,
-        val: From,
-        span: impl IntoSpan,
-    ) -> crate::evaluate::Result<Option<To>>
-    where
-        From: SafeDemote<To> + Copy,
-    {
-        match val.demote() {
-            Some(v) => Ok(Some(v)),
-            None => match self.saturation_policy() {
-                ColumnSaturationPolicy::Error => {
-                    if let Some(column) = &self.column {
-                        Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
-                            span: span.into_span(),
-                            column: column.name.to_string(),
-                            value: column.value,
-                        })))
-                    } else {
-                        unimplemented!()
-                    }
-                }
-                ColumnSaturationPolicy::Undefined => Ok(None),
-            },
-        }
-    }
-
-    pub(crate) fn promote<From, To>(
-        &self,
-        val: From,
-        span: impl IntoSpan,
-    ) -> crate::evaluate::Result<Option<To>>
-    where
-        From: SafePromote<To> + Copy,
-    {
-        match val.promote() {
-            Some(v) => Ok(Some(v)),
-            None => match self.saturation_policy() {
-                ColumnSaturationPolicy::Error => {
-                    if let Some(column) = &self.column {
-                        Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
-                            span: span.into_span(),
-                            column: column.name.to_string(),
-                            value: column.value,
-                        })))
-                    } else {
-                        unimplemented!()
-                    }
-                }
-                ColumnSaturationPolicy::Undefined => Ok(None),
-            },
-        }
-    }
-
     pub(crate) fn add<T: SafeAdd>(
         &self,
         l: T,

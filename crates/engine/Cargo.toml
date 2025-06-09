@@ -17,3 +17,4 @@ reifydb_storage = { workspace = true }
 reifydb_transaction = { workspace = true }
 
 [dev-dependencies]
+reifydb_testing = { workspace = true }

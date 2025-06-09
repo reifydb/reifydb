@@ -6,7 +6,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use column::{Column, ColumnValues};
+pub use column::{AsSlice, Column, ColumnValues};
 pub use error::Error;
 pub use frame::Frame;
 pub use reference::{RowRef, ValueRef};
