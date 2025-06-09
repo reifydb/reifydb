@@ -63,7 +63,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Bool(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -83,7 +83,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Float4(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -103,7 +103,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Float8(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -123,7 +123,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Int1(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -143,7 +143,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Int2(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -163,7 +163,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Int4(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -183,7 +183,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Int8(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -203,7 +203,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Int16(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -223,7 +223,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::String(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -243,7 +243,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Uint1(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -263,7 +263,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Uint2(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -283,7 +283,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Uint4(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -303,7 +303,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Uint8(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -323,7 +323,7 @@ impl ColumnValues {
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
-        debug_assert_eq!(validity.len(), values.len());
+        assert_eq!(validity.len(), values.len());
         ColumnValues::Uint16(CowVec::new(values), CowVec::new(validity))
     }
 
@@ -383,7 +383,7 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn kind(&self) -> ValueKind {
+    pub fn value(&self) -> ValueKind {
         match self {
             ColumnValues::Bool(_, _) => ValueKind::Bool,
             ColumnValues::Float4(_, _) => ValueKind::Float4,

@@ -17,7 +17,7 @@ impl Evaluator {
         let left = self.evaluate(&add.left, ctx, columns, row_count)?;
         let right = self.evaluate(&add.right, ctx, columns, row_count)?;
 
-        let column_value = ValueKind::promote(left.kind(), right.kind());
+        let column_value = ValueKind::promote(left.value(), right.value());
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {
@@ -91,7 +91,7 @@ impl Evaluator {
                         if let Some(value) =
                             ctx.add(l_vals[i] as i16, r_vals[i] as i16, &add.span)?
                         {
-                            result.push_i16(value);
+                            result.push::<i16>(value);
                             // values.push(value);
                             // valid.push(true);
                         } else {

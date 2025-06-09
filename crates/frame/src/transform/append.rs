@@ -314,10 +314,10 @@ impl Append<Row> for Frame {
 
                 (_, v) => {
                     return Err(format!(
-                        "type mismatch for column '{}'({}): incompatible with value {}",
-                        col.name,
-                        col.data.kind(),
-                        v.kind()
+						"type mismatch for column '{}'({}): incompatible with value {}",
+						col.name,
+						col.data.value(),
+						v.kind()
                     )
                     .into());
                 }

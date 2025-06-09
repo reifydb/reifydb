@@ -46,8 +46,10 @@ testlocal:
 	cargo nextest run --all-targets --no-fail-fast --status-level fail --final-status-level fail
 
 
-.PHONY: testsuite
-testsuite: $(TEST_SUITES)
+.PHONY: testsuite $(TEST_SUITES)
+
+testsuite:
+	$(MAKE) -j$(shell nproc) $(TEST_SUITES)
 
 $(TEST_SUITES):
 	@if [ -d "$(TEST_SUITE_DIR)/$@" ]; then \
@@ -56,6 +58,3 @@ $(TEST_SUITES):
 	else \
 		echo "⚠️ Skipping $@ – directory $(TEST_SUITE_DIR)/$@ not found"; \
 	fi
-
-# Individual targets
-.PHONY: compatibility diagnostic functional regression smoke
