@@ -11,10 +11,11 @@
 
 use crossbeam_skiplist::map::Range as MapRange;
 
+use crate::Stored;
 use crate::memory::Memory;
-use crate::memory::value::VersionedValues;
+use crate::memory::versioned::Versioned;
 use crate::storage::ScanRange;
-use crate::{Key, KeyRange, StoredValue, Value, Version};
+use reifydb_core::{Key, KeyRange, Version};
 use std::ops::Bound;
 
 impl ScanRange for Memory {
@@ -29,12 +30,12 @@ impl ScanRange for Memory {
 }
 
 pub struct Range<'a> {
-    pub(crate) range: MapRange<'a, Key, KeyRange, Key, VersionedValues<Value>>,
+    pub(crate) range: MapRange<'a, Key, KeyRange, Key, Versioned>,
     pub(crate) version: Version,
 }
 
 impl<'a> Iterator for Range<'a> {
-    type Item = StoredValue;
+    type Item = Stored;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -48,7 +49,7 @@ impl<'a> Iterator for Range<'a> {
                     }
                 })
             {
-                return Some(StoredValue { key: item.key().clone(), version, value }.into());
+                return Some(Stored { key: item.key().clone(), version, bytes: value }.into());
             }
         }
     }

@@ -9,13 +9,13 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crossbeam_skiplist::map::Iter as MapIter;
-use std::ops::Bound;
-
+use crate::Stored;
 use crate::memory::Memory;
-use crate::memory::value::VersionedValues;
+use crate::memory::versioned::Versioned;
 use crate::storage::Scan;
-use crate::{Key, StoredValue, Value, Version};
+use crossbeam_skiplist::map::Iter as MapIter;
+use reifydb_core::{Key, Version};
+use std::ops::Bound;
 
 impl Scan for Memory {
     type ScanIter<'a> = Iter<'a>;
@@ -27,12 +27,12 @@ impl Scan for Memory {
 }
 
 pub struct Iter<'a> {
-    pub(crate) iter: MapIter<'a, Key, VersionedValues<Value>>,
+    pub(crate) iter: MapIter<'a, Key, Versioned>,
     pub(crate) version: Version,
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = StoredValue;
+    type Item = Stored;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -46,7 +46,7 @@ impl<'a> Iterator for Iter<'a> {
                     }
                 })
             {
-                return Some(StoredValue { key: item.key().clone(), value, version }.into());
+                return Some(Stored { key: item.key().clone(), bytes: value, version }.into());
             }
         }
     }

@@ -10,7 +10,8 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::transaction::*;
-use reifydb_storage::Version;
+use reifydb_core::Version;
+use reifydb_core::clock::LogicalClock;
 
 pub enum TransactionKind {
     Current(Version),

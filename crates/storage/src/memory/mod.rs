@@ -5,7 +5,6 @@ pub use iter::Iter;
 pub use iter_rev::IterRev;
 pub use range::Range;
 pub use range_rev::RangeRev;
-use std::ops::RangeBounds;
 
 mod apply;
 mod contains;
@@ -14,14 +13,15 @@ mod iter;
 mod iter_rev;
 mod range;
 mod range_rev;
-mod value;
+mod versioned;
 
-use crate::memory::value::VersionedValues;
-use crate::{Key, Storage, Value};
+use crate::Storage;
+use crate::memory::versioned::Versioned;
 use crossbeam_skiplist::SkipMap;
+use reifydb_core::Key;
 
 pub struct Memory {
-    memory: SkipMap<Key, VersionedValues<Value>>,
+    memory: SkipMap<Key, Versioned>,
 }
 
 impl Default for Memory {

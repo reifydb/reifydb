@@ -12,22 +12,23 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 use std::fmt::Debug;
 
-use crate::Version;
 use crossbeam_skiplist::SkipMap;
+use reifydb_core::Version;
+use reifydb_core::delta::Bytes;
 
 const UNINITIALIZED: u8 = 0;
 const LOCKED: u8 = 1;
 const UNLOCKED: u8 = 2;
 
 #[derive(Debug)]
-pub struct VersionedValues<V> {
+pub struct Versioned {
     pub(crate) op: AtomicU8,
-    values: SkipMap<Version, Option<V>>,
+    bytes: SkipMap<Version, Option<Bytes>>,
 }
 
-impl<V> VersionedValues<V> {
+impl Versioned {
     pub(crate) fn new() -> Self {
-        Self { op: AtomicU8::new(UNINITIALIZED), values: SkipMap::new() }
+        Self { op: AtomicU8::new(UNINITIALIZED), bytes: SkipMap::new() }
     }
 
     pub(crate) fn lock(&self) {
@@ -64,10 +65,10 @@ impl<V> VersionedValues<V> {
     }
 }
 
-impl<V> core::ops::Deref for VersionedValues<V> {
-    type Target = SkipMap<u64, Option<V>>;
+impl core::ops::Deref for Versioned {
+    type Target = SkipMap<u64, Option<Bytes>>;
 
     fn deref(&self) -> &Self::Target {
-        &self.values
+        &self.bytes
     }
 }

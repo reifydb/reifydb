@@ -9,12 +9,13 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use reifydb_core::KeyRange;
+use reifydb_core::delta::Delta;
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_storage::KeyRange;
 use reifydb_storage::memory::Memory;
-use reifydb_storage::{Delta, Storage, StoredValue};
+use reifydb_storage::{Storage, Stored};
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
@@ -49,7 +50,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
-                let value = self.storage.get(&key, version).map(|sv| sv.value.to_vec());
+                let value = self.storage.get(&key, version).map(|sv| sv.bytes.to_vec());
                 writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
             }
             // contains KEY [version=VERSION]
@@ -111,11 +112,11 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let mut args = command.consume_args();
                 let kv = args.next_key().ok_or("key=value not given")?.clone();
                 let key = decode_binary(&kv.key.unwrap());
-                let value = decode_binary(&kv.value);
+                let bytes = decode_binary(&kv.value);
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(vec![(Delta::Set { key, value })], version)
+                self.storage.apply(vec![(Delta::Set { key, bytes })], version)
             }
 
             // remove KEY [version=VERSION]
@@ -134,9 +135,9 @@ impl<S: Storage> testscript::Runner for Runner<S> {
     }
 }
 
-fn print<I: Iterator<Item = StoredValue>>(output: &mut String, mut iter: I) {
+fn print<I: Iterator<Item = Stored>>(output: &mut String, mut iter: I) {
     while let Some(sv) = iter.next() {
-        let fmtkv = format::Raw::key_value(&sv.key, &sv.value.deref());
+        let fmtkv = format::Raw::key_value(&sv.key, &sv.bytes.deref());
         writeln!(output, "{fmtkv}").unwrap();
     }
 }

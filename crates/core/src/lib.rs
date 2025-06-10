@@ -8,10 +8,12 @@
 
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
 pub use error::Error;
+pub use key::{Key, KeyRange};
 pub use key::{SortDirection, SortKey};
-pub use row::{Row, RowIter, RowIterator, deserialize_row, serialize_row};
+pub use row::{deserialize_row, serialize_row, Row, RowIter, RowIterator};
 pub use row_meta::RowMeta;
 pub use value::{Value, ValueKind};
+pub use version::Version;
 
 mod cowvec;
 pub mod either;
@@ -23,7 +25,10 @@ pub mod ordered_float;
 mod row;
 mod row_meta;
 mod value;
+mod version;
 pub mod wait_group;
+pub mod clock;
+pub mod delta;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

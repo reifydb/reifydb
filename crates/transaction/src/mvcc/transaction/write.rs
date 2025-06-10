@@ -13,8 +13,9 @@ use super::*;
 use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
-use reifydb_storage::{Delta, Version};
-use reifydb_storage::{Key, Value};
+use reifydb_core::clock::LogicalClock;
+use reifydb_core::delta::{Bytes, Delta};
+use reifydb_core::{Key, Version};
 
 pub struct TransactionManagerTx<C, L, P>
 where
@@ -112,12 +113,12 @@ where
     P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
-    pub fn set(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: Key, bytes: Bytes) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
 
-        self.set_internal(key, value)
+        self.set_internal(key, bytes)
     }
 
     /// Removes a key.
@@ -184,8 +185,8 @@ where
 
             // Fulfill from buffer.
             Ok(Some(Pending {
-                delta: match v.value() {
-                    Some(value) => Delta::Set { key: key.clone(), value: value.clone() },
+                delta: match v.bytes() {
+                    Some(bytes) => Delta::Set { key: key.clone(), bytes: bytes.clone() },
                     None => Delta::Remove { key: key.clone() },
                 },
                 version: v.version,
@@ -261,12 +262,12 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    fn set_internal(&mut self, key: Key, value: Value) -> Result<(), TransactionError> {
+    fn set_internal(&mut self, key: Key, bytes: Bytes) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
 
-        self.modify(Pending { delta: Delta::Set { key, value }, version: self.version })
+        self.modify(Pending { delta: Delta::Set { key, bytes }, version: self.version })
     }
 
     fn modify(&mut self, pending: Pending) -> Result<(), TransactionError> {
@@ -292,14 +293,14 @@ where
         // Add the entry to duplicateWrites only if both the entries have different versions. For
         // same versions, we will overwrite the existing entry.
         let key = pending.key();
-        let value = pending.value();
+        let value = pending.bytes();
         let version = pending.version;
 
         if let Some((old_key, old_value)) = pending_writes.remove_entry(&key) {
             if old_value.version != version {
                 self.duplicates.push(Pending {
                     delta: match value {
-                        Some(value) => Delta::Set { key: old_key, value: value.clone() },
+                        Some(bytes) => Delta::Set { key: old_key, bytes: bytes.clone() },
                         None => Delta::Remove { key: old_key },
                     },
                     version,
@@ -352,8 +353,8 @@ where
                     process(
                         &mut all,
                         Pending {
-                            delta: match v.value() {
-                                Some(value) => Delta::Set { key: k, value: value.clone() },
+                            delta: match v.bytes() {
+                                Some(bytes) => Delta::Set { key: k, bytes: bytes.clone() },
                                 None => Delta::Remove { key: k },
                             },
                             version: v.version,

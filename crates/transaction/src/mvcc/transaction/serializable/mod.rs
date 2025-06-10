@@ -13,7 +13,9 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 pub use read::*;
-use reifydb_storage::{Key, KeyRange, LocalClock, Storage, Version};
+use reifydb_core::clock::LocalClock;
+use reifydb_core::{Key, KeyRange, Version};
+use reifydb_storage::Storage;
 pub use write::*;
 
 pub(crate) mod read;

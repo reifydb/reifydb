@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::Contains;
 use crate::memory::Memory;
-use crate::{Contains, Key, Version};
+use reifydb_core::{Key, Version};
 use std::collections::Bound;
 
 impl Contains for Memory {

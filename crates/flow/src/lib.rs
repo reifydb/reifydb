@@ -7,10 +7,11 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use error::Error;
+use reifydb_core::delta::Delta;
+use reifydb_core::delta::Delta::Set;
 use reifydb_core::encoding::keycode::serialize;
-use reifydb_core::{AsyncCowVec, Row, Value, deserialize_row, serialize_row};
-use reifydb_storage::Delta::Set;
-use reifydb_storage::{Delta, Key, Storage, Version};
+use reifydb_core::{AsyncCowVec, Key, Row, Value, Version, deserialize_row, serialize_row};
+use reifydb_storage::Storage;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
@@ -123,7 +124,7 @@ impl<S: Storage> Node for CountNode<S> {
                 let state_key = self.make_state_key(key);
 
                 let current = *counters.entry(state_key.clone()).or_insert_with(|| {
-                    self.storage.get(&state_key, version).map(|v| v.value[0] as i8).unwrap_or(0)
+                    self.storage.get(&state_key, version).map(|v| v.bytes[0] as i8).unwrap_or(0)
                 });
 
                 counters.insert(state_key, current.saturating_add(1));
@@ -131,7 +132,7 @@ impl<S: Storage> Node for CountNode<S> {
         }
 
         for (key, count) in counters {
-            updates.push(Set { key, value: AsyncCowVec::new(vec![count as u8]) });
+            updates.push(Set { key, bytes: AsyncCowVec::new(vec![count as u8]) });
         }
 
         self.storage.apply(updates.clone(), version);
@@ -166,8 +167,8 @@ impl Node for GroupNode {
         let mut grouped: HashMap<Key, Vec<Vec<Value>>> = HashMap::new();
 
         for d in delta {
-            if let Delta::Set { value, .. } = d {
-                let row: Row = deserialize_row(value).unwrap();
+            if let Delta::Set { bytes, .. } = d {
+                let row: Row = deserialize_row(bytes).unwrap();
                 let group_key = self.make_group_key(&row);
                 grouped.entry(group_key).or_default().push(row);
             }
@@ -178,7 +179,7 @@ impl Node for GroupNode {
             .flat_map(|(key, rows)| {
                 rows.into_iter().map(move |r| Delta::Set {
                     key: key.clone(),
-                    value: AsyncCowVec::new(serialize_row(&r).unwrap()),
+                    bytes: AsyncCowVec::new(serialize_row(&r).unwrap()),
                 })
             })
             .collect()
@@ -206,14 +207,14 @@ impl<S: Storage> Node for SumNode<S> {
         let mut sums: HashMap<Key, i8> = HashMap::new();
 
         for d in delta {
-            if let Delta::Set { key, value } = d {
+            if let Delta::Set { key, bytes } = d {
                 let state_key = self.make_state_key(key);
 
                 let current = *sums.entry(state_key.clone()).or_insert_with(|| {
-                    self.storage.get(&state_key, version).map(|v| v.value[0] as i8).unwrap_or(0)
+                    self.storage.get(&state_key, version).map(|v| v.bytes[0] as i8).unwrap_or(0)
                 });
 
-                let values: Row = deserialize_row(value).unwrap();
+                let values: Row = deserialize_row(bytes).unwrap();
 
                 match &values[self.sum] {
                     Value::Int1(v) => {
@@ -227,7 +228,7 @@ impl<S: Storage> Node for SumNode<S> {
         for (key, sum) in sums {
             updates.push(Set {
                 key,
-                value: AsyncCowVec::new(vec![sum as u8]), // Upgrade to i64 if needed
+                bytes: AsyncCowVec::new(vec![sum as u8]), // Upgrade to i64 if needed
             });
         }
 
@@ -240,9 +241,10 @@ impl<S: Storage> Node for SumNode<S> {
 #[cfg(test)]
 mod tests {
     use crate::{CountNode, Graph, GroupNode, Orchestrator, SumNode};
+    use reifydb_core::delta::Delta;
     use reifydb_core::{AsyncCowVec, Value, serialize_row};
     use reifydb_storage::memory::Memory;
-    use reifydb_storage::{Delta, ScanRange, Storage};
+    use reifydb_storage::{ScanRange, Storage};
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -285,19 +287,19 @@ mod tests {
         let delta = vec![
             Delta::Set {
                 key: AsyncCowVec::new(b"apple".to_vec()),
-                value: AsyncCowVec::new(
+                bytes: AsyncCowVec::new(
                     serialize_row(&vec![Value::Int1(1), Value::Int1(1), Value::Int1(23)]).unwrap(),
                 ),
             },
             Delta::Set {
                 key: AsyncCowVec::new(b"apple".to_vec()),
-                value: AsyncCowVec::new(
+                bytes: AsyncCowVec::new(
                     serialize_row(&vec![Value::Int1(1), Value::Int1(1), Value::Int1(1)]).unwrap(),
                 ),
             },
             Delta::Set {
                 key: AsyncCowVec::new(b"banana".to_vec()),
-                value: AsyncCowVec::new(
+                bytes: AsyncCowVec::new(
                     serialize_row(&vec![Value::Int1(2), Value::Int1(1), Value::Int1(1)]).unwrap(),
                 ),
             },
@@ -309,12 +311,12 @@ mod tests {
 
         for sv in storage.scan_prefix(&AsyncCowVec::new(b"view::count".to_vec()), 2).into_iter() {
             println!("{:?}", String::from_utf8(sv.key.to_vec()));
-            println!("{:?}", sv.value.to_vec().as_slice());
+            println!("{:?}", sv.bytes.to_vec().as_slice());
         }
 
         for sv in storage.scan_prefix(&AsyncCowVec::new(b"view::sum".to_vec()), 2).into_iter() {
             println!("{:?}", String::from_utf8(sv.key.to_vec()));
-            println!("{:?}", sv.value.to_vec().as_slice());
+            println!("{:?}", sv.bytes.to_vec().as_slice());
         }
     }
 }

@@ -1,11 +1,12 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
+use crate::Stored;
 use crate::storage::{Apply, Contains, Get, Scan, ScanRange, ScanRangeRev, ScanRev, Storage};
-use crate::{Delta, Key, KeyRange, StoredValue, Version};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::AsyncCowVec;
+use reifydb_core::delta::Delta;
+use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
 use rusqlite::{OptionalExtension, params};
 use std::ops::Bound;
 use std::path::Path;
@@ -60,11 +61,11 @@ impl Apply for Sqlite {
 
         for delta in delta {
             match delta {
-                Delta::Set { key, value } => {
+                Delta::Set { key, bytes } => {
                     let version = 1; // FIXME remove this - transaction version needs to be persisted
                     tx.execute(
                         "INSERT OR REPLACE INTO kv (key, version, value) VALUES (?1, ?2, ?3)",
-                        params![key.to_vec(), version, value.to_vec()],
+                        params![key.to_vec(), version, bytes.to_vec()],
                     )
                     .unwrap();
                 }
@@ -84,7 +85,7 @@ impl Apply for Sqlite {
 }
 
 impl Get for Sqlite {
-    fn get(&self, key: &Key, version: Version) -> Option<StoredValue> {
+    fn get(&self, key: &Key, version: Version) -> Option<Stored> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -92,9 +93,9 @@ impl Get for Sqlite {
 			"SELECT key, value, version FROM kv WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
 			params![key.to_vec(), version],
 			|row| {
-				Ok(StoredValue {
+				Ok(Stored {
 					key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
-					value: AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?),
+					bytes: AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?),
 					version: row.get(2)?,
 				})
 			},
@@ -112,7 +113,7 @@ impl Contains for Sqlite {
 }
 
 impl Scan for Sqlite {
-    type ScanIter<'a> = Box<dyn Iterator<Item = StoredValue> + 'a>;
+    type ScanIter<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
 
     fn scan(&self, version: Version) -> Self::ScanIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -124,9 +125,9 @@ impl Scan for Sqlite {
 
         let rows = stmt
             .query_map(params![version], |row| {
-                Ok(StoredValue {
+                Ok(Stored {
                     key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
-                    value: AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?),
+                    bytes: AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?),
                     version: row.get(2)?,
                 })
             })
@@ -139,7 +140,7 @@ impl Scan for Sqlite {
 }
 
 impl ScanRev for Sqlite {
-    type ScanIterRev<'a> = Box<dyn Iterator<Item = StoredValue> + 'a>;
+    type ScanIterRev<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
 
     fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -151,9 +152,9 @@ impl ScanRev for Sqlite {
 
         let rows = stmt
             .query_map(params![version], |row| {
-                Ok(StoredValue {
+                Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    value: AsyncCowVec::new(row.get(1)?),
+                    bytes: AsyncCowVec::new(row.get(1)?),
                     version: row.get(2)?,
                 })
             })
@@ -166,7 +167,7 @@ impl ScanRev for Sqlite {
 }
 
 impl ScanRange for Sqlite {
-    type ScanRangeIter<'a> = Box<dyn Iterator<Item = StoredValue> + 'a>;
+    type ScanRangeIter<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
 
     fn scan_range(&self, range: KeyRange, version: Version) -> Self::ScanRangeIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -182,9 +183,9 @@ impl ScanRange for Sqlite {
         let rows = stmt
             // .query_map(params![], |row| {
             .query_map(params![start_bytes, end_bytes, version], |row| {
-                Ok(StoredValue {
+                Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    value: AsyncCowVec::new(row.get(1)?),
+                    bytes: AsyncCowVec::new(row.get(1)?),
                     version: row.get(2)?,
                 })
             })
@@ -197,7 +198,7 @@ impl ScanRange for Sqlite {
 }
 
 impl ScanRangeRev for Sqlite {
-    type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = StoredValue> + 'a>;
+    type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
 
     fn scan_range_rev(&self, range: KeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -212,9 +213,9 @@ impl ScanRangeRev for Sqlite {
 
         let rows = stmt
             .query_map(params![start_bytes, end_bytes, version], |row| {
-                Ok(StoredValue {
+                Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    value: AsyncCowVec::new(row.get(1)?),
+                    bytes: AsyncCowVec::new(row.get(1)?),
                     version: row.get(2)?,
                 })
             })

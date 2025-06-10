@@ -12,10 +12,11 @@
 use core::iter::Rev;
 use crossbeam_skiplist::map::Iter as MapIter;
 
+use crate::Stored;
 use crate::memory::Memory;
-use crate::memory::value::VersionedValues;
+use crate::memory::versioned::Versioned;
 use crate::storage::ScanRev;
-use crate::{Key, StoredValue, Value, Version};
+use reifydb_core::{Key, Version};
 use std::ops::Bound;
 
 impl ScanRev for Memory {
@@ -28,12 +29,12 @@ impl ScanRev for Memory {
 }
 
 pub struct IterRev<'a> {
-    pub(crate) iter: Rev<MapIter<'a, Key, VersionedValues<Value>>>,
+    pub(crate) iter: Rev<MapIter<'a, Key, Versioned>>,
     pub(crate) version: Version,
 }
 
 impl<'a> Iterator for IterRev<'a> {
-    type Item = StoredValue;
+    type Item = Stored;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -47,7 +48,7 @@ impl<'a> Iterator for IterRev<'a> {
                     }
                 })
             {
-                return Some(StoredValue { key: item.key().clone(), value, version }.into());
+                return Some(Stored { key: item.key().clone(), bytes: value, version }.into());
             }
         }
     }

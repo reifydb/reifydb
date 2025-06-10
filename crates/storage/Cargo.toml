@@ -14,7 +14,6 @@ r2d2 = { workspace = true }
 r2d2_sqlite = { workspace = true }
 
 crossbeam-skiplist = { workspace = true }
-regex = { workspace = true }
 [dev-dependencies]
 reifydb_testing = { workspace = true }
 test_each_file = { workspace = true }

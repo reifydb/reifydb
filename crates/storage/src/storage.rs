@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Delta, Key, KeyRange, StoredValue, Version};
+use crate::Stored;
+use reifydb_core::delta::Delta;
+use reifydb_core::{Key, KeyRange, Version};
 
 pub trait Storage:
     Send + Sync + Apply + Get + Contains + Scan + ScanRev + ScanRange + ScanRangeRev
@@ -13,15 +15,15 @@ pub trait Apply {
 }
 
 pub trait Get {
-    fn get(&self, key: &Key, version: Version) -> Option<StoredValue>;
+    fn get(&self, key: &Key, version: Version) -> Option<Stored>;
 }
 
 pub trait Contains {
     fn contains(&self, key: &Key, version: Version) -> bool;
 }
 
-pub trait ScanIterator: Iterator<Item = StoredValue> {}
-impl<T> ScanIterator for T where T: Iterator<Item = StoredValue> {}
+pub trait ScanIterator: Iterator<Item = Stored> {}
+impl<T> ScanIterator for T where T: Iterator<Item = Stored> {}
 
 pub trait Scan {
     type ScanIter<'a>: ScanIterator
@@ -31,8 +33,8 @@ pub trait Scan {
     fn scan(&self, version: Version) -> Self::ScanIter<'_>;
 }
 
-pub trait ScanIteratorRev: Iterator<Item = StoredValue> {}
-impl<T> ScanIteratorRev for T where T: Iterator<Item = StoredValue> {}
+pub trait ScanIteratorRev: Iterator<Item = Stored> {}
+impl<T> ScanIteratorRev for T where T: Iterator<Item = Stored> {}
 
 pub trait ScanRev {
     type ScanIterRev<'a>: ScanIteratorRev
@@ -42,9 +44,9 @@ pub trait ScanRev {
     fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_>;
 }
 
-pub trait ScanRangeIterator: Iterator<Item = StoredValue> {}
+pub trait ScanRangeIterator: Iterator<Item = Stored> {}
 
-impl<T> ScanRangeIterator for T where T: Iterator<Item = StoredValue> {}
+impl<T> ScanRangeIterator for T where T: Iterator<Item = Stored> {}
 
 pub trait ScanRange {
     type ScanRangeIter<'a>: ScanRangeIterator
@@ -58,9 +60,9 @@ pub trait ScanRange {
     }
 }
 
-pub trait ScanRangeIteratorRev: Iterator<Item = StoredValue> {}
+pub trait ScanRangeIteratorRev: Iterator<Item = Stored> {}
 
-impl<T> ScanRangeIteratorRev for T where T: Iterator<Item = StoredValue> {}
+impl<T> ScanRangeIteratorRev for T where T: Iterator<Item = Stored> {}
 
 pub trait ScanRangeRev {
     type ScanRangeIterRev<'a>: ScanRangeIteratorRev

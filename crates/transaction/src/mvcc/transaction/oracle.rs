@@ -11,7 +11,8 @@
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::watermark::{Closer, WaterMark};
-use reifydb_storage::{LogicalClock, Version};
+use reifydb_core::Version;
+use reifydb_core::clock::LogicalClock;
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard};
 

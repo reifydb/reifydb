@@ -10,9 +10,9 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::AsyncCowVec;
-use crate::transaction::IntoValue;
+use crate::transaction::IntoBytes;
 use crate::transaction::keycode;
-use crate::{as_key, as_value};
+use crate::{as_key, as_bytes};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
@@ -27,7 +27,7 @@ fn test_read_after_write() {
             let db = engine.clone();
             std::thread::spawn(move || {
                 let k = as_key!(i);
-                let v = as_value!(i);
+                let v = as_bytes!(i);
 
                 let mut txn = db.begin();
                 txn.set(k.clone(), v.clone()).unwrap();
@@ -35,7 +35,7 @@ fn test_read_after_write() {
 
                 let txn = db.begin_read_only();
                 let sv = txn.get(&k).unwrap();
-                assert_eq!(*sv.value(), v);
+                assert_eq!(*sv.bytes(), v);
             })
         })
         .collect::<Vec<_>>();

@@ -1377,6 +1377,7 @@ dependencies = [
  "bincode 2.0.1",
  "hex",
  "rand 0.9.1",
+ "regex",
  "serde",
  "serde_bytes",
 ]
@@ -1447,7 +1448,6 @@ dependencies = [
  "heed",
  "r2d2",
  "r2d2_sqlite",
- "regex",
  "reifydb_core",
  "reifydb_testing",
  "rusqlite",

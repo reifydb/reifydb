@@ -9,20 +9,21 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_storage::{Delta, StoredValue, Version};
-use reifydb_storage::{Key, Value};
+use reifydb_core::delta::{Bytes, Delta};
+use reifydb_core::{Key, Version};
+use reifydb_storage::Stored;
 use std::cmp;
 use std::cmp::Reverse;
 
 pub enum TransactionValue {
-    PendingIter { version: Version, key: Key, value: Value },
+    PendingIter { version: Version, key: Key, bytes: Bytes },
     Pending(Pending),
     Committed(Committed),
 }
 
-impl From<StoredValue> for TransactionValue {
-    fn from(value: StoredValue) -> Self {
-        Self::Committed(Committed { key: value.key, value: value.value, version: value.version })
+impl From<Stored> for TransactionValue {
+    fn from(value: Stored) -> Self {
+        Self::Committed(Committed { key: value.key, bytes: value.bytes, version: value.version })
     }
 }
 
@@ -31,7 +32,7 @@ impl core::fmt::Debug for TransactionValue {
         f.debug_struct("TransactionValue")
             .field("key", self.key())
             .field("version", &self.version())
-            .field("value", &self.value())
+            .field("value", &self.bytes())
             .finish()
     }
 }
@@ -41,8 +42,8 @@ impl Clone for TransactionValue {
         match self {
             Self::Committed(item) => Self::Committed(item.clone()),
             Self::Pending(delta) => Self::Pending(delta.clone()),
-            Self::PendingIter { version, key, value } => {
-                Self::PendingIter { version: *version, key: key.clone(), value: value.clone() }
+            Self::PendingIter { version, key, bytes: value } => {
+                Self::PendingIter { version: *version, key: key.clone(), bytes: value.clone() }
             }
         }
     }
@@ -65,11 +66,11 @@ impl TransactionValue {
         }
     }
 
-    pub fn value(&self) -> &Value {
+    pub fn bytes(&self) -> &Bytes {
         match self {
-            Self::PendingIter { value, .. } => value,
-            Self::Pending(item) => item.value().expect("value of pending cannot be `None`"),
-            Self::Committed(item) => &item.value,
+            Self::PendingIter { bytes, .. } => bytes,
+            Self::Pending(item) => item.bytes().expect("bytes of pending cannot be `None`"),
+            Self::Committed(item) => &item.bytes,
         }
     }
 
@@ -78,15 +79,15 @@ impl TransactionValue {
     }
 }
 
-impl From<(Version, Key, Value)> for TransactionValue {
-    fn from((version, k, v): (Version, Key, Value)) -> Self {
-        Self::PendingIter { version, key: k, value: v }
+impl From<(Version, Key, Bytes)> for TransactionValue {
+    fn from((version, k, b): (Version, Key, Bytes)) -> Self {
+        Self::PendingIter { version, key: k, bytes: b }
     }
 }
 
-impl From<(Version, &Key, &Value)> for TransactionValue {
-    fn from((version, k, v): (Version, &Key, &Value)) -> Self {
-        Self::PendingIter { version, key: k.clone(), value: v.clone() }
+impl From<(Version, &Key, &Bytes)> for TransactionValue {
+    fn from((version, k, b): (Version, &Key, &Bytes)) -> Self {
+        Self::PendingIter { version, key: k.clone(), bytes: b.clone() }
     }
 }
 
@@ -105,23 +106,23 @@ impl From<Committed> for TransactionValue {
 #[derive(Clone, Debug)]
 pub struct Committed {
     pub(crate) key: Key,
-    pub(crate) value: Value,
+    pub(crate) bytes: Bytes,
     pub(crate) version: Version,
 }
 
-impl From<StoredValue> for Committed {
-    fn from(value: StoredValue) -> Self {
-        Self { key: value.key, value: value.value, version: value.version }
+impl From<Stored> for Committed {
+    fn from(value: Stored) -> Self {
+        Self { key: value.key, bytes: value.bytes, version: value.version }
     }
 }
 
 impl Committed {
-    pub fn value(&self) -> &Value {
-        &self.value
-    }
-
     pub fn key(&self) -> &Key {
         &self.key
+    }
+
+    pub fn bytes(&self) -> &Bytes {
+        &self.bytes
     }
 
     pub fn version(&self) -> Version {
@@ -173,7 +174,7 @@ impl Pending {
         &self.delta.key()
     }
 
-    pub fn value(&self) -> Option<&Value> {
+    pub fn bytes(&self) -> Option<&Bytes> {
         self.delta.value()
     }
 

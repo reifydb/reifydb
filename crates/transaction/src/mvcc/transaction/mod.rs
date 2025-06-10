@@ -16,6 +16,9 @@ pub use crate::mvcc::types::*;
 pub use write::*;
 
 use oracle::*;
+use reifydb_core::Version;
+use reifydb_core::clock::LogicalClock;
+
 pub mod iter;
 pub mod iter_rev;
 
@@ -31,7 +34,6 @@ use crate::mvcc::conflict::Conflict;
 use crate::mvcc::error::TransactionError;
 use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::read::TransactionManagerRx;
-use reifydb_storage::{LogicalClock, Version};
 
 pub struct TransactionManager<C, L, P>
 where

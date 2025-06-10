@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::conflict::{Conflict, ConflictRange};
-use reifydb_storage::{Key, KeyRange};
+use reifydb_core::{Key, KeyRange};
 
 pub struct Marker<'a, C> {
     marker: &'a mut C,

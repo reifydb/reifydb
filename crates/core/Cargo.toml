@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 bincode = { workspace = true }
 hex = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 

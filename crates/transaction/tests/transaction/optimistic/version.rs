@@ -10,10 +10,10 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::AsyncCowVec;
-use crate::transaction::FromValue;
+use crate::transaction::FromBytes;
 use crate::transaction::keycode;
-use crate::transaction::{IntoValue};
-use crate::{as_key, as_value, from_value};
+use crate::transaction::{IntoBytes};
+use crate::{as_key, as_bytes, from_bytes};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
@@ -29,7 +29,7 @@ fn test_versions() {
 
     for i in 1..10 {
         let mut txn = engine.begin();
-        txn.set(k0.clone(), as_value!(i)).unwrap();
+        txn.set(k0.clone(), as_bytes!(i)).unwrap();
         txn.commit().unwrap();
         assert_eq!(i, engine.version());
     }
@@ -38,7 +38,7 @@ fn test_versions() {
         let mut count = 0;
         for sv in itr {
             assert_eq!(sv.key(), &k0);
-            let value = from_value!(u64, sv.value());
+            let value = from_bytes!(u64, sv.bytes());
             assert_eq!(value, i, "{i} {:?}", value);
             count += 1;
         }
@@ -48,7 +48,7 @@ fn test_versions() {
     let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, i: u64| {
         let mut count = 0;
         for sv in itr {
-            let value = from_value!(u64, sv.value());
+            let value = from_bytes!(u64, sv.bytes());
             assert_eq!(value, i, "{i} {:?}", value);
             count += 1;
         }
@@ -62,7 +62,7 @@ fn test_versions() {
         let v = idx;
         {
             let sv = txn.get(&k0).unwrap().unwrap();
-            assert_eq!(v, from_value!(u64, *sv.value()));
+            assert_eq!(v, from_bytes!(u64, *sv.bytes()));
         }
 
         // Try retrieving the latest version forward and reverse.
@@ -75,6 +75,6 @@ fn test_versions() {
 
     let mut txn = engine.begin();
     let sv = txn.get(&k0).unwrap().unwrap();
-    let val = from_value!(u64, *sv.value());
+    let val = from_bytes!(u64, *sv.bytes());
     assert_eq!(9, val)
 }

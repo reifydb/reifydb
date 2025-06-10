@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{Scan, StoredValue, Version};
+use crate::{Scan, Stored};
+use reifydb_core::Version;
 
 impl Scan for Lmdb {
     type ScanIter<'a> = Iter;
@@ -15,7 +16,7 @@ impl Scan for Lmdb {
 pub struct Iter {}
 
 impl Iterator for Iter {
-    type Item = StoredValue;
+    type Item = Stored;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()

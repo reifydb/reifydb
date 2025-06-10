@@ -14,8 +14,9 @@ use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::types::TransactionValue;
-use reifydb_storage::{Key, KeyRange};
-use reifydb_storage::{LocalClock, Storage, Version};
+use reifydb_core::clock::LocalClock;
+use reifydb_core::{Key, KeyRange, Version};
+use reifydb_storage::Storage;
 
 pub struct TransactionRx<S: Storage> {
     pub(crate) engine: Optimistic<S>,

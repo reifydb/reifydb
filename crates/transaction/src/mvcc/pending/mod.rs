@@ -13,7 +13,7 @@ use crate::mvcc::types::Pending;
 use std::ops::RangeBounds;
 
 pub use btree::BTreePendingWrites;
-use reifydb_storage::{Key, Value};
+use reifydb_core::Key;
 
 mod btree;
 

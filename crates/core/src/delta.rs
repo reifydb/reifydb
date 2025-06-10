@@ -1,12 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Key, Value};
+use crate::{AsyncCowVec, Key};
 use std::cmp;
+
+pub type Bytes = AsyncCowVec<u8>;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Delta {
-    Set { key: Key, value: Value },
+    Set { key: Key, bytes: Bytes },
     Remove { key: Key },
 }
 
@@ -32,9 +34,9 @@ impl Delta {
     }
 
     /// Returns the value, if None, it means the entry is marked as remove.
-    pub fn value(&self) -> Option<&Value> {
+    pub fn value(&self) -> Option<&Bytes> {
         match self {
-            Self::Set { value, .. } => Some(value),
+            Self::Set { bytes: value, .. } => Some(value),
             Self::Remove { .. } => None,
         }
     }
@@ -43,7 +45,7 @@ impl Delta {
 impl Clone for Delta {
     fn clone(&self) -> Self {
         match self {
-            Self::Set { key, value } => Self::Set { key: key.clone(), value: value.clone() },
+            Self::Set { key, bytes: value } => Self::Set { key: key.clone(), bytes: value.clone() },
             Self::Remove { key } => Self::Remove { key: key.clone() },
         }
     }

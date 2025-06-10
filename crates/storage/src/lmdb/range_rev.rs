@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{KeyRange, ScanRangeRev, StoredValue, Version};
+use crate::{ScanRangeRev, Stored};
+use reifydb_core::{KeyRange, Version};
 
 impl ScanRangeRev for Lmdb {
     type ScanRangeIterRev<'a> = RangeRev;
@@ -15,7 +16,7 @@ impl ScanRangeRev for Lmdb {
 pub struct RangeRev {}
 
 impl Iterator for RangeRev {
-    type Item = StoredValue;
+    type Item = Stored;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()

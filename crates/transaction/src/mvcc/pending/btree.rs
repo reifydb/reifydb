@@ -11,6 +11,7 @@
 
 use super::*;
 
+use reifydb_core::delta::Bytes;
 use std::collections::{
     BTreeMap,
     btree_map::{IntoIter as BTreeMapIntoIter, Iter as BTreeMapIter, Range as BTreeMapRange},
@@ -48,7 +49,7 @@ impl PendingWrites for BTreeMap<Key, Pending> {
     }
 
     fn estimate_size(&self, _entry: &Pending) -> u64 {
-        size_of::<Key>() as u64 + size_of::<Value>() as u64
+        size_of::<Key>() as u64 + size_of::<Bytes>() as u64
     }
 
     fn get(&self, key: &Key) -> Option<&Pending> {

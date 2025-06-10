@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{Key, KeyRange, ScanRange, StoredValue, Version};
+use crate::{ScanRange, Stored};
 use heed::types::Bytes;
 use heed::{Database, Env};
-use reifydb_core::AsyncCowVec;
+use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ pub struct Range {
     version: Version,
     start: Bound<Key>,
     end: Bound<Key>,
-    buffer: VecDeque<StoredValue>,
+    buffer: VecDeque<Stored>,
     last_key: Option<Key>,
     batch_size: usize,
 }
@@ -74,9 +74,9 @@ impl Range {
                     //     AsyncCowVec::new(v.to_vec()),
                     // )));
                     //
-                    self.buffer.push_back(StoredValue {
+                    self.buffer.push_back(Stored {
                         key: AsyncCowVec::new(k.to_vec()),
-                        value: AsyncCowVec::new(v.to_vec()),
+                        bytes: AsyncCowVec::new(v.to_vec()),
                         version: 0, // FIXME
                     })
                 }
@@ -91,7 +91,7 @@ impl Range {
 }
 
 impl Iterator for Range {
-    type Item = StoredValue;
+    type Item = Stored;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.buffer.is_empty() {
