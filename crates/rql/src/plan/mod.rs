@@ -30,6 +30,8 @@ pub type RowToInsert = Vec<Expression>;
 
 #[derive(Debug)]
 pub enum Plan {
+    /// A CREATE DEFERRED VIEW plan. Creates a new deferred view.
+    CreateDeferredView(CreateDeferredViewPlan),
     /// A CREATE SCHEMA plan. Creates a new schema.
     CreateSchema(CreateSchemaPlan),
     /// A CREATE SERIES plan. Creates a new series.
@@ -42,6 +44,14 @@ pub enum Plan {
     InsertIntoSeries(InsertIntoSeriesPlan),
     /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
     Query(QueryPlan),
+}
+
+#[derive(Debug)]
+pub struct CreateDeferredViewPlan {
+    pub schema: String,
+    pub view: String,
+    pub if_not_exists: bool,
+    pub columns: Vec<ColumnToCreate>,
 }
 
 #[derive(Debug)]
@@ -118,6 +128,37 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
         match ast {
             Ast::Create(create) => {
                 return match create {
+                    AstCreate::DeferredView { schema, name, columns, .. } => {
+                        let mut result_columns: Vec<ColumnToCreate> = vec![];
+
+                        for col in columns.iter() {
+                            let column_name = col.name.value().to_string();
+                            let column_type = col.ty.kind();
+
+                            let policies = if let Some(policy_block) = &col.policies {
+                                policy_block
+                                    .policies
+                                    .iter()
+                                    .map(convert_policy)
+                                    .collect::<Vec<ColumnPolicy>>()
+                            } else {
+                                vec![]
+                            };
+
+                            result_columns.push(ColumnToCreate {
+                                name: column_name,
+                                value: column_type,
+                                policies,
+                            });
+                        }
+
+                        Ok(Plan::CreateDeferredView(CreateDeferredViewPlan {
+                            schema: schema.value().to_string(),
+                            view: name.value().to_string(),
+                            if_not_exists: false,
+                            columns: result_columns,
+                        }))
+                    }
                     AstCreate::Schema { name, .. } => Ok(Plan::CreateSchema(CreateSchemaPlan {
                         schema: name.value().to_string(),
                         if_not_exists: false,
@@ -334,6 +375,7 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                                     rows_to_insert,
                                 }))
                             }
+                            StoreKind::DeferredView => unreachable!(),
                         }
 
                         // FIXME validate

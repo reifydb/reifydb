@@ -29,6 +29,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Copy, Clone, Debug)]
 pub enum StoreKind {
+    DeferredView,
     Series,
     Table,
 }

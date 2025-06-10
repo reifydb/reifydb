@@ -34,6 +34,21 @@ impl crate::SchemaTx for Schema {
 
     fn create(&mut self, to_create: StoreToCreate) -> crate::Result<()> {
         match to_create {
+            StoreToCreate::DeferredView { view: name, columns } => {
+                assert!(self.stores.get(name.deref()).is_none());
+                self.stores.insert(
+                    name.deref().to_string(),
+                    Store {
+                        name,
+                        kind: StoreKind::Table,
+                        columns: columns
+                            .into_iter()
+                            .map(|c| Column::new(c.name, c.value, c.policies))
+                            .collect::<Vec<_>>(),
+                    },
+                );
+            },
+        
             StoreToCreate::Series { series: name, columns } => {
                 assert!(self.stores.get(name.deref()).is_none());
                 self.stores.insert(
@@ -62,7 +77,7 @@ impl crate::SchemaTx for Schema {
                             .collect::<Vec<_>>(),
                     },
                 );
-            }
+            },
         }
         Ok(())
     }

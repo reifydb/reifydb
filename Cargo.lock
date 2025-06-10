@@ -1396,6 +1396,7 @@ dependencies = [
  "reifydb_catalog",
  "reifydb_core",
  "reifydb_diagnostic",
+ "reifydb_flow",
  "reifydb_frame",
  "reifydb_rql",
  "reifydb_storage",
@@ -1429,8 +1430,6 @@ dependencies = [
  "reifydb_catalog",
  "reifydb_core",
  "reifydb_diagnostic",
- "reifydb_transaction",
- "serde",
 ]
 
 [[package]]

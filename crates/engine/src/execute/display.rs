@@ -8,6 +8,9 @@ use std::fmt::{Display, Formatter};
 impl Display for ExecutionResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            ExecutionResult::CreateDeferredView { schema, view, .. } => {
+                write!(f, "deferred view {view} created in schema {schema}")
+            }
             ExecutionResult::CreateSchema { schema } => {
                 write!(f, "schema {schema} created")
             }

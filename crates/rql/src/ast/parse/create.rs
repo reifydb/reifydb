@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::Keyword::{Series, Table};
+use crate::ast::lex::Keyword::{Deferred, Series, Table, View};
 use crate::ast::lex::Operator::CloseParen;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, Operator, Token, TokenKind};
@@ -16,6 +16,13 @@ impl Parser {
 
         if let Some(_) = self.consume_if(TokenKind::Keyword(Schema))? {
             return self.parse_schema(token);
+        }
+
+        if let Some(_) = self.consume_if(TokenKind::Keyword(Deferred))? {
+            if let Some(_) = self.consume_if(TokenKind::Keyword(View))? {
+                return self.parse_deferred_view(token);
+            }
+            unimplemented!()
         }
 
         if let Some(_) = self.consume_if(TokenKind::Keyword(Table))? {
@@ -40,6 +47,15 @@ impl Parser {
         let columns = self.parse_columns()?;
 
         Ok(AstCreate::Series { token, name, schema, columns })
+    }
+
+    fn parse_deferred_view(&mut self, token: Token) -> parse::Result<AstCreate> {
+        let schema = self.parse_identifier()?;
+        self.consume_operator(Operator::Dot)?;
+        let name = self.parse_identifier()?;
+        let columns = self.parse_columns()?;
+
+        Ok(AstCreate::DeferredView { token, name, schema, columns })
     }
 
     fn parse_table(&mut self, token: Token) -> parse::Result<AstCreate> {
@@ -196,6 +212,39 @@ mod tests {
             AstCreate::Table { name, schema, columns, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "items");
+
+                assert_eq!(columns.len(), 1);
+
+                let mut col = &columns[0];
+                assert_eq!(col.name.value(), "field");
+                assert_eq!(col.ty.value(), "int2");
+
+                let policies = &col.policies.as_ref().unwrap().policies;
+                assert_eq!(policies.len(), 1);
+                let policy = &policies[0];
+                assert!(matches!(policy.policy, AstPolicyKind::Saturation));
+                assert_eq!(policy.value.as_identifier().value(), "error");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_create_deferred_view() {
+        let tokens = lex(r#"
+        create deferred view test.views(field: int2 policy (saturation error))
+    "#)
+        .unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let create = result.as_create();
+        match create {
+            AstCreate::DeferredView { name, schema, columns, .. } => {
+                assert_eq!(schema.value(), "test");
+                assert_eq!(name.value(), "views");
 
                 assert_eq!(columns.len(), 1);
 

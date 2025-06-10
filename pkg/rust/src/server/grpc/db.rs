@@ -121,6 +121,9 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> grpc_db::db_server::Db f
                             };
                             return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));
                         }
+                        ExecutionResult::CreateDeferredView { .. } => {
+                            unimplemented!()
+                        }
                     }
 
                     let result = TxResult {

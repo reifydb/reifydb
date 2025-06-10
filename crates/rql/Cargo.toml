@@ -10,10 +10,8 @@ repository.workspace = true
 reifydb_core = { workspace = true }
 reifydb_diagnostic = { workspace = true }
 reifydb_catalog = { workspace = true }
-reifydb_transaction = { workspace = true}
 
 nom = { workspace = true }
 nom_locate = { workspace = true }
-serde = { workspace = true }
 
 [dev-dependencies]

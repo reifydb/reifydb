@@ -258,9 +258,15 @@ impl Index<usize> for AstBlock {
     }
 }
 
-
 #[derive(Debug, PartialEq)]
 pub enum AstCreate {
+    DeferredView {
+        token: Token,
+        schema: AstIdentifier,
+        name: AstIdentifier,
+        columns: Vec<AstColumnToCreate>,
+        // FIXME query
+    },
     Schema {
         token: Token,
         name: AstIdentifier,
@@ -289,6 +295,7 @@ pub struct AstColumnToCreate {
 impl AstCreate {
     pub fn token(&self) -> &Token {
         match self {
+            AstCreate::DeferredView { token, .. } => token,
             AstCreate::Schema { token, .. } => token,
             AstCreate::Series { token, .. } => token,
             AstCreate::Table { token, .. } => token,

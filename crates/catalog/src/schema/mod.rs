@@ -27,6 +27,7 @@ pub struct ColumnToCreate {
 }
 
 pub enum StoreToCreate {
+    DeferredView { view: String, columns: Vec<ColumnToCreate> },
     Series { series: String, columns: Vec<ColumnToCreate> },
     Table { table: String, columns: Vec<ColumnToCreate> },
 }

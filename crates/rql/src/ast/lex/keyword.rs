@@ -97,6 +97,9 @@ keyword! {
     Series  => "SERIES",
     Table  => "TABLE",
     Policy => "POLICY",
+    View => "VIEW",
+    Deferred => "DEFERRED",
+    Transactional => "TRANSACTIONAL",
 }
 
 type Span<'a> = LocatedSpan<&'a str>;
@@ -169,6 +172,9 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Series, "SERIES"),
             keyword_tag(Keyword::Table, "TABLE"),
             keyword_tag(Keyword::Policy, "POLICY"),
+            keyword_tag(Keyword::View, "VIEW"),
+            keyword_tag(Keyword::Deferred, "DEFERRED"),
+            keyword_tag(Keyword::Transactional, "TRANSACTIONAL"),
         )),
     ));
 
@@ -273,6 +279,9 @@ mod tests {
         test_keyword_series => (Series, "SERIES"),
         test_keyword_table => (Table, "TABLE"),
         test_keyword_policy => (Policy, "POLICY"),
+        test_keyword_view => (View, "VIEW"),
+        test_keyword_deferred => (Deferred, "DEFERRED"),
+        test_keyword_transactional => (Transactional, "TRANSACTIONAL"),
     }
 
     fn check_no_keyword(repr: &str) {
@@ -348,6 +357,9 @@ mod tests {
         test_not_keyword_schema => ( "schema"),
         test_not_keyword_series => ( "series"),
         test_not_keyword_table => ( "table"),
-        test_not_keyword_policy => ( "policy")
+        test_not_keyword_policy => ( "policy"),
+        test_not_keyword_view => ( "view"),
+        test_not_keyword_deferred => ( "deferred"),
+        test_not_keyword_transactional => ( "transactional"),
     }
 }
