@@ -18,7 +18,8 @@ use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
-use reifydb_storage::{Key, KeyRange, Value, Version};
+use reifydb_storage::{Delta, Key, KeyRange, Value, Version};
+use std::collections::HashMap;
 use std::ops::RangeBounds;
 
 pub struct TransactionTx<S: Storage> {
@@ -46,9 +47,16 @@ impl<S: Storage> TransactionTx<S> {
     ///
     pub fn commit(&mut self) -> Result<(), MvccError> {
         self.tm.commit(|pending| {
-            self.engine
-                .storage
-                .apply((pending.into_iter().map(|p| (p.delta, p.version)).collect()));
+            let mut grouped: HashMap<Version, Vec<Delta>> = HashMap::new();
+
+            for p in pending {
+                grouped.entry(p.version).or_default().push(p.delta);
+            }
+
+            for (version, deltas) in grouped {
+                self.engine.storage.apply(deltas, version);
+            }
+
             Ok(())
         })
     }

@@ -115,7 +115,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(vec![(Delta::Set { key, value }, version)])
+                self.storage.apply(vec![(Delta::Set { key, value })], version)
             }
 
             // remove KEY [version=VERSION]
@@ -125,7 +125,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(vec![(Delta::Remove { key }, version)])
+                self.storage.apply(vec![(Delta::Remove { key })], version)
             }
 
             name => return Err(format!("invalid command {name}").into()),

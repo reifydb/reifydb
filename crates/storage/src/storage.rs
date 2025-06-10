@@ -9,7 +9,7 @@ pub trait Storage:
 }
 
 pub trait Apply {
-    fn apply(&self, actions: Vec<(Delta, Version)>);
+    fn apply(&self, delta: Vec<Delta>, version: Version);
 }
 
 pub trait Get {

@@ -8,6 +8,7 @@ members = ["bin/cli",
     "crates/core",
     "crates/diagnostic",
     "crates/frame",
+    "crates/flow",
     "crates/engine",
     "crates/rql",
     "crates/storage",
@@ -24,6 +25,7 @@ default-members = ["bin/cli",
     "crates/core",
     "crates/diagnostic",
     "crates/frame",
+    "crates/flow",
     "crates/engine",
     "crates/rql",
     "crates/storage",
@@ -70,6 +72,7 @@ reifydb_catalog = { path = "crates/catalog", version = "0.0.1" }
 reifydb_core = { path = "crates/core", version = "0.0.1" }
 reifydb_diagnostic = { path = "crates/diagnostic", version = "0.0.1" }
 reifydb_frame = { path = "crates/frame", version = "0.0.1" }
+reifydb_flow = { path = "crates/flow", version = "0.0.1" }
 reifydb_engine = { path = "crates/engine", version = "0.0.1" }
 reifydb_rql = { path = "crates/rql", version = "0.0.1" }
 reifydb_storage = { path = "crates/storage", version = "0.0.1" }

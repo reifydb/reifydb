@@ -199,17 +199,6 @@ impl Display for Value {
 }
 
 impl Value {
-    pub fn add(&self, other: Value) -> Value {
-        use Value::*;
-
-        match (self, other) {
-            (Int2(left), Int2(right)) => Value::Int2(left + right),
-            _ => unimplemented!(),
-        }
-    }
-}
-
-impl Value {
     pub fn kind(&self) -> ValueKind {
         match self {
             Value::Undefined => ValueKind::Undefined,

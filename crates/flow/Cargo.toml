@@ -1,0 +1,14 @@
+[package]
+name = "reifydb_flow"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reifydb_core = { workspace = true }
+reifydb_storage = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

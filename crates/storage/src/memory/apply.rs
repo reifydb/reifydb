@@ -3,11 +3,11 @@
 
 use crate::memory::Memory;
 use crate::memory::value::VersionedValues;
-use crate::{Delta, Apply, Version};
+use crate::{Apply, Delta, Version};
 
 impl Apply for Memory {
-    fn apply(&self, actions: Vec<(Delta, Version)>) {
-        for (delta, version) in actions {
+    fn apply(&self, delta: Vec<Delta>, version: Version) {
+        for delta in delta {
             match delta {
                 Delta::Set { key, value } => {
                     let item = self.memory.get_or_insert_with(key, || VersionedValues::new());

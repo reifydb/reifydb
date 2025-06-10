@@ -4,7 +4,6 @@
 use crate::{Key, Value};
 use std::cmp;
 
-/// Operation on a key-value pair.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Delta {
     Set { key: Key, value: Value },

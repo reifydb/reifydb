@@ -54,11 +54,11 @@ impl Sqlite {
 }
 
 impl Apply for Sqlite {
-    fn apply(&self, actions: Vec<(Delta, Version)>) {
+    fn apply(&self, delta: Vec<Delta>, version: Version) {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 
-        for (delta, version) in actions {
+        for delta in delta {
             match delta {
                 Delta::Set { key, value } => {
                     let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -89,18 +89,18 @@ impl Get for Sqlite {
 
         let conn = self.get_conn();
         conn.query_row(
-            "SELECT key, value, version FROM kv WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
-            params![key.to_vec(), version],
-            |row| {
-                Ok(StoredValue {
-                    key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
-                    value: AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?),
-                    version: row.get(2)?,
-                })
-            },
-        )
-        .optional()
-        .unwrap()
+			"SELECT key, value, version FROM kv WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
+			params![key.to_vec(), version],
+			|row| {
+				Ok(StoredValue {
+					key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
+					value: AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?),
+					version: row.get(2)?,
+				})
+			},
+		)
+			.optional()
+			.unwrap()
     }
 }
 
@@ -173,8 +173,8 @@ impl ScanRange for Sqlite {
 
         let conn = self.get_conn();
         let mut stmt = conn
-            .prepare("SELECT key, value, version FROM kv WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key ASC")
-            .unwrap();
+			.prepare("SELECT key, value, version FROM kv WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key ASC")
+			.unwrap();
 
         let start_bytes = bound_to_bytes(&range.start);
         let end_bytes = bound_to_bytes(&range.end);
@@ -204,8 +204,8 @@ impl ScanRangeRev for Sqlite {
 
         let conn = self.get_conn();
         let mut stmt = conn
-            .prepare("SELECT key, value, version FROM kv WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key DESC")
-            .unwrap();
+			.prepare("SELECT key, value, version FROM kv WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key DESC")
+			.unwrap();
 
         let start_bytes = bound_to_bytes(&range.start);
         let end_bytes = bound_to_bytes(&range.end);
