@@ -13,13 +13,14 @@ use reifydb_core::encoding::keycode::serialize;
 use reifydb_core::{AsyncCowVec, Key, Row, Value, Version, deserialize_row, serialize_row};
 use reifydb_storage::Storage;
 use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, RwLock};
 
 mod error;
 
 pub type NodeId = usize;
 
-pub trait Node {
-    fn apply(&mut self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta>;
+pub trait Node: Send + Sync {
+    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta>;
 }
 
 pub struct Graph {
@@ -50,12 +51,12 @@ impl Graph {
         self.edges.entry(from).or_default().push(to);
     }
 
-    pub fn apply(&mut self, delta: AsyncCowVec<Delta>, version: Version) {
+    pub fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
         let mut queue = VecDeque::new();
         queue.push_back((Self::root_node(), delta));
 
         while let Some((node_id, delta)) = queue.pop_front() {
-            let node = self.nodes.get_mut(&node_id).expect("invalid node id");
+            let node = self.nodes.get(&node_id).expect("invalid node id");
 
             let output = node.apply(delta.clone(), version);
 
@@ -66,32 +67,47 @@ impl Graph {
     }
 }
 
-pub struct Orchestrator {
-    graphs: HashMap<&'static str, Graph>,
-    dependencies: HashMap<&'static str, Vec<&'static str>>,
+#[derive(Clone)]
+pub struct Orchestrator(Arc<RwLock<OrchestratorInner>>);
+
+pub struct OrchestratorInner {
+    graphs: HashMap<String, Graph>,
+    dependencies: HashMap<String, Vec<String>>,
+}
+
+impl Orchestrator {
+    pub fn register(&mut self, name: impl Into<String>, graph: Graph) {
+        let mut guard = self.0.write().unwrap();
+        guard.graphs.insert(name.into(), graph);
+    }
+
+    pub fn add_dependency(&mut self, parent: impl Into<String>, child: impl Into<String>) {
+        let mut guard = self.0.write().unwrap();
+        guard.dependencies.entry(parent.into()).or_default().push(child.into());
+    }
+
+    pub fn apply(&self, root: &'static str, delta: AsyncCowVec<Delta>, version: Version) {
+        let guard = self.0.read().unwrap();
+        guard.apply(root, delta, version);
+    }
 }
 
 impl Default for Orchestrator {
     fn default() -> Self {
-        Self { graphs: Default::default(), dependencies: Default::default() }
+        Self(Arc::new(RwLock::new(OrchestratorInner {
+            graphs: Default::default(),
+            dependencies: Default::default(),
+        })))
     }
 }
 
-impl Orchestrator {
-    pub fn register(&mut self, name: &'static str, graph: Graph) {
-        self.graphs.insert(name, graph);
-    }
-
-    pub fn add_dependency(&mut self, parent: &'static str, child: &'static str) {
-        self.dependencies.entry(parent).or_default().push(child);
-    }
-
-    pub fn apply(&mut self, root: &'static str, delta: AsyncCowVec<Delta>, version: Version) {
+impl OrchestratorInner {
+    pub fn apply(&self, root: &'static str, delta: AsyncCowVec<Delta>, version: Version) {
         let mut queue = VecDeque::new();
         queue.push_back((root, delta));
 
         while let Some((view_name, input)) = queue.pop_front() {
-            let graph = self.graphs.get_mut(view_name).unwrap();
+            let graph = self.graphs.get(view_name).unwrap();
             graph.apply(input, version);
 
             // if let Some(children) = self.dependencies.get(view_name) {
@@ -120,7 +136,7 @@ impl<S: Storage> CountNode<S> {
 }
 
 impl<S: Storage> Node for CountNode<S> {
-    fn apply(&mut self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
+    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
         let mut updates = AsyncCowVec::default();
         let mut counters: HashMap<Key, i8> = HashMap::new();
 
@@ -168,7 +184,7 @@ impl GroupNode {
 }
 
 impl Node for GroupNode {
-    fn apply(&mut self, delta: AsyncCowVec<Delta>, _version: Version) -> AsyncCowVec<Delta> {
+    fn apply(&self, delta: AsyncCowVec<Delta>, _version: Version) -> AsyncCowVec<Delta> {
         let mut grouped: HashMap<Key, Vec<Vec<Value>>> = HashMap::new();
 
         for d in delta {
@@ -209,7 +225,7 @@ impl<S: Storage> SumNode<S> {
 }
 
 impl<S: Storage> Node for SumNode<S> {
-    fn apply(&mut self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
+    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
         let mut updates = AsyncCowVec::default();
         let mut sums: HashMap<Key, i8> = HashMap::new();
 
@@ -252,7 +268,6 @@ mod tests {
     use reifydb_core::{AsyncCowVec, Value, serialize_row};
     use reifydb_storage::memory::Memory;
     use reifydb_storage::{ScanRange, Storage};
-    use std::collections::HashMap;
 
     fn create_count_graph<S: Storage + 'static>(storage: S) -> Graph {
         let group_node = Box::new(GroupNode {
@@ -281,8 +296,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let mut orchestrator =
-            Orchestrator { graphs: HashMap::new(), dependencies: HashMap::new() };
+        let mut orchestrator = Orchestrator::default();
 
         let storage = Memory::default();
         // let storage = Arc::new(Sqlite::new(Path::new("test.sqlite")));

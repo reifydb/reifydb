@@ -1,12 +1,12 @@
 [package]
-name = "reifydb_storage"
+name = "reifydb-storage"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb_core = { workspace = true }
+reifydb-core = { workspace = true }
 heed = { workspace = true }
 
 rusqlite = { workspace = true, features = ["bundled"] }
@@ -15,5 +15,5 @@ r2d2_sqlite = { workspace = true }
 
 crossbeam-skiplist = { workspace = true }
 [dev-dependencies]
-reifydb_testing = { workspace = true }
+reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

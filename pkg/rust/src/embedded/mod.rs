@@ -64,12 +64,12 @@ impl<'a, S: Storage + 'static, T: Transaction<S> + 'static> DB<'a> for Embedded<
     // fn session_read_only(
     //     &self,
     //     into: impl IntoSessionRx<'a, Self>,
-    // ) -> reifydb_core::Result<SessionRx<'a, Self>> {
+    // ) -> reifydb-core::Result<SessionRx<'a, Self>> {
     //     // into.into_session_rx(&self)
     //     todo!()
     // }
     //
-    // fn session(&self, into: impl IntoSessionTx<'a, Self>) -> reifydb_core::Result<SessionTx<'a, Self>> {
+    // fn session(&self, into: impl IntoSessionTx<'a, Self>) -> reifydb-core::Result<SessionTx<'a, Self>> {
     //     // into.into_session_tx(&self)
     //     todo!()
     // }

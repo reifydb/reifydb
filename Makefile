@@ -10,7 +10,7 @@ check:
 
 .PHONY: clean
 clean:
-	@for pkg in $$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name' | grep '^reifydb_'); do \
+	@for pkg in $$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name' | grep '^reifydb-'); do \
 		cargo clean -p $$pkg; \
 	done
 

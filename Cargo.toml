@@ -67,17 +67,17 @@ panic = "unwind"
 
 [workspace.dependencies]
 reifydb = { path = "pkg/rust", version = "0.0.1" }
-reifydb_auth = { path = "crates/auth", version = "0.0.1" }
-reifydb_catalog = { path = "crates/catalog", version = "0.0.1" }
-reifydb_core = { path = "crates/core", version = "0.0.1" }
-reifydb_diagnostic = { path = "crates/diagnostic", version = "0.0.1" }
-reifydb_frame = { path = "crates/frame", version = "0.0.1" }
-reifydb_flow = { path = "crates/flow", version = "0.0.1" }
-reifydb_engine = { path = "crates/engine", version = "0.0.1" }
-reifydb_rql = { path = "crates/rql", version = "0.0.1" }
-reifydb_storage = { path = "crates/storage", version = "0.0.1" }
-reifydb_testing = { path = "crates/testing", version = "0.0.1" }
-reifydb_transaction = { path = "crates/transaction", version = "0.0.1" }
+reifydb-auth = { path = "crates/auth", version = "0.0.1" }
+reifydb-catalog = { path = "crates/catalog", version = "0.0.1" }
+reifydb-core = { path = "crates/core", version = "0.0.1" }
+reifydb-diagnostic = { path = "crates/diagnostic", version = "0.0.1" }
+reifydb-frame = { path = "crates/frame", version = "0.0.1" }
+reifydb-flow = { path = "crates/flow", version = "0.0.1" }
+reifydb-engine = { path = "crates/engine", version = "0.0.1" }
+reifydb-rql = { path = "crates/rql", version = "0.0.1" }
+reifydb-storage = { path = "crates/storage", version = "0.0.1" }
+reifydb-testing = { path = "crates/testing", version = "0.0.1" }
+reifydb-transaction = { path = "crates/transaction", version = "0.0.1" }
 
 bincode = { version = "2.0.1", features = ["serde"] }
 crossbeam-skiplist = { version = "0.1.3" }

@@ -9,7 +9,7 @@ where
     F: FnOnce(&Path) + panic::UnwindSafe,
 {
     let mut path = env::temp_dir();
-    path.push(format!("reifydb_{}", uuid::Uuid::new_v4()));
+    path.push(format!("reifydb-{}", uuid::Uuid::new_v4()));
 
     fs::create_dir(&path).unwrap();
     let result = panic::catch_unwind(|| {

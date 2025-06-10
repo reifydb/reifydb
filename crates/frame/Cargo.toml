@@ -1,5 +1,5 @@
 [package]
-name = "reifydb_frame"
+name = "reifydb-frame"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb_core = { workspace = true }
+reifydb-core = { workspace = true }
 
 [dev-dependencies]
 rand = {workspace = true}

@@ -1,5 +1,5 @@
 [package]
-name = "reifydb_rql"
+name = "reifydb-rql"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -7,9 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb_core = { workspace = true }
-reifydb_diagnostic = { workspace = true }
-reifydb_catalog = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-diagnostic = { workspace = true }
+reifydb-catalog = { workspace = true }
 
 nom = { workspace = true }
 nom_locate = { workspace = true }

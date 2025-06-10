@@ -1,13 +1,13 @@
 [package]
-name = "reifydb_testing"
+name = "reifydb-testing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb_core = {workspace = true}
-reifydb_diagnostic = {workspace = true}
+reifydb-core = {workspace = true}
+reifydb-diagnostic = {workspace = true}
 
 goldenfile = { workspace = true }
 nom = { workspace = true }

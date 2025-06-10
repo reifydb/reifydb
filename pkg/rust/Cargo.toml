@@ -14,14 +14,14 @@ embedded = ["dep:tokio"]
 embedded_blocking = []
 
 [dependencies]
-reifydb_auth = { workspace = true }
-reifydb_catalog = { workspace = true }
-reifydb_core = { workspace = true }
-reifydb_diagnostic = { workspace = true }
-reifydb_engine = { workspace = true }
-reifydb_storage = { workspace = true }
-reifydb_rql = { workspace = true }
-reifydb_transaction = { workspace = true }
+reifydb-auth = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-diagnostic = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-storage = { workspace = true }
+reifydb-rql = { workspace = true }
+reifydb-transaction = { workspace = true }
 
 prost = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
