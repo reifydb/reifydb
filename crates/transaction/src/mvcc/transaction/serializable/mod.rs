@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 pub use read::*;
 use reifydb_core::clock::LocalClock;
+use reifydb_core::hook::Hooks;
 use reifydb_core::{Key, KeyRange, Version};
 use reifydb_storage::Storage;
 pub use write::*;
@@ -29,8 +30,9 @@ use crate::mvcc::transaction::{Committed, TransactionManager};
 pub struct Serializable<S: Storage>(Arc<Inner<S>>);
 
 pub struct Inner<S: Storage> {
-    tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
-    storage: S,
+    pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
+    pub(crate) storage: S,
+    pub(crate) hooks: Hooks,
 }
 
 impl<S: Storage> Deref for Serializable<S> {
@@ -50,7 +52,8 @@ impl<S: Storage> Clone for Serializable<S> {
 impl<S: Storage> Inner<S> {
     fn new(name: &str, storage: S) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
-        Self { tm, storage }
+        let hooks = storage.hooks();
+        Self { tm, storage, hooks }
     }
 
     fn version(&self) -> Version {

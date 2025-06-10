@@ -2,18 +2,32 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 use crate::Stored;
-use crate::storage::{Apply, Contains, Get, Scan, ScanRange, ScanRangeRev, ScanRev, Storage};
+use crate::storage::{
+    Apply, Contains, Get, GetHooks, Scan, ScanRange, ScanRangeRev, ScanRev, Storage,
+};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
+use reifydb_core::hook::Hooks;
 use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
 use rusqlite::{OptionalExtension, params};
-use std::ops::Bound;
+use std::ops::{Bound, Deref};
 use std::path::Path;
 use std::sync::Arc;
 
-pub struct Sqlite {
+#[derive(Clone)]
+pub struct Sqlite(Arc<SqliteInner>);
+
+pub struct SqliteInner {
     pool: Arc<Pool<SqliteConnectionManager>>,
+    hooks: Hooks,
+}
+
+impl Deref for Sqlite {
+    type Target = SqliteInner;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Sqlite {
@@ -46,7 +60,7 @@ impl Sqlite {
             .unwrap();
         }
 
-        Self { pool: Arc::new(pool) }
+        Self(Arc::new(SqliteInner { pool: Arc::new(pool), hooks: Default::default() }))
     }
 
     fn get_conn(&self) -> PooledConnection<SqliteConnectionManager> {
@@ -55,7 +69,7 @@ impl Sqlite {
 }
 
 impl Apply for Sqlite {
-    fn apply(&self, delta: Vec<Delta>, version: Version) {
+    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 
@@ -224,6 +238,12 @@ impl ScanRangeRev for Sqlite {
             .collect::<Vec<_>>();
 
         Box::new(rows.into_iter())
+    }
+}
+
+impl GetHooks for Sqlite {
+    fn hooks(&self) -> Hooks {
+        self.hooks.clone()
     }
 }
 

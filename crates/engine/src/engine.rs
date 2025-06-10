@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ExecutionResult;
 use crate::execute::{execute, execute_mut};
+use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
+use reifydb_core::hook::Hooks;
 use reifydb_rql::ast;
 use reifydb_rql::ast::Ast;
 use reifydb_rql::plan::{Plan, plan, plan_mut};
@@ -35,12 +36,26 @@ impl<S: Storage, T: Transaction<S>> Deref for Engine<S, T> {
 
 pub struct EngineInner<S: Storage, T: Transaction<S>> {
     transaction: T,
+    hooks: Hooks,
+    deferred_view: Arc<view::deferred::Engine<S>>,
     _marker: PhantomData<S>,
 }
 
-impl<S: Storage, T: Transaction<S>> Engine<S, T> {
+impl<S: Storage + 'static, T: Transaction<S>> Engine<S, T> {
     pub fn new(transaction: T) -> Self {
-        Self(Arc::new(EngineInner { transaction, _marker: PhantomData }))
+        let storage = transaction.storage();
+        let deferred_view = view::deferred::Engine::new(storage);
+        let hooks = transaction.hooks();
+        let result =
+            Self(Arc::new(EngineInner { transaction, hooks, deferred_view, _marker: PhantomData }));
+        result.setup_hooks();
+        result
+    }
+}
+
+impl<S: Storage + 'static, T: Transaction<S>> Engine<S, T> {
+    pub fn setup_hooks(&self) {
+        self.hooks.transaction().post_commit().register(self.deferred_view.clone());
     }
 }
 

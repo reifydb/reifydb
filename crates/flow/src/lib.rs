@@ -13,14 +13,13 @@ use reifydb_core::encoding::keycode::serialize;
 use reifydb_core::{AsyncCowVec, Key, Row, Value, Version, deserialize_row, serialize_row};
 use reifydb_storage::Storage;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
 
 mod error;
 
 pub type NodeId = usize;
 
 pub trait Node {
-    fn apply(&mut self, delta: &Vec<Delta>, version: Version) -> Vec<Delta>;
+    fn apply(&mut self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta>;
 }
 
 pub struct Graph {
@@ -51,14 +50,14 @@ impl Graph {
         self.edges.entry(from).or_default().push(to);
     }
 
-    pub fn apply(&mut self, delta: Vec<Delta>, version: Version) {
+    pub fn apply(&mut self, delta: AsyncCowVec<Delta>, version: Version) {
         let mut queue = VecDeque::new();
         queue.push_back((Self::root_node(), delta));
 
         while let Some((node_id, delta)) = queue.pop_front() {
             let node = self.nodes.get_mut(&node_id).expect("invalid node id");
 
-            let output = node.apply(&delta, version);
+            let output = node.apply(delta.clone(), version);
 
             for &downstream in self.edges.get(&node_id).unwrap_or(&vec![]) {
                 queue.push_back((downstream, output.clone()));
@@ -72,6 +71,12 @@ pub struct Orchestrator {
     dependencies: HashMap<&'static str, Vec<&'static str>>,
 }
 
+impl Default for Orchestrator {
+    fn default() -> Self {
+        Self { graphs: Default::default(), dependencies: Default::default() }
+    }
+}
+
 impl Orchestrator {
     pub fn register(&mut self, name: &'static str, graph: Graph) {
         self.graphs.insert(name, graph);
@@ -81,13 +86,13 @@ impl Orchestrator {
         self.dependencies.entry(parent).or_default().push(child);
     }
 
-    pub fn apply(&mut self, root: &'static str, delta: Vec<Delta>, version: Version) {
+    pub fn apply(&mut self, root: &'static str, delta: AsyncCowVec<Delta>, version: Version) {
         let mut queue = VecDeque::new();
         queue.push_back((root, delta));
 
         while let Some((view_name, input)) = queue.pop_front() {
             let graph = self.graphs.get_mut(view_name).unwrap();
-            graph.apply(input.clone(), version);
+            graph.apply(input, version);
 
             // if let Some(children) = self.dependencies.get(view_name) {
             //     for &child in children {
@@ -102,7 +107,7 @@ impl Orchestrator {
 
 pub struct CountNode<S: Storage> {
     pub state_prefix: Vec<u8>,
-    pub storage: Arc<S>,
+    pub storage: S,
 }
 
 impl<S: Storage> CountNode<S> {
@@ -115,13 +120,13 @@ impl<S: Storage> CountNode<S> {
 }
 
 impl<S: Storage> Node for CountNode<S> {
-    fn apply(&mut self, delta: &Vec<Delta>, version: Version) -> Vec<Delta> {
-        let mut updates = Vec::new();
+    fn apply(&mut self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
+        let mut updates = AsyncCowVec::default();
         let mut counters: HashMap<Key, i8> = HashMap::new();
 
         for d in delta {
             if let Delta::Set { key, .. } = d {
-                let state_key = self.make_state_key(key);
+                let state_key = self.make_state_key(&key);
 
                 let current = *counters.entry(state_key.clone()).or_insert_with(|| {
                     self.storage.get(&state_key, version).map(|v| v.bytes[0] as i8).unwrap_or(0)
@@ -163,32 +168,34 @@ impl GroupNode {
 }
 
 impl Node for GroupNode {
-    fn apply(&mut self, delta: &Vec<Delta>, _version: Version) -> Vec<Delta> {
+    fn apply(&mut self, delta: AsyncCowVec<Delta>, _version: Version) -> AsyncCowVec<Delta> {
         let mut grouped: HashMap<Key, Vec<Vec<Value>>> = HashMap::new();
 
         for d in delta {
             if let Delta::Set { bytes, .. } = d {
-                let row: Row = deserialize_row(bytes).unwrap();
+                let row: Row = deserialize_row(&bytes).unwrap();
                 let group_key = self.make_group_key(&row);
                 grouped.entry(group_key).or_default().push(row);
             }
         }
 
-        grouped
-            .into_iter()
-            .flat_map(|(key, rows)| {
-                rows.into_iter().map(move |r| Delta::Set {
-                    key: key.clone(),
-                    bytes: AsyncCowVec::new(serialize_row(&r).unwrap()),
+        AsyncCowVec::new(
+            grouped
+                .into_iter()
+                .flat_map(|(key, rows)| {
+                    rows.into_iter().map(move |r| Delta::Set {
+                        key: key.clone(),
+                        bytes: AsyncCowVec::new(serialize_row(&r).unwrap()),
+                    })
                 })
-            })
-            .collect()
+                .collect(),
+        )
     }
 }
 
 pub struct SumNode<S: Storage> {
     pub state_prefix: Vec<u8>,
-    pub storage: Arc<S>,
+    pub storage: S,
     pub sum: usize, // Index of the column to sum
 }
 
@@ -202,19 +209,19 @@ impl<S: Storage> SumNode<S> {
 }
 
 impl<S: Storage> Node for SumNode<S> {
-    fn apply(&mut self, delta: &Vec<Delta>, version: Version) -> Vec<Delta> {
-        let mut updates = Vec::new();
+    fn apply(&mut self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
+        let mut updates = AsyncCowVec::default();
         let mut sums: HashMap<Key, i8> = HashMap::new();
 
         for d in delta {
             if let Delta::Set { key, bytes } = d {
-                let state_key = self.make_state_key(key);
+                let state_key = self.make_state_key(&key);
 
                 let current = *sums.entry(state_key.clone()).or_insert_with(|| {
                     self.storage.get(&state_key, version).map(|v| v.bytes[0] as i8).unwrap_or(0)
                 });
 
-                let values: Row = deserialize_row(bytes).unwrap();
+                let values: Row = deserialize_row(&bytes).unwrap();
 
                 match &values[self.sum] {
                     Value::Int1(v) => {
@@ -246,9 +253,8 @@ mod tests {
     use reifydb_storage::memory::Memory;
     use reifydb_storage::{ScanRange, Storage};
     use std::collections::HashMap;
-    use std::sync::Arc;
 
-    fn create_count_graph<S: Storage + 'static>(storage: Arc<S>) -> Graph {
+    fn create_count_graph<S: Storage + 'static>(storage: S) -> Graph {
         let group_node = Box::new(GroupNode {
             state_prefix: b"view::group_count".to_vec(),
             group_by: vec![0, 1],
@@ -261,7 +267,7 @@ mod tests {
         result
     }
 
-    fn create_sum_graph<S: Storage + 'static>(storage: Arc<S>) -> Graph {
+    fn create_sum_graph<S: Storage + 'static>(storage: S) -> Graph {
         let group_node = Box::new(GroupNode {
             state_prefix: b"view::group_count".to_vec(),
             group_by: vec![0, 1],
@@ -278,13 +284,13 @@ mod tests {
         let mut orchestrator =
             Orchestrator { graphs: HashMap::new(), dependencies: HashMap::new() };
 
-        let storage = Arc::new(Memory::default());
+        let storage = Memory::default();
         // let storage = Arc::new(Sqlite::new(Path::new("test.sqlite")));
 
         orchestrator.register("view::count", create_count_graph(storage.clone()));
         orchestrator.register("view::sum", create_sum_graph(storage.clone()));
 
-        let delta = vec![
+        let delta = AsyncCowVec::new(vec![
             Delta::Set {
                 key: AsyncCowVec::new(b"apple".to_vec()),
                 bytes: AsyncCowVec::new(
@@ -304,7 +310,7 @@ mod tests {
                 ),
             },
             // Delta::Remove { key: AsyncCowVec::new(b"apple".to_vec()) },
-        ];
+        ]);
 
         orchestrator.apply("view::count", delta.clone(), 1);
         orchestrator.apply("view::sum", delta.clone(), 1);

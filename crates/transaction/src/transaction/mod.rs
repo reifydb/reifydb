@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_catalog::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
+use reifydb_core::hook::Hooks;
 use reifydb_core::{Key, Row, RowIter, Value};
 use reifydb_storage::Storage;
 
@@ -17,6 +18,10 @@ pub trait Transaction<S: Storage>: Send + Sync {
 
     /// Begins a read-write transaction.
     fn begin(&self) -> crate::Result<Self::Tx>;
+
+    fn hooks(&self) -> Hooks;
+
+    fn storage(&self) -> S;
 }
 
 /// A Rx executes transactional read operations on stores.

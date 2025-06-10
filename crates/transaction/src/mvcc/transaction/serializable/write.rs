@@ -20,7 +20,7 @@ use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::delta::{Bytes, Delta};
-use reifydb_core::{Key, KeyRange, Version};
+use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
 use std::collections::HashMap;
 use std::ops::RangeBounds;
 
@@ -49,7 +49,7 @@ impl<S: Storage> TransactionTx<S> {
     ///
     pub fn commit(&mut self) -> Result<(), MvccError> {
         self.tm.commit(|pending| {
-            let mut grouped: HashMap<Version, Vec<Delta>> = HashMap::new();
+            let mut grouped: HashMap<Version, AsyncCowVec<Delta>> = HashMap::new();
 
             for p in pending {
                 grouped.entry(p.version).or_default().push(p.delta);

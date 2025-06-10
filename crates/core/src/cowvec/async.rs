@@ -12,6 +12,25 @@ where
     inner: Arc<Vec<T>>,
 }
 
+#[macro_export]
+macro_rules! async_cow_vec {
+    () => {
+        $crate::AsyncCowVec::new(Vec::new())
+    };
+    ($($elem:expr),+ $(,)?) => {
+        $crate::AsyncCowVec::new(vec![$($elem),+])
+    };
+}
+
+impl<T> Default for AsyncCowVec<T>
+where
+    T: Clone + PartialEq,
+{
+    fn default() -> Self {
+        Self { inner: Arc::new(Vec::new()) }
+    }
+}
+
 impl<T: Clone + PartialEq> PartialEq<[T]> for &AsyncCowVec<T> {
     fn eq(&self, other: &[T]) -> bool {
         self.inner.as_slice() == other

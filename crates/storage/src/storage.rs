@@ -3,15 +3,20 @@
 
 use crate::Stored;
 use reifydb_core::delta::Delta;
-use reifydb_core::{Key, KeyRange, Version};
+use reifydb_core::hook::Hooks;
+use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
 
 pub trait Storage:
-    Send + Sync + Apply + Get + Contains + Scan + ScanRev + ScanRange + ScanRangeRev
+    Send + Sync + Apply + Clone + Get + GetHooks + Contains + Scan + ScanRev + ScanRange + ScanRangeRev
 {
 }
 
+pub trait GetHooks {
+    fn hooks(&self) -> Hooks;
+}
+
 pub trait Apply {
-    fn apply(&self, delta: Vec<Delta>, version: Version);
+    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version);
 }
 
 pub trait Get {

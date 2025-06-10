@@ -5,6 +5,8 @@ pub use iter::Iter;
 pub use iter_rev::IterRev;
 pub use range::Range;
 pub use range_rev::RangeRev;
+use std::ops::Deref;
+use std::sync::Arc;
 
 mod apply;
 mod contains;
@@ -17,11 +19,25 @@ mod versioned;
 
 use crate::Storage;
 use crate::memory::versioned::Versioned;
+use crate::storage::GetHooks;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::Key;
+use reifydb_core::hook::Hooks;
 
-pub struct Memory {
+#[derive(Clone)]
+pub struct Memory(Arc<MemoryInner>);
+
+pub struct MemoryInner {
     memory: SkipMap<Key, Versioned>,
+    hooks: Hooks,
+}
+
+impl Deref for Memory {
+    type Target = MemoryInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Default for Memory {
@@ -32,7 +48,13 @@ impl Default for Memory {
 
 impl Memory {
     pub fn new() -> Self {
-        Self { memory: SkipMap::new() }
+        Self(Arc::new(MemoryInner { memory: SkipMap::new(), hooks: Default::default() }))
+    }
+}
+
+impl GetHooks for Memory {
+    fn hooks(&self) -> Hooks {
+        self.hooks.clone()
     }
 }
 

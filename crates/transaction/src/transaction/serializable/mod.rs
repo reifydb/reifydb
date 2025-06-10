@@ -6,7 +6,8 @@ use crate::mvcc::transaction::serializable::{Serializable, TransactionRx, Transa
 use crate::{CATALOG, InsertResult, Transaction};
 use reifydb_catalog::{Catalog, CatalogRx, CatalogTx, Schema};
 use reifydb_core::encoding::bincode;
-use reifydb_core::{Row, RowIter, Value, deserialize_row, key_prefix, Key, KeyRange};
+use reifydb_core::hook::Hooks;
+use reifydb_core::{Key, KeyRange, Row, RowIter, Value, deserialize_row, key_prefix};
 use reifydb_storage::Storage;
 
 /// Serializable Concurrency Control
@@ -20,6 +21,14 @@ impl<S: Storage> Transaction<S> for Serializable<S> {
 
     fn begin(&self) -> crate::Result<Self::Tx> {
         Ok(self.begin())
+    }
+
+    fn hooks(&self) -> Hooks {
+        self.hooks.clone()
+    }
+
+    fn storage(&self) -> S {
+        self.storage.clone()
     }
 }
 

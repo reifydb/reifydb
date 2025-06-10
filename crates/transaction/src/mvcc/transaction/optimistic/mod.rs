@@ -19,6 +19,7 @@ use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
 use reifydb_core::clock::LocalClock;
+use reifydb_core::hook::Hooks;
 use reifydb_core::{Key, KeyRange, Version};
 use reifydb_storage::Storage;
 pub use write::TransactionTx;
@@ -43,14 +44,15 @@ impl<S: Storage> Clone for Optimistic<S> {
 }
 
 pub struct Inner<S: Storage> {
-    tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
-    storage: S,
+    pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
+    pub(crate) storage: S,
+    pub(crate) hooks: Hooks,
 }
 
 impl<S: Storage> Inner<S> {
-    fn new(name: &str, storage: S) -> Self {
+    fn new(name: &str, storage: S, hooks: Hooks) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
-        Self { tm, storage }
+        Self { tm, storage, hooks }
     }
 
     fn version(&self) -> Version {
@@ -60,7 +62,8 @@ impl<S: Storage> Inner<S> {
 
 impl<S: Storage> Optimistic<S> {
     pub fn new(storage: S) -> Self {
-        Self(Arc::new(Inner::new(core::any::type_name::<Self>(), storage)))
+        let hooks = storage.hooks();
+        Self(Arc::new(Inner::new(core::any::type_name::<Self>(), storage, hooks)))
     }
 }
 

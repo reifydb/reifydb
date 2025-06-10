@@ -4,11 +4,11 @@
 use crate::Apply;
 use crate::memory::Memory;
 use crate::memory::versioned::Versioned;
-use reifydb_core::Version;
 use reifydb_core::delta::Delta;
+use reifydb_core::{AsyncCowVec, Version};
 
 impl Apply for Memory {
-    fn apply(&self, delta: Vec<Delta>, version: Version) {
+    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
         for delta in delta {
             match delta {
                 Delta::Set { key, bytes } => {

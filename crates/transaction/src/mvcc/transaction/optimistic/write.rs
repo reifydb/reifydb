@@ -18,6 +18,7 @@ use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
+use reifydb_core::AsyncCowVec;
 use reifydb_core::delta::{Bytes, Delta};
 use std::collections::HashMap;
 use std::ops::RangeBounds;
@@ -47,14 +48,24 @@ impl<S: Storage> TransactionTx<S> {
     ///
     pub fn commit(&mut self) -> Result<(), MvccError> {
         self.tm.commit(|pending| {
-            let mut grouped: HashMap<Version, Vec<Delta>> = HashMap::new();
+            let mut grouped: HashMap<Version, AsyncCowVec<Delta>> = HashMap::new();
 
             for p in pending {
                 grouped.entry(p.version).or_default().push(p.delta);
             }
 
             for (version, deltas) in grouped {
-                self.engine.storage.apply(deltas, version);
+                self.engine.hooks.transaction().pre_commit().for_each(|hook| {
+                    hook.on_pre_commit(deltas.clone(), version).unwrap(); // FIXME instead of panic interrupt flow and rollback
+                });
+
+                self.engine.storage.apply(deltas.clone(), version);
+
+                self.engine
+                    .hooks
+                    .transaction()
+                    .post_commit()
+                    .for_each(|hook| hook.on_post_commit(deltas.clone(), version));
             }
 
             Ok(())
