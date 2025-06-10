@@ -9,7 +9,7 @@
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
 pub use error::Error;
 pub use key::{SortDirection, SortKey};
-pub use row::{Row, RowIter, RowIterator, deserialize_row};
+pub use row::{Row, RowIter, RowIterator, deserialize_row, serialize_row};
 pub use row_meta::RowMeta;
 pub use value::{Value, ValueKind};
 
