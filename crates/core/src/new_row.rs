@@ -60,14 +60,14 @@ impl Layout {
         Layout { fields, total_size, alignment: max_align }
     }
 
-    pub fn allocate_row(&self) -> Vec<u8> {
+    pub fn allocate_row(&self) -> AsyncCowVec<u8> {
         let layout = std::alloc::Layout::from_size_align(self.total_size, self.alignment).unwrap();
         unsafe {
             let ptr = std::alloc::alloc_zeroed(layout);
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
-            Vec::from_raw_parts(ptr, self.total_size, self.total_size)
+            AsyncCowVec::new(Vec::from_raw_parts(ptr, self.total_size, self.total_size))
         }
     }
 }
@@ -123,26 +123,26 @@ impl Layout {
         }
     }
 
-    fn get_i8(&self, row: &Vec<u8>, index: usize) -> i8 {
+    fn get_i8(&self, row: &[u8], index: usize) -> i8 {
         debug_assert!(row.len() == self.total_size);
         let field = &self.fields[index];
         unsafe { (row.as_ptr().add(field.offset) as *const i8).read_unaligned() }
     }
 
-    fn get_mut_i8(&self, row: &mut Vec<u8>, index: usize) -> &mut i8 {
+    fn get_mut_i8(&self, row: &mut [u8], index: usize) -> &mut i8 {
         debug_assert!(row.len() == self.total_size);
         let field = &self.fields[index];
         unsafe { &mut *(row.as_mut_ptr().add(field.offset) as *mut i8) }
         // unsafe { let src = row.as_ptr().add(field.offset);
     }
 
-    fn get_i32(&self, row: &Vec<u8>, index: usize) -> i32 {
+    fn get_i32(&self, row: &[u8], index: usize) -> i32 {
         debug_assert!(row.len() == self.total_size);
         let field = &self.fields[index];
         unsafe { (row.as_ptr().add(field.offset) as *const i32).read_unaligned() }
     }
 
-    fn get_mut_i32(&self, row: &mut Vec<u8>, index: usize) -> &mut i32 {
+    fn get_mut_i32(&self, row: &mut [u8], index: usize) -> &mut i32 {
         debug_assert!(row.len() == self.total_size);
         let field = &self.fields[index];
         unsafe { &mut *(row.as_mut_ptr().add(field.offset) as *mut i32) }
@@ -162,11 +162,12 @@ mod tests {
 
         let mut row = layout.allocate_row();
 
+        let mut_row = row.make_mut();
         // layout.write_value(&mut buffer, 2, &Value::Int4(42));
-        let v = layout.get_mut_i32(&mut row, 0);
+        let v = layout.get_mut_i32(mut_row, 0);
         *v = 127;
 
-        let v = layout.get_mut_i32(&mut row, 2);
+        let v = layout.get_mut_i32(mut_row, 2);
         *v = 42;
 
         // layout.write_value(&mut buffer, 1, &Value::Float8(3.14));

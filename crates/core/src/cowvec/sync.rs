@@ -65,13 +65,8 @@ impl<T: Clone + PartialEq> CowVec<T> {
         self.inner.get(idx)
     }
 
-    /// Ensures unique ownership and returns a mutable reference to the Vec.
     pub fn make_mut(&mut self) -> &mut Vec<T> {
-        if Rc::strong_count(&self.inner) != 1 {
-            let cloned = (*self.inner).clone();
-            self.inner = Rc::new(cloned);
-        }
-        Rc::get_mut(&mut self.inner).expect("Rc::get_mut should succeed after ensuring uniqueness")
+        Rc::make_mut(&mut self.inner)
     }
 
     pub fn set(&mut self, idx: usize, value: T) {
