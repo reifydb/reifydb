@@ -18,15 +18,15 @@ use std::collections::{
 };
 
 /// A type alias for [`PendingWrites`] that based on the [`BTreeMap`].
-pub type BTreePendingWrites = BTreeMap<Key, Pending>;
+pub type BTreePendingWrites = BTreeMap<EncodedKey, Pending>;
 
-impl PendingWrites for BTreeMap<Key, Pending> {
+impl PendingWrites for BTreeMap<EncodedKey, Pending> {
     type Iter<'a>
-        = BTreeMapIter<'a, Key, Pending>
+        = BTreeMapIter<'a, EncodedKey, Pending>
     where
         Self: 'a;
 
-    type IntoIter = BTreeMapIntoIter<Key, Pending>;
+    type IntoIter = BTreeMapIntoIter<EncodedKey, Pending>;
 
     fn new() -> Self {
         Self::default()
@@ -49,26 +49,26 @@ impl PendingWrites for BTreeMap<Key, Pending> {
     }
 
     fn estimate_size(&self, _entry: &Pending) -> u64 {
-        size_of::<Key>() as u64 + size_of::<Row>() as u64
+        size_of::<EncodedKey>() as u64 + size_of::<Row>() as u64
     }
 
-    fn get(&self, key: &Key) -> Option<&Pending> {
+    fn get(&self, key: &EncodedKey) -> Option<&Pending> {
         self.get(key)
     }
 
-    fn get_entry(&self, key: &Key) -> Option<(&Key, &Pending)> {
+    fn get_entry(&self, key: &EncodedKey) -> Option<(&EncodedKey, &Pending)> {
         self.get_key_value(key)
     }
 
-    fn contains_key(&self, key: &Key) -> bool {
+    fn contains_key(&self, key: &EncodedKey) -> bool {
         self.contains_key(key)
     }
 
-    fn insert(&mut self, key: Key, value: Pending) {
+    fn insert(&mut self, key: EncodedKey, value: Pending) {
         self.insert(key, value);
     }
 
-    fn remove_entry(&mut self, key: &Key) -> Option<(Key, Pending)> {
+    fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
         self.remove_entry(key)
     }
 
@@ -85,40 +85,40 @@ impl PendingWrites for BTreeMap<Key, Pending> {
     }
 }
 
-impl PendingWritesRange for BTreeMap<Key, Pending> {
+impl PendingWritesRange for BTreeMap<EncodedKey, Pending> {
     type Range<'a>
-        = BTreeMapRange<'a, Key, Pending>
+        = BTreeMapRange<'a, EncodedKey, Pending>
     where
         Self: 'a;
 
-    fn range<R: RangeBounds<Key>>(&self, range: R) -> Self::Range<'_> {
+    fn range<R: RangeBounds<EncodedKey>>(&self, range: R) -> Self::Range<'_> {
         BTreeMap::range(self, range)
     }
 }
 
-impl PendingWritesComparableRange for BTreeMap<Key, Pending> {
+impl PendingWritesComparableRange for BTreeMap<EncodedKey, Pending> {
     fn range_comparable<R>(&self, range: R) -> Self::Range<'_>
     where
-        R: RangeBounds<Key>,
+        R: RangeBounds<EncodedKey>,
     {
         BTreeMap::range(self, range)
     }
 }
 
-impl PendingWritesComparable for BTreeMap<Key, Pending> {
-    fn get_comparable(&self, key: &Key) -> Option<&Pending> {
+impl PendingWritesComparable for BTreeMap<EncodedKey, Pending> {
+    fn get_comparable(&self, key: &EncodedKey) -> Option<&Pending> {
         BTreeMap::get(self, key)
     }
 
-    fn get_entry_comparable(&self, key: &Key) -> Option<(&Key, &Pending)> {
+    fn get_entry_comparable(&self, key: &EncodedKey) -> Option<(&EncodedKey, &Pending)> {
         BTreeMap::get_key_value(self, key)
     }
 
-    fn contains_key_comparable(&self, key: &Key) -> bool {
+    fn contains_key_comparable(&self, key: &EncodedKey) -> bool {
         BTreeMap::contains_key(self, key)
     }
 
-    fn remove_entry_comparable(&mut self, key: &Key) -> Option<(Key, Pending)> {
+    fn remove_entry_comparable(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
         BTreeMap::remove_entry(self, key)
     }
 }

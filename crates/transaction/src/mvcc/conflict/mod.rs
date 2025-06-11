@@ -12,20 +12,20 @@
 use std::ops::RangeBounds;
 
 pub use btree::BTreeConflict;
-use reifydb_core::{Key, KeyRange};
+use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 mod btree;
 
 pub trait Conflict: Default + Sized {
     fn new() -> Self;
-    fn mark_read(&mut self, key: &Key);
-    fn mark_conflict(&mut self, key: &Key);
+    fn mark_read(&mut self, key: &EncodedKey);
+    fn mark_conflict(&mut self, key: &EncodedKey);
     fn has_conflict(&self, other: &Self) -> bool;
     fn rollback(&mut self);
 }
 
 pub trait ConflictRange: Conflict + Sized {
-    fn mark_range(&mut self, range: KeyRange);
+    fn mark_range(&mut self, range: EncodedKeyRange);
 }
 
 pub trait ConflictIter: Conflict + Sized {
@@ -34,6 +34,6 @@ pub trait ConflictIter: Conflict + Sized {
 
 impl<T: ConflictRange> ConflictIter for T {
     fn mark_iter(&mut self) {
-        self.mark_range(KeyRange::all());
+        self.mark_range(EncodedKeyRange::all());
     }
 }

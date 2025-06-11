@@ -3,10 +3,10 @@
 
 use crate::Contains;
 use crate::lmdb::Lmdb;
-use reifydb_core::{Key, Version};
+use reifydb_core::{EncodedKey, Version};
 
 impl Contains for Lmdb {
-    fn contains(&self, key: &Key, version: Version) -> bool {
+    fn contains(&self, key: &EncodedKey, version: Version) -> bool {
         todo!()
     }
 }

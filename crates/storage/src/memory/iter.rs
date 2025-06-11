@@ -14,7 +14,7 @@ use crate::memory::Memory;
 use crate::memory::versioned::Versioned;
 use crate::storage::Scan;
 use crossbeam_skiplist::map::Iter as MapIter;
-use reifydb_core::{Key, Version};
+use reifydb_core::{EncodedKey, Version};
 use std::ops::Bound;
 
 impl Scan for Memory {
@@ -27,7 +27,7 @@ impl Scan for Memory {
 }
 
 pub struct Iter<'a> {
-    pub(crate) iter: MapIter<'a, Key, Versioned>,
+    pub(crate) iter: MapIter<'a, EncodedKey, Versioned>,
     pub(crate) version: Version,
 }
 

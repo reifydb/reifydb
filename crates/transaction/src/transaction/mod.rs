@@ -4,7 +4,7 @@
 use reifydb_catalog::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::{Row, RowIter};
-use reifydb_core::{Key, Value};
+use reifydb_core::{EncodedKey, Value};
 use reifydb_storage::Storage;
 
 mod optimistic;
@@ -35,7 +35,7 @@ pub trait Rx {
     fn schema(&self, schema: &str) -> crate::Result<&Self::Schema>;
 
     /// Fetches store rows by primary key, if they exist.
-    fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>>;
+    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<Row>>;
 
     /// Scans all store's rows
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter>;

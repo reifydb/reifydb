@@ -16,7 +16,7 @@ use crate::Stored;
 use crate::memory::Memory;
 use crate::memory::versioned::Versioned;
 use crate::storage::ScanRangeRev;
-use reifydb_core::{Key, KeyRange, Version};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use std::ops::Bound;
 
 impl ScanRangeRev for Memory {
@@ -25,13 +25,13 @@ impl ScanRangeRev for Memory {
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: KeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
+    fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
         RangeRev { range: self.memory.range(range).rev(), version }
     }
 }
 
 pub struct RangeRev<'a> {
-    pub(crate) range: Rev<MapRange<'a, Key, KeyRange, Key, Versioned>>,
+    pub(crate) range: Rev<MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, Versioned>>,
     pub(crate) version: Version,
 }
 

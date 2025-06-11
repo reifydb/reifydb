@@ -11,13 +11,13 @@
 
 use reifydb_core::delta::Delta;
 use reifydb_core::row::Row;
-use reifydb_core::{Key, Version};
+use reifydb_core::{EncodedKey, Version};
 use reifydb_storage::Stored;
 use std::cmp;
 use std::cmp::Reverse;
 
 pub enum TransactionValue {
-    PendingIter { version: Version, key: Key, row: Row },
+    PendingIter { version: Version, key: EncodedKey, row: Row },
     Pending(Pending),
     Committed(Committed),
 }
@@ -51,7 +51,7 @@ impl Clone for TransactionValue {
 }
 
 impl TransactionValue {
-    pub fn key(&self) -> &Key {
+    pub fn key(&self) -> &EncodedKey {
         match self {
             Self::PendingIter { key, .. } => key,
             Self::Pending(item) => item.key(),
@@ -80,14 +80,14 @@ impl TransactionValue {
     }
 }
 
-impl From<(Version, Key, Row)> for TransactionValue {
-    fn from((version, k, b): (Version, Key, Row)) -> Self {
+impl From<(Version, EncodedKey, Row)> for TransactionValue {
+    fn from((version, k, b): (Version, EncodedKey, Row)) -> Self {
         Self::PendingIter { version, key: k, row: b }
     }
 }
 
-impl From<(Version, &Key, &Row)> for TransactionValue {
-    fn from((version, k, b): (Version, &Key, &Row)) -> Self {
+impl From<(Version, &EncodedKey, &Row)> for TransactionValue {
+    fn from((version, k, b): (Version, &EncodedKey, &Row)) -> Self {
         Self::PendingIter { version, key: k.clone(), row: b.clone() }
     }
 }
@@ -106,7 +106,7 @@ impl From<Committed> for TransactionValue {
 
 #[derive(Clone, Debug)]
 pub struct Committed {
-    pub(crate) key: Key,
+    pub(crate) key: EncodedKey,
     pub(crate) row: Row,
     pub(crate) version: Version,
 }
@@ -118,7 +118,7 @@ impl From<Stored> for Committed {
 }
 
 impl Committed {
-    pub fn key(&self) -> &Key {
+    pub fn key(&self) -> &EncodedKey {
         &self.key
     }
 
@@ -171,7 +171,7 @@ impl Pending {
         (self.version, self.delta)
     }
 
-    pub fn key(&self) -> &Key {
+    pub fn key(&self) -> &EncodedKey {
         &self.delta.key()
     }
 

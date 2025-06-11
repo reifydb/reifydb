@@ -8,7 +8,7 @@ use reifydb_catalog::{Catalog, CatalogRx, CatalogTx, Schema};
 use reifydb_core::encoding::bincode;
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::{Row, RowIter, deprecated_deserialize_row};
-use reifydb_core::{Key, KeyRange, Value, key_prefix};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Value, key_prefix};
 use reifydb_storage::Storage;
 
 /// Serializable Concurrency Control
@@ -46,13 +46,13 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
         Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
-    fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>> {
+    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<Row>> {
         todo!()
     }
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
+            self.scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
                 .map(|stored| deprecated_deserialize_row(&stored.row).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -73,13 +73,13 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
         Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
-    fn get(&self, store: &str, ids: &[Key]) -> crate::Result<Vec<Row>> {
+    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<Row>> {
         todo!()
     }
 
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
-            self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)).into())
+            self.scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)).into())
                 .unwrap()
                 .map(|r| deprecated_deserialize_row(&r.row()).unwrap())
                 .collect::<Vec<_>>()
@@ -110,7 +110,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         rows: Vec<Row>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, table)))
+            .scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, table)))
             .unwrap()
             .count();
 
@@ -136,7 +136,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         rows: Vec<Vec<Value>>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
-            .scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, series)))
+            .scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, series)))
             .unwrap()
             .count();
 

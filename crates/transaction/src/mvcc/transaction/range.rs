@@ -15,7 +15,7 @@ use core::cmp;
 
 use crate::mvcc::types::Pending;
 use crate::mvcc::types::TransactionValue;
-use reifydb_core::Key;
+use reifydb_core::EncodedKey;
 use reifydb_core::either::Either;
 use reifydb_storage::Storage;
 use std::collections::btree_map::Range as BTreeMapRange;
@@ -25,10 +25,10 @@ where
     S: Storage + 'a,
 {
     pub(crate) committed: S::ScanRangeIter<'a>,
-    pub(crate) pending: BTreeMapRange<'a, Key, Pending>,
-    next_pending: Option<(&'a Key, &'a Pending)>,
+    pub(crate) pending: BTreeMapRange<'a, EncodedKey, Pending>,
+    next_pending: Option<(&'a EncodedKey, &'a Pending)>,
     next_committed: Option<TransactionValue>,
-    last_yielded_key: Option<Either<&'a Key, TransactionValue>>,
+    last_yielded_key: Option<Either<&'a EncodedKey, TransactionValue>>,
     marker: Option<Marker<'a, C>>,
 }
 
@@ -49,7 +49,7 @@ where
     }
 
     pub fn new(
-        pending: BTreeMapRange<'a, Key, Pending>,
+        pending: BTreeMapRange<'a, EncodedKey, Pending>,
         committed: S::ScanRangeIter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {

@@ -3,11 +3,11 @@
 
 use crate::memory::Memory;
 use crate::{Get, Stored};
-use reifydb_core::{Key, Version};
+use reifydb_core::{EncodedKey, Version};
 use std::collections::Bound;
 
 impl Get for Memory {
-    fn get(&self, key: &Key, version: Version) -> Option<Stored> {
+    fn get(&self, key: &EncodedKey, version: Version) -> Option<Stored> {
         let item = self.memory.get(key)?;
         let (version, value) =
             item.value().upper_bound(Bound::Included(&version)).and_then(|v| {

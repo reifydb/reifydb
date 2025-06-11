@@ -6,7 +6,7 @@ use crate::{ScanRange, Stored};
 use heed::types::Bytes;
 use heed::{Database, Env};
 use reifydb_core::row::Row;
-use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
+use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use std::sync::Arc;
 impl ScanRange for Lmdb {
     type ScanRangeIter<'a> = Range;
 
-    fn scan_range(&self, range: KeyRange, version: Version) -> Self::ScanRangeIter<'_> {
+    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
         Range::new(self.env.clone(), self.db.clone(), version, range, 100)
     }
 }
@@ -23,10 +23,10 @@ pub struct Range {
     env: Arc<Env>,
     db: Database<Bytes, Bytes>,
     version: Version,
-    start: Bound<Key>,
-    end: Bound<Key>,
+    start: Bound<EncodedKey>,
+    end: Bound<EncodedKey>,
     buffer: VecDeque<Stored>,
-    last_key: Option<Key>,
+    last_key: Option<EncodedKey>,
     batch_size: usize,
 }
 
@@ -35,7 +35,7 @@ impl Range {
         env: Arc<Env>,
         db: Database<Bytes, Bytes>,
         version: Version,
-        range: KeyRange,
+        range: EncodedKeyRange,
         batch_size: usize,
     ) -> Self {
         let start = range.start_bound().cloned();

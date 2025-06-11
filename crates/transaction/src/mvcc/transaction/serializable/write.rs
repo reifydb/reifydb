@@ -21,7 +21,7 @@ use crate::mvcc::types::TransactionValue;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::delta::Delta;
 use reifydb_core::row::Row;
-use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
+use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 use std::collections::HashMap;
 use std::ops::RangeBounds;
 
@@ -77,7 +77,7 @@ impl<S: Storage> TransactionTx<S> {
         self.tm.rollback()
     }
 
-    pub fn contains_key(&mut self, key: &Key) -> Result<bool, TransactionError> {
+    pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, TransactionError> {
         let version = self.tm.version();
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
@@ -86,7 +86,7 @@ impl<S: Storage> TransactionTx<S> {
         }
     }
 
-    pub fn get(&mut self, key: &Key) -> Result<Option<TransactionValue>, TransactionError> {
+    pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, TransactionError> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {
@@ -100,11 +100,11 @@ impl<S: Storage> TransactionTx<S> {
         }
     }
 
-    pub fn set(&mut self, key: Key, row: Row) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: EncodedKey, row: Row) -> Result<(), TransactionError> {
         self.tm.set(key, row)
     }
 
-    pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {
+    pub fn remove(&mut self, key: EncodedKey) -> Result<(), TransactionError> {
         self.tm.remove(key)
     }
 
@@ -113,7 +113,7 @@ impl<S: Storage> TransactionTx<S> {
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter();
 
-        marker.mark_range(KeyRange::all());
+        marker.mark_range(EncodedKeyRange::all());
         let commited = self.engine.storage.scan(version);
 
         Ok(TransactionIter::new(pending, commited, Some(marker)))
@@ -126,7 +126,7 @@ impl<S: Storage> TransactionTx<S> {
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter().rev();
 
-        marker.mark_range(KeyRange::all());
+        marker.mark_range(EncodedKeyRange::all());
         let commited = self.engine.storage.scan_rev(version);
 
         Ok(TransactionIterRev::new(pending, commited, Some(marker)))
@@ -134,7 +134,7 @@ impl<S: Storage> TransactionTx<S> {
 
     pub fn scan_range<'a>(
         &'a mut self,
-        range: KeyRange,
+        range: EncodedKeyRange,
     ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
@@ -150,7 +150,7 @@ impl<S: Storage> TransactionTx<S> {
 
     pub fn scan_range_rev<'a>(
         &'a mut self,
-        range: KeyRange,
+        range: EncodedKeyRange,
     ) -> Result<TransactionRangeRev<'a, S, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
@@ -166,15 +166,15 @@ impl<S: Storage> TransactionTx<S> {
 
     pub fn scan_prefix<'a>(
         &'a mut self,
-        prefix: &Key,
+        prefix: &EncodedKey,
     ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
-        self.scan_range(KeyRange::prefix(prefix))
+        self.scan_range(EncodedKeyRange::prefix(prefix))
     }
 
     pub fn scan_prefix_rev<'a>(
         &'a mut self,
-        prefix: &Key,
+        prefix: &EncodedKey,
     ) -> Result<TransactionRangeRev<'a, S, BTreeConflict>, TransactionError> {
-        self.scan_range_rev(KeyRange::prefix(prefix))
+        self.scan_range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

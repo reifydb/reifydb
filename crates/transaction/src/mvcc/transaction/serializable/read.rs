@@ -15,7 +15,7 @@ use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::clock::LocalClock;
-use reifydb_core::{Key, KeyRange, Version};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use reifydb_storage::Storage;
 
 pub struct TransactionRx<S: Storage> {
@@ -35,12 +35,12 @@ impl<S: Storage> TransactionRx<S> {
         self.tm.version()
     }
 
-    pub fn get(&self, key: &Key) -> Option<TransactionValue> {
+    pub fn get(&self, key: &EncodedKey) -> Option<TransactionValue> {
         let version = self.tm.version();
         self.engine.get(key, version).map(Into::into)
     }
 
-    pub fn contains_key(&self, key: &Key) -> bool {
+    pub fn contains_key(&self, key: &EncodedKey) -> bool {
         let version = self.tm.version();
         self.engine.contains_key(key, version)
     }
@@ -55,21 +55,21 @@ impl<S: Storage> TransactionRx<S> {
         self.engine.scan_rev(version)
     }
 
-    pub fn scan_range(&self, range: KeyRange) -> S::ScanRangeIter<'_> {
+    pub fn scan_range(&self, range: EncodedKeyRange) -> S::ScanRangeIter<'_> {
         let version = self.tm.version();
         self.engine.scan_range(range, version)
     }
 
-    pub fn scan_range_rev(&self, range: KeyRange) -> S::ScanRangeIterRev<'_> {
+    pub fn scan_range_rev(&self, range: EncodedKeyRange) -> S::ScanRangeIterRev<'_> {
         let version = self.tm.version();
         self.engine.scan_range_rev(range, version)
     }
 
-    pub fn scan_prefix(&self, prefix: &Key) -> S::ScanRangeIter<'_> {
-        self.scan_range(KeyRange::prefix(prefix))
+    pub fn scan_prefix(&self, prefix: &EncodedKey) -> S::ScanRangeIter<'_> {
+        self.scan_range(EncodedKeyRange::prefix(prefix))
     }
 
-    pub fn scan_prefix_rev(&self, prefix: &Key) -> S::ScanRangeIterRev<'_> {
-        self.scan_range_rev(KeyRange::prefix(prefix))
+    pub fn scan_prefix_rev(&self, prefix: &EncodedKey) -> S::ScanRangeIterRev<'_> {
+        self.scan_range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

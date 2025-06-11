@@ -15,7 +15,7 @@ use crate::mvcc::types::TransactionValue;
 use core::{cmp, iter::Rev};
 
 use crate::mvcc::types::Pending;
-use reifydb_core::Key;
+use reifydb_core::EncodedKey;
 use reifydb_core::either::Either;
 use reifydb_storage::Storage;
 use std::collections::btree_map::Iter as BTreeMapIter;
@@ -24,11 +24,11 @@ pub struct TransactionIterRev<'a, S, C>
 where
     S: Storage + 'a,
 {
-    pending: Rev<BTreeMapIter<'a, Key, Pending>>,
+    pending: Rev<BTreeMapIter<'a, EncodedKey, Pending>>,
     committed: S::ScanIterRev<'a>,
-    next_pending: Option<(&'a Key, &'a Pending)>,
+    next_pending: Option<(&'a EncodedKey, &'a Pending)>,
     next_committed: Option<TransactionValue>,
-    last_yielded_key: Option<Either<&'a Key, TransactionValue>>,
+    last_yielded_key: Option<Either<&'a EncodedKey, TransactionValue>>,
     marker: Option<Marker<'a, C>>,
 }
 
@@ -49,7 +49,7 @@ where
     }
 
     pub fn new(
-        pending: Rev<BTreeMapIter<'a, Key, Pending>>,
+        pending: Rev<BTreeMapIter<'a, EncodedKey, Pending>>,
         committed: S::ScanIterRev<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {

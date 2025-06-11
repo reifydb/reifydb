@@ -10,7 +10,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::Row;
-use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
+use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 use rusqlite::{OptionalExtension, params};
 use std::ops::{Bound, Deref};
 use std::path::Path;
@@ -100,7 +100,7 @@ impl Apply for Sqlite {
 }
 
 impl Get for Sqlite {
-    fn get(&self, key: &Key, version: Version) -> Option<Stored> {
+    fn get(&self, key: &EncodedKey, version: Version) -> Option<Stored> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -121,7 +121,7 @@ impl Get for Sqlite {
 }
 
 impl Contains for Sqlite {
-    fn contains(&self, key: &Key, version: Version) -> bool {
+    fn contains(&self, key: &EncodedKey, version: Version) -> bool {
         // FIXME this can be done better than this
         self.get(key, version).is_some()
     }
@@ -184,7 +184,7 @@ impl ScanRev for Sqlite {
 impl ScanRange for Sqlite {
     type ScanRangeIter<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
 
-    fn scan_range(&self, range: KeyRange, version: Version) -> Self::ScanRangeIter<'_> {
+    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -215,7 +215,7 @@ impl ScanRange for Sqlite {
 impl ScanRangeRev for Sqlite {
     type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
 
-    fn scan_range_rev(&self, range: KeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
+    fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();

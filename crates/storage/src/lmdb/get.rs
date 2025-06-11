@@ -3,10 +3,10 @@
 
 use crate::lmdb::Lmdb;
 use crate::{Get, Stored};
-use reifydb_core::{Key, Version};
+use reifydb_core::{EncodedKey, Version};
 
 impl Get for Lmdb {
-    fn get(&self, key: &Key, version: Version) -> Option<Stored> {
+    fn get(&self, key: &EncodedKey, version: Version) -> Option<Stored> {
         todo!()
     }
 }

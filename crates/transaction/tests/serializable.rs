@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::KeyRange;
+use reifydb_core::EncodedKeyRange;
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
@@ -228,7 +228,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
                 let range =
-                    KeyRange::parse(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."));
+                    EncodedKeyRange::parse(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."));
                 args.reject_rest()?;
 
                 match t {

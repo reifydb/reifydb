@@ -16,7 +16,7 @@ use crate::mvcc::types::Pending;
 use reifydb_core::clock::LogicalClock;
 use reifydb_core::delta::Delta;
 use reifydb_core::row::Row;
-use reifydb_core::{Key, Version};
+use reifydb_core::{EncodedKey, Version};
 
 pub struct TransactionManagerTx<C, L, P>
 where
@@ -97,12 +97,12 @@ where
     }
 
     /// Marks a key is read.
-    pub fn mark_read(&mut self, k: &Key) {
+    pub fn mark_read(&mut self, k: &EncodedKey) {
         self.conflicts.mark_read(k);
     }
 
     /// Marks a key is conflict.
-    pub fn mark_conflict(&mut self, k: &Key) {
+    pub fn mark_conflict(&mut self, k: &EncodedKey) {
         self.conflicts.mark_conflict(k);
     }
 }
@@ -114,7 +114,7 @@ where
     P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
-    pub fn set(&mut self, key: Key, row: Row) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: EncodedKey, row: Row) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -127,7 +127,7 @@ where
     /// This is done by adding a delete marker for the key at commit timestamp.  Any
     /// reads happening before this timestamp would be unaffected. Any reads after
     /// this commit would see the deletion.
-    pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {
+    pub fn remove(&mut self, key: EncodedKey) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -146,7 +146,7 @@ where
     }
 
     /// Returns `true` if the pending writes contains the key.
-    pub fn contains_key(&mut self, key: &Key) -> Result<Option<bool>, TransactionError> {
+    pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>, TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -172,7 +172,7 @@ where
     /// the end user can read the key from the database.
     pub fn get<'a, 'b: 'a>(
         &'a mut self,
-        key: &'b Key,
+        key: &'b EncodedKey,
     ) -> Result<Option<Pending>, TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
@@ -263,7 +263,7 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    fn set_internal(&mut self, key: Key, row: Row) -> Result<(), TransactionError> {
+    fn set_internal(&mut self, key: EncodedKey, row: Row) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }

@@ -21,14 +21,14 @@ use crate::Storage;
 use crate::memory::versioned::Versioned;
 use crate::storage::GetHooks;
 use crossbeam_skiplist::SkipMap;
-use reifydb_core::Key;
+use reifydb_core::EncodedKey;
 use reifydb_core::hook::Hooks;
 
 #[derive(Clone)]
 pub struct Memory(Arc<MemoryInner>);
 
 pub struct MemoryInner {
-    memory: SkipMap<Key, Versioned>,
+    memory: SkipMap<EncodedKey, Versioned>,
     hooks: Hooks,
 }
 

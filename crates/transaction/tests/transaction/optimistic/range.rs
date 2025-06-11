@@ -16,7 +16,7 @@ use crate::transaction::AsyncCowVec;
 use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
-use reifydb_core::KeyRange;
+use reifydb_core::EncodedKeyRange;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::range::TransactionRange;
@@ -31,7 +31,7 @@ fn test_range() {
     txn.set(as_key!(3), as_row!(3)).unwrap();
     txn.commit().unwrap();
 
-    let one_to_four = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(4)));
+    let one_to_four = EncodedKeyRange::start_end(Some(as_key!(1)), Some(as_key!(4)));
 
     let txn = engine.begin_read_only();
     let iter = txn.scan_range(one_to_four.clone());
@@ -63,7 +63,7 @@ fn test_range2() {
     txn.set(as_key!(2), as_row!(2)).unwrap();
     txn.set(as_key!(3), as_row!(3)).unwrap();
 
-    let one_to_four = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(4)));
+    let one_to_four = EncodedKeyRange::start_end(Some(as_key!(1)), Some(as_key!(4)));
 
     let iter = txn.scan_range(one_to_four.clone()).unwrap();
     let mut count = 0;
@@ -93,7 +93,7 @@ fn test_range2() {
     txn.set(as_key!(5), as_row!(5)).unwrap();
     txn.set(as_key!(6), as_row!(6)).unwrap();
 
-    let one_to_five = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(5)));
+    let one_to_five = EncodedKeyRange::start_end(Some(as_key!(1)), Some(as_key!(5)));
 
     let iter = txn.scan_range(one_to_five.clone()).unwrap();
     let mut count = 0;
@@ -122,7 +122,7 @@ fn test_range3() {
     txn.set(as_key!(5), as_row!(5)).unwrap();
     txn.set(as_key!(6), as_row!(6)).unwrap();
 
-    let four_to_seven = KeyRange::start_end(Some(as_key!(4)), Some(as_key!(7)));
+    let four_to_seven = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(7)));
 
     let iter = txn.scan_range(four_to_seven.clone()).unwrap();
     let mut count = 3;
@@ -146,7 +146,7 @@ fn test_range3() {
 
     txn.commit().unwrap();
 
-    let one_to_five = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(5)));
+    let one_to_five = EncodedKeyRange::start_end(Some(as_key!(1)), Some(as_key!(5)));
 
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_row!(1)).unwrap();
@@ -237,7 +237,7 @@ fn test_range_edge() {
         assert_eq!(expected.len(), i);
     };
 
-    let one_to_ten = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(10)));
+    let one_to_ten = EncodedKeyRange::start_end(Some(as_key!(1)), Some(as_key!(10)));
 
     let mut txn = engine.begin();
     let itr = txn.scan_range(one_to_ten.clone()).unwrap();

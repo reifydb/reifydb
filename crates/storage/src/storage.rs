@@ -4,7 +4,7 @@
 use crate::Stored;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::Hooks;
-use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
+use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 
 pub trait Storage:
     Send + Sync + Apply + Clone + Get + GetHooks + Contains + Scan + ScanRev + ScanRange + ScanRangeRev
@@ -20,11 +20,11 @@ pub trait Apply {
 }
 
 pub trait Get {
-    fn get(&self, key: &Key, version: Version) -> Option<Stored>;
+    fn get(&self, key: &EncodedKey, version: Version) -> Option<Stored>;
 }
 
 pub trait Contains {
-    fn contains(&self, key: &Key, version: Version) -> bool;
+    fn contains(&self, key: &EncodedKey, version: Version) -> bool;
 }
 
 pub trait ScanIterator: Iterator<Item = Stored> {}
@@ -58,10 +58,10 @@ pub trait ScanRange {
     where
         Self: 'a;
 
-    fn scan_range(&self, range: KeyRange, version: Version) -> Self::ScanRangeIter<'_>;
+    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_>;
 
-    fn scan_prefix(&self, prefix: &Key, version: Version) -> Self::ScanRangeIter<'_> {
-        self.scan_range(KeyRange::prefix(prefix), version)
+    fn scan_prefix(&self, prefix: &EncodedKey, version: Version) -> Self::ScanRangeIter<'_> {
+        self.scan_range(EncodedKeyRange::prefix(prefix), version)
     }
 }
 
@@ -74,9 +74,9 @@ pub trait ScanRangeRev {
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: KeyRange, version: Version) -> Self::ScanRangeIterRev<'_>;
+    fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIterRev<'_>;
 
-    fn scan_prefix_rev(&self, prefix: &Key, version: Version) -> Self::ScanRangeIterRev<'_> {
-        self.scan_range_rev(KeyRange::prefix(prefix), version)
+    fn scan_prefix_rev(&self, prefix: &EncodedKey, version: Version) -> Self::ScanRangeIterRev<'_> {
+        self.scan_range_rev(EncodedKeyRange::prefix(prefix), version)
     }
 }

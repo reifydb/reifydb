@@ -7,9 +7,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
-pub use error::Error;
-pub use key::{Key, KeyRange};
-pub use key::{SortDirection, SortKey};
+pub use key::{EncodedKey, EncodedKeyRange};
 pub use value::{Value, ValueKind};
 pub use version::Version;
 
@@ -18,7 +16,6 @@ mod cowvec;
 pub mod delta;
 pub mod either;
 pub mod encoding;
-mod error;
 pub mod hook;
 mod key;
 pub mod num;
@@ -27,8 +24,6 @@ pub mod row;
 mod value;
 mod version;
 pub mod wait_group;
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Copy, Clone, Debug)]
 pub enum StoreKind {

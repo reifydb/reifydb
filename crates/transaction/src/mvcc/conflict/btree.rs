@@ -15,8 +15,8 @@ use std::collections::BTreeSet;
 
 #[derive(Clone, Debug)]
 enum Read {
-    Single(Key),
-    Range { start: Bound<Key>, end: Bound<Key> },
+    Single(EncodedKey),
+    Range { start: Bound<EncodedKey>, end: Bound<EncodedKey> },
     All,
 }
 
@@ -24,7 +24,7 @@ enum Read {
 #[derive(Debug)]
 pub struct BTreeConflict {
     reads: Vec<Read>,
-    conflict_keys: BTreeSet<Key>,
+    conflict_keys: BTreeSet<EncodedKey>,
 }
 
 impl Clone for BTreeConflict {
@@ -44,11 +44,11 @@ impl Conflict for BTreeConflict {
         Self { reads: Vec::new(), conflict_keys: BTreeSet::new() }
     }
 
-    fn mark_read(&mut self, key: &Key) {
+    fn mark_read(&mut self, key: &EncodedKey) {
         self.reads.push(Read::Single(key.clone()));
     }
 
-    fn mark_conflict(&mut self, key: &Key) {
+    fn mark_conflict(&mut self, key: &EncodedKey) {
         self.conflict_keys.insert(key.clone());
     }
 
@@ -166,7 +166,7 @@ impl Conflict for BTreeConflict {
 }
 
 impl ConflictRange for BTreeConflict {
-    fn mark_range(&mut self, range: KeyRange) {
+    fn mark_range(&mut self, range: EncodedKeyRange) {
         let start = match range.start_bound() {
             Bound::Included(k) => Bound::Included(k.clone()),
             Bound::Excluded(k) => Bound::Excluded(k.clone()),

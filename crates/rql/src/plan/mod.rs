@@ -19,7 +19,8 @@ pub use error::Error;
 use reifydb_catalog::{
     CatalogRx, Column, ColumnPolicy, ColumnSaturationPolicy, ColumnToCreate, SchemaRx, StoreRx,
 };
-use reifydb_core::{SortDirection, SortKey, StoreKind};
+use reifydb_core::StoreKind;
+use reifydb_frame::{SortDirection, SortKey};
 
 mod diagnostic;
 mod error;

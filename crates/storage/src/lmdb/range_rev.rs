@@ -3,12 +3,12 @@
 
 use crate::lmdb::Lmdb;
 use crate::{ScanRangeRev, Stored};
-use reifydb_core::{KeyRange, Version};
+use reifydb_core::{EncodedKeyRange, Version};
 
 impl ScanRangeRev for Lmdb {
     type ScanRangeIterRev<'a> = RangeRev;
 
-    fn scan_range_rev(&self, range: KeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
+    fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
         todo!()
     }
 }

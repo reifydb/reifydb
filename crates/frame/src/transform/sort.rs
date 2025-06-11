@@ -1,8 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{ColumnValues, Frame, Error};
-use reifydb_core::{SortDirection, SortKey};
+use crate::{ColumnValues, Error, Frame};
+
+#[derive(Debug)]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug)]
+pub struct SortKey {
+    pub column: String,
+    pub direction: SortDirection,
+}
 
 impl Frame {
     pub fn sort(&mut self, keys: &[SortKey]) -> crate::Result<()> {

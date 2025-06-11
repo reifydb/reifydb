@@ -16,7 +16,7 @@ use crate::Stored;
 use crate::memory::Memory;
 use crate::memory::versioned::Versioned;
 use crate::storage::ScanRev;
-use reifydb_core::{Key, Version};
+use reifydb_core::{EncodedKey, Version};
 use std::ops::Bound;
 
 impl ScanRev for Memory {
@@ -29,7 +29,7 @@ impl ScanRev for Memory {
 }
 
 pub struct IterRev<'a> {
-    pub(crate) iter: Rev<MapIter<'a, Key, Versioned>>,
+    pub(crate) iter: Rev<MapIter<'a, EncodedKey, Versioned>>,
     pub(crate) version: Version,
 }
 

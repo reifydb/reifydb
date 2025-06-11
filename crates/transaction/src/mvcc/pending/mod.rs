@@ -13,19 +13,19 @@ use crate::mvcc::types::Pending;
 use std::ops::RangeBounds;
 
 pub use btree::BTreePendingWrites;
-use reifydb_core::Key;
+use reifydb_core::EncodedKey;
 
 mod btree;
 
 /// A pending writes manager that can be used to store pending writes in a transaction.
 pub trait PendingWrites: Default + Sized {
     /// The iterator type.
-    type Iter<'a>: Iterator<Item = (&'a Key, &'a Pending)>
+    type Iter<'a>: Iterator<Item = (&'a EncodedKey, &'a Pending)>
     where
         Self: 'a;
 
     /// The IntoIterator type.
-    type IntoIter: Iterator<Item = (Key, Pending)>;
+    type IntoIter: Iterator<Item = (EncodedKey, Pending)>;
 
     /// Create a new pending writes manager.
     fn new() -> Self;
@@ -46,19 +46,19 @@ pub trait PendingWrites: Default + Sized {
     fn estimate_size(&self, entry: &Pending) -> u64;
 
     /// Returns a reference to the value corresponding to the key.
-    fn get(&self, key: &Key) -> Option<&Pending>;
+    fn get(&self, key: &EncodedKey) -> Option<&Pending>;
 
     /// Returns a reference to the key-value pair corresponding to the key.
-    fn get_entry(&self, key: &Key) -> Option<(&Key, &Pending)>;
+    fn get_entry(&self, key: &EncodedKey) -> Option<(&EncodedKey, &Pending)>;
 
     /// Returns true if the pending manager contains the key.
-    fn contains_key(&self, key: &Key) -> bool;
+    fn contains_key(&self, key: &EncodedKey) -> bool;
 
     /// Inserts a key-value pair into the er.
-    fn insert(&mut self, key: Key, value: Pending);
+    fn insert(&mut self, key: EncodedKey, value: Pending);
 
     /// Removes a key from the pending writes, returning the key-value pair if the key was previously in the pending writes.
-    fn remove_entry(&mut self, key: &Key) -> Option<(Key, Pending)>;
+    fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)>;
 
     /// Returns an iterator over the pending writes.
     fn iter(&self) -> Self::Iter<'_>;
@@ -73,12 +73,12 @@ pub trait PendingWrites: Default + Sized {
 /// An trait that can be used to get a range over the pending writes.
 pub trait PendingWritesRange: PendingWrites {
     /// The iterator type.
-    type Range<'a>: IntoIterator<Item = (&'a Key, &'a Pending)>
+    type Range<'a>: IntoIterator<Item = (&'a EncodedKey, &'a Pending)>
     where
         Self: 'a;
 
     /// Returns an iterator over the pending writes.
-    fn range<R: RangeBounds<Key>>(&self, range: R) -> Self::Range<'_>;
+    fn range<R: RangeBounds<EncodedKey>>(&self, range: R) -> Self::Range<'_>;
 }
 
 /// An trait that can be used to get a range over the pending writes.
@@ -86,20 +86,20 @@ pub trait PendingWritesComparableRange: PendingWritesRange + PendingWritesCompar
     /// Returns an iterator over the pending writes.
     fn range_comparable<R>(&self, range: R) -> Self::Range<'_>
     where
-        R: RangeBounds<Key>;
+        R: RangeBounds<EncodedKey>;
 }
 
 /// An optimized version of the [`PendingWrites`] trait that if your pending writes manager is depend on the order.
 pub trait PendingWritesComparable: PendingWrites {
     /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
-    fn get_comparable(&self, key: &Key) -> Option<&Pending>;
+    fn get_comparable(&self, key: &EncodedKey) -> Option<&Pending>;
 
     /// Optimized version of [`PendingWrites::get`] that accepts borrowed keys.
-    fn get_entry_comparable(&self, key: &Key) -> Option<(&Key, &Pending)>;
+    fn get_entry_comparable(&self, key: &EncodedKey) -> Option<(&EncodedKey, &Pending)>;
 
     /// Optimized version of [`PendingWrites::contains_key`] that accepts borrowed keys.
-    fn contains_key_comparable(&self, key: &Key) -> bool;
+    fn contains_key_comparable(&self, key: &EncodedKey) -> bool;
 
     /// Optimized version of [`PendingWrites::remove_entry`] that accepts borrowed keys.
-    fn remove_entry_comparable(&mut self, key: &Key) -> Option<(Key, Pending)>;
+    fn remove_entry_comparable(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)>;
 }

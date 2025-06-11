@@ -16,7 +16,7 @@ use crate::transaction::keycode;
 use crate::{as_key, as_row, from_row};
 use MvccError::Transaction;
 use TransactionError::Conflict;
-use reifydb_core::Key;
+use reifydb_core::EncodedKey;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::MvccError;
 use reifydb_transaction::mvcc::error::TransactionError;
@@ -25,8 +25,8 @@ use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, Transaction
 #[test]
 fn test_write_skew() {
     // accounts
-    let a999: Key = as_key!(999);
-    let a888: Key = as_key!(888);
+    let a999: EncodedKey = as_key!(999);
+    let a888: EncodedKey = as_key!(888);
 
     let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 
@@ -37,7 +37,7 @@ fn test_write_skew() {
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
-    let get_bal = |txn: &mut TransactionTx<Memory>, k: &Key| -> u64 {
+    let get_bal = |txn: &mut TransactionTx<Memory>, k: &EncodedKey| -> u64 {
         let sv = txn.get(k).unwrap().unwrap();
         let val = sv.row();
         from_row!(u64, val)

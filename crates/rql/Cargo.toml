@@ -10,6 +10,7 @@ repository.workspace = true
 reifydb-core = { workspace = true }
 reifydb-diagnostic = { workspace = true }
 reifydb-catalog = { workspace = true }
+reifydb-frame = { workspace = true }
 
 nom = { workspace = true }
 nom_locate = { workspace = true }

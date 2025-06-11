@@ -11,7 +11,7 @@ use reifydb_core::delta::Delta;
 use reifydb_core::delta::Delta::Set;
 use reifydb_core::encoding::keycode::serialize;
 use reifydb_core::row::{Row, deprecated_deserialize_row, deprecated_serialize_row};
-use reifydb_core::{AsyncCowVec, Key, Version};
+use reifydb_core::{AsyncCowVec, EncodedKey, Version};
 use reifydb_storage::Storage;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
@@ -128,7 +128,7 @@ pub struct CountNode<S: Storage> {
 }
 
 impl<S: Storage> CountNode<S> {
-    fn make_state_key(&self, key: &Key) -> Key {
+    fn make_state_key(&self, key: &EncodedKey) -> EncodedKey {
         let mut raw = self.state_prefix.clone();
         raw.extend_from_slice(b"::");
         raw.extend_from_slice(key.as_slice());
@@ -139,7 +139,7 @@ impl<S: Storage> CountNode<S> {
 impl<S: Storage> Node for CountNode<S> {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
         let mut updates = AsyncCowVec::default();
-        let mut counters: HashMap<Key, i8> = HashMap::new();
+        let mut counters: HashMap<EncodedKey, i8> = HashMap::new();
 
         for d in delta {
             if let Delta::Set { key, .. } = d {
@@ -173,7 +173,7 @@ impl GroupNode {
     //     Self { group_by }
     // }
 
-    fn make_group_key(&self, row: &Row) -> Key {
+    fn make_group_key(&self, row: &Row) -> EncodedKey {
         // let values: Row = deserialize_row(&row).unwrap();
         let mut raw = self.state_prefix.clone();
         for &index in &self.group_by {
@@ -186,7 +186,7 @@ impl GroupNode {
 
 impl Node for GroupNode {
     fn apply(&self, delta: AsyncCowVec<Delta>, _version: Version) -> AsyncCowVec<Delta> {
-        let mut grouped: HashMap<Key, Vec<Row>> = HashMap::new();
+        let mut grouped: HashMap<EncodedKey, Vec<Row>> = HashMap::new();
 
         for d in delta {
             if let Delta::Set { row, .. } = d {
@@ -217,7 +217,7 @@ pub struct SumNode<S: Storage> {
 }
 
 impl<S: Storage> SumNode<S> {
-    fn make_state_key(&self, key: &Key) -> Key {
+    fn make_state_key(&self, key: &EncodedKey) -> EncodedKey {
         let mut raw = self.state_prefix.clone();
         raw.extend_from_slice(b"::");
         raw.extend_from_slice(key.as_slice());
@@ -228,7 +228,7 @@ impl<S: Storage> SumNode<S> {
 impl<S: Storage> Node for SumNode<S> {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
         let mut updates = AsyncCowVec::default();
-        let mut sums: HashMap<Key, i8> = HashMap::new();
+        let mut sums: HashMap<EncodedKey, i8> = HashMap::new();
 
         for d in delta {
             if let Delta::Set { key, row } = d {

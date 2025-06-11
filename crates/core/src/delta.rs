@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Key;
+use crate::EncodedKey;
 use crate::row::Row;
 use std::cmp;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Delta {
-    Set { key: Key, row: Row },
-    Remove { key: Key },
+    Set { key: EncodedKey, row: Row },
+    Remove { key: EncodedKey },
 }
 
 impl PartialOrd for Delta {
@@ -25,7 +25,7 @@ impl Ord for Delta {
 
 impl Delta {
     /// Returns the key
-    pub fn key(&self) -> &Key {
+    pub fn key(&self) -> &EncodedKey {
         match self {
             Self::Set { key, .. } => key,
             Self::Remove { key } => key,

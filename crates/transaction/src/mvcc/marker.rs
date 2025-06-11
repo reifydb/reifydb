@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::conflict::{Conflict, ConflictRange};
-use reifydb_core::{Key, KeyRange};
+use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 pub struct Marker<'a, C> {
     marker: &'a mut C,
@@ -23,13 +23,13 @@ impl<'a, C> Marker<'a, C> {
 }
 
 impl<C: Conflict> Marker<'_, C> {
-    pub fn mark(&mut self, k: &Key) {
+    pub fn mark(&mut self, k: &EncodedKey) {
         self.marker.mark_read(k);
     }
 }
 
 impl<C: ConflictRange> Marker<'_, C> {
-    pub fn mark_range(&mut self, range: KeyRange) {
+    pub fn mark_range(&mut self, range: EncodedKeyRange) {
         self.marker.mark_range(range);
     }
 }

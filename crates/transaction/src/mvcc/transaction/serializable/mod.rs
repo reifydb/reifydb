@@ -15,7 +15,7 @@ use std::sync::Arc;
 pub use read::*;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::hook::Hooks;
-use reifydb_core::{Key, KeyRange, Version};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use reifydb_storage::Storage;
 pub use write::*;
 
@@ -88,11 +88,11 @@ pub enum Transaction<S: Storage> {
 }
 
 impl<S: Storage> Serializable<S> {
-    pub fn get(&self, key: &Key, version: Version) -> Option<Committed> {
+    pub fn get(&self, key: &EncodedKey, version: Version) -> Option<Committed> {
         self.storage.get(key, version).map(|sv| sv.into())
     }
 
-    pub fn contains_key(&self, key: &Key, version: Version) -> bool {
+    pub fn contains_key(&self, key: &EncodedKey, version: Version) -> bool {
         self.storage.contains(key, version)
     }
 
@@ -104,11 +104,11 @@ impl<S: Storage> Serializable<S> {
         self.storage.scan_rev(version)
     }
 
-    pub fn scan_range(&self, range: KeyRange, version: Version) -> S::ScanRangeIter<'_> {
+    pub fn scan_range(&self, range: EncodedKeyRange, version: Version) -> S::ScanRangeIter<'_> {
         self.storage.scan_range(range, version)
     }
 
-    pub fn scan_range_rev(&self, range: KeyRange, version: Version) -> S::ScanRangeIterRev<'_> {
+    pub fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> S::ScanRangeIterRev<'_> {
         self.storage.scan_range_rev(range, version)
     }
 }

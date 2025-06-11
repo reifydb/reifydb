@@ -3,11 +3,11 @@
 
 use crate::Contains;
 use crate::memory::Memory;
-use reifydb_core::{Key, Version};
+use reifydb_core::{EncodedKey, Version};
 use std::collections::Bound;
 
 impl Contains for Memory {
-    fn contains(&self, key: &Key, version: Version) -> bool {
+    fn contains(&self, key: &EncodedKey, version: Version) -> bool {
         match self.memory.get(key) {
             None => false,
             Some(values) => match values.value().upper_bound(Bound::Included(&version)) {
