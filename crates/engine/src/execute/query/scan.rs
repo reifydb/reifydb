@@ -4,7 +4,8 @@
 use crate::execute::Executor;
 use reifydb_catalog::{SchemaRx, StoreRx};
 use reifydb_core::ValueKind;
-use reifydb_frame::{Append, Column, ColumnValues, Frame};
+use reifydb_core::row::Layout;
+use reifydb_frame::{Column, ColumnValues, Frame};
 use reifydb_transaction::Rx;
 
 impl Executor {
@@ -15,6 +16,9 @@ impl Executor {
         store: &str,
     ) -> crate::Result<()> {
         let columns = rx.schema(schema)?.get(store)?.list_columns()?;
+
+        let values = columns.iter().map(|c| c.value).collect::<Vec<_>>();
+        let layout = Layout::new(&values);
 
         let columns: Vec<Column> = columns
             .iter()
@@ -42,10 +46,7 @@ impl Executor {
             .collect();
 
         let mut frame = Frame::new(columns);
-        for row in rx.scan_table(schema, store)?.into_iter() {
-            frame.append(row)?;
-        }
-
+        frame.append_rows(&layout, rx.scan_table(schema, store)?.into_iter())?;
         self.frame = frame;
         Ok(())
     }

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -134,6 +135,31 @@ impl<T: Clone + PartialEq> Deref for AsyncCowVec<T> {
 
     fn deref(&self) -> &Self::Target {
         self.as_slice()
+    }
+}
+
+impl<T> Serialize for AsyncCowVec<T>
+where
+    T: Clone + PartialEq + Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
+}
+
+impl<'de, T> Deserialize<'de> for AsyncCowVec<T>
+where
+    T: Clone + PartialEq + Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let vec = Vec::<T>::deserialize(deserializer)?;
+        Ok(AsyncCowVec { inner: Arc::new(vec) })
     }
 }
 

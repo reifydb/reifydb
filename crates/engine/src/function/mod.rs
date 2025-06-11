@@ -7,7 +7,8 @@ pub use error::FunctionError;
 
 mod error;
 
-use reifydb_core::{RowIter, Value};
+use reifydb_core::Value;
+use reifydb_core::row::RowIter;
 use reifydb_frame::{Column, ColumnValues};
 use std::collections::HashMap;
 use std::fmt;

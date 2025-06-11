@@ -5,6 +5,9 @@ use crate::ExecutionResult;
 use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
 use crate::execute::write::column::adjust_column;
+use reifydb_core::ValueKind;
+use reifydb_core::row::Layout;
+use reifydb_frame::ValueRef;
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_transaction::Tx;
 
@@ -18,9 +21,15 @@ impl Executor {
             InsertIntoTablePlan::Values { schema, table, columns, rows_to_insert } => {
                 let mut rows = Vec::with_capacity(rows_to_insert.len());
 
-                for row in rows_to_insert {
-                    let mut row_values = Vec::with_capacity(row.len());
-                    for (idx, expr) in row.into_iter().enumerate() {
+                let values: Vec<ValueKind> = columns.iter().map(|c| c.value).collect();
+                let layout = Layout::new(&values);
+
+                for row_to_insert in rows_to_insert {
+                    // let mut row_values = Vec::with_capacity(row.len());
+
+                    let mut row = layout.allocate_row();
+
+                    for (idx, expr) in row_to_insert.into_iter().enumerate() {
                         let column = &columns[idx];
 
                         let context = Context {
@@ -46,14 +55,23 @@ impl Executor {
                                             &context,
                                             &lazy_span,
                                         )?;
-                                        row_values.push(r.get(0).as_value());
+                                        // row_values.push(r.get(0).as_value());
+                                        match r.get(0) {
+                                            ValueRef::Int1(v) => {
+                                                layout.set_i8(row.make_mut(), idx, *v)
+                                            }
+                                            ValueRef::Int2(v) => {
+                                                layout.set_i16(row.make_mut(), idx, *v)
+                                            }
+                                            _ => unimplemented!(),
+                                        }
                                     }
                                     _ => unimplemented!(),
                                 }
                             }
                         }
                     }
-                    rows.push(row_values);
+                    rows.push(row);
                 }
 
                 let result = tx.insert_into_table(schema.as_str(), table.as_str(), rows).unwrap();

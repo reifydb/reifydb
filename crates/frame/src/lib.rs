@@ -10,7 +10,6 @@ pub use column::{AsSlice, Column, ColumnValues, Push};
 pub use error::Error;
 pub use frame::Frame;
 pub use reference::{RowRef, ValueRef};
-pub use transform::Append;
 
 pub mod aggregate;
 mod column;

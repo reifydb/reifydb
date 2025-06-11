@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{Column, ExecutionResult};
-use reifydb_core::Row;
+use reifydb_core::Value;
 use std::fmt::{Display, Formatter};
 
 impl Display for ExecutionResult {
@@ -39,7 +39,11 @@ impl Display for ExecutionResult {
     }
 }
 
-fn print_query(labels: &Vec<Column>, rows: &Vec<Row>, f: &mut Formatter<'_>) -> std::fmt::Result {
+fn print_query(
+    labels: &Vec<Column>,
+    rows: &Vec<Vec<Value>>,
+    f: &mut Formatter<'_>,
+) -> std::fmt::Result {
     let num_cols = labels.len();
     let mut col_widths = vec![0; num_cols];
 

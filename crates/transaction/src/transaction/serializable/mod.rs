@@ -7,7 +7,8 @@ use crate::{CATALOG, InsertResult, Transaction};
 use reifydb_catalog::{Catalog, CatalogRx, CatalogTx, Schema};
 use reifydb_core::encoding::bincode;
 use reifydb_core::hook::Hooks;
-use reifydb_core::{Key, KeyRange, Row, RowIter, Value, deserialize_row, key_prefix};
+use reifydb_core::row::{Row, RowIter, deprecated_deserialize_row};
+use reifydb_core::{Key, KeyRange, Value, key_prefix};
 use reifydb_storage::Storage;
 
 /// Serializable Concurrency Control
@@ -52,7 +53,7 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
-                .map(|r| deserialize_row(&r.bytes).unwrap())
+                .map(|r| deprecated_deserialize_row(&r.bytes).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))
@@ -80,7 +81,7 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
         Ok(Box::new(
             self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)).into())
                 .unwrap()
-                .map(|r| deserialize_row(&r.bytes()).unwrap())
+                .map(|r| deprecated_deserialize_row(&r.bytes()).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))

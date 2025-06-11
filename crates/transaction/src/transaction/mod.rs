@@ -3,7 +3,8 @@
 
 use reifydb_catalog::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
 use reifydb_core::hook::Hooks;
-use reifydb_core::{Key, Row, RowIter, Value};
+use reifydb_core::row::{Row, RowIter};
+use reifydb_core::{Key, Value};
 use reifydb_storage::Storage;
 
 mod optimistic;

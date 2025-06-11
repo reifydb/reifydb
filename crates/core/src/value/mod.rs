@@ -43,6 +43,48 @@ pub enum ValueKind {
     Undefined,
 }
 
+impl ValueKind {
+    pub fn size(&self) -> usize {
+        match self {
+            ValueKind::Bool => 1,
+            ValueKind::Float4 => 4,
+            ValueKind::Float8 => 8,
+            ValueKind::Int1 => 1,
+            ValueKind::Int2 => 2,
+            ValueKind::Int4 => 4,
+            ValueKind::Int8 => 8,
+            ValueKind::Int16 => 16,
+            ValueKind::String => 255,
+            ValueKind::Uint1 => 1,
+            ValueKind::Uint2 => 2,
+            ValueKind::Uint4 => 4,
+            ValueKind::Uint8 => 8,
+            ValueKind::Uint16 => 16,
+            ValueKind::Undefined => 0,
+        }
+    }
+
+    pub fn alignment(&self) -> usize {
+        match self {
+            ValueKind::Bool => 1,
+            ValueKind::Float4 => 4,
+            ValueKind::Float8 => 8,
+            ValueKind::Int1 => 1,
+            ValueKind::Int2 => 2,
+            ValueKind::Int4 => 4,
+            ValueKind::Int8 => 8,
+            ValueKind::Int16 => 16,
+            ValueKind::String => 1,
+            ValueKind::Uint1 => 1,
+            ValueKind::Uint2 => 2,
+            ValueKind::Uint4 => 4,
+            ValueKind::Uint8 => 8,
+            ValueKind::Uint16 => 16,
+            ValueKind::Undefined => 0,
+        }
+    }
+}
+
 impl Display for ValueKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
