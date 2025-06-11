@@ -61,7 +61,7 @@ use serde::{Deserialize, Serialize};
 #[macro_export]
 macro_rules! key_prefix {
     ($($arg:tt)*) => {
-        &AsyncCowVec::new((&format!($($arg)*)).as_bytes().to_vec())
+        &EncodedKey::new((&format!($($arg)*)).as_bytes().to_vec())
     };
 }
 

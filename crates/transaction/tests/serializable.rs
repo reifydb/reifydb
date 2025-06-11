@@ -9,11 +9,11 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::EncodedKeyRange;
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
 use reifydb_core::row::EncodedRow;
+use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_storage::Stored;
 use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
@@ -25,7 +25,6 @@ use reifydb_transaction::mvcc::types::TransactionValue;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Write as _;
-use std::ops::Deref;
 use std::path::Path;
 use test_each_file::test_each_path;
 
@@ -119,7 +118,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
                 for arg in args.rest_pos() {
-                    let key = decode_binary(&arg.value);
+                    let key = EncodedKey(decode_binary(&arg.value));
 
                     match t {
                         Transaction::Rx(_) => {
@@ -148,7 +147,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
                 for arg in args.rest_pos() {
-                    let key = decode_binary(&arg.value);
+                    let key = EncodedKey(decode_binary(&arg.value));
                     let t = self.get_transaction(&command.prefix)?;
                     let value = match t {
                         Transaction::Rx(rx) => rx.get(&key).map(|r| r.row().to_vec()),
@@ -168,7 +167,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let mut tx = TransactionTx::new(self.engine.clone());
 
                 for kv in args.rest_key() {
-                    let key = decode_binary(kv.key.as_ref().unwrap());
+                    let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
                     let row = EncodedRow(decode_binary(&kv.value));
                     if row.is_empty() {
                         tx.remove(key).unwrap();
@@ -227,8 +226,9 @@ impl<'a> testscript::Runner for MvccRunner {
 
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-                let range =
-                    EncodedKeyRange::parse(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."));
+                let range = EncodedKeyRange::parse(
+                    args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
+                );
                 args.reject_rest()?;
 
                 match t {
@@ -254,7 +254,8 @@ impl<'a> testscript::Runner for MvccRunner {
 
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-                let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
+                let prefix =
+                    EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
                 args.reject_rest()?;
 
                 match t {
@@ -280,7 +281,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let t = self.get_transaction(&command.prefix)?;
                 let mut args = command.consume_args();
                 for kv in args.rest_key() {
-                    let key = decode_binary(kv.key.as_ref().unwrap());
+                    let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
                     let row = EncodedRow(decode_binary(&kv.value));
                     match t {
                         Transaction::Rx(_) => {

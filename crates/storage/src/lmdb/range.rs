@@ -69,14 +69,14 @@ impl Range {
         for result in iter.take(self.batch_size) {
             match result {
                 Ok((k, v)) => {
-                    self.last_key = Some(AsyncCowVec::new(k.to_vec()));
+                    self.last_key = Some(EncodedKey::new(k.to_vec()));
                     // self.buffer.push_back(Ok((
                     //     AsyncCowVec::new(k.to_vec()),
                     //     AsyncCowVec::new(v.to_vec()),
                     // )));
                     //
                     self.buffer.push_back(Stored {
-                        key: AsyncCowVec::new(k.to_vec()),
+                        key: EncodedKey::new(k.to_vec()),
                         row: EncodedRow(AsyncCowVec::new(v.to_vec())),
                         version: 0, // FIXME
                     })

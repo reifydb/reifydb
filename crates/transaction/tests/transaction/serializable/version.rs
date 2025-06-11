@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::from_row;
-use crate::transaction::AsyncCowVec;
+use crate::transaction::EncodedKey;
 use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
@@ -22,7 +22,6 @@ use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
-#[cfg(test)]
 fn test_versions() {
     let engine: Serializable<Memory> = Serializable::new(Memory::new());
 

@@ -9,10 +9,10 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::AsyncCowVec;
+use crate::transaction::EncodedKey;
 use crate::transaction::FromRow;
+use crate::transaction::IntoRow;
 use crate::transaction::keycode;
-use crate::transaction::{IntoRow};
 use crate::{as_key, as_row, from_row};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
@@ -21,7 +21,6 @@ use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
-#[cfg(test)]
 fn test_versions() {
     let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
 

@@ -22,7 +22,7 @@ pub trait FromKey: Sized {
 
 #[macro_export]
 macro_rules! as_key {
-    ($key:expr) => {{ AsyncCowVec::new(keycode::serialize(&$key)) }};
+    ($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
 }
 
 #[macro_export]

@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::as_key;
-use crate::transaction::AsyncCowVec;
+use crate::transaction::EncodedKey;
 use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;

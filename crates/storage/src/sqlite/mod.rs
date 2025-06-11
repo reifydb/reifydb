@@ -109,7 +109,7 @@ impl Get for Sqlite {
 			params![key.to_vec(), version],
 			|row| {
 				Ok(Stored {
-					key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
+					key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 					row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					version: row.get(2)?,
 				})
@@ -141,7 +141,7 @@ impl Scan for Sqlite {
         let rows = stmt
             .query_map(params![version], |row| {
                 Ok(Stored {
-                    key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
+                    key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
                     row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
                     version: row.get(2)?,
                 })
@@ -168,7 +168,7 @@ impl ScanRev for Sqlite {
         let rows = stmt
             .query_map(params![version], |row| {
                 Ok(Stored {
-                    key: AsyncCowVec::new(row.get(0)?),
+                    key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
                     row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
@@ -199,7 +199,7 @@ impl ScanRange for Sqlite {
             // .query_map(params![], |row| {
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Stored {
-                    key: AsyncCowVec::new(row.get(0)?),
+                    key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
                     row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
@@ -215,7 +215,11 @@ impl ScanRange for Sqlite {
 impl ScanRangeRev for Sqlite {
     type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
+    fn scan_range_rev(
+        &self,
+        range: EncodedKeyRange,
+        version: Version,
+    ) -> Self::ScanRangeIterRev<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -229,7 +233,7 @@ impl ScanRangeRev for Sqlite {
         let rows = stmt
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Stored {
-                    key: AsyncCowVec::new(row.get(0)?),
+                    key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
                     row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
@@ -250,7 +254,7 @@ impl GetHooks for Sqlite {
 
 impl Storage for Sqlite {}
 
-fn bound_to_bytes(bound: &Bound<AsyncCowVec<u8>>) -> Vec<u8> {
+fn bound_to_bytes(bound: &Bound<EncodedKey>) -> Vec<u8> {
     match bound {
         Bound::Included(v) | Bound::Excluded(v) => v.to_vec(),
         Bound::Unbounded => Vec::new(), // or handle it differently if needed

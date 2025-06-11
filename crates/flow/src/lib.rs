@@ -132,7 +132,7 @@ impl<S: Storage> CountNode<S> {
         let mut raw = self.state_prefix.clone();
         raw.extend_from_slice(b"::");
         raw.extend_from_slice(key.as_slice());
-        AsyncCowVec::new(raw)
+        EncodedKey::new(raw)
     }
 }
 
@@ -180,7 +180,7 @@ impl GroupNode {
             raw.extend_from_slice(b"::".as_slice());
             raw.extend(serialize(&row[index].to_string()));
         }
-        AsyncCowVec::new(raw)
+        EncodedKey::new(raw)
     }
 }
 
@@ -221,7 +221,7 @@ impl<S: Storage> SumNode<S> {
         let mut raw = self.state_prefix.clone();
         raw.extend_from_slice(b"::");
         raw.extend_from_slice(key.as_slice());
-        AsyncCowVec::new(raw)
+        EncodedKey::new(raw)
     }
 }
 
@@ -301,24 +301,24 @@ mod tests {
     //
     //     // let delta = AsyncCowVec::new(vec![
     //     //     Delta::Set {
-    //     //         key: AsyncCowVec::new(b"apple".to_vec()),
+    //     //         key: EncodedKey::new(b"apple".to_vec()),
     //     //         bytes: AsyncCowVec::new(
     //     //             serialize_row(&vec![Value::Int1(1), Value::Int1(1), Value::Int1(23)]).unwrap(),
     //     //         ),
     //     //     },
     //     //     Delta::Set {
-    //     //         key: AsyncCowVec::new(b"apple".to_vec()),
+    //     //         key: EncodedKey::new(b"apple".to_vec()),
     //     //         bytes: AsyncCowVec::new(
     //     //             serialize_row(&vec![Value::Int1(1), Value::Int1(1), Value::Int1(1)]).unwrap(),
     //     //         ),
     //     //     },
     //     //     Delta::Set {
-    //     //         key: AsyncCowVec::new(b"banana".to_vec()),
+    //     //         key: EncodedKey::new(b"banana".to_vec()),
     //     //         bytes: AsyncCowVec::new(
     //     //             serialize_row(&vec![Value::Int1(2), Value::Int1(1), Value::Int1(1)]).unwrap(),
     //     //         ),
     //     //     },
-    //     //     // Delta::Remove { key: AsyncCowVec::new(b"apple".to_vec()) },
+    //     //     // Delta::Remove { key: EncodedKey::new(b"apple".to_vec()) },
     //     // ]);
     //     //
     //     // orchestrator.apply("view::count", delta.clone(), 1);

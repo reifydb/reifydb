@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::EncodedKey;
 use crate::encoding::binary::decode_binary;
-use crate::{AsyncCowVec, EncodedKey};
 use regex::Regex;
 use std::collections::Bound;
 use std::ops::RangeBounds;
@@ -22,10 +22,15 @@ impl EncodedKeyRange {
     /// bytes are 0xff, we scan to the end of the range, since there can't be other
     /// prefixes after it.
     pub fn prefix(prefix: &[u8]) -> Self {
-        let start = Bound::Included(AsyncCowVec::new(prefix.to_vec()));
+        let start = Bound::Included(EncodedKey::new(prefix));
         let end = match prefix.iter().rposition(|&b| b != 0xff) {
-            Some(i) => Bound::Excluded(AsyncCowVec::new(
-                prefix.iter().take(i).copied().chain(std::iter::once(prefix[i] + 1)).collect(),
+            Some(i) => Bound::Excluded(EncodedKey::new(
+                prefix
+                    .iter()
+                    .take(i)
+                    .copied()
+                    .chain(std::iter::once(prefix[i] + 1))
+                    .collect::<Vec<_>>(),
             )),
             None => Bound::Unbounded,
         };
@@ -81,18 +86,17 @@ impl EncodedKeyRange {
     ///
     /// If parsing fails, it defaults to a degenerate range from `0xff` to `0xff` (empty).
     pub fn parse(str: &str) -> Self {
-        let (mut start, mut end) =
-            (Bound::<AsyncCowVec<u8>>::Unbounded, Bound::<AsyncCowVec<u8>>::Unbounded);
+        let (mut start, mut end) = (Bound::<EncodedKey>::Unbounded, Bound::<EncodedKey>::Unbounded);
 
         let re = Regex::new(r"^(\S+)?\.\.(=)?(\S+)?").expect("invalid regex");
 
         re.captures(str)
             .map(|groups| {
                 if let Some(m) = groups.get(1) {
-                    start = Bound::Included(decode_binary(m.as_str()));
+                    start = Bound::Included(EncodedKey(decode_binary(m.as_str())));
                 }
                 if let Some(m) = groups.get(3) {
-                    let decoded = decode_binary(m.as_str());
+                    let decoded = EncodedKey(decode_binary(m.as_str()));
                     if groups.get(2).is_some() {
                         end = Bound::Included(decoded)
                     } else {
@@ -102,8 +106,8 @@ impl EncodedKeyRange {
                 Self { start, end }
             })
             .unwrap_or(Self {
-                start: Bound::Included(AsyncCowVec::new(vec![0xff])),
-                end: Bound::Excluded(AsyncCowVec::new(vec![0xff])),
+                start: Bound::Included(EncodedKey::new([0xff])),
+                end: Bound::Excluded(EncodedKey::new([0xff])),
             })
     }
 }
@@ -120,11 +124,11 @@ impl RangeBounds<EncodedKey> for EncodedKeyRange {
 
 #[cfg(test)]
 mod tests {
-    use crate::AsyncCowVec;
+    use crate::EncodedKey;
     use std::collections::Bound;
 
     macro_rules! as_key {
-        ($key:expr) => {{ AsyncCowVec::new(keycode::serialize(&$key)) }};
+        ($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
     }
 
     mod prefix {
@@ -176,8 +180,8 @@ mod tests {
     }
 
     mod start_end {
-        use crate::encoding::keycode;
-        use crate::key::AsyncCowVec;
+        use crate::EncodedKey;
+use crate::encoding::keycode;
         use crate::key::range::EncodedKeyRange;
         use crate::key::range::tests::{excluded, included};
         use std::ops::Bound;
@@ -238,7 +242,7 @@ mod tests {
     }
 
     mod parse {
-        use crate::AsyncCowVec;
+        use crate::EncodedKey;
         use crate::key::range::EncodedKeyRange;
         use crate::key::range::tests::{excluded, included};
         use std::ops::Bound;
@@ -281,7 +285,7 @@ mod tests {
         #[test]
         fn test_invalid_string_returns_degenerate_range() {
             let r = EncodedKeyRange::parse("not a range");
-            let expected = AsyncCowVec::new(vec![0xff]);
+            let expected = EncodedKey::new(&[0xff]);
             assert_eq!(r.start, Bound::Included(expected.clone()));
             assert_eq!(r.end, Bound::Excluded(expected));
         }
@@ -289,7 +293,7 @@ mod tests {
         #[test]
         fn test__empty_string_returns_degenerate_range() {
             let r = EncodedKeyRange::parse("");
-            let expected = AsyncCowVec::new(vec![0xff]);
+            let expected = EncodedKey::new(&[0xff]);
             assert_eq!(r.start, Bound::Included(expected.clone()));
             assert_eq!(r.end, Bound::Excluded(expected));
         }
@@ -304,11 +308,11 @@ mod tests {
         }
     }
 
-    fn included(key: &[u8]) -> Bound<AsyncCowVec<u8>> {
-        Bound::Included(AsyncCowVec::new(key.to_vec()))
+    fn included(key: &[u8]) -> Bound<EncodedKey> {
+        Bound::Included(EncodedKey::new(key))
     }
 
-    fn excluded(key: &[u8]) -> Bound<AsyncCowVec<u8>> {
-        Bound::Excluded(AsyncCowVec::new(key.to_vec()))
+    fn excluded(key: &[u8]) -> Bound<EncodedKey> {
+        Bound::Excluded(EncodedKey::new(key))
     }
 }

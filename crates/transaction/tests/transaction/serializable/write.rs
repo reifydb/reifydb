@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::transaction::AsyncCowVec;
+use crate::transaction::EncodedKey;
 use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;

@@ -14,13 +14,12 @@ use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKeyRange, async_cow_vec};
+use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::{Storage, Stored};
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
-use std::ops::Deref;
 use std::path::Path;
 use test_each_file::test_each_path;
 
@@ -48,7 +47,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
             // get KEY [version=VERSION]
             "get" => {
                 let mut args = command.consume_args();
-                let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+                let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
                 let value = self.storage.get(&key, version).map(|sv| sv.row.to_vec());
@@ -57,7 +56,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
             // contains KEY [version=VERSION]
             "contains" => {
                 let mut args = command.consume_args();
-                let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+                let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
                 let contains = self.storage.contains(&key, version);
@@ -81,8 +80,9 @@ impl<S: Storage> testscript::Runner for Runner<S> {
             "scan_range" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-                let range =
-                    EncodedKeyRange::parse(args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."));
+                let range = EncodedKeyRange::parse(
+                    args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
+                );
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
@@ -98,7 +98,8 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
-                let prefix = decode_binary(&args.next_pos().ok_or("prefix not given")?.value);
+                let prefix =
+                    EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
                 args.reject_rest()?;
 
                 if !reverse {
@@ -112,7 +113,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
             "set" => {
                 let mut args = command.consume_args();
                 let kv = args.next_key().ok_or("key=value not given")?.clone();
-                let key = decode_binary(&kv.key.unwrap());
+                let key = EncodedKey(decode_binary(&kv.key.unwrap()));
                 let row = EncodedRow(decode_binary(&kv.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
@@ -123,7 +124,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
             // remove KEY [version=VERSION]
             "remove" => {
                 let mut args = command.consume_args();
-                let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+                let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 

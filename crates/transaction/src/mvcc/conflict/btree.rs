@@ -53,7 +53,6 @@ impl Conflict for BTreeConflict {
     }
 
     fn has_conflict(&self, other: &Self) -> bool {
-
         // Dirty write detection: write-write conflict
         if self.conflict_keys.iter().any(|k| other.conflict_keys.contains(k)) {
             return true;
@@ -191,15 +190,15 @@ impl ConflictRange for BTreeConflict {
 #[cfg(test)]
 mod test {
     use super::{BTreeConflict, Conflict};
-    use reifydb_core::AsyncCowVec;
+    use reifydb_core::EncodedKey;
 
     #[test]
     fn test_btree_cm() {
         let mut cm = BTreeConflict::new();
-        cm.mark_read(&AsyncCowVec::new(b"1".to_vec()));
-        cm.mark_read(&AsyncCowVec::new(b"2".to_vec()));
-        cm.mark_conflict(&AsyncCowVec::new(b"2".to_vec()));
-        cm.mark_conflict(&AsyncCowVec::new(b"3".to_vec()));
+        cm.mark_read(&EncodedKey::new(b"1".to_vec()));
+        cm.mark_read(&EncodedKey::new(b"2".to_vec()));
+        cm.mark_conflict(&EncodedKey::new(b"2".to_vec()));
+        cm.mark_conflict(&EncodedKey::new(b"3".to_vec()));
         let cm2 = cm.clone();
         assert!(cm.has_conflict(&cm2));
     }
