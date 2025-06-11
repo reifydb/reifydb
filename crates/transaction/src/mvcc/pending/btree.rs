@@ -11,7 +11,7 @@
 
 use super::*;
 
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use std::collections::{
     BTreeMap,
     btree_map::{IntoIter as BTreeMapIntoIter, Iter as BTreeMapIter, Range as BTreeMapRange},
@@ -49,7 +49,7 @@ impl PendingWrites for BTreeMap<EncodedKey, Pending> {
     }
 
     fn estimate_size(&self, _entry: &Pending) -> u64 {
-        size_of::<EncodedKey>() as u64 + size_of::<Row>() as u64
+        size_of::<EncodedKey>() as u64 + size_of::<EncodedRow>() as u64
     }
 
     fn get(&self, key: &EncodedKey) -> Option<&Pending> {

@@ -13,7 +13,7 @@ use reifydb_core::EncodedKeyRange;
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use reifydb_storage::Stored;
 use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
@@ -169,7 +169,7 @@ impl<'a> testscript::Runner for MvccRunner {
 
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
-                    let row = Row(decode_binary(&kv.value));
+                    let row = EncodedRow(decode_binary(&kv.value));
                     if row.is_empty() {
                         tx.remove(key).unwrap();
                     } else {
@@ -283,7 +283,7 @@ impl<'a> testscript::Runner for MvccRunner {
                 let mut args = command.consume_args();
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
-                    let row = Row(decode_binary(&kv.value));
+                    let row = EncodedRow(decode_binary(&kv.value));
                     match t {
                         Transaction::Rx(_) => {
                             unreachable!("can not call set on rx")

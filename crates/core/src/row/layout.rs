@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::row::Row;
+use crate::row::EncodedRow;
 use crate::{AsyncCowVec, ValueKind};
 
 #[derive(Debug)]
@@ -48,7 +48,7 @@ impl Layout {
         Layout { fields, data_size: size, alignment: max_align, validity_size: validity_bytes }
     }
 
-    pub fn allocate_row(&self) -> Row {
+    pub fn allocate_row(&self) -> EncodedRow {
         let layout = std::alloc::Layout::from_size_align(self.data_size, self.alignment).unwrap();
         unsafe {
             let ptr = std::alloc::alloc_zeroed(layout);
@@ -57,7 +57,7 @@ impl Layout {
             }
             // Safe because alloc_zeroed + known size/capacity
             let vec = Vec::from_raw_parts(ptr, self.data_size, self.data_size);
-            Row(AsyncCowVec::new(vec))
+            EncodedRow(AsyncCowVec::new(vec))
         }
     }
 
@@ -69,15 +69,15 @@ impl Layout {
         self.data_size + self.validity_size
     }
 
-    pub fn data_slice<'a>(&'a self, row: &'a Row) -> &'a [u8] {
+    pub fn data_slice<'a>(&'a self, row: &'a EncodedRow) -> &'a [u8] {
         &row.0[self.data_offset()..]
     }
 
-    pub fn data_slice_mut<'a>(&'a mut self, row: &'a mut Row) -> &'a mut [u8] {
+    pub fn data_slice_mut<'a>(&'a mut self, row: &'a mut EncodedRow) -> &'a mut [u8] {
         &mut row.0.make_mut()[self.data_offset()..]
     }
 
-    pub fn all_defined(&self, row: &Row) -> bool {
+    pub fn all_defined(&self, row: &EncodedRow) -> bool {
         let bits = self.fields.len();
         if bits == 0 {
             return false;

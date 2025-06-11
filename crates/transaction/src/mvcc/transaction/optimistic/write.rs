@@ -20,7 +20,7 @@ use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::AsyncCowVec;
 use reifydb_core::delta::Delta;
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
 
@@ -110,7 +110,7 @@ impl<S: Storage> TransactionTx<S> {
         }
     }
 
-    pub fn set(&mut self, key: EncodedKey, row: Row) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
         self.tm.set(key, row)
     }
 

@@ -9,7 +9,7 @@ use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::Hooks;
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 use rusqlite::{OptionalExtension, params};
 use std::ops::{Bound, Deref};
@@ -110,7 +110,7 @@ impl Get for Sqlite {
 			|row| {
 				Ok(Stored {
 					key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
-					row: Row(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
+					row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					version: row.get(2)?,
 				})
 			},
@@ -142,7 +142,7 @@ impl Scan for Sqlite {
             .query_map(params![version], |row| {
                 Ok(Stored {
                     key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
-                    row: Row(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
+                    row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -169,7 +169,7 @@ impl ScanRev for Sqlite {
             .query_map(params![version], |row| {
                 Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    row: Row(AsyncCowVec::new(row.get(1)?)),
+                    row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -200,7 +200,7 @@ impl ScanRange for Sqlite {
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    row: Row(AsyncCowVec::new(row.get(1)?)),
+                    row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -230,7 +230,7 @@ impl ScanRangeRev for Sqlite {
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    row: Row(AsyncCowVec::new(row.get(1)?)),
+                    row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })

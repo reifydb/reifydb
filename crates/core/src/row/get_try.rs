@@ -1,62 +1,62 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::row::{Layout, Row};
+use crate::row::{Layout, EncodedRow};
 
 impl Layout {
-    pub fn try_get_bool(&self, row: &Row, index: usize) -> Option<bool> {
+    pub fn try_get_bool(&self, row: &EncodedRow, index: usize) -> Option<bool> {
         if row.is_defined(index) { Some(self.get_bool(row, index)) } else { None }
     }
 
-    pub fn try_get_f32(&self, row: &Row, index: usize) -> Option<f32> {
+    pub fn try_get_f32(&self, row: &EncodedRow, index: usize) -> Option<f32> {
         if row.is_defined(index) { Some(self.get_f32(row, index)) } else { None }
     }
 
-    pub fn try_get_f64(&self, row: &Row, index: usize) -> Option<f64> {
+    pub fn try_get_f64(&self, row: &EncodedRow, index: usize) -> Option<f64> {
         if row.is_defined(index) { Some(self.get_f64(row, index)) } else { None }
     }
 
-    pub fn try_get_i8(&self, row: &Row, index: usize) -> Option<i8> {
+    pub fn try_get_i8(&self, row: &EncodedRow, index: usize) -> Option<i8> {
         if row.is_defined(index) { Some(self.get_i8(row, index)) } else { None }
     }
 
-    pub fn try_get_i16(&self, row: &Row, index: usize) -> Option<i16> {
+    pub fn try_get_i16(&self, row: &EncodedRow, index: usize) -> Option<i16> {
         if row.is_defined(index) { Some(self.get_i16(row, index)) } else { None }
     }
 
-    pub fn try_get_i32(&self, row: &Row, index: usize) -> Option<i32> {
+    pub fn try_get_i32(&self, row: &EncodedRow, index: usize) -> Option<i32> {
         if row.is_defined(index) { Some(self.get_i32(row, index)) } else { None }
     }
 
-    pub fn try_get_i64(&self, row: &Row, index: usize) -> Option<i64> {
+    pub fn try_get_i64(&self, row: &EncodedRow, index: usize) -> Option<i64> {
         if row.is_defined(index) { Some(self.get_i64(row, index)) } else { None }
     }
 
-    pub fn try_get_i128(&self, row: &Row, index: usize) -> Option<i128> {
+    pub fn try_get_i128(&self, row: &EncodedRow, index: usize) -> Option<i128> {
         if row.is_defined(index) { Some(self.get_i128(row, index)) } else { None }
     }
 
-    pub fn try_get_str(&self, row: &Row, index: usize) -> Option<&str> {
+    pub fn try_get_str(&self, row: &EncodedRow, index: usize) -> Option<&str> {
         if row.is_defined(index) { Some(self.get_str(row, index)) } else { None }
     }
 
-    pub fn try_get_u8(&self, row: &Row, index: usize) -> Option<u8> {
+    pub fn try_get_u8(&self, row: &EncodedRow, index: usize) -> Option<u8> {
         if row.is_defined(index) { Some(self.get_u8(row, index)) } else { None }
     }
 
-    pub fn try_get_u16(&self, row: &Row, index: usize) -> Option<u16> {
+    pub fn try_get_u16(&self, row: &EncodedRow, index: usize) -> Option<u16> {
         if row.is_defined(index) { Some(self.get_u16(row, index)) } else { None }
     }
 
-    pub fn try_get_u32(&self, row: &Row, index: usize) -> Option<u32> {
+    pub fn try_get_u32(&self, row: &EncodedRow, index: usize) -> Option<u32> {
         if row.is_defined(index) { Some(self.get_u32(row, index)) } else { None }
     }
 
-    pub fn try_get_u64(&self, row: &Row, index: usize) -> Option<u64> {
+    pub fn try_get_u64(&self, row: &EncodedRow, index: usize) -> Option<u64> {
         if row.is_defined(index) { Some(self.get_u64(row, index)) } else { None }
     }
 
-    pub fn try_get_u128(&self, row: &Row, index: usize) -> Option<u128> {
+    pub fn try_get_u128(&self, row: &EncodedRow, index: usize) -> Option<u128> {
         if row.is_defined(index) { Some(self.get_u128(row, index)) } else { None }
     }
 }

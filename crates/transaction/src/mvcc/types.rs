@@ -10,14 +10,14 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::delta::Delta;
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
 use reifydb_storage::Stored;
 use std::cmp;
 use std::cmp::Reverse;
 
 pub enum TransactionValue {
-    PendingIter { version: Version, key: EncodedKey, row: Row },
+    PendingIter { version: Version, key: EncodedKey, row: EncodedRow },
     Pending(Pending),
     Committed(Committed),
 }
@@ -67,7 +67,7 @@ impl TransactionValue {
         }
     }
 
-    pub fn row(&self) -> &Row {
+    pub fn row(&self) -> &EncodedRow {
         match self {
             Self::PendingIter { row, .. } => row,
             Self::Pending(item) => item.row().expect("row of pending cannot be `None`"),
@@ -80,14 +80,14 @@ impl TransactionValue {
     }
 }
 
-impl From<(Version, EncodedKey, Row)> for TransactionValue {
-    fn from((version, k, b): (Version, EncodedKey, Row)) -> Self {
+impl From<(Version, EncodedKey, EncodedRow)> for TransactionValue {
+    fn from((version, k, b): (Version, EncodedKey, EncodedRow)) -> Self {
         Self::PendingIter { version, key: k, row: b }
     }
 }
 
-impl From<(Version, &EncodedKey, &Row)> for TransactionValue {
-    fn from((version, k, b): (Version, &EncodedKey, &Row)) -> Self {
+impl From<(Version, &EncodedKey, &EncodedRow)> for TransactionValue {
+    fn from((version, k, b): (Version, &EncodedKey, &EncodedRow)) -> Self {
         Self::PendingIter { version, key: k.clone(), row: b.clone() }
     }
 }
@@ -107,7 +107,7 @@ impl From<Committed> for TransactionValue {
 #[derive(Clone, Debug)]
 pub struct Committed {
     pub(crate) key: EncodedKey,
-    pub(crate) row: Row,
+    pub(crate) row: EncodedRow,
     pub(crate) version: Version,
 }
 
@@ -122,7 +122,7 @@ impl Committed {
         &self.key
     }
 
-    pub fn row(&self) -> &Row {
+    pub fn row(&self) -> &EncodedRow {
         &self.row
     }
 
@@ -175,7 +175,7 @@ impl Pending {
         &self.delta.key()
     }
 
-    pub fn row(&self) -> Option<&Row> {
+    pub fn row(&self) -> Option<&EncodedRow> {
         self.delta.row()
     }
 

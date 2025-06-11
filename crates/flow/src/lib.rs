@@ -10,7 +10,7 @@ pub use error::Error;
 use reifydb_core::delta::Delta;
 use reifydb_core::delta::Delta::Set;
 use reifydb_core::encoding::keycode::serialize;
-use reifydb_core::row::{Row, deprecated_deserialize_row, deprecated_serialize_row};
+use reifydb_core::row::{EncodedRow, deprecated_deserialize_row, deprecated_serialize_row};
 use reifydb_core::{AsyncCowVec, EncodedKey, Version};
 use reifydb_storage::Storage;
 use std::collections::{HashMap, VecDeque};
@@ -154,7 +154,7 @@ impl<S: Storage> Node for CountNode<S> {
         }
 
         for (key, count) in counters {
-            updates.push(Set { key, row: Row(AsyncCowVec::new(vec![count as u8])) });
+            updates.push(Set { key, row: EncodedRow(AsyncCowVec::new(vec![count as u8])) });
         }
 
         self.storage.apply(updates.clone(), version);
@@ -173,7 +173,7 @@ impl GroupNode {
     //     Self { group_by }
     // }
 
-    fn make_group_key(&self, row: &Row) -> EncodedKey {
+    fn make_group_key(&self, row: &EncodedRow) -> EncodedKey {
         // let values: Row = deserialize_row(&row).unwrap();
         let mut raw = self.state_prefix.clone();
         for &index in &self.group_by {
@@ -186,11 +186,11 @@ impl GroupNode {
 
 impl Node for GroupNode {
     fn apply(&self, delta: AsyncCowVec<Delta>, _version: Version) -> AsyncCowVec<Delta> {
-        let mut grouped: HashMap<EncodedKey, Vec<Row>> = HashMap::new();
+        let mut grouped: HashMap<EncodedKey, Vec<EncodedRow>> = HashMap::new();
 
         for d in delta {
             if let Delta::Set { row, .. } = d {
-                let row: Row = deprecated_deserialize_row(&row).unwrap();
+                let row: EncodedRow = deprecated_deserialize_row(&row).unwrap();
                 let group_key = self.make_group_key(&row);
                 grouped.entry(group_key).or_default().push(row);
             }
@@ -202,7 +202,7 @@ impl Node for GroupNode {
                 .flat_map(|(key, rows)| {
                     rows.into_iter().map(move |r| Delta::Set {
                         key: key.clone(),
-                        row: Row(AsyncCowVec::new(deprecated_serialize_row(&r).unwrap())),
+                        row: EncodedRow(AsyncCowVec::new(deprecated_serialize_row(&r).unwrap())),
                     })
                 })
                 .collect(),
@@ -251,7 +251,7 @@ impl<S: Storage> Node for SumNode<S> {
         }
 
         for (key, sum) in sums {
-            updates.push(Set { key, row: Row(AsyncCowVec::new(vec![sum as u8])) });
+            updates.push(Set { key, row: EncodedRow(AsyncCowVec::new(vec![sum as u8])) });
         }
 
         self.storage.apply(updates.clone(), version);

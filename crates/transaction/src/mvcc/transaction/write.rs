@@ -15,7 +15,7 @@ use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
 use reifydb_core::clock::LogicalClock;
 use reifydb_core::delta::Delta;
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
 
 pub struct TransactionManagerTx<C, L, P>
@@ -114,7 +114,7 @@ where
     P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
-    pub fn set(&mut self, key: EncodedKey, row: Row) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -263,7 +263,7 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    fn set_internal(&mut self, key: EncodedKey, row: Row) -> Result<(), TransactionError> {
+    fn set_internal(&mut self, key: EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }

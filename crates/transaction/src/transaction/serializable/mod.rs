@@ -7,7 +7,7 @@ use crate::{CATALOG, InsertResult, Transaction};
 use reifydb_catalog::{Catalog, CatalogRx, CatalogTx, Schema};
 use reifydb_core::encoding::bincode;
 use reifydb_core::hook::Hooks;
-use reifydb_core::row::{Row, RowIter, deprecated_deserialize_row};
+use reifydb_core::row::{EncodedRow, RowIter, deprecated_deserialize_row};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Value, key_prefix};
 use reifydb_storage::Storage;
 
@@ -46,7 +46,7 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
         Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
-    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<Row>> {
+    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<EncodedRow>> {
         todo!()
     }
 
@@ -73,7 +73,7 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
         Ok(self.catalog().unwrap().get(schema).unwrap())
     }
 
-    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<Row>> {
+    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<EncodedRow>> {
         todo!()
     }
 
@@ -107,7 +107,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         &mut self,
         schema: &str,
         table: &str,
-        rows: Vec<Row>,
+        rows: Vec<EncodedRow>,
     ) -> crate::Result<InsertResult> {
         let last_id = self
             .scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, table)))
@@ -120,7 +120,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         for (id, row) in rows.iter().enumerate() {
             self.set(
                 key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
-                Row(AsyncCowVec::new(bincode::serialize(row))),
+                EncodedRow(AsyncCowVec::new(bincode::serialize(row))),
             )
             .unwrap();
         }
@@ -146,7 +146,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         for (id, row) in rows.iter().enumerate() {
             self.set(
                 key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)).clone(),
-                Row(AsyncCowVec::new(bincode::serialize(row))),
+                EncodedRow(AsyncCowVec::new(bincode::serialize(row))),
             )
             .unwrap();
         }

@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::EncodedKey;
-use crate::row::Row;
+use crate::row::EncodedRow;
 use std::cmp;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Delta {
-    Set { key: EncodedKey, row: Row },
+    Set { key: EncodedKey, row: EncodedRow },
     Remove { key: EncodedKey },
 }
 
@@ -33,7 +33,7 @@ impl Delta {
     }
 
     /// Returns the row, if None, it means the entry is marked as remove.
-    pub fn row(&self) -> Option<&Row> {
+    pub fn row(&self) -> Option<&EncodedRow> {
         match self {
             Self::Set { row, .. } => Some(row),
             Self::Remove { .. } => None,

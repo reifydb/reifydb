@@ -2,18 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ordered_float::{OrderedF32, OrderedF64};
-use crate::row::{Layout, Row};
+use crate::row::{Layout, EncodedRow};
 use crate::{Value, ValueKind};
 
 impl Layout {
-    pub fn set_values(&self, row: &mut Row, values: &[Value]) {
+    pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
         debug_assert!(values.len() == self.fields.len());
         for (idx, value) in values.iter().enumerate() {
             self.set_value(row, idx, value)
         }
     }
 
-    pub fn set_value(&self, row: &mut Row, index: usize, val: &Value) {
+    pub fn set_value(&self, row: &mut EncodedRow, index: usize, val: &Value) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
 
@@ -65,7 +65,7 @@ impl Layout {
         }
     }
 
-    pub fn get_value(&self, row: &Row, index: usize) -> Value {
+    pub fn get_value(&self, row: &EncodedRow, index: usize) -> Value {
         let field = &self.fields[index];
         unsafe {
             let src = row.as_ptr().add(field.offset);

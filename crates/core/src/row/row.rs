@@ -9,17 +9,16 @@ use std::ops::Deref;
 /// A boxed row iterator.
 pub type RowIter = Box<dyn RowIterator>;
 
-pub trait RowIterator: Iterator<Item = Row> {}
+pub trait RowIterator: Iterator<Item = EncodedRow> {}
 
-impl<I: Iterator<Item = Row>> RowIterator for I {}
+impl<I: Iterator<Item = EncodedRow>> RowIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // validity:values
-#[derive(PartialEq)]
-#[derive(Eq)]
-pub struct Row(pub AsyncCowVec<u8>);
+#[derive(PartialEq, Eq)]
+pub struct EncodedRow(pub AsyncCowVec<u8>);
 
-impl Deref for Row {
+impl Deref for EncodedRow {
     type Target = AsyncCowVec<u8>;
 
     fn deref(&self) -> &Self::Target {
@@ -27,7 +26,7 @@ impl Deref for Row {
     }
 }
 
-impl Row {
+impl EncodedRow {
     pub fn make_mut(&mut self) -> &mut [u8] {
         self.0.make_mut()
     }
@@ -52,13 +51,13 @@ impl Row {
 
 #[deprecated]
 /// FIXME remove me
-pub fn deprecated_deserialize_row(data: &[u8]) -> crate::encoding::Result<Row> {
+pub fn deprecated_deserialize_row(data: &[u8]) -> crate::encoding::Result<EncodedRow> {
     deserialize(data)
 }
 
 #[deprecated]
 /// FIXME remove me
-pub fn deprecated_serialize_row(row: &Row) -> crate::encoding::Result<Vec<u8>> {
+pub fn deprecated_serialize_row(row: &EncodedRow) -> crate::encoding::Result<Vec<u8>> {
     Ok(serialize(row))
 }
 

@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ValueKind;
-use crate::row::{Layout, Row};
+use crate::row::{Layout, EncodedRow};
 use std::ptr;
 
 impl Layout {
-    pub fn set_bool(&self, row: &mut Row, index: usize, value: bool) {
+    pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: bool) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Bool);
@@ -16,7 +16,7 @@ impl Layout {
         }
     }
 
-    pub fn set_f32(&self, row: &mut Row, index: usize, value: f32) {
+    pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: f32) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Float4);
@@ -26,7 +26,7 @@ impl Layout {
         }
     }
 
-    pub fn set_f64(&self, row: &mut Row, index: usize, value: f64) {
+    pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: f64) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Float8);
@@ -36,7 +36,7 @@ impl Layout {
         }
     }
 
-    pub fn set_i8(&self, row: &mut Row, index: usize, value: i8) {
+    pub fn set_i8(&self, row: &mut EncodedRow, index: usize, value: i8) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int1);
@@ -46,7 +46,7 @@ impl Layout {
         }
     }
 
-    pub fn set_i16(&self, row: &mut Row, index: usize, value: i16) {
+    pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: i16) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int2);
@@ -56,7 +56,7 @@ impl Layout {
         }
     }
 
-    pub fn set_i32(&self, row: &mut Row, index: usize, value: i32) {
+    pub fn set_i32(&self, row: &mut EncodedRow, index: usize, value: i32) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int4);
@@ -66,7 +66,7 @@ impl Layout {
         }
     }
 
-    pub fn set_i64(&self, row: &mut Row, index: usize, value: i64) {
+    pub fn set_i64(&self, row: &mut EncodedRow, index: usize, value: i64) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int8);
@@ -76,7 +76,7 @@ impl Layout {
         }
     }
 
-    pub fn set_i128(&self, row: &mut Row, index: usize, value: i128) {
+    pub fn set_i128(&self, row: &mut EncodedRow, index: usize, value: i128) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int16);
@@ -86,7 +86,7 @@ impl Layout {
         }
     }
 
-    pub fn set_str(&self, row: &mut Row, index: usize, value: &str) {
+    pub fn set_str(&self, row: &mut EncodedRow, index: usize, value: &str) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::String);
@@ -102,7 +102,7 @@ impl Layout {
         }
     }
 
-    pub fn set_u8(&self, row: &mut Row, index: usize, value: u8) {
+    pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: u8) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint1);
@@ -112,7 +112,7 @@ impl Layout {
         }
     }
 
-    pub fn set_u16(&self, row: &mut Row, index: usize, value: u16) {
+    pub fn set_u16(&self, row: &mut EncodedRow, index: usize, value: u16) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint2);
@@ -122,7 +122,7 @@ impl Layout {
         }
     }
 
-    pub fn set_u32(&self, row: &mut Row, index: usize, value: u32) {
+    pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: u32) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint4);
@@ -132,7 +132,7 @@ impl Layout {
         }
     }
 
-    pub fn set_u64(&self, row: &mut Row, index: usize, value: u64) {
+    pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: u64) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint8);
@@ -142,7 +142,7 @@ impl Layout {
         }
     }
 
-    pub fn set_u128(&self, row: &mut Row, index: usize, value: u128) {
+    pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: u128) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint16);
@@ -152,7 +152,7 @@ impl Layout {
         }
     }
 
-    pub fn set_undefined(&self, row: &mut Row, index: usize) {
+    pub fn set_undefined(&self, row: &mut EncodedRow, index: usize) {
         debug_assert_eq!(row.len(), self.data_size);
         let field = &self.fields[index];
 

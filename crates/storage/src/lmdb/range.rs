@@ -5,7 +5,7 @@ use crate::lmdb::Lmdb;
 use crate::{ScanRange, Stored};
 use heed::types::Bytes;
 use heed::{Database, Env};
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
@@ -77,7 +77,7 @@ impl Range {
                     //
                     self.buffer.push_back(Stored {
                         key: AsyncCowVec::new(k.to_vec()),
-                        row: Row(AsyncCowVec::new(v.to_vec())),
+                        row: EncodedRow(AsyncCowVec::new(v.to_vec())),
                         version: 0, // FIXME
                     })
                 }

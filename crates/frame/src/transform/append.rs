@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{ColumnValues, Frame};
-use reifydb_core::row::{Layout, Row};
+use reifydb_core::row::{Layout, EncodedRow};
 use reifydb_core::{CowVec, ValueKind};
 
 impl Frame {
@@ -31,7 +31,7 @@ impl Frame {
     pub fn append_rows(
         &mut self,
         layout: &Layout,
-        rows: impl IntoIterator<Item = Row>,
+        rows: impl IntoIterator<Item =EncodedRow>,
     ) -> crate::Result<()> {
         if self.columns.len() != layout.fields.len() {
             return Err(format!(
@@ -42,7 +42,7 @@ impl Frame {
             .into());
         }
 
-        let rows: Vec<Row> = rows.into_iter().collect();
+        let rows: Vec<EncodedRow> = rows.into_iter().collect();
         let values = layout.fields.iter().map(|f| f.value.clone()).collect::<Vec<_>>();
         let layout = Layout::new(&values);
 
@@ -127,7 +127,7 @@ impl Frame {
         Ok(())
     }
 
-    fn append_all_defined(&mut self, layout: &Layout, row: &Row) -> crate::Result<()> {
+    fn append_all_defined(&mut self, layout: &Layout, row: &EncodedRow) -> crate::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
             match (&mut column.data, layout.value(index)) {
                 (ColumnValues::Bool(vec, valid), ValueKind::Bool) => {
@@ -200,7 +200,7 @@ impl Frame {
         Ok(())
     }
 
-    fn append_fallback(&mut self, layout: &Layout, row: &Row) -> crate::Result<()> {
+    fn append_fallback(&mut self, layout: &Layout, row: &EncodedRow) -> crate::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
             match (&mut column.data, layout.value(index)) {
                 (ColumnValues::Bool(vec, valid), ValueKind::Bool) => {

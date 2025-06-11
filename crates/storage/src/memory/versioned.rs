@@ -14,7 +14,7 @@ use std::fmt::Debug;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::Version;
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 
 const UNINITIALIZED: u8 = 0;
 const LOCKED: u8 = 1;
@@ -23,7 +23,7 @@ const UNLOCKED: u8 = 2;
 #[derive(Debug)]
 pub struct Versioned {
     pub(crate) op: AtomicU8,
-    rows: SkipMap<Version, Option<Row>>,
+    rows: SkipMap<Version, Option<EncodedRow>>,
 }
 
 impl Versioned {
@@ -66,7 +66,7 @@ impl Versioned {
 }
 
 impl core::ops::Deref for Versioned {
-    type Target = SkipMap<u64, Option<Row>>;
+    type Target = SkipMap<u64, Option<EncodedRow>>;
 
     fn deref(&self) -> &Self::Target {
         &self.rows

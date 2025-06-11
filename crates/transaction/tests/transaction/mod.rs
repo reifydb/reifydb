@@ -5,15 +5,15 @@ mod optimistic;
 mod serializable;
 
 use reifydb_core::encoding::{bincode, keycode};
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey};
 
 pub trait IntoRow {
-    fn into_row(self) -> Row;
+    fn into_row(self) -> EncodedRow;
 }
 
 pub trait FromRow: Sized {
-    fn from_row(row: &Row) -> Option<Self>;
+    fn from_row(row: &EncodedRow) -> Option<Self>;
 }
 
 pub trait FromKey: Sized {
@@ -47,8 +47,8 @@ macro_rules! from_key {
 macro_rules! impl_kv_for {
     ($t:ty) => {
         impl IntoRow for $t {
-            fn into_row(self) -> Row {
-                Row(AsyncCowVec::new(bincode::serialize(&self)))
+            fn into_row(self) -> EncodedRow {
+                EncodedRow(AsyncCowVec::new(bincode::serialize(&self)))
             }
         }
         impl FromKey for $t {
@@ -57,7 +57,7 @@ macro_rules! impl_kv_for {
             }
         }
         impl FromRow for $t {
-            fn from_row(row: &Row) -> Option<Self> {
+            fn from_row(row: &EncodedRow) -> Option<Self> {
                 bincode::deserialize(row).ok()
             }
         }

@@ -13,7 +13,7 @@ use reifydb_core::delta::Delta;
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_core::row::Row;
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::{Storage, Stored};
@@ -113,7 +113,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let mut args = command.consume_args();
                 let kv = args.next_key().ok_or("key=value not given")?.clone();
                 let key = decode_binary(&kv.key.unwrap());
-                let row = Row(decode_binary(&kv.value));
+                let row = EncodedRow(decode_binary(&kv.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
