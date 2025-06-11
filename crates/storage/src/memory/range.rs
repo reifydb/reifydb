@@ -49,7 +49,7 @@ impl<'a> Iterator for Range<'a> {
                     }
                 })
             {
-                return Some(Stored { key: item.key().clone(), version, bytes: value }.into());
+                return Some(Stored { key: item.key().clone(), version, row: value }.into());
             }
         }
     }

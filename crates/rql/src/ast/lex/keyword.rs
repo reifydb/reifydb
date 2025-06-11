@@ -10,7 +10,6 @@ use nom::combinator::{map, not, peek};
 use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
-use std::fmt::Display;
 
 macro_rules! keyword {
     (

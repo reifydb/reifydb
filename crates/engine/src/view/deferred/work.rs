@@ -17,12 +17,12 @@ pub(crate) fn work<S: Storage>(rx: Receiver<Work>, storage: S, orchestrator: Orc
         for stored in storage.scan_prefix(&AsyncCowVec::new(b"view::count".to_vec()), 2).into_iter()
         {
             println!("{:?}", String::from_utf8(stored.key.to_vec()));
-            println!("{:?}", stored.bytes.to_vec().as_slice());
+            println!("{:?}", stored.row.to_vec().as_slice());
         }
 
         for sv in storage.scan_prefix(&AsyncCowVec::new(b"view::sum".to_vec()), 2).into_iter() {
             println!("{:?}", String::from_utf8(sv.key.to_vec()));
-            println!("{:?}", sv.bytes.to_vec().as_slice());
+            println!("{:?}", sv.row.to_vec().as_slice());
         }
     }
 }

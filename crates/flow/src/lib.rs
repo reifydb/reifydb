@@ -146,7 +146,7 @@ impl<S: Storage> Node for CountNode<S> {
                 let state_key = self.make_state_key(&key);
 
                 let current = *counters.entry(state_key.clone()).or_insert_with(|| {
-                    self.storage.get(&state_key, version).map(|v| v.bytes[0] as i8).unwrap_or(0)
+                    self.storage.get(&state_key, version).map(|v| v.row[0] as i8).unwrap_or(0)
                 });
 
                 counters.insert(state_key, current.saturating_add(1));
@@ -154,7 +154,7 @@ impl<S: Storage> Node for CountNode<S> {
         }
 
         for (key, count) in counters {
-            updates.push(Set { key, bytes: AsyncCowVec::new(vec![count as u8]) });
+            updates.push(Set { key, row: Row(AsyncCowVec::new(vec![count as u8])) });
         }
 
         self.storage.apply(updates.clone(), version);
@@ -189,8 +189,8 @@ impl Node for GroupNode {
         let mut grouped: HashMap<Key, Vec<Row>> = HashMap::new();
 
         for d in delta {
-            if let Delta::Set { bytes, .. } = d {
-                let row: Row = deprecated_deserialize_row(&bytes).unwrap();
+            if let Delta::Set { row, .. } = d {
+                let row: Row = deprecated_deserialize_row(&row).unwrap();
                 let group_key = self.make_group_key(&row);
                 grouped.entry(group_key).or_default().push(row);
             }
@@ -202,7 +202,7 @@ impl Node for GroupNode {
                 .flat_map(|(key, rows)| {
                     rows.into_iter().map(move |r| Delta::Set {
                         key: key.clone(),
-                        bytes: AsyncCowVec::new(deprecated_serialize_row(&r).unwrap()),
+                        row: Row(AsyncCowVec::new(deprecated_serialize_row(&r).unwrap())),
                     })
                 })
                 .collect(),
@@ -231,11 +231,11 @@ impl<S: Storage> Node for SumNode<S> {
         let mut sums: HashMap<Key, i8> = HashMap::new();
 
         for d in delta {
-            if let Delta::Set { key, bytes } = d {
+            if let Delta::Set { key, row } = d {
                 let state_key = self.make_state_key(&key);
 
                 let current = *sums.entry(state_key.clone()).or_insert_with(|| {
-                    self.storage.get(&state_key, version).map(|v| v.bytes[0] as i8).unwrap_or(0)
+                    self.storage.get(&state_key, version).map(|v| v.row[0] as i8).unwrap_or(0)
                 });
 
                 // let row: Row = deserialize_row(&bytes).unwrap();
@@ -251,23 +251,18 @@ impl<S: Storage> Node for SumNode<S> {
         }
 
         for (key, sum) in sums {
-            updates.push(Set {
-                key,
-                bytes: AsyncCowVec::new(vec![sum as u8]), // Upgrade to i64 if needed
-            });
+            updates.push(Set { key, row: Row(AsyncCowVec::new(vec![sum as u8])) });
         }
 
         self.storage.apply(updates.clone(), version);
-
         updates
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{CountNode, Graph, GroupNode, Orchestrator, SumNode};
+    use crate::{CountNode, Graph, GroupNode, SumNode};
     use reifydb_storage::Storage;
-    use reifydb_storage::memory::Memory;
 
     fn create_count_graph<S: Storage + 'static>(storage: S) -> Graph {
         let group_node = Box::new(GroupNode {
@@ -297,13 +292,13 @@ mod tests {
     // #[test]
     // fn test() {
     //     let mut orchestrator = Orchestrator::default();
-    // 
+    //
     //     let storage = Memory::default();
     //     // let storage = Arc::new(Sqlite::new(Path::new("test.sqlite")));
-    // 
+    //
     //     orchestrator.register("view::count", create_count_graph(storage.clone()));
     //     orchestrator.register("view::sum", create_sum_graph(storage.clone()));
-    // 
+    //
     //     // let delta = AsyncCowVec::new(vec![
     //     //     Delta::Set {
     //     //         key: AsyncCowVec::new(b"apple".to_vec()),

@@ -318,11 +318,11 @@ mod tests {
         }
     }
 
-    fn included(bytes: &[u8]) -> Bound<AsyncCowVec<u8>> {
-        Bound::Included(AsyncCowVec::new(bytes.to_vec()))
+    fn included(key: &[u8]) -> Bound<AsyncCowVec<u8>> {
+        Bound::Included(AsyncCowVec::new(key.to_vec()))
     }
 
-    fn excluded(bytes: &[u8]) -> Bound<AsyncCowVec<u8>> {
-        Bound::Excluded(AsyncCowVec::new(bytes.to_vec()))
+    fn excluded(key: &[u8]) -> Bound<AsyncCowVec<u8>> {
+        Bound::Excluded(AsyncCowVec::new(key.to_vec()))
     }
 }

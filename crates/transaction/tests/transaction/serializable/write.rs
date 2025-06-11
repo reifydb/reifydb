@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::transaction::AsyncCowVec;
-use crate::transaction::FromBytes;
-use crate::transaction::IntoBytes;
+use crate::transaction::FromRow;
+use crate::transaction::IntoRow;
 use crate::transaction::keycode;
-use crate::{as_key, as_bytes, from_bytes};
+use crate::{as_key, as_row, from_row};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
@@ -18,8 +18,8 @@ fn test_write() {
         let mut tx = engine.begin();
         assert_eq!(tx.version(), 0);
 
-        tx.set(key.clone(), as_bytes!("foo1".to_string())).unwrap();
-        let value: String = from_bytes!(String, *tx.get(&key).unwrap().unwrap().bytes());
+        tx.set(key.clone(), as_row!("foo1".to_string())).unwrap();
+        let value: String = from_row!(String, *tx.get(&key).unwrap().unwrap().row());
         assert_eq!(value.as_str(), "foo1");
         tx.commit().unwrap();
     }
@@ -27,7 +27,7 @@ fn test_write() {
     {
         let rx = engine.begin_read_only();
         assert_eq!(rx.version(), 1);
-        let value: String = from_bytes!(String, *rx.get(&key).unwrap().bytes());
+        let value: String = from_row!(String, *rx.get(&key).unwrap().row());
         assert_eq!(value.as_str(), "foo1");
     }
 }
@@ -39,7 +39,7 @@ fn test_multiple_write() {
     {
         let mut txn = engine.begin();
         for i in 0..10 {
-            if let Err(e) = txn.set(as_key!(i), as_bytes!(i)) {
+            if let Err(e) = txn.set(as_key!(i), as_row!(i)) {
                 panic!("{e}");
             }
         }
@@ -47,7 +47,7 @@ fn test_multiple_write() {
         let key = as_key!(8);
         let sv = txn.get(&key).unwrap().unwrap();
         assert!(!sv.is_committed());
-        assert_eq!(from_bytes!(i32, *sv.bytes()), 8);
+        assert_eq!(from_row!(i32, *sv.row()), 8);
         drop(sv);
 
         assert!(txn.contains_key(&as_key!(8)).unwrap());
@@ -60,5 +60,5 @@ fn test_multiple_write() {
     let txn = engine.begin_read_only();
     assert!(txn.contains_key(&as_key!(k)));
     let sv = txn.get(&as_key!(k)).unwrap();
-    assert_eq!(from_bytes!(i32, *sv.bytes()), v);
+    assert_eq!(from_row!(i32, *sv.row()), v);
 }

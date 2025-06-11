@@ -10,11 +10,11 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::as_key;
-use crate::as_bytes;
-use crate::from_bytes;
+use crate::as_row;
+use crate::from_row;
 use crate::transaction::AsyncCowVec;
-use crate::transaction::FromBytes;
-use crate::transaction::IntoBytes;
+use crate::transaction::FromRow;
+use crate::transaction::IntoRow;
 use crate::transaction::keycode;
 use reifydb_core::KeyRange;
 use reifydb_storage::memory::Memory;
@@ -26,9 +26,9 @@ use reifydb_transaction::mvcc::transaction::range_rev::TransactionRangeRev;
 fn test_range() {
     let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
-    txn.set(as_key!(1), as_bytes!(1)).unwrap();
-    txn.set(as_key!(2), as_bytes!(2)).unwrap();
-    txn.set(as_key!(3), as_bytes!(3)).unwrap();
+    txn.set(as_key!(1), as_row!(1)).unwrap();
+    txn.set(as_key!(2), as_row!(2)).unwrap();
+    txn.set(as_key!(3), as_row!(3)).unwrap();
     txn.commit().unwrap();
 
     let one_to_four = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(4)));
@@ -39,7 +39,7 @@ fn test_range() {
     for sv in iter {
         count += 1;
         assert_eq!(sv.key, as_key!(count));
-        assert_eq!(sv.bytes, as_bytes!(count));
+        assert_eq!(sv.row, as_row!(count));
         assert_eq!(sv.version, 1);
     }
     assert_eq!(count, 3);
@@ -48,7 +48,7 @@ fn test_range() {
     let mut count = 3;
     for sv in iter {
         assert_eq!(sv.key, as_key!(count));
-        assert_eq!(sv.bytes, as_bytes!(count));
+        assert_eq!(sv.row, as_row!(count));
         assert_eq!(sv.version, 1);
         count -= 1;
     }
@@ -59,9 +59,9 @@ fn test_range() {
 fn test_range2() {
     let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
-    txn.set(as_key!(1), as_bytes!(1)).unwrap();
-    txn.set(as_key!(2), as_bytes!(2)).unwrap();
-    txn.set(as_key!(3), as_bytes!(3)).unwrap();
+    txn.set(as_key!(1), as_row!(1)).unwrap();
+    txn.set(as_key!(2), as_row!(2)).unwrap();
+    txn.set(as_key!(3), as_row!(3)).unwrap();
 
     let one_to_four = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(4)));
 
@@ -71,7 +71,7 @@ fn test_range2() {
         count += 1;
         let sv = sv.clone();
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 0);
     }
     assert_eq!(count, 3);
@@ -80,7 +80,7 @@ fn test_range2() {
     let mut count = 3;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 0);
         count -= 1;
     }
@@ -89,9 +89,9 @@ fn test_range2() {
     txn.commit().unwrap();
 
     let mut txn = engine.begin();
-    txn.set(as_key!(4), as_bytes!(4)).unwrap();
-    txn.set(as_key!(5), as_bytes!(5)).unwrap();
-    txn.set(as_key!(6), as_bytes!(6)).unwrap();
+    txn.set(as_key!(4), as_row!(4)).unwrap();
+    txn.set(as_key!(5), as_row!(5)).unwrap();
+    txn.set(as_key!(6), as_row!(6)).unwrap();
 
     let one_to_five = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(5)));
 
@@ -100,7 +100,7 @@ fn test_range2() {
     for sv in iter {
         count += 1;
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
     }
     assert_eq!(count, 4);
 
@@ -108,7 +108,7 @@ fn test_range2() {
     let mut count = 4;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         count -= 1;
     }
     assert_eq!(count, 0);
@@ -118,9 +118,9 @@ fn test_range2() {
 fn test_range3() {
     let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
-    txn.set(as_key!(4), as_bytes!(4)).unwrap();
-    txn.set(as_key!(5), as_bytes!(5)).unwrap();
-    txn.set(as_key!(6), as_bytes!(6)).unwrap();
+    txn.set(as_key!(4), as_row!(4)).unwrap();
+    txn.set(as_key!(5), as_row!(5)).unwrap();
+    txn.set(as_key!(6), as_row!(6)).unwrap();
 
     let four_to_seven = KeyRange::start_end(Some(as_key!(4)), Some(as_key!(7)));
 
@@ -129,7 +129,7 @@ fn test_range3() {
     for sv in iter {
         count += 1;
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 0);
     }
     assert_eq!(count, 6);
@@ -138,7 +138,7 @@ fn test_range3() {
     let mut count = 6;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 0);
         count -= 1;
     }
@@ -149,16 +149,16 @@ fn test_range3() {
     let one_to_five = KeyRange::start_end(Some(as_key!(1)), Some(as_key!(5)));
 
     let mut txn = engine.begin();
-    txn.set(as_key!(1), as_bytes!(1)).unwrap();
-    txn.set(as_key!(2), as_bytes!(2)).unwrap();
-    txn.set(as_key!(3), as_bytes!(3)).unwrap();
+    txn.set(as_key!(1), as_row!(1)).unwrap();
+    txn.set(as_key!(2), as_row!(2)).unwrap();
+    txn.set(as_key!(3), as_row!(3)).unwrap();
 
     let iter = txn.scan_range(one_to_five.clone()).unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
     }
     assert_eq!(count, 4);
 
@@ -166,7 +166,7 @@ fn test_range3() {
     let mut count = 4;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         count -= 1;
     }
     assert_eq!(count, 0);
@@ -185,10 +185,10 @@ fn test_range_edge() {
     {
         let mut txn = engine.begin();
 
-        txn.set(as_key!(0), as_bytes!(0u64)).unwrap();
-        txn.set(as_key!(u64::MAX), as_bytes!(u64::MAX)).unwrap();
+        txn.set(as_key!(0), as_row!(0u64)).unwrap();
+        txn.set(as_key!(u64::MAX), as_row!(u64::MAX)).unwrap();
 
-        txn.set(as_key!(3), as_bytes!(31u64)).unwrap();
+        txn.set(as_key!(3), as_row!(31u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(1, engine.version());
     }
@@ -196,8 +196,8 @@ fn test_range_edge() {
     // a2, c2
     {
         let mut txn = engine.begin();
-        txn.set(as_key!(1), as_bytes!(12u64)).unwrap();
-        txn.set(as_key!(3), as_bytes!(32u64)).unwrap();
+        txn.set(as_key!(1), as_row!(12u64)).unwrap();
+        txn.set(as_key!(3), as_row!(32u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(2, engine.version());
     }
@@ -205,8 +205,8 @@ fn test_range_edge() {
     // b3
     {
         let mut txn = engine.begin();
-        txn.set(as_key!(1), as_bytes!(13u64)).unwrap();
-        txn.set(as_key!(2), as_bytes!(23u64)).unwrap();
+        txn.set(as_key!(1), as_row!(13u64)).unwrap();
+        txn.set(as_key!(2), as_row!(23u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(3, engine.version());
     }
@@ -222,7 +222,7 @@ fn test_range_edge() {
     let check_iter = |itr: TransactionRange<'_, _, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
-            assert_eq!(expected[i], from_bytes!(u64, *r.bytes()));
+            assert_eq!(expected[i], from_row!(u64, *r.row()));
             i += 1;
         }
         assert_eq!(expected.len(), i);
@@ -231,7 +231,7 @@ fn test_range_edge() {
     let check_rev_iter = |itr: TransactionRangeRev<'_, _, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
-            assert_eq!(expected[i], from_bytes!(u64, *r.bytes()));
+            assert_eq!(expected[i], from_row!(u64, *r.row()));
             i += 1;
         }
         assert_eq!(expected.len(), i);

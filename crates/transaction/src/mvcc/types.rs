@@ -9,21 +9,22 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::delta::{Bytes, Delta};
+use reifydb_core::delta::Delta;
+use reifydb_core::row::Row;
 use reifydb_core::{Key, Version};
 use reifydb_storage::Stored;
 use std::cmp;
 use std::cmp::Reverse;
 
 pub enum TransactionValue {
-    PendingIter { version: Version, key: Key, bytes: Bytes },
+    PendingIter { version: Version, key: Key, row: Row },
     Pending(Pending),
     Committed(Committed),
 }
 
 impl From<Stored> for TransactionValue {
     fn from(value: Stored) -> Self {
-        Self::Committed(Committed { key: value.key, bytes: value.bytes, version: value.version })
+        Self::Committed(Committed { key: value.key, row: value.row, version: value.version })
     }
 }
 
@@ -32,7 +33,7 @@ impl core::fmt::Debug for TransactionValue {
         f.debug_struct("TransactionValue")
             .field("key", self.key())
             .field("version", &self.version())
-            .field("value", &self.bytes())
+            .field("value", &self.row())
             .finish()
     }
 }
@@ -42,8 +43,8 @@ impl Clone for TransactionValue {
         match self {
             Self::Committed(item) => Self::Committed(item.clone()),
             Self::Pending(delta) => Self::Pending(delta.clone()),
-            Self::PendingIter { version, key, bytes: value } => {
-                Self::PendingIter { version: *version, key: key.clone(), bytes: value.clone() }
+            Self::PendingIter { version, key, row: value } => {
+                Self::PendingIter { version: *version, key: key.clone(), row: value.clone() }
             }
         }
     }
@@ -66,11 +67,11 @@ impl TransactionValue {
         }
     }
 
-    pub fn bytes(&self) -> &Bytes {
+    pub fn row(&self) -> &Row {
         match self {
-            Self::PendingIter { bytes, .. } => bytes,
-            Self::Pending(item) => item.bytes().expect("bytes of pending cannot be `None`"),
-            Self::Committed(item) => &item.bytes,
+            Self::PendingIter { row, .. } => row,
+            Self::Pending(item) => item.row().expect("row of pending cannot be `None`"),
+            Self::Committed(item) => &item.row,
         }
     }
 
@@ -79,15 +80,15 @@ impl TransactionValue {
     }
 }
 
-impl From<(Version, Key, Bytes)> for TransactionValue {
-    fn from((version, k, b): (Version, Key, Bytes)) -> Self {
-        Self::PendingIter { version, key: k, bytes: b }
+impl From<(Version, Key, Row)> for TransactionValue {
+    fn from((version, k, b): (Version, Key, Row)) -> Self {
+        Self::PendingIter { version, key: k, row: b }
     }
 }
 
-impl From<(Version, &Key, &Bytes)> for TransactionValue {
-    fn from((version, k, b): (Version, &Key, &Bytes)) -> Self {
-        Self::PendingIter { version, key: k.clone(), bytes: b.clone() }
+impl From<(Version, &Key, &Row)> for TransactionValue {
+    fn from((version, k, b): (Version, &Key, &Row)) -> Self {
+        Self::PendingIter { version, key: k.clone(), row: b.clone() }
     }
 }
 
@@ -106,13 +107,13 @@ impl From<Committed> for TransactionValue {
 #[derive(Clone, Debug)]
 pub struct Committed {
     pub(crate) key: Key,
-    pub(crate) bytes: Bytes,
+    pub(crate) row: Row,
     pub(crate) version: Version,
 }
 
 impl From<Stored> for Committed {
     fn from(value: Stored) -> Self {
-        Self { key: value.key, bytes: value.bytes, version: value.version }
+        Self { key: value.key, row: value.row, version: value.version }
     }
 }
 
@@ -121,8 +122,8 @@ impl Committed {
         &self.key
     }
 
-    pub fn bytes(&self) -> &Bytes {
-        &self.bytes
+    pub fn row(&self) -> &Row {
+        &self.row
     }
 
     pub fn version(&self) -> Version {
@@ -130,7 +131,7 @@ impl Committed {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Pending {
     pub delta: Delta,
     pub version: Version,
@@ -174,8 +175,8 @@ impl Pending {
         &self.delta.key()
     }
 
-    pub fn bytes(&self) -> Option<&Bytes> {
-        self.delta.value()
+    pub fn row(&self) -> Option<&Row> {
+        self.delta.row()
     }
 
     pub fn was_removed(&self) -> bool {

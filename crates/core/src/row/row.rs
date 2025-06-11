@@ -15,6 +15,8 @@ impl<I: Iterator<Item = Row>> RowIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // validity:values
+#[derive(PartialEq)]
+#[derive(Eq)]
 pub struct Row(pub AsyncCowVec<u8>);
 
 impl Deref for Row {

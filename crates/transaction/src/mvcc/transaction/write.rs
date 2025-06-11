@@ -14,7 +14,8 @@ use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
 use reifydb_core::clock::LogicalClock;
-use reifydb_core::delta::{Bytes, Delta};
+use reifydb_core::delta::Delta;
+use reifydb_core::row::Row;
 use reifydb_core::{Key, Version};
 
 pub struct TransactionManagerTx<C, L, P>
@@ -113,12 +114,12 @@ where
     P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
-    pub fn set(&mut self, key: Key, bytes: Bytes) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: Key, row: Row) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
 
-        self.set_internal(key, bytes)
+        self.set_internal(key, row)
     }
 
     /// Removes a key.
@@ -185,8 +186,8 @@ where
 
             // Fulfill from buffer.
             Ok(Some(Pending {
-                delta: match v.bytes() {
-                    Some(bytes) => Delta::Set { key: key.clone(), bytes: bytes.clone() },
+                delta: match v.row() {
+                    Some(row) => Delta::Set { key: key.clone(), row: row.clone() },
                     None => Delta::Remove { key: key.clone() },
                 },
                 version: v.version,
@@ -262,12 +263,12 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    fn set_internal(&mut self, key: Key, bytes: Bytes) -> Result<(), TransactionError> {
+    fn set_internal(&mut self, key: Key, row: Row) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
 
-        self.modify(Pending { delta: Delta::Set { key, bytes }, version: self.version })
+        self.modify(Pending { delta: Delta::Set { key, row }, version: self.version })
     }
 
     fn modify(&mut self, pending: Pending) -> Result<(), TransactionError> {
@@ -278,7 +279,7 @@ where
         let pending_writes = &mut self.pending_writes;
 
         let cnt = self.count + 1;
-        // Extra bytes for the version in key.
+        // Extra row for the version in key.
         let size = self.size + pending_writes.estimate_size(&pending);
         if cnt >= pending_writes.max_batch_entries() || size >= pending_writes.max_batch_size() {
             return Err(TransactionError::LargeTxn);
@@ -293,14 +294,14 @@ where
         // Add the entry to duplicateWrites only if both the entries have different versions. For
         // same versions, we will overwrite the existing entry.
         let key = pending.key();
-        let value = pending.bytes();
+        let row = pending.row();
         let version = pending.version;
 
         if let Some((old_key, old_value)) = pending_writes.remove_entry(&key) {
             if old_value.version != version {
                 self.duplicates.push(Pending {
-                    delta: match value {
-                        Some(bytes) => Delta::Set { key: old_key, bytes: bytes.clone() },
+                    delta: match row {
+                        Some(row) => Delta::Set { key: old_key, row: row.clone() },
                         None => Delta::Remove { key: old_key },
                     },
                     version,
@@ -353,8 +354,8 @@ where
                     process(
                         &mut all,
                         Pending {
-                            delta: match v.bytes() {
-                                Some(bytes) => Delta::Set { key: k, bytes: bytes.clone() },
+                            delta: match v.row() {
+                                Some(row) => Delta::Set { key: k, row: row.clone() },
                                 None => Delta::Remove { key: k },
                             },
                             version: v.version,

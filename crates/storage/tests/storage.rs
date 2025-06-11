@@ -13,6 +13,7 @@ use reifydb_core::delta::Delta;
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
+use reifydb_core::row::Row;
 use reifydb_core::{KeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::{Storage, Stored};
@@ -50,8 +51,8 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
-                let value = self.storage.get(&key, version).map(|sv| sv.bytes.to_vec());
-                writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
+                let value = self.storage.get(&key, version).map(|sv| sv.row.to_vec());
+                writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
             }
             // contains KEY [version=VERSION]
             "contains" => {
@@ -112,11 +113,11 @@ impl<S: Storage> testscript::Runner for Runner<S> {
                 let mut args = command.consume_args();
                 let kv = args.next_key().ok_or("key=value not given")?.clone();
                 let key = decode_binary(&kv.key.unwrap());
-                let bytes = decode_binary(&kv.value);
+                let row = Row(decode_binary(&kv.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Set { key, bytes })], version)
+                self.storage.apply(async_cow_vec![(Delta::Set { key, row })], version)
             }
 
             // remove KEY [version=VERSION]
@@ -137,7 +138,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
 
 fn print<I: Iterator<Item = Stored>>(output: &mut String, mut iter: I) {
     while let Some(sv) = iter.next() {
-        let fmtkv = format::Raw::key_value(&sv.key, &sv.bytes.deref());
+        let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
         writeln!(output, "{fmtkv}").unwrap();
     }
 }

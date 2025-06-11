@@ -19,7 +19,8 @@ use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::clock::LocalClock;
-use reifydb_core::delta::{Bytes, Delta};
+use reifydb_core::delta::Delta;
+use reifydb_core::row::Row;
 use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
 use std::collections::HashMap;
 use std::ops::RangeBounds;
@@ -89,7 +90,7 @@ impl<S: Storage> TransactionTx<S> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {
-                if v.bytes().is_some() {
+                if v.row().is_some() {
                     Ok(Some(v.into()))
                 } else {
                     Ok(None)
@@ -99,8 +100,8 @@ impl<S: Storage> TransactionTx<S> {
         }
     }
 
-    pub fn set(&mut self, key: Key, bytes: Bytes) -> Result<(), TransactionError> {
-        self.tm.set(key, bytes)
+    pub fn set(&mut self, key: Key, row: Row) -> Result<(), TransactionError> {
+        self.tm.set(key, row)
     }
 
     pub fn remove(&mut self, key: Key) -> Result<(), TransactionError> {

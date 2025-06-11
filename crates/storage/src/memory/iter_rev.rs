@@ -48,7 +48,7 @@ impl<'a> Iterator for IterRev<'a> {
                     }
                 })
             {
-                return Some(Stored { key: item.key().clone(), bytes: value, version }.into());
+                return Some(Stored { key: item.key().clone(), row: value, version }.into());
             }
         }
     }

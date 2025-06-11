@@ -18,6 +18,6 @@ impl Get for Memory {
                 }
             })?;
 
-        Some(Stored { key: key.clone(), bytes: value, version })
+        Some(Stored { key: key.clone(), row: value, version })
     }
 }

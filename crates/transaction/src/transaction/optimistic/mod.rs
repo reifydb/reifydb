@@ -53,7 +53,7 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
     fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
         Ok(Box::new(
             self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
-                .map(|r| deprecated_deserialize_row(&r.bytes).unwrap())
+                .map(|stored| deprecated_deserialize_row(&stored.row).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))
@@ -81,7 +81,7 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
         Ok(Box::new(
             self.scan_range(KeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)).into())
                 .unwrap()
-                .map(|r| deprecated_deserialize_row(&r.bytes()).unwrap())
+                .map(|r| deprecated_deserialize_row(&r.row()).unwrap())
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))
@@ -120,7 +120,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         for (id, row) in rows.iter().enumerate() {
             self.set(
                 key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
-                AsyncCowVec::new(bincode::serialize(row)),
+                Row(AsyncCowVec::new(bincode::serialize(row))),
             )
             .unwrap();
         }
@@ -146,7 +146,7 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         for (id, row) in rows.iter().enumerate() {
             self.set(
                 key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)).clone(),
-                AsyncCowVec::new(bincode::serialize(row)),
+                Row(AsyncCowVec::new(bincode::serialize(row))),
             )
             .unwrap();
         }

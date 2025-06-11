@@ -11,11 +11,11 @@ impl Apply for Memory {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
         for delta in delta {
             match delta {
-                Delta::Set { key, bytes } => {
+                Delta::Set { key, row: row } => {
                     let item = self.memory.get_or_insert_with(key, || Versioned::new());
                     let val = item.value();
                     val.lock();
-                    val.insert(version, Some(bytes));
+                    val.insert(version, Some(row));
                     val.unlock();
                 }
                 Delta::Remove { key } => {

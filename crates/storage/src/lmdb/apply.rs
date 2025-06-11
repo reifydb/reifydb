@@ -11,7 +11,7 @@ impl Apply for Lmdb {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {
             match delta {
-                Delta::Set { key, bytes: value } => {
+                Delta::Set { key, row: value } => {
                     self.db.put(&mut tx, &key[..], &value).unwrap();
                 }
                 Delta::Remove { key } => {

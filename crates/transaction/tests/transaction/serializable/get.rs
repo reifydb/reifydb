@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::transaction::AsyncCowVec;
-use crate::transaction::IntoBytes;
+use crate::transaction::IntoRow;
 use crate::transaction::keycode;
-use crate::{as_bytes, as_key};
+use crate::{as_row, as_key};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
@@ -19,7 +19,7 @@ fn test_read_after_write() {
             let db = engine.clone();
             std::thread::spawn(move || {
                 let k = as_key!(i);
-                let v = as_bytes!(i);
+                let v = as_row!(i);
 
                 let mut txn = db.begin();
                 txn.set(k.clone(), v.clone()).unwrap();
@@ -27,7 +27,7 @@ fn test_read_after_write() {
 
                 let txn = db.begin_read_only();
                 let sv = txn.get(&k).unwrap();
-                assert_eq!(*sv.bytes(), v);
+                assert_eq!(*sv.row(), v);
             })
         })
         .collect::<Vec<_>>();

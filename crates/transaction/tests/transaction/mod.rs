@@ -4,16 +4,16 @@
 mod optimistic;
 mod serializable;
 
-use reifydb_core::delta::Bytes;
 use reifydb_core::encoding::{bincode, keycode};
+use reifydb_core::row::Row;
 use reifydb_core::{AsyncCowVec, Key};
 
-pub trait IntoBytes {
-    fn into_bytes(self) -> Bytes;
+pub trait IntoRow {
+    fn into_row(self) -> Row;
 }
 
-pub trait FromBytes: Sized {
-    fn from_bytes(bytes: &Bytes) -> Option<Self>;
+pub trait FromRow: Sized {
+    fn from_row(row: &Row) -> Option<Self>;
 }
 
 pub trait FromKey: Sized {
@@ -26,14 +26,14 @@ macro_rules! as_key {
 }
 
 #[macro_export]
-macro_rules! as_bytes {
-    ($val:expr) => {{ IntoBytes::into_bytes($val) }};
+macro_rules! as_row {
+    ($val:expr) => {{ IntoRow::into_row($val) }};
 }
 
 #[macro_export]
-macro_rules! from_bytes {
+macro_rules! from_row {
     ($t:ty, $val:expr) => {
-        <$t as FromBytes>::from_bytes(&$val).unwrap()
+        <$t as FromRow>::from_row(&$val).unwrap()
     };
 }
 
@@ -46,9 +46,9 @@ macro_rules! from_key {
 
 macro_rules! impl_kv_for {
     ($t:ty) => {
-        impl IntoBytes for $t {
-            fn into_bytes(self) -> Bytes {
-                AsyncCowVec::new(bincode::serialize(&self))
+        impl IntoRow for $t {
+            fn into_row(self) -> Row {
+                Row(AsyncCowVec::new(bincode::serialize(&self)))
             }
         }
         impl FromKey for $t {
@@ -56,9 +56,9 @@ macro_rules! impl_kv_for {
                 keycode::deserialize(key).ok()
             }
         }
-        impl FromBytes for $t {
-            fn from_bytes(bytes: &Bytes) -> Option<Self> {
-                bincode::deserialize(bytes).ok()
+        impl FromRow for $t {
+            fn from_row(row: &Row) -> Option<Self> {
+                bincode::deserialize(row).ok()
             }
         }
     };

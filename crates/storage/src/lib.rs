@@ -10,10 +10,10 @@ pub use storage::{
     Apply, Contains, Get, Scan, ScanIterator, ScanIteratorRev, ScanRange, ScanRangeIterator,
     ScanRangeIteratorRev, ScanRangeRev, ScanRev, Storage,
 };
-pub use value::Stored;
+pub use stored::Stored;
 
 pub mod lmdb;
 pub mod memory;
 pub mod sqlite;
 mod storage;
-mod value;
+mod stored;

@@ -10,9 +10,9 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::AsyncCowVec;
-use crate::transaction::IntoBytes;
+use crate::transaction::IntoRow;
 use crate::transaction::keycode;
-use crate::{as_key, as_bytes};
+use crate::{as_key, as_row};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
@@ -20,7 +20,7 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 fn test_rollback_same_tx() {
     let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
-    txn.set(as_key!(1), as_bytes!(1)).unwrap();
+    txn.set(as_key!(1), as_row!(1)).unwrap();
     txn.rollback().unwrap();
     assert!(txn.get(&as_key!(1)).unwrap().is_none());
 }
@@ -29,7 +29,7 @@ fn test_rollback_same_tx() {
 fn test_rollback_different_tx() {
     let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
     let mut txn = engine.begin();
-    txn.set(as_key!(1), as_bytes!(1)).unwrap();
+    txn.set(as_key!(1), as_row!(1)).unwrap();
     txn.rollback().unwrap();
 
     let rx = engine.begin_read_only();

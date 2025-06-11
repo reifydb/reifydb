@@ -10,10 +10,10 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::transaction::AsyncCowVec;
-use crate::transaction::FromBytes;
-use crate::transaction::IntoBytes;
+use crate::transaction::FromRow;
+use crate::transaction::IntoRow;
 use crate::transaction::keycode;
-use crate::{as_bytes, as_key, from_bytes};
+use crate::{as_row, as_key, from_row};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
@@ -24,9 +24,9 @@ use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 fn test_iter() {
     let engine: Serializable<Memory> = Serializable::new(Memory::new());
     let mut txn = engine.begin();
-    txn.set(as_key!(1), as_bytes!(1)).unwrap();
-    txn.set(as_key!(2), as_bytes!(2)).unwrap();
-    txn.set(as_key!(3), as_bytes!(3)).unwrap();
+    txn.set(as_key!(1), as_row!(1)).unwrap();
+    txn.set(as_key!(2), as_row!(2)).unwrap();
+    txn.set(as_key!(3), as_row!(3)).unwrap();
     txn.commit().unwrap();
 
     let txn = engine.begin_read_only();
@@ -35,7 +35,7 @@ fn test_iter() {
     for sv in iter {
         count += 1;
         assert_eq!(sv.key, as_key!(count));
-        assert_eq!(sv.bytes, as_bytes!(count));
+        assert_eq!(sv.row, as_row!(count));
     }
     assert_eq!(count, 3);
 
@@ -43,7 +43,7 @@ fn test_iter() {
     let mut count = 3;
     for sv in iter {
         assert_eq!(sv.key, as_key!(count));
-        assert_eq!(sv.bytes, as_bytes!(count));
+        assert_eq!(sv.row, as_row!(count));
         count -= 1;
     }
     assert_eq!(count, 0);
@@ -53,16 +53,16 @@ fn test_iter() {
 fn test_iter2() {
     let engine: Serializable<Memory> = Serializable::new(Memory::new());
     let mut txn = engine.begin();
-    txn.set(as_key!(1), as_bytes!(1)).unwrap();
-    txn.set(as_key!(2), as_bytes!(2)).unwrap();
-    txn.set(as_key!(3), as_bytes!(3)).unwrap();
+    txn.set(as_key!(1), as_row!(1)).unwrap();
+    txn.set(as_key!(2), as_row!(2)).unwrap();
+    txn.set(as_key!(3), as_row!(3)).unwrap();
 
     let iter = txn.scan().unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 0);
     }
     assert_eq!(count, 3);
@@ -71,7 +71,7 @@ fn test_iter2() {
     let mut count = 3;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         count -= 1;
     }
 
@@ -80,16 +80,16 @@ fn test_iter2() {
     txn.commit().unwrap();
 
     let mut txn = engine.begin();
-    txn.set(as_key!(4), as_bytes!(4)).unwrap();
-    txn.set(as_key!(5), as_bytes!(5)).unwrap();
-    txn.set(as_key!(6), as_bytes!(6)).unwrap();
+    txn.set(as_key!(4), as_row!(4)).unwrap();
+    txn.set(as_key!(5), as_row!(5)).unwrap();
+    txn.set(as_key!(6), as_row!(6)).unwrap();
 
     let iter = txn.scan().unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 1);
     }
     assert_eq!(count, 6);
@@ -98,7 +98,7 @@ fn test_iter2() {
     let mut count = 6;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 1);
         count -= 1;
     }
@@ -108,16 +108,16 @@ fn test_iter2() {
 fn test_iter3() {
     let engine: Serializable<Memory> = Serializable::new(Memory::new());
     let mut txn = engine.begin();
-    txn.set(as_key!(4), as_bytes!(4)).unwrap();
-    txn.set(as_key!(5), as_bytes!(5)).unwrap();
-    txn.set(as_key!(6), as_bytes!(6)).unwrap();
+    txn.set(as_key!(4), as_row!(4)).unwrap();
+    txn.set(as_key!(5), as_row!(5)).unwrap();
+    txn.set(as_key!(6), as_row!(6)).unwrap();
 
     let iter = txn.scan().unwrap();
     let mut count = 3;
     for sv in iter {
         count += 1;
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 0);
     }
     assert_eq!(count, 6);
@@ -126,7 +126,7 @@ fn test_iter3() {
     let mut count = 6;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 0);
         count -= 1;
     }
@@ -135,16 +135,16 @@ fn test_iter3() {
     txn.commit().unwrap();
 
     let mut txn = engine.begin();
-    txn.set(as_key!(1), as_bytes!(1)).unwrap();
-    txn.set(as_key!(2), as_bytes!(2)).unwrap();
-    txn.set(as_key!(3), as_bytes!(3)).unwrap();
+    txn.set(as_key!(1), as_row!(1)).unwrap();
+    txn.set(as_key!(2), as_row!(2)).unwrap();
+    txn.set(as_key!(3), as_row!(3)).unwrap();
 
     let iter = txn.scan().unwrap();
     let mut count = 0;
     for sv in iter {
         count += 1;
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 1);
     }
     assert_eq!(count, 6);
@@ -153,7 +153,7 @@ fn test_iter3() {
     let mut count = 6;
     for sv in iter {
         assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.bytes(), &as_bytes!(count));
+        assert_eq!(sv.row(), &as_row!(count));
         assert_eq!(sv.version(), 1);
         count -= 1;
     }
@@ -173,7 +173,7 @@ fn test_iter_edge_case() {
     // c1
     {
         let mut txn = engine.begin();
-        txn.set(as_key!(3), as_bytes!(31u64)).unwrap();
+        txn.set(as_key!(3), as_row!(31u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(1, engine.version());
     }
@@ -181,8 +181,8 @@ fn test_iter_edge_case() {
     // a2, c2
     {
         let mut txn = engine.begin();
-        txn.set(as_key!(1), as_bytes!(12u64)).unwrap();
-        txn.set(as_key!(3), as_bytes!(32u64)).unwrap();
+        txn.set(as_key!(1), as_row!(12u64)).unwrap();
+        txn.set(as_key!(3), as_row!(32u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(2, engine.version());
     }
@@ -190,15 +190,15 @@ fn test_iter_edge_case() {
     // b3
     {
         let mut txn = engine.begin();
-        txn.set(as_key!(1), as_bytes!(13u64)).unwrap();
-        txn.set(as_key!(2), as_bytes!(23u64)).unwrap();
+        txn.set(as_key!(1), as_row!(13u64)).unwrap();
+        txn.set(as_key!(2), as_row!(23u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(3, engine.version());
     }
 
     // b4, c4(remove) (uncommitted)
     let mut txn4 = engine.begin();
-    txn4.set(as_key!(2), as_bytes!(24u64)).unwrap();
+    txn4.set(as_key!(2), as_row!(24u64)).unwrap();
     txn4.remove(as_key!(3)).unwrap();
     assert_eq!(3, engine.version());
 
@@ -213,7 +213,7 @@ fn test_iter_edge_case() {
     let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
-            assert_eq!(expected[i], from_bytes!(u64, *r.bytes()), "read_vs={}", r.version());
+            assert_eq!(expected[i], from_row!(u64, *r.row()), "read_vs={}", r.version());
             i += 1;
         }
         assert_eq!(expected.len(), i);
@@ -222,7 +222,7 @@ fn test_iter_edge_case() {
     let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
-            assert_eq!(expected[i], from_bytes!(u64, *r.bytes()), "read_vs={}", r.version());
+            assert_eq!(expected[i], from_row!(u64, *r.row()), "read_vs={}", r.version());
             i += 1;
         }
         assert_eq!(expected.len(), i);
@@ -270,7 +270,7 @@ fn test_iter_edge_case2() {
     // c1
     {
         let mut txn = engine.begin();
-        txn.set(as_key!(3), as_bytes!(31u64)).unwrap();
+        txn.set(as_key!(3), as_row!(31u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(1, engine.version());
     }
@@ -278,8 +278,8 @@ fn test_iter_edge_case2() {
     // a2, c2
     {
         let mut txn = engine.begin();
-        txn.set(as_key!(1), as_bytes!(12u64)).unwrap();
-        txn.set(as_key!(3), as_bytes!(32u64)).unwrap();
+        txn.set(as_key!(1), as_row!(12u64)).unwrap();
+        txn.set(as_key!(3), as_row!(32u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(2, engine.version());
     }
@@ -287,8 +287,8 @@ fn test_iter_edge_case2() {
     // b3
     {
         let mut txn = engine.begin();
-        txn.set(as_key!(1), as_bytes!(13u64)).unwrap();
-        txn.set(as_key!(2), as_bytes!(23u64)).unwrap();
+        txn.set(as_key!(1), as_row!(13u64)).unwrap();
+        txn.set(as_key!(2), as_row!(23u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(3, engine.version());
     }
@@ -304,7 +304,7 @@ fn test_iter_edge_case2() {
     let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
-            assert_eq!(expected[i], from_bytes!(u64, *r.bytes()));
+            assert_eq!(expected[i], from_row!(u64, *r.row()));
             i += 1;
         }
         assert_eq!(expected.len(), i);
@@ -313,7 +313,7 @@ fn test_iter_edge_case2() {
     let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
-            assert_eq!(expected[i], from_bytes!(u64, *r.bytes()));
+            assert_eq!(expected[i], from_row!(u64, *r.row()));
             i += 1;
         }
         assert_eq!(expected.len(), i);

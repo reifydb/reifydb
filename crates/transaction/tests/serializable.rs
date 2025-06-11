@@ -13,6 +13,7 @@ use reifydb_core::KeyRange;
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
+use reifydb_core::row::Row;
 use reifydb_storage::Stored;
 use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
@@ -150,10 +151,10 @@ impl<'a> testscript::Runner for MvccRunner {
                     let key = decode_binary(&arg.value);
                     let t = self.get_transaction(&command.prefix)?;
                     let value = match t {
-                        Transaction::Rx(rx) => rx.get(&key).map(|r| r.bytes().to_vec()),
-                        Transaction::Tx(tx) => tx.get(&key).unwrap().map(|r| r.bytes().to_vec()),
+                        Transaction::Rx(rx) => rx.get(&key).map(|r| r.row().to_vec()),
+                        Transaction::Tx(tx) => tx.get(&key).unwrap().map(|r| r.row().to_vec()),
                     };
-                    let fmtkv = format::Raw::key_maybe_value(&key, value);
+                    let fmtkv = format::Raw::key_maybe_row(&key, value);
                     writeln!(output, "{fmtkv}")?;
                 }
                 args.reject_rest()?;
@@ -168,11 +169,11 @@ impl<'a> testscript::Runner for MvccRunner {
 
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
-                    let value = decode_binary(&kv.value);
-                    if value.is_empty() {
+                    let row = Row(decode_binary(&kv.value));
+                    if row.is_empty() {
                         tx.remove(key).unwrap();
                     } else {
-                        tx.set(key, value).unwrap();
+                        tx.set(key, row).unwrap();
                     }
                 }
                 args.reject_rest()?;
@@ -206,18 +207,18 @@ impl<'a> testscript::Runner for MvccRunner {
                 match t {
                     Transaction::Rx(rx) => {
                         for sv in rx.scan().into_iter() {
-                            kvs.push((sv.key.clone(), sv.bytes.to_vec()));
+                            kvs.push((sv.key.clone(), sv.row.to_vec()));
                         }
                     }
                     Transaction::Tx(tx) => {
                         for item in tx.scan().unwrap().into_iter() {
-                            kvs.push((item.key().clone(), item.bytes().to_vec()));
+                            kvs.push((item.key().clone(), item.row().to_vec()));
                         }
                     }
                 };
 
                 for (key, value) in kvs {
-                    writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
+                    writeln!(output, "{}", format::Raw::key_row(&key, &value))?;
                 }
             }
             // scan_range RANGE [reverse=BOOL]
@@ -280,13 +281,13 @@ impl<'a> testscript::Runner for MvccRunner {
                 let mut args = command.consume_args();
                 for kv in args.rest_key() {
                     let key = decode_binary(kv.key.as_ref().unwrap());
-                    let value = decode_binary(&kv.value);
+                    let row = Row(decode_binary(&kv.value));
                     match t {
                         Transaction::Rx(_) => {
                             unreachable!("can not call set on rx")
                         }
                         Transaction::Tx(tx) => {
-                            tx.set(key, value).unwrap();
+                            tx.set(key, row).unwrap();
                         }
                     }
                 }
@@ -306,14 +307,14 @@ impl<'a> testscript::Runner for MvccRunner {
 
 fn print_rx<I: Iterator<Item = Stored>>(output: &mut String, mut iter: I) {
     while let Some(sv) = iter.next() {
-        let fmtkv = format::Raw::key_value(&sv.key, &sv.bytes.deref());
+        let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
         writeln!(output, "{fmtkv}").unwrap();
     }
 }
 
 fn print_tx<I: Iterator<Item = TransactionValue>>(output: &mut String, mut iter: I) {
     while let Some(tv) = iter.next() {
-        let fmtkv = format::Raw::key_value(tv.key(), tv.bytes().deref());
+        let fmtkv = format::Raw::key_row(tv.key(), tv.row().as_slice());
         writeln!(output, "{fmtkv}").unwrap();
     }
 }

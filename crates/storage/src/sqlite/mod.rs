@@ -9,6 +9,7 @@ use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::Hooks;
+use reifydb_core::row::Row;
 use reifydb_core::{AsyncCowVec, Key, KeyRange, Version};
 use rusqlite::{OptionalExtension, params};
 use std::ops::{Bound, Deref};
@@ -75,7 +76,7 @@ impl Apply for Sqlite {
 
         for delta in delta {
             match delta {
-                Delta::Set { key, bytes } => {
+                Delta::Set { key, row: bytes } => {
                     let version = 1; // FIXME remove this - transaction version needs to be persisted
                     tx.execute(
                         "INSERT OR REPLACE INTO kv (key, version, value) VALUES (?1, ?2, ?3)",
@@ -109,7 +110,7 @@ impl Get for Sqlite {
 			|row| {
 				Ok(Stored {
 					key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
-					bytes: AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?),
+					row: Row(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					version: row.get(2)?,
 				})
 			},
@@ -141,7 +142,7 @@ impl Scan for Sqlite {
             .query_map(params![version], |row| {
                 Ok(Stored {
                     key: AsyncCowVec::new(row.get::<_, Vec<u8>>(0)?),
-                    bytes: AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?),
+                    row: Row(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -168,7 +169,7 @@ impl ScanRev for Sqlite {
             .query_map(params![version], |row| {
                 Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    bytes: AsyncCowVec::new(row.get(1)?),
+                    row: Row(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -199,7 +200,7 @@ impl ScanRange for Sqlite {
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    bytes: AsyncCowVec::new(row.get(1)?),
+                    row: Row(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -229,7 +230,7 @@ impl ScanRangeRev for Sqlite {
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Stored {
                     key: AsyncCowVec::new(row.get(0)?),
-                    bytes: AsyncCowVec::new(row.get(1)?),
+                    row: Row(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })

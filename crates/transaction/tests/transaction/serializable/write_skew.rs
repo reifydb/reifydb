@@ -11,10 +11,10 @@
 
 use crate::transaction::AsyncCowVec;
 use crate::transaction::FromKey;
-use crate::transaction::FromBytes;
-use crate::transaction::IntoBytes;
+use crate::transaction::FromRow;
+use crate::transaction::IntoRow;
 use crate::transaction::keycode;
-use crate::{as_key, as_bytes, from_key, from_bytes};
+use crate::{as_key, as_row, from_key, from_row};
 use MvccError::Transaction;
 use TransactionError::Conflict;
 use reifydb_core::{Key, KeyRange};
@@ -34,15 +34,15 @@ fn test_write_skew() {
 
     // Set balance to $100 in each account.
     let mut txn = engine.begin();
-    txn.set(a999.clone(), as_bytes!(100u64)).unwrap();
-    txn.set(a888.clone(), as_bytes!(100u64)).unwrap();
+    txn.set(a999.clone(), as_row!(100u64)).unwrap();
+    txn.set(a888.clone(), as_row!(100u64)).unwrap();
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
     let get_bal = |txn: &mut TransactionTx<Memory>, k: &Key| -> u64 {
         let sv = txn.get(k).unwrap().unwrap();
-        let val = sv.bytes();
-        from_bytes!(u64, val)
+        let val = sv.row();
+        from_row!(u64, val)
     };
 
     // Start two transactions, each would read both accounts and deduct from one account.
@@ -51,7 +51,7 @@ fn test_write_skew() {
     let mut sum = get_bal(&mut txn1, &a999);
     sum += get_bal(&mut txn1, &a888);
     assert_eq!(200, sum);
-    txn1.set(a999.clone(), as_bytes!(0)).unwrap(); // Deduct 100 from a999
+    txn1.set(a999.clone(), as_row!(0)).unwrap(); // Deduct 100 from a999
 
     // Let's read this back.
     let mut sum = get_bal(&mut txn1, &a999);
@@ -65,7 +65,7 @@ fn test_write_skew() {
     let mut sum = get_bal(&mut txn2, &a999);
     sum += get_bal(&mut txn2, &a888);
     assert_eq!(200, sum);
-    txn2.set(a888.clone(), as_bytes!(0)).unwrap(); // Deduct 100 from a888
+    txn2.set(a888.clone(), as_row!(0)).unwrap(); // Deduct 100 from a888
 
     // Let's read this back.
     let mut sum = get_bal(&mut txn2, &a999);
@@ -90,9 +90,9 @@ fn test_black_white() {
     let mut txn = engine.begin();
     for i in 1..=10 {
         if i % 2 == 1 {
-            txn.set(as_key!(i), as_bytes!("black".to_string())).unwrap();
+            txn.set(as_key!(i), as_row!("black".to_string())).unwrap();
         } else {
-            txn.set(as_key!(i), as_bytes!("white".to_string())).unwrap();
+            txn.set(as_key!(i), as_row!("white".to_string())).unwrap();
         }
     }
     txn.commit().unwrap();
@@ -102,16 +102,12 @@ fn test_black_white() {
         .scan()
         .unwrap()
         .filter_map(|sv| {
-            if *sv.bytes() == as_bytes!("black".to_string()) {
-                Some(sv.key().clone())
-            } else {
-                None
-            }
+            if *sv.row() == as_row!("black".to_string()) { Some(sv.key().clone()) } else { None }
         })
         .collect::<Vec<_>>();
 
     for i in indices {
-        white.set(i, as_bytes!("white".to_string())).unwrap();
+        white.set(i, as_row!("white".to_string())).unwrap();
     }
 
     let mut black = engine.begin();
@@ -119,16 +115,12 @@ fn test_black_white() {
         .scan()
         .unwrap()
         .filter_map(|sv| {
-            if *sv.bytes() == as_bytes!("white".to_string()) {
-                Some(sv.key().clone())
-            } else {
-                None
-            }
+            if *sv.row() == as_row!("white".to_string()) { Some(sv.key().clone()) } else { None }
         })
         .collect::<Vec<_>>();
 
     for i in indices {
-        black.set(i, as_bytes!("black".to_string())).unwrap();
+        black.set(i, as_row!("black".to_string())).unwrap();
     }
 
     black.commit().unwrap();
@@ -140,7 +132,7 @@ fn test_black_white() {
     assert_eq!(result.len(), 10);
 
     result.iter().for_each(|sv| {
-        assert_eq!(sv.bytes, as_bytes!("black".to_string()));
+        assert_eq!(sv.row, as_row!("black".to_string()));
     })
 }
 
@@ -153,25 +145,25 @@ fn test_overdraft_protection() {
 
     // Setup
     let mut txn = engine.begin();
-    txn.set(key.clone(), as_bytes!(1000)).unwrap();
+    txn.set(key.clone(), as_row!(1000)).unwrap();
     txn.commit().unwrap();
 
     // txn1
     let mut txn1 = engine.begin();
-    let money = from_bytes!(i32, *txn1.get(&key).unwrap().unwrap().bytes());
-    txn1.set(key.clone(), as_bytes!(money - 500)).unwrap();
+    let money = from_row!(i32, *txn1.get(&key).unwrap().unwrap().row());
+    txn1.set(key.clone(), as_row!(money - 500)).unwrap();
 
     // txn2
     let mut txn2 = engine.begin();
-    let money = from_bytes!(i32, *txn2.get(&key).unwrap().unwrap().bytes());
-    txn2.set(key.clone(), as_bytes!(money - 500)).unwrap();
+    let money = from_row!(i32, *txn2.get(&key).unwrap().unwrap().row());
+    txn2.set(key.clone(), as_row!(money - 500)).unwrap();
 
     txn1.commit().unwrap();
     let err = txn2.commit().unwrap_err();
     assert_eq!(err, Transaction(Conflict));
 
     let rx = engine.begin_read_only();
-    let money = from_bytes!(i32, *rx.get(&key).unwrap().bytes());
+    let money = from_row!(i32, *rx.get(&key).unwrap().row());
     assert_eq!(money, 500);
 }
 
@@ -184,11 +176,11 @@ fn test_primary_colors() {
     let mut txn = engine.begin();
     for i in 1..=9000 {
         if i % 3 == 1 {
-            txn.set(as_key!(i), as_bytes!("red".to_string())).unwrap();
+            txn.set(as_key!(i), as_row!("red".to_string())).unwrap();
         } else if i % 3 == 2 {
-            txn.set(as_key!(i), as_bytes!("yellow".to_string())).unwrap();
+            txn.set(as_key!(i), as_row!("yellow".to_string())).unwrap();
         } else {
-            txn.set(as_key!(i), as_bytes!("blue".to_string())).unwrap();
+            txn.set(as_key!(i), as_row!("blue".to_string())).unwrap();
         }
     }
     txn.commit().unwrap();
@@ -198,15 +190,11 @@ fn test_primary_colors() {
         .scan()
         .unwrap()
         .filter_map(|sv| {
-            if *sv.bytes() == as_bytes!("yellow".to_string()) {
-                Some(sv.key().clone())
-            } else {
-                None
-            }
+            if *sv.row() == as_row!("yellow".to_string()) { Some(sv.key().clone()) } else { None }
         })
         .collect::<Vec<_>>();
     for i in indices {
-        red.set(i, as_bytes!("red".to_string())).unwrap();
+        red.set(i, as_row!("red".to_string())).unwrap();
     }
 
     let mut yellow = engine.begin();
@@ -214,11 +202,11 @@ fn test_primary_colors() {
         .scan()
         .unwrap()
         .filter_map(|sv| {
-            if *sv.bytes() == as_bytes!("blue".to_string()) { Some(sv.key().clone()) } else { None }
+            if *sv.row() == as_row!("blue".to_string()) { Some(sv.key().clone()) } else { None }
         })
         .collect::<Vec<_>>();
     for i in indices {
-        yellow.set(i, as_bytes!("yellow".to_string())).unwrap();
+        yellow.set(i, as_row!("yellow".to_string())).unwrap();
     }
 
     let mut red_two = engine.begin();
@@ -226,11 +214,11 @@ fn test_primary_colors() {
         .scan()
         .unwrap()
         .filter_map(|sv| {
-            if *sv.bytes() == as_bytes!("blue".to_string()) { Some(sv.key().clone()) } else { None }
+            if *sv.row() == as_row!("blue".to_string()) { Some(sv.key().clone()) } else { None }
         })
         .collect::<Vec<_>>();
     for i in indices {
-        red_two.set(i, as_bytes!("red".to_string())).unwrap();
+        red_two.set(i, as_row!("red".to_string())).unwrap();
     }
 
     red.commit().unwrap();
@@ -249,7 +237,7 @@ fn test_primary_colors() {
     let mut blue_count = 0;
 
     result.iter().for_each(|sv| {
-        let value = from_bytes!(String, sv.bytes);
+        let value = from_row!(String, sv.row);
         match value.as_str() {
             "red" => red_count += 1,
             "yellow" => yellow_count += 1,
@@ -270,10 +258,10 @@ fn test_intersecting_data() {
 
     // Setup
     let mut txn = engine.begin();
-    txn.set(as_key!("a1"), as_bytes!(10u64)).unwrap();
-    txn.set(as_key!("a2"), as_bytes!(20u64)).unwrap();
-    txn.set(as_key!("b1"), as_bytes!(100u64)).unwrap();
-    txn.set(as_key!("b2"), as_bytes!(200u64)).unwrap();
+    txn.set(as_key!("a1"), as_row!(10u64)).unwrap();
+    txn.set(as_key!("a2"), as_row!(20u64)).unwrap();
+    txn.set(as_key!("b1"), as_row!(100u64)).unwrap();
+    txn.set(as_key!("b2"), as_row!(200u64)).unwrap();
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
@@ -283,12 +271,12 @@ fn test_intersecting_data() {
         .unwrap()
         .filter_map(|tv| {
             let key = from_key!(String, tv.key());
-            let value = from_bytes!(u64, *tv.bytes());
+            let value = from_row!(u64, *tv.row());
             if key.starts_with('a') { Some(value) } else { None }
         })
         .sum::<u64>();
 
-    txn1.set(as_key!("b3"), as_bytes!(30)).unwrap();
+    txn1.set(as_key!("b3"), as_row!(30)).unwrap();
     assert_eq!(30, val);
 
     let mut txn2 = engine.begin();
@@ -297,12 +285,12 @@ fn test_intersecting_data() {
         .unwrap()
         .filter_map(|tv| {
             let key = from_key!(String, tv.key());
-            let value = from_bytes!(u64, *tv.bytes());
+            let value = from_row!(u64, *tv.row());
             if key.starts_with('b') { Some(value) } else { None }
         })
         .sum::<u64>();
 
-    txn2.set(as_key!("a3"), as_bytes!(300u64)).unwrap();
+    txn2.set(as_key!("a3"), as_row!(300u64)).unwrap();
     assert_eq!(300, val);
 
     txn2.commit().unwrap();
@@ -315,7 +303,7 @@ fn test_intersecting_data() {
         .unwrap()
         .filter_map(|tv| {
             let key = from_key!(String, tv.key());
-            let value = from_bytes!(u64, *tv.bytes());
+            let value = from_row!(u64, *tv.row());
             if key.starts_with('a') { Some(value) } else { None }
         })
         .sum::<u64>();
@@ -330,9 +318,9 @@ fn test_intersecting_data2() {
 
     // Setup
     let mut txn = engine.begin();
-    txn.set(as_key!("a1"), as_bytes!(10u64)).unwrap();
-    txn.set(as_key!("b1"), as_bytes!(100u64)).unwrap();
-    txn.set(as_key!("b2"), as_bytes!(200u64)).unwrap();
+    txn.set(as_key!("a1"), as_row!(10u64)).unwrap();
+    txn.set(as_key!("b1"), as_row!(100u64)).unwrap();
+    txn.set(as_key!("b2"), as_row!(200u64)).unwrap();
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
@@ -340,21 +328,21 @@ fn test_intersecting_data2() {
     let val = txn1
         .scan_range(KeyRange::parse("a..b"))
         .unwrap()
-        .map(|tv| from_bytes!(u64, *tv.bytes()))
+        .map(|tv| from_row!(u64, *tv.row()))
         .sum::<u64>();
 
-    txn1.set(as_key!("b3"), as_bytes!(10)).unwrap();
+    txn1.set(as_key!("b3"), as_row!(10)).unwrap();
     assert_eq!(10, val);
 
     let mut txn2 = engine.begin();
     let val = txn2
         .scan_range(KeyRange::parse("b..c"))
         .unwrap()
-        .map(|tv| from_bytes!(u64, *tv.bytes()))
+        .map(|tv| from_row!(u64, *tv.row()))
         .sum::<u64>();
 
     assert_eq!(300, val);
-    txn2.set(as_key!("a3"), as_bytes!(300u64)).unwrap();
+    txn2.set(as_key!("a3"), as_row!(300u64)).unwrap();
     txn2.commit().unwrap();
 
     let err = txn1.commit().unwrap_err();
@@ -366,7 +354,7 @@ fn test_intersecting_data2() {
         .unwrap()
         .filter_map(|tv| {
             let key = from_key!(String, tv.key());
-            let value = from_bytes!(u64, *tv.bytes());
+            let value = from_row!(u64, *tv.row());
             if key.starts_with('a') { Some(value) } else { None }
         })
         .sum::<u64>();
@@ -380,8 +368,8 @@ fn test_intersecting_data3() {
 
     // // Setup
     let mut txn = engine.begin();
-    txn.set(as_key!("b1"), as_bytes!(100u64)).unwrap();
-    txn.set(as_key!("b2"), as_bytes!(200u64)).unwrap();
+    txn.set(as_key!("b1"), as_row!(100u64)).unwrap();
+    txn.set(as_key!("b2"), as_row!(200u64)).unwrap();
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
@@ -389,19 +377,19 @@ fn test_intersecting_data3() {
     let val = txn1
         .scan_range(KeyRange::parse("a..b"))
         .unwrap()
-        .map(|tv| from_bytes!(u64, *tv.bytes()))
+        .map(|tv| from_row!(u64, *tv.row()))
         .sum::<u64>();
-    txn1.set(as_key!("b3"), as_bytes!(0u64)).unwrap();
+    txn1.set(as_key!("b3"), as_row!(0u64)).unwrap();
     assert_eq!(0, val);
 
     let mut txn2 = engine.begin();
     let val = txn2
         .scan_range(KeyRange::parse("b..c"))
         .unwrap()
-        .map(|tv| from_bytes!(u64, *tv.bytes()))
+        .map(|tv| from_row!(u64, *tv.row()))
         .sum::<u64>();
 
-    txn2.set(as_key!("a3"), as_bytes!(300u64)).unwrap();
+    txn2.set(as_key!("a3"), as_row!(300u64)).unwrap();
     assert_eq!(300, val);
     txn2.commit().unwrap();
     let err = txn1.commit().unwrap_err();
@@ -413,7 +401,7 @@ fn test_intersecting_data3() {
         .unwrap()
         .filter_map(|tv| {
             let key = from_key!(String, tv.key());
-            let value = from_bytes!(u64, *tv.bytes());
+            let value = from_row!(u64, *tv.row());
             if key.starts_with('a') { Some(value) } else { None }
         })
         .sum::<u64>();
