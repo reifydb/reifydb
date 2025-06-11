@@ -19,24 +19,24 @@ fn main() {
 
     db.tx_as(
         &root,
-        r#"create table test.item(field_one: int1, field_two: int2, field_three: int1)"#,
+        r#"create table test.item(field_one: int1 policy ( saturation undefined), field_two: int2, field_three: int1)"#,
     )
     .unwrap();
 
-    db.tx_as(
-        &root,
-        r#"create deferred view test.item_view(field_one: int1, field_two: int2, field_three: int1)"#,
-    )
-    .unwrap();
+    // db.tx_as(
+    //     &root,
+    //     r#"create deferred view test.item_view(field_one: int1, field_two: int2, field_three: int1)"#,
+    // )
+    // .unwrap();
 
-    if let Err(e) = db.tx_as(
-        &root,
-        r#"insert (1,1,1),(2,2,2) into test.item (field_one, field_two, field_three)"#,
-    ) {
-        println!("{}", e);
-    }
+    // if let Err(e) = db.tx_as(
+    //     &root,
+    //     r#"insert (1,1,1),(2,2,2) into test.item (field_one, field_two, field_three)"#,
+    // ) {
+    //     println!("{}", e);
+    // }
     if let Err(e) =
-        db.tx_as(&root, r#"insert (1,1,1) into test.item (field_one, field_two, field_three)"#)
+        db.tx_as(&root, r#"insert (130,1,1) into test.item (field_one, field_two, field_three)"#)
     {
         println!("{}", e);
     }
@@ -46,11 +46,11 @@ fn main() {
         println!("{}", l);
     }
 
-    for l in
-        db.tx_as(&root, r#"from test.item_view select field_one, field_two, field_three"#).unwrap()
-    {
-        println!("{}", l);
-    }
+    // for l in
+    //     db.tx_as(&root, r#"from test.item_view select field_one, field_two, field_three"#).unwrap()
+    // {
+    //     println!("{}", l);
+    // }
 
     // println!("took {:?}", start.elapsed());
 }

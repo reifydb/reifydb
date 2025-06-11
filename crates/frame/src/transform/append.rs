@@ -44,270 +44,339 @@ impl Frame {
 
         let rows: Vec<Row> = rows.into_iter().collect();
         let values = layout.fields.iter().map(|f| f.value.clone()).collect::<Vec<_>>();
+        let layout = Layout::new(&values);
 
-        for (index, (col, value)) in self.columns.iter_mut().zip(values).enumerate() {
-            match (&mut col.data, value) {
+        // if there is an undefined column and the new data contains defined data
+        // convert this column into the new type and fill the undefined part
+        for (index, column) in self.columns.iter_mut().enumerate() {
+            if let ColumnValues::Undefined(size) = column.data {
+                let new_data = match layout.value(index) {
+                    ValueKind::Bool => ColumnValues::bool_with_validity(
+                        CowVec::new(vec![false; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Float4 => ColumnValues::float4_with_validity(
+                        CowVec::new(vec![0.0f32; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Float8 => ColumnValues::float8_with_validity(
+                        CowVec::new(vec![0.0f64; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Int1 => ColumnValues::int1_with_validity(
+                        CowVec::new(vec![0i8; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Int2 => ColumnValues::int2_with_validity(
+                        CowVec::new(vec![0i16; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Int4 => ColumnValues::int4_with_validity(
+                        CowVec::new(vec![0i32; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Int8 => ColumnValues::int8_with_validity(
+                        CowVec::new(vec![0i64; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Int16 => ColumnValues::int16_with_validity(
+                        CowVec::new(vec![0i128; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::String => ColumnValues::string_with_validity(
+                        CowVec::new(vec![String::new(); size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Uint1 => ColumnValues::uint1_with_validity(
+                        CowVec::new(vec![0u8; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Uint2 => ColumnValues::uint2_with_validity(
+                        CowVec::new(vec![0u16; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Uint4 => ColumnValues::uint4_with_validity(
+                        CowVec::new(vec![0u32; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Uint8 => ColumnValues::uint8_with_validity(
+                        CowVec::new(vec![0u64; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Uint16 => ColumnValues::uint16_with_validity(
+                        CowVec::new(vec![0u128; size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    ValueKind::Undefined => column.data.clone(),
+                };
+
+                column.data = new_data;
+            }
+        }
+
+        for row in &rows {
+            if layout.all_defined(&row) {
+                // if all columns in the row are defined, then we can take a simpler implementation
+                self.append_all_defined(&layout, &row)?;
+            } else {
+                // at least one column is undefined
+                self.append_fallback(&layout, &row)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn append_all_defined(&mut self, layout: &Layout, row: &Row) -> crate::Result<()> {
+        for (index, column) in self.columns.iter_mut().enumerate() {
+            match (&mut column.data, layout.value(index)) {
                 (ColumnValues::Bool(vec, valid), ValueKind::Bool) => {
-                    for row in &rows {
-                        vec.push(layout.get_bool(&row, index));
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_bool(&row, index));
+                    valid.push(true);
                 }
                 (ColumnValues::Float4(vec, valid), ValueKind::Float4) => {
-                    for row in &rows {
-                        vec.push(layout.get_f32(&row, index));
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_f32(&row, index));
+                    valid.push(true);
                 }
                 (ColumnValues::Float8(vec, valid), ValueKind::Float8) => {
-                    for row in &rows {
-                        vec.push(layout.get_f64(&row, index));
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_f64(&row, index));
+                    valid.push(true);
                 }
                 (ColumnValues::Int1(vec, valid), ValueKind::Int1) => {
-                    for row in &rows {
-                        vec.push(layout.get_i8(&row, index));
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_i8(&row, index));
+                    valid.push(true);
                 }
                 (ColumnValues::Int2(vec, valid), ValueKind::Int2) => {
-                    for row in &rows {
-                        vec.push(layout.get_i16(&row, index));
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_i16(&row, index));
+                    valid.push(true);
                 }
                 (ColumnValues::Int4(vec, valid), ValueKind::Int4) => {
-                    for row in &rows {
-                        vec.push(layout.get_i32(&row, index));
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_i32(&row, index));
+                    valid.push(true);
                 }
                 (ColumnValues::Int8(vec, valid), ValueKind::Int8) => {
-                    for row in &rows {
-                        vec.push(layout.get_i64(&row, index));
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_i64(&row, index));
+                    valid.push(true);
                 }
                 (ColumnValues::Int16(vec, valid), ValueKind::Int16) => {
-                    for row in &rows {
-                        vec.push(layout.get_i128(&row, index));
-                        valid.push(true);
-                    }
-                }
-                (ColumnValues::Uint1(vec, valid), ValueKind::Uint1) => {
-                    for row in &rows {
-                        vec.push(layout.get_u8(&row, index));
-                        valid.push(true);
-                    }
-                }
-                (ColumnValues::Uint2(vec, valid), ValueKind::Uint2) => {
-                    for row in &rows {
-                        vec.push(layout.get_u16(&row, index));
-                        valid.push(true);
-                    }
-                }
-                (ColumnValues::Uint4(vec, valid), ValueKind::Uint4) => {
-                    for row in &rows {
-                        vec.push(layout.get_u32(&row, index));
-                        valid.push(true);
-                    }
-                }
-                (ColumnValues::Uint8(vec, valid), ValueKind::Uint8) => {
-                    for row in &rows {
-                        vec.push(layout.get_u64(&row, index));
-                        valid.push(true);
-                    }
-                }
-                (ColumnValues::Uint16(vec, valid), ValueKind::Uint16) => {
-                    for row in &rows {
-                        vec.push(layout.get_u128(&row, index));
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_i128(&row, index));
+                    valid.push(true);
                 }
                 (ColumnValues::String(vec, valid), ValueKind::String) => {
-                    for row in &rows {
-                        vec.push(layout.get_str(&row, index).to_string());
-                        valid.push(true);
-                    }
+                    vec.push(layout.get_str(&row, index).to_string());
+                    valid.push(true);
                 }
-                (ColumnValues::Undefined(n), ValueKind::Undefined) => {
-                    *n += rows.len();
+                (ColumnValues::Uint1(vec, valid), ValueKind::Uint1) => {
+                    vec.push(layout.get_u8(&row, index));
+                    valid.push(true);
                 }
-
-                (ColumnValues::Undefined(n), v) => {
-                    let mut new_column = match v {
-                        ValueKind::Bool => {
-                            let mut values = CowVec::new(vec![false; *n]);
-                            for row in &rows {
-                                values.push(layout.get_bool(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::bool_with_validity(values, validity)
-                        }
-                        ValueKind::Float4 => {
-                            let mut values = CowVec::new(vec![0.0f32; *n]);
-                            for row in &rows {
-                                values.push(layout.get_f32(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::float4_with_validity(values, validity)
-                        }
-                        ValueKind::Float8 => {
-                            let mut values = CowVec::new(vec![0.0f64; *n]);
-                            for row in &rows {
-                                values.push(layout.get_f64(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::float8_with_validity(values, validity)
-                        }
-                        ValueKind::Int1 => {
-                            let mut values = CowVec::new(vec![0i8; *n]);
-                            for row in &rows {
-                                values.push(layout.get_i8(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::int1_with_validity(values, validity)
-                        }
-                        ValueKind::Int2 => {
-                            let mut values = CowVec::new(vec![0i16; *n]);
-                            for row in &rows {
-                                values.push(layout.get_i16(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::int2_with_validity(values, validity)
-                        }
-                        ValueKind::Int4 => {
-                            let mut values = CowVec::new(vec![0i32; *n]);
-                            for row in &rows {
-                                values.push(layout.get_i32(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::int4_with_validity(values, validity)
-                        }
-                        ValueKind::Int8 => {
-                            let mut values = CowVec::new(vec![0i64; *n]);
-                            for row in &rows {
-                                values.push(layout.get_i64(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::int8_with_validity(values, validity)
-                        }
-                        ValueKind::Int16 => {
-                            let mut values = CowVec::new(vec![0i128; *n]);
-                            for row in &rows {
-                                values.push(layout.get_i128(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::int16_with_validity(values, validity)
-                        }
-                        ValueKind::Uint1 => {
-                            let mut values = CowVec::new(vec![0u8; *n]);
-                            for row in &rows {
-                                values.push(layout.get_u8(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::uint1_with_validity(values, validity)
-                        }
-                        ValueKind::Uint2 => {
-                            let mut values = CowVec::new(vec![0u16; *n]);
-                            for row in &rows {
-                                values.push(layout.get_u16(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::uint2_with_validity(values, validity)
-                        }
-                        ValueKind::Uint4 => {
-                            let mut values = CowVec::new(vec![0u32; *n]);
-                            for row in &rows {
-                                values.push(layout.get_u32(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::uint4_with_validity(values, validity)
-                        }
-                        ValueKind::Uint8 => {
-                            let mut values = CowVec::new(vec![0u64; *n]);
-                            for row in &rows {
-                                values.push(layout.get_u64(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::uint8_with_validity(values, validity)
-                        }
-                        ValueKind::Uint16 => {
-                            let mut values = CowVec::new(vec![0u128; *n]);
-                            for row in &rows {
-                                values.push(layout.get_u128(&row, index));
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::uint16_with_validity(values, validity)
-                        }
-                        ValueKind::String => {
-                            let mut values = CowVec::new(vec!["".to_string(); *n]);
-                            for row in &rows {
-                                values.push(layout.get_str(&row, index).to_string());
-                            }
-
-                            let mut validity = CowVec::new(vec![false; *n]);
-                            validity.extend([true]);
-
-                            ColumnValues::string_with_validity(values, validity)
-                        }
-                        ValueKind::Undefined => unreachable!(),
-                    };
-
-                    std::mem::swap(&mut col.data, &mut new_column);
+                (ColumnValues::Uint2(vec, valid), ValueKind::Uint2) => {
+                    vec.push(layout.get_u16(&row, index));
+                    valid.push(true);
                 }
-                (_, _) => {
+                (ColumnValues::Uint4(vec, valid), ValueKind::Uint4) => {
+                    vec.push(layout.get_u32(&row, index));
+                    valid.push(true);
+                }
+                (ColumnValues::Uint8(vec, valid), ValueKind::Uint8) => {
+                    vec.push(layout.get_u64(&row, index));
+                    valid.push(true);
+                }
+                (ColumnValues::Uint16(vec, valid), ValueKind::Uint16) => {
+                    vec.push(layout.get_u128(&row, index));
+                    valid.push(true);
+                }
+                (_, v) => {
                     return Err(format!(
-                        "type mismatch for column '{}'({}): incompatible with {}",
-                        col.name,
-                        col.data.value(),
-                        value
+                        "type mismatch for column '{}'({}): incompatible with value {}",
+                        column.name,
+                        column.data.value(),
+                        v
                     )
                     .into());
                 }
             }
         }
+        Ok(())
+    }
 
+    fn append_fallback(&mut self, layout: &Layout, row: &Row) -> crate::Result<()> {
+        for (index, column) in self.columns.iter_mut().enumerate() {
+            match (&mut column.data, layout.value(index)) {
+                (ColumnValues::Bool(vec, valid), ValueKind::Bool) => {
+                    match layout.try_get_bool(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(false);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Float4(vec, valid), ValueKind::Float4) => {
+                    match layout.try_get_f32(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0.0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Float8(vec, valid), ValueKind::Float8) => {
+                    match layout.try_get_f64(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0.0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Int1(vec, valid), ValueKind::Int1) => {
+                    match layout.try_get_i8(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Int2(vec, valid), ValueKind::Int2) => {
+                    match layout.try_get_i16(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Int4(vec, valid), ValueKind::Int4) => {
+                    match layout.try_get_i32(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Int8(vec, valid), ValueKind::Int8) => {
+                    match layout.try_get_i64(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Int16(vec, valid), ValueKind::Int16) => {
+                    match layout.try_get_i128(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::String(vec, valid), ValueKind::String) => {
+                    match layout.try_get_str(row, index) {
+                        Some(v) => {
+                            vec.push(v.to_string());
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(String::new());
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Uint1(vec, valid), ValueKind::Uint1) => {
+                    match layout.try_get_u8(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Uint2(vec, valid), ValueKind::Uint2) => {
+                    match layout.try_get_u16(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Uint4(vec, valid), ValueKind::Uint4) => {
+                    match layout.try_get_u32(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Uint8(vec, valid), ValueKind::Uint8) => {
+                    match layout.try_get_u64(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Uint16(vec, valid), ValueKind::Uint16) => {
+                    match layout.try_get_u128(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Undefined(size), ValueKind::Undefined) => {
+                    *size += 1;
+                }
+                (_, _) => unreachable!(),
+            }
+        }
         Ok(())
     }
 }
@@ -315,7 +384,7 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     mod frame {
-        use crate::*;
+        use crate::{Column, Frame};
 
         #[test]
         fn test_boolean() {
@@ -606,12 +675,225 @@ mod tests {
         use reifydb_core::{Value, ValueKind};
 
         #[test]
+        fn test_before_undefined_bool() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+
+            let layout = Layout::new(&[ValueKind::Bool]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Bool(true)]);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::bool_with_validity([false, false, true], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_float4() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Float4]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::float4_with_validity([0.0, 0.0, 1.5], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_float8() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Float8]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::float8_with_validity([0.0, 0.0, 2.25], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_int1() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Int1]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Int1(42)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int1_with_validity([0, 0, 42], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_int2() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Int2]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Int2(-1234)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int2_with_validity([0, 0, -1234], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_int4() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Int4]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Int4(56789)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int4_with_validity([0, 0, 56789], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_int8() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Int8]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Int8(-987654321)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int8_with_validity([0, 0, -987654321], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_int16() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Int16]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int16_with_validity(
+                    [0, 0, 123456789012345678901234567890i128],
+                    [false, false, true]
+                )
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_string() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::String]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::String("reifydb".into())]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::string_with_validity(
+                    ["".to_string(), "".to_string(), "reifydb".to_string()],
+                    [false, false, true]
+                )
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_uint1() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Uint1]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Uint1(255)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint1_with_validity([0, 0, 255], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_uint2() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Uint2]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Uint2(65535)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint2_with_validity([0, 0, 65535], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_uint4() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Uint4]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Uint4(4294967295)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint4_with_validity([0, 0, 4294967295], [false, false, true])
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_uint8() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Uint8]);
+            let mut row = layout.allocate_row();
+            layout.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint8_with_validity(
+                    [0, 0, 18446744073709551615],
+                    [false, false, true]
+                )
+            );
+        }
+
+        #[test]
+        fn test_before_undefined_uint16() {
+            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let layout = Layout::new(&[ValueKind::Uint16]);
+            let mut row = layout.allocate_row();
+            layout.set_values(
+                &mut row,
+                &[Value::Uint16(340282366920938463463374607431768211455u128)],
+            );
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint16_with_validity(
+                    [0, 0, 340282366920938463463374607431768211455u128],
+                    [false, false, true]
+                )
+            );
+        }
+
+        #[test]
         fn test_mismatched_columns() {
             let mut test_instance = Frame::new(vec![]);
 
             let layout = Layout::new(&[ValueKind::Int2]);
             let mut row = layout.allocate_row();
-            layout.write_values(row.make_mut(), &[Value::Int2(2)]);
+            layout.set_values(&mut row, &[Value::Int2(2)]);
 
             let err = test_instance.append_rows(&layout, [row]).err().unwrap();
             assert_eq!(err.to_string(), "mismatched column count: expected 0, got 1");
@@ -623,9 +905,9 @@ mod tests {
 
             let layout = Layout::new(&[ValueKind::Int2, ValueKind::Bool]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Int2(2), Value::Bool(true)]);
+            layout.set_values(&mut row_one, &[Value::Int2(2), Value::Bool(true)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Int2(3), Value::Bool(false)]);
+            layout.set_values(&mut row_two, &[Value::Int2(3), Value::Bool(false)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -634,14 +916,14 @@ mod tests {
         }
 
         #[test]
-        fn test_bool() {
+        fn test_all_defined_bool() {
             let mut test_instance = Frame::new(vec![Column::bool("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Bool]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Bool(true)]);
+            layout.set_bool(&mut row_one, 0, true);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Bool(false)]);
+            layout.set_bool(&mut row_two, 0, false);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -649,20 +931,14 @@ mod tests {
         }
 
         #[test]
-        fn test_float4() {
+        fn test_all_defined_float4() {
             let mut test_instance = Frame::new(vec![Column::float4("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Float4]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(
-                row_one.make_mut(),
-                &[Value::Float4(OrderedF32::try_from(1.0).unwrap())],
-            );
+            layout.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(
-                row_two.make_mut(),
-                &[Value::Float4(OrderedF32::try_from(2.0).unwrap())],
-            );
+            layout.set_values(&mut row_two, &[Value::Float4(OrderedF32::try_from(2.0).unwrap())]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -670,20 +946,14 @@ mod tests {
         }
 
         #[test]
-        fn test_float8() {
+        fn test_all_defined_float8() {
             let mut test_instance = Frame::new(vec![Column::float8("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Float8]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(
-                row_one.make_mut(),
-                &[Value::Float8(OrderedF64::try_from(1.0).unwrap())],
-            );
+            layout.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(
-                row_two.make_mut(),
-                &[Value::Float8(OrderedF64::try_from(2.0).unwrap())],
-            );
+            layout.set_values(&mut row_two, &[Value::Float8(OrderedF64::try_from(2.0).unwrap())]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -691,14 +961,14 @@ mod tests {
         }
 
         #[test]
-        fn test_int1() {
+        fn test_all_defined_int1() {
             let mut test_instance = Frame::new(vec![Column::int1("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Int1]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Int1(1)]);
+            layout.set_values(&mut row_one, &[Value::Int1(1)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Int1(2)]);
+            layout.set_values(&mut row_two, &[Value::Int1(2)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -706,14 +976,14 @@ mod tests {
         }
 
         #[test]
-        fn test_int2() {
+        fn test_all_defined_int2() {
             let mut test_instance = Frame::new(vec![Column::int2("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Int2]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Int2(100)]);
+            layout.set_values(&mut row_one, &[Value::Int2(100)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Int2(200)]);
+            layout.set_values(&mut row_two, &[Value::Int2(200)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -721,14 +991,14 @@ mod tests {
         }
 
         #[test]
-        fn test_int4() {
+        fn test_all_defined_int4() {
             let mut test_instance = Frame::new(vec![Column::int4("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Int4]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Int4(1000)]);
+            layout.set_values(&mut row_one, &[Value::Int4(1000)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Int4(2000)]);
+            layout.set_values(&mut row_two, &[Value::Int4(2000)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -736,14 +1006,14 @@ mod tests {
         }
 
         #[test]
-        fn test_int8() {
+        fn test_all_defined_int8() {
             let mut test_instance = Frame::new(vec![Column::int8("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Int8]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Int8(10000)]);
+            layout.set_values(&mut row_one, &[Value::Int8(10000)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Int8(20000)]);
+            layout.set_values(&mut row_two, &[Value::Int8(20000)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -751,14 +1021,14 @@ mod tests {
         }
 
         #[test]
-        fn test_int16() {
+        fn test_all_defined_int16() {
             let mut test_instance = Frame::new(vec![Column::int16("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Int16]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Int16(1000)]);
+            layout.set_values(&mut row_one, &[Value::Int16(1000)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Int16(2000)]);
+            layout.set_values(&mut row_two, &[Value::Int16(2000)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -766,14 +1036,14 @@ mod tests {
         }
 
         #[test]
-        fn test_string() {
+        fn test_all_defined_string() {
             let mut test_instance = Frame::new(vec![Column::string("test", [])]);
 
             let layout = Layout::new(&[ValueKind::String]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::String("a".into())]);
+            layout.set_values(&mut row_one, &[Value::String("a".into())]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::String("b".into())]);
+            layout.set_values(&mut row_two, &[Value::String("b".into())]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -784,14 +1054,14 @@ mod tests {
         }
 
         #[test]
-        fn test_uint1() {
+        fn test_all_defined_uint1() {
             let mut test_instance = Frame::new(vec![Column::uint1("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Uint1]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Uint1(1)]);
+            layout.set_values(&mut row_one, &[Value::Uint1(1)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Uint1(2)]);
+            layout.set_values(&mut row_two, &[Value::Uint1(2)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -799,14 +1069,14 @@ mod tests {
         }
 
         #[test]
-        fn test_uint2() {
+        fn test_all_defined_uint2() {
             let mut test_instance = Frame::new(vec![Column::uint2("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Uint2]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Uint2(100)]);
+            layout.set_values(&mut row_one, &[Value::Uint2(100)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Uint2(200)]);
+            layout.set_values(&mut row_two, &[Value::Uint2(200)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -814,14 +1084,14 @@ mod tests {
         }
 
         #[test]
-        fn test_uint4() {
+        fn test_all_defined_uint4() {
             let mut test_instance = Frame::new(vec![Column::uint4("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Uint4]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Uint4(1000)]);
+            layout.set_values(&mut row_one, &[Value::Uint4(1000)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Uint4(2000)]);
+            layout.set_values(&mut row_two, &[Value::Uint4(2000)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -829,14 +1099,14 @@ mod tests {
         }
 
         #[test]
-        fn test_uint8() {
+        fn test_all_defined_uint8() {
             let mut test_instance = Frame::new(vec![Column::uint8("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Uint8]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Uint8(10000)]);
+            layout.set_values(&mut row_one, &[Value::Uint8(10000)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Uint8(20000)]);
+            layout.set_values(&mut row_two, &[Value::Uint8(20000)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -844,14 +1114,14 @@ mod tests {
         }
 
         #[test]
-        fn test_uint16() {
+        fn test_all_defined_uint16() {
             let mut test_instance = Frame::new(vec![Column::uint16("test", [])]);
 
             let layout = Layout::new(&[ValueKind::Uint16]);
             let mut row_one = layout.allocate_row();
-            layout.write_values(row_one.make_mut(), &[Value::Uint16(1000)]);
+            layout.set_values(&mut row_one, &[Value::Uint16(1000)]);
             let mut row_two = layout.allocate_row();
-            layout.write_values(row_two.make_mut(), &[Value::Uint16(2000)]);
+            layout.set_values(&mut row_two, &[Value::Uint16(2000)]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
@@ -859,13 +1129,12 @@ mod tests {
         }
 
         #[test]
-        #[ignore]
         fn test_row_with_undefined() {
             let mut test_instance = test_instance_with_columns();
 
-            let layout = Layout::new(&[ValueKind::Undefined, ValueKind::Bool]);
+            let layout = Layout::new(&[ValueKind::Int2, ValueKind::Bool]);
             let mut row = layout.allocate_row();
-            layout.write_values(row.make_mut(), &[Value::Undefined, Value::Bool(true)]);
+            layout.set_values(&mut row, &[Value::Undefined, Value::Bool(false)]);
 
             test_instance.append_rows(&layout, [row]).unwrap();
 
@@ -874,7 +1143,7 @@ mod tests {
                 ColumnValues::int2_with_validity(vec![1, 0], vec![true, false])
             );
             assert_eq!(
-                test_instance.columns[2].data,
+                test_instance.columns[1].data,
                 ColumnValues::bool_with_validity([true, false], [true, true])
             );
         }
@@ -885,7 +1154,7 @@ mod tests {
 
             let layout = Layout::new(&[ValueKind::Bool, ValueKind::Bool]);
             let mut row = layout.allocate_row();
-            layout.write_values(row.make_mut(), &[Value::Bool(true), Value::Bool(true)]);
+            layout.set_values(&mut row, &[Value::Bool(true), Value::Bool(true)]);
 
             let result = test_instance.append_rows(&layout, [row]);
             assert!(result.is_err());
@@ -898,11 +1167,323 @@ mod tests {
 
             let layout = Layout::new(&[ValueKind::Int2]);
             let mut row = layout.allocate_row();
-            layout.write_values(row.make_mut(), &[Value::Int2(2)]);
+            layout.set_values(&mut row, &[Value::Int2(2)]);
 
             let result = test_instance.append_rows(&layout, [row]);
             assert!(result.is_err());
             assert!(result.unwrap_err().to_string().contains("mismatched column count"));
+        }
+
+        #[test]
+        fn test_fallback_bool() {
+            let mut test_instance =
+                Frame::new(vec![Column::bool("test", []), Column::bool("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Bool, ValueKind::Bool]);
+            let mut row_one = layout.allocate_row();
+            layout.set_bool(&mut row_one, 0, true);
+            layout.set_undefined(&mut row_one, 1);
+
+            test_instance.append_rows(&layout, [row_one]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::bool_with_validity([true], [true])
+            );
+
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::bool_with_validity([false], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_float4() {
+            let mut test_instance =
+                Frame::new(vec![Column::float4("test", []), Column::float4("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Float4, ValueKind::Float4]);
+            let mut row = layout.allocate_row();
+            layout.set_f32(&mut row, 0, 1.5);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::float4_with_validity([1.5], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::float4_with_validity([0.0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_float8() {
+            let mut test_instance =
+                Frame::new(vec![Column::float8("test", []), Column::float8("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Float8, ValueKind::Float8]);
+            let mut row = layout.allocate_row();
+            layout.set_f64(&mut row, 0, 2.5);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::float8_with_validity([2.5], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::float8_with_validity([0.0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_int1() {
+            let mut test_instance =
+                Frame::new(vec![Column::int1("test", []), Column::int1("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Int1, ValueKind::Int1]);
+            let mut row = layout.allocate_row();
+            layout.set_i8(&mut row, 0, 42);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int1_with_validity([42], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::int1_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_int2() {
+            let mut test_instance =
+                Frame::new(vec![Column::int2("test", []), Column::int2("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Int2, ValueKind::Int2]);
+            let mut row = layout.allocate_row();
+            layout.set_i16(&mut row, 0, -1234);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int2_with_validity([-1234], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::int2_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_int4() {
+            let mut test_instance =
+                Frame::new(vec![Column::int4("test", []), Column::int4("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Int4, ValueKind::Int4]);
+            let mut row = layout.allocate_row();
+            layout.set_i32(&mut row, 0, 56789);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int4_with_validity([56789], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::int4_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_int8() {
+            let mut test_instance =
+                Frame::new(vec![Column::int8("test", []), Column::int8("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Int8, ValueKind::Int8]);
+            let mut row = layout.allocate_row();
+            layout.set_i64(&mut row, 0, -987654321);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int8_with_validity([-987654321], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::int8_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_int16() {
+            let mut test_instance =
+                Frame::new(vec![Column::int16("test", []), Column::int16("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Int16, ValueKind::Int16]);
+            let mut row = layout.allocate_row();
+            layout.set_i128(&mut row, 0, 123456789012345678901234567890i128);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::int16_with_validity([123456789012345678901234567890i128], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::int16_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_string() {
+            let mut test_instance =
+                Frame::new(vec![Column::string("test", []), Column::string("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::String, ValueKind::String]);
+            let mut row = layout.allocate_row();
+            layout.set_str(&mut row, 0, "reifydb");
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::string_with_validity(["reifydb".to_string()], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::string_with_validity(["".to_string()], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_uint1() {
+            let mut test_instance =
+                Frame::new(vec![Column::uint1("test", []), Column::uint1("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Uint1, ValueKind::Uint1]);
+            let mut row = layout.allocate_row();
+            layout.set_u8(&mut row, 0, 255);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint1_with_validity([255], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::uint1_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_uint2() {
+            let mut test_instance =
+                Frame::new(vec![Column::uint2("test", []), Column::uint2("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Uint2, ValueKind::Uint2]);
+            let mut row = layout.allocate_row();
+            layout.set_u16(&mut row, 0, 65535);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint2_with_validity([65535], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::uint2_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_uint4() {
+            let mut test_instance =
+                Frame::new(vec![Column::uint4("test", []), Column::uint4("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Uint4, ValueKind::Uint4]);
+            let mut row = layout.allocate_row();
+            layout.set_u32(&mut row, 0, 4294967295);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint4_with_validity([4294967295], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::uint4_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_uint8() {
+            let mut test_instance =
+                Frame::new(vec![Column::uint8("test", []), Column::uint8("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Uint8, ValueKind::Uint8]);
+            let mut row = layout.allocate_row();
+            layout.set_u64(&mut row, 0, 18446744073709551615u64);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint8_with_validity([18446744073709551615], [true])
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::uint8_with_validity([0], [false])
+            );
+        }
+
+        #[test]
+        fn test_fallback_uint16() {
+            let mut test_instance =
+                Frame::new(vec![Column::uint16("test", []), Column::uint16("undefined", [])]);
+
+            let layout = Layout::new(&[ValueKind::Uint16, ValueKind::Uint16]);
+            let mut row = layout.allocate_row();
+            layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
+            layout.set_undefined(&mut row, 1);
+
+            test_instance.append_rows(&layout, [row]).unwrap();
+
+            assert_eq!(
+                test_instance.columns[0].data,
+                ColumnValues::uint16_with_validity(
+                    [340282366920938463463374607431768211455u128],
+                    [true]
+                )
+            );
+            assert_eq!(
+                test_instance.columns[1].data,
+                ColumnValues::uint16_with_validity([0], [false])
+            );
         }
 
         fn test_instance_with_columns() -> Frame {

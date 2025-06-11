@@ -44,7 +44,7 @@ impl Executor {
                 Column { name, data }
             })
             .collect();
-
+            
         let mut frame = Frame::new(columns);
         frame.append_rows(&layout, rx.scan_table(schema, store)?.into_iter())?;
         self.frame = frame;

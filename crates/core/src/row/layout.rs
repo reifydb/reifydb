@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ordered_float::{OrderedF32, OrderedF64};
 use crate::row::Row;
-use crate::{AsyncCowVec, Value, ValueKind};
+use crate::{AsyncCowVec, ValueKind};
 
 #[derive(Debug)]
 pub struct Field {
@@ -16,38 +15,90 @@ pub struct Field {
 #[derive(Debug)]
 pub struct Layout {
     pub fields: Vec<Field>,
-    pub size: usize,
+    /// size of data in bytes
+    pub data_size: usize,
+    /// size of validity part in bytes
+    pub validity_size: usize,
     pub alignment: usize,
 }
 
 impl Layout {
     pub fn new(kinds: &[ValueKind]) -> Self {
-        let mut offset = 0;
-        let mut fields = vec![];
+        assert!(!kinds.is_empty());
+
+        let num_fields = kinds.len();
+        let validity_bytes = (num_fields + 7) / 8;
+
+        let mut offset = validity_bytes;
+        let mut fields = Vec::with_capacity(num_fields);
         let mut max_align = 1;
 
         for &value in kinds {
             let size = value.size();
             let align = value.alignment();
+
             offset = align_up(offset, align);
             fields.push(Field { offset, size, align, value });
+
             offset += size;
             max_align = max_align.max(align);
         }
 
         let size = align_up(offset, max_align);
-        Layout { fields, size, alignment: max_align }
+        Layout { fields, data_size: size, alignment: max_align, validity_size: validity_bytes }
     }
 
     pub fn allocate_row(&self) -> Row {
-        let layout = std::alloc::Layout::from_size_align(self.size, self.alignment).unwrap();
+        let layout = std::alloc::Layout::from_size_align(self.data_size, self.alignment).unwrap();
         unsafe {
             let ptr = std::alloc::alloc_zeroed(layout);
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
-            Row(AsyncCowVec::new(Vec::from_raw_parts(ptr, self.size, self.size)))
+            // Safe because alloc_zeroed + known size/capacity
+            let vec = Vec::from_raw_parts(ptr, self.data_size, self.data_size);
+            Row(AsyncCowVec::new(vec))
         }
+    }
+
+    pub const fn data_offset(&self) -> usize {
+        self.validity_size
+    }
+
+    pub const fn total_size(&self) -> usize {
+        self.data_size + self.validity_size
+    }
+
+    pub fn data_slice<'a>(&'a self, row: &'a Row) -> &'a [u8] {
+        &row.0[self.data_offset()..]
+    }
+
+    pub fn data_slice_mut<'a>(&'a mut self, row: &'a mut Row) -> &'a mut [u8] {
+        &mut row.0.make_mut()[self.data_offset()..]
+    }
+
+    pub fn all_defined(&self, row: &Row) -> bool {
+        let bits = self.fields.len();
+        if bits == 0 {
+            return false;
+        }
+
+        let validity_slice = &row[..self.validity_size];
+        for (i, &byte) in validity_slice.iter().enumerate() {
+            let bits_in_byte =
+                if i == self.validity_size - 1 && bits % 8 != 0 { bits % 8 } else { 8 };
+
+            let mask = if bits_in_byte == 8 { 0xFF } else { (1u8 << bits_in_byte) - 1 };
+            if (byte & mask) != mask {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub fn value(&self, index: usize) -> ValueKind {
+        self.fields[index].value
     }
 }
 
@@ -55,88 +106,327 @@ fn align_up(offset: usize, align: usize) -> usize {
     (offset + align - 1) & !(align - 1)
 }
 
-impl Layout {
-    pub fn get_field(&self, index: usize) -> &Field {
-        &self.fields[index]
-    }
+#[cfg(test)]
+mod tests {
+    mod new {
+        use crate::ValueKind;
+        use crate::row::Layout;
 
-    pub fn write_values(&self, row: &mut [u8], values: &[Value]) {
-        debug_assert!(values.len() == self.fields.len());
-        for (idx, value) in values.iter().enumerate() {
-            self.set_value(row, idx, value)
+        #[test]
+        fn test_single_field_bool() {
+            let layout = Layout::new(&[ValueKind::Bool]);
+            assert_eq!(layout.validity_size, 1);
+            assert_eq!(layout.fields.len(), 1);
+            assert_eq!(layout.fields[0].offset, 1);
+            assert_eq!(layout.alignment, 1);
+            assert_eq!(layout.data_size, layout.fields[0].offset + layout.fields[0].size);
         }
-    }
 
-    pub fn set_value(&self, row: &mut [u8], index: usize, val: &Value) {
-        let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.size);
+        #[test]
+        fn test_multiple_fields() {
+            let layout = Layout::new(&[ValueKind::Int1, ValueKind::Int2, ValueKind::Int4]);
+            assert_eq!(layout.validity_size, 1); // 3 fields = 1 byte
+            assert_eq!(layout.fields.len(), 3);
 
-        match (field.value, val) {
-            (ValueKind::Bool, Value::Bool(v)) => self.set_bool(row, index, *v),
-            (ValueKind::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
-            (ValueKind::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
+            assert_eq!(layout.fields[0].value, ValueKind::Int1);
+            assert_eq!(layout.fields[1].value, ValueKind::Int2);
+            assert_eq!(layout.fields[2].value, ValueKind::Int4);
 
-            (ValueKind::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
-            (ValueKind::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
-            (ValueKind::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
-            (ValueKind::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
-            (ValueKind::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
+            assert_eq!(layout.fields[0].offset, 1);
+            assert_eq!(layout.fields[1].offset, 2);
+            assert_eq!(layout.fields[2].offset, 4);
 
-            (ValueKind::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
-            (ValueKind::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
-            (ValueKind::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
-            (ValueKind::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
-            (ValueKind::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
+            assert_eq!(layout.alignment, 4);
 
-            (ValueKind::String, Value::String(v)) => self.set_str(row, index, v),
-
-            (ValueKind::Undefined, Value::Undefined) => {}
-            (_, _) => unreachable!(),
+            assert_eq!(layout.data_size, 8); // 1 + 2 + 4 + 1(alignment)
         }
-    }
 
-    pub fn get_value(&self, row: &[u8], index: usize) -> Value {
-        let field = &self.fields[index];
-        unsafe {
-            let src = row.as_ptr().add(field.offset);
-            match field.value {
-                ValueKind::Bool => Value::Bool(self.get_bool(row, index)),
-                ValueKind::Float4 => OrderedF32::try_from(self.get_f32(row, index))
-                    .map(Value::Float4)
-                    .unwrap_or(Value::Undefined),
-                ValueKind::Float8 => OrderedF64::try_from(self.get_f64(row, index))
-                    .map(Value::Float8)
-                    .unwrap_or(Value::Undefined),
-                ValueKind::Int1 => Value::Int1(self.get_i8(row, index)),
-                ValueKind::Int2 => Value::Int2(self.get_i16(row, index)),
-                ValueKind::Int4 => Value::Int4(self.get_i32(row, index)),
-                ValueKind::Int8 => Value::Int8(self.get_i64(row, index)),
-                ValueKind::Int16 => Value::Int16(self.get_i128(row, index)),
-                ValueKind::String => Value::String(self.get_str(row, index).to_string()),
-                ValueKind::Uint1 => Value::Uint1(self.get_u8(row, index)),
-                ValueKind::Uint2 => Value::Uint2(self.get_u16(row, index)),
-                ValueKind::Uint4 => Value::Uint4(self.get_u32(row, index)),
-                ValueKind::Uint8 => Value::Uint8(self.get_u64(row, index)),
-                ValueKind::Uint16 => Value::Uint16(self.get_u128(row, index)),
-                ValueKind::Undefined => Value::Undefined,
-                _ => unimplemented!(),
+        #[test]
+        fn test_offset_and_alignment() {
+            let layout = Layout::new(&[
+                ValueKind::Uint1,
+                ValueKind::Uint2,
+                ValueKind::Uint4,
+                ValueKind::Uint8,
+                ValueKind::Uint16,
+            ]);
+
+            assert_eq!(layout.validity_size, 1); // 5 fields = 1 byte
+            assert_eq!(layout.fields.len(), 5);
+
+            assert_eq!(layout.fields[0].offset, 1); // 1. byte is for validity
+            assert_eq!(layout.fields[1].offset, 2);
+            assert_eq!(layout.fields[2].offset, 4);
+            assert_eq!(layout.fields[3].offset, 8);
+            assert_eq!(layout.fields[4].offset, 16);
+
+            assert_eq!(layout.alignment, 16);
+
+            assert_eq!(layout.data_size, 32); // 1 + 2 + 4 + 8 + 16 + 1 (alignment)
+        }
+
+        #[test]
+        fn test_nine_fields_validity_size_two() {
+            let kinds = vec![
+                ValueKind::Bool,
+                ValueKind::Int1,
+                ValueKind::Int2,
+                ValueKind::Int4,
+                ValueKind::Int8,
+                ValueKind::Uint1,
+                ValueKind::Uint2,
+                ValueKind::Uint4,
+                ValueKind::Uint8,
+            ];
+
+            let layout = Layout::new(&kinds);
+
+            // 9 fields → ceil(9/8) = 2 bytes of validity bitmap
+            assert_eq!(layout.validity_size, 2);
+            assert_eq!(layout.fields.len(), 9);
+
+            assert_eq!(layout.fields[0].offset, 2); // first 2 bytes are for validity
+
+            // All field offsets must come after the 2 validity bytes
+            for field in &layout.fields {
+                assert!(field.offset >= 2);
+                assert_eq!(field.offset % field.align, 0);
             }
+
+            assert_eq!(layout.data_size % layout.alignment, 0);
         }
     }
 
-    pub fn get_mut_i8(&self, row: &mut [u8], index: usize) -> &mut i8 {
-        let field = &self.fields[index];
-        debug_assert!(row.len() == self.size);
-        debug_assert!(field.value == ValueKind::Int1);
-        unsafe { &mut *(row.as_mut_ptr().add(field.offset) as *mut i8) }
-        // unsafe { let src = row.as_ptr().add(field.offset);
+    mod allocate_row {
+        use crate::ValueKind;
+        use crate::row::Layout;
+
+        #[test]
+        fn test_initial_state() {
+            let layout = Layout::new(&[ValueKind::Bool, ValueKind::Int1, ValueKind::Uint2]);
+
+            let row = layout.allocate_row();
+
+            for byte in row.as_slice() {
+                assert_eq!(*byte, 0);
+            }
+
+            assert_eq!(row.len(), layout.data_size);
+        }
+
+        #[test]
+        fn test_clone_on_write_semantics() {
+            let layout = Layout::new(&[ValueKind::Bool, ValueKind::Bool, ValueKind::Bool]);
+
+            let mut row1 = layout.allocate_row();
+            let mut row2 = row1.clone();
+
+            // Initially identical
+            assert_eq!(row1.as_slice(), row2.as_slice());
+
+            // Modify one row's validity bit
+            row2.set_valid(1, true);
+
+            // Internal buffers must now differ
+            assert_ne!(row1.as_ptr(), row2.as_ptr());
+
+            // row1 remains unchanged
+            assert!(!row1.is_defined(1));
+            // row2 has been mutated
+            assert!(row2.is_defined(1));
+        }
     }
 
-    pub fn get_mut_i32(&self, row: &mut [u8], index: usize) -> &mut i32 {
-        let field = &self.fields[index];
-        debug_assert!(row.len() == self.size);
-        debug_assert!(field.value == ValueKind::Int4);
-        unsafe { &mut *(row.as_mut_ptr().add(field.offset) as *mut i32) }
-        // unsafe { let src = row.as_ptr().add(field.offset);
+    mod all_defined {
+        use crate::ValueKind;
+        use crate::row::Layout;
+
+        #[test]
+        fn test_one_field_none_valid() {
+            let layout = Layout::new(&[ValueKind::Bool; 1]);
+            let mut row = layout.allocate_row();
+            layout.set_undefined(&mut row, 0);
+            assert_eq!(layout.all_defined(&row), false);
+        }
+
+        #[test]
+        fn test_one_field_valid() {
+            let layout = Layout::new(&[ValueKind::Bool; 1]);
+            let mut row = layout.allocate_row();
+            layout.set_bool(&mut row, 0, true);
+            assert_eq!(layout.all_defined(&row), true);
+        }
+
+        #[test]
+        fn test_seven_fields_none_valid() {
+            let kinds = vec![ValueKind::Bool; 7];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..7) {
+                layout.set_undefined(&mut row, idx);
+            }
+
+            assert_eq!(layout.all_defined(&row), false);
+        }
+
+        #[test]
+        fn test_seven_fields_all_valid() {
+            let kinds = vec![ValueKind::Bool; 7];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..7) {
+                layout.set_bool(&mut row, idx, idx % 2 == 0);
+            }
+
+            assert_eq!(layout.all_defined(&row), true);
+        }
+
+        #[test]
+        fn test_seven_fields_partial_valid() {
+            let kinds = vec![ValueKind::Bool; 7];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..7) {
+                layout.set_bool(&mut row, idx, idx % 2 == 0);
+            }
+
+            for idx in [0, 3] {
+                layout.set_undefined(&mut row, idx);
+            }
+
+            assert_eq!(layout.all_defined(&row), false);
+        }
+
+        #[test]
+        fn test_eight_fields_none_valid() {
+            let kinds = vec![ValueKind::Bool; 8];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..8) {
+                layout.set_undefined(&mut row, idx);
+            }
+
+            assert_eq!(layout.all_defined(&row), false);
+        }
+
+        #[test]
+        fn test_eight_fields_all_valid() {
+            let kinds = vec![ValueKind::Bool; 8];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..8) {
+                layout.set_bool(&mut row, idx, idx % 2 == 0);
+            }
+
+            assert_eq!(layout.all_defined(&row), true);
+        }
+
+        #[test]
+        fn test_eight_fields_partial_valid() {
+            let kinds = vec![ValueKind::Bool; 8];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..8) {
+                layout.set_bool(&mut row, idx, idx % 2 == 0);
+            }
+
+            for idx in [0, 3, 7] {
+                layout.set_undefined(&mut row, idx);
+            }
+
+            assert_eq!(layout.all_defined(&row), false);
+        }
+
+        #[test]
+        fn test_nine_fields_all_valid() {
+            let kinds = vec![ValueKind::Bool; 9];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..9) {
+                layout.set_bool(&mut row, idx, idx % 2 == 0);
+            }
+
+            assert_eq!(layout.all_defined(&row), true);
+        }
+
+        #[test]
+        fn test_nine_fields_none_valid() {
+            let kinds = vec![ValueKind::Bool; 9];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..9) {
+                layout.set_undefined(&mut row, idx);
+            }
+
+            assert_eq!(layout.all_defined(&row), false);
+        }
+
+        #[test]
+        fn test_nine_fields_partial_valid() {
+            let kinds = vec![ValueKind::Bool; 9];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..9) {
+                layout.set_bool(&mut row, idx, idx % 2 == 0);
+            }
+
+            for idx in [0, 3, 7] {
+                layout.set_undefined(&mut row, idx);
+            }
+
+            assert_eq!(layout.all_defined(&row), false);
+        }
+
+        #[test]
+        fn test_sixteen_fields_all_valid() {
+            let kinds = vec![ValueKind::Bool; 16];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..16) {
+                layout.set_bool(&mut row, idx, idx % 2 == 0);
+            }
+
+            assert_eq!(layout.all_defined(&row), true);
+        }
+
+        #[test]
+        fn test_sixteen_fields_none_valid() {
+            let kinds = vec![ValueKind::Bool; 16];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..16) {
+                layout.set_undefined(&mut row, idx);
+            }
+
+            assert_eq!(layout.all_defined(&row), false);
+        }
+
+        #[test]
+        fn test_sixteen_fields_partial_valid() {
+            let kinds = vec![ValueKind::Bool; 16];
+            let layout = Layout::new(&kinds);
+            let mut row = layout.allocate_row();
+
+            for idx in (0..16) {
+                layout.set_bool(&mut row, idx, idx % 2 == 0);
+            }
+
+            for idx in [0, 3, 7] {
+                layout.set_undefined(&mut row, idx);
+            }
+
+            assert_eq!(layout.all_defined(&row), false);
+        }
     }
 }

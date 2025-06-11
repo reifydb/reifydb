@@ -25,8 +25,6 @@ impl Executor {
                 let layout = Layout::new(&values);
 
                 for row_to_insert in rows_to_insert {
-                    // let mut row_values = Vec::with_capacity(row.len());
-
                     let mut row = layout.allocate_row();
 
                     for (idx, expr) in row_to_insert.into_iter().enumerate() {
@@ -55,13 +53,32 @@ impl Executor {
                                             &context,
                                             &lazy_span,
                                         )?;
-                                        // row_values.push(r.get(0).as_value());
+
                                         match r.get(0) {
-                                            ValueRef::Int1(v) => {
-                                                layout.set_i8(row.make_mut(), idx, *v)
+                                            ValueRef::Bool(v) => layout.set_bool(&mut row, idx, *v),
+                                            ValueRef::Float4(v) => {
+                                                layout.set_f32(&mut row, idx, *v)
                                             }
-                                            ValueRef::Int2(v) => {
-                                                layout.set_i16(row.make_mut(), idx, *v)
+                                            ValueRef::Float8(v) => {
+                                                layout.set_f64(&mut row, idx, *v)
+                                            }
+                                            ValueRef::Int1(v) => layout.set_i8(&mut row, idx, *v),
+                                            ValueRef::Int2(v) => layout.set_i16(&mut row, idx, *v),
+                                            ValueRef::Int4(v) => layout.set_i32(&mut row, idx, *v),
+                                            ValueRef::Int8(v) => layout.set_i64(&mut row, idx, *v),
+                                            ValueRef::Int16(v) => {
+                                                layout.set_i128(&mut row, idx, *v)
+                                            }
+                                            ValueRef::String(v) => layout.set_str(&mut row, idx, v),
+                                            ValueRef::Uint1(v) => layout.set_u8(&mut row, idx, *v),
+                                            ValueRef::Uint2(v) => layout.set_u16(&mut row, idx, *v),
+                                            ValueRef::Uint4(v) => layout.set_u32(&mut row, idx, *v),
+                                            ValueRef::Uint8(v) => layout.set_u64(&mut row, idx, *v),
+                                            ValueRef::Uint16(v) => {
+                                                layout.set_u128(&mut row, idx, *v)
+                                            }
+                                            ValueRef::Undefined => {
+                                                layout.set_undefined(&mut row, idx)
                                             }
                                             _ => unimplemented!(),
                                         }

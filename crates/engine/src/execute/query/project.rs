@@ -37,6 +37,7 @@ impl Executor {
                 &columns,
                 row_count,
             )?;
+            
             new_columns.push(Column { name: name.into(), data: evaluated_column });
         }
 

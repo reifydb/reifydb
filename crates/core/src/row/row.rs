@@ -14,6 +14,7 @@ pub trait RowIterator: Iterator<Item = Row> {}
 impl<I: Iterator<Item = Row>> RowIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+// validity:values
 pub struct Row(pub AsyncCowVec<u8>);
 
 impl Deref for Row {
@@ -28,14 +29,36 @@ impl Row {
     pub fn make_mut(&mut self) -> &mut [u8] {
         self.0.make_mut()
     }
+
+    #[inline]
+    pub fn is_defined(&self, index: usize) -> bool {
+        let byte = index / 8;
+        let bit = index % 8;
+        (self.0[byte] & (1 << bit)) != 0
+    }
+
+    pub(crate) fn set_valid(&mut self, index: usize, valid: bool) {
+        let byte = index / 8;
+        let bit = index % 8;
+        if valid {
+            self.0.make_mut()[byte] |= 1 << bit;
+        } else {
+            self.0.make_mut()[byte] &= !(1 << bit);
+        }
+    }
 }
 
 #[deprecated]
+/// FIXME remove me
 pub fn deprecated_deserialize_row(data: &[u8]) -> crate::encoding::Result<Row> {
     deserialize(data)
 }
 
 #[deprecated]
+/// FIXME remove me
 pub fn deprecated_serialize_row(row: &Row) -> crate::encoding::Result<Vec<u8>> {
     Ok(serialize(row))
 }
+
+#[cfg(test)]
+mod tests {}
