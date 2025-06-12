@@ -1,0 +1,109 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use reifydb::embedded_blocking::Embedded;
+use reifydb::reifydb_storage::Storage;
+use reifydb::reifydb_transaction::Transaction;
+use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic, serializable, sqlite};
+use reifydb_testing::tempdir::temp_dir;
+use reifydb_testing::testscript;
+use reifydb_testing::testscript::Command;
+use std::error::Error;
+use std::fmt::Write;
+use std::path::Path;
+use test_each_file::test_each_path;
+
+pub struct Runner<S: Storage + 'static, T: Transaction<S> + 'static> {
+    engine: Embedded<S, T>,
+    root: Principal,
+}
+
+impl<S: Storage + 'static, T: Transaction<S> + 'static> Runner<S, T> {
+    pub fn new(transaction: T) -> Self {
+        let (engine, root) = ReifyDB::embedded_blocking_with(transaction);
+        Self { engine, root }
+    }
+}
+
+impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for Runner<S, T> {
+    fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
+        let mut output = String::new();
+        match command.name.as_str() {
+            "tx" => {
+                let query = command
+                    .args
+                    .iter()
+                    .map(|a| a.value.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                println!("tx: {query}");
+
+                for line in self.engine.tx_as(&self.root, query.as_str())? {
+                    writeln!(output, "{}", line);
+                }
+            }
+            "rx" => {
+                let query = command
+                    .args
+                    .iter()
+                    .map(|a| a.value.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                println!("rx: {query}");
+
+                for line in self.engine.rx_as(&self.root, query.as_str()) {
+                    writeln!(output, "{}", line);
+                }
+            }
+            name => return Err(format!("invalid command {name}").into()),
+        }
+
+        Ok(output)
+    }
+}
+
+test_each_path! { in "testsuite/regression/tests/scripts" as optimistic_memory => test_optimistic_memory }
+test_each_path! { in "testsuite/regression/tests/scripts" as optimistic_lmdb => test_optimistic_lmdb }
+test_each_path! { in "testsuite/regression/tests/scripts" as optimistic_sqlite => test_optimistic_sqlite }
+
+fn test_optimistic_memory(path: &Path) {
+    testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
+}
+
+fn test_optimistic_lmdb(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut Runner::new(optimistic(lmdb(db_path))), path)
+            .expect("test failed")
+    })
+}
+
+fn test_optimistic_sqlite(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut Runner::new(optimistic(sqlite(db_path))), path)
+            .expect("test failed")
+    })
+}
+
+test_each_path! { in "testsuite/regression/tests/scripts" as serializable_memory => test_serializable_memory }
+test_each_path! { in "testsuite/regression/tests/scripts" as serializable_lmdb => test_serializable_lmdb }
+test_each_path! { in "testsuite/regression/tests/scripts" as serializable_sqlite => test_serializable_sqlite }
+
+fn test_serializable_memory(path: &Path) {
+    testscript::run_path(&mut Runner::new(serializable(memory())), path).expect("test failed")
+}
+
+fn test_serializable_lmdb(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut Runner::new(serializable(lmdb(db_path))), path)
+            .expect("test failed")
+    })
+}
+
+fn test_serializable_sqlite(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut Runner::new(serializable(sqlite(db_path))), path)
+            .expect("test failed")
+    })
+}

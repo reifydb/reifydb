@@ -1323,6 +1323,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
+name = "regression"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
+ "reifydb-testing",
+ "test_each_file",
+ "tokio",
+]
+
+[[package]]
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
