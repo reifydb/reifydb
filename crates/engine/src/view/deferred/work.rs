@@ -2,28 +2,27 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::view::deferred::Work;
-use reifydb_core::EncodedKey;
 use reifydb_flow::{CountNode, Graph, GroupNode, Orchestrator, SumNode};
 use reifydb_storage::Storage;
 use std::sync::mpsc::Receiver;
 
 pub(crate) fn work<S: Storage>(rx: Receiver<Work>, storage: S, orchestrator: Orchestrator) {
     for (deltas, version) in rx {
-        println!("[worker] processing version {:?}, delta count: {}", version, deltas.len());
-
-        orchestrator.apply("view::count", deltas.clone(), version);
-        orchestrator.apply("view::sum", deltas, version);
-
-        for stored in storage.scan_prefix(&EncodedKey::new(b"view::count".to_vec()), 2).into_iter()
-        {
-            println!("{:?}", String::from_utf8(stored.key.to_vec()));
-            println!("{:?}", stored.row.to_vec().as_slice());
-        }
-
-        for sv in storage.scan_prefix(&EncodedKey::new(b"view::sum".to_vec()), 2).into_iter() {
-            println!("{:?}", String::from_utf8(sv.key.to_vec()));
-            println!("{:?}", sv.row.to_vec().as_slice());
-        }
+        // println!("[worker] processing version {:?}, delta count: {}", version, deltas.len());
+        //
+        // orchestrator.apply("view::count", deltas.clone(), version);
+        // orchestrator.apply("view::sum", deltas, version);
+        //
+        // for stored in storage.scan_prefix(&EncodedKey::new(b"view::count".to_vec()), 2).into_iter()
+        // {
+        //     println!("{:?}", String::from_utf8(stored.key.to_vec()));
+        //     println!("{:?}", stored.row.to_vec().as_slice());
+        // }
+        //
+        // for sv in storage.scan_prefix(&EncodedKey::new(b"view::sum".to_vec()), 2).into_iter() {
+        //     println!("{:?}", String::from_utf8(sv.key.to_vec()));
+        //     println!("{:?}", sv.row.to_vec().as_slice());
+        // }
     }
 }
 

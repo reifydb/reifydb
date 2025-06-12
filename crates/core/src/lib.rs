@@ -7,7 +7,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
-pub use key::{EncodedKey, EncodedKeyRange};
+pub use key::{EncodableKey, EncodedKey, EncodedKeyRange, Key, KeyKind, TableRowKey};
 pub use value::{Value, ValueKind};
 pub use version::Version;
 

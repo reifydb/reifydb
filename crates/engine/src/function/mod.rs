@@ -8,7 +8,7 @@ pub use error::FunctionError;
 mod error;
 
 use reifydb_core::Value;
-use reifydb_core::row::RowIter;
+use reifydb_core::row::EncodedRowIter;
 use reifydb_frame::{Column, ColumnValues};
 use std::collections::HashMap;
 use std::fmt;
@@ -60,7 +60,7 @@ pub trait FunctionExecutor: Send + Sync {
     }
 
     /// For scalar inputs => output rows (like `generate_series`)
-    fn eval_generator(&self, _args: &[Value]) -> Result<RowIter, FunctionError> {
+    fn eval_generator(&self, _args: &[Value]) -> Result<EncodedRowIter, FunctionError> {
         Err(FunctionError::UnsupportedMode {
             function: self.name().to_string(),
             mode: FunctionMode::Generator,

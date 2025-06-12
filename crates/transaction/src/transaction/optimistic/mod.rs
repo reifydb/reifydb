@@ -1,14 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::AsyncCowVec;
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use crate::{CATALOG, InsertResult, Transaction};
 use reifydb_catalog::{Catalog, CatalogRx, CatalogTx, Schema};
-use reifydb_core::encoding::bincode;
 use reifydb_core::hook::Hooks;
-use reifydb_core::row::{EncodedRow, RowIter, deprecated_deserialize_row};
-use reifydb_core::{EncodedKey, EncodedKeyRange, Value, key_prefix};
+use reifydb_core::row::{EncodedRow, EncodedRowIter};
+use reifydb_core::{EncodedKey, Key, TableRowKey, Value};
 use reifydb_storage::Storage;
 
 /// Optimistic Concurrency Control
@@ -50,10 +48,10 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
         todo!()
     }
 
-    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
+    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter> {
         Ok(Box::new(
-            self.scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)))
-                .map(|stored| deprecated_deserialize_row(&stored.row).unwrap())
+            self.scan_range(TableRowKey::full_scan(1))
+                .map(|stored| stored.row)
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))
@@ -77,11 +75,11 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
         todo!()
     }
 
-    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter> {
+    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter> {
         Ok(Box::new(
-            self.scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, store)).into())
+            self.scan_range(TableRowKey::full_scan(1))
                 .unwrap()
-                .map(|r| deprecated_deserialize_row(&r.row()).unwrap())
+                .map(|r| r.row().clone())
                 .collect::<Vec<_>>()
                 .into_iter(),
         ))
@@ -109,18 +107,16 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         table: &str,
         rows: Vec<EncodedRow>,
     ) -> crate::Result<InsertResult> {
-        let last_id = self
-            .scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, table)))
-            .unwrap()
-            .count();
+        let last_id = self.scan_range(TableRowKey::full_scan(1)).unwrap().count();
 
         // FIXME assumes every row gets inserted - not updated etc..
         let inserted = rows.len();
 
-        for (id, row) in rows.iter().enumerate() {
+        for (id, row) in rows.into_iter().enumerate() {
             self.set(
-                key_prefix!("{}::{}::row::{}", schema, table, (last_id + id + 1)).clone(),
-                EncodedRow(AsyncCowVec::new(bincode::serialize(row))),
+                Key::TableRow(TableRowKey { table_id: 1, row_id: (last_id + id + 1) as u64 })
+                    .encode(),
+                row,
             )
             .unwrap();
         }
@@ -135,24 +131,25 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         series: &str,
         rows: Vec<Vec<Value>>,
     ) -> crate::Result<InsertResult> {
-        let last_id = self
-            .scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, series)))
-            .unwrap()
-            .count();
-
-        // FIXME assumes every row gets inserted - not updated etc..
-        let inserted = rows.len();
-
-        for (id, row) in rows.iter().enumerate() {
-            self.set(
-                key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)).clone(),
-                EncodedRow(AsyncCowVec::new(bincode::serialize(row))),
-            )
-            .unwrap();
-        }
-        // let mut persistence = self.persistence.lock().unwrap();
-        // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
-        Ok(InsertResult { inserted })
+        // let last_id = self
+        //     .scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, series)))
+        //     .unwrap()
+        //     .count();
+        //
+        // // FIXME assumes every row gets inserted - not updated etc..
+        // let inserted = rows.len();
+        //
+        // for (id, row) in rows.iter().enumerate() {
+        //     self.set(
+        //         key_prefix!("{}::{}::row::{}", schema, series, (last_id + id + 1)).clone(),
+        //         EncodedRow(AsyncCowVec::new(bincode::serialize(row))),
+        //     )
+        //     .unwrap();
+        // }
+        // // let mut persistence = self.persistence.lock().unwrap();
+        // // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
+        // Ok(InsertResult { inserted })
+        unimplemented!()
     }
 
     fn commit(mut self) -> crate::Result<()> {

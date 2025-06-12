@@ -2,16 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::AsyncCowVec;
-use crate::encoding::bincode::{deserialize, serialize};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
 /// A boxed row iterator.
-pub type RowIter = Box<dyn RowIterator>;
+pub type EncodedRowIter = Box<dyn EncodedRowIterator>;
 
-pub trait RowIterator: Iterator<Item = EncodedRow> {}
+pub trait EncodedRowIterator: Iterator<Item = EncodedRow> {}
 
-impl<I: Iterator<Item = EncodedRow>> RowIterator for I {}
+impl<I: Iterator<Item = EncodedRow>> EncodedRowIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // validity:values
@@ -47,18 +46,6 @@ impl EncodedRow {
             self.0.make_mut()[byte] &= !(1 << bit);
         }
     }
-}
-
-#[deprecated]
-/// FIXME remove me
-pub fn deprecated_deserialize_row(data: &[u8]) -> crate::encoding::Result<EncodedRow> {
-    deserialize(data)
-}
-
-#[deprecated]
-/// FIXME remove me
-pub fn deprecated_serialize_row(row: &EncodedRow) -> crate::encoding::Result<Vec<u8>> {
-    Ok(serialize(row))
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 
 use reifydb_catalog::{CatalogRx, CatalogTx, SchemaRx, SchemaTx};
 use reifydb_core::hook::Hooks;
-use reifydb_core::row::{EncodedRow, RowIter};
+use reifydb_core::row::{EncodedRow, EncodedRowIter};
 use reifydb_core::{EncodedKey, Value};
 use reifydb_storage::Storage;
 
@@ -38,7 +38,7 @@ pub trait Rx {
     fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<EncodedRow>>;
 
     /// Scans all store's rows
-    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<RowIter>;
+    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter>;
 }
 
 #[derive(Debug)]

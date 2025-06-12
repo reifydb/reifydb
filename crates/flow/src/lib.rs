@@ -10,7 +10,7 @@ pub use error::Error;
 use reifydb_core::delta::Delta;
 use reifydb_core::delta::Delta::Set;
 use reifydb_core::encoding::keycode::serialize;
-use reifydb_core::row::{EncodedRow, deprecated_deserialize_row, deprecated_serialize_row};
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, Version};
 use reifydb_storage::Storage;
 use std::collections::{HashMap, VecDeque};
@@ -190,23 +190,25 @@ impl Node for GroupNode {
 
         for d in delta {
             if let Delta::Set { row, .. } = d {
-                let row: EncodedRow = deprecated_deserialize_row(&row).unwrap();
-                let group_key = self.make_group_key(&row);
-                grouped.entry(group_key).or_default().push(row);
+                // let row: EncodedRow = deprecated_deserialize_row(&row).unwrap();
+                // let group_key = self.make_group_key(&row);
+                // grouped.entry(group_key).or_default().push(row);
+                unimplemented!()
             }
         }
 
-        AsyncCowVec::new(
-            grouped
-                .into_iter()
-                .flat_map(|(key, rows)| {
-                    rows.into_iter().map(move |r| Delta::Set {
-                        key: key.clone(),
-                        row: EncodedRow(AsyncCowVec::new(deprecated_serialize_row(&r).unwrap())),
-                    })
-                })
-                .collect(),
-        )
+        // AsyncCowVec::new(
+        //     grouped
+        //         .into_iter()
+        //         .flat_map(|(key, rows)| {
+        //             rows.into_iter().map(move |r| Delta::Set {
+        //                 key: key.clone(),
+        //                 row: EncodedRow(AsyncCowVec::new(deprecated_serialize_row(&r).unwrap())),
+        //             })
+        //         })
+        //         .collect(),
+        // )
+        unimplemented!()
     }
 }
 
