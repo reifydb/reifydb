@@ -78,7 +78,7 @@ impl<T: Clone + PartialEq> CowVec<T> {
         self.make_mut().push(value);
     }
 
-    pub fn extend(&mut self, iter: impl IntoIterator<Item = T>) {
+    pub fn extend(&mut self, iter: impl IntoIterator<Item=T>) {
         self.make_mut().extend(iter);
     }
 
@@ -190,7 +190,8 @@ mod tests {
 
     #[test]
     fn test_extend() {
-        let mut owned = CowVec::new(vec![1, 2]);
+        let mut owned = CowVec::new(Vec::with_capacity(16));
+        owned.extend([1, 2]);
 
         let ptr_before_owned = ptr_of(&owned);
         owned.extend([9, 9, 24]);
@@ -207,7 +208,8 @@ mod tests {
 
     #[test]
     fn test_push() {
-        let mut owned = CowVec::new(vec![1, 2]);
+        let mut owned = CowVec::new(Vec::with_capacity(16));
+        owned.extend([1, 2]);
 
         let ptr_before_owned = ptr_of(&owned);
         owned.push(99);
@@ -224,7 +226,8 @@ mod tests {
 
     #[test]
     fn test_set() {
-        let mut owned = CowVec::new(vec![1, 2]);
+        let mut owned = CowVec::new(Vec::with_capacity(16));
+        owned.extend([1, 2]);
 
         let ptr_before_owned = ptr_of(&owned);
         owned.set(1, 99);
@@ -241,7 +244,8 @@ mod tests {
 
     #[test]
     fn test_reorder() {
-        let mut owned = CowVec::new(vec![1, 2]);
+        let mut owned = CowVec::new(Vec::with_capacity(16));
+        owned.extend([1, 2]);
 
         let ptr_before_owned = ptr_of(&owned);
         owned.reorder(&[1usize, 0]);

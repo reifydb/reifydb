@@ -111,64 +111,6 @@
 //! get -> Some("foo")
 //! ```
 //!
-//! The corresponding runner for this script:
-//!
-//! ```
-//! # use std::error::Error;
-//! # use std::fmt::Write as _;
-//! # use testing::testscript;
-//! #[derive(Default)]
-//! struct BTreeMapRunner {
-//!     map: std::collections::BTreeMap<String, String>,
-//! }
-//!
-//! impl testscript::Runner for BTreeMapRunner {
-//!     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn Error>> {
-//!         let mut output = String::new();
-//!         match command.name.as_str() {
-//!             // get KEY: fetches the value of the given key, or None if it does not exist.
-//!             "get" => {
-//!                 let mut args = command.consume_args();
-//!                 let key = &args.next_pos().ok_or("key not given")?.value;
-//!                 args.reject_rest()?;
-//!                 let value = self.map.get(key);
-//!                 writeln!(output, "get -> {value:?}")?;
-//!             }
-//!
-//!             // insert KEY=VALUE...: inserts the given key/value pairs, returning the old value.
-//!             "insert" => {
-//!                 let mut args = command.consume_args();
-//!                 for arg in args.rest_key() {
-//!                     let old = self.map.insert(arg.key.clone().unwrap(), arg.value.clone());
-//!                     writeln!(output, "insert -> {old:?}")?;
-//!                 }
-//!                 args.reject_rest()?;
-//!             }
-//!
-//!             // range [FROM] [TO]: iterates over the key/value pairs in the range from..to.
-//!             "range" => {
-//!                 use std::ops::Bound::*;
-//!                 let mut args = command.consume_args();
-//!                 let from = args.next_pos().map(|a| Included(a.value.clone())).unwrap_or(Unbounded);
-//!                 let to = args.next_pos().map(|a| Excluded(a.value.clone())).unwrap_or(Unbounded);
-//!                 args.reject_rest()?;
-//!                 for (key, value) in self.map.range((from, to)) {
-//!                     writeln!(output, "{key}={value}")?;
-//!                 }
-//!             }
-//!
-//!             name => return Err(format!("invalid command {name}").into()),
-//!         };
-//!         Ok(output)
-//!     }
-//! }
-//!
-//! #[test]
-//! fn btreemap() {
-//!     testscript::run_path(&mut BTreeMapRunner::default(), "btreemap").expect("testscript failed")
-//! }
-//! ```
-//!
 //! # Syntax
 //!
 //! ## Blocks
@@ -335,92 +277,6 @@
 //! `\n` (newline), `\r` (carriage return), and `\t` (tab). `\x` can be used to
 //! represent arbitrary hexadecimal bytes (e.g. `\x7a`) and `\u{}` can be used
 //! to represent arbitrary Unicode characters (e.g. `\u{1f44b}`)
-//!
-//! ```text
-//! string
-//! "string with spaces and \"quotes\""
-//! '字符串'
-//! ---
-//! ```
-//!
-//! # Writing Tests
-//!
-//! In the simplest case, a testscript test might be:
-//!
-//! ```no_run
-//! # use std::error::Error;
-//! # use testing::testscript;
-//! struct Runner;
-//!
-//! impl testscript::Runner for Runner {
-//!     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn Error>> {
-//!         match command.name.as_str() {
-//!             "echo" => {
-//!                 let lines: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
-//!                 Ok(lines.join("\n"))
-//!             }
-//!             name => return Err(format!("invalid command {name}").into())
-//!         }
-//!     }
-//! }
-//!
-//! #[test]
-//! fn test() -> std::io::Result<()> {
-//!     testscript::run_path(&mut Runner, "tests/scripts/test")
-//! }
-//! ```
-//!
-//! ## Argument Processing
-//!
-//! Arguments can be processed manually via [`Command::args`], or using the
-//! [`Command::consume_args()`] helper which simplifies common argument
-//! handling. For example:
-//!
-//! ```
-//! # use std::error::Error;
-//! # struct Runner;
-//! # impl Runner {
-//! #   fn send(&self, ids: &[u32], message: &str, retry: bool) -> Result<String, Box<dyn Error>> {
-//! #     Ok(String::new())
-//! #   }
-//! # }
-//! #
-//! # use testing::testscript;
-//! impl testscript::Runner for Runner {
-//!     /// Implement a send command, which sends a string message to a list
-//!     /// of nodes, optionally retrying.
-//!     ///
-//!     /// send [retry=BOOL] MESSAGE ID...
-//!     ///
-//!     /// Example: send foo 1 2 3
-//!     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn Error>> {
-//!         if command.name != "send" {
-//!             return Err(format!("invalid command {}", command.name).into())
-//!         }
-//!
-//!         let mut args = command.consume_args();
-//!
-//!         // The first positional argument is a required string message.
-//!         let message = &args.next_pos().ok_or("message not given")?.value;
-//!
-//!         // The remaining positional arguments are numeric node IDs.
-//!         let ids: Vec<u32> = args.rest_pos().iter().map(|a| a.parse()).collect::<Result<_, _>>()?;
-//!         if ids.is_empty() {
-//!             return Err("no node IDs given".into())
-//!         }
-//!
-//!         // An optional retry=bool key/value argument can also be given.
-//!         let retry: bool = args.lookup_parse("retry")?.unwrap_or(false);
-//!
-//!         // Any other arguments that haven't been processed above should error.
-//!         args.reject_rest()?;
-//!
-//!         // Execute the send.
-//!         self.send(&ids, message, retry)
-//!     }
-//! }
-//! ```
-//!
 //! ## Managing State
 //!
 //! The runner is free to manage internal state as desired. If it is stateful,
@@ -437,26 +293,6 @@
 //! External crates can be used to automatically generate and run individual
 //! tests for each testscript in a directory. For example, the
 //! [`test_each_file`](https://docs.rs/test_each_file/latest/test_each_file/)
-//! crate:
-//!
-//! ```no_run
-//! # use std::error::Error;
-//! # struct Runner;
-//! # use testing::testscript;
-//! #
-//! # impl testscript::Runner for Runner {
-//! #     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn Error>> { todo!() }
-//! # }
-//! use test_each_file::test_each_path;
-//!
-//! test_each_path! { in "crates/testing/tests/testscript/scripts" as scripts => test_testscript }
-//!
-//! fn test_testscript(path: &std::path::Path) {
-//!     testscript::run_path(&mut Runner, path).unwrap()
-//! }
-//! ```
-//!
-//! ## Hooks
 //!
 //! Runners have various hooks that will be called during script execution:
 //! [`Runner::start_script`], [`Runner::end_script`], [`Runner::start_block`],
