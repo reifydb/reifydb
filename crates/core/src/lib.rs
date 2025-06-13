@@ -8,7 +8,8 @@
 
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
 pub use key::{
-    EncodableKey, EncodedKey, EncodedKeyRange, Key, KeyKind, SchemaKey, TableKey, TableRowKey,
+    EncodableKey, EncodedKey, EncodedKeyRange, Key, KeyKind, SchemaKey, SchemaTableLinkKey,
+    TableKey, TableRowKey,
 };
 pub use value::{Value, ValueKind};
 pub use version::Version;

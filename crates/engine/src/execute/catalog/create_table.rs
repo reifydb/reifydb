@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{ExecutionResult, Executor};
-use reifydb_core::AsyncCowVec;
 use reifydb_core::catalog::TableId;
 use reifydb_core::row::EncodedRow;
+use reifydb_core::{AsyncCowVec, Key, TableKey};
 use reifydb_rql::plan::CreateTablePlan;
 use reifydb_transaction::Tx;
 
@@ -19,9 +19,12 @@ impl Executor {
         // FIXME table name already exists
         // FIXME handle create if_not_exists
         // FIXME serialize table and insert
-        // FIXME link table to schema 
-        
-        tx.insert_table(TableId(1), EncodedRow(AsyncCowVec::new(vec![])))?;
+        // FIXME link table to schema
+
+        tx.set(
+            Key::Table(TableKey { table_id: TableId(1) }).encode(),
+            EncodedRow(AsyncCowVec::new(vec![])),
+        )?;
 
         Ok(ExecutionResult::CreateTable { schema: "TBD".to_string(), table: plan.table })
     }

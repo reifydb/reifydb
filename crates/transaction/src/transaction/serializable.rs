@@ -2,14 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::mvcc::transaction::serializable::{Serializable, TransactionRx, TransactionTx};
-use crate::{
-    Commit, Rollback, Rx, SchemaGet, SchemaInsert, SchemaScan, TableInsert, TableInsertInto,
-    TableRowGet, TableRowScan, Transaction, Tx,
-};
-use reifydb_core::catalog::{SchemaId, TableId};
+use crate::{Rx, Transaction, Tx};
+use reifydb_core::EncodedKey;
 use reifydb_core::hook::Hooks;
-use reifydb_core::row::{EncodedRow, EncodedRowIter};
-use reifydb_core::{EncodedKey, Key, SchemaKey};
+use reifydb_core::row::EncodedRow;
 use reifydb_storage::Storage;
 
 impl<S: Storage> Transaction<S> for Serializable<S> {
@@ -33,97 +29,23 @@ impl<S: Storage> Transaction<S> for Serializable<S> {
     }
 }
 
-impl<S: Storage> TableRowGet for TransactionRx<S> {
-    fn get_table_row(
-        &self,
-        table_id: TableId,
-        keys: &[EncodedKey],
-    ) -> crate::Result<Vec<EncodedRow>> {
-        todo!()
-    }
-}
-
-impl<S: Storage> TableRowScan for TransactionRx<S> {
-    fn scan_table_row(&mut self, table_id: TableId) -> crate::Result<EncodedRowIter> {
-        todo!()
-    }
-}
-
-impl<S: Storage> SchemaGet for TransactionRx<S> {
-    fn get_schema(&self, schema_id: SchemaId) -> crate::Result<Vec<EncodedRow>> {
-        todo!()
-    }
-}
-
-impl<S: Storage> SchemaScan for TransactionRx<S> {
-    fn scan_schema(&mut self) -> crate::Result<EncodedRowIter> {
-        todo!()
-    }
-}
-
 impl<S: Storage> Rx for TransactionRx<S> {}
-
-impl<S: Storage> TableRowGet for TransactionTx<S> {
-    fn get_table_row(
-        &self,
-        table_id: TableId,
-        keys: &[EncodedKey],
-    ) -> crate::Result<Vec<EncodedRow>> {
-        todo!()
-    }
-}
-
-impl<S: Storage> TableRowScan for TransactionTx<S> {
-    fn scan_table_row(&mut self, table_id: TableId) -> crate::Result<EncodedRowIter> {
-        todo!()
-    }
-}
-
-impl<S: Storage> SchemaGet for TransactionTx<S> {
-    fn get_schema(&self, schema_id: SchemaId) -> crate::Result<Vec<EncodedRow>> {
-        todo!()
-    }
-}
-
-impl<S: Storage> SchemaScan for TransactionTx<S> {
-    fn scan_schema(&mut self) -> crate::Result<EncodedRowIter> {
-        todo!()
-    }
-}
 
 impl<S: Storage> Rx for TransactionTx<S> {}
 
-impl<S: Storage> Commit for TransactionTx<S> {
+impl<S: Storage> Tx for TransactionTx<S> {
+    fn set(&mut self, key: EncodedKey, row: EncodedRow) -> crate::Result<()> {
+        TransactionTx::set(self, key, row)?;
+        Ok(())
+    }
+
     fn commit(mut self) -> crate::Result<()> {
         TransactionTx::commit(&mut self)?;
         Ok(())
     }
-}
 
-impl<S: Storage> Rollback for TransactionTx<S> {
     fn rollback(mut self) -> crate::Result<()> {
         TransactionTx::rollback(&mut self)?;
         Ok(())
     }
 }
-
-impl<S: Storage> SchemaInsert for TransactionTx<S> {
-    fn insert_schema(&mut self, schema_id: SchemaId, row: EncodedRow) -> crate::Result<()> {
-        self.set(Key::Schema(SchemaKey { schema_id }).encode(), row)?;
-        Ok(())
-    }
-}
-
-impl<S: Storage> TableInsert for TransactionTx<S> {
-    fn insert_table(&mut self, table_id: TableId, row: EncodedRow) -> crate::Result<()> {
-        todo!()
-    }
-}
-
-impl<S: Storage> TableInsertInto for TransactionTx<S> {
-    fn insert_into_table(&mut self, table_id: TableId, rows: Vec<EncodedRow>) -> crate::Result<()> {
-        todo!()
-    }
-}
-
-impl<S: Storage> Tx for TransactionTx<S> {}

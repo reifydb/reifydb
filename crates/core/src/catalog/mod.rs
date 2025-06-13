@@ -5,7 +5,25 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
 #[repr(transparent)]
-#[derive(Debug, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+pub struct RowId(pub u64);
+
+impl Deref for RowId {
+    type Target = u64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq<u64> for RowId {
+    fn eq(&self, other: &u64) -> bool {
+        self.0.eq(other)
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub struct SchemaId(pub u32);
 
 impl Deref for SchemaId {
@@ -29,7 +47,7 @@ pub struct SchemaToCreate {
 }
 
 #[repr(transparent)]
-#[derive(Debug, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub struct TableId(pub u32);
 
 impl Deref for TableId {

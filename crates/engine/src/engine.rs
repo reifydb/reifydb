@@ -9,7 +9,7 @@ use reifydb_rql::ast;
 use reifydb_rql::ast::Ast;
 use reifydb_rql::plan::{Plan, plan, plan_mut};
 use reifydb_storage::Storage;
-use reifydb_transaction::{Commit, Transaction};
+use reifydb_transaction::{Transaction, Tx};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;

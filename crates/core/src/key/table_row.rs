@@ -1,13 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::catalog::{RowId, TableId};
 use crate::key::{EncodableKey, KeyKind};
 use crate::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
 pub struct TableRowKey {
-    pub table_id: u32,
-    pub row_id: u64,
+    pub table_id: TableId,
+    pub row_id: RowId,
 }
 
 const VERSION: u8 = 1;
@@ -28,21 +29,21 @@ impl EncodableKey for TableRowKey {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 12);
         Some(Self {
-            table_id: u32::from_be_bytes(payload[..4].try_into().unwrap()),
-            row_id: u64::from_be_bytes(payload[4..].try_into().unwrap()),
+            table_id: TableId(u32::from_be_bytes(payload[..4].try_into().unwrap())),
+            row_id: RowId(u64::from_be_bytes(payload[4..].try_into().unwrap())),
         })
     }
 }
 
 impl TableRowKey {
-    pub fn full_scan(table_id: u32) -> EncodedKeyRange {
+    pub fn full_scan(table_id: TableId) -> EncodedKeyRange {
         EncodedKeyRange::start_end(
             Some(Self::table_start(table_id)),
             Some(Self::table_end(table_id)),
         )
     }
 
-    fn table_start(table_id: u32) -> EncodedKey {
+    fn table_start(table_id: TableId) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
         out.push(VERSION);
         out.push(KeyKind::TableRow as u8);
@@ -50,22 +51,23 @@ impl TableRowKey {
         EncodedKey::new(out)
     }
 
-    fn table_end(table_id: u32) -> EncodedKey {
+    fn table_end(table_id: TableId) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
         out.push(VERSION);
         out.push(KeyKind::TableRow as u8);
-        out.extend(&(table_id + 1).to_be_bytes());
+        out.extend(&(*table_id + 1).to_be_bytes());
         EncodedKey::new(out)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::catalog::{RowId, TableId};
     use crate::key::{EncodableKey, KeyKind, TableRowKey};
 
     #[test]
     fn test_encode_decode() {
-        let key = TableRowKey { table_id: 0xABCD, row_id: 0x123456789ABCDEF0 };
+        let key = TableRowKey { table_id: TableId(0xABCD), row_id: RowId(0x123456789ABCDEF0) };
         let encoded = key.encode();
 
         let expected: Vec<u8> = vec![
@@ -94,9 +96,9 @@ mod tests {
 
     #[test]
     fn test_order_preserving() {
-        let key1 = TableRowKey { table_id: 1, row_id: 100 };
-        let key2 = TableRowKey { table_id: 1, row_id: 200 };
-        let key3 = TableRowKey { table_id: 2, row_id: 0 };
+        let key1 = TableRowKey { table_id: TableId(1), row_id: RowId(100) };
+        let key2 = TableRowKey { table_id: TableId(1), row_id: RowId(200) };
+        let key3 = TableRowKey { table_id: TableId(2), row_id: RowId(0) };
 
         let encoded1 = key1.encode();
         let encoded2 = key2.encode();

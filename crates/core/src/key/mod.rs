@@ -4,6 +4,7 @@
 use crate::AsyncCowVec;
 pub use range::EncodedKeyRange;
 pub use schema::SchemaKey;
+pub use schema_table_link::SchemaTableLinkKey;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 pub use table::TableKey;
@@ -11,6 +12,7 @@ pub use table_row::TableRowKey;
 
 mod range;
 mod schema;
+mod schema_table_link;
 mod table;
 mod table_row;
 
@@ -36,6 +38,7 @@ pub enum Key {
     Schema(SchemaKey),
     Table(TableKey),
     TableRow(TableRowKey),
+    SchemaTableLink(SchemaTableLinkKey),
 }
 
 impl Key {
@@ -44,6 +47,7 @@ impl Key {
             Key::Schema(key) => key.encode(),
             Key::Table(key) => key.encode(),
             Key::TableRow(key) => key.encode(),
+            Key::SchemaTableLink(key) => key.encode(),
         }
     }
 }
@@ -54,6 +58,7 @@ pub enum KeyKind {
     Schema = 0x01,
     Table = 0x02,
     TableRow = 0x03,
+    SchemaTableLink = 0x04,
 }
 
 impl TryFrom<u8> for KeyKind {
@@ -64,6 +69,7 @@ impl TryFrom<u8> for KeyKind {
             0x01 => Ok(Self::Schema),
             0x02 => Ok(Self::Table),
             0x03 => Ok(Self::TableRow),
+            0x04 => Ok(Self::SchemaTableLink),
             _ => Err(()),
         }
     }
@@ -89,6 +95,7 @@ impl Key {
             KeyKind::Schema => SchemaKey::decode(version, payload).map(Self::Schema),
             KeyKind::Table => TableKey::decode(version, payload).map(Self::Table),
             KeyKind::TableRow => TableRowKey::decode(version, payload).map(Self::TableRow),
+            KeyKind::SchemaTableLink => SchemaTableLinkKey::decode(version, payload).map(Self::SchemaTableLink),
             _ => None,
         }
     }
@@ -96,7 +103,8 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
-    use crate::catalog::SchemaId;
+    use crate::SchemaTableLinkKey;
+    use crate::catalog::{RowId, SchemaId, TableId};
     use crate::key::schema::SchemaKey;
     use crate::key::table::TableKey;
     use crate::key::{Key, TableRowKey};
@@ -118,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_table() {
-        let key = Key::Table(TableKey { table_id: 42 });
+        let key = Key::Table(TableKey { table_id: TableId(42) });
 
         let encoded = key.encode();
         let decoded = Key::decode(&encoded).expect("Failed to decode key");
@@ -133,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_table_row() {
-        let key = Key::TableRow(TableRowKey { table_id: 42, row_id: 999_999 });
+        let key = Key::TableRow(TableRowKey { table_id: TableId(42), row_id: RowId(999_999) });
 
         let encoded = key.encode();
         let decoded = Key::decode(&encoded).expect("Failed to decode key");
@@ -142,6 +150,25 @@ mod tests {
             Key::TableRow(decoded_inner) => {
                 assert_eq!(decoded_inner.table_id, 42);
                 assert_eq!(decoded_inner.row_id, 999_999);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_schema_table_link() {
+        let key = Key::SchemaTableLink(SchemaTableLinkKey {
+            schema_id: SchemaId(42),
+            table_id: TableId(999_999),
+        });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::SchemaTableLink(decoded_inner) => {
+                assert_eq!(decoded_inner.schema_id, 42);
+                assert_eq!(decoded_inner.table_id, 999_999);
             }
             _ => unreachable!(),
         }

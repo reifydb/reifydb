@@ -1,14 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::CATALOG;
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
+use crate::transaction::{DepInsertResult, DepRx, DepTransaction, DepTx};
 use reifydb_catalog::{Catalog, CatalogRx, CatalogTx, Schema};
+use reifydb_core::catalog::{RowId, TableId};
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::{EncodedRow, EncodedRowIter};
 use reifydb_core::{EncodedKey, Key, TableRowKey, Value};
 use reifydb_storage::Storage;
-use crate::CATALOG;
-use crate::transaction::{DepInsertResult, DepRx, DepTransaction, DepTx};
 
 /// Optimistic Concurrency Control
 impl<S: Storage> DepTransaction<S> for Optimistic<S> {
@@ -51,7 +52,7 @@ impl<S: Storage> DepRx for TransactionRx<S> {
 
     fn dep_scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter> {
         Ok(Box::new(
-            self.scan_range(TableRowKey::full_scan(1))
+            self.scan_range(TableRowKey::full_scan(TableId(1)))
                 .map(|stored| stored.row)
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -78,7 +79,7 @@ impl<S: Storage> DepRx for TransactionTx<S> {
 
     fn dep_scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter> {
         Ok(Box::new(
-            self.scan_range(TableRowKey::full_scan(1))
+            self.scan_range(TableRowKey::full_scan(TableId(1)))
                 .unwrap()
                 .map(|r| r.row().clone())
                 .collect::<Vec<_>>()
@@ -108,15 +109,18 @@ impl<S: Storage> DepTx for TransactionTx<S> {
         table: &str,
         rows: Vec<EncodedRow>,
     ) -> crate::Result<DepInsertResult> {
-        let last_id = self.scan_range(TableRowKey::full_scan(1)).unwrap().count();
+        let last_id = self.scan_range(TableRowKey::full_scan(TableId(1))).unwrap().count();
 
         // FIXME assumes every row gets inserted - not updated etc..
         let inserted = rows.len();
 
         for (id, row) in rows.into_iter().enumerate() {
             self.set(
-                Key::TableRow(TableRowKey { table_id: 1, row_id: (last_id + id + 1) as u64 })
-                    .encode(),
+                Key::TableRow(TableRowKey {
+                    table_id: TableId(1),
+                    row_id: RowId((last_id + id + 1) as u64),
+                })
+                .encode(),
                 row,
             )
             .unwrap();

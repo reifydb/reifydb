@@ -93,7 +93,7 @@ impl Executor {
                 }
 
                 let table = TableId(1);
-                let result = tx.insert_into_table(table, rows).unwrap();
+                // let result = tx.insert_into_table(table, rows).unwrap();
                 // Ok(ExecutionResult::InsertIntoTable { schema, table, inserted: result.inserted })
                 unimplemented!()
 
