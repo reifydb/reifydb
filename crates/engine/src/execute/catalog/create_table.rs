@@ -2,16 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{ExecutionResult, Executor};
-use reifydb_core::catalog::TableId;
+use reifydb_core::catalog::{SchemaId, TableId};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, Key, TableKey};
+use reifydb_core::{AsyncCowVec, Key, SchemaTableLinkKey, TableKey};
 use reifydb_rql::plan::CreateTablePlan;
+use reifydb_storage::Storage;
 use reifydb_transaction::Tx;
 
-impl Executor {
+impl<S: Storage> Executor<S> {
     pub(crate) fn create_table(
         &mut self,
-        tx: &mut impl Tx,
+        tx: &mut impl Tx<S>,
         plan: CreateTablePlan,
     ) -> crate::Result<ExecutionResult> {
         // FIXME schema does not exist
@@ -23,6 +24,15 @@ impl Executor {
 
         tx.set(
             Key::Table(TableKey { table_id: TableId(1) }).encode(),
+            EncodedRow(AsyncCowVec::new(vec![])),
+        )?;
+
+        tx.set(
+            Key::SchemaTableLink(SchemaTableLinkKey {
+                schema_id: SchemaId(1),
+                table_id: TableId(1),
+            })
+            .encode(),
             EncodedRow(AsyncCowVec::new(vec![])),
         )?;
 

@@ -11,6 +11,7 @@ reifydb-core = { workspace = true }
 reifydb-diagnostic = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-frame = { workspace = true }
+reifydb-storage = { workspace = true }
 reifydb-transaction = { workspace = true }
 
 nom = { workspace = true }

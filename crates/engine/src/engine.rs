@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::{execute, execute_mut};
+use crate::execute::{execute, execute_tx};
 use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
 use reifydb_core::hook::Hooks;
 use reifydb_rql::ast;
 use reifydb_rql::ast::Ast;
-use reifydb_rql::plan::{Plan, plan, plan_mut};
+use reifydb_rql::plan::{Plan, plan, plan_tx};
 use reifydb_storage::Storage;
 use reifydb_transaction::{Transaction, Tx};
 use std::marker::PhantomData;
@@ -78,12 +78,12 @@ impl<S: Storage, T: Transaction<S>> Engine<S, T> {
             match &statement.0[0] {
                 Ast::From(_) | Ast::Select(_) => {
                     let plan = plan(statement)?;
-                    let er = execute_mut(plan, &mut tx)?;
+                    let er = execute_tx(plan, &mut tx)?;
                     result.push(er);
                 }
                 _ => {
-                    let plan = plan_mut(&tx, statement)?;
-                    let er = execute_mut(plan, &mut tx)?;
+                    let plan = plan_tx(&tx, statement)?;
+                    let er = execute_tx(plan, &mut tx)?;
                     result.push(er);
                 }
             }

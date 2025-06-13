@@ -10,7 +10,9 @@ use crate::function::{FunctionRegistry, math};
 use reifydb_core::{Value, ValueKind};
 use reifydb_frame::{ColumnValues, Frame};
 use reifydb_rql::plan::{Plan, QueryPlan};
+use reifydb_storage::Storage;
 use reifydb_transaction::{Rx, Tx};
+use std::marker::PhantomData;
 
 #[derive(Clone, Debug)]
 pub struct Column {
@@ -175,15 +177,17 @@ impl From<Frame> for ExecutionResult {
     }
 }
 
-pub(crate) struct Executor {
+pub(crate) struct Executor<S: Storage> {
     functions: FunctionRegistry,
     frame: Frame,
+    _marker: PhantomData<S>,
 }
 
-pub fn execute(plan: QueryPlan, rx: &mut impl Rx) -> crate::Result<ExecutionResult> {
+pub fn execute<S: Storage>(plan: QueryPlan, rx: &mut impl Rx<S>) -> crate::Result<ExecutionResult> {
     let mut executor = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from RX
         frame: Frame::new(vec![]),
+        _marker: PhantomData,
     };
 
     executor.functions.register(math::AbsFunction {});
@@ -192,10 +196,11 @@ pub fn execute(plan: QueryPlan, rx: &mut impl Rx) -> crate::Result<ExecutionResu
     executor.execute(plan, rx)
 }
 
-pub fn execute_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<ExecutionResult> {
+pub fn execute_tx<S: Storage>(plan: Plan, tx: &mut impl Tx<S>) -> crate::Result<ExecutionResult> {
     let mut executor = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from TX
         frame: Frame::new(vec![]),
+        _marker: PhantomData,
     };
 
     executor.functions.register(math::AbsFunction {});
@@ -204,11 +209,11 @@ pub fn execute_mut(plan: Plan, tx: &mut impl Tx) -> crate::Result<ExecutionResul
     executor.execute_mut(plan, tx)
 }
 
-impl Executor {
+impl<S: Storage> Executor<S> {
     pub(crate) fn execute(
         mut self,
         plan: QueryPlan,
-        rx: &mut impl Rx,
+        rx: &mut impl Rx<S>,
     ) -> crate::Result<ExecutionResult> {
         let next = match plan {
             QueryPlan::Aggregate { group_by, project, next } => {
@@ -216,8 +221,9 @@ impl Executor {
                 next
             }
             QueryPlan::Scan { schema, store, next } => {
-                self.scan(rx, &schema, &store)?;
-                next
+                // self.scan(rx, &schema, &store)?;
+                // next
+                unimplemented!()
             }
             QueryPlan::Project { expressions, next } => {
                 self.project(expressions)?;
@@ -228,8 +234,9 @@ impl Executor {
                 next
             }
             QueryPlan::Limit { limit, next } => {
-                self.limit(limit)?;
-                next
+                // self.limit(limit)?;
+                // next
+                unimplemented!()
             }
         };
 
@@ -239,7 +246,7 @@ impl Executor {
     pub(crate) fn execute_mut(
         mut self,
         plan: Plan,
-        tx: &mut impl Tx,
+        tx: &mut impl Tx<S>,
     ) -> crate::Result<ExecutionResult> {
         match plan {
             Plan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
@@ -248,7 +255,8 @@ impl Executor {
             Plan::CreateTable(plan) => self.create_table(tx, plan),
             Plan::InsertIntoSeries(plan) => self.insert_into_series(tx, plan),
             Plan::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
-            Plan::Query(plan) => self.execute(plan, tx),
+            // Plan::Query(plan) => self.execute(plan, tx),
+            Plan::Query(plan) => unimplemented!(),
         }
     }
 }

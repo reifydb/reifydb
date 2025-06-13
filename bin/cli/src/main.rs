@@ -6,12 +6,13 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{ReifyDB, memory, optimistic};
+use std::path::Path;
+use reifydb::{ReifyDB, memory, optimistic, sqlite};
 
 fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(lmdb(&Path::new("/tmp/db"))));
-    // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
-    let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
+    let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
+    // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
 
     db.tx_as(

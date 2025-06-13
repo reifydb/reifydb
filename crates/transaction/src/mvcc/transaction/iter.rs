@@ -17,7 +17,7 @@ use core::cmp;
 
 use reifydb_core::EncodedKey;
 use reifydb_core::either::Either;
-use reifydb_storage::Storage;
+use reifydb_storage::{Scan, Storage};
 use std::collections::btree_map::Iter as BTreeMapIter;
 
 pub struct TransactionIter<'a, S, C>

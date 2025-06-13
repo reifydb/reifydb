@@ -3,12 +3,13 @@
 
 use crate::execute::{ExecutionResult, Executor};
 use reifydb_rql::plan::CreateSeriesPlan;
+use reifydb_storage::Storage;
 use reifydb_transaction::Tx;
 
-impl Executor {
+impl<S: Storage> Executor<S> {
     pub(crate) fn create_series(
         &mut self,
-        tx: &mut impl Tx,
+        tx: &mut impl Tx<S>,
         plan: CreateSeriesPlan,
     ) -> crate::Result<ExecutionResult> {
         // if plan.if_not_exists {

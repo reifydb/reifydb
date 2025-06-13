@@ -5,8 +5,9 @@ use crate::evaluate::{Context, evaluate};
 use crate::execute::Executor;
 use reifydb_frame::{Column, Frame};
 use reifydb_rql::expression::AliasExpression;
+use reifydb_storage::Storage;
 
-impl Executor {
+impl<S: Storage> Executor<S> {
     pub(crate) fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {
         if self.frame.is_empty() {
             let mut columns = vec![];
@@ -37,7 +38,7 @@ impl Executor {
                 &columns,
                 row_count,
             )?;
-            
+
             new_columns.push(Column { name: name.into(), data: evaluated_column });
         }
 
