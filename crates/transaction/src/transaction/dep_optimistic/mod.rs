@@ -1,54 +1,55 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::mvcc::transaction::serializable::{Serializable, TransactionRx, TransactionTx};
-use crate::{CATALOG, InsertResult, Transaction};
+use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use reifydb_catalog::{Catalog, CatalogRx, CatalogTx, Schema};
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::{EncodedRow, EncodedRowIter};
 use reifydb_core::{EncodedKey, Key, TableRowKey, Value};
 use reifydb_storage::Storage;
+use crate::CATALOG;
+use crate::transaction::{DepInsertResult, DepRx, DepTransaction, DepTx};
 
-/// Serializable Concurrency Control
-impl<S: Storage> Transaction<S> for Serializable<S> {
+/// Optimistic Concurrency Control
+impl<S: Storage> DepTransaction<S> for Optimistic<S> {
     type Rx = TransactionRx<S>;
     type Tx = TransactionTx<S>;
 
-    fn begin_read_only(&self) -> crate::Result<Self::Rx> {
+    fn dep_begin_read_only(&self) -> crate::Result<Self::Rx> {
         Ok(self.begin_read_only())
     }
 
-    fn begin(&self) -> crate::Result<Self::Tx> {
+    fn dep_begin(&self) -> crate::Result<Self::Tx> {
         Ok(self.begin())
     }
 
-    fn hooks(&self) -> Hooks {
+    fn dep_hooks(&self) -> Hooks {
         self.hooks.clone()
     }
 
-    fn storage(&self) -> S {
+    fn dep_storage(&self) -> S {
         self.storage.clone()
     }
 }
 
-impl<S: Storage> crate::Rx for TransactionRx<S> {
+impl<S: Storage> DepRx for TransactionRx<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
-    fn catalog(&self) -> crate::Result<&Self::Catalog> {
+    fn dep_catalog(&self) -> crate::Result<&Self::Catalog> {
         // FIXME replace this
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
-    fn schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
-        Ok(self.catalog().unwrap().get(schema).unwrap())
+    fn dep_schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
+        Ok(self.dep_catalog().unwrap().get(schema).unwrap())
     }
 
-    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<EncodedRow>> {
+    fn dep_get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<EncodedRow>> {
         todo!()
     }
 
-    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter> {
+    fn dep_scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter> {
         Ok(Box::new(
             self.scan_range(TableRowKey::full_scan(1))
                 .map(|stored| stored.row)
@@ -58,24 +59,24 @@ impl<S: Storage> crate::Rx for TransactionRx<S> {
     }
 }
 
-impl<S: Storage> crate::Rx for TransactionTx<S> {
+impl<S: Storage> DepRx for TransactionTx<S> {
     type Catalog = Catalog;
     type Schema = Schema;
 
-    fn catalog(&self) -> crate::Result<&Self::Catalog> {
+    fn dep_catalog(&self) -> crate::Result<&Self::Catalog> {
         // FIXME replace this
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
-    fn schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
-        Ok(self.catalog().unwrap().get(schema).unwrap())
+    fn dep_schema(&self, schema: &str) -> crate::Result<&Self::Schema> {
+        Ok(self.dep_catalog().unwrap().get(schema).unwrap())
     }
 
-    fn get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<EncodedRow>> {
+    fn dep_get(&self, store: &str, ids: &[EncodedKey]) -> crate::Result<Vec<EncodedRow>> {
         todo!()
     }
 
-    fn scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter> {
+    fn dep_scan_table(&mut self, schema: &str, store: &str) -> crate::Result<EncodedRowIter> {
         Ok(Box::new(
             self.scan_range(TableRowKey::full_scan(1))
                 .unwrap()
@@ -86,27 +87,27 @@ impl<S: Storage> crate::Rx for TransactionTx<S> {
     }
 }
 
-impl<S: Storage> crate::Tx for TransactionTx<S> {
+impl<S: Storage> DepTx for TransactionTx<S> {
     type CatalogTx = Catalog;
     type SchemaTx = Schema;
 
-    fn catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogTx> {
+    fn dep_catalog_mut(&mut self) -> crate::Result<&mut Self::CatalogTx> {
         // FIXME replace this
         unsafe { Ok(*CATALOG.get().unwrap().0.get()) }
     }
 
-    fn schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaTx> {
-        let schema = self.catalog_mut().unwrap().get_mut(schema).unwrap();
+    fn dep_schema_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaTx> {
+        let schema = self.dep_catalog_mut().unwrap().get_mut(schema).unwrap();
 
         Ok(schema)
     }
 
-    fn insert_into_table(
+    fn dep_insert_into_table(
         &mut self,
         schema: &str,
         table: &str,
         rows: Vec<EncodedRow>,
-    ) -> crate::Result<InsertResult> {
+    ) -> crate::Result<DepInsertResult> {
         let last_id = self.scan_range(TableRowKey::full_scan(1)).unwrap().count();
 
         // FIXME assumes every row gets inserted - not updated etc..
@@ -122,15 +123,15 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         }
         // let mut persistence = self.persistence.lock().unwrap();
         // let inserted = persistence.table_append_rows(schema, table, &rows).unwrap();
-        Ok(InsertResult { inserted })
+        Ok(DepInsertResult { inserted })
     }
 
-    fn insert_into_series(
+    fn dep_insert_into_series(
         &mut self,
         schema: &str,
         series: &str,
         rows: Vec<Vec<Value>>,
-    ) -> crate::Result<InsertResult> {
+    ) -> crate::Result<DepInsertResult> {
         // let last_id = self
         //     .scan_range(EncodedKeyRange::prefix(&key_prefix!("{}::{}::row::", schema, series)))
         //     .unwrap()
@@ -152,12 +153,12 @@ impl<S: Storage> crate::Tx for TransactionTx<S> {
         unimplemented!()
     }
 
-    fn commit(mut self) -> crate::Result<()> {
+    fn dep_commit(mut self) -> crate::Result<()> {
         TransactionTx::commit(&mut self)?;
         Ok(())
     }
 
-    fn rollback(mut self) -> crate::Result<()> {
+    fn dep_rollback(mut self) -> crate::Result<()> {
         TransactionTx::rollback(&mut self);
 
         Ok(())

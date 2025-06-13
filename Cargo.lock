@@ -1442,6 +1442,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-diagnostic",
  "reifydb-frame",
+ "reifydb-transaction",
 ]
 
 [[package]]

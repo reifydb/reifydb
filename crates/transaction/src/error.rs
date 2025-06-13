@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::mvcc;
+use crate::mvcc::error::TransactionError;
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors related to transactions, the mem-table, or persistence.
@@ -26,5 +27,11 @@ impl From<mvcc::MvccError> for Error {
         match err {
             _ => Self::Mvcc(err),
         }
+    }
+}
+
+impl From<TransactionError> for Error {
+    fn from(err: TransactionError) -> Self {
+        Self::Mvcc(err.into())
     }
 }

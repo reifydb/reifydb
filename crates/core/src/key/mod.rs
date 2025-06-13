@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::AsyncCowVec;
-use crate::key::schema::SchemaKey;
-use crate::key::table::TableKey;
 pub use range::EncodedKeyRange;
+pub use schema::SchemaKey;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
+pub use table::TableKey;
 pub use table_row::TableRowKey;
 
 mod range;
@@ -96,13 +96,14 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
+    use crate::catalog::SchemaId;
     use crate::key::schema::SchemaKey;
     use crate::key::table::TableKey;
     use crate::key::{Key, TableRowKey};
 
     #[test]
     fn test_schema() {
-        let key = Key::Schema(SchemaKey { schema_id: 42 });
+        let key = Key::Schema(SchemaKey { schema_id: SchemaId(42) });
 
         let encoded = key.encode();
         let decoded = Key::decode(&encoded).expect("Failed to decode key");

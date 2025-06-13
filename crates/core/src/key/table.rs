@@ -1,11 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::catalog::TableId;
 use crate::{EncodableKey, EncodedKey, EncodedKeyRange, KeyKind};
 
 #[derive(Debug)]
 pub struct TableKey {
-    pub table_id: u32,
+    pub table_id: TableId,
 }
 
 const VERSION: u8 = 1;
@@ -24,7 +25,7 @@ impl EncodableKey for TableKey {
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 4);
-        Some(Self { table_id: u32::from_be_bytes(payload[..].try_into().unwrap()) })
+        Some(Self { table_id: TableId(u32::from_be_bytes(payload[..].try_into().unwrap())) })
     }
 }
 
@@ -50,12 +51,13 @@ impl TableKey {
 
 #[cfg(test)]
 mod tests {
+    use crate::catalog::TableId;
     use crate::key::table::TableKey;
     use crate::{EncodableKey, KeyKind};
 
     #[test]
     fn test_encode_decode() {
-        let key = TableKey { table_id: 0xABCD };
+        let key = TableKey { table_id: TableId(0xABCD) };
         let encoded = key.encode();
         let expected = vec![1, KeyKind::Table as u8, 0x00, 0x00, 0xAB, 0xCD];
         assert_eq!(encoded.as_slice(), expected);

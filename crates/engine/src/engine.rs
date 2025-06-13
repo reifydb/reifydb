@@ -9,7 +9,7 @@ use reifydb_rql::ast;
 use reifydb_rql::ast::Ast;
 use reifydb_rql::plan::{Plan, plan, plan_mut};
 use reifydb_storage::Storage;
-use reifydb_transaction::{Rx, Transaction, Tx};
+use reifydb_transaction::{Commit, Transaction};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -82,7 +82,7 @@ impl<S: Storage, T: Transaction<S>> Engine<S, T> {
                     result.push(er);
                 }
                 _ => {
-                    let plan = plan_mut(tx.catalog().unwrap(), statement)?;
+                    let plan = plan_mut(&tx, statement)?;
                     let er = execute_mut(plan, &mut tx)?;
                     result.push(er);
                 }
@@ -90,7 +90,6 @@ impl<S: Storage, T: Transaction<S>> Engine<S, T> {
         }
 
         tx.commit().unwrap();
-        // tx.rollback().unwrap();
 
         Ok(result)
     }

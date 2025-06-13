@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{ExecutionResult, Executor};
-use reifydb_catalog::{SchemaTx, StoreToCreate};
 use reifydb_rql::plan::CreateSeriesPlan;
 use reifydb_transaction::Tx;
 
@@ -12,14 +11,15 @@ impl Executor {
         tx: &mut impl Tx,
         plan: CreateSeriesPlan,
     ) -> crate::Result<ExecutionResult> {
-        if plan.if_not_exists {
-            unimplemented!()
-        } else {
-            tx.schema_mut(&plan.schema)?.create(StoreToCreate::Series {
-                series: plan.series.clone(),
-                columns: plan.columns,
-            })?;
-        }
-        Ok(ExecutionResult::CreateSeries { schema: plan.schema, series: plan.series })
+        // if plan.if_not_exists {
+        //     unimplemented!()
+        // } else {
+        //     tx.dep_schema_mut(&plan.schema)?.create(StoreToCreate::Series {
+        //         series: plan.series.clone(),
+        //         columns: plan.columns,
+        //     })?;
+        // }
+        // Ok(ExecutionResult::CreateSeries { schema: plan.schema, series: plan.series })
+        unimplemented!();
     }
 }

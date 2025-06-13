@@ -6,6 +6,7 @@ use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
 use crate::execute::write::column::adjust_column;
 use reifydb_core::ValueKind;
+use reifydb_core::catalog::TableId;
 use reifydb_core::row::Layout;
 use reifydb_frame::ValueRef;
 use reifydb_rql::plan::InsertIntoTablePlan;
@@ -91,8 +92,13 @@ impl Executor {
                     rows.push(row);
                 }
 
-                let result = tx.insert_into_table(schema.as_str(), table.as_str(), rows).unwrap();
-                Ok(ExecutionResult::InsertIntoTable { schema, table, inserted: result.inserted })
+                let table = TableId(1);
+                let result = tx.insert_into_table(table, rows).unwrap();
+                // Ok(ExecutionResult::InsertIntoTable { schema, table, inserted: result.inserted })
+                unimplemented!()
+
+                // let result =
+                //     tx.dep_insert_into_table(schema.as_str(), table.as_str(), rows).unwrap();
             }
         }
     }

@@ -8,15 +8,19 @@
 
 pub use error::Error;
 use reifydb_catalog::Catalog;
-use reifydb_core::AsyncCowVec;
+use reifydb_core::hook::Hooks;
+use reifydb_storage::Storage;
+pub use rx::*;
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
-pub use transaction::{InsertResult, Rx, Transaction, Tx};
+pub use tx::*;
 
 mod error;
 pub mod mvcc;
 
+mod rx;
 mod transaction;
+mod tx;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -38,4 +42,17 @@ pub fn catalog_init() {
 pub fn catalog_mut_singleton() -> &'static mut Catalog {
     // SAFETY: Caller guarantees exclusive access
     unsafe { *CATALOG.get().unwrap().0.get() }
+}
+
+pub trait Transaction<S: Storage>: Send + Sync {
+    type Rx: Rx;
+    type Tx: Tx;
+
+    fn begin_read_only(&self) -> Result<Self::Rx>;
+
+    fn begin(&self) -> Result<Self::Tx>;
+
+    fn hooks(&self) -> Hooks;
+
+    fn storage(&self) -> S;
 }

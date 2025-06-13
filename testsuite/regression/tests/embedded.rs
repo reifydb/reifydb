@@ -23,11 +23,7 @@ pub struct Runner<S: Storage + 'static, T: Transaction<S> + 'static> {
 impl<S: Storage + 'static, T: Transaction<S> + 'static> Runner<S, T> {
     pub fn new(transaction: T) -> Self {
         let (engine, root) = ReifyDB::embedded_with(transaction);
-        Self {
-            engine,
-            root,
-            runtime: Runtime::new().unwrap(),
-        }
+        Self { engine, root, runtime: Runtime::new().unwrap() }
     }
 }
 
@@ -36,12 +32,8 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
         let mut output = String::new();
         match command.name.as_str() {
             "tx" => {
-                let query = command
-                    .args
-                    .iter()
-                    .map(|a| a.value.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let query =
+                    command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
                 println!("tx: {query}");
 
@@ -54,12 +46,8 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for R
                 })?;
             }
             "rx" => {
-                let query = command
-                    .args
-                    .iter()
-                    .map(|a| a.value.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let query =
+                    command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
                 println!("rx: {query}");
 

@@ -2,7 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{ExecutionResult, Executor};
-use reifydb_catalog::CatalogTx;
+use reifydb_core::AsyncCowVec;
+use reifydb_core::catalog::SchemaId;
+use reifydb_core::row::EncodedRow;
 use reifydb_rql::plan::CreateSchemaPlan;
 use reifydb_transaction::Tx;
 
@@ -12,11 +14,12 @@ impl Executor {
         tx: &mut impl Tx,
         plan: CreateSchemaPlan,
     ) -> crate::Result<ExecutionResult> {
-        if plan.if_not_exists {
-            tx.catalog_mut()?.create_if_not_exists(&plan.schema)?;
-        } else {
-            tx.catalog_mut()?.create(&plan.schema)?;
-        }
+        // FIXME schema name already exists
+        // FIXME handle create if_not_exists
+        // FIXME serialize schema and insert
+
+        tx.insert_schema(SchemaId(1), EncodedRow(AsyncCowVec::new(vec![])))?;
+
         Ok(ExecutionResult::CreateSchema { schema: plan.schema })
     }
 }

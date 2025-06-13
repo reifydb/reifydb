@@ -2,11 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{
-    Ast, AstCreate, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstPolicy, AstPolicyKind,
-    AstPrefix, AstSelect, AstStatement, InfixOperator,
+    Ast, AstCreate, AstFrom, AstGroupBy, AstInfix, AstLiteral, AstPolicy, AstPolicyKind, AstSelect,
+    AstStatement, InfixOperator,
 };
-use std::collections::HashMap;
-use std::mem;
 use std::ops::Deref;
 
 use crate::ast;
@@ -19,8 +17,8 @@ pub use error::Error;
 use reifydb_catalog::{
     CatalogRx, Column, ColumnPolicy, ColumnSaturationPolicy, ColumnToCreate, SchemaRx, StoreRx,
 };
-use reifydb_core::StoreKind;
 use reifydb_frame::{SortDirection, SortKey};
+use reifydb_transaction::Rx;
 
 mod diagnostic;
 mod error;
@@ -124,7 +122,7 @@ pub enum QueryPlan {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Plan> {
+pub fn plan_mut(rx: &impl Rx, statement: AstStatement) -> Result<Plan> {
     for ast in statement.into_iter().rev() {
         match ast {
             Ast::Create(create) => {
@@ -224,164 +222,165 @@ pub fn plan_mut(catalog: &impl CatalogRx, statement: AstStatement) -> Result<Pla
                 };
             }
             Ast::Insert(insert) => {
-                return match insert {
-                    AstInsert { schema, store, columns, rows, .. } => {
-                        let schema = schema.value().to_string();
-                        let store = store.value().to_string();
-
-                        // Get the store schema from the catalog once
-                        let store_schema =
-                            catalog.get(&schema).unwrap().get(store.deref()).unwrap();
-
-                        // Build the user-specified column name list
-                        let insert_column_names: Vec<_> = columns
-                            .nodes
-                            .into_iter()
-                            .map(|column| match column {
-                                Ast::Identifier(ast) => ast.value().to_string(),
-                                _ => unimplemented!(),
-                            })
-                            .collect::<Vec<_>>();
-
-                        // Lookup actual columns from the store
-                        let mut columns_to_insert: Vec<_> = insert_column_names
-                            .iter()
-                            .map(|name| store_schema.get_column(name.deref()).unwrap())
-                            .collect::<Vec<_>>();
-
-                        // Create a mapping: column name -> position in insert input
-                        let insert_index_map: HashMap<_, _> = insert_column_names
-                            .iter()
-                            .enumerate()
-                            .map(|(i, name)| (name.to_string(), i))
-                            .collect();
-
-                        // Now reorder the row expressions to match store_schema.column order
-                        let rows_to_insert = rows
-                            .into_iter()
-                            .map(|mut row| {
-                                let mut values = vec![None; columns_to_insert.len()];
-
-                                for (col_idx, col) in
-                                    store_schema.list_columns().unwrap().iter().enumerate()
-                                {
-                                    if let Some(&input_idx) = insert_index_map.get(&col.name) {
-                                        let expr =
-                                            mem::replace(&mut row.nodes[input_idx], Ast::Nop);
-
-                                        let expr = match expr {
-                                            Ast::Literal(AstLiteral::Boolean(ast)) => {
-                                                Expression::Constant(ConstantExpression::Bool {
-                                                    span: ast.0.span,
-                                                })
-                                            }
-                                            Ast::Literal(AstLiteral::Number(ast)) => {
-                                                Expression::Constant(ConstantExpression::Number {
-                                                    span: ast.0.span,
-                                                })
-                                            }
-                                            Ast::Literal(AstLiteral::Text(ast)) => {
-                                                Expression::Constant(ConstantExpression::Text {
-                                                    span: ast.0.span,
-                                                })
-                                            }
-                                            Ast::Prefix(AstPrefix { operator, node }) => {
-                                                let a = node.deref();
-
-                                                let (span, operator) = match operator {
-                                                    ast::PrefixOperator::Plus(token) => (
-                                                        token.span.clone(),
-                                                        PrefixOperator::Plus(token.span),
-                                                    ),
-                                                    ast::PrefixOperator::Negate(token) => (
-                                                        token.span.clone(),
-                                                        PrefixOperator::Minus(token.span),
-                                                    ),
-                                                    ast::PrefixOperator::Not(token) => {
-                                                        unimplemented!()
-                                                    }
-                                                };
-
-                                                Expression::Prefix(PrefixExpression {
-                                                    operator,
-                                                    expression: Box::new(match a {
-                                                        Ast::Literal(lit) => match lit {
-                                                            AstLiteral::Boolean(n) => {
-                                                                Expression::Constant(
-                                                                    ConstantExpression::Bool {
-                                                                        span: n.0.span.clone(),
-                                                                    },
-                                                                )
-                                                            }
-                                                            AstLiteral::Number(n) => {
-                                                                Expression::Constant(
-                                                                    ConstantExpression::Number {
-                                                                        span: n.0.span.clone(),
-                                                                    },
-                                                                )
-                                                            }
-                                                            AstLiteral::Text(t) => {
-                                                                Expression::Constant(
-                                                                    ConstantExpression::Text {
-                                                                        span: t.0.span.clone(),
-                                                                    },
-                                                                )
-                                                            }
-                                                            AstLiteral::Undefined(t) => {
-                                                                Expression::Constant(
-                                                                    ConstantExpression::Undefined {
-                                                                        span: t.0.span.clone(),
-                                                                    },
-                                                                )
-                                                            }
-                                                        },
-                                                        _ => unimplemented!(),
-                                                    }),
-                                                    span,
-                                                })
-                                            }
-                                            Ast::Infix(infix) => expression_infix(infix).unwrap(),
-                                            node => unimplemented!("{node:?}"),
-                                        };
-
-                                        values[col_idx] = Some(expr);
-                                    } else {
-                                        // Not provided in INSERT, use default
-                                        unimplemented!()
-                                    }
-                                }
-
-                                values.into_iter().map(|v| v.unwrap()).collect::<Vec<_>>()
-                            })
-                            .collect::<Vec<_>>();
-
-                        let s = catalog.get(&schema).unwrap().get(&store).unwrap();
-
-                        let columns = store_schema.list_columns().unwrap();
-
-                        match s.kind().unwrap() {
-                            StoreKind::Series => {
-                                Ok(Plan::InsertIntoSeries(InsertIntoSeriesPlan::Values {
-                                    schema,
-                                    series: store,
-                                    columns,
-                                    rows_to_insert,
-                                }))
-                            }
-                            StoreKind::Table => {
-                                Ok(Plan::InsertIntoTable(InsertIntoTablePlan::Values {
-                                    schema,
-                                    table: store,
-                                    columns,
-                                    rows_to_insert,
-                                }))
-                            }
-                            StoreKind::DeferredView => unreachable!(),
-                        }
-
-                        // FIXME validate
-                    }
-                };
+                unimplemented!()
+                // return match insert {
+                //     AstInsert { schema, store, columns, rows, .. } => {
+                //         let schema = schema.value().to_string();
+                //         let store = store.value().to_string();
+                //
+                //         // Get the store schema from the catalog once
+                //         let store_schema =
+                //             catalog.get(&schema).unwrap().get(store.deref()).unwrap();
+                //
+                //         // Build the user-specified column name list
+                //         let insert_column_names: Vec<_> = columns
+                //             .nodes
+                //             .into_iter()
+                //             .map(|column| match column {
+                //                 Ast::Identifier(ast) => ast.value().to_string(),
+                //                 _ => unimplemented!(),
+                //             })
+                //             .collect::<Vec<_>>();
+                //
+                //         // Lookup actual columns from the store
+                //         let mut columns_to_insert: Vec<_> = insert_column_names
+                //             .iter()
+                //             .map(|name| store_schema.get_column(name.deref()).unwrap())
+                //             .collect::<Vec<_>>();
+                //
+                //         // Create a mapping: column name -> position in insert input
+                //         let insert_index_map: HashMap<_, _> = insert_column_names
+                //             .iter()
+                //             .enumerate()
+                //             .map(|(i, name)| (name.to_string(), i))
+                //             .collect();
+                //
+                //         // Now reorder the row expressions to match store_schema.column order
+                //         let rows_to_insert = rows
+                //             .into_iter()
+                //             .map(|mut row| {
+                //                 let mut values = vec![None; columns_to_insert.len()];
+                //
+                //                 for (col_idx, col) in
+                //                     store_schema.list_columns().unwrap().iter().enumerate()
+                //                 {
+                //                     if let Some(&input_idx) = insert_index_map.get(&col.name) {
+                //                         let expr =
+                //                             mem::replace(&mut row.nodes[input_idx], Ast::Nop);
+                //
+                //                         let expr = match expr {
+                //                             Ast::Literal(AstLiteral::Boolean(ast)) => {
+                //                                 Expression::Constant(ConstantExpression::Bool {
+                //                                     span: ast.0.span,
+                //                                 })
+                //                             }
+                //                             Ast::Literal(AstLiteral::Number(ast)) => {
+                //                                 Expression::Constant(ConstantExpression::Number {
+                //                                     span: ast.0.span,
+                //                                 })
+                //                             }
+                //                             Ast::Literal(AstLiteral::Text(ast)) => {
+                //                                 Expression::Constant(ConstantExpression::Text {
+                //                                     span: ast.0.span,
+                //                                 })
+                //                             }
+                //                             Ast::Prefix(AstPrefix { operator, node }) => {
+                //                                 let a = node.deref();
+                //
+                //                                 let (span, operator) = match operator {
+                //                                     ast::PrefixOperator::Plus(token) => (
+                //                                         token.span.clone(),
+                //                                         PrefixOperator::Plus(token.span),
+                //                                     ),
+                //                                     ast::PrefixOperator::Negate(token) => (
+                //                                         token.span.clone(),
+                //                                         PrefixOperator::Minus(token.span),
+                //                                     ),
+                //                                     ast::PrefixOperator::Not(token) => {
+                //                                         unimplemented!()
+                //                                     }
+                //                                 };
+                //
+                //                                 Expression::Prefix(PrefixExpression {
+                //                                     operator,
+                //                                     expression: Box::new(match a {
+                //                                         Ast::Literal(lit) => match lit {
+                //                                             AstLiteral::Boolean(n) => {
+                //                                                 Expression::Constant(
+                //                                                     ConstantExpression::Bool {
+                //                                                         span: n.0.span.clone(),
+                //                                                     },
+                //                                                 )
+                //                                             }
+                //                                             AstLiteral::Number(n) => {
+                //                                                 Expression::Constant(
+                //                                                     ConstantExpression::Number {
+                //                                                         span: n.0.span.clone(),
+                //                                                     },
+                //                                                 )
+                //                                             }
+                //                                             AstLiteral::Text(t) => {
+                //                                                 Expression::Constant(
+                //                                                     ConstantExpression::Text {
+                //                                                         span: t.0.span.clone(),
+                //                                                     },
+                //                                                 )
+                //                                             }
+                //                                             AstLiteral::Undefined(t) => {
+                //                                                 Expression::Constant(
+                //                                                     ConstantExpression::Undefined {
+                //                                                         span: t.0.span.clone(),
+                //                                                     },
+                //                                                 )
+                //                                             }
+                //                                         },
+                //                                         _ => unimplemented!(),
+                //                                     }),
+                //                                     span,
+                //                                 })
+                //                             }
+                //                             Ast::Infix(infix) => expression_infix(infix).unwrap(),
+                //                             node => unimplemented!("{node:?}"),
+                //                         };
+                //
+                //                         values[col_idx] = Some(expr);
+                //                     } else {
+                //                         // Not provided in INSERT, use default
+                //                         unimplemented!()
+                //                     }
+                //                 }
+                //
+                //                 values.into_iter().map(|v| v.unwrap()).collect::<Vec<_>>()
+                //             })
+                //             .collect::<Vec<_>>();
+                //
+                //         let s = catalog.get(&schema).unwrap().get(&store).unwrap();
+                //
+                //         let columns = store_schema.list_columns().unwrap();
+                //
+                //         match s.kind().unwrap() {
+                //             StoreKind::Series => {
+                //                 Ok(Plan::InsertIntoSeries(InsertIntoSeriesPlan::Values {
+                //                     schema,
+                //                     series: store,
+                //                     columns,
+                //                     rows_to_insert,
+                //                 }))
+                //             }
+                //             StoreKind::Table => {
+                //                 Ok(Plan::InsertIntoTable(InsertIntoTablePlan::Values {
+                //                     schema,
+                //                     table: store,
+                //                     columns,
+                //                     rows_to_insert,
+                //                 }))
+                //             }
+                //             StoreKind::DeferredView => unreachable!(),
+                //         }
+                //
+                //         // FIXME validate
+                //     }
+                // };
             }
             Ast::From(from) => return Ok(Plan::Query(plan_from(from, None)?)),
             Ast::Select(select) => return Ok(Plan::Query(plan_select(select, None)?)),
