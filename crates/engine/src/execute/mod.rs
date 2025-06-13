@@ -9,7 +9,7 @@ mod write;
 use crate::function::{FunctionRegistry, math};
 use reifydb_core::{Value, ValueKind};
 use reifydb_frame::{ColumnValues, Frame};
-use reifydb_rql::plan::{Plan, QueryPlan};
+use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
 use reifydb_storage::Storage;
 use reifydb_transaction::{Rx, Tx};
 use std::marker::PhantomData;
@@ -183,7 +183,7 @@ pub(crate) struct Executor<S: Storage> {
     _marker: PhantomData<S>,
 }
 
-pub fn execute<S: Storage>(plan: QueryPlan, rx: &mut impl Rx<S>) -> crate::Result<ExecutionResult> {
+pub fn execute_rx<S: Storage>(plan: PlanRx, rx: &mut impl Rx<S>) -> crate::Result<ExecutionResult> {
     let mut executor = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from RX
         frame: Frame::new(vec![]),
@@ -193,10 +193,10 @@ pub fn execute<S: Storage>(plan: QueryPlan, rx: &mut impl Rx<S>) -> crate::Resul
     executor.functions.register(math::AbsFunction {});
     executor.functions.register(math::AvgFunction {});
 
-    executor.execute(plan, rx)
+    executor.execute_rx(plan, rx)
 }
 
-pub fn execute_tx<S: Storage>(plan: Plan, tx: &mut impl Tx<S>) -> crate::Result<ExecutionResult> {
+pub fn execute_tx<S: Storage>(plan: PlanTx, tx: &mut impl Tx<S>) -> crate::Result<ExecutionResult> {
     let mut executor = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from TX
         frame: Frame::new(vec![]),
@@ -206,11 +206,11 @@ pub fn execute_tx<S: Storage>(plan: Plan, tx: &mut impl Tx<S>) -> crate::Result<
     executor.functions.register(math::AbsFunction {});
     executor.functions.register(math::AvgFunction {});
 
-    executor.execute_mut(plan, tx)
+    executor.execute_tx(plan, tx)
 }
 
 impl<S: Storage> Executor<S> {
-    pub(crate) fn execute(
+    pub(crate) fn execute_rx_query_plan(
         mut self,
         plan: QueryPlan,
         rx: &mut impl Rx<S>,
@@ -240,23 +240,73 @@ impl<S: Storage> Executor<S> {
             }
         };
 
-        if let Some(next) = next { self.execute(*next, rx) } else { Ok(self.frame.into()) }
+        if let Some(next) = next {
+            self.execute_rx_query_plan(*next, rx)
+        } else {
+            Ok(self.frame.into())
+        }
     }
 
-    pub(crate) fn execute_mut(
+    pub(crate) fn execute_tx_query_plan(
         mut self,
-        plan: Plan,
+        plan: QueryPlan,
+        tx: &mut impl Tx<S>,
+    ) -> crate::Result<ExecutionResult> {
+        let next = match plan {
+            QueryPlan::Aggregate { group_by, project, next } => {
+                self.aggregate(&group_by, &project)?;
+                next
+            }
+            QueryPlan::Scan { schema, store, next } => {
+                // self.scan(rx, &schema, &store)?;
+                // next
+                unimplemented!()
+            }
+            QueryPlan::Project { expressions, next } => {
+                self.project(expressions)?;
+                next
+            }
+            QueryPlan::Sort { keys, next } => {
+                self.sort(&keys)?;
+                next
+            }
+            QueryPlan::Limit { limit, next } => {
+                // self.limit(limit)?;
+                // next
+                unimplemented!()
+            }
+        };
+
+        if let Some(next) = next {
+            self.execute_tx_query_plan(*next, tx)
+        } else {
+            Ok(self.frame.into())
+        }
+    }
+
+    pub(crate) fn execute_rx(
+        mut self,
+        plan: PlanRx,
+        rx: &mut impl Rx<S>,
+    ) -> crate::Result<ExecutionResult> {
+        match plan {
+            PlanRx::Query(plan) => self.execute_rx_query_plan(plan, rx),
+        }
+    }
+
+    pub(crate) fn execute_tx(
+        mut self,
+        plan: PlanTx,
         tx: &mut impl Tx<S>,
     ) -> crate::Result<ExecutionResult> {
         match plan {
-            Plan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
-            Plan::CreateSchema(plan) => self.create_schema(tx, plan),
-            Plan::CreateSeries(plan) => self.create_series(tx, plan),
-            Plan::CreateTable(plan) => self.create_table(tx, plan),
-            Plan::InsertIntoSeries(plan) => self.insert_into_series(tx, plan),
-            Plan::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
-            // Plan::Query(plan) => self.execute(plan, tx),
-            Plan::Query(plan) => unimplemented!(),
+            PlanTx::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
+            PlanTx::CreateSchema(plan) => self.create_schema(tx, plan),
+            PlanTx::CreateSeries(plan) => self.create_series(tx, plan),
+            PlanTx::CreateTable(plan) => self.create_table(tx, plan),
+            PlanTx::InsertIntoSeries(plan) => self.insert_into_series(tx, plan),
+            PlanTx::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
+            PlanTx::Query(plan) => self.execute_tx_query_plan(plan, tx),
         }
     }
 }

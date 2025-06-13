@@ -29,7 +29,13 @@ mod planner;
 pub type RowToInsert = Vec<Expression>;
 
 #[derive(Debug)]
-pub enum Plan {
+pub enum PlanRx {
+    /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
+    Query(QueryPlan),
+}
+
+#[derive(Debug)]
+pub enum PlanTx {
     /// A CREATE DEFERRED VIEW plan. Creates a new deferred view.
     CreateDeferredView(CreateDeferredViewPlan),
     /// A CREATE SCHEMA plan. Creates a new schema.
@@ -123,7 +129,7 @@ pub enum QueryPlan {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn plan_tx<S: Storage>(tx: &impl Tx<S>, statement: AstStatement) -> Result<Plan> {
+pub fn plan_tx<S: Storage>(tx: &impl Tx<S>, statement: AstStatement) -> Result<PlanTx> {
     for ast in statement.into_iter().rev() {
         match ast {
             Ast::Create(create) => {
@@ -152,14 +158,14 @@ pub fn plan_tx<S: Storage>(tx: &impl Tx<S>, statement: AstStatement) -> Result<P
                             });
                         }
 
-                        Ok(Plan::CreateDeferredView(CreateDeferredViewPlan {
+                        Ok(PlanTx::CreateDeferredView(CreateDeferredViewPlan {
                             schema: schema.value().to_string(),
                             view: name.value().to_string(),
                             if_not_exists: false,
                             columns: result_columns,
                         }))
                     }
-                    AstCreate::Schema { name, .. } => Ok(Plan::CreateSchema(CreateSchemaPlan {
+                    AstCreate::Schema { name, .. } => Ok(PlanTx::CreateSchema(CreateSchemaPlan {
                         schema: name.value().to_string(),
                         if_not_exists: false,
                     })),
@@ -213,7 +219,7 @@ pub fn plan_tx<S: Storage>(tx: &impl Tx<S>, statement: AstStatement) -> Result<P
                             });
                         }
 
-                        Ok(Plan::CreateTable(CreateTablePlan {
+                        Ok(PlanTx::CreateTable(CreateTablePlan {
                             schema: schema.value().to_string(),
                             table: name.value().to_string(),
                             if_not_exists: false,
@@ -383,8 +389,8 @@ pub fn plan_tx<S: Storage>(tx: &impl Tx<S>, statement: AstStatement) -> Result<P
                 //     }
                 // };
             }
-            Ast::From(from) => return Ok(Plan::Query(plan_from(from, None)?)),
-            Ast::Select(select) => return Ok(Plan::Query(plan_select(select, None)?)),
+            Ast::From(from) => return Ok(PlanTx::Query(plan_from(from, None)?)),
+            Ast::Select(select) => return Ok(PlanTx::Query(plan_select(select, None)?)),
             node => unreachable!("{node:?}"),
         };
     }
@@ -414,7 +420,7 @@ pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicy {
     }
 }
 
-pub fn plan(statement: AstStatement) -> Result<Plan> {
+pub fn plan_rx(statement: AstStatement) -> Result<PlanRx> {
     let mut head: Option<Box<QueryPlan>> = None;
 
     for ast in statement.into_iter().rev() {
@@ -444,7 +450,7 @@ pub fn plan(statement: AstStatement) -> Result<Plan> {
         }));
     }
 
-    Ok(head.map(|boxed| Plan::Query(*boxed)).unwrap())
+    Ok(head.map(|boxed| PlanRx::Query(*boxed)).unwrap())
 }
 
 fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {

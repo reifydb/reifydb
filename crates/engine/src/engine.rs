@@ -1,13 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::{execute, execute_tx};
+use crate::execute::{execute_rx, execute_tx};
 use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
 use reifydb_core::hook::Hooks;
 use reifydb_rql::ast;
-use reifydb_rql::ast::Ast;
-use reifydb_rql::plan::{Plan, plan, plan_tx};
+use reifydb_rql::plan::{plan_rx, plan_tx};
 use reifydb_storage::Storage;
 use reifydb_transaction::{Transaction, Tx};
 use std::marker::PhantomData;
@@ -75,18 +74,18 @@ impl<S: Storage, T: Transaction<S>> Engine<S, T> {
         let mut tx = self.begin().unwrap();
 
         for statement in statements {
-            match &statement.0[0] {
-                Ast::From(_) | Ast::Select(_) => {
-                    let plan = plan(statement)?;
-                    let er = execute_tx(plan, &mut tx)?;
-                    result.push(er);
-                }
-                _ => {
-                    let plan = plan_tx(&tx, statement)?;
-                    let er = execute_tx(plan, &mut tx)?;
-                    result.push(er);
-                }
-            }
+            // match &statement.0[0] {
+            // Ast::From(_) | Ast::Select(_) => {
+            //     let plan = plan_rx(statement)?;
+            //     let er = execute_tx(plan, &mut tx)?;
+            //     result.push(er);
+            // }
+            // _ => {
+            let plan = plan_tx(&tx, statement)?;
+            let er = execute_tx(plan, &mut tx)?;
+            result.push(er);
+            // }
+            // }
         }
 
         tx.commit().unwrap();
@@ -100,14 +99,9 @@ impl<S: Storage, T: Transaction<S>> Engine<S, T> {
 
         let mut rx = self.begin_read_only().unwrap();
         for statement in statements {
-            let plan = plan(statement).unwrap();
-            match plan {
-                Plan::Query(plan) => {
-                    let er = execute(plan, &mut rx).unwrap();
-                    result.push(er);
-                }
-                _ => unimplemented!(),
-            }
+            let plan = plan_rx(statement).unwrap();
+            let er = execute_rx(plan, &mut rx).unwrap();
+            result.push(er);
         }
 
         Ok(result)
