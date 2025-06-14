@@ -48,6 +48,24 @@ pub struct SchemaToCreate {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+pub struct SequenceId(pub u32);
+
+impl Deref for SequenceId {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq<u32> for SequenceId {
+    fn eq(&self, other: &u32) -> bool {
+        self.0.eq(other)
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub struct TableId(pub u32);
 
 impl Deref for TableId {

@@ -3,8 +3,8 @@
 
 use crate::execute::{ExecutionResult, Executor};
 use reifydb_core::catalog::{SchemaId, TableId};
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, Key, SchemaTableLinkKey, TableKey};
+use reifydb_core::row::{EncodedRow, Layout};
+use reifydb_core::{AsyncCowVec, Key, SchemaTableLinkKey, TableKey, ValueKind};
 use reifydb_rql::plan::CreateTablePlan;
 use reifydb_storage::Storage;
 use reifydb_transaction::Tx;
@@ -22,10 +22,16 @@ impl<S: Storage> Executor<S> {
         // FIXME serialize table and insert
         // FIXME link table to schema
 
+        let table_layout = Layout::new(&[ValueKind::String]);
+        let mut row = table_layout.allocate_row();
+        table_layout.set_str(&mut row, 0, &plan.table);
+
         tx.set(
             Key::Table(TableKey { table_id: TableId(1) }).encode(),
             EncodedRow(AsyncCowVec::new(vec![])),
         )?;
+        
+        // table columns
 
         tx.set(
             Key::SchemaTableLink(SchemaTableLinkKey {

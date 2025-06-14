@@ -40,6 +40,8 @@ pub enum PlanTx {
     CreateDeferredView(CreateDeferredViewPlan),
     /// A CREATE SCHEMA plan. Creates a new schema.
     CreateSchema(CreateSchemaPlan),
+    /// A CREATE SEQUENCE plan. Creates a new sequence
+    CreateSequence(CreateSequencePlan),
     /// A CREATE SERIES plan. Creates a new series.
     CreateSeries(CreateSeriesPlan),
     /// A CREATE TABLE plan. Creates a new table.
@@ -62,6 +64,12 @@ pub struct CreateDeferredViewPlan {
 
 #[derive(Debug)]
 pub struct CreateSchemaPlan {
+    pub schema: String,
+    pub if_not_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateSequencePlan {
     pub schema: String,
     pub if_not_exists: bool,
 }

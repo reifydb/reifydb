@@ -3,8 +3,8 @@
 
 use crate::execute::{ExecutionResult, Executor};
 use reifydb_core::catalog::SchemaId;
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, Key, SchemaKey};
+use reifydb_core::row::Layout;
+use reifydb_core::{Key, SchemaKey, ValueKind};
 use reifydb_rql::plan::CreateSchemaPlan;
 use reifydb_storage::Storage;
 use reifydb_transaction::Tx;
@@ -18,10 +18,13 @@ impl<S: Storage> Executor<S> {
         // FIXME schema name already exists
         // FIXME handle create if_not_exists
         // FIXME serialize schema and insert
-        tx.set(
-            Key::Schema(SchemaKey { schema_id: SchemaId(1) }).encode(),
-            EncodedRow(AsyncCowVec::new(vec![])),
-        )?;
+        let schema_layout = Layout::new(&[ValueKind::String]);
+        let mut row = schema_layout.allocate_row();
+        schema_layout.set_str(&mut row, 0, &plan.schema);
+
+        let id = self.next_schema_id(tx)?;
+
+        tx.set(Key::Schema(SchemaKey { schema_id: SchemaId(1) }).encode(), row)?;
 
         Ok(ExecutionResult::CreateSchema { schema: plan.schema })
     }

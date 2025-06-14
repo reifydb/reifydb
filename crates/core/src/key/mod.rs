@@ -5,6 +5,8 @@ use crate::AsyncCowVec;
 pub use range::EncodedKeyRange;
 pub use schema::SchemaKey;
 pub use schema_table_link::SchemaTableLinkKey;
+pub use sequence::SequenceKey;
+pub use sequence_value::SequenceValueKey;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 pub use table::TableKey;
@@ -13,6 +15,8 @@ pub use table_row::TableRowKey;
 mod range;
 mod schema;
 mod schema_table_link;
+mod sequence;
+mod sequence_value;
 mod table;
 mod table_row;
 
@@ -39,6 +43,8 @@ pub enum Key {
     Table(TableKey),
     TableRow(TableRowKey),
     SchemaTableLink(SchemaTableLinkKey),
+    Sequence(SequenceKey),
+    SequenceValue(SequenceValueKey),
 }
 
 impl Key {
@@ -48,6 +54,8 @@ impl Key {
             Key::Table(key) => key.encode(),
             Key::TableRow(key) => key.encode(),
             Key::SchemaTableLink(key) => key.encode(),
+            Key::Sequence(key) => key.encode(),
+            Key::SequenceValue(key) => key.encode(),
         }
     }
 }
@@ -59,6 +67,8 @@ pub enum KeyKind {
     Table = 0x02,
     TableRow = 0x03,
     SchemaTableLink = 0x04,
+    Sequence = 0x05,
+    SequenceValue = 0x06,
 }
 
 impl TryFrom<u8> for KeyKind {
@@ -70,6 +80,8 @@ impl TryFrom<u8> for KeyKind {
             0x02 => Ok(Self::Table),
             0x03 => Ok(Self::TableRow),
             0x04 => Ok(Self::SchemaTableLink),
+            0x05 => Ok(Self::Sequence),
+            0x06 => Ok(Self::SequenceValue),
             _ => Err(()),
         }
     }
@@ -95,7 +107,13 @@ impl Key {
             KeyKind::Schema => SchemaKey::decode(version, payload).map(Self::Schema),
             KeyKind::Table => TableKey::decode(version, payload).map(Self::Table),
             KeyKind::TableRow => TableRowKey::decode(version, payload).map(Self::TableRow),
-            KeyKind::SchemaTableLink => SchemaTableLinkKey::decode(version, payload).map(Self::SchemaTableLink),
+            KeyKind::SchemaTableLink => {
+                SchemaTableLinkKey::decode(version, payload).map(Self::SchemaTableLink)
+            }
+            KeyKind::Sequence => SequenceKey::decode(version, payload).map(Self::Sequence),
+            KeyKind::SequenceValue => {
+                SequenceValueKey::decode(version, payload).map(Self::SequenceValue)
+            }
             _ => None,
         }
     }
@@ -104,10 +122,10 @@ impl Key {
 #[cfg(test)]
 mod tests {
     use crate::SchemaTableLinkKey;
-    use crate::catalog::{RowId, SchemaId, TableId};
+    use crate::catalog::{RowId, SchemaId, SequenceId, TableId};
     use crate::key::schema::SchemaKey;
     use crate::key::table::TableKey;
-    use crate::key::{Key, TableRowKey};
+    use crate::key::{Key, SequenceKey, TableRowKey};
 
     #[test]
     fn test_schema() {
@@ -119,6 +137,36 @@ mod tests {
         match decoded {
             Key::Schema(decoded_inner) => {
                 assert_eq!(decoded_inner.schema_id, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_sequence() {
+        let key = Key::Sequence(SequenceKey { sequence_id: SequenceId(42) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::Sequence(decoded_inner) => {
+                assert_eq!(decoded_inner.sequence_id, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_sequence_value() {
+        let key = Key::Sequence(SequenceKey { sequence_id: SequenceId(42) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::Sequence(decoded_inner) => {
+                assert_eq!(decoded_inner.sequence_id, 42);
             }
             _ => unreachable!(),
         }

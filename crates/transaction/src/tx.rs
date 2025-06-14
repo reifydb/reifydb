@@ -42,7 +42,10 @@ pub trait Tx<S: Storage> {
     ) -> crate::Result<TransactionRangeRev<'_, S, BTreeConflict>>;
 
     fn set(&mut self, key: EncodedKey, row: EncodedRow) -> crate::Result<()>;
+    
     fn remove(&mut self, key: EncodedKey) -> crate::Result<()>;
+    
     fn commit(self) -> crate::Result<()>;
+    
     fn rollback(self) -> crate::Result<()>;
 }

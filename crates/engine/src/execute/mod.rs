@@ -4,6 +4,7 @@
 mod catalog;
 mod display;
 mod query;
+mod sequence;
 mod write;
 
 use crate::function::{FunctionRegistry, math};
@@ -302,6 +303,7 @@ impl<S: Storage> Executor<S> {
         match plan {
             PlanTx::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
             PlanTx::CreateSchema(plan) => self.create_schema(tx, plan),
+            PlanTx::CreateSequence(_) => unimplemented!(),
             PlanTx::CreateSeries(plan) => self.create_series(tx, plan),
             PlanTx::CreateTable(plan) => self.create_table(tx, plan),
             PlanTx::InsertIntoSeries(plan) => self.insert_into_series(tx, plan),
