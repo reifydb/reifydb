@@ -49,5 +49,5 @@ pub trait Tx<VS: VersionedStorage, US: UnversionedStorage> {
 
     fn rollback(self) -> crate::Result<()>;
 
-    fn bypass(&mut self) -> &mut BypassTx<US>;
+    fn bypass(&mut self) -> BypassTx<US>;
 }

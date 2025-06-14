@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub use iter::Iter;
+pub use iter::VersionedIter;
 pub use iter_rev::IterRev;
 pub use range::Range;
 pub use range_rev::RangeRev;

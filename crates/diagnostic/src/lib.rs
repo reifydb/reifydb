@@ -12,6 +12,8 @@ pub use span::{IntoSpan, Line, Offset, Span};
 pub mod plan;
 pub mod policy;
 mod span;
+mod sequence;
+mod util;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {

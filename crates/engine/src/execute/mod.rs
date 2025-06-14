@@ -3,15 +3,17 @@
 
 mod catalog;
 mod display;
+mod error;
 mod query;
 mod sequence;
 mod write;
 
 use crate::function::{FunctionRegistry, math};
+pub use error::Error;
 use reifydb_core::{Value, ValueKind};
 use reifydb_frame::{ColumnValues, Frame};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
-use reifydb_storage::{Storage, UnversionedStorage, VersionedStorage};
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::{Rx, Tx};
 use std::marker::PhantomData;
 
@@ -308,8 +310,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     ) -> crate::Result<ExecutionResult> {
         match plan {
             PlanTx::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
-            // PlanTx::CreateSchema(plan) => self.create_schema(tx, plan),
-            PlanTx::CreateSchema(plan) => unimplemented!(),
+            PlanTx::CreateSchema(plan) => self.create_schema(tx, plan),
             PlanTx::CreateSequence(_) => unimplemented!(),
             PlanTx::CreateSeries(plan) => self.create_series(tx, plan),
             PlanTx::CreateTable(plan) => self.create_table(tx, plan),

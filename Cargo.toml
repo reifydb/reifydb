@@ -89,6 +89,7 @@ heed = { version = "0.22.0", features = ["preserve_order"] }
 hex = { version = "0.4.3" }
 nom = { version = "8.0.0" }
 nom_locate = { version = "5.0.0" }
+once_cell = {version = "1.21.3"}
 prost = "0.13.5"
 rand = { version = "0.9.1" }
 regex = { version = "1.11.1" }

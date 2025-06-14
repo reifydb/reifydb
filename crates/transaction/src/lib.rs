@@ -6,6 +6,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
+pub use bypass::{BypassRx, BypassTx};
 pub use error::Error;
 use reifydb_catalog::Catalog;
 use reifydb_core::hook::Hooks;
@@ -55,5 +56,7 @@ pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>: Send + Sync
 
     fn hooks(&self) -> Hooks;
 
-    fn storage(&self) -> VS;
+    fn versioned(&self) -> VS;
+
+    fn unversioned(&self) -> US;
 }

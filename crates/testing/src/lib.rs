@@ -11,6 +11,7 @@ use reifydb_diagnostic::{Line, Offset, Span};
 pub mod network;
 pub mod tempdir;
 pub mod testscript;
+pub mod transaction;
 pub mod util;
 
 pub fn make_test_span() -> Span {

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::evaluate;
+use crate::{evaluate, execute};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::{ast, plan};
 use std::fmt::{Display, Formatter};
@@ -11,10 +11,17 @@ pub enum Error {
     Ast(ast::Error),
     Catalog(reifydb_catalog::Error),
     Evaluation(evaluate::Error),
+    Execution(execute::Error),
     Frame(reifydb_frame::Error),
     Plan(plan::Error),
     Policy(reifydb_catalog::ColumnPolicyError),
     Transaction(reifydb_transaction::Error),
+}
+
+impl Error {
+    pub fn execution(diagnostic: Diagnostic) -> Self {
+        Self::Execution(execute::Error(diagnostic))
+    }
 }
 
 impl Display for Error {
@@ -24,44 +31,50 @@ impl Display for Error {
 }
 
 impl From<ast::Error> for Error {
-    fn from(value: ast::Error) -> Self {
-        Self::Ast(value)
+    fn from(err: ast::Error) -> Self {
+        Self::Ast(err)
     }
 }
 
 impl From<reifydb_catalog::Error> for Error {
-    fn from(value: reifydb_catalog::Error) -> Self {
-        Self::Catalog(value)
+    fn from(err: reifydb_catalog::Error) -> Self {
+        Self::Catalog(err)
     }
 }
 
 impl From<evaluate::Error> for Error {
-    fn from(value: evaluate::Error) -> Self {
-        Self::Evaluation(value)
+    fn from(err: evaluate::Error) -> Self {
+        Self::Evaluation(err)
+    }
+}
+
+impl From<execute::Error> for Error {
+    fn from(err: execute::Error) -> Self {
+        Self::Execution(err)
     }
 }
 
 impl From<reifydb_frame::Error> for Error {
-    fn from(value: reifydb_frame::Error) -> Self {
-        Self::Frame(value)
+    fn from(err: reifydb_frame::Error) -> Self {
+        Self::Frame(err)
     }
 }
 
 impl From<plan::Error> for Error {
-    fn from(value: plan::Error) -> Self {
-        Self::Plan(value)
+    fn from(err: plan::Error) -> Self {
+        Self::Plan(err)
     }
 }
 
 impl From<reifydb_catalog::ColumnPolicyError> for Error {
-    fn from(value: reifydb_catalog::ColumnPolicyError) -> Self {
-        Self::Policy(value)
+    fn from(err: reifydb_catalog::ColumnPolicyError) -> Self {
+        Self::Policy(err)
     }
 }
 
 impl From<reifydb_transaction::Error> for Error {
-    fn from(value: reifydb_transaction::Error) -> Self {
-        Self::Transaction(value)
+    fn from(err: reifydb_transaction::Error) -> Self {
+        Self::Transaction(err)
     }
 }
 
@@ -73,6 +86,7 @@ impl Error {
             Error::Ast(err) => err.diagnostic(),
             Error::Catalog(_) => unimplemented!(),
             Error::Evaluation(err) => err.diagnostic(),
+            Error::Execution(err) => err.diagnostic(),
             Error::Frame(err) => unimplemented!(),
             Error::Plan(err) => err.diagnostic(),
             Error::Policy(err) => err.diagnostic(),

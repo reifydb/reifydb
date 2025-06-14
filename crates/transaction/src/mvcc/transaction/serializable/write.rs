@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
+use crate::bypass::BypassTx;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
@@ -62,6 +63,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
             }
             Ok(())
         })
+    }
+
+    pub fn bypass(&mut self) -> BypassTx<US> {
+        BypassTx::new(self.engine.unversioned.clone())
     }
 }
 

@@ -9,7 +9,10 @@
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
-pub use unversioned::UnversionedStorage;
+pub use unversioned::{
+    UnversionedApply, UnversionedGet, UnversionedRemove, UnversionedScan, UnversionedScanIterator,
+    UnversionedSet, UnversionedStorage,
+};
 pub use versioned::{
     VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanIterator,
     VersionedScanIteratorRev, VersionedScanRange, VersionedScanRangeIterator,
@@ -26,12 +29,14 @@ pub trait GetHooks {
     fn hooks(&self) -> Hooks;
 }
 
+#[derive(Debug)]
 pub struct Versioned {
     pub key: EncodedKey,
     pub row: EncodedRow,
     pub version: Version,
 }
 
+#[derive(Debug)]
 pub struct Unversioned {
     pub key: EncodedKey,
     pub row: EncodedRow,

@@ -49,7 +49,7 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transa
     Engine<VS, US, T>
 {
     pub fn new(transaction: T) -> Self {
-        let storage = transaction.storage();
+        let storage = transaction.versioned();
         let deferred_view = view::deferred::Engine::new(storage);
         let hooks = transaction.hooks();
         let result =
@@ -82,7 +82,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
 
         let mut tx = self.begin().unwrap();
 
-        let mut storage = self.transaction.storage();
+        let mut storage = self.transaction.versioned();
 
         for statement in statements {
             // match &statement.0[0] {

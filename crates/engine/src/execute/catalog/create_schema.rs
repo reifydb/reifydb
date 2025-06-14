@@ -21,11 +21,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let mut row = schema_layout.allocate_row();
         schema_layout.set_str(&mut row, 0, &plan.schema);
 
-        // let id = self.next_schema_id(tx)?;
+        let id = self.next_schema_id(tx)?;
+        dbg!(&id);
         //
         // tx.set(Key::Schema(SchemaKey { schema_id: SchemaId(1) }).encode(), row)?;
         // ctx.unversioned.get_unversioned(&EncodedKey(AsyncCowVec::new(vec![])));
-        
 
         Ok(ExecutionResult::CreateSchema { schema: plan.schema })
     }

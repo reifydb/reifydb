@@ -131,7 +131,7 @@ impl<VS: VersionedStorage> CountNode<VS> {
     fn make_state_key(&self, key: &EncodedKey) -> EncodedKey {
         let mut raw = self.state_prefix.clone();
         raw.extend_from_slice(b"::");
-        raw.extend_from_slice(key.as_slice());
+        raw.extend_from_slice(key);
         EncodedKey::new(raw)
     }
 }
@@ -222,7 +222,7 @@ impl<VS: VersionedStorage> SumNode<VS> {
     fn make_state_key(&self, key: &EncodedKey) -> EncodedKey {
         let mut raw = self.state_prefix.clone();
         raw.extend_from_slice(b"::");
-        raw.extend_from_slice(key.as_slice());
+        raw.extend_from_slice(key);
         EncodedKey::new(raw)
     }
 }

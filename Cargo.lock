@@ -1393,6 +1393,7 @@ dependencies = [
 name = "reifydb-engine"
 version = "0.0.1"
 dependencies = [
+ "once_cell",
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
@@ -1477,6 +1478,8 @@ dependencies = [
  "regex",
  "reifydb-core",
  "reifydb-diagnostic",
+ "reifydb-storage",
+ "reifydb-transaction",
  "test_each_file",
  "uuid",
 ]

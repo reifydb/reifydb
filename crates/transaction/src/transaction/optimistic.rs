@@ -31,8 +31,12 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optim
         self.hooks.clone()
     }
 
-    fn storage(&self) -> VS {
+    fn versioned(&self) -> VS {
         self.versioned.clone()
+    }
+
+    fn unversioned(&self) -> US {
+        self.unversioned.clone()
     }
 }
 
@@ -135,7 +139,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<
         Ok(())
     }
 
-    fn bypass(&mut self) -> &mut BypassTx<US> {
-        todo!()
+    fn bypass(&mut self) -> BypassTx<US> {
+        TransactionTx::bypass(self)
     }
 }
