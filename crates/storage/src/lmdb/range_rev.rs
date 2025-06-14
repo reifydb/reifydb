@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{ScanRangeRev, Stored};
+use crate::{VersionedScanRangeRev, Versioned};
 use reifydb_core::{EncodedKeyRange, Version};
 
-impl ScanRangeRev for Lmdb {
+impl VersionedScanRangeRev for Lmdb {
     type ScanRangeIterRev<'a> = RangeRev;
 
     fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
@@ -16,7 +16,7 @@ impl ScanRangeRev for Lmdb {
 pub struct RangeRev {}
 
 impl Iterator for RangeRev {
-    type Item = Stored;
+    type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()

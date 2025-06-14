@@ -12,11 +12,11 @@ use crate::{Rx, Transaction, Tx};
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 
-impl<S: Storage> Transaction<S> for Optimistic<S> {
-    type Rx = TransactionRx<S>;
-    type Tx = TransactionTx<S>;
+impl<VS: VersionedStorage> Transaction<VS> for Optimistic<VS> {
+    type Rx = TransactionRx<VS>;
+    type Tx = TransactionTx<VS>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         Ok(self.begin_read_only())
@@ -30,12 +30,12 @@ impl<S: Storage> Transaction<S> for Optimistic<S> {
         self.hooks.clone()
     }
 
-    fn storage(&self) -> S {
+    fn storage(&self) -> VS {
         self.storage.clone()
     }
 }
 
-impl<S: Storage> Rx<S> for TransactionRx<S> {
+impl<VS: VersionedStorage> Rx<VS> for TransactionRx<VS> {
     fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
         Ok(TransactionRx::get(self, key))
     }
@@ -44,32 +44,32 @@ impl<S: Storage> Rx<S> for TransactionRx<S> {
         Ok(TransactionRx::contains_key(self, key))
     }
 
-    fn scan(&self) -> crate::Result<S::ScanIter<'_>> {
+    fn scan(&self) -> crate::Result<VS::ScanIter<'_>> {
         Ok(TransactionRx::scan(self))
     }
 
-    fn scan_rev(&self) -> crate::Result<S::ScanIterRev<'_>> {
+    fn scan_rev(&self) -> crate::Result<VS::ScanIterRev<'_>> {
         Ok(TransactionRx::scan_rev(self))
     }
 
-    fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<S::ScanRangeIter<'_>> {
+    fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIter<'_>> {
         Ok(TransactionRx::scan_range(self, range))
     }
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<S::ScanRangeIterRev<'_>> {
+    fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIterRev<'_>> {
         Ok(TransactionRx::scan_range_rev(self, range))
     }
 
-    fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<S::ScanRangeIter<'_>> {
+    fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIter<'_>> {
         Ok(TransactionRx::scan_prefix(self, prefix))
     }
 
-    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<S::ScanRangeIterRev<'_>> {
+    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIterRev<'_>> {
         Ok(TransactionRx::scan_prefix_rev(self, prefix))
     }
 }
 
-impl<S: Storage> Tx<S> for TransactionTx<S> {
+impl<VS: VersionedStorage> Tx<VS> for TransactionTx<VS> {
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
         Ok(TransactionTx::get(self, key)?)
     }
@@ -78,39 +78,39 @@ impl<S: Storage> Tx<S> for TransactionTx<S> {
         Ok(TransactionTx::contains_key(self, key)?)
     }
 
-    fn scan(&mut self) -> crate::Result<TransactionIter<'_, S, BTreeConflict>> {
+    fn scan(&mut self) -> crate::Result<TransactionIter<'_, VS, BTreeConflict>> {
         Ok(TransactionTx::scan(self)?)
     }
 
-    fn scan_rev(&mut self) -> crate::Result<TransactionIterRev<'_, S, BTreeConflict>> {
+    fn scan_rev(&mut self) -> crate::Result<TransactionIterRev<'_, VS, BTreeConflict>> {
         Ok(TransactionTx::scan_rev(self)?)
     }
 
     fn scan_range(
         &mut self,
         range: EncodedKeyRange,
-    ) -> crate::Result<TransactionRange<'_, S, BTreeConflict>> {
+    ) -> crate::Result<TransactionRange<'_, VS, BTreeConflict>> {
         Ok(TransactionTx::scan_range(self, range)?)
     }
 
     fn scan_range_rev(
         &mut self,
         range: EncodedKeyRange,
-    ) -> crate::Result<TransactionRangeRev<'_, S, BTreeConflict>> {
+    ) -> crate::Result<TransactionRangeRev<'_, VS, BTreeConflict>> {
         Ok(TransactionTx::scan_range_rev(self, range)?)
     }
 
     fn scan_prefix(
         &mut self,
         prefix: &EncodedKey,
-    ) -> crate::Result<TransactionRange<'_, S, BTreeConflict>> {
+    ) -> crate::Result<TransactionRange<'_, VS, BTreeConflict>> {
         Ok(TransactionTx::scan_prefix(self, prefix)?)
     }
 
     fn scan_prefix_rev(
         &mut self,
         prefix: &EncodedKey,
-    ) -> crate::Result<TransactionRangeRev<'_, S, BTreeConflict>> {
+    ) -> crate::Result<TransactionRangeRev<'_, VS, BTreeConflict>> {
         Ok(TransactionTx::scan_prefix_rev(self, prefix)?)
     }
 

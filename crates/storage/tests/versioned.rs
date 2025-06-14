@@ -16,31 +16,31 @@ use reifydb_core::encoding::format::Formatter;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
-use reifydb_storage::{Storage, Stored};
+use reifydb_storage::{VersionedStorage, Versioned};
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/storage/tests/scripts" as memory => test_memory }
+test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_memory => test_memory }
 
 fn test_memory(path: &Path) {
     testscript::run_path(&mut Runner::new(Memory::default()), path).expect("test failed")
 }
 
 /// Runs engine tests.
-pub struct Runner<S: Storage> {
-    storage: S,
+pub struct Runner<VS: VersionedStorage> {
+    storage: VS,
 }
 
-impl<S: Storage> Runner<S> {
-    fn new(storage: S) -> Self {
+impl<VS: VersionedStorage> Runner<VS> {
+    fn new(storage: VS) -> Self {
         Self { storage }
     }
 }
 
-impl<S: Storage> testscript::Runner for Runner<S> {
+impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {
@@ -137,7 +137,7 @@ impl<S: Storage> testscript::Runner for Runner<S> {
     }
 }
 
-fn print<I: Iterator<Item = Stored>>(output: &mut String, mut iter: I) {
+fn print<I: Iterator<Item =Versioned>>(output: &mut String, mut iter: I) {
     while let Some(sv) = iter.next() {
         let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
         writeln!(output, "{fmtkv}").unwrap();

@@ -12,7 +12,7 @@
 use reifydb_core::delta::Delta;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
-use reifydb_storage::Stored;
+use reifydb_storage::Versioned;
 use std::cmp;
 use std::cmp::Reverse;
 
@@ -22,8 +22,8 @@ pub enum TransactionValue {
     Committed(Committed),
 }
 
-impl From<Stored> for TransactionValue {
-    fn from(value: Stored) -> Self {
+impl From<Versioned> for TransactionValue {
+    fn from(value: Versioned) -> Self {
         Self::Committed(Committed { key: value.key, row: value.row, version: value.version })
     }
 }
@@ -111,8 +111,8 @@ pub struct Committed {
     pub(crate) version: Version,
 }
 
-impl From<Stored> for Committed {
-    fn from(value: Stored) -> Self {
+impl From<Versioned> for Committed {
+    fn from(value: Versioned) -> Self {
         Self { key: value.key, row: value.row, version: value.version }
     }
 }

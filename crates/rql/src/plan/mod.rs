@@ -18,7 +18,7 @@ use reifydb_catalog::{
     CatalogRx, Column, ColumnPolicy, ColumnSaturationPolicy, ColumnToCreate, SchemaRx, StoreRx,
 };
 use reifydb_frame::{SortDirection, SortKey};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use reifydb_transaction::{Rx, Tx};
 
 mod diagnostic;
@@ -137,7 +137,7 @@ pub enum QueryPlan {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn plan_tx<S: Storage>(tx: &impl Tx<S>, statement: AstStatement) -> Result<PlanTx> {
+pub fn plan_tx<VS: VersionedStorage>(tx: &impl Tx<VS>, statement: AstStatement) -> Result<PlanTx> {
     for ast in statement.into_iter().rev() {
         match ast {
             Ast::Create(create) => {

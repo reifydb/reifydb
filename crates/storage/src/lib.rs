@@ -6,14 +6,30 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use storage::{
-    Apply, Contains, Get, Scan, ScanIterator, ScanIteratorRev, ScanRange, ScanRangeIterator,
-    ScanRangeIteratorRev, ScanRangeRev, ScanRev, Storage,
+use reifydb_core::hook::Hooks;
+use reifydb_core::row::EncodedRow;
+use reifydb_core::{EncodedKey, Version};
+pub use versioned::{
+    VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanIterator, VersionedScanIteratorRev, VersionedScanRange, VersionedScanRangeIterator,
+    VersionedScanRangeIteratorRev, VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
 };
-pub use stored::Stored;
 
 pub mod lmdb;
 pub mod memory;
 pub mod sqlite;
-mod storage;
-mod stored;
+mod versioned;
+
+pub trait GetHooks {
+    fn hooks(&self) -> Hooks;
+}
+
+pub struct Versioned {
+    pub key: EncodedKey,
+    pub row: EncodedRow,
+    pub version: Version,
+}
+
+pub struct Unversioned {
+    pub key: EncodedKey,
+    pub row: EncodedRow,
+}

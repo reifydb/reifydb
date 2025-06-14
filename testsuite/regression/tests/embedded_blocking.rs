@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::embedded_blocking::Embedded;
-use reifydb::reifydb_storage::Storage;
+use reifydb::reifydb_storage::VersionedStorage;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic, serializable, sqlite};
 use reifydb_testing::tempdir::temp_dir;
@@ -13,19 +13,19 @@ use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 
-pub struct Runner<S: Storage + 'static, T: Transaction<S> + 'static> {
-    engine: Embedded<S, T>,
+pub struct Runner<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> {
+    engine: Embedded<VS, T>,
     root: Principal,
 }
 
-impl<S: Storage + 'static, T: Transaction<S> + 'static> Runner<S, T> {
+impl<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> Runner<VS, T> {
     pub fn new(transaction: T) -> Self {
         let (engine, root) = ReifyDB::embedded_blocking_with(transaction);
         Self { engine, root }
     }
 }
 
-impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for Runner<S, T> {
+impl<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> testscript::Runner for Runner<VS, T> {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {

@@ -3,10 +3,14 @@
 
 use crate::view::deferred::Work;
 use reifydb_flow::{CountNode, Graph, GroupNode, Orchestrator, SumNode};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use std::sync::mpsc::Receiver;
 
-pub(crate) fn work<S: Storage>(rx: Receiver<Work>, storage: S, orchestrator: Orchestrator) {
+pub(crate) fn work<VS: VersionedStorage>(
+    rx: Receiver<Work>,
+    storage: VS,
+    orchestrator: Orchestrator,
+) {
     for (deltas, version) in rx {
         // println!("[worker] processing version {:?}, delta count: {}", version, deltas.len());
         //
@@ -26,7 +30,7 @@ pub(crate) fn work<S: Storage>(rx: Receiver<Work>, storage: S, orchestrator: Orc
     }
 }
 
-pub(crate) fn create_count_graph<S: Storage + 'static>(storage: S) -> Graph {
+pub(crate) fn create_count_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
     let group_node =
         Box::new(GroupNode { state_prefix: b"view::group_count".to_vec(), group_by: vec![0, 1] });
 
@@ -37,7 +41,7 @@ pub(crate) fn create_count_graph<S: Storage + 'static>(storage: S) -> Graph {
     result
 }
 
-pub(crate) fn create_sum_graph<S: Storage + 'static>(storage: S) -> Graph {
+pub(crate) fn create_sum_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
     let group_node =
         Box::new(GroupNode { state_prefix: b"view::group_count".to_vec(), group_by: vec![0, 1] });
     let count_node = Box::new(SumNode { state_prefix: b"view::sum".to_vec(), storage, sum: 2 });

@@ -11,31 +11,31 @@
 
 use crossbeam_skiplist::map::Range as MapRange;
 
-use crate::Stored;
+use crate::Versioned;
 use crate::memory::Memory;
-use crate::memory::versioned::Versioned;
-use crate::storage::ScanRange;
+use crate::memory::versioned::VersionedRow;
+use crate::versioned::VersionedScanRange;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use std::ops::Bound;
 
-impl ScanRange for Memory {
+impl VersionedScanRange for Memory {
     type ScanRangeIter<'a>
         = Range<'a>
     where
         Self: 'a;
 
     fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
-        Range { range: self.memory.range(range), version }
+        Range { range: self.versioned.range(range), version }
     }
 }
 
 pub struct Range<'a> {
-    pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, Versioned>,
+    pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, VersionedRow>,
     pub(crate) version: Version,
 }
 
 impl<'a> Iterator for Range<'a> {
-    type Item = Stored;
+    type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -49,7 +49,7 @@ impl<'a> Iterator for Range<'a> {
                     }
                 })
             {
-                return Some(Stored { key: item.key().clone(), version, row: value }.into());
+                return Some(Versioned { key: item.key().clone(), version, row: value }.into());
             }
         }
     }

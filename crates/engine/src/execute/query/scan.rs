@@ -3,13 +3,13 @@
 
 use crate::execute::Executor;
 use reifydb_catalog::{SchemaRx, StoreRx};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Rx;
 
-impl<S: Storage> Executor<S> {
+impl<VS: VersionedStorage> Executor<VS> {
     pub(crate) fn scan(
         &mut self,
-        rx: &mut impl Rx<S>,
+        rx: &mut impl Rx<VS>,
         schema: &str,
         store: &str,
     ) -> crate::Result<()> {

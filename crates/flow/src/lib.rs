@@ -12,7 +12,7 @@ use reifydb_core::delta::Delta::Set;
 use reifydb_core::encoding::keycode::serialize;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, Version};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 
@@ -122,12 +122,12 @@ impl OrchestratorInner {
     }
 }
 
-pub struct CountNode<S: Storage> {
+pub struct CountNode<VS: VersionedStorage> {
     pub state_prefix: Vec<u8>,
-    pub storage: S,
+    pub storage: VS,
 }
 
-impl<S: Storage> CountNode<S> {
+impl<VS: VersionedStorage> CountNode<VS> {
     fn make_state_key(&self, key: &EncodedKey) -> EncodedKey {
         let mut raw = self.state_prefix.clone();
         raw.extend_from_slice(b"::");
@@ -136,7 +136,7 @@ impl<S: Storage> CountNode<S> {
     }
 }
 
-impl<S: Storage> Node for CountNode<S> {
+impl<VS: VersionedStorage> Node for CountNode<VS> {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
         let mut updates = AsyncCowVec::default();
         let mut counters: HashMap<EncodedKey, i8> = HashMap::new();
@@ -212,13 +212,13 @@ impl Node for GroupNode {
     }
 }
 
-pub struct SumNode<S: Storage> {
+pub struct SumNode<VS: VersionedStorage> {
     pub state_prefix: Vec<u8>,
-    pub storage: S,
+    pub storage: VS,
     pub sum: usize, // Index of the column to sum
 }
 
-impl<S: Storage> SumNode<S> {
+impl<VS: VersionedStorage> SumNode<VS> {
     fn make_state_key(&self, key: &EncodedKey) -> EncodedKey {
         let mut raw = self.state_prefix.clone();
         raw.extend_from_slice(b"::");
@@ -227,7 +227,7 @@ impl<S: Storage> SumNode<S> {
     }
 }
 
-impl<S: Storage> Node for SumNode<S> {
+impl<VS: VersionedStorage> Node for SumNode<VS> {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
         let mut updates = AsyncCowVec::default();
         let mut sums: HashMap<EncodedKey, i8> = HashMap::new();
@@ -264,9 +264,9 @@ impl<S: Storage> Node for SumNode<S> {
 #[cfg(test)]
 mod tests {
     use crate::{CountNode, Graph, GroupNode, SumNode};
-    use reifydb_storage::Storage;
+    use reifydb_storage::VersionedStorage;
 
-    fn create_count_graph<S: Storage + 'static>(storage: S) -> Graph {
+    fn create_count_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
         let group_node = Box::new(GroupNode {
             state_prefix: b"view::group_count".to_vec(),
             group_by: vec![0, 1],
@@ -279,7 +279,7 @@ mod tests {
         result
     }
 
-    fn create_sum_graph<S: Storage + 'static>(storage: S) -> Graph {
+    fn create_sum_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
         let group_node = Box::new(GroupNode {
             state_prefix: b"view::group_count".to_vec(),
             group_by: vec![0, 1],

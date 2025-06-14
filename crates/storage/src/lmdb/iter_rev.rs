@@ -3,9 +3,9 @@
 
 use reifydb_core::Version;
 use crate::lmdb::Lmdb;
-use crate::{ScanRev, Stored};
+use crate::{VersionedScanRev, Versioned};
 
-impl ScanRev for Lmdb {
+impl VersionedScanRev for Lmdb {
     type ScanIterRev<'a> = IterRev;
 
     fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_> {
@@ -16,7 +16,7 @@ impl ScanRev for Lmdb {
 pub struct IterRev {}
 
 impl Iterator for IterRev {
-    type Item = Stored;
+    type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()

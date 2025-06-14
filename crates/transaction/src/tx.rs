@@ -9,43 +9,42 @@ use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 
-pub trait Tx<S: Storage> {
-
+pub trait Tx<VS: VersionedStorage> {
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>>;
 
     fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-    fn scan(&mut self) -> crate::Result<TransactionIter<'_, S, BTreeConflict>>;
+    fn scan(&mut self) -> crate::Result<TransactionIter<'_, VS, BTreeConflict>>;
 
-    fn scan_rev(&mut self) -> crate::Result<TransactionIterRev<'_, S, BTreeConflict>>;
+    fn scan_rev(&mut self) -> crate::Result<TransactionIterRev<'_, VS, BTreeConflict>>;
 
     fn scan_range(
         &mut self,
         range: EncodedKeyRange,
-    ) -> crate::Result<TransactionRange<'_, S, BTreeConflict>>;
+    ) -> crate::Result<TransactionRange<'_, VS, BTreeConflict>>;
 
     fn scan_range_rev(
         &mut self,
         range: EncodedKeyRange,
-    ) -> crate::Result<TransactionRangeRev<'_, S, BTreeConflict>>;
+    ) -> crate::Result<TransactionRangeRev<'_, VS, BTreeConflict>>;
 
     fn scan_prefix(
         &mut self,
         prefix: &EncodedKey,
-    ) -> crate::Result<TransactionRange<'_, S, BTreeConflict>>;
+    ) -> crate::Result<TransactionRange<'_, VS, BTreeConflict>>;
 
     fn scan_prefix_rev(
         &mut self,
         prefix: &EncodedKey,
-    ) -> crate::Result<TransactionRangeRev<'_, S, BTreeConflict>>;
+    ) -> crate::Result<TransactionRangeRev<'_, VS, BTreeConflict>>;
 
     fn set(&mut self, key: EncodedKey, row: EncodedRow) -> crate::Result<()>;
-    
+
     fn remove(&mut self, key: EncodedKey) -> crate::Result<()>;
-    
+
     fn commit(self) -> crate::Result<()>;
-    
+
     fn rollback(self) -> crate::Result<()>;
 }

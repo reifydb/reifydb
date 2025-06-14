@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 
-impl<S: Storage> Executor<S> {
+impl<VS: VersionedStorage> Executor<VS> {
     pub(crate) fn limit(&mut self, limit: usize) -> crate::Result<()> {
         self.frame.limit(limit)?;
         Ok(())

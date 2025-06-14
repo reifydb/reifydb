@@ -16,21 +16,21 @@ use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 
-pub struct TransactionRx<S: Storage> {
-    pub(crate) engine: Serializable<S>,
+pub struct TransactionRx<VS: VersionedStorage> {
+    pub(crate) engine: Serializable<VS>,
     pub(crate) tm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
-impl<S: Storage> TransactionRx<S> {
-    pub fn new(engine: Serializable<S>, version: Option<Version>) -> Self {
+impl<VS: VersionedStorage> TransactionRx<VS> {
+    pub fn new(engine: Serializable<VS>, version: Option<Version>) -> Self {
         let tm = engine.tm.read(version);
         Self { engine, tm }
     }
 }
 
-impl<S: Storage> TransactionRx<S> {
+impl<VS: VersionedStorage> TransactionRx<VS> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }
@@ -45,31 +45,31 @@ impl<S: Storage> TransactionRx<S> {
         self.engine.contains_key(key, version)
     }
 
-    pub fn scan(&self) -> S::ScanIter<'_> {
+    pub fn scan(&self) -> VS::ScanIter<'_> {
         let version = self.tm.version();
         self.engine.scan(version)
     }
 
-    pub fn scan_rev(&self) -> S::ScanIterRev<'_> {
+    pub fn scan_rev(&self) -> VS::ScanIterRev<'_> {
         let version = self.tm.version();
         self.engine.scan_rev(version)
     }
 
-    pub fn scan_range(&self, range: EncodedKeyRange) -> S::ScanRangeIter<'_> {
+    pub fn scan_range(&self, range: EncodedKeyRange) -> VS::ScanRangeIter<'_> {
         let version = self.tm.version();
         self.engine.scan_range(range, version)
     }
 
-    pub fn scan_range_rev(&self, range: EncodedKeyRange) -> S::ScanRangeIterRev<'_> {
+    pub fn scan_range_rev(&self, range: EncodedKeyRange) -> VS::ScanRangeIterRev<'_> {
         let version = self.tm.version();
         self.engine.scan_range_rev(range, version)
     }
 
-    pub fn scan_prefix(&self, prefix: &EncodedKey) -> S::ScanRangeIter<'_> {
+    pub fn scan_prefix(&self, prefix: &EncodedKey) -> VS::ScanRangeIter<'_> {
         self.scan_range(EncodedKeyRange::prefix(prefix))
     }
 
-    pub fn scan_prefix_rev(&self, prefix: &EncodedKey) -> S::ScanRangeIterRev<'_> {
+    pub fn scan_prefix_rev(&self, prefix: &EncodedKey) -> VS::ScanRangeIterRev<'_> {
         self.scan_range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

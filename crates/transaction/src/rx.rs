@@ -3,22 +3,22 @@
 
 use crate::mvcc::transaction::TransactionValue;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 
-pub trait Rx<S: Storage> {
+pub trait Rx<VS: VersionedStorage> {
     fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>>;
 
     fn contains_key(&self, key: &EncodedKey) -> crate::Result<bool>;
 
-    fn scan(&self) -> crate::Result<S::ScanIter<'_>>;
+    fn scan(&self) -> crate::Result<VS::ScanIter<'_>>;
 
-    fn scan_rev(&self) -> crate::Result<S::ScanIterRev<'_>>;
+    fn scan_rev(&self) -> crate::Result<VS::ScanIterRev<'_>>;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<S::ScanRangeIter<'_>>;
+    fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIter<'_>>;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<S::ScanRangeIterRev<'_>>;
+    fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIterRev<'_>>;
 
-    fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<S::ScanRangeIter<'_>>;
+    fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIter<'_>>;
 
-    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<S::ScanRangeIterRev<'_>>;
+    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIterRev<'_>>;
 }

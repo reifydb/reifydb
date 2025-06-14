@@ -21,12 +21,12 @@ const LOCKED: u8 = 1;
 const UNLOCKED: u8 = 2;
 
 #[derive(Debug)]
-pub struct Versioned {
+pub struct VersionedRow {
     pub(crate) op: AtomicU8,
     rows: SkipMap<Version, Option<EncodedRow>>,
 }
 
-impl Versioned {
+impl VersionedRow {
     pub(crate) fn new() -> Self {
         Self { op: AtomicU8::new(UNINITIALIZED), rows: SkipMap::new() }
     }
@@ -65,7 +65,7 @@ impl Versioned {
     }
 }
 
-impl core::ops::Deref for Versioned {
+impl core::ops::Deref for VersionedRow {
     type Target = SkipMap<u64, Option<EncodedRow>>;
 
     fn deref(&self) -> &Self::Target {

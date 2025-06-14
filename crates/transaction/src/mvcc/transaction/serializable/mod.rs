@@ -16,7 +16,7 @@ pub use read::*;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::hook::Hooks;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 pub use write::*;
 
 pub(crate) mod read;
@@ -27,30 +27,30 @@ use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::{Committed, TransactionManager};
 
-pub struct Serializable<S: Storage>(Arc<Inner<S>>);
+pub struct Serializable<VS: VersionedStorage>(Arc<Inner<VS>>);
 
-pub struct Inner<S: Storage> {
+pub struct Inner<VS: VersionedStorage> {
     pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
-    pub(crate) storage: S,
+    pub(crate) storage: VS,
     pub(crate) hooks: Hooks,
 }
 
-impl<S: Storage> Deref for Serializable<S> {
-    type Target = Inner<S>;
+impl<VS: VersionedStorage> Deref for Serializable<VS> {
+    type Target = Inner<VS>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<S: Storage> Clone for Serializable<S> {
+impl<VS: VersionedStorage> Clone for Serializable<VS> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<S: Storage> Inner<S> {
-    fn new(name: &str, storage: S) -> Self {
+impl<VS: VersionedStorage> Inner<VS> {
+    fn new(name: &str, storage: VS) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
         let hooks = storage.hooks();
         Self { tm, storage, hooks }
@@ -61,33 +61,33 @@ impl<S: Storage> Inner<S> {
     }
 }
 
-impl<S: Storage> Serializable<S> {
-    pub fn new(storage: S) -> Self {
+impl<VS: VersionedStorage> Serializable<VS> {
+    pub fn new(storage: VS) -> Self {
         Self(Arc::new(Inner::new(core::any::type_name::<Self>(), storage)))
     }
 }
 
-impl<S: Storage> Serializable<S> {
+impl<VS: VersionedStorage> Serializable<VS> {
     pub fn version(&self) -> Version {
         self.0.version()
     }
-    pub fn begin_read_only(&self) -> TransactionRx<S> {
+    pub fn begin_read_only(&self) -> TransactionRx<VS> {
         TransactionRx::new(self.clone(), None)
     }
 }
 
-impl<S: Storage> Serializable<S> {
-    pub fn begin(&self) -> TransactionTx<S> {
+impl<VS: VersionedStorage> Serializable<VS> {
+    pub fn begin(&self) -> TransactionTx<VS> {
         TransactionTx::new(self.clone())
     }
 }
 
-pub enum Transaction<S: Storage> {
-    Rx(TransactionRx<S>),
-    Tx(TransactionTx<S>),
+pub enum Transaction<VS: VersionedStorage> {
+    Rx(TransactionRx<VS>),
+    Tx(TransactionTx<VS>),
 }
 
-impl<S: Storage> Serializable<S> {
+impl<VS: VersionedStorage> Serializable<VS> {
     pub fn get(&self, key: &EncodedKey, version: Version) -> Option<Committed> {
         self.storage.get(key, version).map(|sv| sv.into())
     }
@@ -96,19 +96,23 @@ impl<S: Storage> Serializable<S> {
         self.storage.contains(key, version)
     }
 
-    pub fn scan(&self, version: Version) -> S::ScanIter<'_> {
+    pub fn scan(&self, version: Version) -> VS::ScanIter<'_> {
         self.storage.scan(version)
     }
 
-    pub fn scan_rev(&self, version: Version) -> S::ScanIterRev<'_> {
+    pub fn scan_rev(&self, version: Version) -> VS::ScanIterRev<'_> {
         self.storage.scan_rev(version)
     }
 
-    pub fn scan_range(&self, range: EncodedKeyRange, version: Version) -> S::ScanRangeIter<'_> {
+    pub fn scan_range(&self, range: EncodedKeyRange, version: Version) -> VS::ScanRangeIter<'_> {
         self.storage.scan_range(range, version)
     }
 
-    pub fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> S::ScanRangeIterRev<'_> {
+    pub fn scan_range_rev(
+        &self,
+        range: EncodedKeyRange,
+        version: Version,
+    ) -> VS::ScanRangeIterRev<'_> {
         self.storage.scan_range_rev(range, version)
     }
 }

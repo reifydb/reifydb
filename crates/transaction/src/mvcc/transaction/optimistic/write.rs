@@ -24,19 +24,19 @@ use reifydb_core::row::EncodedRow;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
 
-pub struct TransactionTx<S: Storage> {
-    engine: Optimistic<S>,
+pub struct TransactionTx<VS: VersionedStorage> {
+    engine: Optimistic<VS>,
     tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
-impl<S: Storage> TransactionTx<S> {
-    pub fn new(engine: Optimistic<S>) -> Self {
+impl<VS: VersionedStorage> TransactionTx<VS> {
+    pub fn new(engine: Optimistic<VS>) -> Self {
         let tm = engine.tm.write().unwrap();
         Self { engine, tm }
     }
 }
 
-impl<S: Storage> TransactionTx<S> {
+impl<VS: VersionedStorage> TransactionTx<VS> {
     /// Commits the transaction, following these steps:
     ///
     /// 1. If there are no writes, return immediately.
@@ -74,7 +74,7 @@ impl<S: Storage> TransactionTx<S> {
     }
 }
 
-impl<S: Storage> TransactionTx<S> {
+impl<VS: VersionedStorage> TransactionTx<VS> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }
@@ -118,7 +118,7 @@ impl<S: Storage> TransactionTx<S> {
         self.tm.remove(key)
     }
 
-    pub fn scan(&mut self) -> Result<TransactionIter<'_, S, BTreeConflict>, TransactionError> {
+    pub fn scan(&mut self) -> Result<TransactionIter<'_, VS, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter();
@@ -129,7 +129,7 @@ impl<S: Storage> TransactionTx<S> {
 
     pub fn scan_rev(
         &mut self,
-    ) -> Result<TransactionIterRev<'_, S, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionIterRev<'_, VS, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter().rev();
@@ -141,7 +141,7 @@ impl<S: Storage> TransactionTx<S> {
     pub fn scan_range<'a>(
         &'a mut self,
         range: EncodedKeyRange,
-    ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRange<'a, VS, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -155,7 +155,7 @@ impl<S: Storage> TransactionTx<S> {
     pub fn scan_range_rev<'a>(
         &'a mut self,
         range: EncodedKeyRange,
-    ) -> Result<TransactionRangeRev<'a, S, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRangeRev<'a, VS, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -169,14 +169,14 @@ impl<S: Storage> TransactionTx<S> {
     pub fn scan_prefix<'a>(
         &'a mut self,
         prefix: &EncodedKey,
-    ) -> Result<TransactionRange<'a, S, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRange<'a, VS, BTreeConflict>, TransactionError> {
         self.scan_range(EncodedKeyRange::prefix(prefix))
     }
 
     pub fn scan_prefix_rev<'a>(
         &'a mut self,
         prefix: &EncodedKey,
-    ) -> Result<TransactionRangeRev<'a, S, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRangeRev<'a, VS, BTreeConflict>, TransactionError> {
         self.scan_range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

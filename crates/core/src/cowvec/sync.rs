@@ -78,7 +78,7 @@ impl<T: Clone + PartialEq> CowVec<T> {
         self.make_mut().push(value);
     }
 
-    pub fn extend(&mut self, iter: impl IntoIterator<Item=T>) {
+    pub fn extend(&mut self, iter: impl IntoIterator<Item = T>) {
         self.make_mut().extend(iter);
     }
 

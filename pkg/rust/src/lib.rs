@@ -40,7 +40,7 @@ use crate::server::Server;
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 pub use reifydb_storage;
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::Sqlite;
@@ -110,23 +110,23 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<S: Storage, T: Transaction<S>>(
+    pub fn embedded_with<VS: VersionedStorage, T: Transaction<VS>>(
         transaction: T,
-    ) -> (embedded::Embedded<S, T>, Principal) {
+    ) -> (embedded::Embedded<VS, T>, Principal) {
         Embedded::new(transaction)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<S: Storage, T: Transaction<S>>(
+    pub fn embedded_with<VS: VersionedStorage, T: Transaction<VS>>(
         transaction: T,
-    ) -> (embedded_blocking::Embedded<S, T>, Principal) {
+    ) -> (embedded_blocking::Embedded<VS, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<S: Storage, T: Transaction<S>>(
+    pub fn embedded_blocking_with<VS: VersionedStorage, T: Transaction<VS>>(
         transaction: T,
-    ) -> (embedded_blocking::Embedded<S, T>, Principal) {
+    ) -> (embedded_blocking::Embedded<VS, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
@@ -138,18 +138,18 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<S: Storage + 'static, T: Transaction<S> + 'static>(
+    pub fn server_with<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static>(
         transaction: T,
-    ) -> Server<S, T> {
+    ) -> Server<VS, T> {
         Server::new(transaction)
     }
 }
 
-pub fn serializable<S: Storage>(storage: S) -> Serializable<S> {
+pub fn serializable<VS: VersionedStorage>(storage: VS) -> Serializable<VS> {
     Serializable::new(storage)
 }
 
-pub fn optimistic<S: Storage>(storage: S) -> Optimistic<S> {
+pub fn optimistic<VS: VersionedStorage>(storage: VS) -> Optimistic<VS> {
     Optimistic::new(storage)
 }
 

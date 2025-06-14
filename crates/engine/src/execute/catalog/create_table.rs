@@ -6,13 +6,13 @@ use reifydb_core::catalog::{SchemaId, TableId};
 use reifydb_core::row::{EncodedRow, Layout};
 use reifydb_core::{AsyncCowVec, Key, SchemaTableLinkKey, TableKey, ValueKind};
 use reifydb_rql::plan::CreateTablePlan;
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Tx;
 
-impl<S: Storage> Executor<S> {
+impl<VS: VersionedStorage> Executor<VS> {
     pub(crate) fn create_table(
         &mut self,
-        tx: &mut impl Tx<S>,
+        tx: &mut impl Tx<VS>,
         plan: CreateTablePlan,
     ) -> crate::Result<ExecutionResult> {
         // FIXME schema does not exist

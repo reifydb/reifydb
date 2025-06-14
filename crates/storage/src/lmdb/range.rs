@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{ScanRange, Stored};
+use crate::{VersionedScanRange, Versioned};
 use heed::types::Bytes;
 use heed::{Database, Env};
 use reifydb_core::row::EncodedRow;
@@ -11,7 +11,7 @@ use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
-impl ScanRange for Lmdb {
+impl VersionedScanRange for Lmdb {
     type ScanRangeIter<'a> = Range;
 
     fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
@@ -25,7 +25,7 @@ pub struct Range {
     version: Version,
     start: Bound<EncodedKey>,
     end: Bound<EncodedKey>,
-    buffer: VecDeque<Stored>,
+    buffer: VecDeque<Versioned>,
     last_key: Option<EncodedKey>,
     batch_size: usize,
 }
@@ -75,7 +75,7 @@ impl Range {
                     //     AsyncCowVec::new(v.to_vec()),
                     // )));
                     //
-                    self.buffer.push_back(Stored {
+                    self.buffer.push_back(Versioned {
                         key: EncodedKey::new(k.to_vec()),
                         row: EncodedRow(AsyncCowVec::new(v.to_vec())),
                         version: 0, // FIXME
@@ -92,7 +92,7 @@ impl Range {
 }
 
 impl Iterator for Range {
-    type Item = Stored;
+    type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.buffer.is_empty() {

@@ -93,7 +93,7 @@ impl<T: Clone + PartialEq> AsyncCowVec<T> {
         self.make_mut().push(value);
     }
 
-    pub fn extend(&mut self, iter: impl IntoIterator<Item=T>) {
+    pub fn extend(&mut self, iter: impl IntoIterator<Item = T>) {
         self.make_mut().extend(iter);
     }
 
@@ -265,7 +265,7 @@ mod tests {
     fn test_reorder() {
         let mut owned = AsyncCowVec::new(Vec::with_capacity(16));
         owned.extend([1, 2]);
-        
+
         let ptr_before_owned = ptr_of(&owned);
         owned.reorder(&[1usize, 0]);
         assert_eq!(ptr_before_owned, ptr_of(&owned)); // no copy

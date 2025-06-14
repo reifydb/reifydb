@@ -9,7 +9,7 @@
 pub use error::Error;
 use reifydb_catalog::Catalog;
 use reifydb_core::hook::Hooks;
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 pub use rx::*;
 use std::cell::UnsafeCell;
 use std::sync::OnceLock;
@@ -44,9 +44,9 @@ pub fn catalog_mut_singleton() -> &'static mut Catalog {
     unsafe { *CATALOG.get().unwrap().0.get() }
 }
 
-pub trait Transaction<S: Storage>: Send + Sync {
-    type Rx: Rx<S>;
-    type Tx: Tx<S>;
+pub trait Transaction<VS: VersionedStorage>: Send + Sync {
+    type Rx: Rx<VS>;
+    type Tx: Tx<VS>;
 
     fn begin_read_only(&self) -> Result<Self::Rx>;
 
@@ -54,5 +54,5 @@ pub trait Transaction<S: Storage>: Send + Sync {
 
     fn hooks(&self) -> Hooks;
 
-    fn storage(&self) -> S;
+    fn storage(&self) -> VS;
 }

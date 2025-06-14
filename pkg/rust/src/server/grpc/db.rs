@@ -18,15 +18,15 @@ use crate::server::grpc::grpc_db::tx_result::Result::{
 };
 use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use tokio_stream::once;
 
-pub struct DbService<S: Storage + 'static, T: Transaction<S> + 'static> {
-    pub(crate) engine: Arc<Engine<S, T>>,
+pub struct DbService<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> {
+    pub(crate) engine: Arc<Engine<VS, T>>,
 }
 
-impl<S: Storage + 'static, T: Transaction<S> + 'static> DbService<S, T> {
-    pub fn new(engine: Engine<S, T>) -> Self {
+impl<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> DbService<VS, T> {
+    pub fn new(engine: Engine<VS, T>) -> Self {
         Self { engine: Arc::new(engine) }
     }
 }
@@ -35,7 +35,9 @@ pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::TxResult, St
 pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::RxResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<S: Storage + 'static, T: Transaction<S> + 'static> grpc_db::db_server::Db for DbService<S, T> {
+impl<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> grpc_db::db_server::Db
+    for DbService<VS, T>
+{
     type TxStream = TxResultStream;
 
     async fn tx(&self, request: Request<TxRequest>) -> Result<Response<TxResultStream>, Status> {

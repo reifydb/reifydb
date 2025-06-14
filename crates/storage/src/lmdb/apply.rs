@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Apply;
+use crate::VersionedApply;
 use crate::lmdb::Lmdb;
 use reifydb_core::delta::Delta;
 use reifydb_core::{AsyncCowVec, Version};
 
-impl Apply for Lmdb {
+impl VersionedApply for Lmdb {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {

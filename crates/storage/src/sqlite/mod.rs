@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
-use crate::Stored;
-use crate::storage::{
-    Apply, Contains, Get, GetHooks, Scan, ScanRange, ScanRangeRev, ScanRev, Storage,
+use crate::versioned::{
+    VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanRange,
+    VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
 };
+use crate::{GetHooks, Versioned};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
@@ -69,7 +70,7 @@ impl Sqlite {
     }
 }
 
-impl Apply for Sqlite {
+impl VersionedApply for Sqlite {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
@@ -99,8 +100,8 @@ impl Apply for Sqlite {
     }
 }
 
-impl Get for Sqlite {
-    fn get(&self, key: &EncodedKey, version: Version) -> Option<Stored> {
+impl VersionedGet for Sqlite {
+    fn get(&self, key: &EncodedKey, version: Version) -> Option<Versioned> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -108,7 +109,7 @@ impl Get for Sqlite {
 			"SELECT key, value, version FROM kv WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
 			params![key.to_vec(), version],
 			|row| {
-				Ok(Stored {
+				Ok(Versioned {
 					key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 					row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					version: row.get(2)?,
@@ -120,15 +121,15 @@ impl Get for Sqlite {
     }
 }
 
-impl Contains for Sqlite {
+impl VersionedContains for Sqlite {
     fn contains(&self, key: &EncodedKey, version: Version) -> bool {
         // FIXME this can be done better than this
         self.get(key, version).is_some()
     }
 }
 
-impl Scan for Sqlite {
-    type ScanIter<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
+impl VersionedScan for Sqlite {
+    type ScanIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
     fn scan(&self, version: Version) -> Self::ScanIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -140,7 +141,7 @@ impl Scan for Sqlite {
 
         let rows = stmt
             .query_map(params![version], |row| {
-                Ok(Stored {
+                Ok(Versioned {
                     key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
                     row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
                     version: row.get(2)?,
@@ -154,8 +155,8 @@ impl Scan for Sqlite {
     }
 }
 
-impl ScanRev for Sqlite {
-    type ScanIterRev<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
+impl VersionedScanRev for Sqlite {
+    type ScanIterRev<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
     fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -167,7 +168,7 @@ impl ScanRev for Sqlite {
 
         let rows = stmt
             .query_map(params![version], |row| {
-                Ok(Stored {
+                Ok(Versioned {
                     key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
                     row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
@@ -181,8 +182,8 @@ impl ScanRev for Sqlite {
     }
 }
 
-impl ScanRange for Sqlite {
-    type ScanRangeIter<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
+impl VersionedScanRange for Sqlite {
+    type ScanRangeIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
     fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -198,7 +199,7 @@ impl ScanRange for Sqlite {
         let rows = stmt
             // .query_map(params![], |row| {
             .query_map(params![start_bytes, end_bytes, version], |row| {
-                Ok(Stored {
+                Ok(Versioned {
                     key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
                     row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
@@ -212,8 +213,8 @@ impl ScanRange for Sqlite {
     }
 }
 
-impl ScanRangeRev for Sqlite {
-    type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Stored> + 'a>;
+impl VersionedScanRangeRev for Sqlite {
+    type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
     fn scan_range_rev(
         &self,
@@ -232,7 +233,7 @@ impl ScanRangeRev for Sqlite {
 
         let rows = stmt
             .query_map(params![start_bytes, end_bytes, version], |row| {
-                Ok(Stored {
+                Ok(Versioned {
                     key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
                     row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
                     version: row.get(2)?,
@@ -252,7 +253,7 @@ impl GetHooks for Sqlite {
     }
 }
 
-impl Storage for Sqlite {}
+impl VersionedStorage for Sqlite {}
 
 fn bound_to_bytes(bound: &Bound<EncodedKey>) -> Vec<u8> {
     match bound {

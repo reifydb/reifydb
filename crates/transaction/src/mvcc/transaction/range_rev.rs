@@ -17,14 +17,14 @@ use crate::mvcc::types::Pending;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::EncodedKey;
 use reifydb_core::either::Either;
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use std::collections::btree_map::Range as BTreeMapRange;
 
-pub struct TransactionRangeRev<'a, S, C>
+pub struct TransactionRangeRev<'a, VS, C>
 where
-    S: Storage + 'a,
+    VS: VersionedStorage + 'a,
 {
-    pub(crate) committed: S::ScanRangeIterRev<'a>,
+    pub(crate) committed: VS::ScanRangeIterRev<'a>,
     pub(crate) pending: Rev<BTreeMapRange<'a, EncodedKey, Pending>>,
     next_pending: Option<(&'a EncodedKey, &'a Pending)>,
     next_committed: Option<TransactionValue>,
@@ -32,10 +32,10 @@ where
     marker: Option<Marker<'a, C>>,
 }
 
-impl<'a, S, C> TransactionRangeRev<'a, S, C>
+impl<'a, VS, C> TransactionRangeRev<'a, VS, C>
 where
     C: Conflict,
-    S: Storage + 'a,
+    VS: VersionedStorage + 'a,
 {
     fn advance_pending(&mut self) {
         self.next_pending = self.pending.next();
@@ -50,7 +50,7 @@ where
 
     pub fn new(
         pending: Rev<BTreeMapRange<'a, EncodedKey, Pending>>,
-        committed: S::ScanRangeIterRev<'a>,
+        committed: VS::ScanRangeIterRev<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = Self {
@@ -69,10 +69,10 @@ where
     }
 }
 
-impl<'a, S, C> Iterator for TransactionRangeRev<'a, S, C>
+impl<'a, VS, C> Iterator for TransactionRangeRev<'a, VS, C>
 where
     C: Conflict,
-    S: Storage + 'a,
+    VS: VersionedStorage + 'a,
 {
     type Item = TransactionValue;
 

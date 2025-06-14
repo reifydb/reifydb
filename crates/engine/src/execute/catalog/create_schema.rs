@@ -6,13 +6,13 @@ use reifydb_core::catalog::SchemaId;
 use reifydb_core::row::Layout;
 use reifydb_core::{Key, SchemaKey, ValueKind};
 use reifydb_rql::plan::CreateSchemaPlan;
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Tx;
 
-impl<S: Storage> Executor<S> {
+impl<VS: VersionedStorage> Executor<VS> {
     pub(crate) fn create_schema(
         &mut self,
-        tx: &mut impl Tx<S>,
+        tx: &mut impl Tx<VS>,
         plan: CreateSchemaPlan,
     ) -> crate::Result<ExecutionResult> {
         // FIXME schema name already exists

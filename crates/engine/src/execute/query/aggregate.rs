@@ -4,9 +4,9 @@
 use crate::execute::Executor;
 use reifydb_frame::aggregate::Aggregate;
 use reifydb_rql::expression::{AliasExpression, ColumnExpression, Expression};
-use reifydb_storage::Storage;
+use reifydb_storage::VersionedStorage;
 
-impl<S: Storage> Executor<S> {
+impl<VS: VersionedStorage> Executor<VS> {
     pub(crate) fn aggregate(
         &mut self,
         group_by: &[AliasExpression],
