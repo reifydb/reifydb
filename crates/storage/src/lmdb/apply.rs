@@ -5,6 +5,7 @@ use crate::VersionedApply;
 use crate::lmdb::Lmdb;
 use reifydb_core::delta::Delta;
 use reifydb_core::{AsyncCowVec, Version};
+use crate::unversioned::UnversionedApply;
 
 impl VersionedApply for Lmdb {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
@@ -20,5 +21,11 @@ impl VersionedApply for Lmdb {
             }
         }
         tx.commit().unwrap();
+    }
+}
+
+impl UnversionedApply for Lmdb{
+    fn apply(&self, delta: AsyncCowVec<Delta>) {
+        todo!()
     }
 }

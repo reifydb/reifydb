@@ -18,16 +18,19 @@ mod range_rev;
 mod versioned;
 
 use crate::memory::versioned::VersionedRow;
-use crate::{GetHooks, VersionedStorage};
+use crate::unversioned::UnversionedStorage;
+use crate::{GetHooks, Storage, VersionedStorage};
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::EncodedKey;
 use reifydb_core::hook::Hooks;
+use reifydb_core::row::EncodedRow;
 
 #[derive(Clone)]
 pub struct Memory(Arc<MemoryInner>);
 
 pub struct MemoryInner {
     versioned: SkipMap<EncodedKey, VersionedRow>,
+    unversioned: SkipMap<EncodedKey, EncodedRow>,
     hooks: Hooks,
 }
 
@@ -47,7 +50,11 @@ impl Default for Memory {
 
 impl Memory {
     pub fn new() -> Self {
-        Self(Arc::new(MemoryInner { versioned: SkipMap::new(), hooks: Default::default() }))
+        Self(Arc::new(MemoryInner {
+            versioned: SkipMap::new(),
+            unversioned: SkipMap::new(),
+            hooks: Default::default(),
+        }))
     }
 }
 
@@ -58,3 +65,5 @@ impl GetHooks for Memory {
 }
 
 impl VersionedStorage for Memory {}
+impl UnversionedStorage for Memory {}
+impl Storage for Memory {}

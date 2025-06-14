@@ -9,10 +9,10 @@ use reifydb_rql::plan::CreateTablePlan;
 use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Tx;
 
-impl<VS: VersionedStorage> Executor<VS> {
+impl<S: VersionedStorage> Executor<S> {
     pub(crate) fn create_table(
         &mut self,
-        tx: &mut impl Tx<VS>,
+        tx: &mut impl Tx<S>,
         plan: CreateTablePlan,
     ) -> crate::Result<ExecutionResult> {
         // FIXME schema does not exist
@@ -30,7 +30,7 @@ impl<VS: VersionedStorage> Executor<VS> {
             Key::Table(TableKey { table_id: TableId(1) }).encode(),
             EncodedRow(AsyncCowVec::new(vec![])),
         )?;
-        
+
         // table columns
 
         tx.set(

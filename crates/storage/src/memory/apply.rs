@@ -4,6 +4,7 @@
 use crate::VersionedApply;
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
+use crate::unversioned::UnversionedApply;
 use reifydb_core::delta::Delta;
 use reifydb_core::{AsyncCowVec, Version};
 
@@ -11,7 +12,7 @@ impl VersionedApply for Memory {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
         for delta in delta {
             match delta {
-                Delta::Set { key, row: row } => {
+                Delta::Set { key, row } => {
                     let item = self.versioned.get_or_insert_with(key, || VersionedRow::new());
                     let val = item.value();
                     val.lock();
@@ -25,6 +26,21 @@ impl VersionedApply for Memory {
                             values.insert(version, None);
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+impl UnversionedApply for Memory {
+    fn apply(&self, delta: AsyncCowVec<Delta>) {
+        for delta in delta {
+            match delta {
+                Delta::Set { key, row } => {
+                    self.unversioned.insert(key, row);
+                }
+                Delta::Remove { key } => {
+                    self.unversioned.remove(&key);
                 }
             }
         }

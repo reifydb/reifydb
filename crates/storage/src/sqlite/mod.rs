@@ -1,11 +1,15 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
+mod apply;
+mod get;
+
+use crate::unversioned::UnversionedStorage;
 use crate::versioned::{
     VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanRange,
     VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
 };
-use crate::{GetHooks, Versioned};
+use crate::{GetHooks, Storage, Versioned};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
@@ -254,6 +258,8 @@ impl GetHooks for Sqlite {
 }
 
 impl VersionedStorage for Sqlite {}
+impl UnversionedStorage for Sqlite {}
+impl Storage for Sqlite {}
 
 fn bound_to_bytes(bound: &Bound<EncodedKey>) -> Vec<u8> {
     match bound {

@@ -7,40 +7,40 @@ use reifydb_auth::Principal;
 use reifydb_core::hook::Hooks;
 use reifydb_rql::ast;
 use reifydb_rql::plan::{plan_rx, plan_tx};
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::Storage;
 use reifydb_transaction::{Transaction, Tx};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub struct Engine<VS: VersionedStorage, T: Transaction<VS>>(Arc<EngineInner<VS, T>>);
+pub struct Engine<S: Storage, T: Transaction<S>>(Arc<EngineInner<S, T>>);
 
-impl<VS, T> Clone for Engine<VS, T>
+impl<S, T> Clone for Engine<S, T>
 where
-    VS: VersionedStorage,
-    T: Transaction<VS>,
+    S: Storage,
+    T: Transaction<S>,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<VS: VersionedStorage, T: Transaction<VS>> Deref for Engine<VS, T> {
-    type Target = EngineInner<VS, T>;
+impl<S: Storage, T: Transaction<S>> Deref for Engine<S, T> {
+    type Target = EngineInner<S, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct EngineInner<VS: VersionedStorage, T: Transaction<VS>> {
+pub struct EngineInner<S: Storage, T: Transaction<S>> {
     transaction: T,
     hooks: Hooks,
-    deferred_view: Arc<view::deferred::Engine<VS>>,
-    _marker: PhantomData<VS>,
+    deferred_view: Arc<view::deferred::Engine<S>>,
+    _marker: PhantomData<S>,
 }
 
-impl<VS: VersionedStorage + 'static, T: Transaction<VS>> Engine<VS, T> {
+impl<S: Storage + 'static, T: Transaction<S>> Engine<S, T> {
     pub fn new(transaction: T) -> Self {
         let storage = transaction.storage();
         let deferred_view = view::deferred::Engine::new(storage);
@@ -52,13 +52,13 @@ impl<VS: VersionedStorage + 'static, T: Transaction<VS>> Engine<VS, T> {
     }
 }
 
-impl<VS: VersionedStorage + 'static, T: Transaction<VS>> Engine<VS, T> {
+impl<S: Storage + 'static, T: Transaction<S>> Engine<S, T> {
     pub fn setup_hooks(&self) {
         self.hooks.transaction().post_commit().register(self.deferred_view.clone());
     }
 }
 
-impl<VS: VersionedStorage, T: Transaction<VS>> Engine<VS, T> {
+impl<S: Storage, T: Transaction<S>> Engine<S, T> {
     fn begin(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin().unwrap())
     }

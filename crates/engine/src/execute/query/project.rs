@@ -7,7 +7,7 @@ use reifydb_frame::{Column, Frame};
 use reifydb_rql::expression::AliasExpression;
 use reifydb_storage::VersionedStorage;
 
-impl<VS: VersionedStorage> Executor<VS> {
+impl<S: VersionedStorage> Executor<S> {
     pub(crate) fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {
         if self.frame.is_empty() {
             let mut columns = vec![];

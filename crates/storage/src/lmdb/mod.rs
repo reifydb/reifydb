@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{GetHooks, VersionedStorage};
+use crate::unversioned::UnversionedStorage;
+use crate::{GetHooks, Storage, VersionedStorage};
 use heed::types::Bytes;
 use heed::{Database, Env, EnvOpenOptions};
 use reifydb_core::hook::Hooks;
@@ -53,3 +54,5 @@ impl GetHooks for Lmdb {
 }
 
 impl VersionedStorage for Lmdb {}
+impl UnversionedStorage for Lmdb {}
+impl Storage for Lmdb {}

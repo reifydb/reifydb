@@ -8,10 +8,10 @@ use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 pub trait VersionedStorage:
     Send
     + Sync
-    + VersionedApply
     + Clone
-    + VersionedGet
     + GetHooks
+    + VersionedApply
+    + VersionedGet
     + VersionedContains
     + VersionedScan
     + VersionedScanRev

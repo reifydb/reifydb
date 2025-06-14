@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::reifydb_storage::VersionedStorage;
 use reifydb::reifydb_storage::lmdb::Lmdb;
+use reifydb::reifydb_storage::{Storage, VersionedStorage};
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::{ReifyDB, memory, optimistic, serializable, sqlite};
@@ -18,14 +18,14 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct ClientRunner<VS: VersionedStorage, T: Transaction<VS>> {
-    server: Option<Server<VS, T>>,
+pub struct ClientRunner<S: Storage, T: Transaction<S>> {
+    server: Option<Server<S, T>>,
     client: Client,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> ClientRunner<VS, T> {
+impl<S: Storage + 'static, T: Transaction<S> + 'static> ClientRunner<S, T> {
     pub fn new(transaction: T) -> Self {
         let socket_addr = free_local_socket();
 
@@ -39,7 +39,7 @@ impl<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> ClientRunner<
     }
 }
 
-impl<VS: VersionedStorage + 'static, T: Transaction<VS> + 'static> testscript::Runner for ClientRunner<VS, T> {
+impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for ClientRunner<S, T> {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {

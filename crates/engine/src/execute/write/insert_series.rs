@@ -7,10 +7,10 @@ use reifydb_rql::plan::InsertIntoSeriesPlan;
 use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Tx;
 
-impl<VS: VersionedStorage> Executor<VS> {
+impl<S: VersionedStorage> Executor<S> {
     pub(crate) fn insert_into_series(
         &mut self,
-        tx: &mut impl Tx<VS>,
+        tx: &mut impl Tx<S>,
         plan: InsertIntoSeriesPlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {

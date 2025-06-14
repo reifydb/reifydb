@@ -3,9 +3,9 @@
 
 use crate::execute::Executor;
 use reifydb_frame::SortKey;
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::Storage;
 
-impl<VS: VersionedStorage> Executor<VS> {
+impl<S: Storage> Executor<S> {
     pub(crate) fn sort(&mut self, sort_keys: &[SortKey]) -> crate::Result<()> {
         self.frame.sort(sort_keys)?;
         Ok(())

@@ -6,10 +6,10 @@ use reifydb_rql::plan::CreateSeriesPlan;
 use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Tx;
 
-impl<VS: VersionedStorage> Executor<VS> {
+impl<S: VersionedStorage> Executor<S> {
     pub(crate) fn create_series(
         &mut self,
-        tx: &mut impl Tx<VS>,
+        tx: &mut impl Tx<S>,
         plan: CreateSeriesPlan,
     ) -> crate::Result<ExecutionResult> {
         // if plan.if_not_exists {

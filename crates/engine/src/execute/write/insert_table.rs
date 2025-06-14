@@ -13,10 +13,10 @@ use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Tx;
 
-impl<VS: VersionedStorage> Executor<VS> {
+impl<S: VersionedStorage> Executor<S> {
     pub(crate) fn insert_into_table(
         &mut self,
-        tx: &mut impl Tx<VS>,
+        tx: &mut impl Tx<S>,
         plan: InsertIntoTablePlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {

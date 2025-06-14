@@ -7,10 +7,10 @@ use reifydb_rql::plan::CreateDeferredViewPlan;
 use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Tx;
 
-impl<VS: VersionedStorage> Executor<VS> {
+impl<S: VersionedStorage> Executor<S> {
     pub(crate) fn create_deferred_view(
         &mut self,
-        tx: &mut impl Tx<VS>,
+        tx: &mut impl Tx<S>,
         plan: CreateDeferredViewPlan,
     ) -> crate::Result<ExecutionResult> {
         // if plan.if_not_exists {

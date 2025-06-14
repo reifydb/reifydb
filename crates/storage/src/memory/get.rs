@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::memory::Memory;
-use crate::{VersionedGet, Versioned};
+use crate::unversioned::UnversionedGet;
+use crate::{Unversioned, Versioned, VersionedGet};
 use reifydb_core::{EncodedKey, Version};
 use std::collections::Bound;
 
@@ -19,5 +20,12 @@ impl VersionedGet for Memory {
             })?;
 
         Some(Versioned { key: key.clone(), row: value, version })
+    }
+}
+
+impl UnversionedGet for Memory {
+    fn get(&self, key: &EncodedKey) -> Option<Unversioned> {
+        let item = self.unversioned.get(key)?;
+        Some(Unversioned { key: key.clone(), row: item.value().clone() })
     }
 }

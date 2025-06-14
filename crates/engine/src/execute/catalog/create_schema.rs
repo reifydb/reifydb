@@ -9,10 +9,10 @@ use reifydb_rql::plan::CreateSchemaPlan;
 use reifydb_storage::VersionedStorage;
 use reifydb_transaction::Tx;
 
-impl<VS: VersionedStorage> Executor<VS> {
+impl<S: VersionedStorage> Executor<S> {
     pub(crate) fn create_schema(
         &mut self,
-        tx: &mut impl Tx<VS>,
+        tx: &mut impl Tx<S>,
         plan: CreateSchemaPlan,
     ) -> crate::Result<ExecutionResult> {
         // FIXME schema name already exists
