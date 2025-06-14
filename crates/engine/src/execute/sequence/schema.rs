@@ -6,11 +6,11 @@ use crate::execute::sequence::SCHEMA_SEQUENCE_ID;
 use reifydb_core::catalog::SchemaId;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodableKey, SequenceValueKey};
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
-impl<S: VersionedStorage> Executor<S> {
-    pub(crate) fn next_schema_id(&mut self, tx: &mut impl Tx<S>) -> crate::Result<SchemaId> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+    pub(crate) fn next_schema_id(&mut self, tx: &mut impl Tx<VS, US>) -> crate::Result<SchemaId> {
         // FIXME sequence exhausted
         // tx.set(Key::Schema(SchemaKey { schema_id: SchemaId(1) }).encode(), row)?;
         let key = SequenceValueKey { sequence_id: SCHEMA_SEQUENCE_ID }.encode();

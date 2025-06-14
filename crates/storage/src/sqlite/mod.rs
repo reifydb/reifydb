@@ -4,7 +4,7 @@
 mod apply;
 mod get;
 
-use crate::unversioned::UnversionedStorage;
+use crate::unversioned::{UnversionedRemove, UnversionedSet, UnversionedStorage};
 use crate::versioned::{
     VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanRange,
     VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
@@ -259,6 +259,8 @@ impl GetHooks for Sqlite {
 
 impl VersionedStorage for Sqlite {}
 impl UnversionedStorage for Sqlite {}
+impl UnversionedSet for Sqlite {}
+impl UnversionedRemove for Sqlite {}
 impl Storage for Sqlite {}
 
 fn bound_to_bytes(bound: &Bound<EncodedKey>) -> Vec<u8> {

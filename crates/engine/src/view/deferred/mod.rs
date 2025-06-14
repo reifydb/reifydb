@@ -8,20 +8,20 @@ use reifydb_core::delta::Delta;
 use reifydb_core::hook::PostCommitHook;
 use reifydb_core::{AsyncCowVec, Version};
 use reifydb_flow::Orchestrator;
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, mpsc};
 use std::thread;
 
-pub struct Engine<VS: VersionedStorage> {
+pub struct Engine<VS: VersionedStorage, US: UnversionedStorage> {
     tx: Sender<Work>,
     orchestrator: Orchestrator,
-    _marker: std::marker::PhantomData<VS>,
+    _marker: std::marker::PhantomData<(VS, US)>,
 }
 
 pub(crate) type Work = (AsyncCowVec<Delta>, Version);
 
-impl<VS: VersionedStorage + 'static> Engine<VS> {
+impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static> Engine<VS, US> {
     pub fn new(storage: VS) -> Arc<Self> {
         let (tx, rx) = mpsc::channel();
 
@@ -43,7 +43,9 @@ impl<VS: VersionedStorage + 'static> Engine<VS> {
     }
 }
 
-impl<VS: VersionedStorage + 'static> PostCommitHook for Engine<VS> {
+impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static> PostCommitHook
+    for Engine<VS, US>
+{
     fn on_post_commit(&self, deltas: AsyncCowVec<Delta>, version: Version) {
         let _ = self.tx.send((deltas, version));
     }

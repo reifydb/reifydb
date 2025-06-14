@@ -7,21 +7,21 @@ use reifydb_engine::{Engine, ExecutionResult};
 use reifydb_storage::Storage;
 use reifydb_transaction::{Transaction, catalog_init};
 
-pub struct Embedded<S: Storage + 'static, T: Transaction<S> + 'static> {
-    engine: Engine<S, T>,
+pub struct Embedded<S: Storage + 'static, T: Transaction<S, S> + 'static> {
+    engine: Engine<S, S, T>,
 }
 
 impl<S, T> Clone for Embedded<S, T>
 where
     S: Storage,
-    T: Transaction<S>,
+    T: Transaction<S, S>,
 {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
 
-impl<S: Storage, T: Transaction<S>> Embedded<S, T> {
+impl<S: Storage, T: Transaction<S, S>> Embedded<S, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
         catalog_init();
@@ -29,7 +29,7 @@ impl<S: Storage, T: Transaction<S>> Embedded<S, T> {
     }
 }
 
-impl<'a, S: Storage + 'static, T: Transaction<S> + 'static> Embedded<S, T> {
+impl<'a, S: Storage + 'static, T: Transaction<S, S> + 'static> Embedded<S, T> {
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         self.engine.tx_as(principal, rql).map_err(|err| {
             let diagnostic = err.diagnostic();

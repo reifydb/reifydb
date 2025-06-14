@@ -17,20 +17,20 @@ use tonic::transport::Error;
 mod config;
 mod grpc;
 
-pub struct Server<S: Storage, T: Transaction<S>> {
+pub struct Server<S: Storage, T: Transaction<S, S>> {
     pub(crate) config: ServerConfig,
     pub(crate) grpc: tonic::transport::Server,
     pub(crate) callbacks: Callbacks<S, T>,
-    pub(crate) engine: Engine<S, T>,
+    pub(crate) engine: Engine<S, S, T>,
 }
 
-impl<S: Storage, T: Transaction<S>> Server<S, T> {
+impl<S: Storage, T: Transaction<S, S>> Server<S, T> {
     pub fn with_config(mut self, config: ServerConfig) -> Self {
         self.config = config;
         self
     }
 
-    pub fn with_engine(mut self, engine: Engine<S, T>) -> Self {
+    pub fn with_engine(mut self, engine: Engine<S, S, T>) -> Self {
         self.engine = engine;
         self
     }
@@ -38,7 +38,7 @@ impl<S: Storage, T: Transaction<S>> Server<S, T> {
 
 pub type Callback<T> = Box<dyn FnOnce(T) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-pub struct Callbacks<S: Storage, T: Transaction<S>> {
+pub struct Callbacks<S: Storage, T: Transaction<S, S>> {
     before_bootstrap: Vec<Callback<BeforeBootstrap>>,
     on_create: Vec<Callback<OnCreate<S, T>>>,
 }
@@ -74,11 +74,11 @@ impl Deref for BeforeBootstrap {
     }
 }
 
-pub struct OnCreate<S: Storage, T: Transaction<S>> {
-    engine: Engine<S, T>,
+pub struct OnCreate<S: Storage, T: Transaction<S, S>> {
+    engine: Engine<S, S, T>,
 }
 
-impl<S: Storage, T: Transaction<S>> OnCreate<S, T> {
+impl<S: Storage, T: Transaction<S, S>> OnCreate<S, T> {
     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
         self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
     }
@@ -88,7 +88,7 @@ impl<S: Storage, T: Transaction<S>> OnCreate<S, T> {
     }
 }
 
-impl<S: Storage + 'static, T: Transaction<S> + 'static> Server<S, T> {
+impl<S: Storage + 'static, T: Transaction<S, S> + 'static> Server<S, T> {
     pub fn new(transaction: T) -> Self {
         catalog_init();
         Self {

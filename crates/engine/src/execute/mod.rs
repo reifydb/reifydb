@@ -11,7 +11,7 @@ use crate::function::{FunctionRegistry, math};
 use reifydb_core::{Value, ValueKind};
 use reifydb_frame::{ColumnValues, Frame};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
-use reifydb_storage::{Storage, VersionedStorage};
+use reifydb_storage::{Storage, UnversionedStorage, VersionedStorage};
 use reifydb_transaction::{Rx, Tx};
 use std::marker::PhantomData;
 
@@ -178,14 +178,17 @@ impl From<Frame> for ExecutionResult {
     }
 }
 
-pub(crate) struct Executor<S: VersionedStorage> {
+pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     functions: FunctionRegistry,
     frame: Frame,
-    _marker: PhantomData<S>,
+    _marker: PhantomData<(VS, US)>,
 }
 
-pub fn execute_rx<S: Storage>(plan: PlanRx, rx: &mut impl Rx<S>) -> crate::Result<ExecutionResult> {
-    let mut executor = Executor {
+pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
+    plan: PlanRx,
+    rx: &mut impl Rx<VS, US>,
+) -> crate::Result<ExecutionResult> {
+    let mut executor: Executor<VS, US> = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from RX
         frame: Frame::new(vec![]),
         _marker: PhantomData,
@@ -197,8 +200,11 @@ pub fn execute_rx<S: Storage>(plan: PlanRx, rx: &mut impl Rx<S>) -> crate::Resul
     executor.execute_rx(plan, rx)
 }
 
-pub fn execute_tx<S: Storage>(plan: PlanTx, tx: &mut impl Tx<S>) -> crate::Result<ExecutionResult> {
-    let mut executor = Executor {
+pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
+    plan: PlanTx,
+    tx: &mut impl Tx<VS, US>,
+) -> crate::Result<ExecutionResult> {
+    let mut executor: Executor<VS, US> = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from TX
         frame: Frame::new(vec![]),
         _marker: PhantomData,
@@ -210,11 +216,11 @@ pub fn execute_tx<S: Storage>(plan: PlanTx, tx: &mut impl Tx<S>) -> crate::Resul
     executor.execute_tx(plan, tx)
 }
 
-impl<S: Storage> Executor<S> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn execute_rx_query_plan(
         mut self,
         plan: QueryPlan,
-        rx: &mut impl Rx<S>,
+        rx: &mut impl Rx<VS, US>,
     ) -> crate::Result<ExecutionResult> {
         let next = match plan {
             QueryPlan::Aggregate { group_by, project, next } => {
@@ -251,7 +257,7 @@ impl<S: Storage> Executor<S> {
     pub(crate) fn execute_tx_query_plan(
         mut self,
         plan: QueryPlan,
-        tx: &mut impl Tx<S>,
+        tx: &mut impl Tx<VS, US>,
     ) -> crate::Result<ExecutionResult> {
         let next = match plan {
             QueryPlan::Aggregate { group_by, project, next } => {
@@ -288,7 +294,7 @@ impl<S: Storage> Executor<S> {
     pub(crate) fn execute_rx(
         mut self,
         plan: PlanRx,
-        rx: &mut impl Rx<S>,
+        rx: &mut impl Rx<VS, US>,
     ) -> crate::Result<ExecutionResult> {
         match plan {
             PlanRx::Query(plan) => self.execute_rx_query_plan(plan, rx),
@@ -298,11 +304,12 @@ impl<S: Storage> Executor<S> {
     pub(crate) fn execute_tx(
         mut self,
         plan: PlanTx,
-        tx: &mut impl Tx<S>,
+        tx: &mut impl Tx<VS, US>,
     ) -> crate::Result<ExecutionResult> {
         match plan {
             PlanTx::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
-            PlanTx::CreateSchema(plan) => self.create_schema(tx, plan),
+            // PlanTx::CreateSchema(plan) => self.create_schema(tx, plan),
+            PlanTx::CreateSchema(plan) => unimplemented!(),
             PlanTx::CreateSequence(_) => unimplemented!(),
             PlanTx::CreateSeries(plan) => self.create_series(tx, plan),
             PlanTx::CreateTable(plan) => self.create_table(tx, plan),

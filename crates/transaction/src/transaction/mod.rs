@@ -3,4 +3,3 @@
 
 mod optimistic;
 mod serializable;
-mod shared;

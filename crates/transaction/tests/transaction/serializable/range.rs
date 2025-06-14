@@ -22,7 +22,7 @@ use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
 fn test_range() {
-    let engine: Serializable<Memory> = Serializable::new(Memory::new());
+    let engine= Serializable::new(Memory::new(), Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_row!(1)).unwrap();
     txn.set(as_key!(2), as_row!(2)).unwrap();
@@ -55,7 +55,7 @@ fn test_range() {
 
 #[test]
 fn test_range2() {
-    let engine: Serializable<Memory> = Serializable::new(Memory::new());
+    let engine= Serializable::new(Memory::new(), Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(1), as_row!(1)).unwrap();
     txn.set(as_key!(2), as_row!(2)).unwrap();
@@ -114,7 +114,7 @@ fn test_range2() {
 
 #[test]
 fn test_range3() {
-    let engine: Serializable<Memory> = Serializable::new(Memory::new());
+    let engine= Serializable::new(Memory::new(), Memory::new());
     let mut txn = engine.begin();
     txn.set(as_key!(4), as_row!(4)).unwrap();
     txn.set(as_key!(5), as_row!(5)).unwrap();
@@ -177,7 +177,7 @@ fn test_range3() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_range_edge() {
-    let engine: Serializable<Memory> = Serializable::new(Memory::new());
+    let engine= Serializable::new(Memory::new(), Memory::new());
 
     // c1
     {

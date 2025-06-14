@@ -22,22 +22,23 @@ use reifydb_core::clock::LocalClock;
 use reifydb_core::delta::Delta;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
+use reifydb_storage::UnversionedStorage;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
 
-pub struct TransactionTx<VS: VersionedStorage> {
-    engine: Serializable<VS>,
+pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
+    engine: Serializable<VS, US>,
     tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
-impl<VS: VersionedStorage> TransactionTx<VS> {
-    pub fn new(engine: Serializable<VS>) -> Self {
+impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
+    pub fn new(engine: Serializable<VS, US>) -> Self {
         let tm = engine.tm.write().unwrap();
         Self { engine, tm }
     }
 }
 
-impl<VS: VersionedStorage> TransactionTx<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
     /// Commits the transaction, following these steps:
     ///
     /// 1. If there are no writes, return immediately.
@@ -57,14 +58,14 @@ impl<VS: VersionedStorage> TransactionTx<VS> {
             }
 
             for (version, deltas) in grouped {
-                self.engine.storage.apply(deltas, version);
+                self.engine.versioned.apply(deltas, version);
             }
             Ok(())
         })
     }
 }
 
-impl<VS: VersionedStorage> TransactionTx<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }
@@ -82,7 +83,7 @@ impl<VS: VersionedStorage> TransactionTx<VS> {
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.engine.storage.contains(key, version)),
+            None => Ok(self.engine.versioned.contains(key, version)),
         }
     }
 
@@ -96,7 +97,7 @@ impl<VS: VersionedStorage> TransactionTx<VS> {
                     Ok(None)
                 }
             }
-            None => Ok(self.engine.storage.get(key, version).map(Into::into)),
+            None => Ok(self.engine.versioned.get(key, version).map(Into::into)),
         }
     }
 
@@ -114,7 +115,7 @@ impl<VS: VersionedStorage> TransactionTx<VS> {
         let pending = pw.iter();
 
         marker.mark_range(EncodedKeyRange::all());
-        let commited = self.engine.storage.scan(version);
+        let commited = self.engine.versioned.scan(version);
 
         Ok(TransactionIter::new(pending, commited, Some(marker)))
     }
@@ -127,7 +128,7 @@ impl<VS: VersionedStorage> TransactionTx<VS> {
         let pending = pw.iter().rev();
 
         marker.mark_range(EncodedKeyRange::all());
-        let commited = self.engine.storage.scan_rev(version);
+        let commited = self.engine.versioned.scan_rev(version);
 
         Ok(TransactionIterRev::new(pending, commited, Some(marker)))
     }
@@ -143,7 +144,7 @@ impl<VS: VersionedStorage> TransactionTx<VS> {
 
         marker.mark_range(range.clone());
         let pending = pw.range_comparable((start, end));
-        let commited = self.engine.storage.scan_range(range, version);
+        let commited = self.engine.versioned.scan_range(range, version);
 
         Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
@@ -159,7 +160,7 @@ impl<VS: VersionedStorage> TransactionTx<VS> {
 
         marker.mark_range(range.clone());
         let pending = pw.range_comparable((start, end));
-        let commited = self.engine.storage.scan_range_rev(range, version);
+        let commited = self.engine.versioned.scan_range_rev(range, version);
 
         Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))
     }

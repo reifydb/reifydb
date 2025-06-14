@@ -18,7 +18,7 @@ mod range_rev;
 mod versioned;
 
 use crate::memory::versioned::VersionedRow;
-use crate::unversioned::UnversionedStorage;
+use crate::unversioned::{UnversionedRemove, UnversionedSet, UnversionedStorage};
 use crate::{GetHooks, Storage, VersionedStorage};
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::EncodedKey;
@@ -66,4 +66,6 @@ impl GetHooks for Memory {
 
 impl VersionedStorage for Memory {}
 impl UnversionedStorage for Memory {}
+impl UnversionedSet for Memory {}
+impl UnversionedRemove for Memory {}
 impl Storage for Memory {}

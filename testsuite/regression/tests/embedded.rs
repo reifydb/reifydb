@@ -14,20 +14,20 @@ use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
-pub struct Runner<S: Storage + 'static, T: Transaction<S> + 'static> {
+pub struct Runner<S: Storage + 'static, T: Transaction<S,S> + 'static> {
     engine: Embedded<S, T>,
     root: Principal,
     runtime: Runtime,
 }
 
-impl<S: Storage + 'static, T: Transaction<S> + 'static> Runner<S, T> {
+impl<S: Storage + 'static, T: Transaction<S,S> + 'static> Runner<S, T> {
     pub fn new(transaction: T) -> Self {
         let (engine, root) = ReifyDB::embedded_with(transaction);
         Self { engine, root, runtime: Runtime::new().unwrap() }
     }
 }
 
-impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for Runner<S, T> {
+impl<S: Storage + 'static, T: Transaction<S,S> + 'static> testscript::Runner for Runner<S, T> {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {

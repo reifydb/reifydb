@@ -18,14 +18,14 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct ClientRunner<S: Storage, T: Transaction<S>> {
+pub struct ClientRunner<S: Storage, T: Transaction<S, S>> {
     server: Option<Server<S, T>>,
     client: Client,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<S: Storage + 'static, T: Transaction<S> + 'static> ClientRunner<S, T> {
+impl<S: Storage + 'static, T: Transaction<S, S> + 'static> ClientRunner<S, T> {
     pub fn new(transaction: T) -> Self {
         let socket_addr = free_local_socket();
 
@@ -39,7 +39,9 @@ impl<S: Storage + 'static, T: Transaction<S> + 'static> ClientRunner<S, T> {
     }
 }
 
-impl<S: Storage + 'static, T: Transaction<S> + 'static> testscript::Runner for ClientRunner<S, T> {
+impl<S: Storage + 'static, T: Transaction<S, S> + 'static> testscript::Runner
+    for ClientRunner<S, T>
+{
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {

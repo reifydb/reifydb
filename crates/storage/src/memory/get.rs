@@ -24,7 +24,7 @@ impl VersionedGet for Memory {
 }
 
 impl UnversionedGet for Memory {
-    fn get(&self, key: &EncodedKey) -> Option<Unversioned> {
+    fn get_unversioned(&self, key: &EncodedKey) -> Option<Unversioned> {
         let item = self.unversioned.get(key)?;
         Some(Unversioned { key: key.clone(), row: item.value().clone() })
     }

@@ -23,7 +23,7 @@ use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
 fn test_versions() {
-    let engine: Serializable<Memory> = Serializable::new(Memory::new());
+    let engine= Serializable::new(Memory::new(), Memory::new());
 
     let k0 = as_key!(0);
 

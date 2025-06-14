@@ -5,9 +5,9 @@ use crate::evaluate::{Context, evaluate};
 use crate::execute::Executor;
 use reifydb_frame::{Column, Frame};
 use reifydb_rql::expression::AliasExpression;
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 
-impl<S: VersionedStorage> Executor<S> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn project(&mut self, expressions: Vec<AliasExpression>) -> crate::Result<()> {
         if self.frame.is_empty() {
             let mut columns = vec![];

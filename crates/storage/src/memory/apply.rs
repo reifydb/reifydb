@@ -33,7 +33,7 @@ impl VersionedApply for Memory {
 }
 
 impl UnversionedApply for Memory {
-    fn apply(&self, delta: AsyncCowVec<Delta>) {
+    fn apply_unversioned(&mut self, delta: AsyncCowVec<Delta>) {
         for delta in delta {
             match delta {
                 Delta::Set { key, row } => {

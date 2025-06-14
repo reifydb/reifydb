@@ -3,9 +3,9 @@
 
 use crate::mvcc::transaction::TransactionValue;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 
-pub trait Rx<VS: VersionedStorage> {
+pub trait Rx<VS: VersionedStorage, US: UnversionedStorage> {
     fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>>;
 
     fn contains_key(&self, key: &EncodedKey) -> crate::Result<bool>;

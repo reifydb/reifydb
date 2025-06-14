@@ -10,13 +10,13 @@ use reifydb_core::catalog::TableId;
 use reifydb_core::row::Layout;
 use reifydb_frame::ValueRef;
 use reifydb_rql::plan::InsertIntoTablePlan;
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
-impl<S: VersionedStorage> Executor<S> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn insert_into_table(
         &mut self,
-        tx: &mut impl Tx<S>,
+        tx: &mut impl Tx<VS, US>,
         plan: InsertIntoTablePlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {

@@ -20,7 +20,7 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 fn test_read_after_write() {
     const N: u64 = 100;
 
-    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
+    let engine= Optimistic::new(Memory::new(), Memory::new());
 
     let handles = (0..N)
         .map(|i| {

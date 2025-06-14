@@ -16,21 +16,21 @@ use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 
-pub struct TransactionRx<VS: VersionedStorage> {
-    pub(crate) engine: Optimistic<VS>,
+pub struct TransactionRx<VS: VersionedStorage, US: UnversionedStorage> {
+    pub(crate) engine: Optimistic<VS, US>,
     pub(crate) tm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
 }
 
-impl<VS: VersionedStorage> TransactionRx<VS> {
-    pub fn new(engine: Optimistic<VS>, version: Option<Version>) -> Self {
+impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
+    pub fn new(engine: Optimistic<VS, US>, version: Option<Version>) -> Self {
         let mut tm = engine.tm.read(version);
         Self { engine, tm }
     }
 }
 
-impl<VS: VersionedStorage> TransactionRx<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }

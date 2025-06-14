@@ -22,7 +22,7 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 fn test_write() {
     let key = as_key!("foo");
 
-    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
+    let engine= Optimistic::new(Memory::new(), Memory::new());
     {
         let mut tx = engine.begin();
         assert_eq!(tx.version(), 0);
@@ -43,7 +43,7 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
+    let engine= Optimistic::new(Memory::new(), Memory::new());
 
     {
         let mut txn = engine.begin();

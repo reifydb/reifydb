@@ -13,7 +13,7 @@ use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 fn test_write() {
     let key = as_key!("foo");
 
-    let engine: Serializable<Memory> = Serializable::new(Memory::new());
+    let engine= Serializable::new(Memory::new(), Memory::new());
     {
         let mut tx = engine.begin();
         assert_eq!(tx.version(), 0);
@@ -34,7 +34,7 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-    let engine: Serializable<Memory> = Serializable::new(Memory::new());
+    let engine= Serializable::new(Memory::new(), Memory::new());
 
     {
         let mut txn = engine.begin();

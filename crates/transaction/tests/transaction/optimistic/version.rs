@@ -22,7 +22,7 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_versions() {
-    let engine: Optimistic<Memory> = Optimistic::new(Memory::new());
+    let engine= Optimistic::new(Memory::new(), Memory::new());
 
     let k0 = as_key!(0);
 

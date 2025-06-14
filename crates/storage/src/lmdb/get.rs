@@ -13,7 +13,7 @@ impl VersionedGet for Lmdb {
 }
 
 impl UnversionedGet for Lmdb{
-    fn get(&self, key: &EncodedKey) -> Option<Unversioned> {
+    fn get_unversioned(&self, key: &EncodedKey) -> Option<Unversioned> {
         todo!()
     }
 }

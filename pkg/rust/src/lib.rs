@@ -40,10 +40,10 @@ use crate::server::Server;
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 pub use reifydb_storage;
-use reifydb_storage::{Storage, VersionedStorage};
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::Sqlite;
+use reifydb_storage::{Storage, VersionedStorage};
 pub use reifydb_transaction;
 use reifydb_transaction::Transaction;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
@@ -88,13 +88,13 @@ pub trait DB<'a>: Sized {
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> (Embedded<Memory, Serializable<Memory>>, Principal) {
+    pub fn embedded() -> (Embedded<Memory, Serializable<Memory, Memory>>, Principal) {
         Embedded::new(serializable(memory()))
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking()
-    -> (embedded_blocking::Embedded<Memory, Serializable<Memory>>, Principal) {
+    -> (embedded_blocking::Embedded<Memory, Serializable<Memory, Memory>>, Principal) {
         embedded_blocking::Embedded::new(serializable(Memory::new()))
     }
 
@@ -102,7 +102,7 @@ impl ReifyDB {
     pub fn embedded() -> (
         embedded_blocking::Embedded<
             Memory,
-            ::reifydb_transaction::mvcc::transaction::serializable::Serializable<Memory>,
+            ::reifydb_transaction::mvcc::transaction::serializable::Serializable<Memory, Memory>,
         >,
         Principal,
     ) {
@@ -110,47 +110,45 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<S: Storage, T: Transaction<S>>(
+    pub fn embedded_with<S: Storage, T: Transaction<S, S>>(
         transaction: T,
     ) -> (embedded::Embedded<S, T>, Principal) {
         Embedded::new(transaction)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<S: Storage, T: Transaction<S>>(
+    pub fn embedded_with<S: Storage, T: Transaction<S, S>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<S, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<S: Storage, T: Transaction<S>>(
+    pub fn embedded_blocking_with<S: Storage, T: Transaction<S, S>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<S, T>, Principal) {
         embedded_blocking::Embedded::new(transaction)
     }
 
     #[cfg(feature = "server")]
-    pub fn server()
-    -> Server<Memory, ::reifydb_transaction::mvcc::transaction::serializable::Serializable<Memory>>
-    {
+    pub fn server() -> Server<Memory, Serializable<Memory, Memory>> {
         Server::new(serializable(memory()))
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<S: Storage + 'static, T: Transaction<S> + 'static>(
+    pub fn server_with<S: Storage + 'static, T: Transaction<S, S> + 'static>(
         transaction: T,
     ) -> Server<S, T> {
         Server::new(transaction)
     }
 }
 
-pub fn serializable<S: Storage>(storage: S) -> Serializable<S> {
-    Serializable::new(storage)
+pub fn serializable<S: Storage>(storage: S) -> Serializable<S, S> {
+    Serializable::new(storage.clone(), storage)
 }
 
-pub fn optimistic<S: Storage>(storage: S) -> Optimistic<S> {
-    Optimistic::new(storage)
+pub fn optimistic<S: Storage>(storage: S) -> Optimistic<S, S> {
+    Optimistic::new(storage.clone(), storage)
 }
 
 pub fn memory() -> Memory {

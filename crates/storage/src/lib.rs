@@ -6,10 +6,10 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use crate::unversioned::UnversionedStorage;
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
+pub use unversioned::UnversionedStorage;
 pub use versioned::{
     VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanIterator,
     VersionedScanIteratorRev, VersionedScanRange, VersionedScanRangeIterator,

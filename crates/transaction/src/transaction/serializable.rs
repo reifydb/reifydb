@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::bypass::BypassTx;
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::transaction::TransactionValue;
 use crate::mvcc::transaction::iter::TransactionIter;
@@ -12,11 +13,11 @@ use crate::{Rx, Transaction, Tx};
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 
-impl<VS: VersionedStorage> Transaction<VS> for Serializable<VS> {
-    type Rx = TransactionRx<VS>;
-    type Tx = TransactionTx<VS>;
+impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Serializable<VS, US> {
+    type Rx = TransactionRx<VS, US>;
+    type Tx = TransactionTx<VS, US>;
 
     fn begin_read_only(&self) -> crate::Result<Self::Rx> {
         Ok(self.begin_read_only())
@@ -31,11 +32,11 @@ impl<VS: VersionedStorage> Transaction<VS> for Serializable<VS> {
     }
 
     fn storage(&self) -> VS {
-        self.storage.clone()
+        self.versioned.clone()
     }
 }
 
-impl<VS: VersionedStorage> Rx<VS> for TransactionRx<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Rx<VS, US> for TransactionRx<VS, US> {
     fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
         Ok(TransactionRx::get(self, key))
     }
@@ -69,7 +70,7 @@ impl<VS: VersionedStorage> Rx<VS> for TransactionRx<VS> {
     }
 }
 
-impl<VS: VersionedStorage> Tx<VS> for TransactionTx<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<VS, US> {
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
         Ok(TransactionTx::get(self, key)?)
     }
@@ -132,5 +133,9 @@ impl<VS: VersionedStorage> Tx<VS> for TransactionTx<VS> {
     fn rollback(mut self) -> crate::Result<()> {
         TransactionTx::rollback(&mut self)?;
         Ok(())
+    }
+
+    fn bypass(&mut self) -> &mut BypassTx<US> {
+        todo!()
     }
 }

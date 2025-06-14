@@ -21,38 +21,39 @@ pub use read::TransactionRx;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::hook::Hooks;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
-use reifydb_storage::VersionedStorage;
+use reifydb_storage::{UnversionedStorage, VersionedStorage};
 pub use write::TransactionTx;
 
 mod read;
 mod write;
 
-pub struct Optimistic<VS: VersionedStorage>(Arc<Inner<VS>>);
+pub struct Optimistic<VS: VersionedStorage, US: UnversionedStorage>(Arc<Inner<VS, US>>);
 
-impl<VS: VersionedStorage> Deref for Optimistic<VS> {
-    type Target = Inner<VS>;
+impl<VS: VersionedStorage, US: UnversionedStorage> Deref for Optimistic<VS, US> {
+    type Target = Inner<VS, US>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<VS: VersionedStorage> Clone for Optimistic<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Clone for Optimistic<VS, US> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-pub struct Inner<VS: VersionedStorage> {
+pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
-    pub(crate) storage: VS,
+    pub(crate) versioned: VS,
+    pub(crate) unversioned: US,
     pub(crate) hooks: Hooks,
 }
 
-impl<VS: VersionedStorage> Inner<VS> {
-    fn new(name: &str, storage: VS, hooks: Hooks) -> Self {
+impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
+    fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
-        Self { tm, storage, hooks }
+        Self { tm, versioned, unversioned, hooks }
     }
 
     fn version(&self) -> Version {
@@ -60,52 +61,52 @@ impl<VS: VersionedStorage> Inner<VS> {
     }
 }
 
-impl<VS: VersionedStorage> Optimistic<VS> {
-    pub fn new(storage: VS) -> Self {
-        let hooks = storage.hooks();
-        Self(Arc::new(Inner::new(core::any::type_name::<Self>(), storage, hooks)))
+impl<VS: VersionedStorage, US: UnversionedStorage> Optimistic<VS, US> {
+    pub fn new(versioned: VS, unversioned: US) -> Self {
+        let hooks = versioned.hooks();
+        Self(Arc::new(Inner::new(core::any::type_name::<Self>(), versioned, unversioned, hooks)))
     }
 }
 
-impl<VS: VersionedStorage> Optimistic<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Optimistic<VS, US> {
     pub fn version(&self) -> Version {
         self.0.version()
     }
-    pub fn begin_read_only(&self) -> TransactionRx<VS> {
+    pub fn begin_read_only(&self) -> TransactionRx<VS, US> {
         TransactionRx::new(self.clone(), None)
     }
 }
 
-impl<VS: VersionedStorage> Optimistic<VS> {
-    pub fn begin(&self) -> TransactionTx<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Optimistic<VS, US> {
+    pub fn begin(&self) -> TransactionTx<VS, US> {
         TransactionTx::new(self.clone())
     }
 }
 
-pub enum Transaction<VS: VersionedStorage> {
-    Rx(TransactionRx<VS>),
-    Tx(TransactionTx<VS>),
+pub enum Transaction<VS: VersionedStorage, US: UnversionedStorage> {
+    Rx(TransactionRx<VS, US>),
+    Tx(TransactionTx<VS, US>),
 }
 
-impl<VS: VersionedStorage> Optimistic<VS> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Optimistic<VS, US> {
     pub fn get(&self, key: &EncodedKey, version: Version) -> Option<Committed> {
-        self.storage.get(key, version).map(|sv| sv.into())
+        self.versioned.get(key, version).map(|sv| sv.into())
     }
 
     pub fn contains_key(&self, key: &EncodedKey, version: Version) -> bool {
-        self.storage.contains(key, version)
+        self.versioned.contains(key, version)
     }
 
     pub fn scan(&self, version: Version) -> VS::ScanIter<'_> {
-        self.storage.scan(version)
+        self.versioned.scan(version)
     }
 
     pub fn scan_rev(&self, version: Version) -> VS::ScanIterRev<'_> {
-        self.storage.scan_rev(version)
+        self.versioned.scan_rev(version)
     }
 
     pub fn scan_range(&self, range: EncodedKeyRange, version: Version) -> VS::ScanRangeIter<'_> {
-        self.storage.scan_range(range, version)
+        self.versioned.scan_range(range, version)
     }
 
     pub fn scan_range_rev(
@@ -113,6 +114,6 @@ impl<VS: VersionedStorage> Optimistic<VS> {
         range: EncodedKeyRange,
         version: Version,
     ) -> VS::ScanRangeIterRev<'_> {
-        self.storage.scan_range_rev(range, version)
+        self.versioned.scan_range_rev(range, version)
     }
 }

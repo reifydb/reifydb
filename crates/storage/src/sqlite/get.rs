@@ -7,7 +7,7 @@ use crate::Unversioned;
 use crate::unversioned::UnversionedGet;
 
 impl UnversionedGet for Sqlite{
-	fn get(&self, key: &EncodedKey) -> Option<Unversioned> {
+	fn get_unversioned(&self, key: &EncodedKey) -> Option<Unversioned> {
 		todo!()
 	}
 }
