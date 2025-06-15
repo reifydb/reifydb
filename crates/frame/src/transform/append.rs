@@ -1270,7 +1270,7 @@ mod tests {
 
             let layout = Layout::new(&[ValueKind::Int2, ValueKind::Int2]);
             let mut row = layout.allocate_row();
-            layout.set_i16(&mut row, 0, -1234);
+            layout.set_i16(&mut row, 0, -1234i16);
             layout.set_undefined(&mut row, 1);
 
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -1402,7 +1402,7 @@ mod tests {
 
             let layout = Layout::new(&[ValueKind::Uint2, ValueKind::Uint2]);
             let mut row = layout.allocate_row();
-            layout.set_u16(&mut row, 0, 65535);
+            layout.set_u16(&mut row, 0, 65535u16);
             layout.set_undefined(&mut row, 1);
 
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -1424,7 +1424,7 @@ mod tests {
 
             let layout = Layout::new(&[ValueKind::Uint4, ValueKind::Uint4]);
             let mut row = layout.allocate_row();
-            layout.set_u32(&mut row, 0, 4294967295);
+            layout.set_u32(&mut row, 0, 4294967295u32);
             layout.set_undefined(&mut row, 1);
 
             test_instance.append_rows(&layout, [row]).unwrap();

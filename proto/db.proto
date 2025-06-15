@@ -48,7 +48,7 @@ message Value {oneof kind {
 message Row {repeated Value values = 1;}
 
 
-message CreateSchema {string schema = 1;}
+message CreateSchema {string schema = 1; bool created = 2;}
 
 message CreateSeries {string schema = 1;
   string series = 2;}

@@ -11,8 +11,12 @@ impl Display for ExecutionResult {
             ExecutionResult::CreateDeferredView { schema, view, .. } => {
                 write!(f, "deferred view {view} created in schema {schema}")
             }
-            ExecutionResult::CreateSchema { schema } => {
-                write!(f, "schema {schema} created")
+            ExecutionResult::CreateSchema { schema, created, .. } => {
+                if *created {
+                    write!(f, "schema {schema} created")
+                } else {
+                    write!(f, "schema {schema} already exists")
+                }
             }
             ExecutionResult::CreateSeries { schema, series, .. } => {
                 write!(f, "series {series} created in schema {schema}")

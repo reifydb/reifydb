@@ -4,7 +4,7 @@
 use crate::{GetHooks, Unversioned};
 use reifydb_core::delta::Delta;
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey};
+use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange};
 
 pub trait UnversionedStorage:
     Send
@@ -16,6 +16,7 @@ pub trait UnversionedStorage:
     + UnversionedSet
     + UnversionedRemove
     + UnversionedScan
+    + UnversionedScanRange
 {
 }
 
@@ -51,4 +52,20 @@ pub trait UnversionedScan {
         Self: 'a;
 
     fn scan_unversioned(&self) -> Self::ScanIter<'_>;
+}
+
+pub trait UnversionedScanRangeIterator: Iterator<Item = Unversioned> {}
+
+impl<T> UnversionedScanRangeIterator for T where T: Iterator<Item = Unversioned> {}
+
+pub trait UnversionedScanRange {
+    type ScanRangeIter<'a>: UnversionedScanRangeIterator
+    where
+        Self: 'a;
+
+    fn scan_range(&self, range: EncodedKeyRange) -> Self::ScanRangeIter<'_>;
+
+    fn scan_prefix(&self, prefix: &EncodedKey) -> Self::ScanRangeIter<'_> {
+        self.scan_range(EncodedKeyRange::prefix(prefix))
+    }
 }

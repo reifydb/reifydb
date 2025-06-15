@@ -98,7 +98,7 @@ mod tests {
 
         let err = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).err().unwrap();
         let diagnostic = err.diagnostic();
-        assert_eq!(diagnostic.code, "PO0001")
+        assert_eq!(diagnostic.code, "PO_001")
     }
 
     #[test]

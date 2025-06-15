@@ -14,12 +14,15 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
+    if let Err(e) = db.tx_as(&root, r#"create schema test"#){
+        println!("{}", e);
+    }
 
-    // db.tx_as(
-    //     &root,
-    //     r#"create table test.item(field_one: int1 policy ( saturation undefined), field_two: int2, field_three: int1)"#,
-    // ).unwrap();
-    //
+    db.tx_as(
+        &root,
+        r#"create table test.item(field_one: int1 policy ( saturation undefined), field_two: int2, field_three: int1)"#,
+    ).unwrap();
+    
     // // db.tx_as(
     // //     &root,
     // //     r#"create deferred view test.item_view(field_one: int1, field_two: int2, field_three: int1)"#,

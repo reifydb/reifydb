@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{VersionedScanRange, Versioned};
+use crate::unversioned::UnversionedScanRange;
+use crate::{Unversioned, Versioned, VersionedScanRange};
 use heed::types::Bytes;
 use heed::{Database, Env};
 use reifydb_core::row::EncodedRow;
@@ -99,5 +100,26 @@ impl Iterator for Range {
             self.refill_buffer()
         }
         self.buffer.pop_front()
+    }
+}
+
+impl UnversionedScanRange for Lmdb {
+    type ScanRangeIter<'a>
+        = UnversionedRange
+    where
+        Self: 'a;
+
+    fn scan_range(&self, range: EncodedKeyRange) -> Self::ScanRangeIter<'_> {
+        todo!()
+    }
+}
+
+pub struct UnversionedRange {}
+
+impl Iterator for UnversionedRange {
+    type Item = Unversioned;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
     }
 }

@@ -40,6 +40,12 @@ impl PartialEq<u32> for SchemaId {
     }
 }
 
+impl From<SchemaId> for u32 {
+    fn from(value: SchemaId) -> Self {
+        value.0
+    }
+}
+
 #[derive(Debug)]
 pub struct SchemaToCreate {
     pub id: SchemaId,
@@ -86,5 +92,11 @@ impl PartialEq<u32> for TableId {
 pub struct TableToCreate {
     pub id: TableId,
     pub schema: SchemaId,
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Schema {
+    pub id: SchemaId,
     pub name: String,
 }

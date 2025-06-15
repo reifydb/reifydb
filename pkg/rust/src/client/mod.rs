@@ -149,7 +149,9 @@ impl Client {
                         source: query.to_string(),
                     });
                 }
-                Some(CreateSchema(cs)) => ExecutionResult::CreateSchema { schema: cs.schema },
+                Some(CreateSchema(cs)) => {
+                    ExecutionResult::CreateSchema { schema: cs.schema, created: cs.created }
+                }
                 Some(CreateTable(ct)) => {
                     ExecutionResult::CreateTable { schema: ct.schema, table: ct.table }
                 }

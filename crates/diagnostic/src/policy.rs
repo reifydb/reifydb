@@ -20,7 +20,7 @@ pub fn column_saturation<'a>(co: ColumnSaturation) -> Diagnostic {
     ));
 
     Diagnostic {
-        code: "PO0001".to_string(),
+        code: "PO_001".to_string(),
         message: format!("value saturation in column `{}` type `{}`", co.column, co.value),
         span: Some(co.span),
         label,

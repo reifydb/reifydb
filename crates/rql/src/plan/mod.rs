@@ -17,6 +17,7 @@ pub use error::Error;
 use reifydb_catalog::{
     CatalogRx, Column, ColumnPolicy, ColumnSaturationPolicy, ColumnToCreate, SchemaRx, StoreRx,
 };
+use reifydb_diagnostic::Span;
 use reifydb_frame::{SortDirection, SortKey};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::{Rx, Tx};
@@ -62,10 +63,11 @@ pub struct CreateDeferredViewPlan {
     pub columns: Vec<ColumnToCreate>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CreateSchemaPlan {
     pub schema: String,
     pub if_not_exists: bool,
+    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -179,6 +181,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                     AstCreate::Schema { name, .. } => Ok(PlanTx::CreateSchema(CreateSchemaPlan {
                         schema: name.value().to_string(),
                         if_not_exists: false,
+                        span: name.0.span,
                     })),
                     AstCreate::Series { schema, name, columns: definitions, .. } => {
                         // let mut columns: Vec<ColumnToCreate> = vec![];

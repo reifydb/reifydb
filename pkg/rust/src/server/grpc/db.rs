@@ -76,10 +76,11 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
                                 })
                                 .collect();
                         }
-                        ExecutionResult::CreateSchema { schema } => {
+                        ExecutionResult::CreateSchema { schema, created } => {
                             let msg = TxResult {
                                 result: Some(CreateSchema(grpc_db::CreateSchema {
                                     schema: schema.clone(),
+                                    created: *created,
                                 })),
                             };
                             return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));

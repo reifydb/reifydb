@@ -2,96 +2,120 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ValueKind;
-use crate::row::{Layout, EncodedRow};
+use crate::row::{EncodedRow, Layout};
 use std::ptr;
 
 impl Layout {
-    pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: bool) {
+    pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Bool);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut bool, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut bool,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: f32) {
+    pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Float4);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut f32, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut f32,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: f64) {
+    pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: impl Into<f64>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Float8);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut f64, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut f64,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_i8(&self, row: &mut EncodedRow, index: usize, value: i8) {
+    pub fn set_i8(&self, row: &mut EncodedRow, index: usize, value: impl Into<i8>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int1);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i8, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut i8,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: i16) {
+    pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: impl Into<i16>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int2);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i16, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut i16,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_i32(&self, row: &mut EncodedRow, index: usize, value: i32) {
+    pub fn set_i32(&self, row: &mut EncodedRow, index: usize, value: impl Into<i32>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int4);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i32, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut i32,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_i64(&self, row: &mut EncodedRow, index: usize, value: i64) {
+    pub fn set_i64(&self, row: &mut EncodedRow, index: usize, value: impl Into<i64>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int8);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i64, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut i64,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_i128(&self, row: &mut EncodedRow, index: usize, value: i128) {
+    pub fn set_i128(&self, row: &mut EncodedRow, index: usize, value: impl Into<i128>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Int16);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i128, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut i128,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_str(&self, row: &mut EncodedRow, index: usize, value: &str) {
+    pub fn set_str(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::String);
 
-        let bytes = value.as_bytes();
+        let bytes = value.as_ref().as_bytes();
         let len = bytes.len().min(254); // One byte for length
         row.set_valid(index, true);
 
@@ -102,53 +126,63 @@ impl Layout {
         }
     }
 
-    pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: u8) {
+    pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint1);
         row.set_valid(index, true);
-        unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u8, value)
-        }
+        unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset), value.into()) }
     }
 
-    pub fn set_u16(&self, row: &mut EncodedRow, index: usize, value: u16) {
+    pub fn set_u16(&self, row: &mut EncodedRow, index: usize, value: impl Into<u16>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint2);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u16, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut u16,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: u32) {
+    pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint4);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u32, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut u32,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: u64) {
+    pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: impl Into<u64>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint8);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u64, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut u64,
+                value.into(),
+            )
         }
     }
 
-    pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: u128) {
+    pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: impl Into<u128>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, ValueKind::Uint16);
         row.set_valid(index, true);
         unsafe {
-            ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u128, value)
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
+                value.into(),
+            )
         }
     }
 

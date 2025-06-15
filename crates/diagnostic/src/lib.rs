@@ -9,10 +9,11 @@
 use reifydb_core::ValueKind;
 pub use span::{IntoSpan, Line, Offset, Span};
 
+pub mod catalog;
 pub mod plan;
 pub mod policy;
-mod span;
-mod sequence;
+pub mod sequence;
+pub mod span;
 mod util;
 
 #[derive(Debug, Clone, PartialEq)]

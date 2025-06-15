@@ -8,7 +8,7 @@ use reifydb_core::ValueKind;
 impl Diagnostic {
     pub fn sequence_exhausted(value: ValueKind) -> Self {
         Diagnostic {
-            code: "SQ001".to_string(),
+            code: "SQ_001".to_string(),
             message: format!("sequence generator of type `{}` is exhausted", value),
             span: None,
             label: Some("no more values can be generated".to_string()),

@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::EncodedKey;
 use reifydb_core::row::EncodedRow;
+use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_storage::{Unversioned, UnversionedStorage};
 
 pub struct BypassRx<US: UnversionedStorage> {
@@ -34,6 +34,18 @@ impl<US: UnversionedStorage> BypassTx<US> {
 impl<US: UnversionedStorage> BypassTx<US> {
     pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>> {
         Ok(self.unversioned.get_unversioned(key))
+    }
+
+    pub fn scan(&mut self) -> crate::Result<US::ScanIter<'_>> {
+        Ok(self.unversioned.scan_unversioned())
+    }
+
+    pub fn scan_range(&mut self, range: EncodedKeyRange) -> crate::Result<US::ScanRangeIter<'_>> {
+        Ok(self.unversioned.scan_range(range))
+    }
+
+    pub fn scan_prefix(&mut self, key: &EncodedKey) -> crate::Result<US::ScanRangeIter<'_>> {
+        Ok(self.unversioned.scan_prefix(&key))
     }
 
     pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {

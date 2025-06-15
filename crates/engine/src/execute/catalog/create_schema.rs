@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::Error;
+use crate::execute::catalog::layout::schema;
 use crate::execute::{ExecutionResult, Executor};
-use reifydb_core::ValueKind;
-use reifydb_core::row::Layout;
+use reifydb_core::{Key, SchemaKey};
+use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::CreateSchemaPlan;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
@@ -14,19 +16,69 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         tx: &mut impl Tx<VS, US>,
         plan: CreateSchemaPlan,
     ) -> crate::Result<ExecutionResult> {
-        // FIXME schema name already exists
-        // FIXME handle create if_not_exists
-        // FIXME serialize schema and insert
-        let schema_layout = Layout::new(&[ValueKind::String]);
-        let mut row = schema_layout.allocate_row();
-        schema_layout.set_str(&mut row, 0, &plan.schema);
+        if let Some(schema) = self.get_schema_by_name(tx, &plan.schema)? {
+            if plan.if_not_exists {
+                return Ok(ExecutionResult::CreateSchema { schema: plan.schema, created: false });
+            }
 
-        let id = self.next_schema_id(tx)?;
-        dbg!(&id);
-        //
-        // tx.set(Key::Schema(SchemaKey { schema_id: SchemaId(1) }).encode(), row)?;
-        // ctx.unversioned.get_unversioned(&EncodedKey(AsyncCowVec::new(vec![])));
+            return Err(Error::execution(Diagnostic::schema_already_exists(
+                plan.span,
+                &schema.name,
+            )));
+        }
 
-        Ok(ExecutionResult::CreateSchema { schema: plan.schema })
+        let schema_id = self.next_schema_id(tx)?;
+
+        let mut row = schema::LAYOUT.allocate_row();
+        schema::LAYOUT.set_u32(&mut row, schema::ID, schema_id);
+        schema::LAYOUT.set_str(&mut row, schema::NAME, &plan.schema);
+
+        tx.bypass().set(&Key::Schema(SchemaKey { schema_id }).encode(), row)?;
+
+        Ok(ExecutionResult::CreateSchema { schema: plan.schema, created: true })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ExecutionResult;
+    use crate::execute::execute_tx;
+    use reifydb_diagnostic::Span;
+    use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
+    use reifydb_storage::memory::Memory;
+    use reifydb_testing::transaction::TestTransaction;
+
+    #[test]
+    fn test_create_schema() {
+        let unversioned = Memory::new();
+        let memory = Memory::new();
+
+        let mut tx = TestTransaction::new(memory, unversioned.clone());
+
+        let mut plan = CreateSchemaPlan {
+            schema: "my_schema".to_string(),
+            if_not_exists: false,
+            span: Span::testing(),
+        };
+
+        // First creation should succeed
+        let result = execute_tx(&mut tx, PlanTx::CreateSchema(plan.clone())).unwrap();
+        assert_eq!(
+            result,
+            ExecutionResult::CreateSchema { schema: "my_schema".into(), created: true }
+        );
+
+        // Creating the same schema again with `if_not_exists = true` should not error
+        plan.if_not_exists = true;
+        let result = execute_tx(&mut tx, PlanTx::CreateSchema(plan.clone())).unwrap();
+        assert_eq!(
+            result,
+            ExecutionResult::CreateSchema { schema: "my_schema".into(), created: false }
+        );
+
+        // Creating the same schema again with `if_not_exists = false` should return error
+        plan.if_not_exists = false;
+        let err = execute_tx(&mut tx, PlanTx::CreateSchema(plan)).unwrap_err();
+        dbg!(err.diagnostic().code, "CA_001");
     }
 }

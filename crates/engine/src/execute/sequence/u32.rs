@@ -35,7 +35,7 @@ impl SequenceGeneratorU32 {
             }
             None => {
                 let mut new_row = LAYOUT.allocate_row();
-                LAYOUT.set_u32(&mut new_row, 0, 2);
+                LAYOUT.set_u32(&mut new_row, 0, 2u32);
                 tx.bypass().set(&key, new_row)?;
                 Ok(1)
             }

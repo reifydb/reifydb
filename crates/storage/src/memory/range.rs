@@ -11,11 +11,14 @@
 
 use crossbeam_skiplist::map::Range as MapRange;
 
-use crate::Versioned;
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
+use crate::unversioned::UnversionedScanRange;
 use crate::versioned::VersionedScanRange;
+use crate::{Unversioned, Versioned};
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
+use rusqlite::fallible_iterator::FallibleIterator;
 use std::ops::Bound;
 
 impl VersionedScanRange for Memory {
@@ -51,6 +54,32 @@ impl<'a> Iterator for Range<'a> {
             {
                 return Some(Versioned { key: item.key().clone(), version, row: value }.into());
             }
+        }
+    }
+}
+
+impl UnversionedScanRange for Memory {
+    type ScanRangeIter<'a>
+        = UnversionedRange<'a>
+    where
+        Self: 'a;
+
+    fn scan_range(&self, range: EncodedKeyRange) -> Self::ScanRangeIter<'_> {
+        UnversionedRange { range: self.unversioned.range(range) }
+    }
+}
+
+pub struct UnversionedRange<'a> {
+    pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedRow>,
+}
+
+impl<'a> Iterator for UnversionedRange<'a> {
+    type Item = Unversioned;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let item = self.range.next()?;
+            return Some(Unversioned { key: item.key().clone(), row: item.value().clone() });
         }
     }
 }

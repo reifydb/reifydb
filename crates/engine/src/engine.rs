@@ -93,7 +93,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
             // }
             // _ => {
             let plan = plan_tx(&tx, statement)?;
-            let er = execute_tx(plan, &mut tx)?;
+            let er = execute_tx(&mut tx, plan)?;
             result.push(er);
             // }
             // }
@@ -111,7 +111,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         let mut rx = self.begin_read_only().unwrap();
         for statement in statements {
             let plan = plan_rx(statement).unwrap();
-            let er = execute_rx(plan, &mut rx).unwrap();
+            let er = execute_rx(&mut rx, plan).unwrap();
             result.push(er);
         }
 

@@ -41,6 +41,12 @@ pub struct Span {
     pub fragment: String,
 }
 
+impl Span {
+    pub fn testing() -> Self {
+        Self { offset: Offset(0), line: Line(1), fragment: "".to_string() }
+    }
+}
+
 impl PartialOrd for Span {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))

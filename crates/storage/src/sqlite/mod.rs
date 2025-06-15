@@ -4,6 +4,7 @@
 mod apply;
 mod get;
 mod scan;
+mod range;
 
 use crate::unversioned::{UnversionedRemove, UnversionedSet, UnversionedStorage};
 use crate::versioned::{
