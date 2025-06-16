@@ -3,8 +3,8 @@
 
 use crate::Catalog;
 use crate::column::{ColumnPolicy, ColumnToCreate};
-use crate::schema::Schema;
 use crate::schema::SchemaToCreate;
+use crate::schema::{Schema, SchemaId};
 use crate::table;
 use crate::table::TableId;
 use crate::table::{Table, TableToCreate};
@@ -26,7 +26,7 @@ pub fn ensure_test_schema(tx: &mut impl Tx<Memory, Memory>) -> Schema {
 
 pub fn ensure_test_table(tx: &mut impl Tx<Memory, Memory>) -> Table {
     ensure_test_schema(tx);
-    if let Some(result) = Catalog::get_table_by_name(tx, "test_table").unwrap() {
+    if let Some(result) = Catalog::get_table_by_name(tx, SchemaId(1), "test_table").unwrap() {
         return result;
     }
     create_table(tx, "test_schema", "test_table", &[])

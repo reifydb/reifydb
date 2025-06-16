@@ -2,21 +2,34 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Catalog;
-use crate::key::{EncodableKey, TableKey};
+use crate::key::{EncodableKey, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
-use crate::table::layout::table;
+use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
-use reifydb_core::row::EncodedRow;
 use reifydb_storage::Versioned;
 use reifydb_transaction::Rx;
 
 impl Catalog {
-    pub fn get_table_by_name(rx: &mut impl Rx, name: &str) -> crate::Result<Option<Table>> {
-        Ok(rx.scan_range(TableKey::full_scan())?.find_map(|versioned| {
-            let row: &EncodedRow = &versioned.row;
-            let table_name = table::LAYOUT.get_str(row, table::NAME);
-            if name == table_name { Some(Self::convert_table(versioned)) } else { None }
-        }))
+    pub fn get_table_by_name(
+        rx: &mut impl Rx,
+        schema: SchemaId,
+        name: &str,
+    ) -> crate::Result<Option<Table>> {
+        let Some(table) =
+            rx.scan_range(SchemaTableKey::full_scan(schema))?.find_map(|versioned: Versioned| {
+                let row = &versioned.row;
+                let table_name = table_schema::LAYOUT.get_str(row, table_schema::NAME);
+                if name == table_name {
+                    Some(TableId(table_schema::LAYOUT.get_u32(row, table_schema::ID)))
+                } else {
+                    None
+                }
+            })
+        else {
+            return Ok(None);
+        };
+
+        Catalog::get_table(rx, table)
     }
 
     pub fn get_table(rx: &mut impl Rx, table: TableId) -> crate::Result<Option<Table>> {
@@ -34,9 +47,9 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-
     mod get_table_by_name {
         use crate::Catalog;
+        use crate::schema::SchemaId;
         use crate::test_utils::{create_schema, create_table, ensure_test_schema};
         use reifydb_transaction::test_utils::TestTransaction;
 
@@ -52,7 +65,8 @@ mod tests {
             create_table(&mut tx, "schema_two", "table_two", &[]);
             create_table(&mut tx, "schema_three", "table_three", &[]);
 
-            let result = Catalog::get_table_by_name(&mut tx, "table_two").unwrap().unwrap();
+            let result =
+                Catalog::get_table_by_name(&mut tx, SchemaId(1), "table_two").unwrap().unwrap();
             assert_eq!(result.id, 2);
             assert_eq!(result.schema, 3);
             assert_eq!(result.name, "table_two");
@@ -61,12 +75,12 @@ mod tests {
         #[test]
         fn test_empty() {
             let mut tx = TestTransaction::new();
-            let result = Catalog::get_table_by_name(&mut tx, "some_table").unwrap();
+            let result = Catalog::get_table_by_name(&mut tx, SchemaId(1), "some_table").unwrap();
             assert!(result.is_none());
         }
 
         #[test]
-        fn test_not_found() {
+        fn test_not_found_different_table() {
             let mut tx = TestTransaction::new();
             ensure_test_schema(&mut tx);
             create_schema(&mut tx, "schema_one");
@@ -77,7 +91,24 @@ mod tests {
             create_table(&mut tx, "schema_two", "table_two", &[]);
             create_table(&mut tx, "schema_three", "table_three", &[]);
 
-            let result = Catalog::get_table_by_name(&mut tx, "table_four_two").unwrap();
+            let result =
+                Catalog::get_table_by_name(&mut tx, SchemaId(1), "table_four_two").unwrap();
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_not_found_different_schema() {
+            let mut tx = TestTransaction::new();
+            ensure_test_schema(&mut tx);
+            create_schema(&mut tx, "schema_one");
+            create_schema(&mut tx, "schema_two");
+            create_schema(&mut tx, "schema_three");
+
+            create_table(&mut tx, "schema_one", "table_one", &[]);
+            create_table(&mut tx, "schema_two", "table_two", &[]);
+            create_table(&mut tx, "schema_three", "table_three", &[]);
+
+            let result = Catalog::get_table_by_name(&mut tx, SchemaId(2), "table_two").unwrap();
             assert!(result.is_none());
         }
     }

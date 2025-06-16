@@ -10,8 +10,13 @@ pub(crate) mod table {
     pub(crate) const SCHEMA: usize = 1;
     pub(crate) const NAME: usize = 2;
 
-    pub(crate) static LAYOUT: Lazy<Layout> =
-        Lazy::new(|| Layout::new(&[ValueKind::Uint4, ValueKind::Uint4, ValueKind::String]));
+    pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
+        Layout::new(&[
+            ValueKind::Uint4,  // id
+            ValueKind::Uint4,  // schema id
+            ValueKind::String, // name
+        ])
+    });
 }
 
 pub(crate) mod table_schema {
@@ -20,6 +25,12 @@ pub(crate) mod table_schema {
     use reifydb_core::row::Layout;
 
     pub(crate) const ID: usize = 0;
+    pub(crate) const NAME: usize = 1;
 
-    pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[ValueKind::Uint4]));
+    pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
+        Layout::new(&[
+            ValueKind::Uint4,  // id
+            ValueKind::String, // name
+        ])
+    });
 }

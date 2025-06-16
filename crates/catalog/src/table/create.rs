@@ -36,7 +36,7 @@ impl Catalog {
             return Err(Error(Diagnostic::schema_not_found(to_create.span, &to_create.schema)));
         };
 
-        if let Some(table) = Catalog::get_table_by_name(tx, &to_create.table)? {
+        if let Some(table) = Catalog::get_table_by_name(tx, schema.id, &to_create.table)? {
             return Err(Error(Diagnostic::table_already_exists(
                 to_create.span,
                 &schema.name,
@@ -46,7 +46,7 @@ impl Catalog {
 
         let table_id = Catalog::next_table_id(tx)?;
         Self::store_table(tx, table_id, schema.id, &to_create)?;
-        Self::link_table_to_schema(tx, table_id, schema.id)?;
+        Self::link_table_to_schema(tx, schema.id, table_id, &to_create.table)?;
 
         Catalog::insert_columns(tx, table_id, to_create)?;
 
@@ -71,11 +71,13 @@ impl Catalog {
 
     fn link_table_to_schema<VS: VersionedStorage, US: UnversionedStorage>(
         tx: &mut impl Tx<VS, US>,
-        table: TableId,
         schema: SchemaId,
+        table: TableId,
+        name: &str,
     ) -> crate::Result<()> {
         let mut row = table_schema::LAYOUT.allocate_row();
         table_schema::LAYOUT.set_u32(&mut row, table_schema::ID, table);
+        table_schema::LAYOUT.set_str(&mut row, table_schema::NAME, name);
         tx.set(&Key::SchemaTable(SchemaTableKey { schema, table }).encode(), row)?;
         Ok(())
     }
@@ -108,12 +110,11 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
     use crate::Catalog;
-    use crate::key::{EncodableKey, SchemaTableKey};
+    use crate::key::SchemaTableKey;
     use crate::schema::SchemaId;
-    use crate::table::{TableId, TableToCreate};
+    use crate::table::TableToCreate;
+    use crate::table::layout::table_schema;
     use crate::test_utils::ensure_test_schema;
-    use reifydb_core::AsyncCowVec;
-    use reifydb_core::row::EncodedRow;
     use reifydb_transaction::Rx;
     use reifydb_transaction::test_utils::TestTransaction;
 
@@ -169,20 +170,14 @@ mod tests {
         assert_eq!(links.len(), 2);
 
         let link = &links[0];
-        assert_eq!(link.key, SchemaTableKey { schema: SchemaId(1), table: TableId(1) }.encode());
-
-        assert_eq!(
-            link.row,
-            EncodedRow(AsyncCowVec::new([0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00].to_vec())) // validity + padding + id
-        );
+        let row = &link.row;
+        assert_eq!(table_schema::LAYOUT.get_u32(&row, table_schema::ID), 1);
+        assert_eq!(table_schema::LAYOUT.get_str(&row, table_schema::NAME), "test_table");
 
         let link = &links[1];
-        assert_eq!(link.key, SchemaTableKey { schema: SchemaId(1), table: TableId(2) }.encode());
-
-        assert_eq!(
-            link.row,
-            EncodedRow(AsyncCowVec::new([0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00].to_vec())) // validity + padding + id
-        )
+        let row = &link.row;
+        assert_eq!(table_schema::LAYOUT.get_u32(&row, table_schema::ID), 2);
+        assert_eq!(table_schema::LAYOUT.get_str(&row, table_schema::NAME), "another_table");
     }
 
     #[test]

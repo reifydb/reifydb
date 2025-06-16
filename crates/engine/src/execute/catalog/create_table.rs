@@ -23,7 +23,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             )));
         };
 
-        if let Some(table) = Catalog::get_table_by_name(tx, &plan.table)? {
+        if let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table)? {
             if plan.if_not_exists {
                 return Ok(ExecutionResult::CreateTable(CreateTableResult {
                     id: table.id,
@@ -65,7 +65,7 @@ mod tests {
     use crate::execute::catalog::create_table::CreateTablePlan;
     use crate::{ExecutionResult, execute_tx};
     use reifydb_catalog::table::TableId;
-    use reifydb_catalog::test_utils::ensure_test_schema;
+    use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::PlanTx;
     use reifydb_transaction::test_utils::TestTransaction;
@@ -113,6 +113,53 @@ mod tests {
         plan.if_not_exists = false;
         let err = execute_tx(&mut tx, PlanTx::CreateTable(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_003");
+    }
+
+    #[test]
+    fn test_create_same_table_in_different_schema() {
+        let mut tx = TestTransaction::new();
+
+        ensure_test_schema(&mut tx);
+        create_schema(&mut tx, "another_schema");
+
+        let 
+        plan = CreateTablePlan {
+            schema: "test_schema".to_string(),
+            table: "test_table".to_string(),
+            if_not_exists: false,
+            columns: vec![],
+            span: Span::testing(),
+        };
+
+        let result = execute_tx(&mut tx, PlanTx::CreateTable(plan.clone())).unwrap();
+        assert_eq!(
+            result,
+            ExecutionResult::CreateTable(CreateTableResult {
+                id: TableId(1),
+                schema: "test_schema".into(),
+                table: "test_table".into(),
+                created: true
+            })
+        );
+
+        let plan = CreateTablePlan {
+            schema: "another_schema".to_string(),
+            table: "test_table".to_string(),
+            if_not_exists: false,
+            columns: vec![],
+            span: Span::testing(),
+        };
+
+        let result = execute_tx(&mut tx, PlanTx::CreateTable(plan.clone())).unwrap();
+        assert_eq!(
+            result,
+            ExecutionResult::CreateTable(CreateTableResult {
+                id: TableId(2),
+                schema: "another_schema".into(),
+                table: "test_table".into(),
+                created: true
+            })
+        );
     }
 
     #[test]
