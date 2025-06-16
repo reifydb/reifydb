@@ -4,9 +4,18 @@
 #[cfg(test)]
 use crate::Catalog;
 #[cfg(test)]
+use crate::column::{ColumnPolicy, ColumnToCreate};
+#[cfg(test)]
 use crate::schema::SchemaToCreate;
+use crate::table;
+#[cfg(test)]
+use crate::table::{Table, TableToCreate};
+#[cfg(test)]
+use reifydb_core::ValueKind;
 #[cfg(test)]
 use reifydb_core::catalog::Schema;
+#[cfg(test)]
+use reifydb_core::catalog::TableId;
 #[cfg(test)]
 use reifydb_storage::memory::Memory;
 #[cfg(test)]
@@ -24,4 +33,58 @@ pub fn ensure_test_schema(tx: &mut impl Tx<Memory, Memory>) -> Schema {
         return result;
     }
     create_schema(tx, "test_schema")
+}
+
+#[cfg(test)]
+pub fn ensure_test_table(tx: &mut impl Tx<Memory, Memory>) -> Table {
+    ensure_test_schema(tx);
+    if let Some(result) = Catalog::get_table_by_name(tx, "test_table").unwrap() {
+        return result;
+    }
+    create_table(tx, "test_schema", "test_table", &[])
+}
+
+#[cfg(test)]
+pub fn create_table(
+    tx: &mut impl Tx<Memory, Memory>,
+    schema: &str,
+    table: &str,
+    columns: &[table::ColumnToCreate],
+) -> Table {
+    Catalog::create_table(
+        tx,
+        TableToCreate {
+            span: None,
+            schema: schema.to_string(),
+            table: table.to_string(),
+            columns: columns.to_vec(),
+        },
+    )
+    .unwrap()
+}
+
+#[cfg(test)]
+pub fn create_test_table_column(
+    tx: &mut impl Tx<Memory, Memory>,
+    name: &str,
+    value: ValueKind,
+    policies: Vec<ColumnPolicy>,
+) {
+    ensure_test_table(tx);
+
+    Catalog::create_column(
+        tx,
+        TableId(1),
+        ColumnToCreate {
+            span: None,
+            schema_name: "test_schema",
+            table: TableId(1),
+            table_name: "test_table",
+            column: name.to_string(),
+            value,
+            if_not_exists: false,
+            policies,
+        },
+    )
+    .unwrap();
 }

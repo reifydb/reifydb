@@ -30,11 +30,11 @@ impl Diagnostic {
         }
     }
 
-    pub fn table_already_exists(span: Span, schema: &str, table: &str) -> Diagnostic {
+    pub fn table_already_exists(span: Option<Span>, schema: &str, table: &str) -> Diagnostic {
         Diagnostic {
             code: "CA_003".to_string(),
             message: format!("table `{}.{}` already exists", schema, table),
-            span: Some(span),
+            span,
             label: Some("duplicate table definition".to_string()),
             help: Some("choose a different name, drop the existing table or create table in a different schema".to_string()),
             column: None,
