@@ -7,16 +7,14 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use catalog::Catalog;
-pub use column::*;
+pub use dep::column::*;
 pub use error::Error;
-pub use schema::*;
-pub use store::*;
+pub use dep::schema::*;
+pub use dep::store::*;
 
 mod catalog;
-mod column;
 mod error;
-mod schema;
-mod store;
+mod dep;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
