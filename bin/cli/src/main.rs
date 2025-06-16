@@ -30,12 +30,12 @@ fn main() {
     // // )
     // // .unwrap();
     //
-    if let Err(e) = db.tx_as(
-        &root,
-        r#"insert (1,1,1),(2,2,2) into test.item (field_one, field_two, field_three)"#,
-    ) {
-        println!("{}", e);
-    }
+    // if let Err(e) = db.tx_as(
+    //     &root,
+    //     r#"insert (1,1,1),(2,2,2) into test.item (field_one, field_two, field_three)"#,
+    // ) {
+    //     println!("{}", e);
+    // }
     // if let Err(e) =
     //     db.tx_as(&root, r#"insert (130,1,1) into test.item (field_one, field_two, field_three)"#)
     // {

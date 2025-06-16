@@ -1,32 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-#[cfg(test)]
 use crate::Catalog;
-#[cfg(test)]
 use crate::column::{ColumnPolicy, ColumnToCreate};
-#[cfg(test)]
 use crate::schema::Schema;
-#[cfg(test)]
 use crate::schema::SchemaToCreate;
 use crate::table;
 use crate::table::TableId;
-#[cfg(test)]
 use crate::table::{Table, TableToCreate};
-#[cfg(test)]
 use reifydb_core::ValueKind;
-#[cfg(test)]
 use reifydb_storage::memory::Memory;
-#[cfg(test)]
 use reifydb_transaction::Tx;
 
-#[cfg(test)]
 pub fn create_schema(tx: &mut impl Tx<Memory, Memory>, schema: &str) -> Schema {
     Catalog::create_schema(tx, SchemaToCreate { schema_span: None, name: schema.to_string() })
         .unwrap()
 }
 
-#[cfg(test)]
 pub fn ensure_test_schema(tx: &mut impl Tx<Memory, Memory>) -> Schema {
     if let Some(result) = Catalog::get_schema_by_name(tx, "test_schema").unwrap() {
         return result;
@@ -34,7 +24,6 @@ pub fn ensure_test_schema(tx: &mut impl Tx<Memory, Memory>) -> Schema {
     create_schema(tx, "test_schema")
 }
 
-#[cfg(test)]
 pub fn ensure_test_table(tx: &mut impl Tx<Memory, Memory>) -> Table {
     ensure_test_schema(tx);
     if let Some(result) = Catalog::get_table_by_name(tx, "test_table").unwrap() {
@@ -43,7 +32,6 @@ pub fn ensure_test_table(tx: &mut impl Tx<Memory, Memory>) -> Table {
     create_table(tx, "test_schema", "test_table", &[])
 }
 
-#[cfg(test)]
 pub fn create_table(
     tx: &mut impl Tx<Memory, Memory>,
     schema: &str,
@@ -62,7 +50,6 @@ pub fn create_table(
     .unwrap()
 }
 
-#[cfg(test)]
 pub fn create_test_table_column(
     tx: &mut impl Tx<Memory, Memory>,
     name: &str,

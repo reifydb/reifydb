@@ -2,6 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{ExecutionResult, Executor};
+use crate::{CreateTableResult, Error};
+use reifydb_catalog::Catalog;
+use reifydb_catalog::table::TableToCreate;
+use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::CreateTablePlan;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
@@ -12,97 +16,118 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         tx: &mut impl Tx<VS, US>,
         plan: CreateTablePlan,
     ) -> crate::Result<ExecutionResult> {
-        // let Some(schema) = self.get_schema_by_name(tx, &plan.schema)? else {
-        //     return Err(Error::execution(Diagnostic::schema_not_found(
-        //         Some(plan.span),
-        //         &plan.schema,
-        //     )));
-        // };
-        //
-        // if let Some(table) = self.get_table_by_name(tx, &plan.table)? {
-        //     if plan.if_not_exists {
-        //         return Ok(ExecutionResult::CreateTable(CreateTableResult {
-        //             id: table.id,
-        //             schema: plan.schema,
-        //             table: plan.table,
-        //             created: false,
-        //         }));
-        //     }
-        //
-        //     return Err(Error::execution(Diagnostic::table_already_exists(
-        //         Some(plan.span),
-        //         &schema.name,
-        //         &table.name,
-        //     )));
-        // }
-        //
-        // let table_id = self.next_table_id(tx)?;
-        // Self::store_table(tx, table_id, schema.id, &plan)?;
-        // Self::link_table_to_schema(tx, table_id, schema.id)?;
-        //
-        // let schema = plan.schema.clone();
-        // let table = plan.table.clone();
-        //
-        // self.insert_columns(tx, table_id, plan)?;
-        //
-        // Ok(ExecutionResult::CreateTable(CreateTableResult {
-        //     id: table_id,
-        //     schema,
-        //     table,
-        //     created: true,
-        // }))
-        todo!()
+        let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? else {
+            return Err(Error::execution(Diagnostic::schema_not_found(
+                Some(plan.span),
+                &plan.schema,
+            )));
+        };
+
+        if let Some(table) = Catalog::get_table_by_name(tx, &plan.table)? {
+            if plan.if_not_exists {
+                return Ok(ExecutionResult::CreateTable(CreateTableResult {
+                    id: table.id,
+                    schema: plan.schema,
+                    table: plan.table,
+                    created: false,
+                }));
+            }
+
+            return Err(Error::execution(Diagnostic::table_already_exists(
+                Some(plan.span),
+                &schema.name,
+                &table.name,
+            )));
+        }
+
+        let table = Catalog::create_table(
+            tx,
+            TableToCreate {
+                span: Some(plan.span),
+                table: plan.table,
+                schema: plan.schema.clone(),
+                columns: plan.columns,
+            },
+        )?;
+
+        Ok(ExecutionResult::CreateTable(CreateTableResult {
+            id: table.id,
+            schema: plan.schema,
+            table: table.name,
+            created: true,
+        }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::execute::CreateTableResult;
+    use crate::execute::catalog::create_table::CreateTablePlan;
+    use crate::{ExecutionResult, execute_tx};
+    use reifydb_catalog::table::TableId;
+    use reifydb_catalog::test_utils::ensure_test_schema;
+    use reifydb_diagnostic::Span;
+    use reifydb_rql::plan::PlanTx;
+    use reifydb_transaction::test_utils::TestTransaction;
+
+    #[test]
+    fn test_create_table() {
+        let mut tx = TestTransaction::new();
+
+        ensure_test_schema(&mut tx);
+
+        let mut plan = CreateTablePlan {
+            schema: "test_schema".to_string(),
+            table: "test_table".to_string(),
+            if_not_exists: false,
+            columns: vec![],
+            span: Span::testing(),
+        };
+
+        // First creation should succeed
+        let result = execute_tx(&mut tx, PlanTx::CreateTable(plan.clone())).unwrap();
+        assert_eq!(
+            result,
+            ExecutionResult::CreateTable(CreateTableResult {
+                id: TableId(1),
+                schema: "test_schema".into(),
+                table: "test_table".into(),
+                created: true
+            })
+        );
+
+        // Creating the same table again with `if_not_exists = true` should not error
+        plan.if_not_exists = true;
+        let result = execute_tx(&mut tx, PlanTx::CreateTable(plan.clone())).unwrap();
+        assert_eq!(
+            result,
+            ExecutionResult::CreateTable(CreateTableResult {
+                id: TableId(1),
+                schema: "test_schema".into(),
+                table: "test_table".into(),
+                created: false
+            })
+        );
+
+        // Creating the same table again with `if_not_exists = false` should return error
+        plan.if_not_exists = false;
+        let err = execute_tx(&mut tx, PlanTx::CreateTable(plan)).unwrap_err();
+        assert_eq!(err.diagnostic().code, "CA_003");
     }
 
-    // fn store_table(
-    //     tx: &mut impl Tx<VS, US>,
-    //     table: TableId,
-    //     schema: SchemaId,
-    //     plan: &CreateTablePlan,
-    // ) -> crate::Result<()> {
-    //     let mut row = table::LAYOUT.allocate_row();
-    //     table::LAYOUT.set_u32(&mut row, table::ID, table);
-    //     table::LAYOUT.set_u32(&mut row, table::SCHEMA, schema);
-    //     table::LAYOUT.set_str(&mut row, table::NAME, &plan.table);
-    //
-    //     tx.set(&Key::Table(TableKey { table }).encode(), row)?;
-    //
-    //     Ok(())
-    // }
-    //
-    // fn link_table_to_schema(
-    //     tx: &mut impl Tx<VS, US>,
-    //     table: TableId,
-    //     schema: SchemaId,
-    // ) -> crate::Result<()> {
-    //     let mut row = table_schema::LAYOUT.allocate_row();
-    //     table_schema::LAYOUT.set_u32(&mut row, table_schema::ID, table);
-    //     tx.set(&Key::SchemaTable(SchemaTableKey { schema, table }).encode(), row)?;
-    //     Ok(())
-    // }
-    //
-    // fn insert_columns(
-    //     &mut self,
-    //     tx: &mut impl Tx<VS, US>,
-    //     table: TableId,
-    //     plan: CreateTablePlan,
-    // ) -> crate::Result<()> {
-    //     for column_to_create in plan.columns {
-    //         self.create_column(
-    //             tx,
-    //             table,
-    //             ColumnToCreate {
-    //                 span: None,
-    //                 schema_name: &plan.schema,
-    //                 table,
-    //                 table_name: &plan.table,
-    //                 column: column_to_create.name,
-    //                 value: column_to_create.value,
-    //                 if_not_exists: false,
-    //                 policies: column_to_create.policies.clone(),
-    //             },
-    //         )?;
-    //     }
-    //     Ok(())
-    // }
+    #[test]
+    fn test_create_table_missing_schema() {
+        let mut tx = TestTransaction::new();
+
+        let plan = CreateTablePlan {
+            schema: "missing_schema".to_string(),
+            table: "my_table".to_string(),
+            if_not_exists: false,
+            columns: vec![],
+            span: Span::testing(),
+        };
+
+        let err = execute_tx(&mut tx, PlanTx::CreateTable(plan)).unwrap_err();
+        assert_eq!(err.diagnostic().code, "CA_002");
+    }
 }

@@ -256,7 +256,6 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                 };
             }
             Ast::Insert(insert) => {
-                unimplemented!()
                 // return match insert {
                 //     AstInsert { schema, store, columns, rows, .. } => {
                 //         let schema = schema.value().to_string();
