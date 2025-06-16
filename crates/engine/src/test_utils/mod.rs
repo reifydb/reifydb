@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::{CreateSchemaResult, ExecutionResult, execute_tx};
 use reifydb_diagnostic::Span;
-use reifydb_engine::{CreateSchemaResult, ExecutionResult, execute_tx};
 use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::Tx;

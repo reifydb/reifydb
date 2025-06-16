@@ -54,7 +54,7 @@ mod tests {
     use crate::execute::{CreateSchemaResult, execute_tx};
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
-    use reifydb_testing::transaction::TestTransaction;
+    use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
     fn test_create_schema() {

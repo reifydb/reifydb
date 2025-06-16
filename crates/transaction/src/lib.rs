@@ -21,6 +21,7 @@ pub mod mvcc;
 
 mod bypass;
 mod rx;
+pub mod test_utils;
 mod transaction;
 mod tx;
 

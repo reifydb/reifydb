@@ -34,8 +34,8 @@ mod tests {
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
     use reifydb_storage::memory::Memory;
-    use reifydb_testing::transaction::TestTransaction;
     use reifydb_transaction::Tx;
+    use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
     fn test_by_name_ok() {

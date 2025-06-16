@@ -50,7 +50,7 @@ mod tests {
     use reifydb_core::{EncodedKey, ValueKind};
     use reifydb_diagnostic::Diagnostic;
     use reifydb_storage::{Unversioned, UnversionedScan, UnversionedSet};
-    use reifydb_testing::transaction::TestTransaction;
+    use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
     fn test_ok() {

@@ -29,3 +29,13 @@ pub(crate) mod table {
     pub(crate) static LAYOUT: Lazy<Layout> =
         Lazy::new(|| Layout::new(&[ValueKind::Uint4, ValueKind::Uint4, ValueKind::String]));
 }
+
+pub(crate) mod table_schema_link {
+    use once_cell::sync::Lazy;
+    use reifydb_core::ValueKind;
+    use reifydb_core::row::Layout;
+
+    pub(crate) const ID: usize = 0;
+
+    pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[ValueKind::Uint4]));
+}

@@ -2,37 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Error;
-use crate::execute::catalog::layout::table;
+use crate::execute::catalog::layout::{table, table_schema_link};
 use crate::execute::{CreateTableResult, ExecutionResult, Executor};
-use reifydb_core::{Key, TableKey};
+use reifydb_core::catalog::{SchemaId, TableId};
+use reifydb_core::{Key, SchemaTableLinkKey, TableKey};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::CreateTablePlan;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
-    // FIXME table name already exists
-    // FIXME handle create if_not_exists
-    // FIXME serialize table and insert
-    // FIXME link table to schema
-
-    // let table_layout = Layout::new(&[ValueKind::String]);
-    // let mut row = table_layout.allocate_row();
-    // table_layout.set_str(&mut row, 0, &plan.table);
-    //
-    // let table_id = self.next_table_id(tx)?;
-    //
-    // tx.set(&Key::Table(TableKey { table_id }).encode(), EncodedRow(AsyncCowVec::new(vec![])))?;
-    //
-    // // table columns
-    //
-    // tx.set(
-    // 	&Key::SchemaTableLink(SchemaTableLinkKey { schema_id: schema.id, table_id }).encode(),
-    // 	EncodedRow(AsyncCowVec::new(vec![])),
-    // )?;
-    //
-    // Ok(ExecutionResult::CreateTable { schema: "TBD".to_string(), table: plan.table, created: true })
-
     pub(crate) fn create_table(
         &mut self,
         tx: &mut impl Tx<VS, US>,
@@ -60,13 +39,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         }
 
         let table_id = self.next_table_id(tx)?;
-
-        let mut row = table::LAYOUT.allocate_row();
-        table::LAYOUT.set_u32(&mut row, table::ID, table_id);
-        table::LAYOUT.set_u32(&mut row, table::SCHEMA, schema.id);
-        table::LAYOUT.set_str(&mut row, table::NAME, &plan.table);
-
-        tx.set(&Key::Table(TableKey { table_id }).encode(), row)?;
+        Self::store_table(tx, table_id, schema.id, &plan)?;
+        Self::link_table_to_schema(tx, table_id, schema.id)?;
 
         Ok(ExecutionResult::CreateTable(CreateTableResult {
             id: table_id,
@@ -75,18 +49,53 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             created: true,
         }))
     }
+
+    fn store_table(
+        tx: &mut impl Tx<VS, US>,
+        id: TableId,
+        schema: SchemaId,
+        plan: &CreateTablePlan,
+    ) -> crate::Result<()> {
+        let mut row = table::LAYOUT.allocate_row();
+        table::LAYOUT.set_u32(&mut row, table::ID, id);
+        table::LAYOUT.set_u32(&mut row, table::SCHEMA, schema);
+        table::LAYOUT.set_str(&mut row, table::NAME, &plan.table);
+
+        tx.set(&Key::Table(TableKey { table_id: id }).encode(), row)?;
+
+        Ok(())
+    }
+
+    fn link_table_to_schema(
+        tx: &mut impl Tx<VS, US>,
+        id: TableId,
+        schema: SchemaId,
+    ) -> crate::Result<()> {
+        let mut row = table_schema_link::LAYOUT.allocate_row();
+        table_schema_link::LAYOUT.set_u32(&mut row, table_schema_link::ID, id);
+
+        tx.set(
+            &Key::SchemaTableLink(SchemaTableLinkKey { schema_id: schema, table_id: id }).encode(),
+            row,
+        )?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::execute::CreateTableResult;
     use crate::execute::catalog::create_table::CreateTablePlan;
+    use crate::test_utils::ensure_test_schema;
     use crate::{ExecutionResult, execute_tx};
-    use reifydb_core::catalog::TableId;
+    use reifydb_core::catalog::{SchemaId, TableId};
+    use reifydb_core::row::EncodedRow;
+    use reifydb_core::{AsyncCowVec, EncodableKey, SchemaTableLinkKey};
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::PlanTx;
-    use reifydb_testing::engine::ensure_test_schema;
-    use reifydb_testing::transaction::TestTransaction;
+    use reifydb_transaction::Rx;
+    use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
     fn test_create_table() {
@@ -131,6 +140,58 @@ mod tests {
         plan.if_not_exists = false;
         let err = execute_tx(&mut tx, PlanTx::CreateTable(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_003");
+    }
+
+    #[test]
+    fn test_table_linked_to_schema() {
+        let mut tx = TestTransaction::new();
+        ensure_test_schema(&mut tx);
+
+        let plan = CreateTablePlan {
+            schema: "test_schema".to_string(),
+            table: "test_table".to_string(),
+            if_not_exists: false,
+            columns: vec![],
+            span: Span::testing(),
+        };
+
+        execute_tx(&mut tx, PlanTx::CreateTable(plan)).unwrap();
+
+        let plan = CreateTablePlan {
+            schema: "test_schema".to_string(),
+            table: "another_table".to_string(),
+            if_not_exists: false,
+            columns: vec![],
+            span: Span::testing(),
+        };
+
+        execute_tx(&mut tx, PlanTx::CreateTable(plan)).unwrap();
+
+        let links =
+            tx.scan_range(SchemaTableLinkKey::full_scan(SchemaId(1))).unwrap().collect::<Vec<_>>();
+        assert_eq!(links.len(), 2);
+
+        let link = &links[0];
+        assert_eq!(
+            link.key,
+            SchemaTableLinkKey { schema_id: SchemaId(1), table_id: TableId(1) }.encode()
+        );
+
+        assert_eq!(
+            link.row,
+            EncodedRow(AsyncCowVec::new([0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00].to_vec())) // validity + padding + id
+        );
+
+        let link = &links[1];
+        assert_eq!(
+            link.key,
+            SchemaTableLinkKey { schema_id: SchemaId(1), table_id: TableId(2) }.encode()
+        );
+
+        assert_eq!(
+            link.row,
+            EncodedRow(AsyncCowVec::new([0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00].to_vec())) // validity + padding + id
+        )
     }
 
     #[test]
