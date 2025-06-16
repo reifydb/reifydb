@@ -9,8 +9,7 @@
 pub use engine::Engine;
 pub use error::Error;
 pub use execute::{
-    Column, ColumnToCreate, CreateSchemaResult, CreateTableResult, ExecutionResult, execute_rx,
-    execute_tx,
+    Column, CreateSchemaResult, CreateTableResult, ExecutionResult, execute_rx, execute_tx,
 };
 
 mod engine;
@@ -18,7 +17,6 @@ mod error;
 mod evaluate;
 pub(crate) mod execute;
 mod function;
-mod test_utils;
 pub(crate) mod view;
 
 pub type Result<T> = std::result::Result<T, Error>;

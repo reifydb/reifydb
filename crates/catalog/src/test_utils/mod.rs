@@ -6,16 +6,15 @@ use crate::Catalog;
 #[cfg(test)]
 use crate::column::{ColumnPolicy, ColumnToCreate};
 #[cfg(test)]
+use crate::schema::Schema;
+#[cfg(test)]
 use crate::schema::SchemaToCreate;
 use crate::table;
+use crate::table::TableId;
 #[cfg(test)]
 use crate::table::{Table, TableToCreate};
 #[cfg(test)]
 use reifydb_core::ValueKind;
-#[cfg(test)]
-use reifydb_core::catalog::Schema;
-#[cfg(test)]
-use reifydb_core::catalog::TableId;
 #[cfg(test)]
 use reifydb_storage::memory::Memory;
 #[cfg(test)]

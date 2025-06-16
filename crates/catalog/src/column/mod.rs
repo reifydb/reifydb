@@ -2,49 +2,43 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 pub use create::ColumnToCreate;
-use reifydb_diagnostic::Diagnostic;
+pub use policy::*;
+use reifydb_core::ValueKind;
+use std::ops::Deref;
 
 mod create;
 mod get;
 mod layout;
-
-#[derive(Debug, Clone)]
-pub enum ColumnPolicy {
-    Saturation(ColumnSaturationPolicy),
-}
-
-impl ColumnPolicy {
-    pub fn default_saturation_policy() -> Self {
-        Self::Saturation(ColumnSaturationPolicy::default())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ColumnSaturationPolicy {
-    Error,
-    // Saturate,
-    // Wrap,
-    // Zero,
-    Undefined,
-}
-
-pub const DEFAULT_COLUMN_SATURATION_POLICY: ColumnSaturationPolicy = ColumnSaturationPolicy::Error;
-
-impl Default for ColumnSaturationPolicy {
-    fn default() -> Self {
-        Self::Error
-    }
-}
+mod policy;
 
 #[derive(Debug, PartialEq)]
-pub enum ColumnPolicyError {
-    Saturation(Diagnostic),
+pub struct Column {
+    pub id: ColumnId,
+    pub name: String,
+    pub value: ValueKind,
+    pub policies: Vec<ColumnPolicy>,
 }
 
-impl ColumnPolicyError {
-    pub fn diagnostic(self) -> Diagnostic {
-        match self {
-            ColumnPolicyError::Saturation(diagnostic) => diagnostic,
-        }
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct ColumnId(pub u32);
+
+impl Deref for ColumnId {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq<u32> for ColumnId {
+    fn eq(&self, other: &u32) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl From<ColumnId> for u32 {
+    fn from(value: ColumnId) -> Self {
+        value.0
     }
 }

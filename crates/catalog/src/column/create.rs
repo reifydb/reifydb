@@ -1,11 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::column::ColumnPolicy;
 use crate::column::layout::{column, table_column};
+use crate::column::{Column, ColumnPolicy};
+use crate::key::{ColumnKey, Key, TableColumnKey};
+use crate::table::TableId;
 use crate::{Catalog, Error};
-use reifydb_core::catalog::{Column, TableId};
-use reifydb_core::{ColumnKey, Key, TableColumnKey, ValueKind};
+use reifydb_core::ValueKind;
 use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
@@ -53,17 +54,22 @@ impl Catalog {
         table_column::LAYOUT.set_str(&mut row, table_column::NAME, &column_to_create.column);
         tx.set(&Key::TableColumn(TableColumnKey { table, column: id }).encode(), row)?;
 
-        Ok(Column { id, name: column_to_create.column, value: column_to_create.value })
+        Ok(Column {
+            id,
+            name: column_to_create.column,
+            value: column_to_create.value,
+            policies: vec![],
+        })
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::Catalog;
-    use crate::column::ColumnToCreate;
+    use crate::column::{ColumnId, ColumnToCreate};
+    use crate::table::TableId;
     use crate::test_utils::ensure_test_table;
     use reifydb_core::ValueKind;
-    use reifydb_core::catalog::{ColumnId, TableId};
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

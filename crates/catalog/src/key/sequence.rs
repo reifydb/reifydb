@@ -1,35 +1,36 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::catalog::SequenceId;
-use crate::{EncodableKey, EncodedKey, EncodedKeyRange, KeyKind};
+use crate::key::{EncodableKey, KeyKind};
+use crate::sequence::SequenceId;
+use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
-pub struct SequenceValueKey {
-    pub sequence_id: SequenceId,
+pub struct SequenceKey {
+    pub sequence: SequenceId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for SequenceValueKey {
+impl EncodableKey for SequenceKey {
     const KIND: KeyKind = KeyKind::Sequence;
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
         out.push(VERSION);
         out.push(Self::KIND as u8);
-        out.extend(&self.sequence_id.to_be_bytes());
+        out.extend(&self.sequence.to_be_bytes());
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 4);
-        Some(Self { sequence_id: SequenceId(u32::from_be_bytes(payload[..].try_into().unwrap())) })
+        Some(Self { sequence: SequenceId(u32::from_be_bytes(payload[..].try_into().unwrap())) })
     }
 }
 
-impl SequenceValueKey {
+impl SequenceKey {
     pub fn full_scan() -> EncodedKeyRange {
         EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
     }
@@ -51,9 +52,8 @@ impl SequenceValueKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::catalog::SequenceId;
-    use crate::key::sequence::SequenceKey;
-    use crate::{EncodableKey, KeyKind};
+    use crate::key::{EncodableKey, KeyKind, SequenceKey};
+    use crate::sequence::SequenceId;
 
     #[test]
     fn test_encode_decode() {

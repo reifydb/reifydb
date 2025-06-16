@@ -2,14 +2,36 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Catalog;
+use crate::column::ColumnId;
+use crate::key::{EncodableKey, SequenceValueKey};
+use crate::schema::SchemaId;
 use crate::sequence::u32::SequenceGeneratorU32;
+use crate::table::TableId;
 use once_cell::sync::Lazy;
-use reifydb_core::catalog::{ColumnId, SchemaId, SequenceId, TableId};
-use reifydb_core::{EncodableKey, EncodedKey, SequenceValueKey};
+use reifydb_core::EncodedKey;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
+use std::ops::Deref;
 
 mod u32;
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct SequenceId(pub u32);
+
+impl Deref for SequenceId {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq<u32> for SequenceId {
+    fn eq(&self, other: &u32) -> bool {
+        self.0.eq(other)
+    }
+}
 
 pub(crate) const SCHEMA_SEQUENCE_ID: SequenceId = SequenceId(1);
 pub(crate) const TABLE_SEQUENCE_ID: SequenceId = SequenceId(2);

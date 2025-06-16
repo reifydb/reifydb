@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::column::ColumnPolicy;
-use crate::table::Table;
+use crate::key::{Key, SchemaTableKey, TableKey};
+use crate::schema::SchemaId;
 use crate::table::layout::{table, table_schema};
+use crate::table::{Table, TableId};
 use crate::{Catalog, Error};
-use reifydb_core::catalog::{SchemaId, TableId};
-use reifydb_core::{Key, SchemaTableKey, TableKey, ValueKind};
+use reifydb_core::ValueKind;
 use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
@@ -107,11 +108,12 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
     use crate::Catalog;
-    use crate::table::TableToCreate;
+    use crate::key::{EncodableKey, SchemaTableKey};
+    use crate::schema::SchemaId;
+    use crate::table::{TableId, TableToCreate};
     use crate::test_utils::ensure_test_schema;
-    use reifydb_core::catalog::{SchemaId, TableId};
+    use reifydb_core::AsyncCowVec;
     use reifydb_core::row::EncodedRow;
-    use reifydb_core::{AsyncCowVec, EncodableKey, SchemaTableKey};
     use reifydb_transaction::Rx;
     use reifydb_transaction::test_utils::TestTransaction;
 

@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::catalog::SchemaId;
-use crate::{EncodableKey, EncodedKey, EncodedKeyRange, KeyKind};
+use crate::key::{EncodableKey, KeyKind};
+use crate::schema::SchemaId;
+use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
 pub struct SchemaKey {
@@ -51,9 +52,8 @@ impl SchemaKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::catalog::SchemaId;
-    use crate::key::schema::SchemaKey;
-    use crate::{EncodableKey, KeyKind};
+    use crate::key::{EncodableKey, KeyKind, SchemaKey};
+    use crate::schema::SchemaId;
 
     #[test]
     fn test_encode_decode() {

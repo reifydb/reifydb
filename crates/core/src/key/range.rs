@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::EncodedKey;
 use crate::encoding::binary::decode_binary;
+use crate::key::EncodedKey;
 use regex::Regex;
 use std::collections::Bound;
 use std::ops::RangeBounds;
@@ -124,7 +124,7 @@ impl RangeBounds<EncodedKey> for EncodedKeyRange {
 
 #[cfg(test)]
 mod tests {
-    use crate::EncodedKey;
+    use crate::key::EncodedKey;
     use std::collections::Bound;
 
     macro_rules! as_key {
@@ -132,7 +132,7 @@ mod tests {
     }
 
     mod prefix {
-        use crate::key::range::EncodedKeyRange;
+        use crate::key::EncodedKeyRange;
         use crate::key::range::tests::{excluded, included};
         use std::ops::Bound;
 
@@ -180,9 +180,9 @@ mod tests {
     }
 
     mod start_end {
-        use crate::EncodedKey;
-use crate::encoding::keycode;
-        use crate::key::range::EncodedKeyRange;
+        use crate::encoding::keycode;
+        use crate::key::EncodedKey;
+        use crate::key::EncodedKeyRange;
         use crate::key::range::tests::{excluded, included};
         use std::ops::Bound;
 
@@ -230,7 +230,7 @@ use crate::encoding::keycode;
     }
 
     mod all {
-        use crate::key::range::EncodedKeyRange;
+        use crate::key::EncodedKeyRange;
         use std::ops::Bound;
 
         #[test]
@@ -242,9 +242,8 @@ use crate::encoding::keycode;
     }
 
     mod parse {
-        use crate::EncodedKey;
-        use crate::key::range::EncodedKeyRange;
         use crate::key::range::tests::{excluded, included};
+        use crate::key::{EncodedKey, EncodedKeyRange};
         use std::ops::Bound;
 
         #[test]

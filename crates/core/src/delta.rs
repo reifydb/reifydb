@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::EncodedKey;
+use crate::key::EncodedKey;
 use crate::row::EncodedRow;
 use std::cmp;
 

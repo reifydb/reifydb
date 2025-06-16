@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_catalog::DEP_ColumnPolicyError;
 use reifydb_diagnostic::Diagnostic;
 use std::fmt::{Display, Formatter};
 
@@ -18,12 +17,6 @@ impl Display for Error {
 impl Error {
     pub fn diagnostic(self) -> Diagnostic {
         self.0
-    }
-}
-
-impl From<DEP_ColumnPolicyError> for Error {
-    fn from(value: DEP_ColumnPolicyError) -> Self {
-        Self(value.diagnostic())
     }
 }
 

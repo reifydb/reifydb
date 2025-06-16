@@ -3,8 +3,10 @@
 
 use crate::Catalog;
 use crate::column::layout::{column, table_column};
-use reifydb_core::catalog::{Column, ColumnId, TableId};
-use reifydb_core::{ColumnKey, EncodableKey, TableColumnKey, ValueKind};
+use crate::column::{Column, ColumnId};
+use crate::key::{ColumnKey, EncodableKey, TableColumnKey};
+use crate::table::TableId;
+use reifydb_core::ValueKind;
 use reifydb_storage::Versioned;
 use reifydb_transaction::Rx;
 
@@ -36,16 +38,17 @@ impl Catalog {
         let name = column::LAYOUT.get_str(&row, column::NAME).to_string();
         let value = ValueKind::from_u8(column::LAYOUT.get_u8(&row, column::VALUE));
 
-        Column { id, name, value }
+        Column { id, name, value, policies: vec![] }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::Catalog;
+    use crate::column::ColumnId;
+    use crate::table::TableId;
     use crate::test_utils::create_test_table_column;
     use reifydb_core::ValueKind;
-    use reifydb_core::catalog::{ColumnId, TableId};
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Catalog;
+use crate::key::{EncodableKey, SchemaKey};
 use crate::schema::layout::schema;
-use reifydb_core::catalog::{Schema, SchemaId};
+use crate::schema::{Schema, SchemaId};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodableKey, SchemaKey};
 use reifydb_storage::Versioned;
 use reifydb_transaction::Rx;
 
@@ -70,8 +70,8 @@ mod tests {
 
     mod get_schema {
         use crate::Catalog;
+        use crate::schema::SchemaId;
         use crate::test_utils::create_schema;
-        use reifydb_core::catalog::SchemaId;
         use reifydb_transaction::test_utils::TestTransaction;
 
         #[test]

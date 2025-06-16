@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::catalog::{SchemaId, TableId};
+use reifydb_catalog::schema::SchemaId;
+use reifydb_catalog::table::TableId;
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
 use reifydb_core::{Value, ValueKind};
 use reifydb_engine::{Column, CreateSchemaResult, CreateTableResult, ExecutionResult};

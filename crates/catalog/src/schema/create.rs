@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::key::{Key, SchemaKey};
+use crate::schema::Schema;
 use crate::schema::layout::schema;
 use crate::{Catalog, Error};
-use reifydb_core::catalog::Schema;
-use reifydb_core::{Key, SchemaKey};
 use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;

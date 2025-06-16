@@ -5,13 +5,12 @@ mod catalog;
 mod display;
 mod error;
 mod query;
-mod sequence;
 mod write;
 
 use crate::function::{FunctionRegistry, math};
-pub use catalog::ColumnToCreate;
 pub use error::Error;
-use reifydb_core::catalog::{SchemaId, TableId};
+use reifydb_catalog::schema::SchemaId;
+use reifydb_catalog::table::TableId;
 use reifydb_core::{Value, ValueKind};
 use reifydb_frame::{ColumnValues, Frame};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};

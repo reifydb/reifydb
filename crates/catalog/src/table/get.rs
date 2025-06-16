@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Catalog;
-use crate::table::Table;
+use crate::key::{EncodableKey, TableKey};
+use crate::schema::SchemaId;
 use crate::table::layout::table;
-use reifydb_core::catalog::{SchemaId, TableId};
+use crate::table::{Table, TableId};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodableKey, TableKey};
 use reifydb_storage::Versioned;
 use reifydb_transaction::Rx;
 
@@ -84,8 +84,8 @@ mod tests {
 
     mod get_table {
         use crate::Catalog;
+        use crate::table::TableId;
         use crate::test_utils::{create_schema, create_table, ensure_test_schema};
-        use reifydb_core::catalog::TableId;
         use reifydb_transaction::test_utils::TestTransaction;
 
         #[test]
