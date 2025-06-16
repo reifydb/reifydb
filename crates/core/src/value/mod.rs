@@ -44,6 +44,51 @@ pub enum ValueKind {
 }
 
 impl ValueKind {
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            ValueKind::Bool => 0x0E,
+            ValueKind::Float4 => 0x01,
+            ValueKind::Float8 => 0x02,
+            ValueKind::Int1 => 0x03,
+            ValueKind::Int2 => 0x04,
+            ValueKind::Int4 => 0x05,
+            ValueKind::Int8 => 0x06,
+            ValueKind::Int16 => 0x07,
+            ValueKind::String => 0x08,
+            ValueKind::Uint1 => 0x09,
+            ValueKind::Uint2 => 0x0A,
+            ValueKind::Uint4 => 0x0B,
+            ValueKind::Uint8 => 0x0C,
+            ValueKind::Uint16 => 0x0D,
+            ValueKind::Undefined => 0x00,
+        }
+    }
+}
+
+impl ValueKind {
+    pub fn from_u8(value: u8) -> Self {
+        match value {
+            0x00 => ValueKind::Undefined,
+            0x01 => ValueKind::Float4,
+            0x02 => ValueKind::Float8,
+            0x03 => ValueKind::Int1,
+            0x04 => ValueKind::Int2,
+            0x05 => ValueKind::Int4,
+            0x06 => ValueKind::Int8,
+            0x07 => ValueKind::Int16,
+            0x08 => ValueKind::String,
+            0x09 => ValueKind::Uint1,
+            0x0A => ValueKind::Uint2,
+            0x0B => ValueKind::Uint4,
+            0x0C => ValueKind::Uint8,
+            0x0D => ValueKind::Uint16,
+            0x0E => ValueKind::Bool,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl ValueKind {
     pub fn size(&self) -> usize {
         match self {
             ValueKind::Bool => 1,

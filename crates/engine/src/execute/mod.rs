@@ -9,6 +9,7 @@ mod sequence;
 mod write;
 
 use crate::function::{FunctionRegistry, math};
+pub use catalog::ColumnToCreate;
 pub use error::Error;
 use reifydb_core::catalog::{SchemaId, TableId};
 use reifydb_core::{Value, ValueKind};
@@ -296,6 +297,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         plan: PlanTx,
     ) -> crate::Result<ExecutionResult> {
         match plan {
+            PlanTx::AddColumnToTable(_) => unimplemented!(),
             PlanTx::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
             PlanTx::CreateSchema(plan) => self.create_schema(tx, plan),
             PlanTx::CreateSequence(_) => unimplemented!(),

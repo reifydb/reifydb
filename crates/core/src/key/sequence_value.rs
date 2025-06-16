@@ -57,12 +57,12 @@ mod tests {
 
     #[test]
     fn test_encode_decode() {
-        let key = SequenceKey { sequence_id: SequenceId(0xABCD) };
+        let key = SequenceKey { sequence: SequenceId(0xABCD) };
         let encoded = key.encode();
         let expected = vec![1, KeyKind::Sequence as u8, 0x00, 0x00, 0xAB, 0xCD];
         assert_eq!(encoded.as_slice(), expected);
 
         let key = SequenceKey::decode(1, &encoded[2..]).unwrap();
-        assert_eq!(key.sequence_id, 0xABCD);
+        assert_eq!(key.sequence, 0xABCD);
     }
 }

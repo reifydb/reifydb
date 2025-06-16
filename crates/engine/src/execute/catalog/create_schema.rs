@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Error;
 use crate::execute::catalog::layout::schema;
 use crate::execute::{CreateSchemaResult, ExecutionResult, Executor};
+use crate::Error;
 use reifydb_core::{Key, SchemaKey};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::CreateSchemaPlan;
@@ -37,7 +37,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         schema::LAYOUT.set_u32(&mut row, schema::ID, schema_id);
         schema::LAYOUT.set_str(&mut row, schema::NAME, &plan.schema);
 
-        tx.set(&Key::Schema(SchemaKey { schema_id }).encode(), row)?;
+        tx.set(&Key::Schema(SchemaKey { schema: schema_id }).encode(), row)?;
 
         Ok(ExecutionResult::CreateSchema(CreateSchemaResult {
             id: schema_id,
@@ -49,9 +49,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
 #[cfg(test)]
 mod tests {
-    use crate::ExecutionResult;
     use crate::execute::SchemaId;
-    use crate::execute::{CreateSchemaResult, execute_tx};
+    use crate::execute::{execute_tx, CreateSchemaResult};
+    use crate::ExecutionResult;
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
     use reifydb_transaction::test_utils::TestTransaction;

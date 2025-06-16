@@ -3,68 +3,114 @@
 
 use crate::execute::Executor;
 use crate::execute::catalog::layout::schema;
-use reifydb_core::SchemaKey;
 use reifydb_core::catalog::{Schema, SchemaId};
 use reifydb_core::row::EncodedRow;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
+use reifydb_core::{EncodableKey, SchemaKey};
+use reifydb_storage::{UnversionedStorage, Versioned, VersionedStorage};
+use reifydb_transaction::Rx;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn get_schema_by_name(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
+        rx: &mut impl Rx,
         name: &str,
     ) -> crate::Result<Option<Schema>> {
-        Ok(tx.scan_range(SchemaKey::full_scan())?.find_map(|versioned| {
+        Ok(rx.scan_range(SchemaKey::full_scan())?.find_map(|versioned| {
             let row: &EncodedRow = &versioned.row;
             let schema_name = schema::LAYOUT.get_str(row, schema::NAME);
-            if name == schema_name {
-                let id = SchemaId(schema::LAYOUT.get_u32(row, schema::ID));
-                Some(Schema { id, name: schema_name.to_string() })
-            } else {
-                None
-            }
+            if name == schema_name { Some(Self::convert_schema(versioned)) } else { None }
         }))
+    }
+
+    pub(crate) fn get_schema(
+        &mut self,
+        rx: &mut impl Rx,
+        schema: SchemaId,
+    ) -> crate::Result<Option<Schema>> {
+        Ok(rx.get(&SchemaKey { schema }.encode())?.map(Self::convert_schema))
+    }
+
+    fn convert_schema(versioned: Versioned) -> Schema {
+        let row = versioned.row;
+        let id = SchemaId(schema::LAYOUT.get_u32(&row, schema::ID));
+        let name = schema::LAYOUT.get_str(&row, schema::NAME).to_string();
+
+        Schema { id, name }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::execute::{Executor, execute_tx};
+    use crate::execute::execute_tx;
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
     use reifydb_storage::memory::Memory;
     use reifydb_transaction::Tx;
-    use reifydb_transaction::test_utils::TestTransaction;
 
-    #[test]
-    fn test_by_name_ok() {
-        let mut tx = TestTransaction::new();
-        create_schema(&mut tx, "test_schema");
+    mod get_schema_by_name {
+        use crate::execute::Executor;
+        use crate::execute::catalog::get_schema::tests::create_schema;
+        use reifydb_transaction::test_utils::TestTransaction;
 
-        let schema =
-            Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap().unwrap();
+        #[test]
+        fn test_ok() {
+            let mut tx = TestTransaction::new();
+            create_schema(&mut tx, "test_schema");
 
-        assert_eq!(schema.id, 1);
-        assert_eq!(schema.name, "test_schema");
+            let schema =
+                Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap().unwrap();
+
+            assert_eq!(schema.id, 1);
+            assert_eq!(schema.name, "test_schema");
+        }
+
+        #[test]
+        fn test_empty() {
+            let mut tx = TestTransaction::new();
+            let result = Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap();
+
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn test_not_found() {
+            let mut tx = TestTransaction::new();
+            create_schema(&mut tx, "another_schema");
+
+            let result = Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap();
+
+            assert_eq!(result, None);
+        }
     }
 
-    #[test]
-    fn test_by_name_empty() {
-        let mut tx = TestTransaction::new();
-        let result = Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap();
+    mod get_schema {
+        use crate::execute::Executor;
+        use crate::execute::catalog::get_schema::tests::create_schema;
+        use reifydb_core::catalog::SchemaId;
+        use reifydb_transaction::test_utils::TestTransaction;
 
-        assert_eq!(result, None);
-    }
+        #[test]
+        fn test_ok() {
+            let mut tx = TestTransaction::new();
+            create_schema(&mut tx, "schema_one");
+            create_schema(&mut tx, "schema_two");
+            create_schema(&mut tx, "schema_three");
 
-    #[test]
-    fn test_by_name_not_found() {
-        let mut tx = TestTransaction::new();
-        create_schema(&mut tx, "another_schema");
+            let result = Executor::testing().get_schema(&mut tx, SchemaId(2)).unwrap().unwrap();
+            assert_eq!(result.id, 2);
+            assert_eq!(result.name, "schema_two");
+        }
 
-        let result = Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap();
+        #[test]
+        fn test_not_found() {
+            let mut tx = TestTransaction::new();
+            create_schema(&mut tx, "schema_one");
+            create_schema(&mut tx, "schema_two");
+            create_schema(&mut tx, "schema_three");
 
-        assert_eq!(result, None);
+            let result = Executor::testing().get_schema(&mut tx, SchemaId(23)).unwrap();
+            assert!(result.is_none());
+        }
     }
 
     fn create_schema(tx: &mut impl Tx<Memory, Memory>, name: &str) {

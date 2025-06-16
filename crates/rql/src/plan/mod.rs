@@ -17,6 +17,7 @@ pub use error::Error;
 use reifydb_catalog::{
     CatalogRx, Column, ColumnPolicy, ColumnSaturationPolicy, ColumnToCreate, SchemaRx, StoreRx,
 };
+use reifydb_core::ValueKind;
 use reifydb_diagnostic::Span;
 use reifydb_frame::{SortDirection, SortKey};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
@@ -37,6 +38,8 @@ pub enum PlanRx {
 
 #[derive(Debug)]
 pub enum PlanTx {
+    /// An ADD COLUMN TO plan. Creates and adds a new column
+    AddColumnToTable(AddColumnToTablePlan),
     /// A CREATE DEFERRED VIEW plan. Creates a new deferred view.
     CreateDeferredView(CreateDeferredViewPlan),
     /// A CREATE SCHEMA plan. Creates a new schema.
@@ -53,6 +56,15 @@ pub enum PlanTx {
     InsertIntoSeries(InsertIntoSeriesPlan),
     /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
     Query(QueryPlan),
+}
+
+#[derive(Debug)]
+pub struct AddColumnToTablePlan {
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub if_not_exists: bool,
+    pub value: ValueKind,
 }
 
 #[derive(Debug)]
@@ -141,7 +153,7 @@ pub enum QueryPlan {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
-    tx: &impl Tx<VS, US>,
+    rx: &impl Rx,
     statement: AstStatement,
 ) -> Result<PlanTx> {
     for ast in statement.into_iter().rev() {

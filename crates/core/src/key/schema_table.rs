@@ -6,22 +6,22 @@ use crate::key::{EncodableKey, KeyKind};
 use crate::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
-pub struct SchemaTableLinkKey {
-    pub schema_id: SchemaId,
-    pub table_id: TableId,
+pub struct SchemaTableKey {
+    pub schema: SchemaId,
+    pub table: TableId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for SchemaTableLinkKey {
+impl EncodableKey for SchemaTableKey {
     const KIND: KeyKind = KeyKind::SchemaTableLink;
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(8);
         out.push(VERSION);
         out.push(Self::KIND as u8);
-        out.extend(&self.schema_id.to_be_bytes());
-        out.extend(&self.table_id.to_be_bytes());
+        out.extend(&self.schema.to_be_bytes());
+        out.extend(&self.table.to_be_bytes());
         EncodedKey::new(out)
     }
 
@@ -29,13 +29,13 @@ impl EncodableKey for SchemaTableLinkKey {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 8);
         Some(Self {
-            schema_id: SchemaId(u32::from_be_bytes(payload[..4].try_into().unwrap())),
-            table_id: TableId(u32::from_be_bytes(payload[4..].try_into().unwrap())),
+            schema: SchemaId(u32::from_be_bytes(payload[..4].try_into().unwrap())),
+            table: TableId(u32::from_be_bytes(payload[4..].try_into().unwrap())),
         })
     }
 }
 
-impl SchemaTableLinkKey {
+impl SchemaTableKey {
     pub fn full_scan(schema_id: SchemaId) -> EncodedKeyRange {
         EncodedKeyRange::start_end(
             Some(Self::link_start(schema_id)),
@@ -63,11 +63,11 @@ impl SchemaTableLinkKey {
 #[cfg(test)]
 mod tests {
     use crate::catalog::{SchemaId, TableId};
-    use crate::key::{EncodableKey, KeyKind, SchemaTableLinkKey};
+    use crate::key::{EncodableKey, KeyKind, SchemaTableKey};
 
     #[test]
     fn test_encode_decode() {
-        let key = SchemaTableLinkKey { schema_id: SchemaId(0x12345678), table_id: TableId(0xABCD) };
+        let key = SchemaTableKey { schema: SchemaId(0x12345678), table: TableId(0xABCD) };
         let encoded = key.encode();
 
         let expected: Vec<u8> =
@@ -75,16 +75,16 @@ mod tests {
 
         assert_eq!(encoded.as_slice(), expected);
 
-        let key = SchemaTableLinkKey::decode(1, &expected[2..]).unwrap();
-        assert_eq!(key.schema_id, 0x12345678);
-        assert_eq!(key.table_id, 0xABCD);
+        let key = SchemaTableKey::decode(1, &expected[2..]).unwrap();
+        assert_eq!(key.schema, 0x12345678);
+        assert_eq!(key.table, 0xABCD);
     }
 
     #[test]
     fn test_order_preserving() {
-        let key1 = SchemaTableLinkKey { schema_id: SchemaId(1), table_id: TableId(100) };
-        let key2 = SchemaTableLinkKey { schema_id: SchemaId(1), table_id: TableId(200) };
-        let key3 = SchemaTableLinkKey { schema_id: SchemaId(2), table_id: TableId(0) };
+        let key1 = SchemaTableKey { schema: SchemaId(1), table: TableId(100) };
+        let key2 = SchemaTableKey { schema: SchemaId(1), table: TableId(200) };
+        let key3 = SchemaTableKey { schema: SchemaId(2), table: TableId(0) };
 
         let encoded1 = key1.encode();
         let encoded2 = key2.encode();

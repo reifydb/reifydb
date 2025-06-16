@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::ValueKind;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -112,4 +113,35 @@ pub struct TableToCreate {
 pub struct Schema {
     pub id: SchemaId,
     pub name: String,
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+pub struct ColumnId(pub u32);
+
+impl Deref for ColumnId {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq<u32> for ColumnId {
+    fn eq(&self, other: &u32) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl From<ColumnId> for u32 {
+    fn from(value: ColumnId) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Column {
+    pub id: ColumnId,
+    pub name: String,
+    pub value: ValueKind,
 }

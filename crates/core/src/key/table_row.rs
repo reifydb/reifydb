@@ -7,8 +7,8 @@ use crate::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
 pub struct TableRowKey {
-    pub table_id: TableId,
-    pub row_id: RowId,
+    pub table: TableId,
+    pub row: RowId,
 }
 
 const VERSION: u8 = 1;
@@ -20,8 +20,8 @@ impl EncodableKey for TableRowKey {
         let mut out = Vec::with_capacity(12);
         out.push(VERSION);
         out.push(Self::KIND as u8);
-        out.extend(&self.table_id.to_be_bytes());
-        out.extend(&self.row_id.to_be_bytes());
+        out.extend(&self.table.to_be_bytes());
+        out.extend(&self.row.to_be_bytes());
         EncodedKey::new(out)
     }
 
@@ -29,8 +29,8 @@ impl EncodableKey for TableRowKey {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 12);
         Some(Self {
-            table_id: TableId(u32::from_be_bytes(payload[..4].try_into().unwrap())),
-            row_id: RowId(u64::from_be_bytes(payload[4..].try_into().unwrap())),
+            table: TableId(u32::from_be_bytes(payload[..4].try_into().unwrap())),
+            row: RowId(u64::from_be_bytes(payload[4..].try_into().unwrap())),
         })
     }
 }
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn test_encode_decode() {
-        let key = TableRowKey { table_id: TableId(0xABCD), row_id: RowId(0x123456789ABCDEF0) };
+        let key = TableRowKey { table: TableId(0xABCD), row: RowId(0x123456789ABCDEF0) };
         let encoded = key.encode();
 
         let expected: Vec<u8> = vec![
@@ -90,15 +90,15 @@ mod tests {
         assert_eq!(encoded.as_slice(), expected);
 
         let key = TableRowKey::decode(1, &expected[2..]).unwrap();
-        assert_eq!(key.table_id, 0xABCD);
-        assert_eq!(key.row_id, 0x123456789ABCDEF0);
+        assert_eq!(key.table, 0xABCD);
+        assert_eq!(key.row, 0x123456789ABCDEF0);
     }
 
     #[test]
     fn test_order_preserving() {
-        let key1 = TableRowKey { table_id: TableId(1), row_id: RowId(100) };
-        let key2 = TableRowKey { table_id: TableId(1), row_id: RowId(200) };
-        let key3 = TableRowKey { table_id: TableId(2), row_id: RowId(0) };
+        let key1 = TableRowKey { table: TableId(1), row: RowId(100) };
+        let key2 = TableRowKey { table: TableId(1), row: RowId(200) };
+        let key3 = TableRowKey { table: TableId(2), row: RowId(0) };
 
         let encoded1 = key1.encode();
         let encoded2 = key2.encode();

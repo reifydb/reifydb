@@ -2,22 +2,26 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::AsyncCowVec;
+pub use column::ColumnKey;
 pub use range::EncodedKeyRange;
 pub use schema::SchemaKey;
-pub use schema_table_link::SchemaTableLinkKey;
+pub use schema_table::SchemaTableKey;
 pub use sequence::SequenceKey;
 pub use sequence_value::SequenceValueKey;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 pub use table::TableKey;
+pub use table_column::TableColumnKey;
 pub use table_row::TableRowKey;
 
+mod column;
 mod range;
 mod schema;
-mod schema_table_link;
+mod schema_table;
 mod sequence;
 mod sequence_value;
 mod table;
+mod table_column;
 mod table_row;
 
 #[derive(Debug, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, PartialEq, Eq)]
@@ -42,9 +46,11 @@ pub enum Key {
     Schema(SchemaKey),
     Table(TableKey),
     TableRow(TableRowKey),
-    SchemaTableLink(SchemaTableLinkKey),
+    SchemaTable(SchemaTableKey),
     Sequence(SequenceKey),
     SequenceValue(SequenceValueKey),
+    Column(ColumnKey),
+    TableColumn(TableColumnKey),
 }
 
 impl Key {
@@ -53,9 +59,11 @@ impl Key {
             Key::Schema(key) => key.encode(),
             Key::Table(key) => key.encode(),
             Key::TableRow(key) => key.encode(),
-            Key::SchemaTableLink(key) => key.encode(),
+            Key::SchemaTable(key) => key.encode(),
             Key::Sequence(key) => key.encode(),
             Key::SequenceValue(key) => key.encode(),
+            Key::Column(key) => key.encode(),
+            Key::TableColumn(key) => key.encode(),
         }
     }
 }
@@ -69,6 +77,8 @@ pub enum KeyKind {
     SchemaTableLink = 0x04,
     Sequence = 0x05,
     SequenceValue = 0x06,
+    Column = 0x07,
+    TableColumnLink = 0x08,
 }
 
 impl TryFrom<u8> for KeyKind {
@@ -82,6 +92,8 @@ impl TryFrom<u8> for KeyKind {
             0x04 => Ok(Self::SchemaTableLink),
             0x05 => Ok(Self::Sequence),
             0x06 => Ok(Self::SequenceValue),
+            0x07 => Ok(Self::Column),
+            0x08 => Ok(Self::TableColumnLink),
             _ => Err(()),
         }
     }
@@ -108,11 +120,15 @@ impl Key {
             KeyKind::Table => TableKey::decode(version, payload).map(Self::Table),
             KeyKind::TableRow => TableRowKey::decode(version, payload).map(Self::TableRow),
             KeyKind::SchemaTableLink => {
-                SchemaTableLinkKey::decode(version, payload).map(Self::SchemaTableLink)
+                SchemaTableKey::decode(version, payload).map(Self::SchemaTable)
             }
             KeyKind::Sequence => SequenceKey::decode(version, payload).map(Self::Sequence),
             KeyKind::SequenceValue => {
                 SequenceValueKey::decode(version, payload).map(Self::SequenceValue)
+            }
+            KeyKind::Column => ColumnKey::decode(version, payload).map(Self::Column),
+            KeyKind::TableColumnLink => {
+                TableColumnKey::decode(version, payload).map(Self::TableColumn)
             }
             _ => None,
         }
@@ -121,83 +137,39 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
-    use crate::SchemaTableLinkKey;
-    use crate::catalog::{RowId, SchemaId, SequenceId, TableId};
+    use crate::SchemaTableKey;
+    use crate::catalog::{ColumnId, RowId, SchemaId, SequenceId, TableId};
+    use crate::key::column::ColumnKey;
     use crate::key::schema::SchemaKey;
     use crate::key::table::TableKey;
+    use crate::key::table_column::TableColumnKey;
     use crate::key::{Key, SequenceKey, TableRowKey};
 
     #[test]
+    fn test_column() {
+        let key = Key::Column(ColumnKey { column: ColumnId(42) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::Column(decoded_inner) => {
+                assert_eq!(decoded_inner.column, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
     fn test_schema() {
-        let key = Key::Schema(SchemaKey { schema_id: SchemaId(42) });
+        let key = Key::Schema(SchemaKey { schema: SchemaId(42) });
 
         let encoded = key.encode();
         let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
         match decoded {
             Key::Schema(decoded_inner) => {
-                assert_eq!(decoded_inner.schema_id, 42);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_sequence() {
-        let key = Key::Sequence(SequenceKey { sequence_id: SequenceId(42) });
-
-        let encoded = key.encode();
-        let decoded = Key::decode(&encoded).expect("Failed to decode key");
-
-        match decoded {
-            Key::Sequence(decoded_inner) => {
-                assert_eq!(decoded_inner.sequence_id, 42);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_sequence_value() {
-        let key = Key::Sequence(SequenceKey { sequence_id: SequenceId(42) });
-
-        let encoded = key.encode();
-        let decoded = Key::decode(&encoded).expect("Failed to decode key");
-
-        match decoded {
-            Key::Sequence(decoded_inner) => {
-                assert_eq!(decoded_inner.sequence_id, 42);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_table() {
-        let key = Key::Table(TableKey { table_id: TableId(42) });
-
-        let encoded = key.encode();
-        let decoded = Key::decode(&encoded).expect("Failed to decode key");
-
-        match decoded {
-            Key::Table(decoded_inner) => {
-                assert_eq!(decoded_inner.table_id, 42);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_table_row() {
-        let key = Key::TableRow(TableRowKey { table_id: TableId(42), row_id: RowId(999_999) });
-
-        let encoded = key.encode();
-        let decoded = Key::decode(&encoded).expect("Failed to decode key");
-
-        match decoded {
-            Key::TableRow(decoded_inner) => {
-                assert_eq!(decoded_inner.table_id, 42);
-                assert_eq!(decoded_inner.row_id, 999_999);
+                assert_eq!(decoded_inner.schema, 42);
             }
             _ => unreachable!(),
         }
@@ -205,18 +177,94 @@ mod tests {
 
     #[test]
     fn test_schema_table_link() {
-        let key = Key::SchemaTableLink(SchemaTableLinkKey {
-            schema_id: SchemaId(42),
-            table_id: TableId(999_999),
-        });
+        let key =
+            Key::SchemaTable(SchemaTableKey { schema: SchemaId(42), table: TableId(999_999) });
 
         let encoded = key.encode();
         let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
         match decoded {
-            Key::SchemaTableLink(decoded_inner) => {
-                assert_eq!(decoded_inner.schema_id, 42);
-                assert_eq!(decoded_inner.table_id, 999_999);
+            Key::SchemaTable(decoded_inner) => {
+                assert_eq!(decoded_inner.schema, 42);
+                assert_eq!(decoded_inner.table, 999_999);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_sequence() {
+        let key = Key::Sequence(SequenceKey { sequence: SequenceId(42) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::Sequence(decoded_inner) => {
+                assert_eq!(decoded_inner.sequence, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_sequence_value() {
+        let key = Key::Sequence(SequenceKey { sequence: SequenceId(42) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::Sequence(decoded_inner) => {
+                assert_eq!(decoded_inner.sequence, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_table() {
+        let key = Key::Table(TableKey { table: TableId(42) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::Table(decoded_inner) => {
+                assert_eq!(decoded_inner.table, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_table_column_link() {
+        let key =
+            Key::TableColumn(TableColumnKey { table: TableId(42), column: ColumnId(999_999) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::TableColumn(decoded_inner) => {
+                assert_eq!(decoded_inner.table, 42);
+                assert_eq!(decoded_inner.column, 999_999);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_table_row() {
+        let key = Key::TableRow(TableRowKey { table: TableId(42), row: RowId(999_999) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::TableRow(decoded_inner) => {
+                assert_eq!(decoded_inner.table, 42);
+                assert_eq!(decoded_inner.row, 999_999);
             }
             _ => unreachable!(),
         }

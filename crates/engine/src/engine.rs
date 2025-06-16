@@ -82,7 +82,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
 
         let mut tx = self.begin().unwrap();
 
-        let mut storage = self.transaction.versioned();
+        // let mut storage = self.transaction.versioned();
 
         for statement in statements {
             // match &statement.0[0] {
@@ -92,7 +92,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
             //     result.push(er);
             // }
             // _ => {
-            let plan = plan_tx(&tx, statement)?;
+            let plan = plan_tx::<VS, US>(&mut tx, statement)?;
             let er = execute_tx(&mut tx, plan)?;
             result.push(er);
             // }
