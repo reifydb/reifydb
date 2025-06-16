@@ -88,6 +88,19 @@ impl PartialEq<u32> for TableId {
     }
 }
 
+impl From<TableId> for u32 {
+    fn from(value: TableId) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Table {
+    pub id: TableId,
+    pub schema: SchemaId,
+    pub name: String,
+}
+
 #[derive(Debug)]
 pub struct TableToCreate {
     pub id: TableId,

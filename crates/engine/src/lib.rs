@@ -8,7 +8,9 @@
 
 pub use engine::Engine;
 pub use error::Error;
-pub use execute::{Column, ExecutionResult};
+pub use execute::{
+    Column, CreateSchemaResult, CreateTableResult, ExecutionResult, execute_rx, execute_tx,
+};
 
 mod engine;
 mod error;

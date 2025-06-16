@@ -8,6 +8,7 @@
 
 use reifydb_diagnostic::{Line, Offset, Span};
 
+pub mod engine;
 pub mod network;
 pub mod tempdir;
 pub mod testscript;

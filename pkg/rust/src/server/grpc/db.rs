@@ -17,7 +17,7 @@ use crate::server::grpc::grpc_db::tx_result::Result::{
     CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
 };
 use reifydb_auth::Principal;
-use reifydb_engine::{Engine, ExecutionResult};
+use reifydb_engine::{CreateSchemaResult, CreateTableResult, Engine, ExecutionResult};
 use reifydb_storage::Storage;
 use tokio_stream::once;
 
@@ -76,9 +76,14 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
                                 })
                                 .collect();
                         }
-                        ExecutionResult::CreateSchema { schema, created } => {
+                        ExecutionResult::CreateSchema(CreateSchemaResult {
+                            id,
+                            schema,
+                            created,
+                        }) => {
                             let msg = TxResult {
                                 result: Some(CreateSchema(grpc_db::CreateSchema {
+                                    id: id.0,
                                     schema: schema.clone(),
                                     created: *created,
                                 })),
@@ -95,11 +100,18 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
                             // return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));
                             unimplemented!()
                         }
-                        ExecutionResult::CreateTable { schema, table } => {
+                        ExecutionResult::CreateTable(CreateTableResult {
+                            id,
+                            schema,
+                            table,
+                            created,
+                        }) => {
                             let msg = TxResult {
                                 result: Some(CreateTable(grpc_db::CreateTable {
+                                    id: id.0.clone(),
                                     schema: schema.clone(),
                                     table: table.clone(),
+                                    created: *created,
                                 })),
                             };
                             return Ok(Response::new(Box::pin(once(Ok(msg))) as TxResultStream));

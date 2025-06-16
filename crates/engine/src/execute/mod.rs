@@ -10,6 +10,7 @@ mod write;
 
 use crate::function::{FunctionRegistry, math};
 pub use error::Error;
+use reifydb_core::catalog::{SchemaId, TableId};
 use reifydb_core::{Value, ValueKind};
 use reifydb_frame::{ColumnValues, Frame};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
@@ -27,12 +28,27 @@ pub struct Column {
 #[derive(Debug, Eq, PartialEq)]
 pub enum ExecutionResult {
     CreateDeferredView { schema: String, view: String },
-    CreateSchema { schema: String, created: bool },
+    CreateSchema(CreateSchemaResult),
     CreateSeries { schema: String, series: String },
-    CreateTable { schema: String, table: String },
+    CreateTable(CreateTableResult),
     InsertIntoTable { schema: String, table: String, inserted: usize },
     InsertIntoSeries { schema: String, series: String, inserted: usize },
     Query { columns: Vec<Column>, rows: Vec<Vec<Value>> },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct CreateSchemaResult {
+    pub id: SchemaId,
+    pub schema: String,
+    pub created: bool,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct CreateTableResult {
+    pub id: TableId,
+    pub schema: String,
+    pub table: String,
+    pub created: bool,
 }
 
 impl From<Frame> for ExecutionResult {

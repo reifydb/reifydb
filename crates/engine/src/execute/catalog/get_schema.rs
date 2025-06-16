@@ -15,8 +15,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         tx: &mut impl Tx<VS, US>,
         name: &str,
     ) -> crate::Result<Option<Schema>> {
-        Ok(tx.scan_range(SchemaKey::full_scan())?.find_map(|tv| {
-            let row: &EncodedRow = &tv.row;
+        Ok(tx.scan_range(SchemaKey::full_scan())?.find_map(|versioned| {
+            let row: &EncodedRow = &versioned.row;
             let schema_name = schema::LAYOUT.get_str(row, schema::NAME);
             if name == schema_name {
                 let id = SchemaId(schema::LAYOUT.get_u32(row, schema::ID));

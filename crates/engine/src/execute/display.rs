@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::execute::{CreateSchemaResult, CreateTableResult};
 use crate::{Column, ExecutionResult};
 use reifydb_core::Value;
 use std::fmt::{Display, Formatter};
@@ -11,7 +12,7 @@ impl Display for ExecutionResult {
             ExecutionResult::CreateDeferredView { schema, view, .. } => {
                 write!(f, "deferred view {view} created in schema {schema}")
             }
-            ExecutionResult::CreateSchema { schema, created, .. } => {
+            ExecutionResult::CreateSchema(CreateSchemaResult { schema, created, .. }) => {
                 if *created {
                     write!(f, "schema {schema} created")
                 } else {
@@ -21,7 +22,7 @@ impl Display for ExecutionResult {
             ExecutionResult::CreateSeries { schema, series, .. } => {
                 write!(f, "series {series} created in schema {schema}")
             }
-            ExecutionResult::CreateTable { schema, table, .. } => {
+            ExecutionResult::CreateTable(CreateTableResult { schema, table, .. }) => {
                 write!(f, "table {table} created in schema {schema}")
             }
             ExecutionResult::InsertIntoSeries { schema, series, inserted } => {

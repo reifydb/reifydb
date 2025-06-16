@@ -16,3 +16,16 @@ pub(crate) mod schema {
         ])
     });
 }
+
+pub(crate) mod table {
+    use once_cell::sync::Lazy;
+    use reifydb_core::ValueKind;
+    use reifydb_core::row::Layout;
+
+    pub(crate) const ID: usize = 0;
+    pub(crate) const SCHEMA: usize = 1;
+    pub(crate) const NAME: usize = 2;
+
+    pub(crate) static LAYOUT: Lazy<Layout> =
+        Lazy::new(|| Layout::new(&[ValueKind::Uint4, ValueKind::Uint4, ValueKind::String]));
+}

@@ -19,7 +19,7 @@ pub trait SchemaRx {
     fn list(&self) -> crate::Result<Vec<&Self::StoreRx>>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ColumnToCreate {
     pub name: String,
     pub value: ValueKind,

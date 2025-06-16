@@ -84,13 +84,13 @@ pub struct CreateSeriesPlan {
     pub columns: Vec<ColumnToCreate>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CreateTablePlan {
     pub schema: String,
     pub table: String,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
-    pub span: Span
+    pub span: Span,
 }
 
 #[derive(Debug)]

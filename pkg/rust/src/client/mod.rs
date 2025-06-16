@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb_core::catalog::{SchemaId, TableId};
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
 use reifydb_core::{Value, ValueKind};
-use reifydb_engine::{Column, ExecutionResult};
+use reifydb_engine::{Column, CreateSchemaResult, CreateTableResult, ExecutionResult};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -149,12 +150,17 @@ impl Client {
                         source: query.to_string(),
                     });
                 }
-                Some(CreateSchema(cs)) => {
-                    ExecutionResult::CreateSchema { schema: cs.schema, created: cs.created }
-                }
-                Some(CreateTable(ct)) => {
-                    ExecutionResult::CreateTable { schema: ct.schema, table: ct.table }
-                }
+                Some(CreateSchema(cs)) => ExecutionResult::CreateSchema(CreateSchemaResult {
+                    id: SchemaId(cs.id),
+                    schema: cs.schema,
+                    created: cs.created,
+                }),
+                Some(CreateTable(ct)) => ExecutionResult::CreateTable(CreateTableResult {
+                    id: TableId(ct.id),
+                    schema: ct.schema,
+                    table: ct.table,
+                    created: ct.created,
+                }),
                 Some(InsertIntoTable(insert)) => ExecutionResult::InsertIntoTable {
                     schema: insert.schema,
                     table: insert.table,

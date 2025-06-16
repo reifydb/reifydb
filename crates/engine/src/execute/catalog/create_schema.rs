@@ -3,7 +3,7 @@
 
 use crate::Error;
 use crate::execute::catalog::layout::schema;
-use crate::execute::{ExecutionResult, Executor};
+use crate::execute::{CreateSchemaResult, ExecutionResult, Executor};
 use reifydb_core::{Key, SchemaKey};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::CreateSchemaPlan;
@@ -18,7 +18,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     ) -> crate::Result<ExecutionResult> {
         if let Some(schema) = self.get_schema_by_name(tx, &plan.schema)? {
             if plan.if_not_exists {
-                return Ok(ExecutionResult::CreateSchema { schema: plan.schema, created: false });
+                return Ok(ExecutionResult::CreateSchema(CreateSchemaResult {
+                    id: schema.id,
+                    schema: plan.schema,
+                    created: false,
+                }));
             }
 
             return Err(Error::execution(Diagnostic::schema_already_exists(
@@ -35,25 +39,26 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
         tx.set(&Key::Schema(SchemaKey { schema_id }).encode(), row)?;
 
-        Ok(ExecutionResult::CreateSchema { schema: plan.schema, created: true })
+        Ok(ExecutionResult::CreateSchema(CreateSchemaResult {
+            id: schema_id,
+            schema: plan.schema,
+            created: true,
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::execute::execute_tx;
-    use crate::{Engine, ExecutionResult};
+    use crate::ExecutionResult;
+    use crate::execute::SchemaId;
+    use crate::execute::{CreateSchemaResult, execute_tx};
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
-    use reifydb_storage::memory::Memory;
-    use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
+    use reifydb_testing::transaction::TestTransaction;
 
     #[test]
     fn test_create_schema() {
-        let versioned = Memory::new();
-        let unversioned = Memory::new();
-        let engine = Engine::new(Optimistic::new(versioned, unversioned));
-        let mut tx = engine.begin().unwrap();
+        let mut tx = TestTransaction::new();
 
         let mut plan = CreateSchemaPlan {
             schema: "my_schema".to_string(),
@@ -65,7 +70,11 @@ mod tests {
         let result = execute_tx(&mut tx, PlanTx::CreateSchema(plan.clone())).unwrap();
         assert_eq!(
             result,
-            ExecutionResult::CreateSchema { schema: "my_schema".into(), created: true }
+            ExecutionResult::CreateSchema(CreateSchemaResult {
+                id: SchemaId(1),
+                schema: "my_schema".into(),
+                created: true
+            })
         );
 
         // Creating the same schema again with `if_not_exists = true` should not error
@@ -73,7 +82,11 @@ mod tests {
         let result = execute_tx(&mut tx, PlanTx::CreateSchema(plan.clone())).unwrap();
         assert_eq!(
             result,
-            ExecutionResult::CreateSchema { schema: "my_schema".into(), created: false }
+            ExecutionResult::CreateSchema(CreateSchemaResult {
+                id: SchemaId(1),
+                schema: "my_schema".into(),
+                created: false
+            })
         );
 
         // Creating the same schema again with `if_not_exists = false` should return error
