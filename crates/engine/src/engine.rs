@@ -68,7 +68,6 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transa
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engine<VS, US, T> {
-
     pub fn begin(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin().unwrap())
     }
@@ -112,7 +111,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         let mut rx = self.begin_read_only().unwrap();
         for statement in statements {
             let plan = plan_rx(statement).unwrap();
-            let er = execute_rx(&mut rx, plan).unwrap();
+            let er = execute_rx::<VS, US>(&mut rx, plan).unwrap();
             result.push(er);
         }
 

@@ -49,19 +49,18 @@ mod tests {
     use crate::execute::sequence::u32::{LAYOUT, SequenceGeneratorU32};
     use reifydb_core::{EncodedKey, ValueKind};
     use reifydb_diagnostic::Diagnostic;
-    use reifydb_storage::memory::Memory;
     use reifydb_storage::{Unversioned, UnversionedScan, UnversionedSet};
     use reifydb_testing::transaction::TestTransaction;
 
     #[test]
     fn test_ok() {
-        let unversioned = Memory::default();
         let mut tx = TestTransaction::new();
         for expected in 1..1000 {
             let got = SequenceGeneratorU32::next(&mut tx, &EncodedKey::new("sequence")).unwrap();
             assert_eq!(got, expected);
         }
 
+        let unversioned = tx.unversioned();
         let mut unversioned: Vec<Unversioned> = unversioned.scan_unversioned().collect();
         assert_eq!(unversioned.len(), 1);
 
@@ -72,12 +71,13 @@ mod tests {
 
     #[test]
     fn test_exhaustion() {
+        let mut tx = TestTransaction::new();
+
         let mut row = LAYOUT.allocate_row();
         LAYOUT.set_u32(&mut row, 0, u32::MAX);
-        let mut unversioned = Memory::default();
-        unversioned.set_unversioned(&EncodedKey::new("sequence"), row);
 
-        let mut tx = TestTransaction::new();
+        let mut unversioned = tx.unversioned();
+        unversioned.set_unversioned(&EncodedKey::new("sequence"), row);
 
         let err = SequenceGeneratorU32::next(&mut tx, &EncodedKey::new("sequence")).unwrap_err();
         assert_eq!(err.diagnostic(), Diagnostic::sequence_exhausted(ValueKind::Uint4));

@@ -47,7 +47,7 @@ pub fn catalog_mut_singleton() -> &'static mut Catalog {
 }
 
 pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>: Send + Sync {
-    type Rx: Rx<VS, US>;
+    type Rx: Rx;
     type Tx: Tx<VS, US>;
 
     fn begin_read_only(&self) -> Result<Self::Rx>;

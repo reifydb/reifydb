@@ -16,7 +16,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         name: &str,
     ) -> crate::Result<Option<Schema>> {
         Ok(tx.scan_range(SchemaKey::full_scan())?.find_map(|tv| {
-            let row: &EncodedRow = &tv.row();
+            let row: &EncodedRow = &tv.row;
             let schema_name = schema::LAYOUT.get_str(row, schema::NAME);
             if name == schema_name {
                 let id = SchemaId(schema::LAYOUT.get_u32(row, schema::ID));
@@ -52,7 +52,6 @@ mod tests {
     #[test]
     fn test_by_name_empty() {
         let mut tx = TestTransaction::new();
-
         let result = Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap();
 
         assert_eq!(result, None);

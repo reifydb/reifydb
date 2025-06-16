@@ -3,81 +3,116 @@
 
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
+use reifydb_storage::Versioned;
 use reifydb_storage::memory::Memory;
-use reifydb_transaction::mvcc::conflict::BTreeConflict;
-use reifydb_transaction::mvcc::transaction::TransactionValue;
-use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
 use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
-use reifydb_transaction::mvcc::transaction::range::TransactionRange;
-use reifydb_transaction::mvcc::transaction::range_rev::TransactionRangeRev;
-use reifydb_transaction::{Transaction, Tx};
+use reifydb_transaction::{Rx, Transaction, Tx, VersionedIter};
 use std::sync::MutexGuard;
 
 pub struct TestTransaction {
     engine: Optimistic<Memory, Memory>,
     tx: TransactionTx<Memory, Memory>,
+    unversioned: Memory,
 }
 
 impl TestTransaction {
     pub fn new() -> Self {
-        let engine = Optimistic::new(Memory::new(), Memory::new());
+        let unversioned = Memory::default();
+        let engine = Optimistic::new(Memory::new(), unversioned.clone());
         let tx = engine.begin();
-        Self { engine, tx }
+        Self { engine, tx, unversioned }
     }
 
     pub fn versioned(&self) -> Memory {
         self.engine.versioned()
     }
+
+    pub fn unversioned(&self) -> Memory {
+        self.unversioned.clone()
+    }
 }
 
-impl Tx<Memory, Memory> for TestTransaction {
-    fn get(&mut self, key: &EncodedKey) -> reifydb_transaction::Result<Option<TransactionValue>> {
-        Ok(self.tx.get(key)?)
+impl Rx for TestTransaction {
+    fn get(&mut self, key: &EncodedKey) -> reifydb_transaction::Result<Option<Versioned>> {
+        Ok(self.tx.get(key)?.map(|tv| Versioned {
+            key: tv.key().clone(),
+            row: tv.row().clone(),
+            version: tv.version(),
+        }))
     }
 
     fn contains_key(&mut self, key: &EncodedKey) -> reifydb_transaction::Result<bool> {
         Ok(self.tx.contains_key(key)?)
     }
 
-    fn scan(&mut self) -> reifydb_transaction::Result<TransactionIter<'_, Memory, BTreeConflict>> {
-        Ok(self.tx.scan()?)
+    fn scan(&mut self) -> reifydb_transaction::Result<VersionedIter> {
+        let iter = self.tx.scan()?.map(|tv| Versioned {
+            key: tv.key().clone(),
+            row: tv.row().clone(),
+            version: tv.version(),
+        });
+
+        Ok(Box::new(iter))
     }
 
-    fn scan_rev(
-        &mut self,
-    ) -> reifydb_transaction::Result<TransactionIterRev<'_, Memory, BTreeConflict>> {
-        Ok(self.tx.scan_rev()?)
+    fn scan_rev(&mut self) -> reifydb_transaction::Result<VersionedIter> {
+        let iter = self.tx.scan_rev()?.map(|tv| Versioned {
+            key: tv.key().clone(),
+            row: tv.row().clone(),
+            version: tv.version(),
+        });
+
+        Ok(Box::new(iter))
     }
 
-    fn scan_range(
-        &mut self,
-        range: EncodedKeyRange,
-    ) -> reifydb_transaction::Result<TransactionRange<'_, Memory, BTreeConflict>> {
-        Ok(self.tx.scan_range(range)?)
+    fn scan_range(&mut self, range: EncodedKeyRange) -> reifydb_transaction::Result<VersionedIter> {
+        let iter = self.tx.scan_range(range)?.map(|tv| Versioned {
+            key: tv.key().clone(),
+            row: tv.row().clone(),
+            version: tv.version(),
+        });
+
+        Ok(Box::new(iter))
     }
 
     fn scan_range_rev(
         &mut self,
         range: EncodedKeyRange,
-    ) -> reifydb_transaction::Result<TransactionRangeRev<'_, Memory, BTreeConflict>> {
-        Ok(self.tx.scan_range_rev(range)?)
+    ) -> reifydb_transaction::Result<VersionedIter> {
+        let iter = self.tx.scan_range_rev(range)?.map(|tv| Versioned {
+            key: tv.key().clone(),
+            row: tv.row().clone(),
+            version: tv.version(),
+        });
+
+        Ok(Box::new(iter))
     }
 
-    fn scan_prefix(
-        &mut self,
-        prefix: &EncodedKey,
-    ) -> reifydb_transaction::Result<TransactionRange<'_, Memory, BTreeConflict>> {
-        Ok(self.tx.scan_prefix(prefix)?)
+    fn scan_prefix(&mut self, prefix: &EncodedKey) -> reifydb_transaction::Result<VersionedIter> {
+        let iter = self.tx.scan_prefix(prefix)?.map(|tv| Versioned {
+            key: tv.key().clone(),
+            row: tv.row().clone(),
+            version: tv.version(),
+        });
+
+        Ok(Box::new(iter))
     }
 
     fn scan_prefix_rev(
         &mut self,
         prefix: &EncodedKey,
-    ) -> reifydb_transaction::Result<TransactionRangeRev<'_, Memory, BTreeConflict>> {
-        Ok(self.tx.scan_prefix_rev(prefix)?)
-    }
+    ) -> reifydb_transaction::Result<VersionedIter> {
+        let iter = self.tx.scan_prefix_rev(prefix)?.map(|tv| Versioned {
+            key: tv.key().clone(),
+            row: tv.row().clone(),
+            version: tv.version(),
+        });
 
+        Ok(Box::new(iter))
+    }
+}
+
+impl Tx<Memory, Memory> for TestTransaction {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> reifydb_transaction::Result<()> {
         Ok(self.tx.set(key, row)?)
     }

@@ -1,24 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::mvcc::transaction::TransactionValue;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_storage::Versioned;
 
-pub trait Rx<VS: VersionedStorage, US: UnversionedStorage> {
-    fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>>;
+pub type VersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
-    fn contains_key(&self, key: &EncodedKey) -> crate::Result<bool>;
+pub trait Rx {
+    fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>>;
 
-    fn scan(&self) -> crate::Result<VS::ScanIter<'_>>;
+    fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-    fn scan_rev(&self) -> crate::Result<VS::ScanIterRev<'_>>;
+    fn scan(&mut self) -> crate::Result<VersionedIter>;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIter<'_>>;
+    fn scan_rev(&mut self) -> crate::Result<VersionedIter>;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIterRev<'_>>;
+    fn scan_range(&mut self, range: EncodedKeyRange) -> crate::Result<VersionedIter>;
 
-    fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIter<'_>>;
+    fn scan_range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<VersionedIter>;
 
-    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIterRev<'_>>;
+    fn scan_prefix(&mut self, prefix: &EncodedKey) -> crate::Result<VersionedIter>;
+
+    fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<VersionedIter>;
 }

@@ -195,7 +195,7 @@ impl Executor<Memory, Memory> {
 }
 
 pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
-    rx: &mut impl Rx<VS, US>,
+    rx: &mut impl Rx,
     plan: PlanRx,
 ) -> crate::Result<ExecutionResult> {
     let mut executor: Executor<VS, US> = Executor {
@@ -227,9 +227,9 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
-    pub(crate) fn execute_rx_query_plan(
+    pub(crate) fn execute_query_plan(
         mut self,
-        rx: &mut impl Rx<VS, US>,
+        rx: &mut impl Rx,
         plan: QueryPlan,
     ) -> crate::Result<ExecutionResult> {
         let next = match plan {
@@ -258,44 +258,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         };
 
         if let Some(next) = next {
-            self.execute_rx_query_plan(rx, *next)
-        } else {
-            Ok(self.frame.into())
-        }
-    }
-
-    pub(crate) fn execute_tx_query_plan(
-        mut self,
-        tx: &mut impl Tx<VS, US>,
-        plan: QueryPlan,
-    ) -> crate::Result<ExecutionResult> {
-        let next = match plan {
-            QueryPlan::Aggregate { group_by, project, next } => {
-                self.aggregate(&group_by, &project)?;
-                next
-            }
-            QueryPlan::Scan { schema, store, next } => {
-                // self.scan(rx, &schema, &store)?;
-                // next
-                unimplemented!()
-            }
-            QueryPlan::Project { expressions, next } => {
-                self.project(expressions)?;
-                next
-            }
-            QueryPlan::Sort { keys, next } => {
-                self.sort(&keys)?;
-                next
-            }
-            QueryPlan::Limit { limit, next } => {
-                // self.limit(limit)?;
-                // next
-                unimplemented!()
-            }
-        };
-
-        if let Some(next) = next {
-            self.execute_tx_query_plan(tx, *next)
+            self.execute_query_plan(rx, *next)
         } else {
             Ok(self.frame.into())
         }
@@ -303,11 +266,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
     pub(crate) fn execute_rx(
         mut self,
-        rx: &mut impl Rx<VS, US>,
+        rx: &mut impl Rx,
         plan: PlanRx,
     ) -> crate::Result<ExecutionResult> {
         match plan {
-            PlanRx::Query(plan) => self.execute_rx_query_plan(rx, plan),
+            PlanRx::Query(plan) => self.execute_query_plan(rx, plan),
         }
     }
 
@@ -324,7 +287,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PlanTx::CreateTable(plan) => self.create_table(tx, plan),
             PlanTx::InsertIntoSeries(plan) => self.insert_into_series(tx, plan),
             PlanTx::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
-            PlanTx::Query(plan) => self.execute_tx_query_plan(tx, plan),
+            PlanTx::Query(plan) => self.execute_query_plan(tx, plan),
         }
     }
 }

@@ -9,7 +9,7 @@ use reifydb_transaction::Rx;
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn scan(
         &mut self,
-        rx: &mut impl Rx<VS, US>,
+        rx: &mut impl Rx,
         schema: &str,
         store: &str,
     ) -> crate::Result<()> {
