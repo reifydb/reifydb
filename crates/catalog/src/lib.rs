@@ -15,6 +15,9 @@ pub use dep::store::*;
 mod catalog;
 mod error;
 mod dep;
+mod column;
+mod schema;
+mod table;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -5,8 +5,8 @@ use crate::server::grpc::db_service;
 pub use config::{DatabaseConfig, ServerConfig};
 use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
-use reifydb_storage::{Storage, VersionedStorage};
-use reifydb_transaction::{Rx, Transaction, Tx, catalog_init};
+use reifydb_storage::Storage;
+use reifydb_transaction::{Rx, Transaction, Tx};
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -90,7 +90,6 @@ impl<S: Storage, T: Transaction<S, S>> OnCreate<S, T> {
 
 impl<S: Storage + 'static, T: Transaction<S, S> + 'static> Server<S, T> {
     pub fn new(transaction: T) -> Self {
-        catalog_init();
         Self {
             config: ServerConfig::default(),
             grpc: tonic::transport::Server::builder(),

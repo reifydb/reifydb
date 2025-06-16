@@ -5,7 +5,7 @@ use crate::{DB, Error};
 use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
 use reifydb_storage::Storage;
-use reifydb_transaction::{Transaction, catalog_init};
+use reifydb_transaction::Transaction;
 use tokio::task::spawn_blocking;
 
 pub struct Embedded<S: Storage + 'static, T: Transaction<S, S> + 'static> {
@@ -25,7 +25,6 @@ where
 impl<S: Storage, T: Transaction<S, S>> Embedded<S, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
-        catalog_init();
         (Self { engine: Engine::new(transaction) }, principal)
     }
 }
