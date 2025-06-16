@@ -11,6 +11,7 @@ use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use std::sync::MutexGuard;
 
 pub trait Tx<VS: VersionedStorage, US: UnversionedStorage> {
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>>;
@@ -41,13 +42,13 @@ pub trait Tx<VS: VersionedStorage, US: UnversionedStorage> {
         prefix: &EncodedKey,
     ) -> crate::Result<TransactionRangeRev<'_, VS, BTreeConflict>>;
 
-    fn set(&mut self, key: EncodedKey, row: EncodedRow) -> crate::Result<()>;
+    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
-    fn remove(&mut self, key: EncodedKey) -> crate::Result<()>;
+    fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 
     fn commit(self) -> crate::Result<()>;
 
     fn rollback(self) -> crate::Result<()>;
 
-    fn bypass(&mut self) -> BypassTx<US>;
+    fn bypass(&mut self) -> MutexGuard<BypassTx<US>>;
 }

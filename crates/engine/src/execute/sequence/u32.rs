@@ -19,7 +19,8 @@ impl SequenceGeneratorU32 {
         VS: VersionedStorage,
         US: UnversionedStorage,
     {
-        match tx.bypass().get(key)? {
+        let mut bypass = tx.bypass();
+        match bypass.get(key)? {
             Some(unversioned) => {
                 let mut row = unversioned.row;
                 let value = LAYOUT.get_u32(&row, 0);
@@ -30,13 +31,13 @@ impl SequenceGeneratorU32 {
                 }
 
                 LAYOUT.set_u32(&mut row, 0, next_value);
-                tx.bypass().set(&key, row)?;
+                bypass.set(&key, row)?;
                 Ok(value)
             }
             None => {
                 let mut new_row = LAYOUT.allocate_row();
                 LAYOUT.set_u32(&mut new_row, 0, 2u32);
-                tx.bypass().set(&key, new_row)?;
+                bypass.set(&key, new_row)?;
                 Ok(1)
             }
         }
@@ -55,7 +56,7 @@ mod tests {
     #[test]
     fn test_ok() {
         let unversioned = Memory::default();
-        let mut tx = TestTransaction::new(Memory::new(), unversioned.clone());
+        let mut tx = TestTransaction::new();
         for expected in 1..1000 {
             let got = SequenceGeneratorU32::next(&mut tx, &EncodedKey::new("sequence")).unwrap();
             assert_eq!(got, expected);
@@ -76,7 +77,7 @@ mod tests {
         let mut unversioned = Memory::default();
         unversioned.set_unversioned(&EncodedKey::new("sequence"), row);
 
-        let mut tx = TestTransaction::new(Memory::new(), unversioned.clone());
+        let mut tx = TestTransaction::new();
 
         let err = SequenceGeneratorU32::next(&mut tx, &EncodedKey::new("sequence")).unwrap_err();
         assert_eq!(err.diagnostic(), Diagnostic::sequence_exhausted(ValueKind::Uint4));

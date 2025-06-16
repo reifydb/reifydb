@@ -57,6 +57,4 @@ pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>: Send + Sync
     fn hooks(&self) -> Hooks;
 
     fn versioned(&self) -> VS;
-
-    fn unversioned(&self) -> US;
 }

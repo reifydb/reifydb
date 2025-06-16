@@ -22,12 +22,12 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 fn test_write() {
     let key = as_key!("foo");
 
-    let engine= Optimistic::new(Memory::new(), Memory::new());
+    let engine = Optimistic::new(Memory::new(), Memory::new());
     {
         let mut tx = engine.begin();
         assert_eq!(tx.version(), 0);
 
-        tx.set(key.clone(), as_row!("foo1".to_string())).unwrap();
+        tx.set(&key, as_row!("foo1".to_string())).unwrap();
         let value: String = from_row!(String, *tx.get(&key).unwrap().unwrap().row());
         assert_eq!(value.as_str(), "foo1");
         tx.commit().unwrap();
@@ -43,12 +43,12 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-    let engine= Optimistic::new(Memory::new(), Memory::new());
+    let engine = Optimistic::new(Memory::new(), Memory::new());
 
     {
         let mut txn = engine.begin();
         for i in 0..10 {
-            if let Err(e) = txn.set(as_key!(i), as_row!(i)) {
+            if let Err(e) = txn.set(&as_key!(i), as_row!(i)) {
                 panic!("{e}");
             }
         }

@@ -68,7 +68,8 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transa
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engine<VS, US, T> {
-    fn begin(&self) -> crate::Result<T::Tx> {
+
+    pub fn begin(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin().unwrap())
     }
 

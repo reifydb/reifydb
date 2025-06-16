@@ -1478,6 +1478,8 @@ dependencies = [
  "regex",
  "reifydb-core",
  "reifydb-diagnostic",
+ "reifydb-engine",
+ "reifydb-rql",
  "reifydb-storage",
  "reifydb-transaction",
  "test_each_file",

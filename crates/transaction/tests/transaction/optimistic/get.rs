@@ -30,7 +30,7 @@ fn test_read_after_write() {
                 let v = as_row!(i);
 
                 let mut txn = db.begin();
-                txn.set(k.clone(), v.clone()).unwrap();
+                txn.set(&k, v.clone()).unwrap();
                 txn.commit().unwrap();
 
                 let txn = db.begin_read_only();

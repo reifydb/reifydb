@@ -33,7 +33,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         schema::LAYOUT.set_u32(&mut row, schema::ID, schema_id);
         schema::LAYOUT.set_str(&mut row, schema::NAME, &plan.schema);
 
-        tx.bypass().set(&Key::Schema(SchemaKey { schema_id }).encode(), row)?;
+        tx.set(&Key::Schema(SchemaKey { schema_id }).encode(), row)?;
 
         Ok(ExecutionResult::CreateSchema { schema: plan.schema, created: true })
     }
@@ -41,19 +41,19 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
 #[cfg(test)]
 mod tests {
-    use crate::ExecutionResult;
     use crate::execute::execute_tx;
+    use crate::{Engine, ExecutionResult};
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
     use reifydb_storage::memory::Memory;
-    use reifydb_testing::transaction::TestTransaction;
+    use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
     #[test]
     fn test_create_schema() {
+        let versioned = Memory::new();
         let unversioned = Memory::new();
-        let memory = Memory::new();
-
-        let mut tx = TestTransaction::new(memory, unversioned.clone());
+        let engine = Engine::new(Optimistic::new(versioned, unversioned));
+        let mut tx = engine.begin().unwrap();
 
         let mut plan = CreateSchemaPlan {
             schema: "my_schema".to_string(),

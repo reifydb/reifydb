@@ -31,8 +31,8 @@ fn test_write_skew() {
 
     // Set balance to $100 in each account.
     let mut txn = engine.begin();
-    txn.set(a999.clone(), as_row!(100u64)).unwrap();
-    txn.set(a888.clone(), as_row!(100u64)).unwrap();
+    txn.set(&a999, as_row!(100u64)).unwrap();
+    txn.set(&a888, as_row!(100u64)).unwrap();
     txn.commit().unwrap();
     assert_eq!(1, engine.version());
 
@@ -48,7 +48,7 @@ fn test_write_skew() {
     let mut sum = get_bal(&mut txn1, &a999);
     sum += get_bal(&mut txn1, &a888);
     assert_eq!(200, sum);
-    txn1.set(a999.clone(), as_row!(0)).unwrap(); // Deduct 100 from a999
+    txn1.set(&a999, as_row!(0)).unwrap(); // Deduct 100 from a999
 
     // Let's read this back.
     let mut sum = get_bal(&mut txn1, &a999);
@@ -62,7 +62,7 @@ fn test_write_skew() {
     let mut sum = get_bal(&mut txn2, &a999);
     sum += get_bal(&mut txn2, &a888);
     assert_eq!(200, sum);
-    txn2.set(a888.clone(), as_row!(0)).unwrap(); // Deduct 100 from a888
+    txn2.set(&a888, as_row!(0)).unwrap(); // Deduct 100 from a888
 
     // Let's read this back.
     let mut sum = get_bal(&mut txn2, &a999);
@@ -87,9 +87,9 @@ fn test_black_white() {
     let mut txn = engine.begin();
     for i in 1..=10 {
         if i % 2 == 1 {
-            txn.set(as_key!(i), as_row!("black".to_string())).unwrap();
+            txn.set(&as_key!(i), as_row!("black".to_string())).unwrap();
         } else {
-            txn.set(as_key!(i), as_row!("white".to_string())).unwrap();
+            txn.set(&as_key!(i), as_row!("white".to_string())).unwrap();
         }
     }
     txn.commit().unwrap();
@@ -104,7 +104,7 @@ fn test_black_white() {
         .collect::<Vec<_>>();
 
     for i in indices {
-        white.set(i, as_row!("white".to_string())).unwrap();
+        white.set(&i, as_row!("white".to_string())).unwrap();
     }
 
     let mut black = engine.begin();
@@ -117,7 +117,7 @@ fn test_black_white() {
         .collect::<Vec<_>>();
 
     for i in indices {
-        black.set(i, as_row!("black".to_string())).unwrap();
+        black.set(&i, as_row!("black".to_string())).unwrap();
     }
 
     black.commit().unwrap();
@@ -142,18 +142,18 @@ fn test_overdraft_protection() {
 
     // Setup
     let mut txn = engine.begin();
-    txn.set(key.clone(), as_row!(1000)).unwrap();
+    txn.set(&key, as_row!(1000)).unwrap();
     txn.commit().unwrap();
 
     // txn1
     let mut txn1 = engine.begin();
     let money = from_row!(i32, *txn1.get(&key).unwrap().unwrap().row());
-    txn1.set(key.clone(), as_row!(money - 500)).unwrap();
+    txn1.set(&key, as_row!(money - 500)).unwrap();
 
     // txn2
     let mut txn2 = engine.begin();
     let money = from_row!(i32, *txn2.get(&key).unwrap().unwrap().row());
-    txn2.set(key.clone(), as_row!(money - 500)).unwrap();
+    txn2.set(&key, as_row!(money - 500)).unwrap();
 
     txn1.commit().unwrap();
     let err = txn2.commit().unwrap_err();
@@ -173,11 +173,11 @@ fn test_primary_colors() {
     let mut txn = engine.begin();
     for i in 1..=9000 {
         if i % 3 == 1 {
-            txn.set(as_key!(i), as_row!("red".to_string())).unwrap();
+            txn.set(&as_key!(i), as_row!("red".to_string())).unwrap();
         } else if i % 3 == 2 {
-            txn.set(as_key!(i), as_row!("yellow".to_string())).unwrap();
+            txn.set(&as_key!(i), as_row!("yellow".to_string())).unwrap();
         } else {
-            txn.set(as_key!(i), as_row!("blue".to_string())).unwrap();
+            txn.set(&as_key!(i), as_row!("blue".to_string())).unwrap();
         }
     }
     txn.commit().unwrap();
@@ -191,7 +191,7 @@ fn test_primary_colors() {
         })
         .collect::<Vec<_>>();
     for i in indices {
-        red.set(i, as_row!("red".to_string())).unwrap();
+        red.set(&i, as_row!("red".to_string())).unwrap();
     }
 
     let mut yellow = engine.begin();
@@ -203,7 +203,7 @@ fn test_primary_colors() {
         })
         .collect::<Vec<_>>();
     for i in indices {
-        yellow.set(i, as_row!("yellow".to_string())).unwrap();
+        yellow.set(&i, as_row!("yellow".to_string())).unwrap();
     }
 
     let mut red_two = engine.begin();
@@ -215,7 +215,7 @@ fn test_primary_colors() {
         })
         .collect::<Vec<_>>();
     for i in indices {
-        red_two.set(i, as_row!("red".to_string())).unwrap();
+        red_two.set(&i, as_row!("red".to_string())).unwrap();
     }
 
     red.commit().unwrap();

@@ -7,3 +7,4 @@ mod create_series;
 mod create_deferred_view;
 mod get_schema;
 mod layout;
+mod get_table;

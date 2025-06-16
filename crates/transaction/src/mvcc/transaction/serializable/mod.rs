@@ -10,8 +10,9 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use std::ops::Deref;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use crate::BypassTx;
 pub use read::*;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::hook::Hooks;
@@ -32,7 +33,7 @@ pub struct Serializable<VS: VersionedStorage, US: UnversionedStorage>(Arc<Inner<
 pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
     pub(crate) versioned: VS,
-    pub(crate) unversioned: US,
+    pub(crate) bypass: Mutex<BypassTx<US>>,
     pub(crate) hooks: Hooks,
 }
 
@@ -54,7 +55,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
     fn new(name: &str, versioned: VS, unversioned: US) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
         let hooks = versioned.hooks();
-        Self { tm, versioned, unversioned, hooks }
+        Self { tm, versioned, bypass: Mutex::new(BypassTx::new(unversioned)), hooks }
     }
 
     fn version(&self) -> Version {

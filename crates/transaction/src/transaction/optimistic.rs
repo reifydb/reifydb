@@ -14,6 +14,7 @@ use reifydb_core::hook::Hooks;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use std::sync::MutexGuard;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optimistic<VS, US> {
     type Rx = TransactionRx<VS, US>;
@@ -33,10 +34,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optim
 
     fn versioned(&self) -> VS {
         self.versioned.clone()
-    }
-
-    fn unversioned(&self) -> US {
-        self.unversioned.clone()
     }
 }
 
@@ -119,12 +116,12 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<
         Ok(TransactionTx::scan_prefix_rev(self, prefix)?)
     }
 
-    fn set(&mut self, key: EncodedKey, row: EncodedRow) -> crate::Result<()> {
+    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
         TransactionTx::set(self, key, row)?;
         Ok(())
     }
 
-    fn remove(&mut self, key: EncodedKey) -> crate::Result<()> {
+    fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
         TransactionTx::remove(self, key)?;
         Ok(())
     }
@@ -139,7 +136,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<
         Ok(())
     }
 
-    fn bypass(&mut self) -> BypassTx<US> {
+    fn bypass<'a>(&'a mut self) -> MutexGuard<'a, BypassTx<US>> {
         TransactionTx::bypass(self)
     }
 }

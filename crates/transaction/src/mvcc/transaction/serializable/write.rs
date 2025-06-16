@@ -26,6 +26,7 @@ use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 use reifydb_storage::UnversionedStorage;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
+use std::sync::MutexGuard;
 
 pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
     engine: Serializable<VS, US>,
@@ -65,8 +66,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         })
     }
 
-    pub fn bypass(&mut self) -> BypassTx<US> {
-        BypassTx::new(self.engine.unversioned.clone())
+    pub fn bypass(&mut self) -> MutexGuard<BypassTx<US>> {
+        self.engine.bypass.lock().unwrap()
     }
 }
 
@@ -106,11 +107,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         }
     }
 
-    pub fn set(&mut self, key: EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
         self.tm.set(key, row)
     }
 
-    pub fn remove(&mut self, key: EncodedKey) -> Result<(), TransactionError> {
+    pub fn remove(&mut self, key: &EncodedKey) -> Result<(), TransactionError> {
         self.tm.remove(key)
     }
 

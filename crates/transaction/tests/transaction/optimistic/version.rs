@@ -22,13 +22,13 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_versions() {
-    let engine= Optimistic::new(Memory::new(), Memory::new());
+    let engine = Optimistic::new(Memory::new(), Memory::new());
 
     let k0 = as_key!(0);
 
     for i in 1..10 {
         let mut txn = engine.begin();
-        txn.set(k0.clone(), as_row!(i)).unwrap();
+        txn.set(&k0, as_row!(i)).unwrap();
         txn.commit().unwrap();
         assert_eq!(i, engine.version());
     }

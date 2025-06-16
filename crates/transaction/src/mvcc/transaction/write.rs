@@ -114,7 +114,7 @@ where
     P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
-    pub fn set(&mut self, key: EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
@@ -127,11 +127,11 @@ where
     /// This is done by adding a delete marker for the key at commit timestamp.  Any
     /// reads happening before this timestamp would be unaffected. Any reads after
     /// this commit would see the deletion.
-    pub fn remove(&mut self, key: EncodedKey) -> Result<(), TransactionError> {
+    pub fn remove(&mut self, key: &EncodedKey) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
-        self.modify(Pending { delta: Delta::Remove { key }, version: 0 })
+        self.modify(Pending { delta: Delta::Remove { key: key.clone() }, version: 0 })
     }
 
     /// Rolls back the transaction.
@@ -263,12 +263,12 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    fn set_internal(&mut self, key: EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
+    fn set_internal(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
         if self.discarded {
             return Err(TransactionError::Discarded);
         }
 
-        self.modify(Pending { delta: Delta::Set { key, row }, version: self.version })
+        self.modify(Pending { delta: Delta::Set { key: key.clone(), row }, version: self.version })
     }
 
     fn modify(&mut self, pending: Pending) -> Result<(), TransactionError> {

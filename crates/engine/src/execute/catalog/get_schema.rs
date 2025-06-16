@@ -15,8 +15,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         tx: &mut impl Tx<VS, US>,
         name: &str,
     ) -> crate::Result<Option<Schema>> {
-        Ok(tx.bypass().scan_range(SchemaKey::full_scan())?.find_map(|unversioned| {
-            let row: &EncodedRow = &unversioned.row;
+        Ok(tx.scan_range(SchemaKey::full_scan())?.find_map(|tv| {
+            let row: &EncodedRow = &tv.row();
             let schema_name = schema::LAYOUT.get_str(row, schema::NAME);
             if name == schema_name {
                 let id = SchemaId(schema::LAYOUT.get_u32(row, schema::ID));
@@ -39,7 +39,7 @@ mod tests {
 
     #[test]
     fn test_by_name_ok() {
-        let mut tx = TestTransaction::new(Memory::new(), Memory::new());
+        let mut tx = TestTransaction::new();
         create_schema(&mut tx, "test_schema");
 
         let schema =
@@ -51,7 +51,7 @@ mod tests {
 
     #[test]
     fn test_by_name_empty() {
-        let mut tx = TestTransaction::new(Memory::new(), Memory::new());
+        let mut tx = TestTransaction::new();
 
         let result = Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap();
 
@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_by_name_not_found() {
-        let mut tx = TestTransaction::new(Memory::new(), Memory::new());
+        let mut tx = TestTransaction::new();
         create_schema(&mut tx, "another_schema");
 
         let result = Executor::testing().get_schema_by_name(&mut tx, "test_schema").unwrap();
@@ -69,7 +69,7 @@ mod tests {
     }
 
     fn create_schema(tx: &mut impl Tx<Memory, Memory>, name: &str) {
-        let mut plan = CreateSchemaPlan {
+        let plan = CreateSchemaPlan {
             schema: name.to_string(),
             if_not_exists: false,
             span: Span::testing(),

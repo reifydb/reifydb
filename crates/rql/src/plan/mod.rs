@@ -90,6 +90,7 @@ pub struct CreateTablePlan {
     pub table: String,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
+    pub span: Span
 }
 
 #[derive(Debug)]
@@ -238,6 +239,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                             table: name.value().to_string(),
                             if_not_exists: false,
                             columns: result_columns,
+                            span: schema.0.span,
                         }))
                     }
                 };
