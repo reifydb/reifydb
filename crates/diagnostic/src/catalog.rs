@@ -4,11 +4,11 @@
 use crate::{Diagnostic, Span};
 
 impl Diagnostic {
-    pub fn schema_already_exists(span: Span, schema: &str) -> Diagnostic {
+    pub fn schema_already_exists(span: Option<Span>, schema: &str) -> Diagnostic {
         Diagnostic {
             code: "CA_001".to_string(),
             message: format!("schema `{}` already exists", schema),
-            span: Some(span),
+            span,
             label: Some("duplicate schema definition".to_string()),
             help: Some("choose a different name or drop the existing schema first".to_string()),
             column: None,

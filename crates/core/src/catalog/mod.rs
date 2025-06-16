@@ -47,12 +47,6 @@ impl From<SchemaId> for u32 {
     }
 }
 
-#[derive(Debug)]
-pub struct SchemaToCreate {
-    pub id: SchemaId,
-    pub name: String,
-}
-
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub struct SequenceId(pub u32);

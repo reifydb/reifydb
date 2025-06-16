@@ -1359,8 +1359,10 @@ version = "0.0.1"
 name = "reifydb-catalog"
 version = "0.0.1"
 dependencies = [
+ "once_cell",
  "reifydb-core",
  "reifydb-diagnostic",
+ "reifydb-storage",
  "reifydb-transaction",
 ]
 
@@ -1493,6 +1495,7 @@ version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
  "reifydb-core",
+ "reifydb-diagnostic",
  "reifydb-storage",
  "reifydb-testing",
  "test_each_file",

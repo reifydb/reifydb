@@ -8,18 +8,22 @@
 
 pub use catalog::DepCatalog;
 pub use dep::column::*;
-pub use error::Error;
 pub use dep::schema::*;
 pub use dep::store::*;
+pub use error::Error;
 
 mod catalog;
-mod error;
+pub mod column;
 mod dep;
-mod column;
-mod schema;
-mod table;
+mod error;
+pub mod schema;
+mod sequence;
+pub mod table;
+pub mod test_utils;
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub struct Catalog {}
 
 pub trait DepCatalogRx {
     type SchemaRx: DepSchemaRx;

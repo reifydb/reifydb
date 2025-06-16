@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::Error;
 use crate::execute::catalog::layout::schema;
 use crate::execute::{CreateSchemaResult, ExecutionResult, Executor};
-use crate::Error;
 use reifydb_core::{Key, SchemaKey};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::CreateSchemaPlan;
@@ -16,6 +16,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         tx: &mut impl Tx<VS, US>,
         plan: CreateSchemaPlan,
     ) -> crate::Result<ExecutionResult> {
+        
+    
         if let Some(schema) = self.get_schema_by_name(tx, &plan.schema)? {
             if plan.if_not_exists {
                 return Ok(ExecutionResult::CreateSchema(CreateSchemaResult {
@@ -26,7 +28,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }
 
             return Err(Error::execution(Diagnostic::schema_already_exists(
-                plan.span,
+                Some(plan.span),
                 &schema.name,
             )));
         }
@@ -49,9 +51,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute::SchemaId;
-    use crate::execute::{execute_tx, CreateSchemaResult};
     use crate::ExecutionResult;
+    use crate::execute::SchemaId;
+    use crate::execute::{CreateSchemaResult, execute_tx};
     use reifydb_diagnostic::Span;
     use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
     use reifydb_transaction::test_utils::TestTransaction;

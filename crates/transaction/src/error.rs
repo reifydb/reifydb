@@ -3,6 +3,7 @@
 
 use crate::mvcc;
 use crate::mvcc::error::TransactionError;
+use reifydb_diagnostic::Diagnostic;
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors related to transactions, the mem-table, or persistence.
@@ -33,5 +34,11 @@ impl From<mvcc::MvccError> for Error {
 impl From<TransactionError> for Error {
     fn from(err: TransactionError) -> Self {
         Self::Mvcc(err.into())
+    }
+}
+
+impl Error {
+    pub fn diagnostic(self) -> Diagnostic {
+        todo!()
     }
 }
