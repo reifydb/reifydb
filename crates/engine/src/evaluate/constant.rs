@@ -56,7 +56,7 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::{EvaluationColumn, Evaluator};
-    use reifydb_catalog::{ColumnPolicy, ColumnSaturationPolicy};
+    use reifydb_catalog::{DepColumnPolicy, DepColumnSaturationPolicy};
     use reifydb_core::ValueKind;
     use reifydb_diagnostic::{Line, Offset, Span};
     use reifydb_frame::ColumnValues;
@@ -159,7 +159,7 @@ mod tests {
         EvaluationColumn {
             name: name.to_string(),
             value: kind,
-            policies: vec![ColumnPolicy::Saturation(ColumnSaturationPolicy::Error)],
+            policies: vec![DepColumnPolicy::Saturation(DepColumnSaturationPolicy::Error)],
         }
     }
 }

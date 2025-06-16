@@ -8,22 +8,22 @@
 //     pub default: Option<Expression>,
 // }
 
-use crate::Column;
+use crate::DepColumn;
 use reifydb_core::StoreKind;
 
 #[derive(Debug)]
-pub struct Store {
+pub struct DepStore {
     pub name: String,
     pub kind: StoreKind,
-    pub columns: Vec<Column>,
+    pub columns: Vec<DepColumn>,
 }
 
-impl crate::StoreRx for Store {
+impl crate::DepStoreRx for DepStore {
     fn kind(&self) -> crate::Result<StoreKind> {
         Ok(self.kind)
     }
 
-    fn get_column(&self, column: &str) -> crate::Result<Column> {
+    fn get_column(&self, column: &str) -> crate::Result<DepColumn> {
         let column_name = column;
         for (idx, column) in self.columns.iter().enumerate() {
             if &column.name == column_name {
@@ -34,7 +34,7 @@ impl crate::StoreRx for Store {
         todo!()
     }
 
-    fn list_columns(&self) -> crate::Result<Vec<Column>> {
+    fn list_columns(&self) -> crate::Result<Vec<DepColumn>> {
         Ok(self.columns.clone())
     }
 
@@ -50,4 +50,4 @@ impl crate::StoreRx for Store {
     }
 }
 
-impl crate::StoreTx for Store {}
+impl crate::DepStoreTx for DepStore {}

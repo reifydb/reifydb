@@ -8,7 +8,7 @@ use crate::execute::Executor;
 #[cfg(test)]
 use crate::{CreateSchemaResult, CreateTableResult, ExecutionResult, execute_tx};
 #[cfg(test)]
-use reifydb_catalog::ColumnPolicy;
+use reifydb_catalog::DepColumnPolicy;
 #[cfg(test)]
 use reifydb_core::ValueKind;
 #[cfg(test)]
@@ -61,7 +61,7 @@ pub fn create_table(
     tx: &mut impl Tx<Memory, Memory>,
     schema: &str,
     table: &str,
-    columns: &[reifydb_catalog::ColumnToCreate],
+    columns: &[reifydb_catalog::DepColumnToCreate],
 ) -> CreateTableResult {
     let table_plan = CreateTablePlan {
         schema: schema.to_string(),
@@ -82,7 +82,7 @@ pub fn create_test_table_column(
     tx: &mut impl Tx<Memory, Memory>,
     name: &str,
     value: ValueKind,
-    policies: Vec<ColumnPolicy>,
+    policies: Vec<DepColumnPolicy>,
 ) {
     ensure_test_table(tx);
 

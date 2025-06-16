@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 use crate::evaluate::Context;
-use reifydb_catalog::ColumnSaturationPolicy;
+use reifydb_catalog::DepColumnSaturationPolicy;
 use reifydb_core::num::SafePromote;
 use reifydb_diagnostic::policy::{column_saturation, ColumnSaturation};
 use reifydb_diagnostic::IntoSpan;
@@ -42,7 +42,7 @@ impl Promote for &Context {
         match val.promote() {
             Some(v) => Ok(Some(v)),
             None => match self.saturation_policy() {
-                ColumnSaturationPolicy::Error => {
+                DepColumnSaturationPolicy::Error => {
                     if let Some(column) = &self.column {
                         Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
@@ -53,7 +53,7 @@ impl Promote for &Context {
                         unimplemented!()
                     }
                 }
-                ColumnSaturationPolicy::Undefined => Ok(None),
+                DepColumnSaturationPolicy::Undefined => Ok(None),
             },
         }
     }
@@ -62,13 +62,13 @@ impl Promote for &Context {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::{Context, EvaluationColumn, Promote};
-    use reifydb_catalog::ColumnSaturationPolicy::Undefined;
-    use reifydb_catalog::{ColumnPolicy, ColumnSaturationPolicy};
+    use reifydb_catalog::DepColumnSaturationPolicy::Undefined;
+    use reifydb_catalog::{DepColumnPolicy, DepColumnSaturationPolicy};
     use reifydb_core::num::SafePromote;
     use reifydb_core::ValueKind;
     use reifydb_testing::make_test_span;
-    use ColumnPolicy::Saturation;
-    use ColumnSaturationPolicy::Error;
+    use DepColumnPolicy::Saturation;
+    use DepColumnSaturationPolicy::Error;
 
     #[test]
     fn test_promote_ok() {

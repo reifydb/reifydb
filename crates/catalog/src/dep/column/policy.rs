@@ -4,18 +4,18 @@
 use reifydb_diagnostic::Diagnostic;
 
 #[derive(Debug, Clone)]
-pub enum ColumnPolicy {
-    Saturation(ColumnSaturationPolicy),
+pub enum DepColumnPolicy {
+    Saturation(DepColumnSaturationPolicy),
 }
 
-impl ColumnPolicy {
+impl DepColumnPolicy {
     pub fn default_saturation_policy() -> Self {
-        Self::Saturation(ColumnSaturationPolicy::default())
+        Self::Saturation(DepColumnSaturationPolicy::default())
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum ColumnSaturationPolicy {
+pub enum DepColumnSaturationPolicy {
     Error,
     // Saturate,
     // Wrap,
@@ -23,23 +23,23 @@ pub enum ColumnSaturationPolicy {
     Undefined,
 }
 
-pub const DEFAULT_COLUMN_SATURATION_POLICY: ColumnSaturationPolicy = ColumnSaturationPolicy::Error;
+pub const DEP_DEFAULT_COLUMN_SATURATION_POLICY: DepColumnSaturationPolicy = DepColumnSaturationPolicy::Error;
 
-impl Default for ColumnSaturationPolicy {
+impl Default for DepColumnSaturationPolicy {
     fn default() -> Self {
         Self::Error
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ColumnPolicyError {
+pub enum DEP_ColumnPolicyError {
     Saturation(Diagnostic),
 }
 
-impl ColumnPolicyError {
+impl DEP_ColumnPolicyError {
     pub fn diagnostic(self) -> Diagnostic {
         match self {
-            ColumnPolicyError::Saturation(diagnostic) => diagnostic,
+            DEP_ColumnPolicyError::Saturation(diagnostic) => diagnostic,
         }
     }
 }

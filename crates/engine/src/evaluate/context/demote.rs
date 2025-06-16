@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 use crate::evaluate::Context;
-use reifydb_catalog::ColumnSaturationPolicy;
+use reifydb_catalog::DepColumnSaturationPolicy;
 use reifydb_core::num::SafeDemote;
 use reifydb_diagnostic::IntoSpan;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
@@ -42,7 +42,7 @@ impl Demote for &Context {
         match val.demote() {
             Some(v) => Ok(Some(v)),
             None => match self.saturation_policy() {
-                ColumnSaturationPolicy::Error => {
+                DepColumnSaturationPolicy::Error => {
                     if let Some(column) = &self.column {
                         Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
@@ -53,7 +53,7 @@ impl Demote for &Context {
                         unimplemented!()
                     }
                 }
-                ColumnSaturationPolicy::Undefined => Ok(None),
+                DepColumnSaturationPolicy::Undefined => Ok(None),
             },
         }
     }
@@ -62,9 +62,9 @@ impl Demote for &Context {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::{Context, Demote, EvaluationColumn};
-    use ColumnPolicy::Saturation;
-    use reifydb_catalog::ColumnPolicy;
-    use reifydb_catalog::ColumnSaturationPolicy::{Error, Undefined};
+    use DepColumnPolicy::Saturation;
+    use reifydb_catalog::DepColumnPolicy;
+    use reifydb_catalog::DepColumnSaturationPolicy::{Error, Undefined};
     use reifydb_core::ValueKind;
     use reifydb_core::num::SafeDemote;
     use reifydb_testing::make_test_span;

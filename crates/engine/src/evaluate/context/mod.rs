@@ -7,7 +7,7 @@ pub use promote::Promote;
 mod demote;
 mod promote;
 
-use reifydb_catalog::{ColumnPolicy, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
+use reifydb_catalog::{DepColumnPolicy, DepColumnSaturationPolicy, DEP_DEFAULT_COLUMN_SATURATION_POLICY};
 use reifydb_core::ValueKind;
 use reifydb_core::num::{SafeAdd, SafeSubtract};
 use reifydb_diagnostic::IntoSpan;
@@ -18,18 +18,18 @@ use reifydb_frame::Frame;
 pub(crate) struct EvaluationColumn {
     pub(crate) name: String,
     pub(crate) value: ValueKind,
-    pub(crate) policies: Vec<ColumnPolicy>,
+    pub(crate) policies: Vec<DepColumnPolicy>,
 }
 
 impl EvaluationColumn {
-    pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
+    pub(crate) fn saturation_policy(&self) -> &DepColumnSaturationPolicy {
         self.policies
             .iter()
             .find_map(|p| match p {
-                ColumnPolicy::Saturation(policy) => Some(policy),
+                DepColumnPolicy::Saturation(policy) => Some(policy),
                 _ => None,
             })
-            .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
+            .unwrap_or(&DEP_DEFAULT_COLUMN_SATURATION_POLICY)
     }
 }
 
@@ -44,11 +44,11 @@ impl Context {
         self.frame.as_ref().map(|f| f.row_count()).unwrap_or(1)
     }
 
-    pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
+    pub(crate) fn saturation_policy(&self) -> &DepColumnSaturationPolicy {
         self.column
             .as_ref()
             .map(|c| c.saturation_policy())
-            .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
+            .unwrap_or(&DEP_DEFAULT_COLUMN_SATURATION_POLICY)
     }
 }
 
@@ -60,7 +60,7 @@ impl Context {
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<T>> {
         match self.saturation_policy() {
-            ColumnSaturationPolicy::Error => l
+            DepColumnSaturationPolicy::Error => l
                 .checked_add(r)
                 .ok_or_else(|| {
                     if let Some(column) = &self.column {
@@ -76,7 +76,7 @@ impl Context {
                 .map(Some),
             // SaturationPolicy::Saturate => Ok(a.saturating_add(b)),
             // SaturationPolicy::Wrap => Ok(a.wrapping_add(b)),
-            ColumnSaturationPolicy::Undefined => Ok(None),
+            DepColumnSaturationPolicy::Undefined => Ok(None),
         }
     }
 
@@ -87,7 +87,7 @@ impl Context {
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<T>> {
         match self.saturation_policy() {
-            ColumnSaturationPolicy::Error => l
+            DepColumnSaturationPolicy::Error => l
                 .checked_sub(r)
                 .ok_or_else(|| {
                     if let Some(column) = &self.column {
@@ -103,7 +103,7 @@ impl Context {
                 .map(Some),
             // SaturationPolicy::Saturate => Ok(a.saturating_add(b)),
             // SaturationPolicy::Wrap => Ok(a.wrapping_add(b)),
-            ColumnSaturationPolicy::Undefined => Ok(None),
+            DepColumnSaturationPolicy::Undefined => Ok(None),
         }
     }
 }

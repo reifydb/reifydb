@@ -8,7 +8,7 @@
 
 pub use bypass::{BypassRx, BypassTx};
 pub use error::Error;
-use reifydb_catalog::Catalog;
+use reifydb_catalog::DepCatalog;
 use reifydb_core::hook::Hooks;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 pub use rx::*;
@@ -30,19 +30,19 @@ pub type Result<T> = std::result::Result<T, Error>;
 // FIXME remove this - just a quick hack
 
 #[derive(Debug)]
-pub struct CatalogCell(UnsafeCell<&'static mut Catalog>);
+pub struct CatalogCell(UnsafeCell<&'static mut DepCatalog>);
 
 unsafe impl Sync for CatalogCell {} // ⚠️ only safe in single-threaded context
 
 static CATALOG: OnceLock<CatalogCell> = OnceLock::new();
 
 pub fn catalog_init() {
-    let boxed = Box::new(Catalog::new());
+    let boxed = Box::new(DepCatalog::new());
     let leaked = Box::leak(boxed);
     CATALOG.set(CatalogCell(UnsafeCell::new(leaked))).unwrap();
 }
 
-pub fn catalog_mut_singleton() -> &'static mut Catalog {
+pub fn catalog_mut_singleton() -> &'static mut DepCatalog {
     // SAFETY: Caller guarantees exclusive access
     unsafe { *CATALOG.get().unwrap().0.get() }
 }

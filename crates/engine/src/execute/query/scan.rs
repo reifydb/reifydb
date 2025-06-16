@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use reifydb_catalog::{SchemaRx, StoreRx};
+use reifydb_catalog::{DepSchemaRx, DepStoreRx};
 use reifydb_storage::{Storage, UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Rx;
 

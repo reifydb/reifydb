@@ -4,7 +4,7 @@
 use crate::Error;
 use crate::execute::Executor;
 use crate::execute::catalog::layout::{column, table_column};
-use reifydb_catalog::ColumnPolicy;
+use reifydb_catalog::DepColumnPolicy;
 use reifydb_core::catalog::{Column, TableId};
 use reifydb_core::{ColumnKey, Key, TableColumnKey, ValueKind};
 use reifydb_diagnostic::{Diagnostic, Span};
@@ -19,7 +19,7 @@ pub struct ColumnToCreate<'a> {
     pub column: String,
     pub value: ValueKind,
     pub if_not_exists: bool,
-    pub policies: Vec<ColumnPolicy>,
+    pub policies: Vec<DepColumnPolicy>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {

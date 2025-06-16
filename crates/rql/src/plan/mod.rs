@@ -15,7 +15,7 @@ use crate::expression::{
 };
 pub use error::Error;
 use reifydb_catalog::{
-    CatalogRx, Column, ColumnPolicy, ColumnSaturationPolicy, ColumnToCreate, SchemaRx, StoreRx,
+    DepCatalogRx, DepColumn, DepColumnPolicy, DepColumnSaturationPolicy, DepColumnToCreate, DepSchemaRx, DepStoreRx,
 };
 use reifydb_core::ValueKind;
 use reifydb_diagnostic::Span;
@@ -72,7 +72,7 @@ pub struct CreateDeferredViewPlan {
     pub schema: String,
     pub view: String,
     pub if_not_exists: bool,
-    pub columns: Vec<ColumnToCreate>,
+    pub columns: Vec<DepColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,7 +93,7 @@ pub struct CreateSeriesPlan {
     pub schema: String,
     pub series: String,
     pub if_not_exists: bool,
-    pub columns: Vec<ColumnToCreate>,
+    pub columns: Vec<DepColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
@@ -101,13 +101,13 @@ pub struct CreateTablePlan {
     pub schema: String,
     pub table: String,
     pub if_not_exists: bool,
-    pub columns: Vec<ColumnToCreate>,
+    pub columns: Vec<DepColumnToCreate>,
     pub span: Span,
 }
 
 #[derive(Debug)]
 pub enum InsertIntoTablePlan {
-    Values { schema: String, table: String, columns: Vec<Column>, rows_to_insert: Vec<RowToInsert> },
+    Values { schema: String, table: String, columns: Vec<DepColumn>, rows_to_insert: Vec<RowToInsert> },
 }
 
 #[derive(Debug)]
@@ -115,7 +115,7 @@ pub enum InsertIntoSeriesPlan {
     Values {
         schema: String,
         series: String,
-        columns: Vec<Column>,
+        columns: Vec<DepColumn>,
         rows_to_insert: Vec<RowToInsert>,
     },
 }
@@ -161,7 +161,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
             Ast::Create(create) => {
                 return match create {
                     AstCreate::DeferredView { schema, name, columns, .. } => {
-                        let mut result_columns: Vec<ColumnToCreate> = vec![];
+                        let mut result_columns: Vec<DepColumnToCreate> = vec![];
 
                         for col in columns.iter() {
                             let column_name = col.name.value().to_string();
@@ -172,12 +172,12 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                                     .policies
                                     .iter()
                                     .map(convert_policy)
-                                    .collect::<Vec<ColumnPolicy>>()
+                                    .collect::<Vec<DepColumnPolicy>>()
                             } else {
                                 vec![]
                             };
 
-                            result_columns.push(ColumnToCreate {
+                            result_columns.push(DepColumnToCreate {
                                 name: column_name,
                                 value: column_type,
                                 policies,
@@ -223,7 +223,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                         unimplemented!()
                     }
                     AstCreate::Table { schema, name, columns, .. } => {
-                        let mut result_columns: Vec<ColumnToCreate> = vec![];
+                        let mut result_columns: Vec<DepColumnToCreate> = vec![];
 
                         for col in columns.iter() {
                             let column_name = col.name.value().to_string();
@@ -234,12 +234,12 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                                     .policies
                                     .iter()
                                     .map(convert_policy)
-                                    .collect::<Vec<ColumnPolicy>>()
+                                    .collect::<Vec<DepColumnPolicy>>()
                             } else {
                                 vec![]
                             };
 
-                            result_columns.push(ColumnToCreate {
+                            result_columns.push(DepColumnToCreate {
                                 name: column_name,
                                 value: column_type,
                                 policies,
@@ -426,17 +426,17 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
     unreachable!()
 }
 
-pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicy {
-    use ColumnPolicy::*;
+pub fn convert_policy(ast: &AstPolicy) -> DepColumnPolicy {
+    use DepColumnPolicy::*;
 
     match ast.policy {
         AstPolicyKind::Saturation => {
             if ast.value.is_literal_undefined() {
-                return Saturation(ColumnSaturationPolicy::Undefined);
+                return Saturation(DepColumnSaturationPolicy::Undefined);
             }
             let ident = ast.value.as_identifier().value();
             match ident {
-                "error" => Saturation(ColumnSaturationPolicy::Error),
+                "error" => Saturation(DepColumnSaturationPolicy::Error),
                 // "saturate" => Some(Saturation(Saturate)),
                 // "wrap" => Some(Saturation(Wrap)),
                 // "zero" => Some(Saturation(Zero)),

@@ -1,79 +1,79 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Column, Store, StoreToCreate};
+use crate::{DepColumn, DepStore, DepStoreToCreate};
 use reifydb_core::StoreKind;
 use std::collections::HashMap;
 use std::ops::Deref;
 
 #[derive(Debug)]
-pub struct Schema {
+pub struct DepSchema {
     name: String,
-    stores: HashMap<String, Store>,
+    stores: HashMap<String, DepStore>,
 }
 
-impl Schema {
+impl DepSchema {
     pub fn new(name: String) -> Self {
         Self { name, stores: HashMap::new() }
     }
 }
 
-impl crate::SchemaRx for Schema {
-    type StoreRx = Store;
-    fn get(&self, name: &str) -> crate::Result<&Store> {
+impl crate::DepSchemaRx for DepSchema {
+    type StoreRx = DepStore;
+    fn get(&self, name: &str) -> crate::Result<&DepStore> {
         Ok(self.stores.get(name).unwrap())
     }
 
-    fn list(&self) -> crate::Result<Vec<&Store>> {
+    fn list(&self) -> crate::Result<Vec<&DepStore>> {
         todo!()
     }
 }
 
-impl crate::SchemaTx for Schema {
-    type StoreTx = Store;
+impl crate::DepSchemaTx for DepSchema {
+    type StoreTx = DepStore;
 
-    fn create(&mut self, to_create: StoreToCreate) -> crate::Result<()> {
+    fn create(&mut self, to_create: DepStoreToCreate) -> crate::Result<()> {
         match to_create {
-            StoreToCreate::DeferredView { view: name, columns } => {
+            DepStoreToCreate::DeferredView { view: name, columns } => {
                 assert!(self.stores.get(name.deref()).is_none());
                 self.stores.insert(
                     name.deref().to_string(),
-                    Store {
+                    DepStore {
                         name,
                         kind: StoreKind::Table,
                         columns: columns
                             .into_iter()
-                            .map(|c| Column::new(c.name, c.value, c.policies))
+                            .map(|c| DepColumn::new(c.name, c.value, c.policies))
                             .collect::<Vec<_>>(),
                     },
                 );
             },
         
-            StoreToCreate::Series { series: name, columns } => {
+            DepStoreToCreate::Series { series: name, columns } => {
                 assert!(self.stores.get(name.deref()).is_none());
                 self.stores.insert(
                     name.deref().to_string(),
-                    Store {
+                    DepStore {
                         name,
                         kind: StoreKind::Series,
                         columns: columns
                             .into_iter()
-                            .map(|c| Column::new(c.name, c.value, vec![]))
+                            .map(|c| DepColumn::new(c.name, c.value, vec![]))
                             .collect::<Vec<_>>(),
                     },
                 );
             }
 
-            StoreToCreate::Table { table: name, columns } => {
+            DepStoreToCreate::Table { table: name, columns } => {
                 assert!(self.stores.get(name.deref()).is_none());
                 self.stores.insert(
                     name.deref().to_string(),
-                    Store {
+                    DepStore {
                         name,
                         kind: StoreKind::Table,
                         columns: columns
                             .into_iter()
-                            .map(|c| Column::new(c.name, c.value, c.policies))
+                            .map(|c| DepColumn::new(c.name, c.value, c.policies))
                             .collect::<Vec<_>>(),
                     },
                 );
@@ -82,7 +82,7 @@ impl crate::SchemaTx for Schema {
         Ok(())
     }
 
-    fn create_if_not_exists(&mut self, to_create: StoreToCreate) -> crate::Result<()> {
+    fn create_if_not_exists(&mut self, to_create: DepStoreToCreate) -> crate::Result<()> {
         todo!()
     }
 

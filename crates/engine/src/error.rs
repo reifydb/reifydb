@@ -14,7 +14,7 @@ pub enum Error {
     Execution(execute::Error),
     Frame(reifydb_frame::Error),
     Plan(plan::Error),
-    Policy(reifydb_catalog::ColumnPolicyError),
+    Policy(reifydb_catalog::DEP_ColumnPolicyError),
     Transaction(reifydb_transaction::Error),
 }
 
@@ -66,8 +66,8 @@ impl From<plan::Error> for Error {
     }
 }
 
-impl From<reifydb_catalog::ColumnPolicyError> for Error {
-    fn from(err: reifydb_catalog::ColumnPolicyError) -> Self {
+impl From<reifydb_catalog::DEP_ColumnPolicyError> for Error {
+    fn from(err: reifydb_catalog::DEP_ColumnPolicyError) -> Self {
         Self::Policy(err)
     }
 }

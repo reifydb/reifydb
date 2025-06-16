@@ -1,33 +1,33 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Schema;
+use crate::DepSchema;
 use std::collections::HashMap;
 
 #[derive(Debug)]
-pub struct Catalog {
-    schema: HashMap<String, Schema>,
+pub struct DepCatalog {
+    schema: HashMap<String, DepSchema>,
 }
 
-impl Catalog {
+impl DepCatalog {
     pub fn new() -> Self {
         Self { schema: HashMap::new() }
     }
 }
 
-impl crate::CatalogRx for Catalog {
-    type SchemaRx = Schema;
-    fn get(&self, schema: &str) -> crate::Result<&Schema> {
+impl crate::DepCatalogRx for DepCatalog {
+    type SchemaRx = DepSchema;
+    fn get(&self, schema: &str) -> crate::Result<&DepSchema> {
         Ok(self.schema.get(schema).unwrap())
     }
 
-    fn list(&self) -> crate::Result<Vec<&Schema>> {
+    fn list(&self) -> crate::Result<Vec<&DepSchema>> {
         todo!()
     }
 }
 
-impl crate::CatalogTx for Catalog {
-    type SchemaTx = Schema;
+impl crate::DepCatalogTx for DepCatalog {
+    type SchemaTx = DepSchema;
 
     fn get_mut(&mut self, schema: &str) -> crate::Result<&mut Self::SchemaRx> {
         Ok(self.schema.get_mut(schema).unwrap())
@@ -35,7 +35,7 @@ impl crate::CatalogTx for Catalog {
 
     fn create(&mut self, schema: &str) -> crate::Result<()> {
         // assert!(self.schema.get(schema).is_none()); // FIXME
-        self.schema.insert(schema.clone().into(), Schema::new(schema.to_string()));
+        self.schema.insert(schema.clone().into(), DepSchema::new(schema.to_string()));
         Ok(())
     }
 

@@ -6,7 +6,7 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use catalog::Catalog;
+pub use catalog::DepCatalog;
 pub use dep::column::*;
 pub use error::Error;
 pub use dep::schema::*;
@@ -18,16 +18,16 @@ mod dep;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub trait CatalogRx {
-    type SchemaRx: SchemaRx;
+pub trait DepCatalogRx {
+    type SchemaRx: DepSchemaRx;
 
     fn get(&self, schema: &str) -> Result<&Self::SchemaRx>;
 
     fn list(&self) -> Result<Vec<&Self::SchemaRx>>;
 }
 
-pub trait CatalogTx: CatalogRx {
-    type SchemaTx: SchemaTx;
+pub trait DepCatalogTx: DepCatalogRx {
+    type SchemaTx: DepSchemaTx;
 
     fn get_mut(&mut self, schema: &str) -> Result<&mut Self::SchemaRx>;
 
