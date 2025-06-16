@@ -122,7 +122,7 @@ mod tests {
         ensure_test_schema(&mut tx);
         create_schema(&mut tx, "another_schema");
 
-        let 
+        let
         plan = CreateTablePlan {
             schema: "test_schema".to_string(),
             table: "test_table".to_string(),

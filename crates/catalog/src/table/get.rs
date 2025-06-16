@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb_core::ValueKind;
 use crate::Catalog;
 use crate::key::{EncodableKey, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
@@ -8,6 +9,7 @@ use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
 use reifydb_storage::Versioned;
 use reifydb_transaction::Rx;
+use crate::column::{Column, ColumnId};
 
 impl Catalog {
     pub fn get_table_by_name(
@@ -41,7 +43,26 @@ impl Catalog {
         let id = TableId(table::LAYOUT.get_u32(&row, table::ID));
         let schema = SchemaId(table::LAYOUT.get_u32(&row, table::SCHEMA));
         let name = table::LAYOUT.get_str(&row, table::NAME).to_string();
-        Table { id, name, schema }
+        Table { id, name, schema, columns: vec![
+            Column{
+                id: ColumnId(1),
+                name: "field_one".to_string(),
+                value: ValueKind::Int1,
+                policies: vec![],
+            },
+            Column{
+                id: ColumnId(2),
+                name: "field_two".to_string(),
+                value: ValueKind::Int2,
+                policies: vec![],
+            },
+            Column{
+                id: ColumnId(3),
+                name: "field_three".to_string(),
+                value: ValueKind::Int1,
+                policies: vec![],
+            }
+        ] }
     }
 }
 

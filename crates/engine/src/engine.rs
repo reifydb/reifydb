@@ -6,6 +6,7 @@ use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
 use reifydb_core::hook::Hooks;
 use reifydb_rql::ast;
+use reifydb_rql::ast::Ast;
 use reifydb_rql::plan::{plan_rx, plan_tx};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::{Transaction, Tx};
@@ -85,18 +86,18 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         // let mut storage = self.transaction.versioned();
 
         for statement in statements {
-            // match &statement.0[0] {
-            // Ast::From(_) | Ast::Select(_) => {
-            //     let plan = plan_rx(statement)?;
-            //     let er = execute_tx(plan, &mut tx)?;
-            //     result.push(er);
-            // }
-            // _ => {
-            let plan = plan_tx::<VS, US>(&mut tx, statement)?;
-            let er = execute_tx(&mut tx, plan)?;
-            result.push(er);
-            // }
-            // }
+            match &statement.0[0] {
+                Ast::From(_) | Ast::Select(_) => {
+                    let plan = plan_rx(statement)?;
+                    let er = execute_rx::<VS, US>(&mut tx, plan)?;
+                    result.push(er);
+                }
+                _ => {
+                    let plan = plan_tx::<VS, US>(&mut tx, statement)?;
+                    let er = execute_tx(&mut tx, plan)?;
+                    result.push(er);
+                }
+            }
         }
 
         tx.commit().unwrap();

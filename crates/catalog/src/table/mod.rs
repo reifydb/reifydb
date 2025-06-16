@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::column::Column;
 use crate::schema::SchemaId;
 pub use create::{ColumnToCreate, TableToCreate};
 use std::ops::Deref;
@@ -14,6 +15,7 @@ pub struct Table {
     pub id: TableId,
     pub schema: SchemaId,
     pub name: String,
+    pub columns: Vec<Column>,
 }
 
 #[repr(transparent)]

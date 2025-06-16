@@ -5,8 +5,10 @@ use crate::ExecutionResult;
 use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
 use crate::execute::write::column::adjust_column;
-use reifydb_catalog::table::TableId;
+use reifydb_catalog::Catalog;
+use reifydb_catalog::key::{EncodableKey, TableRowKey};
 use reifydb_core::ValueKind;
+use reifydb_core::catalog::RowId;
 use reifydb_core::row::Layout;
 use reifydb_frame::ValueRef;
 use reifydb_rql::plan::InsertIntoTablePlan;
@@ -93,13 +95,24 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     rows.push(row);
                 }
 
-                let table = TableId(1);
-                // let result = tx.insert_into_table(table, rows).unwrap();
-                // Ok(ExecutionResult::InsertIntoTable { schema, table, inserted: result.inserted })
-                unimplemented!()
+                let schema = Catalog::get_schema_by_name(tx, &schema)?.unwrap();
+                let table = Catalog::get_table_by_name(tx, schema.id, &table)?.unwrap();
 
-                // let result =
-                //     tx.dep_insert_into_table(schema.as_str(), table.as_str(), rows).unwrap();
+                // let table = TableId(1);
+
+                let inserted = rows.len();
+                for (idx, row) in rows.into_iter().enumerate() {
+                    // FIXME generate row id
+                    tx.set(&TableRowKey { table: table.id, row: RowId(idx as u64) }.encode(), row)
+                        .unwrap();
+                }
+
+                // let result = tx.insert_into_table(table, rows).unwrap();
+                Ok(ExecutionResult::InsertIntoTable {
+                    schema: schema.name,
+                    table: table.name,
+                    inserted,
+                })
             }
         }
     }

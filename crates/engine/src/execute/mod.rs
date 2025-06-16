@@ -254,9 +254,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 next
             }
             QueryPlan::Scan { schema, store, next } => {
-                // self.scan(rx, &schema, &store)?;
-                // next
-                unimplemented!()
+                self.scan(rx, &schema, &store)?;
+                next
+                // unimplemented!()
             }
             QueryPlan::Project { expressions, next } => {
                 self.project(expressions)?;
@@ -267,9 +267,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 next
             }
             QueryPlan::Limit { limit, next } => {
-                // self.limit(limit)?;
-                // next
-                unimplemented!()
+                self.limit(limit)?;
+                next
+                // unimplemented!()
             }
         };
 
