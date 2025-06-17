@@ -9,6 +9,7 @@ use std::ops::Deref;
 mod create;
 mod get;
 mod layout;
+mod list;
 mod policy;
 
 #[derive(Debug, PartialEq)]
@@ -17,6 +18,7 @@ pub struct Column {
     pub name: String,
     pub value: ValueKind,
     pub policies: Vec<ColumnPolicy>,
+    pub index: ColumnIndex,
 }
 
 #[repr(transparent)]
@@ -39,6 +41,30 @@ impl PartialEq<u32> for ColumnId {
 
 impl From<ColumnId> for u32 {
     fn from(value: ColumnId) -> Self {
+        value.0
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct ColumnIndex(pub u16);
+
+impl Deref for ColumnIndex {
+    type Target = u16;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq<u16> for ColumnIndex {
+    fn eq(&self, other: &u16) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl From<ColumnIndex> for u16 {
+    fn from(value: ColumnIndex) -> Self {
         value.0
     }
 }

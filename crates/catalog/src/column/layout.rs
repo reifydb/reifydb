@@ -10,13 +10,15 @@ pub(crate) mod column {
     pub(crate) const TABLE: usize = 1;
     pub(crate) const NAME: usize = 2;
     pub(crate) const VALUE: usize = 3;
+    pub(crate) const INDEX: usize = 4;
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
             ValueKind::Uint4,  // id
             ValueKind::Uint4,  // table
             ValueKind::String, // name
-            ValueKind::Uint1,  //value
+            ValueKind::Uint1,  // value
+            ValueKind::Uint2,  // index
         ])
     });
 }
@@ -28,11 +30,13 @@ pub(crate) mod table_column {
 
     pub(crate) const ID: usize = 0;
     pub(crate) const NAME: usize = 1;
+    pub(crate) const INDEX: usize = 2;
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
             ValueKind::Uint4,  // column id
             ValueKind::String, // column name
+            ValueKind::Uint2,  // column index - position in the table
         ])
     });
 }

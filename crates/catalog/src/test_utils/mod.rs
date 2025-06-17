@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Catalog;
-use crate::column::{ColumnPolicy, ColumnToCreate};
+use crate::column::{ColumnIndex, ColumnPolicy, ColumnToCreate};
 use crate::schema::SchemaToCreate;
 use crate::schema::{Schema, SchemaId};
 use crate::table;
@@ -58,6 +58,8 @@ pub fn create_test_table_column(
 ) {
     ensure_test_table(tx);
 
+    let columns = Catalog::list_columns(tx, TableId(1)).unwrap();
+
     Catalog::create_column(
         tx,
         TableId(1),
@@ -70,6 +72,7 @@ pub fn create_test_table_column(
             value,
             if_not_exists: false,
             policies,
+            index: ColumnIndex(columns.len() as u16),
         },
     )
     .unwrap();

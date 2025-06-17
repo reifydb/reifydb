@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::column::ColumnPolicy;
+use crate::column::{ColumnIndex, ColumnPolicy};
 use crate::key::{Key, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
 use crate::sequence::SystemSequence;
@@ -88,7 +88,7 @@ impl Catalog {
         table: TableId,
         to_create: TableToCreate,
     ) -> crate::Result<()> {
-        for column_to_create in to_create.columns {
+        for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
             Catalog::create_column(
                 tx,
                 table,
@@ -101,6 +101,7 @@ impl Catalog {
                     value: column_to_create.value,
                     if_not_exists: false,
                     policies: column_to_create.policies.clone(),
+                    index: ColumnIndex(idx as u16),
                 },
             )?;
         }

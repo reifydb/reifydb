@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::column::layout::{column, table_column};
-use crate::column::{Column, ColumnPolicy};
+use crate::column::{Column, ColumnIndex, ColumnPolicy};
 use crate::key::{ColumnKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
 use crate::table::TableId;
@@ -21,6 +21,7 @@ pub struct ColumnToCreate<'a> {
     pub value: ValueKind,
     pub if_not_exists: bool,
     pub policies: Vec<ColumnPolicy>,
+    pub index: ColumnIndex,
 }
 
 impl Catalog {
@@ -47,18 +48,21 @@ impl Catalog {
         column::LAYOUT.set_u32(&mut row, column::TABLE, table);
         column::LAYOUT.set_str(&mut row, column::NAME, &column_to_create.column);
         column::LAYOUT.set_u8(&mut row, column::VALUE, column_to_create.value.to_u8());
+        column::LAYOUT.set_u16(&mut row, column::INDEX, column_to_create.index);
 
         tx.set(&Key::Column(ColumnKey { column: id }).encode(), row)?;
 
         let mut row = table_column::LAYOUT.allocate_row();
         table_column::LAYOUT.set_u32(&mut row, table_column::ID, id);
         table_column::LAYOUT.set_str(&mut row, table_column::NAME, &column_to_create.column);
+        table_column::LAYOUT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
         tx.set(&Key::TableColumn(TableColumnKey { table, column: id }).encode(), row)?;
 
         Ok(Column {
             id,
             name: column_to_create.column,
             value: column_to_create.value,
+            index: column_to_create.index,
             policies: vec![],
         })
     }
@@ -67,7 +71,7 @@ impl Catalog {
 #[cfg(test)]
 mod test {
     use crate::Catalog;
-    use crate::column::{ColumnId, ColumnToCreate};
+    use crate::column::{ColumnId, ColumnIndex, ColumnToCreate};
     use crate::table::TableId;
     use crate::test_utils::ensure_test_table;
     use reifydb_core::ValueKind;
@@ -90,6 +94,7 @@ mod test {
                 value: ValueKind::Bool,
                 if_not_exists: false,
                 policies: vec![],
+                index: ColumnIndex(0),
             },
         )
         .unwrap();
@@ -106,6 +111,7 @@ mod test {
                 value: ValueKind::Int2,
                 if_not_exists: false,
                 policies: vec![],
+                index: ColumnIndex(1),
             },
         )
         .unwrap();
@@ -138,6 +144,7 @@ mod test {
                 value: ValueKind::Bool,
                 if_not_exists: false,
                 policies: vec![],
+                index: ColumnIndex(0),
             },
         )
         .unwrap();
@@ -155,6 +162,7 @@ mod test {
                 value: ValueKind::Bool,
                 if_not_exists: false,
                 policies: vec![],
+                index: ColumnIndex(1),
             },
         )
         .unwrap_err();
