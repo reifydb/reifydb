@@ -77,7 +77,7 @@ impl Error {
     pub fn diagnostic(self) -> Diagnostic {
         match self {
             Error::Ast(err) => err.diagnostic(),
-            Error::Catalog(_) => unimplemented!(),
+            Error::Catalog(err) => err.diagnostic(),
             Error::Evaluation(err) => err.diagnostic(),
             Error::Execution(err) => err.diagnostic(),
             Error::Frame(err) => unimplemented!(),

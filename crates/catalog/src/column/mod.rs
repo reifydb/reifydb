@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 pub use create::ColumnToCreate;
-pub use policy::*;
 use reifydb_core::ValueKind;
 use std::ops::Deref;
 
@@ -10,7 +10,6 @@ mod create;
 mod get;
 mod layout;
 mod list;
-mod policy;
 
 #[derive(Debug, PartialEq)]
 pub struct Column {

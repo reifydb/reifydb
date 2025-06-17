@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Catalog;
-use crate::column::{ColumnIndex, ColumnPolicy, ColumnToCreate};
+use crate::column::{ColumnIndex, ColumnToCreate};
+use crate::column_policy::ColumnPolicyKind;
 use crate::schema::SchemaToCreate;
 use crate::schema::{Schema, SchemaId};
 use crate::table;
@@ -54,7 +55,7 @@ pub fn create_test_table_column(
     tx: &mut impl Tx<Memory, Memory>,
     name: &str,
     value: ValueKind,
-    policies: Vec<ColumnPolicy>,
+    policies: Vec<ColumnPolicyKind>,
 ) {
     ensure_test_table(tx);
 

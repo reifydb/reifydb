@@ -6,32 +6,28 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb::{ReifyDB, lmdb, optimistic, memory};
-use std::path::Path;
+use reifydb::{ReifyDB, memory, optimistic, serializable};
 
 fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(lmdb(&Path::new("/tmp/db"))));
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
-    let (db, root) = ReifyDB::embedded_blocking_with(optimistic(memory()));
+    let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    if let Err(e) = db.tx_as(
-        &root,
-        r#"create table test.arith(id: int1 policy(saturation undefined), num: int2)"#,
-    ){
-        println!("{}", e);
-    }
+    // if let Err(e) = db.tx_as(
+    //     &root,
+    //     r#"create table test.arith(id: int2, num: int2)"#,
+    // ) {
+    //     println!("{}", e);
+    // }
 
-    if let Err(e) = db.tx_as(
-        &root,
-        r#"insert (130,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)"#,
-    ) {
-        println!("{}", e);
-    }
-    for l in db.rx_as(&root, r#"from test.arith select avg(id, num)"#)
+    if let Err(e) =
+        db.tx_as(&root, r#"create table test.item(field_one: int1, field_one: int1)"#)
     {
-        println!("{}", l);
+        println!("{}", e);
     }
-
+    // for l in db.rx_as(&root, r#"from test.arith select avg(id, num)"#) {
+    //     println!("{}", l);
+    // }
 }
 
 // use reifydb::client::Client;

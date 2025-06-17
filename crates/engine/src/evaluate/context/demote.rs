@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 use crate::evaluate::Context;
-use reifydb_catalog::column::ColumnSaturationPolicy;
+use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::num::SafeDemote;
 use reifydb_diagnostic::IntoSpan;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
@@ -62,8 +62,8 @@ impl Demote for &Context {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::{Context, Demote, EvaluationColumn};
-    use reifydb_catalog::column::ColumnPolicy::Saturation;
-    use reifydb_catalog::column::ColumnSaturationPolicy::{Error, Undefined};
+    use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
+    use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
     use reifydb_core::ValueKind;
     use reifydb_core::num::SafeDemote;
     use reifydb_testing::make_test_span;

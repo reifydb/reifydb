@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::column::layout::{column, table_column};
-use crate::column::{Column, ColumnIndex, ColumnPolicy};
-use crate::key::{ColumnKey, Key, TableColumnKey};
+use crate::column::{Column, ColumnIndex, ColumnPolicyKind};
+use crate::key::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
 use crate::table::TableId;
 use crate::{Catalog, Error};
@@ -20,7 +20,7 @@ pub struct ColumnToCreate<'a> {
     pub column: String,
     pub value: ValueKind,
     pub if_not_exists: bool,
-    pub policies: Vec<ColumnPolicy>,
+    pub policies: Vec<ColumnPolicyKind>,
     pub index: ColumnIndex,
 }
 
@@ -31,7 +31,6 @@ impl Catalog {
         column_to_create: ColumnToCreate,
     ) -> crate::Result<Column> {
         // FIXME policies
-
         if let Some(column) = Catalog::get_column_by_name(tx, table, &column_to_create.column)? {
             return Err(Error(Diagnostic::column_already_exists(
                 None,
@@ -56,14 +55,18 @@ impl Catalog {
         table_column::LAYOUT.set_u64(&mut row, table_column::ID, id);
         table_column::LAYOUT.set_str(&mut row, table_column::NAME, &column_to_create.column);
         table_column::LAYOUT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
-        tx.set(&Key::TableColumn(TableColumnKey { table, column: id }).encode(), row)?;
+        tx.set(&TableColumnKey { table, column: id }.encode(), row)?;
+
+        for policy in column_to_create.policies {
+            Catalog::create_column_policy(tx, id, policy)?;
+        }
 
         Ok(Column {
             id,
             name: column_to_create.column,
             value: column_to_create.value,
             index: column_to_create.index,
-            policies: vec![],
+            policies: Catalog::list_column_policies(tx, id)?,
         })
     }
 }

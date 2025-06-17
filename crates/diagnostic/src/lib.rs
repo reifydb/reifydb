@@ -10,7 +10,6 @@ use reifydb_core::ValueKind;
 pub use span::{IntoSpan, Line, Offset, Span};
 
 pub mod catalog;
-pub mod plan;
 pub mod policy;
 pub mod sequence;
 pub mod span;

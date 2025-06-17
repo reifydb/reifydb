@@ -75,4 +75,16 @@ impl Diagnostic {
             notes: vec![],
         }
     }
+
+    pub fn column_policy_already_exists(policy: &str, column: &str) -> Diagnostic {
+        Diagnostic {
+            code: "CA_008".to_string(),
+            message: format!("policy `{policy:?}` already exists for column `{}`", column),
+            span: None,
+            label: Some("duplicate column policy".to_string()),
+            help: Some("remove the existing policy first".to_string()),
+            column: None,
+            notes: vec![],
+        }
+    }
 }

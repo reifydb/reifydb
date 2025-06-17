@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ExecutionResult;
+use crate::{Error, ExecutionResult};
 use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
 use crate::execute::write::column::adjust_column;
@@ -10,6 +10,7 @@ use reifydb_catalog::key::{EncodableKey, TableRowKey};
 use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::ValueKind;
 use reifydb_core::row::Layout;
+use reifydb_diagnostic::Diagnostic;
 use reifydb_frame::ValueRef;
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
@@ -38,7 +39,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                             column: Some(EvaluationColumn {
                                 name: column.name.clone(),
                                 value: column.value,
-                                policies: column.policies.clone(),
+                                policies: column
+                                    .policies
+                                    .iter()
+                                    .map(|cp| cp.policy.clone())
+                                    .collect(),
                             }),
                             frame: None,
                         };
@@ -96,7 +101,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 }
 
                 let schema = Catalog::get_schema_by_name(tx, &schema)?.unwrap();
-                let table = Catalog::get_table_by_name(tx, schema.id, &table)?.unwrap();
+                let Some(table) = Catalog::get_table_by_name(tx, schema.id, &table.fragment)?else{
+                    return Err(Error::execution(Diagnostic::table_not_found(table.clone(), &schema.name, &table.fragment)))
+                };
 
                 // let table = TableId(1);
 

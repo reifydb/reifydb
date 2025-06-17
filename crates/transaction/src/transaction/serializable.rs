@@ -45,33 +45,33 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionRx<VS, US> 
     }
 
     fn scan(&mut self) -> crate::Result<VersionedIter> {
-        let iter = self.scan()?;
-        Ok(Box::new(iter))
+        let iter = TransactionRx::scan(self);
+        Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_rev(&mut self) -> crate::Result<VersionedIter> {
-        let iter = self.scan_rev()?;
-        Ok(Box::new(iter))
+        let iter = TransactionRx::scan_rev(self);
+        Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_range(&mut self, range: EncodedKeyRange) -> crate::Result<VersionedIter> {
-        let iter = self.scan_range(range)?;
-        Ok(Box::new(iter))
+        let iter = TransactionRx::scan_range(self, range);
+        Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<VersionedIter> {
-        let iter = self.scan_range_rev(range)?;
-        Ok(Box::new(iter))
+        let iter = TransactionRx::scan_range_rev(self, range);
+        Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_prefix(&mut self, prefix: &EncodedKey) -> crate::Result<VersionedIter> {
-        let iter = self.scan_prefix(prefix)?;
-        Ok(Box::new(iter))
+        let iter = TransactionRx::scan_prefix(self, prefix);
+        Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<VersionedIter> {
-        let iter = self.scan_prefix_rev(prefix)?;
-        Ok(Box::new(iter))
+        let iter = TransactionRx::scan_prefix_rev(self, prefix);
+        Ok(Box::new(iter.into_iter()))
     }
 }
 
@@ -170,7 +170,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<
         Ok(())
     }
 
-    fn bypass<'a>(&'a mut self) -> MutexGuard<'a, BypassTx<US>> {
+    fn bypass(&mut self) -> MutexGuard<BypassTx<US>> {
         TransactionTx::bypass(self)
     }
 }

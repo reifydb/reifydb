@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 pub use column::ColumnKey;
+pub use column_policy::ColumnPolicyKey;
 use reifydb_core::EncodedKey;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
@@ -12,6 +13,7 @@ pub use table_row::TableRowKey;
 pub use table_row_sequence::TableRowSequenceKey;
 
 mod column;
+mod column_policy;
 mod schema;
 mod schema_table;
 mod system_sequence;
@@ -23,6 +25,7 @@ mod table_row_sequence;
 #[derive(Debug)]
 pub enum Key {
     Column(ColumnKey),
+    ColumnPolicy(ColumnPolicyKey),
     Schema(SchemaKey),
     SchemaTable(SchemaTableKey),
     SystemSequence(SystemSequenceKey),
@@ -36,6 +39,7 @@ impl Key {
     pub fn encode(&self) -> EncodedKey {
         match &self {
             Key::Column(key) => key.encode(),
+            Key::ColumnPolicy(key) => key.encode(),
             Key::Schema(key) => key.encode(),
             Key::SchemaTable(key) => key.encode(),
             Key::Table(key) => key.encode(),
@@ -58,6 +62,7 @@ pub enum KeyKind {
     Column = 0x06,
     TableColumn = 0x07,
     TableRowSequence = 0x08,
+    ColumnPolicy = 0x09,
 }
 
 impl TryFrom<u8> for KeyKind {
@@ -66,6 +71,7 @@ impl TryFrom<u8> for KeyKind {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x06 => Ok(Self::Column),
+            0x09 => Ok(Self::ColumnPolicy),
             0x01 => Ok(Self::Schema),
             0x04 => Ok(Self::SchemaTable),
             0x08 => Ok(Self::TableRowSequence),
@@ -96,6 +102,9 @@ impl Key {
 
         match KeyKind::try_from(kind).ok()? {
             KeyKind::Column => ColumnKey::decode(version, payload).map(Self::Column),
+            KeyKind::ColumnPolicy => {
+                ColumnPolicyKey::decode(version, payload).map(Self::ColumnPolicy)
+            }
             KeyKind::Schema => SchemaKey::decode(version, payload).map(Self::Schema),
             KeyKind::SchemaTable => SchemaTableKey::decode(version, payload).map(Self::SchemaTable),
             KeyKind::Table => TableKey::decode(version, payload).map(Self::Table),
@@ -115,6 +124,8 @@ impl Key {
 #[cfg(test)]
 mod tests {
     use crate::column::ColumnId;
+    use crate::column_policy::ColumnPolicyId;
+    use crate::key::column_policy::ColumnPolicyKey;
     use crate::key::table_row_sequence::TableRowSequenceKey;
     use crate::key::{
         ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableKey,
@@ -135,6 +146,25 @@ mod tests {
         match decoded {
             Key::Column(decoded_inner) => {
                 assert_eq!(decoded_inner.column, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_column_policy() {
+        let key = Key::ColumnPolicy(ColumnPolicyKey {
+            column: ColumnId(42),
+            policy: ColumnPolicyId(999_999),
+        });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::ColumnPolicy(decoded_inner) => {
+                assert_eq!(decoded_inner.column, 42);
+                assert_eq!(decoded_inner.policy, 999_999);
             }
             _ => unreachable!(),
         }

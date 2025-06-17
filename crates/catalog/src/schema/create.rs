@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::key::{Key, SchemaKey};
+use crate::key::{EncodableKey, SchemaKey};
 use crate::schema::Schema;
 use crate::schema::layout::schema;
 use crate::sequence::SystemSequence;
@@ -34,7 +34,7 @@ impl Catalog {
         schema::LAYOUT.set_u64(&mut row, schema::ID, schema_id);
         schema::LAYOUT.set_str(&mut row, schema::NAME, &to_create.name);
 
-        tx.set(&Key::Schema(SchemaKey { schema: schema_id }).encode(), row)?;
+        tx.set(&SchemaKey { schema: schema_id }.encode(), row)?;
 
         Ok(Catalog::get_schema(tx, schema_id)?.unwrap())
     }

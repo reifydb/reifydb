@@ -7,12 +7,25 @@ use crate::column::{Column, ColumnId, ColumnIndex};
 use crate::key::{ColumnKey, EncodableKey, TableColumnKey};
 use crate::table::TableId;
 use reifydb_core::ValueKind;
-use reifydb_storage::Versioned;
 use reifydb_transaction::Rx;
 
 impl Catalog {
     pub fn get_column(rx: &mut impl Rx, column: ColumnId) -> crate::Result<Option<Column>> {
-        Ok(rx.get(&ColumnKey { column }.encode())?.map(Self::convert_column))
+        match rx.get(&ColumnKey { column }.encode())? {
+            None => Ok(None),
+            Some(versioned) => {
+                let row = versioned.row;
+
+                let id = ColumnId(column::LAYOUT.get_u64(&row, column::ID));
+                let name = column::LAYOUT.get_str(&row, column::NAME).to_string();
+                let value = ValueKind::from_u8(column::LAYOUT.get_u8(&row, column::VALUE));
+                let index = ColumnIndex(column::LAYOUT.get_u16(&row, column::INDEX));
+
+                let policies = Catalog::list_column_policies(rx, id)?;
+
+                Ok(Some(Column { id, name, value, index, policies }))
+            }
+        }
     }
 
     pub fn get_column_by_name(
@@ -29,17 +42,6 @@ impl Catalog {
         });
 
         if let Some(id) = maybe_id { Catalog::get_column(rx, id) } else { Ok(None) }
-    }
-
-    fn convert_column(versioned: Versioned) -> Column {
-        let row = versioned.row;
-
-        let id = ColumnId(column::LAYOUT.get_u64(&row, column::ID));
-        let name = column::LAYOUT.get_str(&row, column::NAME).to_string();
-        let value = ValueKind::from_u8(column::LAYOUT.get_u8(&row, column::VALUE));
-        let index = ColumnIndex(column::LAYOUT.get_u16(&row, column::INDEX));
-
-        Column { id, name, value, index, policies: vec![] }
     }
 }
 

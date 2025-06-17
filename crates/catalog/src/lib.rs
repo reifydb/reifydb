@@ -8,6 +8,7 @@
 
 pub use error::Error;
 pub mod column;
+pub mod column_policy;
 mod error;
 pub mod key;
 pub mod schema;

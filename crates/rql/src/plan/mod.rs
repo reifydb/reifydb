@@ -17,15 +17,16 @@ use crate::expression::{
 };
 pub use error::Error;
 use reifydb_catalog::Catalog;
-use reifydb_catalog::column::{Column, ColumnPolicy, ColumnSaturationPolicy};
+use reifydb_catalog::column::Column;
+use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
+use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::ValueKind;
-use reifydb_diagnostic::Span;
+use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_frame::{SortDirection, SortKey};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Rx;
 
-mod diagnostic;
 mod error;
 pub mod node;
 mod planner;
@@ -109,7 +110,7 @@ pub struct CreateTablePlan {
 
 #[derive(Debug)]
 pub enum InsertIntoTablePlan {
-    Values { schema: String, table: String, columns: Vec<Column>, rows_to_insert: Vec<RowToInsert> },
+    Values { schema: String, table: Span, columns: Vec<Column>, rows_to_insert: Vec<RowToInsert> },
 }
 
 #[derive(Debug)]
@@ -174,7 +175,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                                     .policies
                                     .iter()
                                     .map(convert_policy)
-                                    .collect::<Vec<ColumnPolicy>>()
+                                    .collect::<Vec<ColumnPolicyKind>>()
                             } else {
                                 vec![]
                             };
@@ -236,7 +237,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                                     .policies
                                     .iter()
                                     .map(convert_policy)
-                                    .collect::<Vec<ColumnPolicy>>()
+                                    .collect::<Vec<ColumnPolicyKind>>()
                             } else {
                                 vec![]
                             };
@@ -262,11 +263,18 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                 return match insert {
                     AstInsert { schema, store, columns, rows, .. } => {
                         let schema = schema.value().to_string();
-                        let store = store.value().to_string();
+                        let store = store.0.span;
 
                         let schema = Catalog::get_schema_by_name(rx, &schema).unwrap().unwrap();
-                        let table =
-                            Catalog::get_table_by_name(rx, schema.id, &store).unwrap().unwrap();
+                        let Some(table) =
+                            Catalog::get_table_by_name(rx, schema.id, &store.fragment).unwrap()
+                        else {
+                            return Err(Error(Diagnostic::table_not_found(
+                                store.clone(),
+                                &schema.name,
+                                &store.fragment,
+                            )));
+                        };
 
                         // Get the store schema from the catalog once
                         // let store_schema =
@@ -432,8 +440,8 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
     unreachable!()
 }
 
-pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicy {
-    use ColumnPolicy::*;
+pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
+    use ColumnPolicyKind::*;
 
     match ast.policy {
         AstPolicyKind::Saturation => {

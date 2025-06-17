@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::column::{ColumnIndex, ColumnPolicy};
-use crate::key::{Key, SchemaTableKey, TableKey};
+use crate::column::ColumnIndex;
+use crate::column_policy::ColumnPolicyKind;
+use crate::key::{EncodableKey, Key, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
 use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
@@ -17,7 +18,7 @@ use reifydb_transaction::Tx;
 pub struct ColumnToCreate {
     pub name: String,
     pub value: ValueKind,
-    pub policies: Vec<ColumnPolicy>,
+    pub policies: Vec<ColumnPolicyKind>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,7 +66,7 @@ impl Catalog {
         table::LAYOUT.set_u64(&mut row, table::SCHEMA, schema);
         table::LAYOUT.set_str(&mut row, table::NAME, &to_create.table);
 
-        tx.set(&Key::Table(TableKey { table }).encode(), row)?;
+        tx.set(&TableKey { table }.encode(), row)?;
 
         Ok(())
     }

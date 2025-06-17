@@ -3,8 +3,8 @@
 
 pub use demote::Demote;
 pub use promote::Promote;
-use reifydb_catalog::column::{
-    ColumnPolicy, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY,
+use reifydb_catalog::column_policy::{
+    ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY,
 };
 
 mod demote;
@@ -20,7 +20,7 @@ use reifydb_frame::Frame;
 pub(crate) struct EvaluationColumn {
     pub(crate) name: String,
     pub(crate) value: ValueKind,
-    pub(crate) policies: Vec<ColumnPolicy>,
+    pub(crate) policies: Vec<ColumnPolicyKind>,
 }
 
 impl EvaluationColumn {
@@ -28,7 +28,7 @@ impl EvaluationColumn {
         self.policies
             .iter()
             .find_map(|p| match p {
-                ColumnPolicy::Saturation(policy) => Some(policy),
+                ColumnPolicyKind::Saturation(policy) => Some(policy),
                 _ => None,
             })
             .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
