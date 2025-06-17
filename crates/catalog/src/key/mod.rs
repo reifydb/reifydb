@@ -5,44 +5,44 @@ pub use column::ColumnKey;
 use reifydb_core::EncodedKey;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
-pub use sequence::SequenceKey;
-pub use sequence_value::SequenceValueKey;
+pub use system_sequence::SystemSequenceKey;
 pub use table::TableKey;
 pub use table_column::TableColumnKey;
 pub use table_row::TableRowKey;
+pub use table_row_sequence::TableRowSequenceKey;
 
 mod column;
 mod schema;
 mod schema_table;
-mod sequence;
-mod sequence_value;
+mod system_sequence;
 mod table;
 mod table_column;
 mod table_row;
+mod table_row_sequence;
 
 #[derive(Debug)]
 pub enum Key {
-    Schema(SchemaKey),
-    Table(TableKey),
-    TableRow(TableRowKey),
-    SchemaTable(SchemaTableKey),
-    Sequence(SequenceKey),
-    SequenceValue(SequenceValueKey),
     Column(ColumnKey),
+    Schema(SchemaKey),
+    SchemaTable(SchemaTableKey),
+    SystemSequence(SystemSequenceKey),
+    Table(TableKey),
     TableColumn(TableColumnKey),
+    TableRow(TableRowKey),
+    TableRowSequence(TableRowSequenceKey),
 }
 
 impl Key {
     pub fn encode(&self) -> EncodedKey {
         match &self {
-            Key::Schema(key) => key.encode(),
-            Key::Table(key) => key.encode(),
-            Key::TableRow(key) => key.encode(),
-            Key::SchemaTable(key) => key.encode(),
-            Key::Sequence(key) => key.encode(),
-            Key::SequenceValue(key) => key.encode(),
             Key::Column(key) => key.encode(),
+            Key::Schema(key) => key.encode(),
+            Key::SchemaTable(key) => key.encode(),
+            Key::Table(key) => key.encode(),
             Key::TableColumn(key) => key.encode(),
+            Key::TableRow(key) => key.encode(),
+            Key::TableRowSequence(key) => key.encode(),
+            Key::SystemSequence(key) => key.encode(),
         }
     }
 }
@@ -53,11 +53,11 @@ pub enum KeyKind {
     Schema = 0x01,
     Table = 0x02,
     TableRow = 0x03,
-    SchemaTableLink = 0x04,
-    Sequence = 0x05,
-    SequenceValue = 0x06,
-    Column = 0x07,
-    TableColumnLink = 0x08,
+    SchemaTable = 0x04,
+    SystemSequence = 0x05,
+    Column = 0x06,
+    TableColumn = 0x07,
+    TableRowSequence = 0x08,
 }
 
 impl TryFrom<u8> for KeyKind {
@@ -65,14 +65,14 @@ impl TryFrom<u8> for KeyKind {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
+            0x06 => Ok(Self::Column),
             0x01 => Ok(Self::Schema),
+            0x04 => Ok(Self::SchemaTable),
+            0x08 => Ok(Self::TableRowSequence),
+            0x05 => Ok(Self::SystemSequence),
             0x02 => Ok(Self::Table),
+            0x07 => Ok(Self::TableColumn),
             0x03 => Ok(Self::TableRow),
-            0x04 => Ok(Self::SchemaTableLink),
-            0x05 => Ok(Self::Sequence),
-            0x06 => Ok(Self::SequenceValue),
-            0x07 => Ok(Self::Column),
-            0x08 => Ok(Self::TableColumnLink),
             _ => Err(()),
         }
     }
@@ -95,19 +95,17 @@ impl Key {
         let payload = &key[2..];
 
         match KeyKind::try_from(kind).ok()? {
-            KeyKind::Schema => SchemaKey::decode(version, payload).map(Self::Schema),
-            KeyKind::Table => TableKey::decode(version, payload).map(Self::Table),
-            KeyKind::TableRow => TableRowKey::decode(version, payload).map(Self::TableRow),
-            KeyKind::SchemaTableLink => {
-                SchemaTableKey::decode(version, payload).map(Self::SchemaTable)
-            }
-            KeyKind::Sequence => SequenceKey::decode(version, payload).map(Self::Sequence),
-            KeyKind::SequenceValue => {
-                SequenceValueKey::decode(version, payload).map(Self::SequenceValue)
-            }
             KeyKind::Column => ColumnKey::decode(version, payload).map(Self::Column),
-            KeyKind::TableColumnLink => {
-                TableColumnKey::decode(version, payload).map(Self::TableColumn)
+            KeyKind::Schema => SchemaKey::decode(version, payload).map(Self::Schema),
+            KeyKind::SchemaTable => SchemaTableKey::decode(version, payload).map(Self::SchemaTable),
+            KeyKind::Table => TableKey::decode(version, payload).map(Self::Table),
+            KeyKind::TableColumn => TableColumnKey::decode(version, payload).map(Self::TableColumn),
+            KeyKind::TableRow => TableRowKey::decode(version, payload).map(Self::TableRow),
+            KeyKind::TableRowSequence => {
+                TableRowSequenceKey::decode(version, payload).map(Self::TableRowSequence)
+            }
+            KeyKind::SystemSequence => {
+                SystemSequenceKey::decode(version, payload).map(Self::SystemSequence)
             }
             _ => None,
         }
@@ -117,12 +115,13 @@ impl Key {
 #[cfg(test)]
 mod tests {
     use crate::column::ColumnId;
+    use crate::key::table_row_sequence::TableRowSequenceKey;
     use crate::key::{
-        ColumnKey, Key, SchemaKey, SchemaTableKey, SequenceKey, TableColumnKey, TableKey,
+        ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableKey,
         TableRowKey,
     };
     use crate::schema::SchemaId;
-    use crate::sequence::SequenceId;
+    use crate::sequence::SystemSequenceId;
     use crate::table::TableId;
     use reifydb_core::catalog::RowId;
 
@@ -157,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn test_schema_table_link() {
+    fn test_schema_table() {
         let key =
             Key::SchemaTable(SchemaTableKey { schema: SchemaId(42), table: TableId(999_999) });
 
@@ -174,29 +173,14 @@ mod tests {
     }
 
     #[test]
-    fn test_sequence() {
-        let key = Key::Sequence(SequenceKey { sequence: SequenceId(42) });
+    fn test_system_sequence() {
+        let key = Key::SystemSequence(SystemSequenceKey { sequence: SystemSequenceId(42) });
 
         let encoded = key.encode();
         let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
         match decoded {
-            Key::Sequence(decoded_inner) => {
-                assert_eq!(decoded_inner.sequence, 42);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_sequence_value() {
-        let key = Key::Sequence(SequenceKey { sequence: SequenceId(42) });
-
-        let encoded = key.encode();
-        let decoded = Key::decode(&encoded).expect("Failed to decode key");
-
-        match decoded {
-            Key::Sequence(decoded_inner) => {
+            Key::SystemSequence(decoded_inner) => {
                 assert_eq!(decoded_inner.sequence, 42);
             }
             _ => unreachable!(),
@@ -219,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn test_table_column_link() {
+    fn test_table_column() {
         let key =
             Key::TableColumn(TableColumnKey { table: TableId(42), column: ColumnId(999_999) });
 
@@ -246,6 +230,21 @@ mod tests {
             Key::TableRow(decoded_inner) => {
                 assert_eq!(decoded_inner.table, 42);
                 assert_eq!(decoded_inner.row, 999_999);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_table_row_sequence() {
+        let key = Key::TableRowSequence(TableRowSequenceKey { table: TableId(42) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::TableRowSequence(decoded_inner) => {
+                assert_eq!(decoded_inner.table, 42);
             }
             _ => unreachable!(),
         }

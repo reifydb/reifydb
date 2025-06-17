@@ -4,6 +4,7 @@
 use crate::column::ColumnPolicy;
 use crate::key::{Key, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
+use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
 use crate::{Catalog, Error};
@@ -44,7 +45,7 @@ impl Catalog {
             )));
         }
 
-        let table_id = Catalog::next_table_id(tx)?;
+        let table_id = SystemSequence::next_table_id(tx)?;
         Self::store_table(tx, table_id, schema.id, &to_create)?;
         Self::link_table_to_schema(tx, schema.id, table_id, &to_create.table)?;
 

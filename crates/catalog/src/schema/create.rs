@@ -4,6 +4,7 @@
 use crate::key::{Key, SchemaKey};
 use crate::schema::Schema;
 use crate::schema::layout::schema;
+use crate::sequence::SystemSequence;
 use crate::{Catalog, Error};
 use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
@@ -27,7 +28,7 @@ impl Catalog {
             )));
         }
 
-        let schema_id = Catalog::next_schema_id(tx)?;
+        let schema_id = SystemSequence::next_schema_id(tx)?;
 
         let mut row = schema::LAYOUT.allocate_row();
         schema::LAYOUT.set_u32(&mut row, schema::ID, schema_id);

@@ -7,8 +7,8 @@ use crate::execute::Executor;
 use crate::execute::write::column::adjust_column;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::{EncodableKey, TableRowKey};
+use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::ValueKind;
-use reifydb_core::catalog::RowId;
 use reifydb_core::row::Layout;
 use reifydb_frame::ValueRef;
 use reifydb_rql::plan::InsertIntoTablePlan;
@@ -101,10 +101,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 // let table = TableId(1);
 
                 let inserted = rows.len();
-                for (idx, row) in rows.into_iter().enumerate() {
-                    // FIXME generate row id
-                    tx.set(&TableRowKey { table: table.id, row: RowId(idx as u64) }.encode(), row)
-                        .unwrap();
+                for row in rows {
+                    let row_id = TableRowSequence::next_row_id(tx, table.id)?;
+                    tx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
                 }
 
                 // let result = tx.insert_into_table(table, rows).unwrap();

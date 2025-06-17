@@ -4,6 +4,7 @@
 use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnPolicy};
 use crate::key::{ColumnKey, Key, TableColumnKey};
+use crate::sequence::SystemSequence;
 use crate::table::TableId;
 use crate::{Catalog, Error};
 use reifydb_core::ValueKind;
@@ -39,7 +40,7 @@ impl Catalog {
             )));
         }
 
-        let id = Catalog::next_column_id(tx)?;
+        let id = SystemSequence::next_column_id(tx)?;
 
         let mut row = column::LAYOUT.allocate_row();
         column::LAYOUT.set_u32(&mut row, column::ID, id);

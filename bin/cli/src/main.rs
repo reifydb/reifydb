@@ -47,8 +47,7 @@ fn main() {
     //     println!("{}", l);
     // }
 
-    for l in
-        db.tx_as(&root, r#"from test.item select field_one, field_two, field_three"#).unwrap()
+    for l in db.tx_as(&root, r#"from test.item select field_one, field_two, field_three"#).unwrap()
     {
         println!("{}", l);
     }

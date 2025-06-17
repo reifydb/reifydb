@@ -15,7 +15,7 @@ pub struct SchemaTableKey {
 const VERSION: u8 = 1;
 
 impl EncodableKey for SchemaTableKey {
-    const KIND: KeyKind = KeyKind::SchemaTableLink;
+    const KIND: KeyKind = KeyKind::SchemaTable;
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(8);
@@ -47,7 +47,7 @@ impl SchemaTableKey {
     fn link_start(schema_id: SchemaId) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
         out.push(VERSION);
-        out.push(KeyKind::SchemaTableLink as u8);
+        out.push(KeyKind::SchemaTable as u8);
         out.extend(&schema_id.to_be_bytes());
         EncodedKey::new(out)
     }
@@ -55,7 +55,7 @@ impl SchemaTableKey {
     fn link_end(schema_id: SchemaId) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
         out.push(VERSION);
-        out.push(KeyKind::SchemaTableLink as u8);
+        out.push(KeyKind::SchemaTable as u8);
         out.extend(&(*schema_id + 1).to_be_bytes());
         EncodedKey::new(out)
     }
@@ -73,7 +73,7 @@ mod tests {
         let encoded = key.encode();
 
         let expected: Vec<u8> =
-            vec![1, KeyKind::SchemaTableLink as u8, 0x12, 0x34, 0x56, 0x78, 0x00, 0x00, 0xAB, 0xCD];
+            vec![1, KeyKind::SchemaTable as u8, 0x12, 0x34, 0x56, 0x78, 0x00, 0x00, 0xAB, 0xCD];
 
         assert_eq!(encoded.as_slice(), expected);
 

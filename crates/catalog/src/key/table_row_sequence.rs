@@ -2,35 +2,35 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::key::{EncodableKey, KeyKind};
-use crate::sequence::SequenceId;
+use crate::table::TableId;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
-pub struct SequenceValueKey {
-    pub sequence_id: SequenceId,
+pub struct TableRowSequenceKey {
+    pub table: TableId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for SequenceValueKey {
-    const KIND: KeyKind = KeyKind::Sequence;
+impl EncodableKey for TableRowSequenceKey {
+    const KIND: KeyKind = KeyKind::TableRowSequence;
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
         out.push(VERSION);
         out.push(Self::KIND as u8);
-        out.extend(&self.sequence_id.to_be_bytes());
+        out.extend(&self.table.to_be_bytes());
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 4);
-        Some(Self { sequence_id: SequenceId(u32::from_be_bytes(payload[..].try_into().unwrap())) })
+        Some(Self { table: TableId(u32::from_be_bytes(payload[..].try_into().unwrap())) })
     }
 }
 
-impl SequenceValueKey {
+impl TableRowSequenceKey {
     pub fn full_scan() -> EncodedKeyRange {
         EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
     }
@@ -38,31 +38,31 @@ impl SequenceValueKey {
     fn sequence_start() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
         out.push(VERSION);
-        out.push(KeyKind::Sequence as u8);
+        out.push(KeyKind::TableRowSequence as u8);
         EncodedKey::new(out)
     }
 
     fn sequence_end() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
         out.push(VERSION);
-        out.push(KeyKind::Sequence as u8 + 1);
+        out.push(KeyKind::TableRowSequence as u8 + 1);
         EncodedKey::new(out)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, KeyKind, SequenceKey};
-    use crate::sequence::SequenceId;
+    use crate::key::{EncodableKey, KeyKind, TableRowSequenceKey};
+    use crate::table::TableId;
 
     #[test]
     fn test_encode_decode() {
-        let key = SequenceKey { sequence: SequenceId(0xABCD) };
+        let key = TableRowSequenceKey { table: TableId(0xABCD) };
         let encoded = key.encode();
-        let expected = vec![1, KeyKind::Sequence as u8, 0x00, 0x00, 0xAB, 0xCD];
+        let expected = vec![1, KeyKind::TableRowSequence as u8, 0x00, 0x00, 0xAB, 0xCD];
         assert_eq!(encoded.as_slice(), expected);
 
-        let key = SequenceKey::decode(1, &encoded[2..]).unwrap();
-        assert_eq!(key.sequence, 0xABCD);
+        let key = TableRowSequenceKey::decode(1, &encoded[2..]).unwrap();
+        assert_eq!(key.table, 0xABCD);
     }
 }

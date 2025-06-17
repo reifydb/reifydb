@@ -87,7 +87,7 @@ mod tests {
             create_table(&mut tx, "schema_three", "table_three", &[]);
 
             let result =
-                Catalog::get_table_by_name(&mut tx, SchemaId(1), "table_two").unwrap().unwrap();
+                Catalog::get_table_by_name(&mut tx, SchemaId(3), "table_two").unwrap().unwrap();
             assert_eq!(result.id, 2);
             assert_eq!(result.schema, 3);
             assert_eq!(result.name, "table_two");

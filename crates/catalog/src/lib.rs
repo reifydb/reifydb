@@ -11,7 +11,7 @@ pub mod column;
 mod error;
 pub mod key;
 pub mod schema;
-mod sequence;
+pub mod sequence;
 pub mod table;
 pub mod test_utils;
 

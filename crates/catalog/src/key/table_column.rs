@@ -15,7 +15,7 @@ pub struct TableColumnKey {
 const VERSION: u8 = 1;
 
 impl EncodableKey for TableColumnKey {
-    const KIND: KeyKind = KeyKind::TableColumnLink;
+    const KIND: KeyKind = KeyKind::TableColumn;
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(8);
@@ -44,7 +44,7 @@ impl TableColumnKey {
     fn link_start(table: TableId) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
         out.push(VERSION);
-        out.push(KeyKind::TableColumnLink as u8);
+        out.push(KeyKind::TableColumn as u8);
         out.extend(&table.to_be_bytes());
         EncodedKey::new(out)
     }
@@ -52,7 +52,7 @@ impl TableColumnKey {
     fn link_end(table: TableId) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
         out.push(VERSION);
-        out.push(KeyKind::TableColumnLink as u8);
+        out.push(KeyKind::TableColumn as u8);
         out.extend(&(*table + 1).to_be_bytes());
         EncodedKey::new(out)
     }
@@ -70,7 +70,7 @@ mod tests {
         let encoded = key.encode();
 
         let expected: Vec<u8> =
-            vec![1, KeyKind::TableColumnLink as u8, 0x00, 0x00, 0xAB, 0xCD, 0x12, 0x34, 0x56, 0x78];
+            vec![1, KeyKind::TableColumn as u8, 0x00, 0x00, 0xAB, 0xCD, 0x12, 0x34, 0x56, 0x78];
 
         assert_eq!(encoded.as_slice(), expected);
 
