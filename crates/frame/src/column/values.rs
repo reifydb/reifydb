@@ -44,6 +44,19 @@ impl ColumnValues {
             ValueKind::Undefined => Self::undefined(capacity),
         }
     }
+
+    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
+        match self {
+            ColumnValues::Int2(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Int2(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            _ => unimplemented!(),
+        }
+    }
 }
 
 impl ColumnValues {

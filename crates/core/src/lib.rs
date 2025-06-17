@@ -6,11 +6,13 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
+pub use bitvec::BitVec;
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
 pub use key::{EncodedKey, EncodedKeyRange};
 pub use value::{Value, ValueKind};
 pub use version::Version;
 
+mod bitvec;
 pub mod catalog;
 pub mod clock;
 mod cowvec;

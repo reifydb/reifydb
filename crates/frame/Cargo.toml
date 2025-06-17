@@ -10,4 +10,3 @@ repository.workspace = true
 reifydb-core = { workspace = true }
 
 [dev-dependencies]
-rand = {workspace = true}

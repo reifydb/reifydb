@@ -23,6 +23,8 @@ mod mask;
 mod reference;
 mod transform;
 mod view;
+mod explore_lazy;
+mod lazy;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 pub use push::Push;
+use reifydb_core::Value;
 pub use slice::AsSlice;
 pub use values::ColumnValues;
 

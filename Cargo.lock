@@ -1422,7 +1422,6 @@ dependencies = [
 name = "reifydb-frame"
 version = "0.0.1"
 dependencies = [
- "rand 0.9.1",
  "reifydb-core",
 ]
 
