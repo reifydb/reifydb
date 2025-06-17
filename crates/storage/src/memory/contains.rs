@@ -3,6 +3,7 @@
 
 use crate::VersionedContains;
 use crate::memory::Memory;
+use crate::unversioned::UnversionedContains;
 use reifydb_core::{EncodedKey, Version};
 use std::collections::Bound;
 
@@ -14,6 +15,15 @@ impl VersionedContains for Memory {
                 None => false,
                 Some(item) => item.value().is_some(),
             },
+        }
+    }
+}
+
+impl UnversionedContains for Memory {
+    fn contains_unversioned(&self, key: &EncodedKey) -> bool {
+        match self.unversioned.get(key) {
+            None => false,
+            Some(_) => true,
         }
     }
 }

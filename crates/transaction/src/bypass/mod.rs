@@ -40,12 +40,12 @@ impl<US: UnversionedStorage> BypassTx<US> {
         Ok(self.unversioned.scan_unversioned())
     }
 
-    pub fn scan_range(&mut self, range: EncodedKeyRange) -> crate::Result<US::ScanRangeIter<'_>> {
-        Ok(self.unversioned.scan_range(range))
+    pub fn scan_range(&mut self, range: EncodedKeyRange) -> crate::Result<US::ScanRange<'_>> {
+        Ok(self.unversioned.scan_range_unversioned(range))
     }
 
-    pub fn scan_prefix(&mut self, key: &EncodedKey) -> crate::Result<US::ScanRangeIter<'_>> {
-        Ok(self.unversioned.scan_prefix(&key))
+    pub fn scan_prefix(&mut self, key: &EncodedKey) -> crate::Result<US::ScanRange<'_>> {
+        Ok(self.unversioned.scan_prefix_unversioned(&key))
     }
 
     pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {

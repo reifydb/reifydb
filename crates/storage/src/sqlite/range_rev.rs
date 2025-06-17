@@ -3,23 +3,23 @@
 
 use crate::Unversioned;
 use crate::sqlite::Sqlite;
-use crate::unversioned::UnversionedScanRange;
+use crate::unversioned::UnversionedScanRangeRev;
 use reifydb_core::EncodedKeyRange;
 
-impl UnversionedScanRange for Sqlite {
-    type ScanRange<'a>
-        = UnversionedRange
+impl UnversionedScanRangeRev for Sqlite {
+    type ScanRangeRev<'a>
+        = UnversionedRangeRev
     where
         Self: 'a;
 
-    fn scan_range_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRange<'_> {
+    fn scan_range_rev_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRangeRev<'_> {
         todo!()
     }
 }
 
-pub struct UnversionedRange {}
+pub struct UnversionedRangeRev {}
 
-impl Iterator for UnversionedRange {
+impl Iterator for UnversionedRangeRev {
     type Item = Unversioned;
 
     fn next(&mut self) -> Option<Self::Item> {

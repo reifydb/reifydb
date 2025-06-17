@@ -4,9 +4,16 @@
 use crate::VersionedContains;
 use crate::lmdb::Lmdb;
 use reifydb_core::{EncodedKey, Version};
+use crate::unversioned::UnversionedContains;
 
 impl VersionedContains for Lmdb {
     fn contains(&self, key: &EncodedKey, version: Version) -> bool {
+        todo!()
+    }
+}
+
+impl UnversionedContains for Lmdb{
+    fn contains_unversioned(&self, key: &EncodedKey) -> bool {
         todo!()
     }
 }

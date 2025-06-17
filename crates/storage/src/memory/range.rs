@@ -59,12 +59,12 @@ impl<'a> Iterator for Range<'a> {
 }
 
 impl UnversionedScanRange for Memory {
-    type ScanRangeIter<'a>
+    type ScanRange<'a>
         = UnversionedRange<'a>
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> Self::ScanRangeIter<'_> {
+    fn scan_range_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRange<'_> {
         UnversionedRange { range: self.unversioned.range(range) }
     }
 }

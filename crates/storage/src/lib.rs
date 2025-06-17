@@ -10,13 +10,12 @@ use reifydb_core::hook::Hooks;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
 pub use unversioned::{
-    UnversionedApply, UnversionedGet, UnversionedRemove, UnversionedScan, UnversionedScanIterator,
+    UnversionedApply, UnversionedGet, UnversionedIter, UnversionedRemove, UnversionedScan,
     UnversionedSet, UnversionedStorage,
 };
 pub use versioned::{
-    VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanIterator,
-    VersionedScanIteratorRev, VersionedScanRange, VersionedScanRangeIterator,
-    VersionedScanRangeIteratorRev, VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
+    VersionedApply, VersionedContains, VersionedGet, VersionedIter, VersionedScan,
+    VersionedScanRange, VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
 };
 
 pub mod lmdb;

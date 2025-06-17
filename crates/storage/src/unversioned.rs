@@ -13,10 +13,13 @@ pub trait UnversionedStorage:
     + GetHooks
     + UnversionedApply
     + UnversionedGet
+    + UnversionedContains
     + UnversionedSet
     + UnversionedRemove
     + UnversionedScan
+    + UnversionedScanRev
     + UnversionedScanRange
+    + UnversionedScanRangeRev
 {
 }
 
@@ -26,6 +29,10 @@ pub trait UnversionedApply {
 
 pub trait UnversionedGet {
     fn get_unversioned(&self, key: &EncodedKey) -> Option<Unversioned>;
+}
+
+pub trait UnversionedContains {
+    fn contains_unversioned(&self, key: &EncodedKey) -> bool;
 }
 
 pub trait UnversionedSet: UnversionedApply {
@@ -43,29 +50,45 @@ pub trait UnversionedRemove: UnversionedApply {
     }
 }
 
-pub trait UnversionedScanIterator: Iterator<Item = Unversioned> {}
-impl<T> UnversionedScanIterator for T where T: Iterator<Item = Unversioned> {}
+pub trait UnversionedIter: Iterator<Item = Unversioned> {}
+impl<T> UnversionedIter for T where T: Iterator<Item = Unversioned> {}
 
 pub trait UnversionedScan {
-    type ScanIter<'a>: UnversionedScanIterator
+    type ScanIter<'a>: UnversionedIter
     where
         Self: 'a;
 
     fn scan_unversioned(&self) -> Self::ScanIter<'_>;
 }
 
-pub trait UnversionedScanRangeIterator: Iterator<Item = Unversioned> {}
-
-impl<T> UnversionedScanRangeIterator for T where T: Iterator<Item = Unversioned> {}
-
-pub trait UnversionedScanRange {
-    type ScanRangeIter<'a>: UnversionedScanRangeIterator
+pub trait UnversionedScanRev {
+    type ScanIterRev<'a>: UnversionedIter
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> Self::ScanRangeIter<'_>;
+    fn scan_rev_unversioned(&self) -> Self::ScanIterRev<'_>;
+}
 
-    fn scan_prefix(&self, prefix: &EncodedKey) -> Self::ScanRangeIter<'_> {
-        self.scan_range(EncodedKeyRange::prefix(prefix))
+pub trait UnversionedScanRange {
+    type ScanRange<'a>: UnversionedIter
+    where
+        Self: 'a;
+
+    fn scan_range_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRange<'_>;
+
+    fn scan_prefix_unversioned(&self, prefix: &EncodedKey) -> Self::ScanRange<'_> {
+        self.scan_range_unversioned(EncodedKeyRange::prefix(prefix))
+    }
+}
+
+pub trait UnversionedScanRangeRev {
+    type ScanRangeRev<'a>: UnversionedIter
+    where
+        Self: 'a;
+
+    fn scan_range_rev_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRangeRev<'_>;
+
+    fn scan_prefix_rev_unversioned(&self, prefix: &EncodedKey) -> Self::ScanRangeRev<'_> {
+        self.scan_range_rev_unversioned(EncodedKeyRange::prefix(prefix))
     }
 }

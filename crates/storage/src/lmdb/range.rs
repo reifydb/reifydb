@@ -104,12 +104,12 @@ impl Iterator for Range {
 }
 
 impl UnversionedScanRange for Lmdb {
-    type ScanRangeIter<'a>
+    type ScanRange<'a>
         = UnversionedRange
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> Self::ScanRangeIter<'_> {
+    fn scan_range_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRange<'_> {
         todo!()
     }
 }

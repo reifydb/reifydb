@@ -32,34 +32,27 @@ pub trait VersionedContains {
     fn contains(&self, key: &EncodedKey, version: Version) -> bool;
 }
 
-pub trait VersionedScanIterator: Iterator<Item = Versioned> {}
-impl<T> VersionedScanIterator for T where T: Iterator<Item = Versioned> {}
+pub trait VersionedIter: Iterator<Item = Versioned> {}
+impl<T> VersionedIter for T where T: Iterator<Item = Versioned> {}
 
 pub trait VersionedScan {
-    type ScanIter<'a>: VersionedScanIterator
+    type ScanIter<'a>: VersionedIter
     where
         Self: 'a;
 
     fn scan(&self, version: Version) -> Self::ScanIter<'_>;
 }
 
-pub trait VersionedScanIteratorRev: Iterator<Item = Versioned> {}
-impl<T> VersionedScanIteratorRev for T where T: Iterator<Item = Versioned> {}
-
 pub trait VersionedScanRev {
-    type ScanIterRev<'a>: VersionedScanIteratorRev
+    type ScanIterRev<'a>: VersionedIter
     where
         Self: 'a;
 
     fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_>;
 }
 
-pub trait VersionedScanRangeIterator: Iterator<Item = Versioned> {}
-
-impl<T> VersionedScanRangeIterator for T where T: Iterator<Item = Versioned> {}
-
 pub trait VersionedScanRange {
-    type ScanRangeIter<'a>: VersionedScanRangeIterator
+    type ScanRangeIter<'a>: VersionedIter
     where
         Self: 'a;
 
@@ -70,20 +63,12 @@ pub trait VersionedScanRange {
     }
 }
 
-pub trait VersionedScanRangeIteratorRev: Iterator<Item = Versioned> {}
-
-impl<T> VersionedScanRangeIteratorRev for T where T: Iterator<Item = Versioned> {}
-
 pub trait VersionedScanRangeRev {
-    type ScanRangeIterRev<'a>: VersionedScanRangeIteratorRev
+    type ScanRangeIterRev<'a>: VersionedIter
     where
         Self: 'a;
 
-    fn scan_range_rev(
-        &self,
-        range: EncodedKeyRange,
-        version: Version,
-    ) -> Self::ScanRangeIterRev<'_>;
+    fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIterRev<'_>;
 
     fn scan_prefix_rev(&self, prefix: &EncodedKey, version: Version) -> Self::ScanRangeIterRev<'_> {
         self.scan_range_rev(EncodedKeyRange::prefix(prefix), version)

@@ -3,8 +3,11 @@
 
 mod apply;
 mod get;
-mod scan;
+mod iter;
 mod range;
+mod contains;
+mod range_rev;
+mod iter_rev;
 
 use crate::unversioned::{UnversionedRemove, UnversionedSet, UnversionedStorage};
 use crate::versioned::{
