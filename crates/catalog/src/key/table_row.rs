@@ -18,7 +18,7 @@ impl EncodableKey for TableRowKey {
     const KIND: KeyKind = KeyKind::TableRow;
 
     fn encode(&self) -> EncodedKey {
-        let mut out = Vec::with_capacity(12);
+        let mut out = Vec::with_capacity(18);
         out.push(VERSION);
         out.push(Self::KIND as u8);
         out.extend(&self.table.to_be_bytes());
@@ -28,10 +28,10 @@ impl EncodableKey for TableRowKey {
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 12);
+        assert_eq!(payload.len(), 16);
         Some(Self {
-            table: TableId(u32::from_be_bytes(payload[..4].try_into().unwrap())),
-            row: RowId(u64::from_be_bytes(payload[4..].try_into().unwrap())),
+            table: TableId(u64::from_be_bytes(payload[..8].try_into().unwrap())),
+            row: RowId(u64::from_be_bytes(payload[8..].try_into().unwrap())),
         })
     }
 }
@@ -45,7 +45,7 @@ impl TableRowKey {
     }
 
     fn table_start(table_id: TableId) -> EncodedKey {
-        let mut out = Vec::with_capacity(6);
+        let mut out = Vec::with_capacity(10);
         out.push(VERSION);
         out.push(KeyKind::TableRow as u8);
         out.extend(&table_id.to_be_bytes());
@@ -53,7 +53,7 @@ impl TableRowKey {
     }
 
     fn table_end(table_id: TableId) -> EncodedKey {
-        let mut out = Vec::with_capacity(6);
+        let mut out = Vec::with_capacity(10);
         out.push(VERSION);
         out.push(KeyKind::TableRow as u8);
         out.extend(&(*table_id + 1).to_be_bytes());
@@ -75,6 +75,10 @@ mod tests {
         let expected: Vec<u8> = vec![
             1,
             KeyKind::TableRow as u8,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
             0x00,
             0x00,
             0xAB,

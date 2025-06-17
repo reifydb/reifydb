@@ -23,23 +23,23 @@ pub struct Column {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ColumnId(pub u32);
+pub struct ColumnId(pub u64);
 
 impl Deref for ColumnId {
-    type Target = u32;
+    type Target = u64;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl PartialEq<u32> for ColumnId {
-    fn eq(&self, other: &u32) -> bool {
+impl PartialEq<u64> for ColumnId {
+    fn eq(&self, other: &u64) -> bool {
         self.0.eq(other)
     }
 }
 
-impl From<ColumnId> for u32 {
+impl From<ColumnId> for u64 {
     fn from(value: ColumnId) -> Self {
         value.0
     }

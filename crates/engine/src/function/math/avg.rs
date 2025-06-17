@@ -52,7 +52,7 @@ impl FunctionExecutor for AvgExecutor {
                         }
                     }
                 }
-                _ => unimplemented!(),
+                values => unimplemented!("{values:?}"),
             }
         }
 

@@ -24,7 +24,7 @@ impl Catalog {
 
     fn convert_schema(versioned: Versioned) -> Schema {
         let row = versioned.row;
-        let id = SchemaId(schema::LAYOUT.get_u32(&row, schema::ID));
+        let id = SchemaId(schema::LAYOUT.get_u64(&row, schema::ID));
         let name = schema::LAYOUT.get_str(&row, schema::NAME).to_string();
 
         Schema { id, name }

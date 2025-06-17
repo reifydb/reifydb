@@ -4,7 +4,7 @@
 use crate::column::ColumnId;
 use crate::key::{EncodableKey, SystemSequenceKey};
 use crate::schema::SchemaId;
-use crate::sequence::u32::SequenceGeneratorU32;
+use crate::sequence::u64::SequenceGeneratorU64;
 use crate::table::TableId;
 use once_cell::sync::Lazy;
 use reifydb_core::EncodedKey;
@@ -49,7 +49,7 @@ impl SystemSequence {
     pub(crate) fn next_schema_id<VS: VersionedStorage, US: UnversionedStorage>(
         tx: &mut impl Tx<VS, US>,
     ) -> crate::Result<SchemaId> {
-        SequenceGeneratorU32::next(tx, &SCHEMA_KEY).map(SchemaId)
+        SequenceGeneratorU64::next(tx, &SCHEMA_KEY).map(SchemaId)
     }
 }
 
@@ -57,7 +57,7 @@ impl SystemSequence {
     pub(crate) fn next_table_id<VS: VersionedStorage, US: UnversionedStorage>(
         tx: &mut impl Tx<VS, US>,
     ) -> crate::Result<TableId> {
-        SequenceGeneratorU32::next(tx, &TABLE_KEY).map(TableId)
+        SequenceGeneratorU64::next(tx, &TABLE_KEY).map(TableId)
     }
 }
 
@@ -65,6 +65,6 @@ impl SystemSequence {
     pub(crate) fn next_column_id<VS: VersionedStorage, US: UnversionedStorage>(
         tx: &mut impl Tx<VS, US>,
     ) -> crate::Result<ColumnId> {
-        SequenceGeneratorU32::next(tx, &COLUMN_KEY).map(ColumnId)
+        SequenceGeneratorU64::next(tx, &COLUMN_KEY).map(ColumnId)
     }
 }

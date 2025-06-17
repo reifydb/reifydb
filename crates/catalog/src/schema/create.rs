@@ -31,7 +31,7 @@ impl Catalog {
         let schema_id = SystemSequence::next_schema_id(tx)?;
 
         let mut row = schema::LAYOUT.allocate_row();
-        schema::LAYOUT.set_u32(&mut row, schema::ID, schema_id);
+        schema::LAYOUT.set_u64(&mut row, schema::ID, schema_id);
         schema::LAYOUT.set_str(&mut row, schema::NAME, &to_create.name);
 
         tx.set(&Key::Schema(SchemaKey { schema: schema_id }).encode(), row)?;

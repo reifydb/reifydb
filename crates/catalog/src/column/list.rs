@@ -16,7 +16,7 @@ impl Catalog {
             .scan_range(TableColumnKey::full_scan(table))?
             .map(|versioned| {
                 let row = versioned.row;
-                ColumnId(table_column::LAYOUT.get_u32(&row, table_column::ID))
+                ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID))
             })
             .collect::<Vec<_>>();
 

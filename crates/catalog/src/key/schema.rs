@@ -16,7 +16,7 @@ impl EncodableKey for SchemaKey {
     const KIND: KeyKind = KeyKind::Schema;
 
     fn encode(&self) -> EncodedKey {
-        let mut out = Vec::with_capacity(6);
+        let mut out = Vec::with_capacity(10);
         out.push(VERSION);
         out.push(Self::KIND as u8);
         out.extend(&self.schema.to_be_bytes());
@@ -25,8 +25,8 @@ impl EncodableKey for SchemaKey {
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 4);
-        Some(Self { schema: SchemaId(u32::from_be_bytes(payload[..].try_into().unwrap())) })
+        assert_eq!(payload.len(), 8);
+        Some(Self { schema: SchemaId(u64::from_be_bytes(payload[..].try_into().unwrap())) })
     }
 }
 
@@ -59,7 +59,8 @@ mod tests {
     fn test_encode_decode() {
         let key = SchemaKey { schema: SchemaId(0xABCD) };
         let encoded = key.encode();
-        let expected = vec![1, KeyKind::Schema as u8, 0x00, 0x00, 0xAB, 0xCD];
+        let expected =
+            vec![1, KeyKind::Schema as u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAB, 0xCD];
         assert_eq!(encoded.as_slice(), expected);
 
         let key = SchemaKey::decode(1, &encoded[2..]).unwrap();

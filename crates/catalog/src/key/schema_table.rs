@@ -18,7 +18,7 @@ impl EncodableKey for SchemaTableKey {
     const KIND: KeyKind = KeyKind::SchemaTable;
 
     fn encode(&self) -> EncodedKey {
-        let mut out = Vec::with_capacity(8);
+        let mut out = Vec::with_capacity(18);
         out.push(VERSION);
         out.push(Self::KIND as u8);
         out.extend(&self.schema.to_be_bytes());
@@ -28,10 +28,10 @@ impl EncodableKey for SchemaTableKey {
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 8);
+        assert_eq!(payload.len(), 16);
         Some(Self {
-            schema: SchemaId(u32::from_be_bytes(payload[..4].try_into().unwrap())),
-            table: TableId(u32::from_be_bytes(payload[4..].try_into().unwrap())),
+            schema: SchemaId(u64::from_be_bytes(payload[..8].try_into().unwrap())),
+            table: TableId(u64::from_be_bytes(payload[8..].try_into().unwrap())),
         })
     }
 }
@@ -72,8 +72,26 @@ mod tests {
         let key = SchemaTableKey { schema: SchemaId(0x12345678), table: TableId(0xABCD) };
         let encoded = key.encode();
 
-        let expected: Vec<u8> =
-            vec![1, KeyKind::SchemaTable as u8, 0x12, 0x34, 0x56, 0x78, 0x00, 0x00, 0xAB, 0xCD];
+        let expected: Vec<u8> = vec![
+            1,
+            KeyKind::SchemaTable as u8,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x12,
+            0x34,
+            0x56,
+            0x78,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0xAB,
+            0xCD,
+        ];
 
         assert_eq!(encoded.as_slice(), expected);
 

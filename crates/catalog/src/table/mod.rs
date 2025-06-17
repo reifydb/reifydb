@@ -20,23 +20,23 @@ pub struct Table {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct TableId(pub u32);
+pub struct TableId(pub u64);
 
 impl Deref for TableId {
-    type Target = u32;
+    type Target = u64;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl PartialEq<u32> for TableId {
-    fn eq(&self, other: &u32) -> bool {
+impl PartialEq<u64> for TableId {
+    fn eq(&self, other: &u64) -> bool {
         self.0.eq(other)
     }
 }
 
-impl From<TableId> for u32 {
+impl From<TableId> for u64 {
     fn from(value: TableId) -> Self {
         value.0
     }

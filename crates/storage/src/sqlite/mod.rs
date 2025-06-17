@@ -57,11 +57,17 @@ impl Sqlite {
 
             conn.execute_batch(
                 "BEGIN;
-                 CREATE TABLE IF NOT EXISTS kv (
+                 CREATE TABLE IF NOT EXISTS versioned (
                      key     BLOB NOT NULL,
                      version INTEGER NOT NULL,
                      value   BLOB NOT NULL,
                      PRIMARY KEY (key, version)
+                 );
+                 
+                 CREATE TABLE IF NOT EXISTS unversioned (
+                     key     BLOB NOT NULL,
+                     value   BLOB NOT NULL,
+                     PRIMARY KEY (key)
                  );
                  COMMIT;",
             )
@@ -86,7 +92,7 @@ impl VersionedApply for Sqlite {
                 Delta::Set { key, row: bytes } => {
                     let version = 1; // FIXME remove this - transaction version needs to be persisted
                     tx.execute(
-                        "INSERT OR REPLACE INTO kv (key, version, value) VALUES (?1, ?2, ?3)",
+                        "INSERT OR REPLACE INTO versioned (key, version, value) VALUES (?1, ?2, ?3)",
                         params![key.to_vec(), version, bytes.to_vec()],
                     )
                     .unwrap();
@@ -94,7 +100,7 @@ impl VersionedApply for Sqlite {
                 Delta::Remove { key } => {
                     let version = 1; // FIXME remove this - transaction version needs to be persisted
                     tx.execute(
-                        "DELETE FROM kv WHERE key = ?1 AND version = ?2",
+                        "DELETE FROM versioned WHERE key = ?1 AND version = ?2",
                         params![key.to_vec(), version],
                     )
                     .unwrap();
@@ -112,7 +118,7 @@ impl VersionedGet for Sqlite {
 
         let conn = self.get_conn();
         conn.query_row(
-			"SELECT key, value, version FROM kv WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
+			"SELECT key, value, version FROM versioned WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
 			params![key.to_vec(), version],
 			|row| {
 				Ok(Versioned {
@@ -142,7 +148,7 @@ impl VersionedScan for Sqlite {
 
         let conn = self.get_conn();
         let mut stmt = conn
-            .prepare("SELECT key, value, version FROM kv WHERE version <= ? ORDER BY key ASC")
+            .prepare("SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key ASC")
             .unwrap();
 
         let rows = stmt
@@ -169,7 +175,7 @@ impl VersionedScanRev for Sqlite {
 
         let conn = self.get_conn();
         let mut stmt = conn
-            .prepare("SELECT key, value, version FROM kv WHERE version <= ? ORDER BY key DESC")
+            .prepare("SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key DESC")
             .unwrap();
 
         let rows = stmt
@@ -196,7 +202,7 @@ impl VersionedScanRange for Sqlite {
 
         let conn = self.get_conn();
         let mut stmt = conn
-			.prepare("SELECT key, value, version FROM kv WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key ASC")
+			.prepare("SELECT key, value, version FROM versioned WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key ASC")
 			.unwrap();
 
         let start_bytes = bound_to_bytes(&range.start);
@@ -231,7 +237,7 @@ impl VersionedScanRangeRev for Sqlite {
 
         let conn = self.get_conn();
         let mut stmt = conn
-			.prepare("SELECT key, value, version FROM kv WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key DESC")
+			.prepare("SELECT key, value, version FROM versioned WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key DESC")
 			.unwrap();
 
         let start_bytes = bound_to_bytes(&range.start);

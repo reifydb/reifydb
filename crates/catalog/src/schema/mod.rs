@@ -16,23 +16,23 @@ pub struct Schema {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct SchemaId(pub u32);
+pub struct SchemaId(pub u64);
 
 impl Deref for SchemaId {
-    type Target = u32;
+    type Target = u64;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl PartialEq<u32> for SchemaId {
-    fn eq(&self, other: &u32) -> bool {
+impl PartialEq<u64> for SchemaId {
+    fn eq(&self, other: &u64) -> bool {
         self.0.eq(other)
     }
 }
 
-impl From<SchemaId> for u32 {
+impl From<SchemaId> for u64 {
     fn from(value: SchemaId) -> Self {
         value.0
     }

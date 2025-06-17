@@ -61,8 +61,8 @@ impl Catalog {
         to_create: &TableToCreate,
     ) -> crate::Result<()> {
         let mut row = table::LAYOUT.allocate_row();
-        table::LAYOUT.set_u32(&mut row, table::ID, table);
-        table::LAYOUT.set_u32(&mut row, table::SCHEMA, schema);
+        table::LAYOUT.set_u64(&mut row, table::ID, table);
+        table::LAYOUT.set_u64(&mut row, table::SCHEMA, schema);
         table::LAYOUT.set_str(&mut row, table::NAME, &to_create.table);
 
         tx.set(&Key::Table(TableKey { table }).encode(), row)?;
@@ -77,7 +77,7 @@ impl Catalog {
         name: &str,
     ) -> crate::Result<()> {
         let mut row = table_schema::LAYOUT.allocate_row();
-        table_schema::LAYOUT.set_u32(&mut row, table_schema::ID, table);
+        table_schema::LAYOUT.set_u64(&mut row, table_schema::ID, table);
         table_schema::LAYOUT.set_str(&mut row, table_schema::NAME, name);
         tx.set(&Key::SchemaTable(SchemaTableKey { schema, table }).encode(), row)?;
         Ok(())
@@ -173,12 +173,12 @@ mod tests {
 
         let link = &links[0];
         let row = &link.row;
-        assert_eq!(table_schema::LAYOUT.get_u32(&row, table_schema::ID), 1);
+        assert_eq!(table_schema::LAYOUT.get_u64(&row, table_schema::ID), 1);
         assert_eq!(table_schema::LAYOUT.get_str(&row, table_schema::NAME), "test_table");
 
         let link = &links[1];
         let row = &link.row;
-        assert_eq!(table_schema::LAYOUT.get_u32(&row, table_schema::ID), 2);
+        assert_eq!(table_schema::LAYOUT.get_u64(&row, table_schema::ID), 2);
         assert_eq!(table_schema::LAYOUT.get_str(&row, table_schema::NAME), "another_table");
     }
 

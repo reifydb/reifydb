@@ -46,13 +46,13 @@ message Value {oneof kind {
 message Row {repeated Value values = 1;}
 
 
-message CreateSchema { uint32 id = 1; string schema = 2; bool created = 3;}
+message CreateSchema { uint64 id = 1; string schema = 2; bool created = 3;}
 
 message CreateSeries {string schema = 1;
   string series = 2;}
 
 message CreateTable {
-  uint32  id = 1;
+  uint64  id = 1;
   string schema = 2;
   string table = 3;
   bool created = 4;

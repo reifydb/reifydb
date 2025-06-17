@@ -44,8 +44,8 @@ impl Catalog {
         let id = SystemSequence::next_column_id(tx)?;
 
         let mut row = column::LAYOUT.allocate_row();
-        column::LAYOUT.set_u32(&mut row, column::ID, id);
-        column::LAYOUT.set_u32(&mut row, column::TABLE, table);
+        column::LAYOUT.set_u64(&mut row, column::ID, id);
+        column::LAYOUT.set_u64(&mut row, column::TABLE, table);
         column::LAYOUT.set_str(&mut row, column::NAME, &column_to_create.column);
         column::LAYOUT.set_u8(&mut row, column::VALUE, column_to_create.value.to_u8());
         column::LAYOUT.set_u16(&mut row, column::INDEX, column_to_create.index);
@@ -53,7 +53,7 @@ impl Catalog {
         tx.set(&Key::Column(ColumnKey { column: id }).encode(), row)?;
 
         let mut row = table_column::LAYOUT.allocate_row();
-        table_column::LAYOUT.set_u32(&mut row, table_column::ID, id);
+        table_column::LAYOUT.set_u64(&mut row, table_column::ID, id);
         table_column::LAYOUT.set_str(&mut row, table_column::NAME, &column_to_create.column);
         table_column::LAYOUT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
         tx.set(&Key::TableColumn(TableColumnKey { table, column: id }).encode(), row)?;

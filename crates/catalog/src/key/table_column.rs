@@ -18,7 +18,7 @@ impl EncodableKey for TableColumnKey {
     const KIND: KeyKind = KeyKind::TableColumn;
 
     fn encode(&self) -> EncodedKey {
-        let mut out = Vec::with_capacity(8);
+        let mut out = Vec::with_capacity(18);
         out.push(VERSION);
         out.push(Self::KIND as u8);
         out.extend(&self.table.to_be_bytes());
@@ -28,10 +28,10 @@ impl EncodableKey for TableColumnKey {
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 8);
+        assert_eq!(payload.len(), 16);
         Some(Self {
-            table: TableId(u32::from_be_bytes(payload[..4].try_into().unwrap())),
-            column: ColumnId(u32::from_be_bytes(payload[4..].try_into().unwrap())),
+            table: TableId(u64::from_be_bytes(payload[..8].try_into().unwrap())),
+            column: ColumnId(u64::from_be_bytes(payload[8..].try_into().unwrap())),
         })
     }
 }
@@ -42,7 +42,7 @@ impl TableColumnKey {
     }
 
     fn link_start(table: TableId) -> EncodedKey {
-        let mut out = Vec::with_capacity(6);
+        let mut out = Vec::with_capacity(10);
         out.push(VERSION);
         out.push(KeyKind::TableColumn as u8);
         out.extend(&table.to_be_bytes());
@@ -50,7 +50,7 @@ impl TableColumnKey {
     }
 
     fn link_end(table: TableId) -> EncodedKey {
-        let mut out = Vec::with_capacity(6);
+        let mut out = Vec::with_capacity(10);
         out.push(VERSION);
         out.push(KeyKind::TableColumn as u8);
         out.extend(&(*table + 1).to_be_bytes());
@@ -69,8 +69,26 @@ mod tests {
         let key = TableColumnKey { table: TableId(0xABCD), column: ColumnId(0x12345678) };
         let encoded = key.encode();
 
-        let expected: Vec<u8> =
-            vec![1, KeyKind::TableColumn as u8, 0x00, 0x00, 0xAB, 0xCD, 0x12, 0x34, 0x56, 0x78];
+        let expected: Vec<u8> = vec![
+            1,
+            KeyKind::TableColumn as u8,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0xAB,
+            0xCD,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x12,
+            0x34,
+            0x56,
+            0x78,
+        ];
 
         assert_eq!(encoded.as_slice(), expected);
 

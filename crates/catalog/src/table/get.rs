@@ -20,7 +20,7 @@ impl Catalog {
                 let row = &versioned.row;
                 let table_name = table_schema::LAYOUT.get_str(row, table_schema::NAME);
                 if name == table_name {
-                    Some(TableId(table_schema::LAYOUT.get_u32(row, table_schema::ID)))
+                    Some(TableId(table_schema::LAYOUT.get_u64(row, table_schema::ID)))
                 } else {
                     None
                 }
@@ -36,8 +36,8 @@ impl Catalog {
         match rx.get(&TableKey { table }.encode())? {
             Some(versioned) => {
                 let row = versioned.row;
-                let id = TableId(table::LAYOUT.get_u32(&row, table::ID));
-                let schema = SchemaId(table::LAYOUT.get_u32(&row, table::SCHEMA));
+                let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
+                let schema = SchemaId(table::LAYOUT.get_u64(&row, table::SCHEMA));
                 let name = table::LAYOUT.get_str(&row, table::NAME).to_string();
                 Ok(Some(Table { id, name, schema, columns: Catalog::list_columns(rx, id)? }))
             }

@@ -26,6 +26,17 @@ impl VersionedApply for Lmdb {
 
 impl UnversionedApply for Lmdb {
     fn apply_unversioned(&mut self, delta: AsyncCowVec<Delta>) {
-        todo!()
+        let mut tx = self.env.write_txn().unwrap();
+        for delta in delta {
+            match delta {
+                Delta::Set { key, row: value } => {
+                    self.db.put(&mut tx, &key[..], &value).unwrap();
+                }
+                Delta::Remove { key } => {
+                    self.db.delete(&mut tx, &key[..]).unwrap();
+                }
+            }
+        }
+        tx.commit().unwrap();
     }
 }

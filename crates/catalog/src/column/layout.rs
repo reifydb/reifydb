@@ -14,8 +14,8 @@ pub(crate) mod column {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            ValueKind::Uint4,  // id
-            ValueKind::Uint4,  // table
+            ValueKind::Uint8,  // id
+            ValueKind::Uint8,  // table
             ValueKind::String, // name
             ValueKind::Uint1,  // value
             ValueKind::Uint2,  // index
@@ -34,7 +34,7 @@ pub(crate) mod table_column {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            ValueKind::Uint4,  // column id
+            ValueKind::Uint8,  // column id
             ValueKind::String, // column name
             ValueKind::Uint2,  // column index - position in the table
         ])
