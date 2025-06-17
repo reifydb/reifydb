@@ -21,6 +21,7 @@ impl IntoIterator for AstStatement {
 pub enum Ast {
     Block(AstBlock),
     Create(AstCreate),
+    Filter(AstFilter),
     From(AstFrom),
     GroupBy(AstGroupBy),
     Identifier(AstIdentifier),
@@ -44,6 +45,7 @@ impl Ast {
         match self {
             Ast::Block(node) => &node.token,
             Ast::Create(node) => &node.token(),
+            Ast::Filter(node) => &node.token,
             Ast::From(node) => &node.token(),
             Ast::GroupBy(node) => &node.token,
             Ast::Identifier(node) => &node.0,
@@ -86,6 +88,13 @@ impl Ast {
     }
     pub fn as_create(&self) -> &AstCreate {
         if let Ast::Create(result) = self { result } else { panic!("not create") }
+    }
+
+    pub fn is_filter(&self) -> bool {
+        matches!(self, Ast::Filter(_))
+    }
+    pub fn as_filter(&self) -> &AstFilter {
+        if let Ast::Filter(result) = self { result } else { panic!("not filter") }
     }
 
     pub fn is_from(&self) -> bool {
@@ -301,6 +310,12 @@ impl AstCreate {
             AstCreate::Table { token, .. } => token,
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstFilter {
+    pub token: Token,
+    pub node: Box<Ast>,
 }
 
 #[derive(Debug, PartialEq)]

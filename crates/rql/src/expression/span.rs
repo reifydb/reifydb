@@ -20,6 +20,8 @@ impl Expression {
             Expression::Add(expr) => expr.span(),
             Expression::Subtract(expr) => expr.span(),
 
+            Expression::GreaterThan(expr) => expr.span.clone(),
+
             Expression::Multiply(expr) => {
                 // Span::merge_all([expr.left.span(), &expr.span, expr.right.span()])
                 unimplemented!()

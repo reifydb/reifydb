@@ -44,6 +44,8 @@ pub enum Expression {
     Tuple(TupleExpression),
 
     Prefix(PrefixExpression),
+
+    GreaterThan(GreaterThanExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +105,13 @@ pub struct MultiplyExpression {
 }
 
 #[derive(Debug, Clone)]
+pub struct GreaterThanExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct ColumnExpression(pub Span);
 
 impl Display for Expression {
@@ -128,6 +137,9 @@ impl Display for Expression {
             }
             Expression::Tuple(tuple) => write!(f, "({})", tuple),
             Expression::Prefix(prefix) => write!(f, "{}", prefix),
+            Expression::GreaterThan(GreaterThanExpression { left, right, .. }) => {
+                write!(f, "({} > {})", left, right)
+            }
         }
     }
 }

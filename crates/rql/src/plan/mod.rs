@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{
-    Ast, AstCreate, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstPolicy, AstPolicyKind,
-    AstPrefix, AstSelect, AstStatement, InfixOperator,
+    Ast, AstCreate, AstFilter, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstPolicy,
+    AstPolicyKind, AstPrefix, AstSelect, AstStatement, InfixOperator,
 };
 use std::collections::HashMap;
 use std::mem;
@@ -12,8 +12,8 @@ use std::ops::Deref;
 use crate::ast;
 use crate::expression::{
     AddExpression, AliasExpression, CallExpression, ColumnExpression, ConstantExpression,
-    DivideExpression, Expression, IdentExpression, ModuloExpression, MultiplyExpression,
-    PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
+    DivideExpression, Expression, GreaterThanExpression, IdentExpression, ModuloExpression,
+    MultiplyExpression, PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
 };
 pub use error::Error;
 use reifydb_catalog::Catalog;
@@ -135,10 +135,10 @@ pub enum QueryPlan {
         store: String,
         next: Option<Box<QueryPlan>>,
     },
-    // Filter {
-    //     condition: Expression,
-    //     next: Option<Box<QueryPlan>>,
-    // },
+    Filter {
+        expression: Expression,
+        next: Option<Box<QueryPlan>>,
+    },
     Project {
         expressions: Vec<AliasExpression>,
         next: Option<Box<QueryPlan>>,
@@ -473,6 +473,7 @@ pub fn plan_rx(statement: AstStatement) -> Result<PlanRx> {
             //     condition: where_clause.condition.clone(),
             //     next: head,
             // },
+            Ast::Filter(filter) => plan_filter(filter, head)?,
             Ast::Select(select) => plan_select(select, head)?,
             Ast::OrderBy(order) => QueryPlan::Sort {
                 keys: order
@@ -546,6 +547,16 @@ fn plan_from(from: AstFrom, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
         }),
         AstFrom::Query { .. } => unimplemented!(),
     }
+}
+
+fn plan_filter(filter: AstFilter, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    Ok(QueryPlan::Filter {
+        expression: match *filter.node {
+            Ast::Infix(node) => expression_infix(node)?,
+            node => unimplemented!("{node:?}"),
+        },
+        next: head,
+    })
 }
 
 fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
@@ -717,6 +728,17 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
                 span: token.span,
             }))
         }
+        InfixOperator::GreaterThan(token) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+
+            Ok(Expression::GreaterThan(GreaterThanExpression {
+                left: Box::new(left),
+                right: Box::new(right),
+                span: token.span,
+            }))
+        }
+
         operator => unimplemented!("not implemented: {operator:?}"),
         // InfixOperator::Arrow(_) => {}
         // InfixOperator::AccessPackage(_) => {}
@@ -730,7 +752,6 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
         // InfixOperator::NotEqual(_) => {}
         // InfixOperator::LessThan(_) => {}
         // InfixOperator::LessThanEqual(_) => {}
-        // InfixOperator::GreaterThan(_) => {}
         // InfixOperator::GreaterThanEqual(_) => {}
         // InfixOperator::TypeAscription(_) => {}
     }

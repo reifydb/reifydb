@@ -14,6 +14,7 @@ mod column;
 mod constant;
 mod context;
 mod error;
+mod filter;
 mod operator;
 mod prefix;
 
@@ -43,6 +44,8 @@ impl Evaluator {
             Expression::Call(expr) => self.call(expr, ctx, columns, row_count),
             Expression::Column(expr) => self.column(expr, ctx, columns, row_count),
             Expression::Constant(expr) => self.constant(expr, ctx),
+            // Expression::GreaterThan(expr) => self.greater_than(expr, ctx, columns, row_count),
+            Expression::GreaterThan(expr) => unimplemented!(),
             Expression::Modulo(expr) => self.modulo(expr, ctx, columns, row_count),
             Expression::Multiply(expr) => self.multiply(expr, ctx, columns, row_count),
             Expression::Prefix(expr) => self.prefix(expr, ctx, columns, row_count),

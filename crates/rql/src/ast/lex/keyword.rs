@@ -83,6 +83,8 @@ keyword! {
     Show       => "SHOW",
     Create     => "CREATE",
     Drop       => "DROP",
+    Filter     => "FILTER",
+
 
     And        => "AND",
     Or         => "OR",
@@ -167,6 +169,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Is, "IS"),
         )),
         alt((
+            keyword_tag(Keyword::Filter, "FILTER"),
             keyword_tag(Keyword::Schema, "SCHEMA"),
             keyword_tag(Keyword::Series, "SERIES"),
             keyword_tag(Keyword::Table, "TABLE"),
@@ -274,6 +277,7 @@ mod tests {
         test_keyword_between => (Between, "BETWEEN"),
         test_keyword_like => (Like, "LIKE"),
         test_keyword_is => (Is, "IS"),
+        test_keyword_is_in => (Filter, "FILTER"),
         test_keyword_schema => (Schema, "SCHEMA"),
         test_keyword_series => (Series, "SERIES"),
         test_keyword_table => (Table, "TABLE"),
@@ -353,6 +357,7 @@ mod tests {
         test_not_keyword_between => ( "between"),
         test_not_keyword_like => ( "like"),
         test_not_keyword_is => ( "is"),
+        test_not_keyword_filter => ( "filter"),
         test_not_keyword_schema => ( "schema"),
         test_not_keyword_series => ( "series"),
         test_not_keyword_table => ( "table"),

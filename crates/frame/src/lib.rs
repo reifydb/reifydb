@@ -9,6 +9,7 @@
 pub use column::{AsSlice, Column, ColumnValues, Push};
 pub use error::Error;
 pub use frame::Frame;
+pub use mask::RowMask;
 pub use reference::{RowRef, ValueRef};
 pub use transform::{SortDirection, SortKey};
 
@@ -18,6 +19,7 @@ mod display;
 mod error;
 mod frame;
 mod iterator;
+mod mask;
 mod reference;
 mod transform;
 mod view;

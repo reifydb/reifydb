@@ -37,6 +37,7 @@ impl Parser {
             },
             TokenKind::Keyword(keyword) => match keyword {
                 Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
+                Keyword::Filter => Ok(Ast::Filter(self.parse_filter()?)),
                 Keyword::From => Ok(Ast::From(self.parse_from()?)),
                 Keyword::Group => Ok(Ast::GroupBy(self.parse_group_by()?)),
                 Keyword::Insert => Ok(Ast::Insert(self.parse_insert()?)),
@@ -98,7 +99,7 @@ mod tests {
         let Literal(AstLiteral::Number(node)) = &tuple.nodes.get(0).unwrap() else { panic!() };
         assert_eq!(node.value(), "2");
     }
-    
+
     #[test]
     fn test_negative() {
         let tokens = lex("-2").unwrap();

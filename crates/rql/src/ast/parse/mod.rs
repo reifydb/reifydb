@@ -18,6 +18,7 @@ mod select;
 mod tuple;
 mod r#type;
 mod block;
+mod filter;
 
 pub use error::*;
 
