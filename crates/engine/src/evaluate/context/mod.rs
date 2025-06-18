@@ -10,8 +10,9 @@ use reifydb_catalog::column_policy::{
 mod demote;
 mod promote;
 
-use reifydb_core::ValueKind;
+use crate::frame::Column;
 use reifydb_core::num::{SafeAdd, SafeSubtract};
+use reifydb_core::{BitVec, ValueKind};
 use reifydb_diagnostic::IntoSpan;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 
@@ -35,11 +36,14 @@ impl EvaluationColumn {
 }
 
 #[derive(Debug)]
-pub(crate) struct Context {
+pub(crate) struct Context<'a> {
     pub(crate) column: Option<EvaluationColumn>,
+    pub(crate) mask: &'a BitVec,
+    pub(crate) columns: &'a [Column],
+    pub(crate) row_count: usize,
 }
 
-impl Context {
+impl Context<'_> {
     pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
         self.column
             .as_ref()
@@ -48,7 +52,7 @@ impl Context {
     }
 }
 
-impl Context {
+impl Context<'_> {
     pub(crate) fn add<T: SafeAdd>(
         &self,
         l: T,

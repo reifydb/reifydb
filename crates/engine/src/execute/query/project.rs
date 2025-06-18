@@ -4,6 +4,7 @@
 use crate::evaluate::{Context, evaluate};
 use crate::execute::Executor;
 use crate::frame::{Column, Frame};
+use reifydb_core::BitVec;
 use reifydb_rql::expression::AliasExpression;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 
@@ -15,7 +16,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             for (idx, expr) in expressions.into_iter().enumerate() {
                 let expr = expr.expression;
 
-                let value = evaluate(&expr, &Context { column: None }, &[], 1)?;
+                let value = evaluate(
+                    &expr,
+                    &Context { column: None, mask: &BitVec::empty(), columns: &[], row_count: 1 },
+                )?;
                 columns.push(Column { name: format!("{}", idx + 1), data: value });
             }
 
@@ -24,7 +28,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         }
 
         let row_count = self.frame.columns.first().map_or(0, |col| col.data.len());
-        let columns: Vec<&Column> = self.frame.columns.iter().map(|c| c).collect();
+        let columns: Vec<Column> = self.frame.columns.iter().map(|c| c.clone()).collect();
 
         let mut new_columns = Vec::with_capacity(expressions.len());
 
@@ -32,7 +36,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             let expr = expression.expression;
             let name = expression.alias.unwrap_or(expr.to_string());
 
-            let evaluated_column = evaluate(&expr, &Context { column: None }, &columns, row_count)?;
+            let evaluated_column = evaluate(
+                &expr,
+                &Context {
+                    column: None,
+                    mask: &BitVec::empty(),
+                    columns: &columns,
+                    row_count: row_count,
+                },
+            )?;
 
             new_columns.push(Column { name: name.into(), data: evaluated_column });
         }

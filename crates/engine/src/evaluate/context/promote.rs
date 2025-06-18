@@ -17,7 +17,7 @@ pub trait Promote {
         From: SafePromote<To>;
 }
 
-impl Promote for Context {
+impl Promote for Context<'_> {
     fn promote<From, To>(
         &self,
         val: From,
@@ -30,7 +30,7 @@ impl Promote for Context {
     }
 }
 
-impl Promote for &Context {
+impl Promote for &Context<'_> {
     fn promote<From, To>(
         &self,
         val: From,
@@ -64,8 +64,8 @@ mod tests {
     use crate::evaluate::{Context, EvaluationColumn, Promote};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
-    use reifydb_core::ValueKind;
     use reifydb_core::num::SafePromote;
+    use reifydb_core::{BitVec, ValueKind};
     use reifydb_testing::make_test_span;
 
     #[test]
@@ -76,6 +76,9 @@ mod tests {
                 value: ValueKind::Int2,
                 policies: vec![Saturation(Error)],
             }),
+            mask: &BitVec::empty(),
+            columns: &[],
+            row_count: 0,
         };
 
         let result = ctx.promote::<i8, i16>(1i8, || make_test_span());
@@ -90,6 +93,9 @@ mod tests {
                 value: ValueKind::Int2,
                 policies: vec![Saturation(Error)],
             }),
+            mask: &BitVec::empty(),
+            columns: &[],
+            row_count: 0,
         };
 
         let err = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).err().unwrap();
@@ -105,6 +111,9 @@ mod tests {
                 value: ValueKind::Int2,
                 policies: vec![Saturation(Undefined)],
             }),
+            mask: &BitVec::empty(),
+            columns: &[],
+            row_count: 0,
         };
 
         let result = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).unwrap();

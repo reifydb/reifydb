@@ -17,7 +17,7 @@ pub trait Demote {
         From: SafeDemote<To>;
 }
 
-impl Demote for Context {
+impl Demote for Context<'_> {
     fn demote<From, To>(
         &self,
         val: From,
@@ -30,7 +30,7 @@ impl Demote for Context {
     }
 }
 
-impl Demote for &Context {
+impl Demote for &Context<'_> {
     fn demote<From, To>(
         &self,
         val: From,
@@ -64,8 +64,8 @@ mod tests {
     use crate::evaluate::{Context, Demote, EvaluationColumn};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
-    use reifydb_core::ValueKind;
     use reifydb_core::num::SafeDemote;
+    use reifydb_core::{BitVec, ValueKind};
     use reifydb_testing::make_test_span;
 
     #[test]
@@ -76,6 +76,9 @@ mod tests {
                 value: ValueKind::Int1,
                 policies: vec![Saturation(Error)],
             }),
+            mask: &BitVec::empty(),
+            columns: &[],
+            row_count: 0,
         };
 
         let result = ctx.demote::<i16, i8>(1i16, || make_test_span());
@@ -90,6 +93,9 @@ mod tests {
                 value: ValueKind::Int1,
                 policies: vec![Saturation(Error)],
             }),
+            mask: &BitVec::empty(),
+            columns: &[],
+            row_count: 0,
         };
 
         let err = ctx.demote::<TestI16, TestI8>(TestI16 {}, || make_test_span()).err().unwrap();
@@ -106,6 +112,9 @@ mod tests {
                 value: ValueKind::Int1,
                 policies: vec![Saturation(Undefined)],
             }),
+            mask: &BitVec::empty(),
+            columns: &[],
+            row_count: 0,
         };
 
         let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || make_test_span()).unwrap();

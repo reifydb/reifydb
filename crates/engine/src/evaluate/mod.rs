@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::frame::{Column, ColumnValues};
+use crate::frame::ColumnValues;
 use reifydb_rql::expression::Expression;
 
 use crate::function::{FunctionRegistry, math};
@@ -31,42 +31,31 @@ impl Default for Evaluator {
 }
 
 impl Evaluator {
-    pub(crate) fn evaluate(
-        &mut self,
-        expr: &Expression,
-        ctx: &Context,
-        columns: &[&Column],
-        row_count: usize,
-    ) -> Result<ColumnValues> {
+    pub(crate) fn evaluate(&mut self, expr: &Expression, ctx: &Context) -> Result<ColumnValues> {
         match expr {
-            Expression::Add(expr) => self.add(expr, ctx, columns, row_count),
-            Expression::Divide(expr) => self.divide(expr, ctx, columns, row_count),
-            Expression::Call(expr) => self.call(expr, ctx, columns, row_count),
-            Expression::Column(expr) => self.column(expr, ctx, columns, row_count),
-            Expression::Constant(expr) => self.constant(expr, ctx, row_count),
-            // Expression::GreaterThan(expr) => self.greater_than(expr, ctx, columns, row_count),
+            Expression::Add(expr) => self.add(expr, ctx),
+            Expression::Divide(expr) => self.divide(expr, ctx),
+            Expression::Call(expr) => self.call(expr, ctx),
+            Expression::Column(expr) => self.column(expr, ctx),
+            Expression::Constant(expr) => self.constant(expr, ctx),
+            // Expression::GreaterThan(expr) => self.greater_than(expr, ctx),
             Expression::GreaterThan(expr) => unimplemented!(),
-            Expression::Modulo(expr) => self.modulo(expr, ctx, columns, row_count),
-            Expression::Multiply(expr) => self.multiply(expr, ctx, columns, row_count),
-            Expression::Prefix(expr) => self.prefix(expr, ctx, columns, row_count),
-            Expression::Subtract(expr) => self.subtract(expr, ctx, columns, row_count),
+            Expression::Modulo(expr) => self.modulo(expr, ctx),
+            Expression::Multiply(expr) => self.multiply(expr, ctx),
+            Expression::Prefix(expr) => self.prefix(expr, ctx),
+            Expression::Subtract(expr) => self.subtract(expr, ctx),
             expr => unimplemented!("{expr:?}"),
         }
     }
 }
 
-pub fn evaluate(
-    expr: &Expression,
-    ctx: &Context,
-    columns: &[&Column],
-    row_count: usize,
-) -> Result<ColumnValues> {
+pub fn evaluate(expr: &Expression, ctx: &Context) -> Result<ColumnValues> {
     let mut evaluator = Evaluator { functions: FunctionRegistry::new() };
 
     evaluator.functions.register(math::AbsFunction {});
     evaluator.functions.register(math::AvgFunction {});
 
-    evaluator.evaluate(expr, ctx, columns, row_count)
+    evaluator.evaluate(expr, ctx)
 }
 
 #[cfg(test)]

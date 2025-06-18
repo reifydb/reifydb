@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::{Column, ColumnValues};
+use crate::frame::ColumnValues;
 use reifydb_rql::expression::MultiplyExpression;
 
 impl Evaluator {
@@ -10,11 +10,11 @@ impl Evaluator {
         &mut self,
         mul: &MultiplyExpression,
         ctx: &Context,
-        columns: &[&Column],
-        row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let left = self.evaluate(&mul.left, ctx, columns, row_count)?;
-        let right = self.evaluate(&mul.right, ctx, columns, row_count)?;
+        let left = self.evaluate(&mul.left, ctx)?;
+        let right = self.evaluate(&mul.right, ctx)?;
+
+        let row_count = ctx.row_count;
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {

@@ -12,10 +12,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let row_count = self.frame.columns.first().map_or(0, |col| col.data.len());
         let columns: Vec<&Column> = self.frame.columns.iter().map(|c| c).collect();
 
-        let evaluated_column =
-            evaluate(&expression, &Context { column: None }, &columns, row_count)?;
-
-        dbg!(&evaluated_column);
+        // let evaluated_column =
+        //     evaluate(&expression, &Context { column: None }, &columns, row_count)?;
+        // 
+        // dbg!(&evaluated_column);
 
         Ok(())
     }

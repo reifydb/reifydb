@@ -3,7 +3,7 @@
 
 use crate::evaluate;
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::{Column, ColumnValues};
+use crate::frame::ColumnValues;
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
@@ -11,13 +11,12 @@ impl Evaluator {
         &mut self,
         column: &ColumnExpression,
         ctx: &Context,
-        columns: &[&Column],
-        row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
+        let columns = ctx.columns;
+        let row_count = ctx.row_count;
         Ok(columns
             .iter()
             .find(|c| c.name == *column.0.fragment)
-            .cloned()
             .cloned()
             .map(|c| c.data)
             .unwrap_or(ColumnValues::undefined(row_count)))

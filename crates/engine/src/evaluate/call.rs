@@ -11,15 +11,13 @@ impl Evaluator {
         &mut self,
         call: &CallExpression,
         ctx: &Context,
-        columns: &[&Column],
-        row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
-        let virtual_columns =
-            self.evaluate_virtual_column(&call.args, ctx, &columns, row_count).unwrap();
+        let virtual_columns = self.evaluate_virtual_column(&call.args, ctx).unwrap();
 
         let functor = self.functions.get(call.func.0.fragment.as_str()).unwrap();
         let exec = functor.prepare().unwrap();
 
+        let row_count = ctx.row_count;
         Ok(exec.eval_scalar(&virtual_columns, row_count).unwrap())
     }
 
@@ -27,15 +25,13 @@ impl Evaluator {
         &mut self,
         expressions: &Vec<Expression>,
         ctx: &Context,
-        columns: &[&Column],
-        row_count: usize,
     ) -> crate::Result<Vec<Column>> {
         let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 
         for expression in expressions {
             result.push(Column {
                 name: expression.to_string(),
-                data: self.evaluate(&expression, ctx, columns, row_count)?,
+                data: self.evaluate(&expression, ctx)?,
             })
         }
 

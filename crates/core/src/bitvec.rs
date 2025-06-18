@@ -16,6 +16,10 @@ impl BitVec {
         BitVec { bits: vec![fill_byte; byte_count], len }
     }
 
+    pub fn empty() -> Self {
+        Self { bits: Vec::new(), len: 0 }
+    }
+
     pub fn from_fn(len: usize, mut f: impl FnMut(usize) -> bool) -> Self {
         let mut bv = BitVec::new(len, false);
         for i in 0..len {

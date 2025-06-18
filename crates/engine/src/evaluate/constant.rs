@@ -11,8 +11,8 @@ impl Evaluator {
         &mut self,
         expr: &ConstantExpression,
         ctx: &Context,
-        row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
+        let row_count = ctx.row_count;
         Self::constant_value(&expr, row_count)
     }
 
@@ -56,11 +56,11 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::{EvaluationColumn, Evaluator};
+    use crate::frame::ColumnValues;
     use reifydb_catalog::column_policy::ColumnPolicyKind;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::Error;
     use reifydb_core::ValueKind;
     use reifydb_diagnostic::{Line, Offset, Span};
-    use crate::frame::ColumnValues;
     use reifydb_rql::expression::ConstantExpression;
 
     #[test]

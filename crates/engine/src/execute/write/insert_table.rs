@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Error, ExecutionResult};
 use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
 use crate::execute::write::column::adjust_column;
+use crate::frame::ValueRef;
+use crate::{Error, ExecutionResult};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::{EncodableKey, TableRowKey};
 use reifydb_catalog::sequence::TableRowSequence;
-use reifydb_core::ValueKind;
 use reifydb_core::row::Layout;
+use reifydb_core::{BitVec, ValueKind};
 use reifydb_diagnostic::Diagnostic;
-use crate::frame::ValueRef;
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
@@ -45,13 +45,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                                     .map(|cp| cp.policy.clone())
                                     .collect(),
                             }),
+                            mask: &BitVec::empty(),
+                            columns: &[],
+                            row_count: 1,
                         };
 
                         // let span = expr.span().clone();
                         let lazy_span = expr.lazy_span();
                         match &expr {
                             expr => {
-                                let cvs = evaluate(expr, &context, &[], 1)?;
+                                let cvs = evaluate(expr, &context)?;
                                 match cvs.len() {
                                     1 => {
                                         // FIXME ensure its the right value
@@ -100,8 +103,13 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 }
 
                 let schema = Catalog::get_schema_by_name(tx, &schema)?.unwrap();
-                let Some(table) = Catalog::get_table_by_name(tx, schema.id, &table.fragment)?else{
-                    return Err(Error::execution(Diagnostic::table_not_found(table.clone(), &schema.name, &table.fragment)))
+                let Some(table) = Catalog::get_table_by_name(tx, schema.id, &table.fragment)?
+                else {
+                    return Err(Error::execution(Diagnostic::table_not_found(
+                        table.clone(),
+                        &schema.name,
+                        &table.fragment,
+                    )));
                 };
 
                 // let table = TableId(1);

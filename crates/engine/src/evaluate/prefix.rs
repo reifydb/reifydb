@@ -3,7 +3,7 @@
 
 use crate::evaluate;
 use crate::evaluate::{Context, Evaluator, evaluate};
-use crate::frame::{Column, ColumnValues};
+use crate::frame::ColumnValues;
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
@@ -11,10 +11,8 @@ impl Evaluator {
         &mut self,
         prefix: &PrefixExpression,
         ctx: &Context,
-        columns: &[&Column],
-        row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
-        let values = evaluate(&prefix.expression, ctx, columns, row_count)?;
+        let values = evaluate(&prefix.expression, ctx)?;
 
         match values {
             // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),

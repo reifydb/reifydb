@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::{Column, ColumnValues};
+use crate::frame::ColumnValues;
 use reifydb_rql::expression::DivideExpression;
 
 const EPSILON32: f32 = 1e-7;
@@ -13,12 +13,11 @@ impl Evaluator {
         &mut self,
         div: &DivideExpression,
         ctx: &Context,
-        columns: &[&Column],
-        row_count: usize,
     ) -> crate::evaluate::Result<ColumnValues> {
-        let left = self.evaluate(&div.left, ctx, columns, row_count)?;
-        let right = self.evaluate(&div.right, ctx, columns, row_count)?;
+        let left = self.evaluate(&div.left, ctx)?;
+        let right = self.evaluate(&div.right, ctx)?;
 
+        let row_count = ctx.row_count;
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {
                 let mut values = Vec::with_capacity(row_count);
