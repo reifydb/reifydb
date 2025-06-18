@@ -41,6 +41,7 @@ pub(crate) struct Context<'a> {
     pub(crate) mask: &'a BitVec,
     pub(crate) columns: &'a [Column],
     pub(crate) row_count: usize,
+    pub(crate) limit: Option<usize>,
 }
 
 impl Context<'_> {

@@ -79,6 +79,7 @@ mod tests {
             mask: &BitVec::empty(),
             columns: &[],
             row_count: 0,
+            limit: None,
         };
 
         let result = ctx.demote::<i16, i8>(1i16, || make_test_span());
@@ -96,6 +97,7 @@ mod tests {
             mask: &BitVec::empty(),
             columns: &[],
             row_count: 0,
+            limit: None,
         };
 
         let err = ctx.demote::<TestI16, TestI8>(TestI16 {}, || make_test_span()).err().unwrap();
@@ -115,6 +117,7 @@ mod tests {
             mask: &BitVec::empty(),
             columns: &[],
             row_count: 0,
+            limit: None,
         };
 
         let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || make_test_span()).unwrap();

@@ -12,7 +12,7 @@ impl Evaluator {
         expr: &ConstantExpression,
         ctx: &Context,
     ) -> evaluate::Result<ColumnValues> {
-        let row_count = ctx.row_count;
+        let row_count = ctx.limit.unwrap_or(ctx.row_count);
         Self::constant_value(&expr, row_count)
     }
 

@@ -89,6 +89,6 @@ mod tests {
         // Creating the same schema again with `if_not_exists = false` should return error
         plan.if_not_exists = false;
         let err = execute_tx(&mut tx, PlanTx::CreateSchema(plan)).unwrap_err();
-        dbg!(err.diagnostic().code, "CA_001");
+        assert_eq!(err.diagnostic().code, "CA_001");
     }
 }

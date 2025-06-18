@@ -128,9 +128,9 @@ pub enum QueryPlan {
         project: Vec<AliasExpression>,
         next: Option<Box<QueryPlan>>,
     },
-    Scan {
+    ScanTable {
         schema: String,
-        store: String,
+        table: String,
         next: Option<Box<QueryPlan>>,
     },
     Filter {
@@ -538,10 +538,10 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
 
 fn plan_from(from: AstFrom, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
     match from {
-        AstFrom::Store { schema, store, .. } => Ok(QueryPlan::Scan {
+        AstFrom::Store { schema, store, .. } => Ok(QueryPlan::ScanTable {
             schema: schema.value().to_string(),
             next: head,
-            store: store.value().to_string(),
+            table: store.value().to_string(),
         }),
         AstFrom::Query { .. } => unimplemented!(),
     }

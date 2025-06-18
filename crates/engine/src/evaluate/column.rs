@@ -3,7 +3,8 @@
 
 use crate::evaluate;
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::ColumnValues;
+use crate::frame::{ColumnValues, ValueRef};
+use reifydb_core::Value;
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
@@ -12,17 +13,143 @@ impl Evaluator {
         column: &ColumnExpression,
         ctx: &Context,
     ) -> evaluate::Result<ColumnValues> {
-        let columns = ctx.columns;
-        let row_count = ctx.row_count;
-        Ok(columns
-            .iter()
-            .find(|c| c.name == *column.0.fragment)
-            .cloned()
-            .map(|c| c.data)
-            .unwrap_or(ColumnValues::undefined(row_count)))
+        let name = &column.0.fragment;
+        let col = ctx.columns.iter().find(|c| &c.name == name).expect("Unknown column");
+
+        let limit = ctx.limit.unwrap_or(usize::MAX);
+
+        match col.data.get(0) {
+            ValueRef::Bool(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Bool(b) => {
+                                values.push(b);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(false);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::bool_with_validity(values, valid))
+            }
+        
+            ValueRef::Int1(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Int1(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::int1_with_validity(values, valid))
+            }
+
+            ValueRef::Int2(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Int2(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::int2_with_validity(values, valid))
+            }
+
+            ValueRef::Int4(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Int4(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::int4_with_validity(values, valid))
+            }
+
+
+
+            ValueRef::String(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::String(s) => {
+                                values.push(s.clone());
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push("".to_string());
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::string_with_validity(values, valid))
+            }
+
+            _ => unimplemented!(),
+        }
     }
 }
-
 #[cfg(test)]
 mod tests {
     #[test]

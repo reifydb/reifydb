@@ -28,7 +28,33 @@ fn main() {
         println!("{}", e);
     }
 
-    for l in db.rx_as(&root, r#"from test.item filter field_one > 1"#) {
+    // for l in db.rx_as(
+    //     &root,
+    //     r#"
+    //     from test.item
+    //     filter field_one + 10 > 2
+    //     select field_one, field_one + 1
+    //     limit 1
+    //     "#,
+    // ) {
+    //     println!("{}", l);
+    // }
+
+    // for l in db.rx_as(
+    //     &root,
+    //     r#"
+    //     select 1, 'test', true, false
+    //     "#,
+    // ) {
+    //     println!("{}", l);
+    // }
+
+    for l in db.rx_as(
+        &root,
+        r#"
+        from test.item 
+        "#,
+    ) {
         println!("{}", l);
     }
 }

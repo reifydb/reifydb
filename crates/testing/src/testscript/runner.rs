@@ -94,6 +94,10 @@ pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(
         ));
     };
 
+    if filename.to_str().unwrap().ends_with(".skip") {
+        return Ok(());
+    }
+
     let input = std::fs::read_to_string(dir.join(filename))?;
     let output = generate(runner, &input)?;
 

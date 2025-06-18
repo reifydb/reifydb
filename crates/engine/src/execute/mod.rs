@@ -7,12 +7,12 @@ mod error;
 mod query;
 mod write;
 
+use crate::frame::{ColumnValues, Frame, LazyFrame};
 use crate::function::{FunctionRegistry, math};
 pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
 use reifydb_core::{Value, ValueKind};
-use crate::frame::{ColumnValues, Frame};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
@@ -248,38 +248,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         rx: &mut impl Rx,
         plan: QueryPlan,
     ) -> crate::Result<ExecutionResult> {
-        let next = match plan {
-            QueryPlan::Aggregate { group_by, project, next } => {
-                self.aggregate(&group_by, &project)?;
-                next
-            }
-            QueryPlan::Scan { schema, store, next } => {
-                self.scan(rx, &schema, &store)?;
-                next
-            }
-            QueryPlan::Project { expressions, next } => {
-                self.project(expressions)?;
-                next
-            }
-            QueryPlan::Sort { keys, next } => {
-                self.sort(&keys)?;
-                next
-            }
-            QueryPlan::Limit { limit, next } => {
-                self.limit(limit)?;
-                next
-            }
-            QueryPlan::Filter { expression, next } => {
-                self.filter(expression)?;
-                next
-            }
-        };
-
-        if let Some(next) = next {
-            self.execute_query_plan(rx, *next)
-        } else {
-            Ok(self.frame.into())
-        }
+        let lazy = LazyFrame::from_query_plan(plan);
+        let result = lazy.evaluate(rx)?;
+        Ok(result.into())
     }
 
     pub(crate) fn execute_rx(

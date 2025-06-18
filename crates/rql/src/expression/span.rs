@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
-use crate::expression::{
-    AddExpression, ConstantExpression, Expression, PrefixExpression, SubtractExpression,
-};
+use crate::expression::{AddExpression, ConstantExpression, DivideExpression, Expression, ModuloExpression, MultiplyExpression, PrefixExpression, SubtractExpression};
 use reifydb_diagnostic::Span;
 
 impl Expression {
@@ -19,23 +17,10 @@ impl Expression {
 
             Expression::Add(expr) => expr.span(),
             Expression::Subtract(expr) => expr.span(),
-
             Expression::GreaterThan(expr) => expr.span.clone(),
-
-            Expression::Multiply(expr) => {
-                // Span::merge_all([expr.left.span(), &expr.span, expr.right.span()])
-                unimplemented!()
-            }
-
-            Expression::Divide(expr) => {
-                // Span::merge_all([expr.left.span(), &expr.span, expr.right.span()])
-                unimplemented!()
-            }
-
-            Expression::Modulo(expr) => {
-                // Span::merge_all([expr.left.span(), &expr.span, expr.right.span()])
-                unimplemented!()
-            }
+            Expression::Multiply(expr) => expr.span(),
+            Expression::Divide(expr) => expr.span(),
+            Expression::Modulo(expr) => expr.span(),
 
             Expression::Tuple(expr) => {
                 // let spans = expr.elements.iter().map(|e| e.span()).collect::<Vec<_>>();
@@ -61,6 +46,8 @@ impl AddExpression {
     }
 }
 
+
+
 impl ConstantExpression {
     pub fn span(&self) -> Span {
         match self {
@@ -83,6 +70,26 @@ impl SubtractExpression {
         Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
+
+impl MultiplyExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
+impl DivideExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
+impl ModuloExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
+
 
 impl Expression {
     pub fn span(&self) -> Span {

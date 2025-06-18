@@ -15,7 +15,7 @@ impl Evaluator {
         let left = self.evaluate(&add.left, ctx)?;
         let right = self.evaluate(&add.right, ctx)?;
 
-        let row_count = ctx.row_count;
+        let row_count = ctx.limit.unwrap_or(ctx.row_count);;
         let column_value = ValueKind::promote(left.value(), right.value());
 
         match (&left, &right) {

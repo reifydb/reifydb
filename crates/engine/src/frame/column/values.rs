@@ -47,11 +47,32 @@ impl ColumnValues {
 
     pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         match self {
+            ColumnValues::Bool(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Bool(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Int1(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Int1(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
             ColumnValues::Int2(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
                     .map(|(v, va)| if *va { Value::Int2(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::String(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::String(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             _ => unimplemented!(),

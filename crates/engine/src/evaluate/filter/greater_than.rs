@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::{ColumnValues, RowMask};
+use crate::frame::ColumnValues;
 use reifydb_rql::expression::GreaterThanExpression;
 
 impl Evaluator {
@@ -10,23 +10,68 @@ impl Evaluator {
         &mut self,
         gt: &GreaterThanExpression,
         ctx: &Context,
-    ) -> crate::evaluate::Result<RowMask> {
+    ) -> crate::evaluate::Result<ColumnValues> {
         let left = self.evaluate(&gt.left, ctx)?;
         let right = self.evaluate(&gt.right, ctx)?;
 
-        let row_count = ctx.row_count;
-
         match (&left, &right) {
-            (ColumnValues::Int1(l_vals, l_valid), ColumnValues::Int1(r_vals, r_valid)) => {
-                let mut keep = Vec::with_capacity(row_count);
-                for i in 0..row_count {
-                    let is_valid = l_valid[i] && r_valid[i];
-                    let predicate = is_valid && l_vals[i] > r_vals[i];
-                    keep.push(predicate);
+            (ColumnValues::Int2(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                for i in 0..lv.len() {
+                    if lv_valid[i] && rv_valid[i] {
+                        values.push(lv[i] > rv[i] as i16);
+                        valid.push(true);
+                    } else {
+                        values.push(false);
+                        valid.push(false);
+                    }
                 }
-                Ok(RowMask { keep })
+                Ok(ColumnValues::bool_with_validity(values, valid))
             }
-            _ => unimplemented!(),
+            (ColumnValues::Int1(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                for i in 0..lv.len() {
+                    if lv_valid[i] && rv_valid[i] {
+                        values.push(lv[i] > rv[i]);
+                        valid.push(true);
+                    } else {
+                        values.push(false);
+                        valid.push(false);
+                    }
+                }
+                Ok(ColumnValues::bool_with_validity(values, valid))
+            }
+            (ColumnValues::Int2(lv, lv_valid), ColumnValues::Int2(rv, rv_valid)) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                for i in 0..lv.len() {
+                    if lv_valid[i] && rv_valid[i] {
+                        values.push(lv[i] > rv[i]);
+                        valid.push(true);
+                    } else {
+                        values.push(false);
+                        valid.push(false);
+                    }
+                }
+                Ok(ColumnValues::bool_with_validity(values, valid))
+            }
+            (ColumnValues::Int4(lv, lv_valid), ColumnValues::Int4(rv, rv_valid)) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                for i in 0..lv.len() {
+                    if lv_valid[i] && rv_valid[i] {
+                        values.push(lv[i] > rv[i]);
+                        valid.push(true);
+                    } else {
+                        values.push(false);
+                        valid.push(false);
+                    }
+                }
+                Ok(ColumnValues::bool_with_validity(values, valid))
+            }
+            _ => panic!("GT only supports Int2"),
         }
     }
 }

@@ -59,6 +59,6 @@ mod tests {
 
         // Creating the same schema again with `if_not_exists = false` should return error
         let err = Catalog::create_schema(&mut tx, to_create).unwrap_err();
-        dbg!(err.diagnostic().code, "CA_001");
+        assert_eq!(err.diagnostic().code, "CA_001");
     }
 }

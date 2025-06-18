@@ -79,6 +79,7 @@ mod tests {
             mask: &BitVec::empty(),
             columns: &[],
             row_count: 0,
+            limit: None,
         };
 
         let result = ctx.promote::<i8, i16>(1i8, || make_test_span());
@@ -96,6 +97,7 @@ mod tests {
             mask: &BitVec::empty(),
             columns: &[],
             row_count: 0,
+            limit: None,
         };
 
         let err = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).err().unwrap();
@@ -114,6 +116,7 @@ mod tests {
             mask: &BitVec::empty(),
             columns: &[],
             row_count: 0,
+            limit: None,
         };
 
         let result = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).unwrap();

@@ -18,7 +18,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
                 let value = evaluate(
                     &expr,
-                    &Context { column: None, mask: &BitVec::empty(), columns: &[], row_count: 1 },
+                    &Context { column: None, mask: &BitVec::empty(), columns: &[], row_count: 1, limit: None },
                 )?;
                 columns.push(Column { name: format!("{}", idx + 1), data: value });
             }
@@ -43,6 +43,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     mask: &BitVec::empty(),
                     columns: &columns,
                     row_count: row_count,
+                    limit: None
                 },
             )?;
 

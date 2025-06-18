@@ -48,6 +48,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                             mask: &BitVec::empty(),
                             columns: &[],
                             row_count: 1,
+                            limit: None,
                         };
 
                         // let span = expr.span().clone();
