@@ -14,7 +14,6 @@ use reifydb_core::ValueKind;
 use reifydb_core::num::{SafeAdd, SafeSubtract};
 use reifydb_diagnostic::IntoSpan;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
-use crate::frame::Frame;
 
 #[derive(Debug)]
 pub(crate) struct EvaluationColumn {
@@ -38,14 +37,9 @@ impl EvaluationColumn {
 #[derive(Debug)]
 pub(crate) struct Context {
     pub(crate) column: Option<EvaluationColumn>,
-    pub(crate) frame: Option<Frame>,
 }
 
 impl Context {
-    pub(crate) fn row_count_or_one(&self) -> usize {
-        self.frame.as_ref().map(|f| f.row_count()).unwrap_or(1)
-    }
-
     pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
         self.column
             .as_ref()

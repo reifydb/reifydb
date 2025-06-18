@@ -76,7 +76,6 @@ mod tests {
                 value: ValueKind::Int1,
                 policies: vec![Saturation(Error)],
             }),
-            frame: None,
         };
 
         let result = ctx.demote::<i16, i8>(1i16, || make_test_span());
@@ -91,7 +90,6 @@ mod tests {
                 value: ValueKind::Int1,
                 policies: vec![Saturation(Error)],
             }),
-            frame: None,
         };
 
         let err = ctx.demote::<TestI16, TestI8>(TestI16 {}, || make_test_span()).err().unwrap();
@@ -108,7 +106,6 @@ mod tests {
                 value: ValueKind::Int1,
                 policies: vec![Saturation(Undefined)],
             }),
-            frame: None,
         };
 
         let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || make_test_span()).unwrap();

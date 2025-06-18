@@ -43,7 +43,7 @@ impl Evaluator {
             Expression::Divide(expr) => self.divide(expr, ctx, columns, row_count),
             Expression::Call(expr) => self.call(expr, ctx, columns, row_count),
             Expression::Column(expr) => self.column(expr, ctx, columns, row_count),
-            Expression::Constant(expr) => self.constant(expr, ctx),
+            Expression::Constant(expr) => self.constant(expr, ctx, row_count),
             // Expression::GreaterThan(expr) => self.greater_than(expr, ctx, columns, row_count),
             Expression::GreaterThan(expr) => unimplemented!(),
             Expression::Modulo(expr) => self.modulo(expr, ctx, columns, row_count),

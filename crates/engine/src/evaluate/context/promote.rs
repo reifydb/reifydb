@@ -76,7 +76,6 @@ mod tests {
                 value: ValueKind::Int2,
                 policies: vec![Saturation(Error)],
             }),
-            frame: None,
         };
 
         let result = ctx.promote::<i8, i16>(1i8, || make_test_span());
@@ -91,7 +90,6 @@ mod tests {
                 value: ValueKind::Int2,
                 policies: vec![Saturation(Error)],
             }),
-            frame: None,
         };
 
         let err = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).err().unwrap();
@@ -107,7 +105,6 @@ mod tests {
                 value: ValueKind::Int2,
                 policies: vec![Saturation(Undefined)],
             }),
-            frame: None,
         };
 
         let result = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).unwrap();

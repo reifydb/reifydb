@@ -45,7 +45,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                                     .map(|cp| cp.policy.clone())
                                     .collect(),
                             }),
-                            frame: None,
                         };
 
                         // let span = expr.span().clone();
