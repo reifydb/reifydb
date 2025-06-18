@@ -45,6 +45,7 @@ impl ColumnValues {
         }
     }
 
+    // FIXME wrapping and then later unwrapping a value feels pretty stupid -- FIXME
     pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         match self {
             ColumnValues::Bool(values, validity) => Box::new(
@@ -66,6 +67,27 @@ impl ColumnValues {
                     .iter()
                     .zip(validity.iter())
                     .map(|(v, va)| if *va { Value::Int2(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Int4(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Int4(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Int8(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Int8(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Int16(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Int16(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::String(values, validity) => Box::new(
@@ -228,7 +250,7 @@ impl ColumnValues {
     }
 
     pub fn int16_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int1(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Int16(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
     pub fn int16_with_validity(

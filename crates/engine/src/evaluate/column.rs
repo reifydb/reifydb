@@ -120,6 +120,57 @@ impl Evaluator {
             }
 
 
+            ValueRef::Int8(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Int8(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::int8_with_validity(values, valid))
+            }
+
+
+
+            ValueRef::Int16(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Int16(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::int16_with_validity(values, valid))
+            }
 
             ValueRef::String(_) => {
                 let mut values = Vec::new();

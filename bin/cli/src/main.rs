@@ -20,7 +20,7 @@ fn main() {
     //     println!("{}", e);
     // }
 
-    if let Err(e) = db.tx_as(&root, r#"create table test.item(field_one: int1)"#) {
+    if let Err(e) = db.tx_as(&root, r#"create table test.item(field_one: int16)"#) {
         println!("{}", e);
     }
 

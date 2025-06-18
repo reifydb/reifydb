@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 use crate::evaluate::{Demote, Promote};
+use crate::frame::ColumnValues;
 use reifydb_core::ValueKind;
 use reifydb_core::ValueKind::{Int1, Int2};
 use reifydb_core::num::{SafeDemote, SafePromote};
 use reifydb_diagnostic::Span;
-use crate::frame::ColumnValues;
 
 pub(crate) fn adjust_column(
     target: ValueKind,
@@ -42,6 +42,36 @@ pub(crate) fn adjust_column(
                 &span,
                 Int2,
                 ColumnValues::push::<i16>,
+            );
+        }
+        if target == Int4 {
+            return promote_vec::<i8, i32>(
+                values,
+                validity,
+                context,
+                &span,
+                Int4,
+                ColumnValues::push::<i32>,
+            );
+        }
+        if target == Int8 {
+            return promote_vec::<i8, i64>(
+                values,
+                validity,
+                context,
+                &span,
+                Int8,
+                ColumnValues::push::<i64>,
+            );
+        }
+        if target == Int16 {
+            return promote_vec::<i8, i128>(
+                values,
+                validity,
+                context,
+                &span,
+                Int16,
+                ColumnValues::push::<i128>,
             );
         }
     }
@@ -251,10 +281,10 @@ mod tests {
     mod demote {
         use crate::evaluate::Demote;
         use crate::execute::write::column::demote_vec;
+        use crate::frame::AsSlice;
         use reifydb_core::ValueKind;
         use reifydb_core::num::SafeDemote;
         use reifydb_diagnostic::IntoSpan;
-        use crate::frame::AsSlice;
         use reifydb_testing::make_test_span;
 
         #[test]
