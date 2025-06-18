@@ -263,7 +263,7 @@ impl<VS: VersionedStorage> Node for SumNode<VS> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CountNode, Graph, GroupNode, SumNode};
+    use crate::view::flow::{CountNode, Graph, GroupNode, SumNode};
     use reifydb_storage::VersionedStorage;
 
     fn create_count_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {

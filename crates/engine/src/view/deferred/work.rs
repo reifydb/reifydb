@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::view::deferred::Work;
-use reifydb_flow::{CountNode, Graph, GroupNode, Orchestrator, SumNode};
+use crate::view::flow::{CountNode, Graph, GroupNode, Orchestrator, SumNode};
 use reifydb_storage::VersionedStorage;
 use std::sync::mpsc::Receiver;
 

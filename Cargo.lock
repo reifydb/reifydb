@@ -1401,20 +1401,10 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-diagnostic",
- "reifydb-flow",
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-testing",
  "reifydb-transaction",
-]
-
-[[package]]
-name = "reifydb-flow"
-version = "0.0.1"
-dependencies = [
- "rand 0.9.1",
- "reifydb-core",
- "reifydb-storage",
 ]
 
 [[package]]
