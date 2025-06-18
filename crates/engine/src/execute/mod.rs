@@ -4,7 +4,6 @@
 mod catalog;
 mod display;
 mod error;
-mod query;
 mod write;
 
 use crate::frame::{ColumnValues, Frame, LazyFrame};
@@ -248,7 +247,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         rx: &mut impl Rx,
         plan: QueryPlan,
     ) -> crate::Result<ExecutionResult> {
-        let lazy = LazyFrame::from_query_plan(plan);
+        let lazy = LazyFrame::compile(plan);
         let result = lazy.evaluate(rx)?;
         Ok(result.into())
     }

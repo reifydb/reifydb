@@ -5,6 +5,5 @@ mod aggregate;
 mod append;
 mod filter;
 mod limit;
-mod project;
 mod select;
 mod sort;

@@ -1,24 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::Executor;
+use crate::frame::lazy::Source;
+use crate::frame::{Column, ColumnValues, Frame, LazyFrame};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
 use reifydb_core::ValueKind;
 use reifydb_core::row::Layout;
-use crate::frame::{Column, ColumnValues, Frame};
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Rx;
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
-    pub(crate) fn scan(
-        &mut self,
-        rx: &mut impl Rx,
-        schema: &str,
-        store: &str,
-    ) -> crate::Result<()> {
-        let schema = Catalog::get_schema_by_name(rx, schema)?.unwrap(); // FIXME
-        let table = Catalog::get_table_by_name(rx, schema.id, store)?.unwrap(); // FIXME
+impl LazyFrame {
+
+    pub(crate) fn populate_frame(&mut self, rx: &mut impl Rx) -> crate::frame::Result<()> {
+        let table = match &self.source {
+            Source::Table { schema, table } => {
+                let schema = Catalog::get_schema_by_name(rx, &schema).unwrap().unwrap(); // FIXME
+                Catalog::get_table_by_name(rx, schema.id, &table).unwrap().unwrap() // FIXME
+            }
+            Source::None => unreachable!(),
+        };
+
         let columns = table.columns;
 
         let values = columns.iter().map(|c| c.value).collect::<Vec<_>>();
@@ -49,24 +50,18 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             })
             .collect();
 
-        let mut frame = Frame::new(columns);
+        self.frame = Frame::new(columns);
 
-        frame.append_rows(
-            &layout,
-            rx.scan_range(TableRowKey::full_scan(table.id))?
-                .into_iter()
-                .map(|versioned| versioned.row),
-        )?;
-        self.frame = frame;
+        self.frame
+            .append_rows(
+                &layout,
+                rx.scan_range(TableRowKey::full_scan(table.id))
+                    .unwrap()
+                    .into_iter()
+                    .map(|versioned| versioned.row),
+            )
+            .unwrap();
+
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn implement() {
-        todo!()
     }
 }
