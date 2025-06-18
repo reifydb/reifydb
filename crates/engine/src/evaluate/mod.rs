@@ -14,8 +14,8 @@ mod column;
 mod constant;
 mod context;
 mod error;
-mod filter;
-mod operator;
+mod compare;
+mod arith;
 mod prefix;
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
@@ -39,6 +39,11 @@ impl Evaluator {
             Expression::Column(expr) => self.column(expr, ctx),
             Expression::Constant(expr) => self.constant(expr, ctx),
             Expression::GreaterThan(expr) => self.greater_than(expr, ctx),
+            Expression::GreaterThanEqual(expr) => self.greater_than_equal(expr, ctx),
+            Expression::LessThan(expr) => self.less_than(expr, ctx),
+            Expression::LessThanEqual(expr) => self.less_than_equal(expr, ctx),
+            Expression::Equal(expr) => self.equal(expr, ctx),
+            Expression::NotEqual(expr) => self.not_equal(expr, ctx),
             Expression::Modulo(expr) => self.modulo(expr, ctx),
             Expression::Multiply(expr) => self.multiply(expr, ctx),
             Expression::Prefix(expr) => self.prefix(expr, ctx),

@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
-use crate::expression::{AddExpression, ConstantExpression, DivideExpression, Expression, ModuloExpression, MultiplyExpression, PrefixExpression, SubtractExpression};
+use crate::expression::{
+    AddExpression, ConstantExpression, DivideExpression, Expression, ModuloExpression,
+    MultiplyExpression, PrefixExpression, SubtractExpression,
+};
 use reifydb_diagnostic::Span;
 
 impl Expression {
@@ -18,6 +21,12 @@ impl Expression {
             Expression::Add(expr) => expr.span(),
             Expression::Subtract(expr) => expr.span(),
             Expression::GreaterThan(expr) => expr.span.clone(),
+            Expression::GreaterThanEqual(expr) => expr.span.clone(),
+            Expression::LessThan(expr) => expr.span.clone(),
+            Expression::LessThanEqual(expr) => expr.span.clone(),
+            Expression::Equal(expr) => expr.span.clone(),
+            Expression::NotEqual(expr) => expr.span.clone(),
+
             Expression::Multiply(expr) => expr.span(),
             Expression::Divide(expr) => expr.span(),
             Expression::Modulo(expr) => expr.span(),
@@ -45,8 +54,6 @@ impl AddExpression {
         Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
-
-
 
 impl ConstantExpression {
     pub fn span(&self) -> Span {
@@ -88,8 +95,6 @@ impl ModuloExpression {
         Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
-
-
 
 impl Expression {
     pub fn span(&self) -> Span {

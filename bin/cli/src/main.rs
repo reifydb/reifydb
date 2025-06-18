@@ -52,7 +52,7 @@ fn main() {
     for l in db.rx_as(
         &root,
         r#"
-        from test.item filter field_one > 2
+        from test.item filter field_one >= 2
         "#,
     ) {
         println!("{}", l);

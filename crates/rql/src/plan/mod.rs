@@ -12,8 +12,10 @@ use std::ops::Deref;
 use crate::ast;
 use crate::expression::{
     AddExpression, AliasExpression, CallExpression, ColumnExpression, ConstantExpression,
-    DivideExpression, Expression, GreaterThanExpression, IdentExpression, ModuloExpression,
-    MultiplyExpression, PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
+    DivideExpression, EqualExpression, Expression, GreaterThanEqualExpression,
+    GreaterThanExpression, IdentExpression, LessThanEqualExpression, LessThanExpression,
+    ModuloExpression, MultiplyExpression, NotEqualExpression, PrefixExpression, PrefixOperator,
+    SubtractExpression, TupleExpression,
 };
 pub use error::Error;
 use reifydb_catalog::Catalog;
@@ -736,6 +738,56 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
                 span: token.span,
             }))
         }
+        InfixOperator::GreaterThanEqual(token) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+
+            Ok(Expression::GreaterThanEqual(GreaterThanEqualExpression {
+                left: Box::new(left),
+                right: Box::new(right),
+                span: token.span,
+            }))
+        }
+        InfixOperator::LessThan(token) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+
+            Ok(Expression::LessThan(LessThanExpression {
+                left: Box::new(left),
+                right: Box::new(right),
+                span: token.span,
+            }))
+        }
+        InfixOperator::LessThanEqual(token) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+
+            Ok(Expression::LessThanEqual(LessThanEqualExpression {
+                left: Box::new(left),
+                right: Box::new(right),
+                span: token.span,
+            }))
+        }
+        InfixOperator::Equal(token) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+
+            Ok(Expression::Equal(EqualExpression {
+                left: Box::new(left),
+                right: Box::new(right),
+                span: token.span,
+            }))
+        }
+        InfixOperator::NotEqual(token) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+
+            Ok(Expression::NotEqual(NotEqualExpression {
+                left: Box::new(left),
+                right: Box::new(right),
+                span: token.span,
+            }))
+        }
 
         operator => unimplemented!("not implemented: {operator:?}"),
         // InfixOperator::Arrow(_) => {}
@@ -746,11 +798,6 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
         // InfixOperator::Multiply(_) => {}
         // InfixOperator::Divide(_) => {}
         // InfixOperator::Modulo(_) => {}
-        // InfixOperator::Equal(_) => {}
-        // InfixOperator::NotEqual(_) => {}
-        // InfixOperator::LessThan(_) => {}
-        // InfixOperator::LessThanEqual(_) => {}
-        // InfixOperator::GreaterThanEqual(_) => {}
         // InfixOperator::TypeAscription(_) => {}
     }
 }

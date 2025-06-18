@@ -46,6 +46,16 @@ pub enum Expression {
     Prefix(PrefixExpression),
 
     GreaterThan(GreaterThanExpression),
+    
+    GreaterThanEqual(GreaterThanEqualExpression),
+    
+    LessThan(LessThanExpression),
+    
+    LessThanEqual(LessThanEqualExpression),
+    
+    Equal(EqualExpression),
+    
+    NotEqual(NotEqualExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +122,41 @@ pub struct GreaterThanExpression {
 }
 
 #[derive(Debug, Clone)]
+pub struct GreaterThanEqualExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct LessThanExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct LessThanEqualExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct EqualExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct NotEqualExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct ColumnExpression(pub Span);
 
 impl Display for Expression {
@@ -139,6 +184,21 @@ impl Display for Expression {
             Expression::Prefix(prefix) => write!(f, "{}", prefix),
             Expression::GreaterThan(GreaterThanExpression { left, right, .. }) => {
                 write!(f, "({} > {})", left, right)
+            }
+            Expression::GreaterThanEqual(GreaterThanEqualExpression { left, right, .. }) => {
+                write!(f, "({} >= {})", left, right)
+            }
+            Expression::LessThan(LessThanExpression { left, right, .. }) => {
+                write!(f, "({} < {})", left, right)
+            }
+            Expression::LessThanEqual(LessThanEqualExpression { left, right, .. }) => {
+                write!(f, "({} <= {})", left, right)   
+            }
+            Expression::Equal(EqualExpression { left, right, .. }) => {
+                write!(f, "({} == {})", left, right)
+            }
+            Expression::NotEqual(NotEqualExpression { left, right, .. }) => {
+                write!(f, "({} != {})", left, right)
             }
         }
     }
