@@ -64,6 +64,16 @@ impl BitVec {
         }
         result
     }
+
+    pub fn count_ones(&self) -> usize {
+        let mut result = 0;
+        for i in 0..self.bits.len() {
+            if self.get(i) {
+                result += 1;
+            }
+        }
+        result
+    }
 }
 
 impl fmt::Display for BitVec {

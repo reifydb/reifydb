@@ -58,9 +58,9 @@ impl LazyFrame {
         let mask = self.compute_mask();
 
         if self.expressions.is_empty() {
-            // FIXME this might need to be filtered
-            if !self.filter.is_empty() {
-                unimplemented!();
+            self.frame.filter(&mask)?;
+            if let Some(limit) = self.limit {
+                self.frame.limit(limit)?;
             }
             return Ok(self.frame);
         }
