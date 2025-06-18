@@ -18,5 +18,6 @@ mod evaluate;
 pub(crate) mod execute;
 mod function;
 pub(crate) mod view;
+mod frame;
 
 pub type Result<T> = std::result::Result<T, Error>;

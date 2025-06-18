@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Executor;
-use reifydb_frame::aggregate::Aggregate;
+use crate::frame::aggregate::Aggregate;
 use reifydb_rql::expression::{AliasExpression, ColumnExpression, Expression};
 use reifydb_storage::{Storage, UnversionedStorage, VersionedStorage};
 

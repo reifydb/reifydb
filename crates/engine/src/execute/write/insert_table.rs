@@ -11,7 +11,7 @@ use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::ValueKind;
 use reifydb_core::row::Layout;
 use reifydb_diagnostic::Diagnostic;
-use reifydb_frame::ValueRef;
+use crate::frame::ValueRef;
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;

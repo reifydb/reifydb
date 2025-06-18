@@ -6,7 +6,7 @@ use reifydb_core::ValueKind;
 use reifydb_core::ValueKind::{Int1, Int2};
 use reifydb_core::num::{SafeDemote, SafePromote};
 use reifydb_diagnostic::Span;
-use reifydb_frame::ColumnValues;
+use crate::frame::ColumnValues;
 
 pub(crate) fn adjust_column(
     target: ValueKind,
@@ -254,7 +254,7 @@ mod tests {
         use reifydb_core::ValueKind;
         use reifydb_core::num::SafeDemote;
         use reifydb_diagnostic::IntoSpan;
-        use reifydb_frame::AsSlice;
+        use crate::frame::AsSlice;
         use reifydb_testing::make_test_span;
 
         #[test]

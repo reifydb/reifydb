@@ -1402,7 +1402,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-diagnostic",
  "reifydb-flow",
- "reifydb-frame",
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-testing",
@@ -1416,13 +1415,6 @@ dependencies = [
  "rand 0.9.1",
  "reifydb-core",
  "reifydb-storage",
-]
-
-[[package]]
-name = "reifydb-frame"
-version = "0.0.1"
-dependencies = [
- "reifydb-core",
 ]
 
 [[package]]
@@ -1444,7 +1436,6 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-diagnostic",
- "reifydb-frame",
  "reifydb-storage",
  "reifydb-transaction",
 ]

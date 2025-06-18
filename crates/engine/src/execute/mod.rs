@@ -12,7 +12,7 @@ pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
 use reifydb_core::{Value, ValueKind};
-use reifydb_frame::{ColumnValues, Frame};
+use crate::frame::{ColumnValues, Frame};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};

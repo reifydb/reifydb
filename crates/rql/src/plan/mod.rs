@@ -18,12 +18,10 @@ use crate::expression::{
 pub use error::Error;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::column::Column;
-use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::ValueKind;
+use reifydb_core::{SortDirection, SortKey, ValueKind};
 use reifydb_diagnostic::{Diagnostic, Span};
-use reifydb_frame::{SortDirection, SortKey};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Rx;
 

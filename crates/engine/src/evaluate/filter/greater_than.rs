@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use reifydb_frame::{Column, ColumnValues, RowMask};
+use crate::frame::{Column, ColumnValues, RowMask};
 use reifydb_rql::expression::GreaterThanExpression;
 
 impl Evaluator {

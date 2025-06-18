@@ -3,7 +3,7 @@
 
 use crate::evaluate;
 use crate::evaluate::{Context, Evaluator};
-use reifydb_frame::ColumnValues;
+use crate::frame::ColumnValues;
 use reifydb_rql::expression::ConstantExpression;
 
 impl Evaluator {
@@ -60,7 +60,7 @@ mod tests {
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::Error;
     use reifydb_core::ValueKind;
     use reifydb_diagnostic::{Line, Offset, Span};
-    use reifydb_frame::ColumnValues;
+    use crate::frame::ColumnValues;
     use reifydb_rql::expression::ConstantExpression;
 
     #[test]

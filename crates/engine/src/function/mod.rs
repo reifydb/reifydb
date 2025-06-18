@@ -7,9 +7,9 @@ pub use error::FunctionError;
 
 mod error;
 
+use crate::frame::{Column, ColumnValues};
 use reifydb_core::Value;
 use reifydb_core::row::EncodedRowIter;
-use reifydb_frame::{Column, ColumnValues};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;

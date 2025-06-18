@@ -9,6 +9,7 @@
 pub use bitvec::BitVec;
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
 pub use key::{EncodedKey, EncodedKeyRange};
+pub use sort::{SortDirection, SortKey};
 pub use value::{Value, ValueKind};
 pub use version::Version;
 
@@ -24,6 +25,7 @@ mod key;
 pub mod num;
 pub mod ordered_float;
 pub mod row;
+mod sort;
 mod value;
 mod version;
 pub mod wait_group;

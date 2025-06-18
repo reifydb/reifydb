@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_frame::Column;
+use crate::frame::Column;
 use crate::execute::Executor;
 use reifydb_rql::expression::Expression;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{evaluate, execute};
+use crate::{evaluate, execute, frame};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::{ast, plan};
 use std::fmt::{Display, Formatter};
@@ -12,7 +12,7 @@ pub enum Error {
     Catalog(reifydb_catalog::Error),
     Evaluation(evaluate::Error),
     Execution(execute::Error),
-    Frame(reifydb_frame::Error),
+    Frame(frame::Error),
     Plan(plan::Error),
     Transaction(reifydb_transaction::Error),
 }
@@ -53,8 +53,8 @@ impl From<execute::Error> for Error {
     }
 }
 
-impl From<reifydb_frame::Error> for Error {
-    fn from(err: reifydb_frame::Error) -> Self {
+impl From<frame::Error> for Error {
+    fn from(err: frame::Error) -> Self {
         Self::Frame(err)
     }
 }

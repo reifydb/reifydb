@@ -6,7 +6,7 @@ use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
 use reifydb_core::ValueKind;
 use reifydb_core::row::Layout;
-use reifydb_frame::{Column, ColumnValues, Frame};
+use crate::frame::{Column, ColumnValues, Frame};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Rx;
 
