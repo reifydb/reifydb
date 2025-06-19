@@ -36,6 +36,7 @@ impl Parser {
                 _ => Err(Error::unsupported(self.advance()?)),
             },
             TokenKind::Keyword(keyword) => match keyword {
+                Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
                 Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
                 Keyword::Filter => Ok(Ast::Filter(self.parse_filter()?)),
                 Keyword::From => Ok(Ast::From(self.parse_from()?)),
@@ -55,8 +56,8 @@ impl Parser {
                 _ if current.is_literal(Undefined) => {
                     Ok(Ast::Literal(self.parse_literal_undefined()?))
                 }
-                _ if current.is_identifier() => match self.parse_type() {
-                    Ok(node) => Ok(Ast::Type(node)),
+                _ if current.is_identifier() => match self.parse_kind() {
+                    Ok(node) => Ok(Ast::Kind(node)),
                     Err(_) => Ok(Ast::Identifier(self.parse_identifier()?)),
                 },
                 _ => Err(Error::unsupported(self.advance()?)),

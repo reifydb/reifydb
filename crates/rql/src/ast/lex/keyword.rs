@@ -56,7 +56,6 @@ keyword! {
 
     Join       => "JOIN",
     On         => "ON",
-    As         => "AS",
     Using      => "USING",
     Union      => "UNION",
     Intersect  => "INTERSECT",
@@ -78,6 +77,7 @@ keyword! {
     Define     => "DEFINE",
     Function   => "FUNCTION",
     Call       => "CALL",
+    Cast       => "CAST",
 
     Describe   => "DESCRIBE",
     Show       => "SHOW",
@@ -140,7 +140,6 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Delete, "DELETE"),
             keyword_tag(Keyword::Join, "JOIN"),
             keyword_tag(Keyword::On, "ON"),
-            keyword_tag(Keyword::As, "AS"),
             keyword_tag(Keyword::Using, "USING"),
             keyword_tag(Keyword::Union, "UNION"),
             keyword_tag(Keyword::Intersect, "INTERSECT"),
@@ -177,6 +176,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::View, "VIEW"),
             keyword_tag(Keyword::Deferred, "DEFERRED"),
             keyword_tag(Keyword::Transactional, "TRANSACTIONAL"),
+            keyword_tag(Keyword::Cast, "CAST"),
         )),
     ));
 
@@ -252,7 +252,6 @@ mod tests {
         test_keyword_delete => (Delete, "DELETE"),
         test_keyword_join => (Join, "JOIN"),
         test_keyword_on => (On, "ON"),
-        test_keyword_as => (As, "AS"),
         test_keyword_using => (Using, "USING"),
         test_keyword_union => (Union, "UNION"),
         test_keyword_intersect => (Intersect, "INTERSECT"),
@@ -285,6 +284,7 @@ mod tests {
         test_keyword_view => (View, "VIEW"),
         test_keyword_deferred => (Deferred, "DEFERRED"),
         test_keyword_transactional => (Transactional, "TRANSACTIONAL"),
+        test_keyword_cast => (Cast, "CAST"),
     }
 
     fn check_no_keyword(repr: &str) {
@@ -365,5 +365,6 @@ mod tests {
         test_not_keyword_view => ( "view"),
         test_not_keyword_deferred => ( "deferred"),
         test_not_keyword_transactional => ( "transactional"),
+        test_not_keyword_cast => ( "cast"),
     }
 }

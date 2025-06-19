@@ -17,6 +17,7 @@ mod constant;
 mod context;
 mod error;
 mod prefix;
+mod cast;
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
@@ -36,6 +37,7 @@ impl Evaluator {
             Expression::Add(expr) => self.add(expr, ctx),
             Expression::Divide(expr) => self.divide(expr, ctx),
             Expression::Call(expr) => self.call(expr, ctx),
+            Expression::Cast(expr) => self.cast(expr, ctx),
             Expression::Column(expr) => self.column(expr, ctx),
             Expression::Constant(expr) => self.constant(expr, ctx),
             Expression::GreaterThan(expr) => self.greater_than(expr, ctx),

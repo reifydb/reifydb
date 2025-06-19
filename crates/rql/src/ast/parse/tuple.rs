@@ -34,11 +34,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::Ast::{Identifier, Infix, Literal, Type};
+    use crate::ast::Ast::{Identifier, Infix, Literal, Kind};
     use crate::ast::AstLiteral::Number;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
-    use crate::ast::{AstInfix, AstType, InfixOperator, PrefixOperator};
+    use crate::ast::{AstInfix, AstKind, InfixOperator, PrefixOperator};
 
     #[test]
     fn test_empty_tuple() {
@@ -111,7 +111,7 @@ mod tests {
         let identifier = &left.as_identifier();
         assert_eq!(identifier.value(), "u");
 
-        let Type(AstType::Boolean(_)) = right.as_ref() else { panic!() };
+        let Kind(AstKind::Boolean(_)) = right.as_ref() else { panic!() };
     }
 
     #[test]
@@ -141,13 +141,13 @@ mod tests {
         let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "u");
-        let Type(AstType::Boolean(_)) = right.as_ref() else { panic!() };
+        let Kind(AstKind::Boolean(_)) = right.as_ref() else { panic!() };
 
         let Some(v_node) = node.nodes.last() else { panic!() };
         let Infix(AstInfix { left, operator, right, .. }) = &v_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "v");
-        let Type(AstType::Text(_)) = right.as_ref() else { panic!() };
+        let Kind(AstKind::Text(_)) = right.as_ref() else { panic!() };
     }
 
     #[test]
@@ -191,13 +191,13 @@ mod tests {
         let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "u");
-        let Type(AstType::Boolean(_)) = right.as_ref() else { panic!() };
+        let Kind(AstKind::Boolean(_)) = right.as_ref() else { panic!() };
 
         let Some(v_node) = node.nodes.last() else { panic!() };
         let Infix(AstInfix { left, operator, right, .. }) = &v_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "v");
-        let Type(AstType::Text(_)) = right.as_ref() else { panic!() };
+        let Kind(AstKind::Text(_)) = right.as_ref() else { panic!() };
     }
 
     #[test]

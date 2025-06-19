@@ -3,7 +3,6 @@
 
 use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
-use crate::execute::write::column::adjust_column;
 use crate::frame::ValueRef;
 use crate::{Error, ExecutionResult};
 use reifydb_catalog::Catalog;
@@ -59,12 +58,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                                 match cvs.len() {
                                     1 => {
                                         // FIXME ensure its the right value
-                                        let r = adjust_column(
-                                            column.value,
-                                            &cvs,
-                                            &context,
-                                            &lazy_span,
-                                        )?;
+                                        let r =
+                                            cvs.adjust_column(column.value, &context, &lazy_span)?;
 
                                         match r.get(0) {
                                             ValueRef::Bool(v) => layout.set_bool(&mut row, idx, *v),

@@ -55,7 +55,8 @@ operator! {
     DoubleEqual      => "==",
     Bang             => "!",
     BangEqual        => "!=",
-    QuestionMark     => "?"
+    QuestionMark     => "?",
+    As               => "as"
 }
 
 pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
@@ -76,6 +77,7 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
             value(Operator::BangEqual, tag("!=")),
             value(Operator::OpenParen, tag("(")),
             value(Operator::CloseParen, tag(")")),
+            value(Operator::As, tag("as")),
         )),
         alt((
             value(Operator::OpenBracket, tag("[")),
@@ -175,6 +177,7 @@ mod tests {
         test_operator_double_equal => (DoubleEqual, "=="),
         test_operator_bang => (Bang, "!"),
         test_operator_bang_equal => (BangEqual, "!="),
-        test_operator_question_mark => (QuestionMark, "?")
+        test_operator_question_mark => (QuestionMark, "?"),
+        test_operator_as => (As, "as")
     }
 }

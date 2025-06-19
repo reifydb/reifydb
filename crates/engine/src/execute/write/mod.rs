@@ -3,4 +3,3 @@
 
 mod insert_series;
 mod insert_table;
-mod column;

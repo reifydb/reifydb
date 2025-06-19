@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::{Operator, TokenKind};
-use crate::ast::parse::{Error, Parser};
+use crate::ast::parse::{Error, Parser, Precedence};
 use crate::ast::{Ast, AstInfix, InfixOperator, parse};
 
 impl Parser {
@@ -13,9 +13,8 @@ impl Parser {
 
         let right = if let InfixOperator::Call(token) = &operator {
             Ast::Tuple(self.parse_tuple_call(token.clone())?)
-        // } else if let InfixOperator::Arrow(_) = &operator {
-        // Node::Block(self.parse_block_inner(left.token())?)
-        // unimplemented!()
+        } else if let InfixOperator::As(token) = &operator {
+            self.parse_node(Precedence::None)?
         } else {
             self.parse_node(precedence)?
         };
@@ -107,15 +106,15 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let AstInfix { left, operator, right, .. } = result[0].as_infix();
-        
+
         let left = left.as_prefix();
         assert!(matches!(left.operator, PrefixOperator::Negate(_)));
-        
+
         let left_number = left.node.as_literal_number();
         assert_eq!(left_number.value(), "1");
-        
+
         assert!(matches!(operator, InfixOperator::Subtract(_)));
-        
+
         let right_number = right.as_literal_number();
         assert_eq!(right_number.value(), "2");
     }

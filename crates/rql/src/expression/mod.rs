@@ -3,14 +3,15 @@
 
 mod span;
 
+use reifydb_core::ValueKind;
 use reifydb_diagnostic::Span;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]
 pub struct AliasExpression {
-    pub alias: Option<String>,
-    pub expression: Expression,
+    pub alias: Option<IdentExpression>,
+    pub expression: Box<Expression>,
 }
 
 impl Display for AliasExpression {
@@ -25,6 +26,10 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
+    Alias(AliasExpression),
+
+    Cast(CastExpression),
+
     Constant(ConstantExpression),
 
     Column(ColumnExpression),
@@ -46,16 +51,18 @@ pub enum Expression {
     Prefix(PrefixExpression),
 
     GreaterThan(GreaterThanExpression),
-    
+
     GreaterThanEqual(GreaterThanEqualExpression),
-    
+
     LessThan(LessThanExpression),
-    
+
     LessThanEqual(LessThanEqualExpression),
-    
+
     Equal(EqualExpression),
-    
+
     NotEqual(NotEqualExpression),
+
+    Kind(KindExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +84,19 @@ impl Display for ConstantExpression {
             ConstantExpression::Text { span } => write!(f, "\"{}\"", span.fragment),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct CastExpression {
+    pub span: Span,
+    pub expression: Box<Expression>,
+    pub to: KindExpression,
+}
+
+#[derive(Debug, Clone)]
+pub struct KindExpression {
+    pub span: Span,
+    pub kind: ValueKind,
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +182,8 @@ pub struct ColumnExpression(pub Span);
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Expression::Alias(AliasExpression { expression, .. }) => write!(f, "{}", expression),
+            Expression::Cast(CastExpression { expression: expr, .. }) => write!(f, "{}", expr),
             Expression::Constant(span) => write!(f, "{}", span),
             Expression::Column(ColumnExpression(span)) => write!(f, "{}", span.fragment),
             Expression::Add(AddExpression { left, right, .. }) => {
@@ -192,7 +214,7 @@ impl Display for Expression {
                 write!(f, "({} < {})", left, right)
             }
             Expression::LessThanEqual(LessThanEqualExpression { left, right, .. }) => {
-                write!(f, "({} <= {})", left, right)   
+                write!(f, "({} <= {})", left, right)
             }
             Expression::Equal(EqualExpression { left, right, .. }) => {
                 write!(f, "({} == {})", left, right)
@@ -200,6 +222,7 @@ impl Display for Expression {
             Expression::NotEqual(NotEqualExpression { left, right, .. }) => {
                 write!(f, "({} != {})", left, right)
             }
+            Expression::Kind(KindExpression { span, .. }) => write!(f, "{}", span.fragment),
         }
     }
 }

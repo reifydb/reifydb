@@ -11,7 +11,7 @@ use parse::Error;
 
 impl Parser {
     pub(crate) fn parse_policy_block(&mut self) -> parse::Result<AstPolicyBlock> {
-        let block_token = self.consume_keyword(Policy)?;
+        let token = self.consume_keyword(Policy)?;
         self.consume_operator(Operator::OpenParen)?;
 
         let mut policies = Vec::new();
@@ -27,7 +27,7 @@ impl Parser {
         }
 
         self.consume_operator(Operator::CloseParen)?;
-        Ok(AstPolicyBlock { token: block_token, policies })
+        Ok(AstPolicyBlock { token, policies })
     }
 
     fn parse_policy_kind(&mut self) -> parse::Result<(Token, AstPolicyKind)> {

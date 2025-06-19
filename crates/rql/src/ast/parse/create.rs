@@ -89,7 +89,7 @@ impl Parser {
     fn parse_column(&mut self) -> parse::Result<AstColumnToCreate> {
         let name = self.parse_identifier()?;
         self.consume_operator(Colon)?;
-        let ty = self.parse_type()?;
+        let ty = self.parse_kind()?;
 
         let policies = if self.current()?.is_keyword(Keyword::Policy) {
             Some(self.parse_policy_block()?)

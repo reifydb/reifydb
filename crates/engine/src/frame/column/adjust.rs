@@ -8,160 +8,162 @@ use reifydb_core::ValueKind::{Int1, Int2};
 use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
 use reifydb_diagnostic::Span;
 
-pub(crate) fn adjust_column(
-    target: ValueKind,
-    source: &ColumnValues,
-    context: impl Promote + Demote + Convert,
-    span: impl Fn() -> Span,
-) -> crate::Result<ColumnValues> {
-    use ValueKind::*;
+impl ColumnValues {
+    pub fn adjust_column(
+        &self,
+        target: ValueKind,
+        context: impl Promote + Demote + Convert,
+        span: impl Fn() -> Span,
+    ) -> crate::Result<ColumnValues> {
+        use ValueKind::*;
 
-    if target == source.value() {
-        return Ok(source.clone());
-    }
-
-    if let ColumnValues::Int2(values, validity) = source {
-        if target == Int1 {
-            return demote_vec::<i16, i8>(
-                values,
-                validity,
-                context,
-                &span,
-                Int1,
-                ColumnValues::push::<i8>,
-            );
-        }
-    }
-
-    if let ColumnValues::Int1(values, validity) = source {
-        if target == Int2 {
-            return promote_vec::<i8, i16>(
-                values,
-                validity,
-                context,
-                &span,
-                Int2,
-                ColumnValues::push::<i16>,
-            );
-        }
-        if target == Int4 {
-            return promote_vec::<i8, i32>(
-                values,
-                validity,
-                context,
-                &span,
-                Int4,
-                ColumnValues::push::<i32>,
-            );
-        }
-        if target == Int8 {
-            return promote_vec::<i8, i64>(
-                values,
-                validity,
-                context,
-                &span,
-                Int8,
-                ColumnValues::push::<i64>,
-            );
-        }
-        if target == Int16 {
-            return promote_vec::<i8, i128>(
-                values,
-                validity,
-                context,
-                &span,
-                Int16,
-                ColumnValues::push::<i128>,
-            );
+        if target == self.value() {
+            return Ok(self.clone());
         }
 
-        if target == Uint1 {
-            return convert_vec::<i8, u8>(
-                values,
-                validity,
-                context,
-                &span,
-                Uint1,
-                ColumnValues::push::<u8>,
-            );
-        }
-
-        if target == Uint2 {
-            return convert_vec::<i8, u16>(
-                values,
-                validity,
-                context,
-                &span,
-                Uint2,
-                ColumnValues::push::<u16>,
-            );
-        }
-
-        if target == Uint4 {
-            return convert_vec::<i8, u32>(
-                values,
-                validity,
-                context,
-                &span,
-                Uint4,
-                ColumnValues::push::<u32>,
-            );
-        }
-
-        if target == Uint8 {
-            return convert_vec::<i8, u64>(
-                values,
-                validity,
-                context,
-                &span,
-                Uint8,
-                ColumnValues::push::<u64>,
-            );
-        }
-
-        if target == Uint16 {
-            return convert_vec::<i8, u128>(
-                values,
-                validity,
-                context,
-                &span,
-                Uint16,
-                ColumnValues::push::<u128>,
-            );
-        }
-    }
-
-    match source {
-        ColumnValues::Int2(values, validity) if target == Int1 => {
-            let mut out = ColumnValues::with_capacity(Int1, values.len());
-            for (i, &val) in values.iter().enumerate() {
-                if validity[i] {
-                    match context.demote::<i16, i8>(val, &span)? {
-                        Some(v) => out.push::<i8>(v),
-                        None => out.push_undefined(),
-                    }
-                } else {
-                    out.push_undefined();
-                }
+        if let ColumnValues::Int2(values, validity) = self {
+            if target == Int1 {
+                return demote_vec::<i16, i8>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Int1,
+                    ColumnValues::push::<i8>,
+                );
             }
-            Ok(out)
         }
 
-        ColumnValues::Int4(values, validity) if target == Int2 => {
-            let mut out = ColumnValues::with_capacity(Int2, values.len());
-            for (i, &val) in values.iter().enumerate() {
-                if validity[i] {
-                    match context.demote::<i32, i16>(val, &span)? {
-                        Some(v) => out.push::<i16>(v),
-                        None => out.push_undefined(),
-                    }
-                } else {
-                    out.push_undefined();
-                }
+        if let ColumnValues::Int1(values, validity) = self {
+            if target == Int2 {
+                return promote_vec::<i8, i16>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Int2,
+                    ColumnValues::push::<i16>,
+                );
             }
-            Ok(out)
+            if target == Int4 {
+                return promote_vec::<i8, i32>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Int4,
+                    ColumnValues::push::<i32>,
+                );
+            }
+            if target == Int8 {
+                return promote_vec::<i8, i64>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Int8,
+                    ColumnValues::push::<i64>,
+                );
+            }
+            if target == Int16 {
+                return promote_vec::<i8, i128>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Int16,
+                    ColumnValues::push::<i128>,
+                );
+            }
+
+            if target == Uint1 {
+                return convert_vec::<i8, u8>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint1,
+                    ColumnValues::push::<u8>,
+                );
+            }
+
+            if target == Uint2 {
+                return convert_vec::<i8, u16>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint2,
+                    ColumnValues::push::<u16>,
+                );
+            }
+
+            if target == Uint4 {
+                return convert_vec::<i8, u32>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint4,
+                    ColumnValues::push::<u32>,
+                );
+            }
+
+            if target == Uint8 {
+                return convert_vec::<i8, u64>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint8,
+                    ColumnValues::push::<u64>,
+                );
+            }
+
+            if target == Uint16 {
+                return convert_vec::<i8, u128>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint16,
+                    ColumnValues::push::<u128>,
+                );
+            }
         }
-        _ => unimplemented!("{source:?} {target:?}"),
+
+        match self {
+            ColumnValues::Int2(values, validity) if target == Int1 => {
+                let mut out = ColumnValues::with_capacity(Int1, values.len());
+                for (i, &val) in values.iter().enumerate() {
+                    if validity[i] {
+                        match context.demote::<i16, i8>(val, &span)? {
+                            Some(v) => out.push::<i8>(v),
+                            None => out.push_undefined(),
+                        }
+                    } else {
+                        out.push_undefined();
+                    }
+                }
+                Ok(out)
+            }
+
+            ColumnValues::Int4(values, validity) if target == Int2 => {
+                let mut out = ColumnValues::with_capacity(Int2, values.len());
+                for (i, &val) in values.iter().enumerate() {
+                    if validity[i] {
+                        match context.demote::<i32, i16>(val, &span)? {
+                            Some(v) => out.push::<i16>(v),
+                            None => out.push_undefined(),
+                        }
+                    } else {
+                        out.push_undefined();
+                    }
+                }
+                Ok(out)
+            }
+            _ => unimplemented!("{self:?} {target:?}"),
+        }
     }
 }
 
@@ -244,7 +246,7 @@ where
 mod tests {
     mod promote {
         use crate::evaluate::Promote;
-        use crate::execute::write::column::promote_vec;
+        use crate::frame::column::adjust::promote_vec;
         use reifydb_core::ValueKind;
         use reifydb_core::num::SafePromote;
         use reifydb_diagnostic::IntoSpan;
@@ -360,8 +362,8 @@ mod tests {
 
     mod demote {
         use crate::evaluate::Demote;
-        use crate::execute::write::column::demote_vec;
         use crate::frame::AsSlice;
+        use crate::frame::column::adjust::demote_vec;
         use reifydb_core::ValueKind;
         use reifydb_core::num::SafeDemote;
         use reifydb_diagnostic::IntoSpan;

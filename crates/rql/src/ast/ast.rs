@@ -20,6 +20,7 @@ impl IntoIterator for AstStatement {
 #[derive(Debug, PartialEq)]
 pub enum Ast {
     Block(AstBlock),
+    Cast(AstCast),
     Create(AstCreate),
     Filter(AstFilter),
     From(AstFrom),
@@ -36,13 +37,14 @@ pub enum Ast {
     Prefix(AstPrefix),
     Select(AstSelect),
     Tuple(AstTuple),
-    Type(AstType),
+    Kind(AstKind),
     Wildcard(AstWildcard),
 }
 
 impl Ast {
     pub fn token(&self) -> &Token {
         match self {
+            Ast::Cast(node) => &node.token,
             Ast::Block(node) => &node.token,
             Ast::Create(node) => node.token(),
             Ast::Filter(node) => &node.token,
@@ -65,7 +67,7 @@ impl Ast {
             Ast::Prefix(node) => node.node.token(),
             Ast::Select(node) => &node.token,
             Ast::Tuple(node) => &node.token,
-            Ast::Type(node) => node.token(),
+            Ast::Kind(node) => node.token(),
             Ast::Wildcard(node) => &node.0,
         }
     }
@@ -81,6 +83,13 @@ impl Ast {
     }
     pub fn as_block(&self) -> &AstBlock {
         if let Ast::Block(result) = self { result } else { panic!("not block") }
+    }
+
+    pub fn is_cast(&self) -> bool {
+        matches!(self, Ast::Cast(_))
+    }
+    pub fn as_cast(&self) -> &AstCast {
+        if let Ast::Cast(result) = self { result } else { panic!("not cast") }
     }
 
     pub fn is_create(&self) -> bool {
@@ -238,13 +247,20 @@ impl Ast {
         if let Ast::Tuple(result) = self { result } else { panic!("not tuple") }
     }
 
-    pub fn is_type(&self) -> bool {
-        matches!(self, Ast::Type(_))
+    pub fn is_kind(&self) -> bool {
+        matches!(self, Ast::Kind(_))
     }
 
-    pub fn as_type(&self) -> &AstType {
-        if let Ast::Type(result) = self { result } else { panic!("not type") }
+    pub fn as_kind(&self) -> &AstKind {
+        if let Ast::Kind(result) = self { result } else { panic!("not kind") }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstCast {
+    pub token: Token,
+    pub node: Box<Ast>,
+    pub to: AstKind,
 }
 
 #[derive(Debug, PartialEq)]
@@ -297,7 +313,7 @@ pub enum AstCreate {
 #[derive(Debug, PartialEq)]
 pub struct AstColumnToCreate {
     pub name: AstIdentifier,
-    pub ty: AstType,
+    pub ty: AstKind,
     pub policies: Option<AstPolicyBlock>,
 }
 
@@ -369,6 +385,7 @@ impl AstIdentifier {
 #[derive(Debug, PartialEq)]
 pub enum InfixOperator {
     Add(Token),
+    As(Token),
     Arrow(Token),
     AccessPackage(Token),
     AccessProperty(Token),
@@ -520,7 +537,7 @@ impl Index<usize> for AstTuple {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum AstType {
+pub enum AstKind {
     Boolean(Token),
 
     Float4(Token),
@@ -542,50 +559,50 @@ pub enum AstType {
     Uint16(Token),
 }
 
-impl AstType {
+impl AstKind {
     pub fn token(&self) -> &Token {
         match self {
-            AstType::Boolean(token) => token,
-            AstType::Float4(token) => token,
-            AstType::Float8(token) => token,
-            AstType::Int1(token) => token,
-            AstType::Int2(token) => token,
-            AstType::Int4(token) => token,
-            AstType::Int8(token) => token,
-            AstType::Int16(token) => token,
-            AstType::Number(token) => token,
-            AstType::Text(token) => token,
-            AstType::Uint1(token) => token,
-            AstType::Uint2(token) => token,
-            AstType::Uint4(token) => token,
-            AstType::Uint8(token) => token,
-            AstType::Uint16(token) => token,
+            AstKind::Boolean(token) => token,
+            AstKind::Float4(token) => token,
+            AstKind::Float8(token) => token,
+            AstKind::Int1(token) => token,
+            AstKind::Int2(token) => token,
+            AstKind::Int4(token) => token,
+            AstKind::Int8(token) => token,
+            AstKind::Int16(token) => token,
+            AstKind::Number(token) => token,
+            AstKind::Text(token) => token,
+            AstKind::Uint1(token) => token,
+            AstKind::Uint2(token) => token,
+            AstKind::Uint4(token) => token,
+            AstKind::Uint8(token) => token,
+            AstKind::Uint16(token) => token,
         }
     }
 }
 
-impl AstType {
+impl AstKind {
     pub fn value(&self) -> &str {
         self.token().value()
     }
 
     pub fn kind(&self) -> ValueKind {
         match self {
-            AstType::Boolean(_) => ValueKind::Bool,
-            AstType::Float4(_) => ValueKind::Float4,
-            AstType::Float8(_) => ValueKind::Float8,
-            AstType::Int1(_) => ValueKind::Int1,
-            AstType::Int2(_) => ValueKind::Int2,
-            AstType::Int4(_) => ValueKind::Int4,
-            AstType::Int8(_) => ValueKind::Int8,
-            AstType::Int16(_) => ValueKind::Int16,
-            AstType::Number(_) => unimplemented!(),
-            AstType::Text(_) => ValueKind::String,
-            AstType::Uint1(_) => ValueKind::Uint1,
-            AstType::Uint2(_) => ValueKind::Uint2,
-            AstType::Uint4(_) => ValueKind::Uint4,
-            AstType::Uint8(_) => ValueKind::Uint8,
-            AstType::Uint16(_) => ValueKind::Uint16,
+            AstKind::Boolean(_) => ValueKind::Bool,
+            AstKind::Float4(_) => ValueKind::Float4,
+            AstKind::Float8(_) => ValueKind::Float8,
+            AstKind::Int1(_) => ValueKind::Int1,
+            AstKind::Int2(_) => ValueKind::Int2,
+            AstKind::Int4(_) => ValueKind::Int4,
+            AstKind::Int8(_) => ValueKind::Int8,
+            AstKind::Int16(_) => ValueKind::Int16,
+            AstKind::Number(_) => unimplemented!(),
+            AstKind::Text(_) => ValueKind::String,
+            AstKind::Uint1(_) => ValueKind::Uint1,
+            AstKind::Uint2(_) => ValueKind::Uint2,
+            AstKind::Uint4(_) => ValueKind::Uint4,
+            AstKind::Uint8(_) => ValueKind::Uint8,
+            AstKind::Uint16(_) => ValueKind::Uint16,
         }
     }
 }

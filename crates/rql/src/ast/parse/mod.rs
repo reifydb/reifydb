@@ -1,9 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+mod block;
+mod cast;
 mod create;
 mod diagnostic;
 mod error;
+mod filter;
 mod from;
 mod group_by;
 mod identifier;
@@ -16,9 +19,7 @@ mod policy;
 mod primary;
 mod select;
 mod tuple;
-mod r#type;
-mod block;
-mod filter;
+mod kind;
 
 pub use error::*;
 

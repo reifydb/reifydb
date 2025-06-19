@@ -11,11 +11,11 @@ use std::ops::Deref;
 
 use crate::ast;
 use crate::expression::{
-    AddExpression, AliasExpression, CallExpression, ColumnExpression, ConstantExpression,
-    DivideExpression, EqualExpression, Expression, GreaterThanEqualExpression,
-    GreaterThanExpression, IdentExpression, LessThanEqualExpression, LessThanExpression,
-    ModuloExpression, MultiplyExpression, NotEqualExpression, PrefixExpression, PrefixOperator,
-    SubtractExpression, TupleExpression,
+    AddExpression, AliasExpression, CallExpression, CastExpression, ColumnExpression,
+    ConstantExpression, DivideExpression, EqualExpression, Expression, GreaterThanEqualExpression,
+    GreaterThanExpression, IdentExpression, KindExpression, LessThanEqualExpression,
+    LessThanExpression, ModuloExpression, MultiplyExpression, NotEqualExpression, PrefixExpression,
+    PrefixOperator, SubtractExpression, TupleExpression,
 };
 pub use error::Error;
 use reifydb_catalog::Catalog;
@@ -508,8 +508,8 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                     .into_iter()
                     .map(|ast| match ast {
                         Ast::Identifier(node) => AliasExpression {
-                            alias: Some(node.value().to_string()),
-                            expression: Expression::Column(ColumnExpression(node.0.span)),
+                            alias: Some(IdentExpression(node.0.span.clone())),
+                            expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
                         },
                         _ => unimplemented!(),
                     })
@@ -526,8 +526,8 @@ fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                 .into_iter()
                 .map(|ast| match ast {
                     Ast::Identifier(node) => AliasExpression {
-                        alias: Some(node.value().to_string()),
-                        expression: Expression::Column(ColumnExpression(node.0.span)),
+                        alias: Some(IdentExpression(node.0.span.clone())),
+                        expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
                     },
                     ast => unimplemented!("{ast:?}"),
                 })
@@ -569,36 +569,48 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 // Ast::Create(_) => {}
                 // Ast::From(_) => {}
                 Ast::Identifier(node) => AliasExpression {
-                    alias: Some(node.value().to_string()),
-                    expression: Expression::Column(ColumnExpression(node.0.span)),
+                    alias: Some(IdentExpression(node.0.span.clone())),
+                    expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
                 },
-                Ast::Infix(node) => {
-                    AliasExpression { alias: None, expression: expression_infix(node).unwrap() }
-                }
+                Ast::Infix(node) => AliasExpression {
+                    alias: None,
+                    expression: Box::new(expression_infix(node).unwrap()),
+                },
+                Ast::Cast(node) => AliasExpression {
+                    alias: None,
+                    expression: Box::new(Expression::Cast(CastExpression {
+                        span: node.token.span,
+                        expression: Box::new(expression(*node.node).unwrap()),
+                        to: KindExpression {
+                            span: node.to.token().span.clone(),
+                            kind: node.to.kind(),
+                        },
+                    })),
+                },
                 Ast::Literal(node) => match node {
                     AstLiteral::Boolean(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Bool {
+                        expression: Box::new(Expression::Constant(ConstantExpression::Bool {
                             span: node.0.span,
-                        }),
+                        })),
                     },
                     AstLiteral::Number(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Number {
+                        expression: Box::new(Expression::Constant(ConstantExpression::Number {
                             span: node.0.span,
-                        }),
+                        })),
                     },
                     AstLiteral::Text(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Text {
+                        expression: Box::new(Expression::Constant(ConstantExpression::Text {
                             span: node.0.span,
-                        }),
+                        })),
                     },
                     AstLiteral::Undefined(node) => AliasExpression {
                         alias: None,
-                        expression: Expression::Constant(ConstantExpression::Undefined {
+                        expression: Box::new(Expression::Constant(ConstantExpression::Undefined {
                             span: node.0.span,
-                        }),
+                        })),
                     },
                 },
                 Ast::Prefix(node) => {
@@ -614,11 +626,11 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
 
                     AliasExpression {
                         alias: None,
-                        expression: Expression::Prefix(PrefixExpression {
+                        expression: Box::new(Expression::Prefix(PrefixExpression {
                             operator,
                             expression: Box::new(expression(*node.node).unwrap()), //FIXME
                             span,
-                        }),
+                        })),
                     }
                 }
                 ast => unimplemented!("{:?}", ast),
@@ -664,6 +676,10 @@ fn expression(ast: Ast) -> Result<Expression> {
                 span,
             }))
         }
+        Ast::Kind(node) => Ok(Expression::Kind(KindExpression {
+            span: node.token().span.clone(),
+            kind: node.kind(),
+        })),
         _ => unimplemented!("{ast:#?}"),
     }
 }

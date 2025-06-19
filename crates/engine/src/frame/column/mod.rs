@@ -13,6 +13,7 @@ mod reorder;
 mod slice;
 mod validity;
 mod values;
+mod adjust;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Column {

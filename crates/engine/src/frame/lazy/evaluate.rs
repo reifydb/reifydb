@@ -51,7 +51,8 @@ impl LazyFrame {
             .iter()
             .map(|alias_expr| {
                 let expr = &alias_expr.expression;
-                let alias = alias_expr.alias.clone().unwrap_or(expr.span().fragment);
+                let alias =
+                    alias_expr.alias.clone().map(|a| a.0.fragment).unwrap_or(expr.span().fragment);
 
                 let values = evaluate(
                     expr,
