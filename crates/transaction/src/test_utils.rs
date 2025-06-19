@@ -15,6 +15,12 @@ pub struct TestTransaction {
     unversioned: Memory,
 }
 
+impl Default for TestTransaction {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TestTransaction {
     pub fn new() -> Self {
         let unversioned = Memory::default();
@@ -116,11 +122,11 @@ impl Tx<Memory, Memory> for TestTransaction {
     }
 
     fn commit(self) -> crate::Result<()> {
-        Ok(self.tx.commit()?)
+        self.tx.commit()
     }
 
     fn rollback(self) -> crate::Result<()> {
-        Ok(self.tx.rollback()?)
+        self.tx.rollback()
     }
 
     fn bypass(&mut self) -> MutexGuard<BypassTx<Memory>> {

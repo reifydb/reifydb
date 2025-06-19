@@ -37,7 +37,7 @@ pub struct Range<'a> {
     pub(crate) version: Version,
 }
 
-impl<'a> Iterator for Range<'a> {
+impl Iterator for Range<'_> {
     type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -52,7 +52,7 @@ impl<'a> Iterator for Range<'a> {
                     }
                 })
             {
-                return Some(Versioned { key: item.key().clone(), version, row: value }.into());
+                return Some(Versioned { key: item.key().clone(), version, row: value });
             }
         }
     }
@@ -73,7 +73,7 @@ pub struct UnversionedRange<'a> {
     pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedRow>,
 }
 
-impl<'a> Iterator for UnversionedRange<'a> {
+impl Iterator for UnversionedRange<'_> {
     type Item = Unversioned;
 
     fn next(&mut self) -> Option<Self::Item> {

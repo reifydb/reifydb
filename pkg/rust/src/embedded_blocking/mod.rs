@@ -37,8 +37,8 @@ impl<'a, S: Storage + 'static, T: Transaction<S, S> + 'static> Embedded<S, T> {
     }
 
     pub fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        let result = self.engine.rx_as(&principal, &rql).unwrap();
-        result
+        
+        self.engine.rx_as(principal, rql).unwrap()
     }
 
     // fn session_read_only(

@@ -43,7 +43,7 @@ pub use reifydb_storage;
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::Sqlite;
-use reifydb_storage::{Storage, VersionedStorage};
+use reifydb_storage::Storage;
 pub use reifydb_transaction;
 use reifydb_transaction::Transaction;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;

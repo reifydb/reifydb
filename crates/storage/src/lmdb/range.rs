@@ -16,7 +16,7 @@ impl VersionedScanRange for Lmdb {
     type ScanRangeIter<'a> = Range;
 
     fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
-        Range::new(self.env.clone(), self.db.clone(), version, range, 100)
+        Range::new(self.env.clone(), self.db, version, range, 100)
     }
 }
 

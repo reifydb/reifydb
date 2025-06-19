@@ -34,8 +34,8 @@ impl Catalog {
         if let Some(column) = Catalog::get_column_by_name(tx, table, &column_to_create.column)? {
             return Err(Error(Diagnostic::column_already_exists(
                 None,
-                &column_to_create.schema_name,
-                &column_to_create.table_name,
+                column_to_create.schema_name,
+                column_to_create.table_name,
                 &column.name,
             )));
         }

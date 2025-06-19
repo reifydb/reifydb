@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn test_current_expect_but_eof() {
         let tokens = lex("").unwrap();
-        let mut parser = Parser::new(tokens);
+        let parser = Parser::new(tokens);
         let result = parser.current_expect(Separator(Semicolon));
         assert_eq!(result, Err(UnexpectedEndOfFile))
     }
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn test_current_precedence_but_eof() {
         let tokens = lex("").unwrap();
-        let mut parser = Parser::new(tokens);
+        let parser = Parser::new(tokens);
         let result = parser.current_precedence();
         assert_eq!(result, Ok(Precedence::None))
     }
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn test_current_precedence() {
         let tokens = lex("+").unwrap();
-        let mut parser = Parser::new(tokens);
+        let parser = Parser::new(tokens);
         let result = parser.current_precedence();
         assert_eq!(result, Ok(Term))
     }
@@ -391,7 +391,7 @@ mod tests {
     #[test]
     fn test_peek_next_but_eof() {
         let tokens = lex("").unwrap();
-        let mut parser = Parser::new(tokens);
+        let parser = Parser::new(tokens);
         let result = parser.peek_next();
         assert_eq!(result, Err(UnexpectedEndOfFile))
     }
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn test_peek_next_but_nothing_to_peek_next() {
         let tokens = lex("true").unwrap();
-        let mut parser = Parser::new(tokens);
+        let parser = Parser::new(tokens);
         let result = parser.peek_next();
         assert_eq!(result, Err(UnexpectedEndOfFile))
     }
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn test_peek_next_expect_but_different() {
         let tokens = lex("true 0b111").unwrap();
-        let mut parser = Parser::new(tokens);
+        let parser = Parser::new(tokens);
 
         let result = parser.peek_next_expect(Literal(False));
         assert!(result.is_err());

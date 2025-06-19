@@ -7,7 +7,6 @@ use nom::bytes::tag;
 use nom::combinator::value;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
-use std::fmt::{Display, Formatter};
 
 macro_rules! separator {
     (

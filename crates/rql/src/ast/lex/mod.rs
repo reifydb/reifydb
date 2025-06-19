@@ -5,7 +5,6 @@ pub use error::Error;
 use nom::branch::alt;
 use nom::character::multispace0;
 use nom::multi::many0;
-use std::fmt::Display;
 
 pub use keyword::Keyword;
 pub use operator::Operator;

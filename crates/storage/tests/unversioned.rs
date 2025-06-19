@@ -16,7 +16,7 @@ use reifydb_core::encoding::format::Formatter;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
-use reifydb_storage::{Unversioned, UnversionedStorage, Versioned, VersionedStorage};
+use reifydb_storage::{Unversioned, UnversionedStorage};
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
@@ -131,7 +131,7 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
 }
 
 fn print<I: Iterator<Item = Unversioned>>(output: &mut String, mut iter: I) {
-    while let Some(sv) = iter.next() {
+    for sv in iter {
         let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
         writeln!(output, "{fmtkv}").unwrap();
     }

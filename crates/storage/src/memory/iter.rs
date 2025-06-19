@@ -33,7 +33,7 @@ pub struct VersionedIter<'a> {
     pub(crate) version: Version,
 }
 
-impl<'a> Iterator for VersionedIter<'a> {
+impl Iterator for VersionedIter<'_> {
     type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -48,7 +48,7 @@ impl<'a> Iterator for VersionedIter<'a> {
                     }
                 })
             {
-                return Some(Versioned { key: item.key().clone(), row, version }.into());
+                return Some(Versioned { key: item.key().clone(), row, version });
             }
         }
     }
@@ -67,7 +67,7 @@ pub struct UnversionedIter<'a> {
     pub(crate) iter: MapIter<'a, EncodedKey, EncodedRow>,
 }
 
-impl<'a> Iterator for UnversionedIter<'a> {
+impl Iterator for UnversionedIter<'_> {
     type Item = Unversioned;
 
     fn next(&mut self) -> Option<Self::Item> {

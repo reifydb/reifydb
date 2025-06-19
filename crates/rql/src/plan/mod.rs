@@ -291,10 +291,10 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                             .collect::<Vec<_>>();
 
                         // Lookup actual columns from the store
-                        let mut columns_to_insert: Vec<_> = insert_column_names
+                        let columns_to_insert: Vec<_> = insert_column_names
                             .iter()
                             .map(|name| {
-                                Catalog::get_column_by_name(rx, table.id, &name.deref())
+                                Catalog::get_column_by_name(rx, table.id, name.deref())
                                     .unwrap()
                                     .unwrap()
                             })

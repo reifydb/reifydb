@@ -14,7 +14,7 @@ impl IntoSpan for Span {
     }
 }
 
-impl<'a> IntoSpan for &'a Span {
+impl IntoSpan for &Span {
     fn into_span(self) -> Span {
         self.clone()
     }

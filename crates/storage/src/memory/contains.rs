@@ -21,9 +21,6 @@ impl VersionedContains for Memory {
 
 impl UnversionedContains for Memory {
     fn contains_unversioned(&self, key: &EncodedKey) -> bool {
-        match self.unversioned.get(key) {
-            None => false,
-            Some(_) => true,
-        }
+        self.unversioned.get(key).is_some()
     }
 }

@@ -17,7 +17,7 @@ impl Parser {
 mod tests {
     use crate::ast::lex::{Keyword, lex};
     use crate::ast::parse::Parser;
-    use crate::ast::{Ast, AstFilter, InfixOperator, TokenKind};
+    use crate::ast::{Ast, InfixOperator, TokenKind};
 
     #[test]
     fn test_simple_comparison() {

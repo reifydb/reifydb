@@ -16,7 +16,7 @@ use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
 use crate::unversioned::UnversionedScanRev;
 use crate::versioned::VersionedScanRev;
-use crate::{Unversioned, UnversionedScan, Versioned};
+use crate::{Unversioned, Versioned};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
 use std::ops::Bound;
@@ -35,7 +35,7 @@ pub struct IterRev<'a> {
     pub(crate) version: Version,
 }
 
-impl<'a> Iterator for IterRev<'a> {
+impl Iterator for IterRev<'_> {
     type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -50,7 +50,7 @@ impl<'a> Iterator for IterRev<'a> {
                     }
                 })
             {
-                return Some(Versioned { key: item.key().clone(), row: value, version }.into());
+                return Some(Versioned { key: item.key().clone(), row: value, version });
             }
         }
     }
@@ -69,7 +69,7 @@ pub struct UnversionedIterRev<'a> {
     pub(crate) iter: MapIter<'a, EncodedKey, EncodedRow>,
 }
 
-impl<'a> Iterator for UnversionedIterRev<'a> {
+impl Iterator for UnversionedIterRev<'_> {
     type Item = Unversioned;
 
     fn next(&mut self) -> Option<Self::Item> {

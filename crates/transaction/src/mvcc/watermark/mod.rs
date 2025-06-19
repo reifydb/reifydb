@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 pub use closer::Closer;
-pub use error::WaterMarkError;
 pub use watermark::WaterMark;
 
 mod closer;

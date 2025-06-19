@@ -54,9 +54,9 @@ impl Sqlite {
         let pool = Pool::builder().max_size(4).build(manager).unwrap();
         {
             let conn = pool.get().unwrap();
-            conn.pragma_update(None, "journal_mode", &"WAL").unwrap();
-            conn.pragma_update(None, "synchronous", &"NORMAL").unwrap();
-            conn.pragma_update(None, "temp_store", &"MEMORY").unwrap();
+            conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+            conn.pragma_update(None, "synchronous", "NORMAL").unwrap();
+            conn.pragma_update(None, "temp_store", "MEMORY").unwrap();
 
             conn.execute_batch(
                 "BEGIN;

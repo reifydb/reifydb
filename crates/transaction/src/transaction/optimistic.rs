@@ -170,7 +170,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<
         Ok(())
     }
 
-    fn bypass<'a>(&'a mut self) -> MutexGuard<'a, BypassTx<US>> {
+    fn bypass(&mut self) -> MutexGuard<'_, BypassTx<US>> {
         TransactionTx::bypass(self)
     }
 }

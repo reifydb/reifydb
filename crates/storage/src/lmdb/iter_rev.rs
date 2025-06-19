@@ -3,7 +3,7 @@
 
 use crate::lmdb::Lmdb;
 use crate::unversioned::UnversionedScanRev;
-use crate::{Unversioned, UnversionedScan, Versioned, VersionedScanRev};
+use crate::{Unversioned, Versioned, VersionedScanRev};
 use reifydb_core::Version;
 
 impl VersionedScanRev for Lmdb {

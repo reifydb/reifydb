@@ -88,7 +88,7 @@ mod tests {
                 }
                 {
                     let is_premium = row[2].as_literal_boolean();
-                    assert_eq!(is_premium.value(), true);
+                    assert!(is_premium.value());
                 }
             }
             _ => unreachable!(),
@@ -134,7 +134,7 @@ mod tests {
                 }
                 {
                     let is_premium = row[2].as_literal_boolean();
-                    assert_eq!(is_premium.value(), true);
+                    assert!(is_premium.value());
                 }
             }
             _ => unreachable!(),
@@ -181,7 +181,7 @@ mod tests {
                 }
                 {
                     let is_premium = row[2].as_literal_boolean();
-                    assert_eq!(is_premium.value(), true);
+                    assert!(is_premium.value());
                 }
             }
             _ => unreachable!(),
@@ -229,7 +229,7 @@ mod tests {
                 }
                 {
                     let is_premium = select[2].as_literal_boolean();
-                    assert_eq!(is_premium.value(), false);
+                    assert!(!is_premium.value());
                 }
             }
             _ => unreachable!(),

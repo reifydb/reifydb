@@ -96,7 +96,7 @@ mod tests {
         assert!(matches!(*operator, PrefixOperator::Plus(_)));
 
         let Ast::Tuple(tuple) = node.deref() else { panic!() };
-        let Literal(AstLiteral::Number(node)) = &tuple.nodes.get(0).unwrap() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = &tuple.nodes.first().unwrap() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -123,7 +123,7 @@ mod tests {
         assert!(matches!(*operator, PrefixOperator::Negate(_)));
 
         let Ast::Tuple(tuple) = node.deref() else { panic!() };
-        let Literal(AstLiteral::Number(node)) = &tuple.nodes.get(0).unwrap() else { panic!() };
+        let Literal(AstLiteral::Number(node)) = &tuple.nodes.first().unwrap() else { panic!() };
         assert_eq!(node.value(), "2");
     }
 
@@ -137,6 +137,6 @@ mod tests {
         assert!(matches!(*operator, PrefixOperator::Not(_)));
 
         let Literal(AstLiteral::Boolean(node)) = node.deref() else { panic!() };
-        assert_eq!(node.value(), false);
+        assert!(!node.value());
     }
 }

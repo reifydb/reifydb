@@ -51,7 +51,7 @@ fn parse_hex(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 }
 
 fn parse_octal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let inner = recognize(preceded(tag("0o"), take_while1(|c: char| c >= '0' && c <= '7')));
+    let inner = recognize(preceded(tag("0o"), take_while1(|c: char| ('0'..='7').contains(&c))));
     let (rest, span) = complete(inner).parse(input)?;
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }

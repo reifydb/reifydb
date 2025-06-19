@@ -3,7 +3,7 @@
 
 use crate::sqlite::Sqlite;
 use crate::unversioned::UnversionedScanRev;
-use crate::{Unversioned, UnversionedScan};
+use crate::Unversioned;
 
 pub struct UnversionedIterRev {}
 

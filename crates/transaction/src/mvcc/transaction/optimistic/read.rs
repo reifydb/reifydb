@@ -25,7 +25,7 @@ pub struct TransactionRx<VS: VersionedStorage, US: UnversionedStorage> {
 
 impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
     pub fn new(engine: Optimistic<VS, US>, version: Option<Version>) -> Self {
-        let mut tm = engine.tm.read(version);
+        let tm = engine.tm.read(version);
         Self { engine, tm }
     }
 }

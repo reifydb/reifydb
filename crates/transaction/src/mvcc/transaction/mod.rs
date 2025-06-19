@@ -42,7 +42,7 @@ where
     P: PendingWrites,
 {
     inner: Arc<Oracle<C, L>>,
-    _phantom: std::marker::PhantomData<(P)>,
+    _phantom: std::marker::PhantomData<P>,
 }
 
 impl<C, L, P> Clone for TransactionManager<C, L, P>

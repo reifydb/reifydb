@@ -57,7 +57,7 @@ mod tests {
         let tokens = lex(r#"policy (saturation error)"#).unwrap();
 
         let mut parser = Parser::new(tokens);
-        let mut result = parser.parse_policy_block().unwrap();
+        let result = parser.parse_policy_block().unwrap();
         assert_eq!(result.policies.len(), 1);
 
         let policies = result.policies;
@@ -73,7 +73,7 @@ mod tests {
         let tokens = lex(r#"policy (saturation undefined)"#).unwrap();
 
         let mut parser = Parser::new(tokens);
-        let mut result = parser.parse_policy_block().unwrap();
+        let result = parser.parse_policy_block().unwrap();
         assert_eq!(result.policies.len(), 1);
 
         let policies = result.policies;

@@ -14,7 +14,7 @@ use crossbeam_skiplist::map::Range as MapRange;
 
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
-use crate::unversioned::{UnversionedScanRange, UnversionedScanRangeRev};
+use crate::unversioned::UnversionedScanRangeRev;
 use crate::versioned::VersionedScanRangeRev;
 use crate::{Unversioned, Versioned};
 use reifydb_core::row::EncodedRow;
@@ -37,7 +37,7 @@ pub struct RangeRev<'a> {
     pub(crate) version: Version,
 }
 
-impl<'a> Iterator for RangeRev<'a> {
+impl Iterator for RangeRev<'_> {
     type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -52,7 +52,7 @@ impl<'a> Iterator for RangeRev<'a> {
                     }
                 })
             {
-                return Some(Versioned { key: item.key().clone(), version, row: value }.into());
+                return Some(Versioned { key: item.key().clone(), version, row: value });
             }
         }
     }
@@ -73,7 +73,7 @@ pub struct UnversionedRangeRev<'a> {
     pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedRow>,
 }
 
-impl<'a> Iterator for UnversionedRangeRev<'a> {
+impl Iterator for UnversionedRangeRev<'_> {
     type Item = Unversioned;
 
     fn next(&mut self) -> Option<Self::Item> {

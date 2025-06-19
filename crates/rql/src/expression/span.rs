@@ -8,7 +8,7 @@ use crate::expression::{
 use reifydb_diagnostic::Span;
 
 impl Expression {
-    pub fn lazy_span<'a>(&'a self) -> impl Fn() -> Span + 'a {
+    pub fn lazy_span(&self) -> impl Fn() -> Span + '_ {
         move || match self {
             Expression::Constant(expr) => match expr {
                 ConstantExpression::Undefined { span }

@@ -31,13 +31,13 @@ impl SequenceGeneratorU64 {
                 }
 
                 LAYOUT.set_u64(&mut row, 0, next_value);
-                bypass.set(&key, row)?;
+                bypass.set(key, row)?;
                 Ok(value)
             }
             None => {
                 let mut new_row = LAYOUT.allocate_row();
                 LAYOUT.set_u64(&mut new_row, 0, 2u64);
-                bypass.set(&key, new_row)?;
+                bypass.set(key, new_row)?;
                 Ok(1)
             }
         }

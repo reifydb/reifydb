@@ -139,10 +139,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         Ok(TransactionIterRev::new(pending, commited, Some(marker)))
     }
 
-    pub fn scan_range<'a>(
-        &'a mut self,
+    pub fn scan_range(
+        &mut self,
         range: EncodedKeyRange,
-    ) -> Result<TransactionRange<'a, VS, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRange<'_, VS, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -155,10 +155,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
 
-    pub fn scan_range_rev<'a>(
-        &'a mut self,
+    pub fn scan_range_rev(
+        &mut self,
         range: EncodedKeyRange,
-    ) -> Result<TransactionRangeRev<'a, VS, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRangeRev<'_, VS, BTreeConflict>, TransactionError> {
         let version = self.tm.version();
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();

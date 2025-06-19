@@ -25,9 +25,7 @@ impl std::error::Error for Error {}
 
 impl From<mvcc::MvccError> for Error {
     fn from(err: mvcc::MvccError) -> Self {
-        match err {
-            _ => Self::Mvcc(err),
-        }
+        Self::Mvcc(err)
     }
 }
 

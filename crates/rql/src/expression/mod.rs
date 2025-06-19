@@ -3,7 +3,7 @@
 
 mod span;
 
-use reifydb_diagnostic::{IntoSpan, Span};
+use reifydb_diagnostic::Span;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 

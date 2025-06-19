@@ -6,7 +6,7 @@ pub use config::{DatabaseConfig, ServerConfig};
 use reifydb_auth::Principal;
 use reifydb_engine::{Engine, ExecutionResult};
 use reifydb_storage::Storage;
-use reifydb_transaction::{Rx, Transaction, Tx};
+use reifydb_transaction::Transaction;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -80,11 +80,11 @@ pub struct OnCreate<S: Storage, T: Transaction<S, S>> {
 
 impl<S: Storage, T: Transaction<S, S>> OnCreate<S, T> {
     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
-        self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
+        self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
     }
 
     pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
-        self.engine.rx_as(&Principal::System { id: 1, name: "root".to_string() }, &rql).unwrap()
+        self.engine.rx_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
     }
 }
 

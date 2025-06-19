@@ -29,7 +29,7 @@ impl<S: Storage, T: Transaction<S, S>> Embedded<S, T> {
     }
 }
 
-impl<'a, S: Storage + 'static, T: Transaction<S, S> + 'static> DB<'a> for Embedded<S, T> {
+impl<S: Storage + 'static, T: Transaction<S, S> + 'static> DB<'_> for Embedded<S, T> {
     async fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let rql = rql.to_string();
         let principal = principal.clone();

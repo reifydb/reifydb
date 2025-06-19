@@ -218,7 +218,7 @@ mod tests {
         fn test_clone_on_write_semantics() {
             let layout = Layout::new(&[ValueKind::Bool, ValueKind::Bool, ValueKind::Bool]);
 
-            let mut row1 = layout.allocate_row();
+            let row1 = layout.allocate_row();
             let mut row2 = row1.clone();
 
             // Initially identical
@@ -246,7 +246,7 @@ mod tests {
             let layout = Layout::new(&[ValueKind::Bool; 1]);
             let mut row = layout.allocate_row();
             layout.set_undefined(&mut row, 0);
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
 
         #[test]
@@ -254,7 +254,7 @@ mod tests {
             let layout = Layout::new(&[ValueKind::Bool; 1]);
             let mut row = layout.allocate_row();
             layout.set_bool(&mut row, 0, true);
-            assert_eq!(layout.all_defined(&row), true);
+            assert!(layout.all_defined(&row));
         }
 
         #[test]
@@ -263,11 +263,11 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..7) {
+            for idx in 0..7 {
                 layout.set_undefined(&mut row, idx);
             }
 
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
 
         #[test]
@@ -276,11 +276,11 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..7) {
+            for idx in 0..7 {
                 layout.set_bool(&mut row, idx, idx % 2 == 0);
             }
 
-            assert_eq!(layout.all_defined(&row), true);
+            assert!(layout.all_defined(&row));
         }
 
         #[test]
@@ -289,7 +289,7 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..7) {
+            for idx in 0..7 {
                 layout.set_bool(&mut row, idx, idx % 2 == 0);
             }
 
@@ -297,7 +297,7 @@ mod tests {
                 layout.set_undefined(&mut row, idx);
             }
 
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
 
         #[test]
@@ -306,11 +306,11 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..8) {
+            for idx in 0..8 {
                 layout.set_undefined(&mut row, idx);
             }
 
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
 
         #[test]
@@ -319,11 +319,11 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..8) {
+            for idx in 0..8 {
                 layout.set_bool(&mut row, idx, idx % 2 == 0);
             }
 
-            assert_eq!(layout.all_defined(&row), true);
+            assert!(layout.all_defined(&row));
         }
 
         #[test]
@@ -332,7 +332,7 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..8) {
+            for idx in 0..8 {
                 layout.set_bool(&mut row, idx, idx % 2 == 0);
             }
 
@@ -340,7 +340,7 @@ mod tests {
                 layout.set_undefined(&mut row, idx);
             }
 
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
 
         #[test]
@@ -349,11 +349,11 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..9) {
+            for idx in 0..9 {
                 layout.set_bool(&mut row, idx, idx % 2 == 0);
             }
 
-            assert_eq!(layout.all_defined(&row), true);
+            assert!(layout.all_defined(&row));
         }
 
         #[test]
@@ -362,11 +362,11 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..9) {
+            for idx in 0..9 {
                 layout.set_undefined(&mut row, idx);
             }
 
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
 
         #[test]
@@ -375,7 +375,7 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..9) {
+            for idx in 0..9 {
                 layout.set_bool(&mut row, idx, idx % 2 == 0);
             }
 
@@ -383,7 +383,7 @@ mod tests {
                 layout.set_undefined(&mut row, idx);
             }
 
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
 
         #[test]
@@ -392,11 +392,11 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..16) {
+            for idx in 0..16 {
                 layout.set_bool(&mut row, idx, idx % 2 == 0);
             }
 
-            assert_eq!(layout.all_defined(&row), true);
+            assert!(layout.all_defined(&row));
         }
 
         #[test]
@@ -405,11 +405,11 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..16) {
+            for idx in 0..16 {
                 layout.set_undefined(&mut row, idx);
             }
 
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
 
         #[test]
@@ -418,7 +418,7 @@ mod tests {
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
-            for idx in (0..16) {
+            for idx in 0..16 {
                 layout.set_bool(&mut row, idx, idx % 2 == 0);
             }
 
@@ -426,7 +426,7 @@ mod tests {
                 layout.set_undefined(&mut row, idx);
             }
 
-            assert_eq!(layout.all_defined(&row), false);
+            assert!(!layout.all_defined(&row));
         }
     }
 }

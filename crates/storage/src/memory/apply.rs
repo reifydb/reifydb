@@ -13,7 +13,7 @@ impl VersionedApply for Memory {
         for delta in delta {
             match delta {
                 Delta::Set { key, row } => {
-                    let item = self.versioned.get_or_insert_with(key, || VersionedRow::new());
+                    let item = self.versioned.get_or_insert_with(key, VersionedRow::new);
                     let val = item.value();
                     val.lock();
                     val.insert(version, Some(row));

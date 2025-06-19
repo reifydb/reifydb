@@ -44,9 +44,9 @@ impl Ast {
     pub fn token(&self) -> &Token {
         match self {
             Ast::Block(node) => &node.token,
-            Ast::Create(node) => &node.token(),
+            Ast::Create(node) => node.token(),
             Ast::Filter(node) => &node.token,
-            Ast::From(node) => &node.token(),
+            Ast::From(node) => node.token(),
             Ast::GroupBy(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
@@ -62,10 +62,10 @@ impl Ast {
             Ast::OrderBy(node) => &node.token,
             Ast::Policy(node) => &node.token,
             Ast::PolicyBlock(node) => &node.token,
-            Ast::Prefix(node) => &node.node.token(),
+            Ast::Prefix(node) => node.node.token(),
             Ast::Select(node) => &node.token,
             Ast::Tuple(node) => &node.token,
-            Ast::Type(node) => &node.token(),
+            Ast::Type(node) => node.token(),
             Ast::Wildcard(node) => &node.0,
         }
     }

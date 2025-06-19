@@ -19,16 +19,12 @@ pub trait PostCommitHook: Send + Sync + 'static {
     fn on_post_commit(&self, deltas: AsyncCowVec<Delta>, version: Version);
 }
 
+#[derive(Default)]
 pub struct TransactionHookRegistry {
     pre_commit: Registry<dyn PreCommitHook>,
     post_commit: Registry<dyn PostCommitHook>,
 }
 
-impl Default for TransactionHookRegistry {
-    fn default() -> Self {
-        Self { pre_commit: Default::default(), post_commit: Default::default() }
-    }
-}
 
 impl TransactionHookRegistry {
     pub fn pre_commit(&self) -> &Registry<dyn PreCommitHook> {

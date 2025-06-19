@@ -45,14 +45,16 @@ impl<US: UnversionedStorage> BypassTx<US> {
     }
 
     pub fn scan_prefix(&mut self, key: &EncodedKey) -> crate::Result<US::ScanRange<'_>> {
-        Ok(self.unversioned.scan_prefix_unversioned(&key))
+        Ok(self.unversioned.scan_prefix_unversioned(key))
     }
 
     pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
-        Ok(self.unversioned.set_unversioned(key, row))
+        self.unversioned.set_unversioned(key, row);
+        Ok(())
     }
 
     pub fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
-        Ok(self.unversioned.remove_unversioned(key))
+        self.unversioned.remove_unversioned(key);
+        Ok(())
     }
 }

@@ -121,7 +121,7 @@ mod tests {
         let layout = Layout::new(&[ValueKind::Bool]);
         let mut row = layout.allocate_row();
         layout.set_bool(&mut row, 0, true);
-        assert_eq!(layout.get_bool(&row, 0), true);
+        assert!(layout.get_bool(&row, 0));
     }
 
     #[test]

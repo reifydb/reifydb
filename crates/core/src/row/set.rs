@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn test_bool_and_clone_on_write() {
         let layout = Layout::new(&[ValueKind::Bool]);
-        let mut row1 = layout.allocate_row();
+        let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
         assert!(!row1.is_defined(0));
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn test_f32_and_clone_on_write() {
         let layout = Layout::new(&[ValueKind::Float4]);
-        let mut row1 = layout.allocate_row();
+        let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
         assert!(!row1.is_defined(0));

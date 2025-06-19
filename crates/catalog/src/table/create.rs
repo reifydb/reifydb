@@ -127,7 +127,7 @@ mod tests {
 
         ensure_test_schema(&mut tx);
 
-        let mut to_create = TableToCreate {
+        let to_create = TableToCreate {
             schema: "test_schema".to_string(),
             table: "test_table".to_string(),
             columns: vec![],
@@ -174,13 +174,13 @@ mod tests {
 
         let link = &links[0];
         let row = &link.row;
-        assert_eq!(table_schema::LAYOUT.get_u64(&row, table_schema::ID), 1);
-        assert_eq!(table_schema::LAYOUT.get_str(&row, table_schema::NAME), "test_table");
+        assert_eq!(table_schema::LAYOUT.get_u64(row, table_schema::ID), 1);
+        assert_eq!(table_schema::LAYOUT.get_str(row, table_schema::NAME), "test_table");
 
         let link = &links[1];
         let row = &link.row;
-        assert_eq!(table_schema::LAYOUT.get_u64(&row, table_schema::ID), 2);
-        assert_eq!(table_schema::LAYOUT.get_str(&row, table_schema::NAME), "another_table");
+        assert_eq!(table_schema::LAYOUT.get_u64(row, table_schema::ID), 2);
+        assert_eq!(table_schema::LAYOUT.get_str(row, table_schema::NAME), "another_table");
     }
 
     #[test]

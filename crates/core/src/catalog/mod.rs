@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ValueKind;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 

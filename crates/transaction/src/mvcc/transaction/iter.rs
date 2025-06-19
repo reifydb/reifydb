@@ -105,7 +105,7 @@ where
                             let committed = self.next_committed.take().unwrap();
                             self.advance_committed(); // Prepare the next committed item for future iterations.
                             // Yield the committed item if it has not been yielded before.
-                            if self.last_yielded_key.as_ref().map_or(true, |k| match k {
+                            if self.last_yielded_key.as_ref().is_none_or(|k| match k {
                                 Either::Left(k) => *k != committed.key(),
                                 Either::Right(item) => item.key() != committed.key(),
                             }) {
@@ -128,7 +128,7 @@ where
                 }
                 // Only committed items are left, so yield the next committed item if it hasn't been yielded already.
                 (None, Some(committed)) => {
-                    if self.last_yielded_key.as_ref().map_or(true, |k| match k {
+                    if self.last_yielded_key.as_ref().is_none_or(|k| match k {
                         Either::Left(k) => *k != committed.key(),
                         Either::Right(item) => item.key() != committed.key(),
                     }) {

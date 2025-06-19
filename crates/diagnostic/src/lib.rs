@@ -106,8 +106,6 @@ impl DiagnosticRenderer for DefaultRenderer {
 
 impl Diagnostic {
     pub fn to_string(&self, source: &str) -> String {
-        match self.code {
-            _ => DefaultRenderer.render(self, source),
-        }
+        DefaultRenderer.render(self, source)
     }
 }

@@ -132,7 +132,7 @@ impl Conflict for BTreeConflict {
                     (Bound::Unbounded, Bound::Included(end)) => {
                         let range = ..=end;
                         for write in other.conflict_keys.iter() {
-                            if range.contains(&write) {
+                            if range.contains(write) {
                                 return true;
                             }
                         }
@@ -140,7 +140,7 @@ impl Conflict for BTreeConflict {
                     (Bound::Unbounded, Bound::Excluded(end)) => {
                         let range = ..end;
                         for write in other.conflict_keys.iter() {
-                            if range.contains(&write) {
+                            if range.contains(write) {
                                 return true;
                             }
                         }

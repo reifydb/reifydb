@@ -30,7 +30,7 @@ impl<'de> Deserialize<'de> for OrderedF64 {
     {
         struct F64Visitor;
 
-        impl<'de> Visitor<'de> for F64Visitor {
+        impl Visitor<'_> for F64Visitor {
             type Value = OrderedF64;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

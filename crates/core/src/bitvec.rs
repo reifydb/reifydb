@@ -179,7 +179,7 @@ mod tests {
             let a = BitVec::from_fn(8, |i| i % 2 == 0); // 10101010
             let b = BitVec::from_fn(8, |i| i < 4); // 11110000
             let result = a.and(&b); // 10100000
-            let expected = vec![true, false, true, false, false, false, false, false];
+            let expected = [true, false, true, false, false, false, false, false];
             for i in 0..8 {
                 assert_eq!(result.get(i), expected[i], "mismatch at bit {}", i);
             }

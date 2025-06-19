@@ -53,7 +53,9 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
 
         let engine = self.engine.clone();
 
-        let result = spawn_blocking(move || {
+        
+
+        spawn_blocking(move || {
             match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
                 Ok(result) => {
                     let mut columns: Vec<grpc_db::Column> = vec![];
@@ -108,7 +110,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
                         }) => {
                             let msg = TxResult {
                                 result: Some(CreateTable(grpc_db::CreateTable {
-                                    id: id.0.clone(),
+                                    id: id.0,
                                     schema: schema.clone(),
                                     table: table.clone(),
                                     created: *created,
@@ -156,14 +158,12 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
                         result: Some(grpc_db::tx_result::Result::Error(map_diagnostic(diagnostic))),
                     };
 
-                    return Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream));
+                    Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream))
                 }
             }
         })
         .await
-        .unwrap();
-
-        result
+        .unwrap()
     }
 
     type RxStream = RxResultStream;
@@ -181,10 +181,10 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
 
         let engine = self.engine.clone();
         let result = spawn_blocking(move || {
-            let result = engine
+            
+            engine
                 .rx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
-                .unwrap();
-            result
+                .unwrap()
         })
         .await
         .unwrap();
@@ -192,22 +192,19 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
         let mut columns: Vec<grpc_db::Column> = vec![];
         let mut rows: Vec<grpc_db::Row> = vec![];
 
-        match &result[0] {
-            ExecutionResult::Query { columns: ls, rows: rs } => {
-                columns = ls
-                    .iter()
-                    .map(|c| grpc_db::Column {
-                        name: c.name.clone(),
-                        value: 0, // or some ID if relevant
-                    })
-                    .collect();
+        if let ExecutionResult::Query { columns: ls, rows: rs } = &result[0] {
+            columns = ls
+                .iter()
+                .map(|c| grpc_db::Column {
+                    name: c.name.clone(),
+                    value: 0, // or some ID if relevant
+                })
+                .collect();
 
-                rows = rs
-                    .iter()
-                    .map(|r| Row { values: r.iter().map(value_to_query_value).collect() })
-                    .collect();
-            }
-            _ => {}
+            rows = rs
+                .iter()
+                .map(|r| Row { values: r.iter().map(value_to_query_value).collect() })
+                .collect();
         }
 
         let result = RxResult {

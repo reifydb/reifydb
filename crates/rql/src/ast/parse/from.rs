@@ -58,7 +58,7 @@ mod tests {
         let from = result.as_from();
 
         match from {
-            AstFrom::Store { store, schema, .. } => unreachable!(),
+            AstFrom::Store {   .. } => unreachable!(),
             AstFrom::Query { query, .. } => {
                 let block = query;
                 assert_eq!(block.len(), 2);

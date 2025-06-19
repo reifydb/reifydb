@@ -77,7 +77,7 @@ mod tests {
 
         let node = right.as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
-        let AstInfix { left, operator, right, .. } = &node.as_infix();
+        let AstInfix { left,  right, .. } = &node.as_infix();
 
         let Literal(Number(left)) = &left.as_ref() else { panic!() };
         assert_eq!(left.value(), "2");

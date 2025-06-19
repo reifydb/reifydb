@@ -138,7 +138,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
 }
 
 fn print<I: Iterator<Item =Versioned>>(output: &mut String, mut iter: I) {
-    while let Some(sv) = iter.next() {
+    for sv in iter {
         let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
         writeln!(output, "{fmtkv}").unwrap();
     }

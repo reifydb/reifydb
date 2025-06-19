@@ -68,7 +68,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let Literal(AstLiteral::Boolean(node)) = &result[0] else { panic!() };
-        assert_eq!(node.value(), true);
+        assert!(node.value());
     }
 
     #[test]
@@ -78,6 +78,6 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let Literal(AstLiteral::Boolean(node)) = &result[0] else { panic!() };
-        assert_eq!(node.value(), false);
+        assert!(!node.value());
     }
 }

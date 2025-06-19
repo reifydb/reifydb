@@ -163,29 +163,29 @@ mod tests {
     #[test]
     fn test_is_owned() {
         let owned = CowVec::new(vec![1, 2]);
-        assert_eq!(owned.is_owned(), true);
+        assert!(owned.is_owned());
 
         let shared = owned.clone();
-        assert_eq!(owned.is_owned(), false);
-        assert_eq!(shared.is_owned(), false);
+        assert!(!owned.is_owned());
+        assert!(!shared.is_owned());
 
         drop(shared);
 
-        assert_eq!(owned.is_owned(), true);
+        assert!(owned.is_owned());
     }
 
     #[test]
     fn test_is_shared() {
         let owned = CowVec::new(vec![1, 2]);
-        assert_eq!(owned.is_shared(), false);
+        assert!(!owned.is_shared());
 
         let shared = owned.clone();
-        assert_eq!(owned.is_shared(), true);
-        assert_eq!(shared.is_shared(), true);
+        assert!(owned.is_shared());
+        assert!(shared.is_shared());
 
         drop(shared);
 
-        assert_eq!(owned.is_shared(), false);
+        assert!(!owned.is_shared());
     }
 
     #[test]

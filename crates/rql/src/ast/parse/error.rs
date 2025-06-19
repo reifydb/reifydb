@@ -23,6 +23,6 @@ impl Error {
         Self::UnexpectedToken { expected, got }
     }
     pub(crate) fn unsupported(got: Token) -> Self {
-        Self::UnsupportedToken { got: got }
+        Self::UnsupportedToken { got }
     }
 }

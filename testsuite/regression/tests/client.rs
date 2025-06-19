@@ -3,7 +3,7 @@
 
 use reifydb::client::Client;
 use reifydb::reifydb_storage::lmdb::Lmdb;
-use reifydb::reifydb_storage::{Storage, VersionedStorage};
+use reifydb::reifydb_storage::Storage;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::{ReifyDB, memory, optimistic, serializable, sqlite};
@@ -30,7 +30,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> ClientRunner<S, T> {
         let socket_addr = free_local_socket();
 
         let server = ReifyDB::server_with(transaction).with_config(ServerConfig {
-            database: DatabaseConfig { socket_addr: Some(socket_addr.clone()) },
+            database: DatabaseConfig { socket_addr: Some(socket_addr) },
         });
 
         let client = Client { socket_addr };

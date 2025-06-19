@@ -14,22 +14,22 @@ impl Parser {
     pub(crate) fn parse_create(&mut self) -> parse::Result<AstCreate> {
         let token = self.consume_keyword(Create)?;
 
-        if let Some(_) = self.consume_if(TokenKind::Keyword(Schema))? {
+        if (self.consume_if(TokenKind::Keyword(Schema))?).is_some() {
             return self.parse_schema(token);
         }
 
-        if let Some(_) = self.consume_if(TokenKind::Keyword(Deferred))? {
-            if let Some(_) = self.consume_if(TokenKind::Keyword(View))? {
+        if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
+            if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
                 return self.parse_deferred_view(token);
             }
             unimplemented!()
         }
 
-        if let Some(_) = self.consume_if(TokenKind::Keyword(Table))? {
+        if (self.consume_if(TokenKind::Keyword(Table))?).is_some() {
             return self.parse_table(token);
         }
 
-        if let Some(_) = self.consume_if(TokenKind::Keyword(Series))? {
+        if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
             return self.parse_series(token);
         }
 
@@ -215,7 +215,7 @@ mod tests {
 
                 assert_eq!(columns.len(), 1);
 
-                let mut col = &columns[0];
+                let col = &columns[0];
                 assert_eq!(col.name.value(), "field");
                 assert_eq!(col.ty.value(), "int2");
 
@@ -248,7 +248,7 @@ mod tests {
 
                 assert_eq!(columns.len(), 1);
 
-                let mut col = &columns[0];
+                let col = &columns[0];
                 assert_eq!(col.name.value(), "field");
                 assert_eq!(col.ty.value(), "int2");
 

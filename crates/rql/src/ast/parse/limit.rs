@@ -12,7 +12,7 @@ impl Parser {
         match limit {
             Ast::Literal(literal) => match literal {
                 AstLiteral::Number(number) => {
-                    return Ok(AstLimit { token, limit: number.value().parse().unwrap() });
+                    Ok(AstLimit { token, limit: number.value().parse().unwrap() })
                 }
                 _ => unimplemented!(),
             },

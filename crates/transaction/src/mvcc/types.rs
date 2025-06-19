@@ -172,7 +172,7 @@ impl Pending {
     }
 
     pub fn key(&self) -> &EncodedKey {
-        &self.delta.key()
+        self.delta.key()
     }
 
     pub fn row(&self) -> Option<&EncodedRow> {

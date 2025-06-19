@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(token.span.fragment, symbol);
         assert_eq!(token.span.offset, 0);
         assert_eq!(token.span.line, 1);
-        assert_eq!(remaining.fragment(), &format!(" rest"));
+        assert_eq!(remaining.fragment(), &" rest".to_string());
     }
 
     macro_rules! generate_test {

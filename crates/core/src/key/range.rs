@@ -284,7 +284,7 @@ mod tests {
         #[test]
         fn test_invalid_string_returns_degenerate_range() {
             let r = EncodedKeyRange::parse("not a range");
-            let expected = EncodedKey::new(&[0xff]);
+            let expected = EncodedKey::new([0xff]);
             assert_eq!(r.start, Bound::Included(expected.clone()));
             assert_eq!(r.end, Bound::Excluded(expected));
         }
@@ -292,7 +292,7 @@ mod tests {
         #[test]
         fn test__empty_string_returns_degenerate_range() {
             let r = EncodedKeyRange::parse("");
-            let expected = EncodedKey::new(&[0xff]);
+            let expected = EncodedKey::new([0xff]);
             assert_eq!(r.start, Bound::Included(expected.clone()));
             assert_eq!(r.end, Bound::Excluded(expected));
         }

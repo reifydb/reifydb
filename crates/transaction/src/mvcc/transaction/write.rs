@@ -297,7 +297,7 @@ where
         let row = pending.row();
         let version = pending.version;
 
-        if let Some((old_key, old_value)) = pending_writes.remove_entry(&key) {
+        if let Some((old_key, old_value)) = pending_writes.remove_entry(key) {
             if old_value.version != version {
                 self.duplicates.push(Pending {
                     delta: match row {

@@ -71,7 +71,7 @@ impl ValueKind {
 #[cfg(test)]
 mod tests {
     use crate::ValueKind;
-    use crate::ValueKind::*;
+    
 
     #[test]
     fn test_promote_bool() {
