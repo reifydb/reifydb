@@ -111,6 +111,21 @@ impl Evaluator {
             (ColumnValues::Int16(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
                 compare!(lv, rv, lv_valid, rv_valid, |x| x as i128)
             }
+            (ColumnValues::Uint1(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
+                compare!(lv, rv, lv_valid, rv_valid, |x| x as i16)
+            }
+            (ColumnValues::Uint2(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
+                compare!(lv, rv, lv_valid, rv_valid, |x| x as i32)
+            }
+            (ColumnValues::Uint4(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
+                compare!(lv, rv, lv_valid, rv_valid, |x| x as i64)
+            }
+            (ColumnValues::Uint8(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
+                compare!(lv, rv, lv_valid, rv_valid, |x| x as i128)
+            }
+            (ColumnValues::Uint16(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
+                compare!(lv, rv, lv_valid, rv_valid, |x| x as i128) // FIXME that is not correct
+            }
             (left, right) => unimplemented!("{left:?} {right:?}"),
         }
     }

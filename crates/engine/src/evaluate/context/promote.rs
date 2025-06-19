@@ -10,7 +10,7 @@ use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 pub trait Promote {
     fn promote<From, To>(
         &self,
-        val: From,
+        from: From,
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
@@ -20,26 +20,26 @@ pub trait Promote {
 impl Promote for Context<'_> {
     fn promote<From, To>(
         &self,
-        val: From,
+        from: From,
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafePromote<To>,
     {
-        Promote::promote(&self, val, span)
+        Promote::promote(&self, from, span)
     }
 }
 
 impl Promote for &Context<'_> {
     fn promote<From, To>(
         &self,
-        val: From,
+        from: From,
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafePromote<To>,
     {
-        match val.promote() {
+        match from.promote() {
             Some(v) => Ok(Some(v)),
             None => match self.saturation_policy() {
                 ColumnSaturationPolicy::Error => {

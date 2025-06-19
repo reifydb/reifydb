@@ -1,12 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+pub use convert::Convert;
 pub use demote::Demote;
 pub use promote::Promote;
 use reifydb_catalog::column_policy::{
     ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY,
 };
 
+mod convert;
 mod demote;
 mod promote;
 

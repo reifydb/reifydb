@@ -97,6 +97,41 @@ impl ColumnValues {
                     .map(|(v, va)| if *va { Value::String(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
+            ColumnValues::Uint1(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Uint1(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Uint2(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Uint2(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Uint4(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Uint4(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Uint8(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Uint8(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Uint16(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Uint16(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
             _ => unimplemented!(),
         }
     }

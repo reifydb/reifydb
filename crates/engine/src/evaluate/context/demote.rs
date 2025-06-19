@@ -10,7 +10,7 @@ use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 pub trait Demote {
     fn demote<From, To>(
         &self,
-        val: From,
+        from: From,
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
@@ -20,26 +20,26 @@ pub trait Demote {
 impl Demote for Context<'_> {
     fn demote<From, To>(
         &self,
-        val: From,
+        from: From,
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeDemote<To>,
     {
-        Demote::demote(&self, val, span)
+        Demote::demote(&self, from, span)
     }
 }
 
 impl Demote for &Context<'_> {
     fn demote<From, To>(
         &self,
-        val: From,
+        from: From,
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeDemote<To>,
     {
-        match val.demote() {
+        match from.demote() {
             Some(v) => Ok(Some(v)),
             None => match self.saturation_policy() {
                 ColumnSaturationPolicy::Error => {

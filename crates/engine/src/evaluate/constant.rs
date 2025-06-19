@@ -16,6 +16,7 @@ impl Evaluator {
         Self::constant_value(&expr, row_count)
     }
 
+    // FIXME rather than static parsing - it should use the context it is in, this will avoid data wrangling down the line
     fn constant_value(
         expr: &ConstantExpression,
         row_count: usize,

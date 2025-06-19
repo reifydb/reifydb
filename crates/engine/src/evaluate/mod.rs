@@ -7,15 +7,15 @@ use reifydb_rql::expression::Expression;
 use crate::function::{FunctionRegistry, math};
 pub use error::Error;
 
-pub(crate) use context::{Context, Demote, EvaluationColumn, Promote};
+pub(crate) use context::{Context, Convert, Demote, EvaluationColumn, Promote};
 
+mod arith;
 mod call;
 mod column;
+mod compare;
 mod constant;
 mod context;
 mod error;
-mod compare;
-mod arith;
 mod prefix;
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;

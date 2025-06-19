@@ -197,6 +197,134 @@ impl Evaluator {
                 Ok(ColumnValues::string_with_validity(values, valid))
             }
 
+            ValueRef::Uint1(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Uint1(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::uint1_with_validity(values, valid))
+            }
+
+            ValueRef::Uint2(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Uint2(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::uint2_with_validity(values, valid))
+            }
+
+            ValueRef::Uint4(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Uint4(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::uint4_with_validity(values, valid))
+            }
+
+
+            ValueRef::Uint8(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Uint8(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::uint8_with_validity(values, valid))
+            }
+
+
+
+            ValueRef::Uint16(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Uint16(n) => {
+                                values.push(n);
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::uint16_with_validity(values, valid))
+            }
+
             _ => unimplemented!(),
         }
     }

@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
-use crate::evaluate::{Demote, Promote};
+use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::ValueKind;
 use reifydb_core::ValueKind::{Int1, Int2};
-use reifydb_core::num::{SafeDemote, SafePromote};
+use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
 use reifydb_diagnostic::Span;
 
 pub(crate) fn adjust_column(
     target: ValueKind,
     source: &ColumnValues,
-    context: impl Promote + Demote,
+    context: impl Promote + Demote + Convert,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     use ValueKind::*;
@@ -72,6 +72,61 @@ pub(crate) fn adjust_column(
                 &span,
                 Int16,
                 ColumnValues::push::<i128>,
+            );
+        }
+
+        if target == Uint1 {
+            return convert_vec::<i8, u8>(
+                values,
+                validity,
+                context,
+                &span,
+                Uint1,
+                ColumnValues::push::<u8>,
+            );
+        }
+
+        if target == Uint2 {
+            return convert_vec::<i8, u16>(
+                values,
+                validity,
+                context,
+                &span,
+                Uint2,
+                ColumnValues::push::<u16>,
+            );
+        }
+
+        if target == Uint4 {
+            return convert_vec::<i8, u32>(
+                values,
+                validity,
+                context,
+                &span,
+                Uint4,
+                ColumnValues::push::<u32>,
+            );
+        }
+
+        if target == Uint8 {
+            return convert_vec::<i8, u64>(
+                values,
+                validity,
+                context,
+                &span,
+                Uint8,
+                ColumnValues::push::<u64>,
+            );
+        }
+
+        if target == Uint16 {
+            return convert_vec::<i8, u128>(
+                values,
+                validity,
+                context,
+                &span,
+                Uint16,
+                ColumnValues::push::<u128>,
             );
         }
     }
@@ -150,6 +205,31 @@ where
     for (idx, &val) in values.iter().enumerate() {
         if validity[idx] {
             match context.promote::<From, To>(val, &span)? {
+                Some(v) => push(&mut out, v),
+                None => out.push_undefined(),
+            }
+        } else {
+            out.push_undefined();
+        }
+    }
+    Ok(out)
+}
+
+fn convert_vec<From, To>(
+    values: &[From],
+    validity: &[bool],
+    context: impl Convert,
+    span: impl Fn() -> Span,
+    target_kind: ValueKind,
+    mut push: impl FnMut(&mut ColumnValues, To),
+) -> crate::Result<ColumnValues>
+where
+    From: Copy + SafeConvert<To>,
+{
+    let mut out = ColumnValues::with_capacity(target_kind, values.len());
+    for (idx, &val) in values.iter().enumerate() {
+        if validity[idx] {
+            match context.convert::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
             }
