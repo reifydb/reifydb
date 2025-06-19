@@ -40,8 +40,51 @@ impl Display for ExecutionResult {
                 }
             }
             ExecutionResult::Query { columns, rows } => print_query(columns, rows, f),
+            ExecutionResult::DescribeQuery { columns } => print_describe_query(columns, f),
         }
     }
+}
+
+pub fn print_describe_query(columns: &Vec<Column>, f: &mut Formatter<'_>) -> std::fmt::Result {
+    let headers = ["name", "kind"];
+    let mut col_widths = vec![headers[0].len(), headers[1].len()];
+
+    // Measure max widths for name and kind
+    for column in columns {
+        col_widths[0] = col_widths[0].max(column.name.len());
+        col_widths[1] = col_widths[1].max(format!("{:?}", column.kind).len());
+    }
+
+    // Add padding
+    for width in &mut col_widths {
+        *width += 2;
+    }
+
+    let separator =
+        format!("+{}+", col_widths.iter().map(|w| "-".repeat(*w)).collect::<Vec<_>>().join("+"));
+
+    let print_row = |name: &str, kind: &str| {
+        let cells = [name, kind]
+            .iter()
+            .enumerate()
+            .map(|(i, cell)| {
+                let w = col_widths[i] - 2;
+                let padding = w.saturating_sub(cell.len());
+                let left = padding / 2;
+                let right = padding - left;
+                format!(" {:left$}{}{:right$} ", "", cell, "", left = left, right = right)
+            })
+            .collect::<Vec<_>>();
+        format!("|{}|", cells.join("|"))
+    };
+
+    writeln!(f, "{}", separator)?;
+    writeln!(f, "{}", print_row(headers[0], headers[1]))?;
+    writeln!(f, "{}", separator)?;
+    for column in columns {
+        writeln!(f, "{}", print_row(&column.name, &format!("{:?}", column.kind)))?;
+    }
+    write!(f, "{}", separator)
 }
 
 fn print_query(

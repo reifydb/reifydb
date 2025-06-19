@@ -78,6 +78,15 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
                                 })
                                 .collect();
                         }
+                        ExecutionResult::DescribeQuery { columns: ls } => {
+                            columns = ls
+                                .iter()
+                                .map(|c| grpc_db::Column {
+                                    name: c.name.clone(),
+                                    value: 0, // or some ID if relevant
+                                })
+                                .collect();
+                        }
                         ExecutionResult::CreateSchema(CreateSchemaResult {
                             id,
                             schema,

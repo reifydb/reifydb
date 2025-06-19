@@ -17,7 +17,7 @@ impl ColumnValues {
     ) -> crate::Result<ColumnValues> {
         use ValueKind::*;
 
-        if target == self.value() {
+        if target == self.kind() {
             return Ok(self.clone());
         }
 

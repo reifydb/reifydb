@@ -40,7 +40,7 @@ macro_rules! impl_push {
                     other => panic!(
                         "called `push::<{}>()` on ColumnValues::{:?}",
                         stringify!($t),
-                        other.value()
+                        other.kind()
                     ),
                 }
             }
@@ -77,7 +77,7 @@ impl Push<String> for ColumnValues {
 
                 *self = ColumnValues::String(CowVec::new(values), CowVec::new(validity));
             }
-            other => panic!("called `push::<String>()` on ColumnValues::{:?}", other.value()),
+            other => panic!("called `push::<String>()` on ColumnValues::{:?}", other.kind()),
         }
     }
 }

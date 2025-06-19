@@ -52,7 +52,7 @@ fn main() {
     for l in db.rx_as(
         &root,
         r#"
-            SELECT cast(1 as uint2)
+            DESCRIBE ( SELECT cast(1 AS int4) == cast(1 as int4) )
         "#,
     ) {
         println!("{}", l);

@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{
-    Ast, AstCreate, AstFilter, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral, AstPolicy,
-    AstPolicyKind, AstPrefix, AstSelect, AstStatement, InfixOperator,
+    Ast, AstCreate, AstDescribe, AstFilter, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral,
+    AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement, InfixOperator,
 };
 use std::collections::HashMap;
 use std::mem;
@@ -129,6 +129,9 @@ pub enum QueryPlan {
         group_by: Vec<AliasExpression>,
         project: Vec<AliasExpression>,
         next: Option<Box<QueryPlan>>,
+    },
+    Describe {
+        plan: Box<QueryPlan>,
     },
     ScanTable {
         schema: String,
@@ -466,34 +469,42 @@ pub fn plan_rx(statement: AstStatement) -> Result<PlanRx> {
     let mut head: Option<Box<QueryPlan>> = None;
 
     for ast in statement.into_iter().rev() {
-        head = Some(Box::new(match ast {
-            Ast::From(from) => plan_from(from, head)?,
-            Ast::GroupBy(group) => plan_group_by(group, head)?,
-            // Ast::Where(where_clause) => Plan::Filter {
-            //     condition: where_clause.condition.clone(),
-            //     next: head,
-            // },
-            Ast::Filter(filter) => plan_filter(filter, head)?,
-            Ast::Select(select) => plan_select(select, head)?,
-            Ast::OrderBy(order) => QueryPlan::Sort {
-                keys: order
-                    .columns
-                    .into_iter()
-                    .map(|ast| match ast {
-                        Ast::Identifier(ident) => {
-                            SortKey { column: ident.name(), direction: SortDirection::Asc }
-                        }
-                        _ => unimplemented!(),
-                    })
-                    .collect(),
-                next: head,
-            },
-            Ast::Limit(limit) => QueryPlan::Limit { limit: limit.limit, next: head },
-            _ => unimplemented!("Unsupported AST node"),
-        }));
+        let plan = plan_ast_node(ast, head)?;
+        head = Some(Box::new(plan));
     }
 
     Ok(head.map(|boxed| PlanRx::Query(*boxed)).unwrap())
+}
+
+fn plan_ast_node(ast: Ast, next: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    match ast {
+        Ast::Describe(describe) => match describe {
+            AstDescribe::Query { node, .. } => {
+                Ok(QueryPlan::Describe { plan: Box::new(plan_ast_node(*node, next)?) })
+            }
+        },
+
+        Ast::From(from) => plan_from(from, next),
+        Ast::GroupBy(group) => plan_group_by(group, next),
+        Ast::Filter(filter) => plan_filter(filter, next),
+        Ast::Select(select) => plan_select(select, next),
+        Ast::OrderBy(order) => Ok(QueryPlan::Sort {
+            keys: order
+                .columns
+                .into_iter()
+                .map(|ast| match ast {
+                    Ast::Identifier(ident) => {
+                        SortKey { column: ident.name(), direction: SortDirection::Asc }
+                    }
+                    _ => unimplemented!(),
+                })
+                .collect(),
+            next,
+        }),
+        Ast::Limit(limit) => Ok(QueryPlan::Limit { limit: limit.limit, next }),
+
+        _ => unimplemented!("Unsupported AST node"),
+    }
 }
 
 fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
@@ -676,10 +687,16 @@ fn expression(ast: Ast) -> Result<Expression> {
                 span,
             }))
         }
+        Ast::Cast(node) => Ok(Expression::Cast(CastExpression {
+            span: node.token.span,
+            expression: Box::new(expression(*node.node).unwrap()),
+            to: KindExpression { span: node.to.token().span.clone(), kind: node.to.kind() },
+        })),
         Ast::Kind(node) => Ok(Expression::Kind(KindExpression {
             span: node.token().span.clone(),
             kind: node.kind(),
         })),
+
         _ => unimplemented!("{ast:#?}"),
     }
 }

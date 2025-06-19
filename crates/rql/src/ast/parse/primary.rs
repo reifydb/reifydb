@@ -38,6 +38,7 @@ impl Parser {
             TokenKind::Keyword(keyword) => match keyword {
                 Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
                 Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
+                Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
                 Keyword::Filter => Ok(Ast::Filter(self.parse_filter()?)),
                 Keyword::From => Ok(Ast::From(self.parse_from()?)),
                 Keyword::Group => Ok(Ast::GroupBy(self.parse_group_by()?)),

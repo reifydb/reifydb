@@ -3,7 +3,7 @@
 
 use crate::ast::lex::{Token, TokenKind, as_span};
 use nom::branch::alt;
-use nom::bytes::tag;
+use nom::bytes::{tag, tag_no_case};
 use nom::combinator::value;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
@@ -77,7 +77,7 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
             value(Operator::BangEqual, tag("!=")),
             value(Operator::OpenParen, tag("(")),
             value(Operator::CloseParen, tag(")")),
-            value(Operator::As, tag("as")),
+            value(Operator::As, tag_no_case("as")),
         )),
         alt((
             value(Operator::OpenBracket, tag("[")),

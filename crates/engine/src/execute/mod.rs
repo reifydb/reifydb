@@ -6,6 +6,7 @@ mod display;
 mod error;
 mod write;
 
+use crate::execute;
 use crate::frame::{ColumnValues, Frame, LazyFrame};
 use crate::function::{FunctionRegistry, math};
 pub use error::Error;
@@ -21,7 +22,7 @@ use std::marker::PhantomData;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Column {
     pub name: String,
-    pub value: ValueKind,
+    pub kind: ValueKind,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -33,6 +34,7 @@ pub enum ExecutionResult {
     InsertIntoTable { schema: String, table: String, inserted: usize },
     InsertIntoSeries { schema: String, series: String, inserted: usize },
     Query { columns: Vec<Column>, rows: Vec<Vec<Value>> },
+    DescribeQuery { columns: Vec<Column> },
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -74,7 +76,7 @@ impl From<Frame> for ExecutionResult {
                     ColumnValues::Undefined(_) => ValueKind::Undefined,
                 };
 
-                Column { name: c.name.clone(), value }
+                Column { name: c.name.clone(), kind: value }
             })
             .collect();
 
@@ -247,9 +249,25 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         rx: &mut impl Rx,
         plan: QueryPlan,
     ) -> crate::Result<ExecutionResult> {
-        let lazy = LazyFrame::compile(plan);
-        let result = lazy.evaluate(rx)?;
-        Ok(result.into())
+        match plan {
+            QueryPlan::Describe { plan } => {
+                // FIXME evaluating the entire frame is quite wasteful but good enough to write some tests
+                let lazy = LazyFrame::compile(*plan);
+                let result = lazy.evaluate(rx)?;
+                Ok(ExecutionResult::DescribeQuery {
+                    columns: result
+                        .columns
+                        .into_iter()
+                        .map(|c| execute::Column { name: c.name, kind: c.data.kind() })
+                        .collect(),
+                })
+            }
+            _ => {
+                let lazy = LazyFrame::compile(plan);
+                let result = lazy.evaluate(rx)?;
+                Ok(result.into())
+            }
+        }
     }
 
     pub(crate) fn execute_rx(

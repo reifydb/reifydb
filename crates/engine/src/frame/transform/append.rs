@@ -190,7 +190,7 @@ impl Frame {
                     return Err(format!(
                         "type mismatch for column '{}'({}): incompatible with value {}",
                         column.name,
-                        column.data.value(),
+                        column.data.kind(),
                         v
                     )
                     .into());

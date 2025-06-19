@@ -20,6 +20,7 @@ mod primary;
 mod select;
 mod tuple;
 mod kind;
+mod describe;
 
 pub use error::*;
 

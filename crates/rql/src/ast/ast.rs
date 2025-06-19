@@ -22,6 +22,7 @@ pub enum Ast {
     Block(AstBlock),
     Cast(AstCast),
     Create(AstCreate),
+    Describe(AstDescribe),
     Filter(AstFilter),
     From(AstFrom),
     GroupBy(AstGroupBy),
@@ -44,9 +45,12 @@ pub enum Ast {
 impl Ast {
     pub fn token(&self) -> &Token {
         match self {
-            Ast::Cast(node) => &node.token,
             Ast::Block(node) => &node.token,
+            Ast::Cast(node) => &node.token,
             Ast::Create(node) => node.token(),
+            Ast::Describe(node) => match node {
+                AstDescribe::Query { token, .. } => token,
+            },
             Ast::Filter(node) => &node.token,
             Ast::From(node) => node.token(),
             Ast::GroupBy(node) => &node.token,
@@ -97,6 +101,13 @@ impl Ast {
     }
     pub fn as_create(&self) -> &AstCreate {
         if let Ast::Create(result) = self { result } else { panic!("not create") }
+    }
+
+    pub fn is_describe(&self) -> bool {
+        matches!(self, Ast::Describe(_))
+    }
+    pub fn as_describe(&self) -> &AstDescribe {
+        if let Ast::Describe(result) = self { result } else { panic!("not describe") }
     }
 
     pub fn is_filter(&self) -> bool {
@@ -308,6 +319,11 @@ pub enum AstCreate {
         name: AstIdentifier,
         columns: Vec<AstColumnToCreate>,
     },
+}
+
+#[derive(Debug, PartialEq)]
+pub enum AstDescribe {
+    Query { token: Token, node: Box<Ast> },
 }
 
 #[derive(Debug, PartialEq)]

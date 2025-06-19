@@ -44,7 +44,7 @@ pub async fn parse_rx_query_result(
                 let labels = query
                     .columns
                     .into_iter()
-                    .map(|c| Column { value: ValueKind::Bool, name: c.name })
+                    .map(|c| Column { kind: ValueKind::Bool, name: c.name })
                     .collect();
 
                 let rows = query
@@ -171,7 +171,7 @@ impl Client {
                     let labels = query
                         .columns
                         .into_iter()
-                        .map(|c| Column { name: c.name, value: ValueKind::Bool })
+                        .map(|c| Column { name: c.name, kind: ValueKind::Bool })
                         .collect();
 
                     let rows = query
@@ -229,6 +229,15 @@ impl Client {
                         .collect();
 
                     ExecutionResult::Query { columns: labels, rows }
+                }
+                Some(DescribeQuery(query)) => {
+                    let labels = query
+                        .columns
+                        .into_iter()
+                        .map(|c| Column { name: c.name, kind: ValueKind::Bool })
+                        .collect();
+
+                    ExecutionResult::DescribeQuery { columns: labels }
                 }
 
                 // Some(Error(e)) => return Err(tonic::Status::internal(e)),

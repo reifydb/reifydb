@@ -474,7 +474,7 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn value(&self) -> ValueKind {
+    pub fn kind(&self) -> ValueKind {
         match self {
             ColumnValues::Bool(_, _) => ValueKind::Bool,
             ColumnValues::Float4(_, _) => ValueKind::Float4,

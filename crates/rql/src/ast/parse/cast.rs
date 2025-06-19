@@ -31,8 +31,6 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        dbg!(&result[0]);
-
         let AstCast { node, to, .. } = result[0].as_cast();
 
         let number = node.as_literal_number() else { panic!() };

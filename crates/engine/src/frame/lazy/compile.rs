@@ -65,6 +65,7 @@ impl LazyFrame {
             QueryPlan::ScanTable { .. } => {
                 unreachable!()
             }
+            QueryPlan::Describe { .. } => frame,
         }
     }
 }
