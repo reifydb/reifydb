@@ -132,6 +132,43 @@ impl ColumnValues {
             }
         }
 
+        if let ColumnValues::Int2(values, validity) = self {
+            if target == Int4 {
+                return promote_vec::<i16, i32>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Int4,
+                    ColumnValues::push::<i32>,
+                );
+            }
+
+            if target == Int16 {
+                return promote_vec::<i16, i128>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Int16,
+                    ColumnValues::push::<i128>,
+                );
+            }
+        }
+
+        if let ColumnValues::Int4(values, validity) = self {
+            if target == Int8 {
+                return promote_vec::<i32, i64>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Int8,
+                    ColumnValues::push::<i64>,
+                );
+            }
+        }
+
         match self {
             ColumnValues::Int2(values, validity) if target == Int1 => {
                 let mut out = ColumnValues::with_capacity(Int1, values.len());

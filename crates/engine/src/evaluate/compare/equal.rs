@@ -91,10 +91,17 @@ impl Evaluator {
             (ColumnValues::Int4(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
                 compare!(lv, rv, lv_valid, rv_valid, |x| x as i32)
             }
+
             (ColumnValues::Int8(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
                 compare!(lv, rv, lv_valid, rv_valid, |x| x as i64)
             }
+            (ColumnValues::Int8(lv, lv_valid), ColumnValues::Int8(rv, rv_valid)) => {
+                compare!(lv, rv, lv_valid, rv_valid, |x| x as i64)
+            }
             (ColumnValues::Int16(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
+                compare!(lv, rv, lv_valid, rv_valid, |x| x as i128)
+            }
+            (ColumnValues::Int16(lv, lv_valid), ColumnValues::Int16(rv, rv_valid)) => {
                 compare!(lv, rv, lv_valid, rv_valid, |x| x as i128)
             }
             (ColumnValues::Uint1(lv, lv_valid), ColumnValues::Int1(rv, rv_valid)) => {
