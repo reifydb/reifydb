@@ -317,7 +317,7 @@ mod tests {
                 if raw == 42 {
                     return Ok(None);
                 }
-                Ok(Some(val.promote().unwrap()))
+                Ok(Some(val.checked_promote().unwrap()))
             }
         }
     }
@@ -434,7 +434,7 @@ mod tests {
                 if raw == 42 {
                     return Ok(None);
                 }
-                Ok(Some(val.demote().unwrap()))
+                Ok(Some(val.checked_demote().unwrap()))
             }
         }
     }

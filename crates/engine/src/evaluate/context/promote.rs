@@ -39,22 +39,24 @@ impl Promote for &Context<'_> {
     where
         From: SafePromote<To>,
     {
-        match from.promote() {
-            Some(v) => Ok(Some(v)),
-            None => match self.saturation_policy() {
-                ColumnSaturationPolicy::Error => {
+        match self.saturation_policy() {
+            ColumnSaturationPolicy::Error => from
+                .checked_promote()
+                .ok_or_else(|| {
                     if let Some(column) = &self.column {
-                        Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
+                        return crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
                             column: column.name.to_string(),
                             value: column.value,
-                        })))
-                    } else {
-                        unimplemented!()
+                        }));
                     }
-                }
-                ColumnSaturationPolicy::Undefined => Ok(None),
-            },
+                    // expression_saturation
+                    unimplemented!()
+                })
+                .map(Some),
+            // SaturationPolicy::Saturate => Ok(a.saturating_promote(b)),
+            // SaturationPolicy::Wrap => Ok(a.wrapping_promote(b)),
+            ColumnSaturationPolicy::Undefined => Ok(None),
         }
     }
 }
@@ -126,8 +128,16 @@ mod tests {
     pub struct TestI8 {}
 
     impl SafePromote<TestI16> for TestI8 {
-        fn promote(self) -> Option<TestI16> {
+        fn checked_promote(self) -> Option<TestI16> {
             None
+        }
+
+        fn saturating_promote(self) -> TestI16 {
+            unreachable!()
+        }
+
+        fn wrapping_promote(self) -> TestI16 {
+            unreachable!()
         }
     }
 

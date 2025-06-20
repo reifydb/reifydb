@@ -39,22 +39,24 @@ impl Demote for &Context<'_> {
     where
         From: SafeDemote<To>,
     {
-        match from.demote() {
-            Some(v) => Ok(Some(v)),
-            None => match self.saturation_policy() {
-                ColumnSaturationPolicy::Error => {
+        match self.saturation_policy() {
+            ColumnSaturationPolicy::Error => from
+                .checked_demote()
+                .ok_or_else(|| {
                     if let Some(column) = &self.column {
-                        Err(crate::evaluate::Error(column_saturation(ColumnSaturation {
+                        return crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
                             column: column.name.to_string(),
                             value: column.value,
-                        })))
-                    } else {
-                        unimplemented!()
+                        }));
                     }
-                }
-                ColumnSaturationPolicy::Undefined => Ok(None),
-            },
+                    // expression_saturation
+                    unimplemented!()
+                })
+                .map(Some),
+            // SaturationPolicy::Saturate => Ok(a.saturating_demote(b)),
+            // SaturationPolicy::Wrap => Ok(a.wrapping_demote(b)),
+            ColumnSaturationPolicy::Undefined => Ok(None),
         }
     }
 }
@@ -129,8 +131,16 @@ mod tests {
     pub struct TestI8 {}
 
     impl SafeDemote<TestI8> for TestI16 {
-        fn demote(self) -> Option<TestI8> {
+        fn checked_demote(self) -> Option<TestI8> {
             None
+        }
+
+        fn saturating_demote(self) -> TestI8 {
+            unreachable!()
+        }
+
+        fn wrapping_demote(self) -> TestI8 {
+            unreachable!()
         }
     }
 }
