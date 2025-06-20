@@ -61,6 +61,9 @@ impl Evaluator {
                 }
                 Ok(ColumnValues::bool_with_validity(values, valid))
             }
+            (ColumnValues::Int1(lv, lv_valid), ColumnValues::Uint1(rv, rv_valid)) => {
+                compare!(lv, rv, lv_valid, rv_valid, |x| x as i32)
+            }
             (ColumnValues::Int2(lv, lv_valid), ColumnValues::Int2(rv, rv_valid)) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();

@@ -4,7 +4,6 @@
 use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::ValueKind;
-use reifydb_core::ValueKind::{Int1, Int2};
 use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
 use reifydb_diagnostic::Span;
 
@@ -12,7 +11,7 @@ impl ColumnValues {
     pub fn adjust_column(
         &self,
         target: ValueKind,
-        context: impl Promote + Demote + Convert,
+        cx: impl Promote + Demote + Convert,
         span: impl Fn() -> Span,
     ) -> crate::Result<ColumnValues> {
         use ValueKind::*;
@@ -21,241 +20,112 @@ impl ColumnValues {
             return Ok(self.clone());
         }
 
-        if let ColumnValues::Int2(values, validity) = self {
-            if target == Int1 {
-                return demote_vec::<i16, i8>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Int1,
-                    ColumnValues::push::<i8>,
-                );
-            }
-        }
-
-        if let ColumnValues::Int1(values, validity) = self {
-            if target == Int2 {
-                return promote_vec::<i8, i16>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Int2,
-                    ColumnValues::push::<i16>,
-                );
-            }
-            if target == Int4 {
-                return promote_vec::<i8, i32>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Int4,
-                    ColumnValues::push::<i32>,
-                );
-            }
-            if target == Int8 {
-                return promote_vec::<i8, i64>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Int8,
-                    ColumnValues::push::<i64>,
-                );
-            }
-            if target == Int16 {
-                return promote_vec::<i8, i128>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Int16,
-                    ColumnValues::push::<i128>,
-                );
-            }
-
-            if target == Uint1 {
-                return convert_vec::<i8, u8>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint1,
-                    ColumnValues::push::<u8>,
-                );
-            }
-
-            if target == Uint2 {
-                return convert_vec::<i8, u16>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint2,
-                    ColumnValues::push::<u16>,
-                );
-            }
-
-            if target == Uint4 {
-                return convert_vec::<i8, u32>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint4,
-                    ColumnValues::push::<u32>,
-                );
-            }
-
-            if target == Uint8 {
-                return convert_vec::<i8, u64>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint8,
-                    ColumnValues::push::<u64>,
-                );
-            }
-
-            if target == Uint16 {
-                return convert_vec::<i8, u128>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint16,
-                    ColumnValues::push::<u128>,
-                );
-            }
-        }
-
-        if let ColumnValues::Int2(values, validity) = self {
-            if target == Int4 {
-                return promote_vec::<i16, i32>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Int4,
-                    ColumnValues::push::<i32>,
-                );
-            }
-
-            if target == Int16 {
-                return promote_vec::<i16, i128>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Int16,
-                    ColumnValues::push::<i128>,
-                );
-            }
-
-            if target == Uint2 {
-                return convert_vec::<i16, u16>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint2,
-                    ColumnValues::push::<u16>,
-                );
-            }
-
-            if target == Uint4 {
-                return convert_vec::<i16, u32>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint4,
-                    ColumnValues::push::<u32>,
-                );
-            }
-
-            if target == Uint16 {
-                return convert_vec::<i16, u128>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint16,
-                    ColumnValues::push::<u128>,
-                );
-            }
-        }
-
-        if let ColumnValues::Int4(values, validity) = self {
-            if target == Int8 {
-                return promote_vec::<i32, i64>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Int8,
-                    ColumnValues::push::<i64>,
-                );
-            }
-
-            if target == Uint8 {
-                return convert_vec::<i32, u64>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint8,
-                    ColumnValues::push::<u64>,
-                );
-            }
-
-            if target == Uint16 {
-                return convert_vec::<i32, u128>(
-                    values,
-                    validity,
-                    context,
-                    &span,
-                    Uint16,
-                    ColumnValues::push::<u128>,
-                );
-            }
-        }
-
-        match self {
-            ColumnValues::Int2(values, validity) if target == Int1 => {
-                let mut out = ColumnValues::with_capacity(Int1, values.len());
-                for (i, &val) in values.iter().enumerate() {
-                    if validity[i] {
-                        match context.demote::<i16, i8>(val, &span)? {
-                            Some(v) => out.push::<i8>(v),
-                            None => out.push_undefined(),
-                        }
-                    } else {
-                        out.push_undefined();
-                    }
+        macro_rules! adjust {
+        (
+            $src_variant:ident, $src_ty:ty,
+            promote => [ $( ($tgt_variant:ident, $tgt_ty:ty) ),* ],
+            demote => [ $( ($dem_tgt_variant:ident, $dem_tgt_ty:ty) ),* ],
+            convert => [ $( ($conv_tgt_variant:ident, $conv_tgt_ty:ty) ),* ]
+        ) => {
+            if let ColumnValues::$src_variant(values, validity) = self {
+                match target {
+                    $(
+                        $tgt_variant => return promote_vec::<$src_ty, $tgt_ty>(
+                            values,
+                            validity,
+                            cx,
+                            &span,
+                            $tgt_variant,
+                            ColumnValues::push::<$tgt_ty>,
+                        ),
+                    )*
+                    $(
+                        $dem_tgt_variant => return demote_vec::<$src_ty, $dem_tgt_ty>(
+                                values,
+                                validity,
+                                cx,
+                                &span,
+                                $dem_tgt_variant,
+                                ColumnValues::push::<$dem_tgt_ty>,
+                            ),
+                    )*
+                    $(
+                        $conv_tgt_variant => return convert_vec::<$src_ty, $conv_tgt_ty>(
+                            values,
+                            validity,
+                            cx,
+                            &span,
+                            $conv_tgt_variant,
+                            ColumnValues::push::<$conv_tgt_ty>,
+                        ),
+                    )*
+                    _ => {}
                 }
-                Ok(out)
             }
-
-            ColumnValues::Int4(values, validity) if target == Int2 => {
-                let mut out = ColumnValues::with_capacity(Int2, values.len());
-                for (i, &val) in values.iter().enumerate() {
-                    if validity[i] {
-                        match context.demote::<i32, i16>(val, &span)? {
-                            Some(v) => out.push::<i16>(v),
-                            None => out.push_undefined(),
-                        }
-                    } else {
-                        out.push_undefined();
-                    }
-                }
-                Ok(out)
-            }
-            _ => unimplemented!("{self:?} {target:?}"),
         }
+    }
+
+        adjust!(Int1, i8,
+            promote => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
+            demote => [],
+            convert => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+        );
+
+        adjust!(Int2, i16,
+            promote => [(Int4, i32), (Int8, i64), (Int16, i128)],
+            demote => [(Int1, i8)],
+            convert => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+        );
+
+        adjust!(Int4, i32,
+            promote => [(Int8, i64), (Int16, i128)],
+            demote => [(Int2, i16), (Int1, i8)],
+            convert => [(Uint4, u32), (Uint8, u64), (Uint16, u128)]
+        );
+
+        adjust!(Int8, i64,
+            promote => [(Int16, i128)],
+            demote => [(Int4, i32), (Int2, i16), (Int1, i8)],
+            convert => [(Uint8, u64), (Uint16, u128)]
+        );
+
+        adjust!(Int16, i128,
+            promote => [],
+            demote => [(Int8, i64), (Int4, i32), (Int2, i16), (Int1, i8)],
+            convert => [(Uint16, u128)]
+        );
+
+        adjust!(Uint1, u8,
+            promote => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
+            demote => [],
+            convert => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+        );
+
+        adjust!(Uint2, u16,
+            promote => [(Uint4, u32), (Uint8, u64), (Uint16, u128)],
+            demote => [(Uint1, u8)],
+            convert => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+        );
+
+        adjust!(Uint4, u32,
+            promote => [(Uint8, u64), (Uint16, u128)],
+            demote => [(Uint2, u16), (Uint1, u8)],
+            convert => [(Int4, i32), (Int8, i64), (Int16, i128)]
+        );
+
+        adjust!(Uint8, u64,
+            promote => [(Uint16, u128)],
+            demote => [(Uint4, u32), (Uint2, u16), (Uint1, u8)],
+            convert => [(Int8, i64), (Int16, i128)]
+        );
+
+        adjust!(Uint16, u128,
+            promote => [],
+            demote => [(Uint8, u64), (Uint4, u32), (Uint2, u16), (Uint1, u8)],
+            convert => [(Int16, i128)]
+        );
+
+        unimplemented!("{:?} -> {:?}", self.kind(), target)
     }
 }
 
@@ -287,7 +157,7 @@ where
 fn promote_vec<From, To>(
     values: &[From],
     validity: &[bool],
-    context: impl Promote,
+    cx: impl Promote,
     span: impl Fn() -> Span,
     target_kind: ValueKind,
     mut push: impl FnMut(&mut ColumnValues, To),
@@ -298,7 +168,7 @@ where
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if validity[idx] {
-            match context.promote::<From, To>(val, &span)? {
+            match cx.promote::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
             }
@@ -312,7 +182,7 @@ where
 fn convert_vec<From, To>(
     values: &[From],
     validity: &[bool],
-    context: impl Convert,
+    cx: impl Convert,
     span: impl Fn() -> Span,
     target_kind: ValueKind,
     mut push: impl FnMut(&mut ColumnValues, To),
@@ -323,7 +193,7 @@ where
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if validity[idx] {
-            match context.convert::<From, To>(val, &span)? {
+            match cx.convert::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
             }
@@ -348,12 +218,12 @@ mod tests {
         fn test_ok() {
             let values = [1i8, 2i8];
             let validity = [true, true];
-            let context = TestContext::new();
+            let cx = TestCx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
                 &validity,
-                &context,
+                &cx,
                 || make_test_span(),
                 ValueKind::Int2,
                 |col, v| col.push::<i16>(v),
@@ -369,12 +239,12 @@ mod tests {
             // 42 mapped to None
             let values = [42i8];
             let validity = [true];
-            let context = TestContext::new();
+            let cx = TestCx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
                 &validity,
-                &context,
+                &cx,
                 || make_test_span(),
                 ValueKind::Int2,
                 |col, v| col.push::<i16>(v),
@@ -388,12 +258,12 @@ mod tests {
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i8];
             let validity = [false];
-            let context = TestContext::new();
+            let cx = TestCx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
                 &validity,
-                &context,
+                &cx,
                 || make_test_span(),
                 ValueKind::Int2,
                 |col, v| col.push::<i16>(v),
@@ -407,12 +277,12 @@ mod tests {
         fn test_mixed_validity_and_promote_failure() {
             let values = [1i8, 42i8, 3i8, 4i8];
             let validity = [true, true, false, true];
-            let context = TestContext::new();
+            let cx = TestCx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
                 &validity,
-                &context,
+                &cx,
                 || make_test_span(),
                 ValueKind::Int2,
                 |col, v| col.push::<i16>(v),
@@ -424,15 +294,15 @@ mod tests {
             assert_eq!(result.validity(), &[true, false, false, true]);
         }
 
-        struct TestContext;
+        struct TestCx;
 
-        impl TestContext {
+        impl TestCx {
             fn new() -> Self {
                 Self
             }
         }
 
-        impl Promote for &TestContext {
+        impl Promote for &TestCx {
             /// Can only used with i8
             fn promote<From, To>(
                 &self,
@@ -465,12 +335,12 @@ mod tests {
         fn test_ok() {
             let values = [1i16, 2i16];
             let validity = [true, true];
-            let context = TestContext::new();
+            let cx = TestCx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
                 &validity,
-                &context,
+                &cx,
                 || make_test_span(),
                 ValueKind::Int1,
                 |col, v| col.push::<i8>(v),
@@ -486,12 +356,12 @@ mod tests {
         fn test_none_maps_to_undefined() {
             let values = [42i16];
             let validity = [true];
-            let context = TestContext::new();
+            let cx = TestCx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
                 &validity,
-                &context,
+                &cx,
                 || make_test_span(),
                 ValueKind::Int1,
                 |col, v| col.push::<i8>(v),
@@ -505,12 +375,12 @@ mod tests {
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i16];
             let validity = [false];
-            let context = TestContext::new();
+            let cx = TestCx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
                 &validity,
-                &context,
+                &cx,
                 || make_test_span(),
                 ValueKind::Int1,
                 |col, v| col.push::<i8>(v),
@@ -524,12 +394,12 @@ mod tests {
         fn test_mixed_validity_and_demote_failure() {
             let values = [1i16, 42i16, 3i16, 4i16];
             let validity = [true, true, false, true];
-            let context = TestContext::new();
+            let cx = TestCx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
                 &validity,
-                &context,
+                &cx,
                 || make_test_span(),
                 ValueKind::Int1,
                 |col, v| col.push::<i8>(v),
@@ -541,15 +411,15 @@ mod tests {
             assert_eq!(result.validity(), &[true, false, false, true]);
         }
 
-        struct TestContext;
+        struct TestCx;
 
-        impl TestContext {
+        impl TestCx {
             fn new() -> Self {
                 Self
             }
         }
 
-        impl Demote for &TestContext {
+        impl Demote for &TestCx {
             /// Can only be used with i16 → i8
             fn demote<From, To>(
                 &self,
