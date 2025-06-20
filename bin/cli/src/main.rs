@@ -52,7 +52,7 @@ fn main() {
     for l in db.rx_as(
         &root,
         r#"
-            select cast(-30000 as int16) < cast(0 as int16)
+            select cast(30000 as uint16) < cast(60000 as uint16)
         "#,
     ) {
         println!("{}", l);

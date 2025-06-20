@@ -154,6 +154,39 @@ impl ColumnValues {
                     ColumnValues::push::<i128>,
                 );
             }
+
+            if target == Uint2 {
+                return convert_vec::<i16, u16>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint2,
+                    ColumnValues::push::<u16>,
+                );
+            }
+
+            if target == Uint4 {
+                return convert_vec::<i16, u32>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint4,
+                    ColumnValues::push::<u32>,
+                );
+            }
+
+            if target == Uint16 {
+                return convert_vec::<i16, u128>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint16,
+                    ColumnValues::push::<u128>,
+                );
+            }
         }
 
         if let ColumnValues::Int4(values, validity) = self {
@@ -165,6 +198,28 @@ impl ColumnValues {
                     &span,
                     Int8,
                     ColumnValues::push::<i64>,
+                );
+            }
+
+            if target == Uint8 {
+                return convert_vec::<i32, u64>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint8,
+                    ColumnValues::push::<u64>,
+                );
+            }
+
+            if target == Uint16 {
+                return convert_vec::<i32, u128>(
+                    values,
+                    validity,
+                    context,
+                    &span,
+                    Uint16,
+                    ColumnValues::push::<u128>,
                 );
             }
         }
