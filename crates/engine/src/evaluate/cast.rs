@@ -4,7 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::{Context, Evaluator};
 use crate::frame::ColumnValues;
-use reifydb_rql::expression::CastExpression;
+use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 
 impl Evaluator {
@@ -13,7 +13,10 @@ impl Evaluator {
         cast: &CastExpression,
         ctx: &Context,
     ) -> evaluate::Result<ColumnValues> {
-        let values = self.evaluate(cast.expression.deref(), ctx)?;
+        let values = match cast.expression.deref() {
+            Expression::Constant(expr) => self.constant_of(expr, cast.to.kind, ctx)?,
+            expr => self.evaluate(expr, ctx)?,
+        };
 
         Ok(values.adjust_column(cast.to.kind, ctx, cast.expression.lazy_span()).unwrap()) // FIXME
     }

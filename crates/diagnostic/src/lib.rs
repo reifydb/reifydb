@@ -14,6 +14,7 @@ pub mod policy;
 pub mod sequence;
 pub mod span;
 mod util;
+mod execute;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
