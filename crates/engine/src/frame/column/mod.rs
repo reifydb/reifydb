@@ -5,6 +5,7 @@ pub use push::Push;
 pub use slice::AsSlice;
 pub use values::ColumnValues;
 
+mod adjust;
 mod extend;
 mod filter;
 mod get;
@@ -13,7 +14,6 @@ mod reorder;
 mod slice;
 mod validity;
 mod values;
-mod adjust;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Column {

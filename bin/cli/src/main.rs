@@ -49,10 +49,19 @@ fn main() {
     //     println!("{}", l);
     // }
 
+    // for l in db.rx_as(
+    //     &root,
+    //     r#"
+    //         select cast(127 as int1) > cast(200 as uint1)
+    //     "#,
+    // ) {
+    //     println!("{}", l);
+    // }
+
     for l in db.rx_as(
         &root,
         r#"
-            select cast(127 as int1) < cast(200 as uint1)
+            select cast(32767 as int2) < cast(100000 as int16)
         "#,
     ) {
         println!("{}", l);

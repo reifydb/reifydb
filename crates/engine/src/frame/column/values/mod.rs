@@ -1,6 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+use reifydb_core::num::IsNumber;
 use reifydb_core::{CowVec, Value, ValueKind};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -22,6 +26,43 @@ pub enum ColumnValues {
     Uint16(CowVec<u128>, CowVec<bool>),
     // special case: all undefined
     Undefined(usize),
+}
+
+impl ColumnValues {
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            ColumnValues::Float4(_, _)
+            | ColumnValues::Float8(_, _)
+            | ColumnValues::Int1(_, _)
+            | ColumnValues::Int2(_, _)
+            | ColumnValues::Int4(_, _)
+            | ColumnValues::Int8(_, _)
+            | ColumnValues::Int16(_, _)
+            | ColumnValues::Uint1(_, _)
+            | ColumnValues::Uint2(_, _)
+            | ColumnValues::Uint4(_, _)
+            | ColumnValues::Uint8(_, _)
+            | ColumnValues::Uint16(_, _) => true,
+            ColumnValues::String(_, _) | ColumnValues::Bool(_, _) | ColumnValues::Undefined(_) => {
+                false
+            }
+        }
+    }
+}
+
+impl ColumnValues {
+    pub fn get_numeric_value(&self, index: usize) -> Option<impl IsNumber> {
+        match self {
+            ColumnValues::Int1(values, validity) => {
+                if validity[index] {
+                    Some(values[index])
+                } else {
+                    None
+                }
+            }
+            _ => unimplemented!(),
+        }
+    }
 }
 
 impl ColumnValues {
