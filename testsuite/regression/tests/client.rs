@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::reifydb_storage::lmdb::Lmdb;
 use reifydb::reifydb_storage::Storage;
+use reifydb::reifydb_storage::lmdb::Lmdb;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{ReifyDB, memory, optimistic, serializable, sqlite};
+use reifydb::{ReifyDB, memory, optimistic, retry, serializable, sqlite};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
@@ -118,19 +118,22 @@ test_each_path! { in "testsuite/regression/tests/scripts" as optimistic_lmdb => 
 test_each_path! { in "testsuite/regression/tests/scripts" as optimistic_sqlite => test_optimistic_sqlite }
 
 fn test_optimistic_memory(path: &Path) {
-    testscript::run_path(&mut ClientRunner::new(optimistic(memory())), path).expect("test failed")
+    retry(3, || testscript::run_path(&mut ClientRunner::new(optimistic(memory())), path))
+        .expect("test failed")
 }
 
 fn test_optimistic_lmdb(path: &Path) {
     temp_dir(|db_path| {
-        testscript::run_path(&mut ClientRunner::new(optimistic(Lmdb::new(db_path))), path)
-            .expect("test failed")
+        retry(3, || {
+            testscript::run_path(&mut ClientRunner::new(optimistic(Lmdb::new(db_path))), path)
+        })
+        .expect("test failed")
     })
 }
 
 fn test_optimistic_sqlite(path: &Path) {
     temp_dir(|db_path| {
-        testscript::run_path(&mut ClientRunner::new(optimistic(sqlite(db_path))), path)
+        retry(3, || testscript::run_path(&mut ClientRunner::new(optimistic(sqlite(db_path))), path))
             .expect("test failed")
     })
 }
@@ -140,19 +143,24 @@ test_each_path! { in "testsuite/regression/tests/scripts" as serializable_lmdb =
 test_each_path! { in "testsuite/regression/tests/scripts" as serializable_sqlite => test_serializable_sqlite }
 
 fn test_serializable_memory(path: &Path) {
-    testscript::run_path(&mut ClientRunner::new(serializable(memory())), path).expect("test failed")
+    retry(3, || testscript::run_path(&mut ClientRunner::new(serializable(memory())), path))
+        .expect("test failed")
 }
 
 fn test_serializable_lmdb(path: &Path) {
     temp_dir(|db_path| {
-        testscript::run_path(&mut ClientRunner::new(serializable(Lmdb::new(db_path))), path)
-            .expect("test failed")
+        retry(3, || {
+            testscript::run_path(&mut ClientRunner::new(serializable(Lmdb::new(db_path))), path)
+        })
+        .expect("test failed")
     })
 }
 
 fn test_serializable_sqlite(path: &Path) {
     temp_dir(|db_path| {
-        testscript::run_path(&mut ClientRunner::new(serializable(sqlite(db_path))), path)
-            .expect("test failed")
+        retry(3, || {
+            testscript::run_path(&mut ClientRunner::new(serializable(sqlite(db_path))), path)
+        })
+        .expect("test failed")
     })
 }

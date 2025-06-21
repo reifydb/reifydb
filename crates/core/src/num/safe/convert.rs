@@ -15,6 +15,7 @@ macro_rules! impl_safe_convert {
                     <$dst>::try_from(self).ok()
                 }
 
+                #[allow(irrefutable_let_patterns)]
                 fn saturating_convert(self) -> $dst {
                     if let Ok(v) = <$dst>::try_from(self) {
                         v

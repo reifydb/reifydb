@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ordered_float::{OrderedF32, OrderedF64};
-use crate::row::{Layout, EncodedRow};
+use crate::row::{EncodedRow, Layout};
 use crate::{Value, ValueKind};
 
 impl Layout {
@@ -68,7 +68,6 @@ impl Layout {
     pub fn get_value(&self, row: &EncodedRow, index: usize) -> Value {
         let field = &self.fields[index];
         unsafe {
-            let src = row.as_ptr().add(field.offset);
             match field.value {
                 ValueKind::Bool => Value::Bool(self.get_bool(row, index)),
                 ValueKind::Float4 => OrderedF32::try_from(self.get_f32(row, index))
