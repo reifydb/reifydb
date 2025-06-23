@@ -42,8 +42,12 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn testing() -> Self {
+    pub fn testing_empty() -> Self {
         Self { offset: Offset(0), line: Line(1), fragment: "".to_string() }
+    }
+
+    pub fn testing(s: impl Into<String>) -> Self {
+        Self { offset: Offset(0), line: Line(1), fragment: s.into() }
     }
 }
 

@@ -46,41 +46,67 @@ impl_safe_demote!(u32 => u16, u8);
 impl_safe_demote!(u64 => u32, u16, u8);
 impl_safe_demote!(u128 => u64, u32, u16, u8);
 
+impl SafeDemote<f32> for f64 {
+    fn checked_demote(self) -> Option<f32> {
+        if self.is_finite() && self >= f32::MIN as f64 && self <= f32::MAX as f64 {
+            Some(self as f32)
+        } else {
+            None
+        }
+    }
+
+    fn saturating_demote(self) -> f32 {
+        if self.is_nan() {
+            f32::NAN
+        } else if self <= f32::MIN as f64 {
+            f32::MIN
+        } else if self >= f32::MAX as f64 {
+            f32::MAX
+        } else {
+            self as f32
+        }
+    }
+
+    fn wrapping_demote(self) -> f32 {
+        self as f32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     mod i16_to_i8 {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i16 = 127;
             let y: Option<i8> = x.checked_demote();
             assert_eq!(y, Some(127i8));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i16 = 128;
             let y: Option<i8> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i16 = -129;
             let y: i8 = x.saturating_demote();
             assert_eq!(y, i8::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i16 = 128;
             let y: i8 = x.saturating_demote();
             assert_eq!(y, i8::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i16 = 128;
             let y: i8 = x.wrapping_demote();
             assert_eq!(y, -128);
@@ -91,35 +117,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i32 = 32767;
             let y: Option<i16> = x.checked_demote();
             assert_eq!(y, Some(32767i16));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i32 = 32768;
             let y: Option<i16> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i32 = -32769;
             let y: i16 = x.saturating_demote();
             assert_eq!(y, i16::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i32 = 32768;
             let y: i16 = x.saturating_demote();
             assert_eq!(y, i16::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i32 = 32768;
             let y: i16 = x.wrapping_demote();
             assert_eq!(y, -32768);
@@ -130,35 +156,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i32 = 127;
             let y: Option<i8> = x.checked_demote();
             assert_eq!(y, Some(127i8));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i32 = 128;
             let y: Option<i8> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i32 = -129;
             let y: i8 = x.saturating_demote();
             assert_eq!(y, i8::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i32 = 128;
             let y: i8 = x.saturating_demote();
             assert_eq!(y, i8::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i32 = 128;
             let y: i8 = x.wrapping_demote();
             assert_eq!(y, -128);
@@ -169,35 +195,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i64 = 2147483647;
             let y: Option<i32> = x.checked_demote();
             assert_eq!(y, Some(2147483647i32));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i64 = 2147483648;
             let y: Option<i32> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i64 = -2147483649;
             let y: i32 = x.saturating_demote();
             assert_eq!(y, i32::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i64 = 2147483648;
             let y: i32 = x.saturating_demote();
             assert_eq!(y, i32::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i64 = 2147483648;
             let y: i32 = x.wrapping_demote();
             assert_eq!(y, -2147483648);
@@ -208,35 +234,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i64 = 32767;
             let y: Option<i16> = x.checked_demote();
             assert_eq!(y, Some(32767i16));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i64 = 32768;
             let y: Option<i16> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i64 = -32769;
             let y: i16 = x.saturating_demote();
             assert_eq!(y, i16::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i64 = 32768;
             let y: i16 = x.saturating_demote();
             assert_eq!(y, i16::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i64 = 32768;
             let y: i16 = x.wrapping_demote();
             assert_eq!(y, -32768);
@@ -247,35 +273,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i64 = 127;
             let y: Option<i8> = x.checked_demote();
             assert_eq!(y, Some(127i8));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i64 = 128;
             let y: Option<i8> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i64 = -129;
             let y: i8 = x.saturating_demote();
             assert_eq!(y, i8::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i64 = 128;
             let y: i8 = x.saturating_demote();
             assert_eq!(y, i8::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i64 = 128;
             let y: i8 = x.wrapping_demote();
             assert_eq!(y, -128);
@@ -286,35 +312,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i128 = 9223372036854775807;
             let y: Option<i64> = x.checked_demote();
             assert_eq!(y, Some(9223372036854775807i64));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i128 = 9223372036854775808;
             let y: Option<i64> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i128 = -9223372036854775809;
             let y: i64 = x.saturating_demote();
             assert_eq!(y, i64::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i128 = 9223372036854775808;
             let y: i64 = x.saturating_demote();
             assert_eq!(y, i64::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i128 = 9223372036854775808;
             let y: i64 = x.wrapping_demote();
             assert_eq!(y, -9223372036854775808);
@@ -325,35 +351,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i128 = 2147483647;
             let y: Option<i32> = x.checked_demote();
             assert_eq!(y, Some(2147483647i32));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i128 = 2147483648;
             let y: Option<i32> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i128 = -2147483649;
             let y: i32 = x.saturating_demote();
             assert_eq!(y, i32::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i128 = 2147483648;
             let y: i32 = x.saturating_demote();
             assert_eq!(y, i32::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i128 = 2147483648;
             let y: i32 = x.wrapping_demote();
             assert_eq!(y, -2147483648);
@@ -364,35 +390,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i128 = 32767;
             let y: Option<i16> = x.checked_demote();
             assert_eq!(y, Some(32767i16));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i128 = 32768;
             let y: Option<i16> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i128 = -32769;
             let y: i16 = x.saturating_demote();
             assert_eq!(y, i16::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i128 = 32768;
             let y: i16 = x.saturating_demote();
             assert_eq!(y, i16::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i128 = 32768;
             let y: i16 = x.wrapping_demote();
             assert_eq!(y, -32768);
@@ -403,35 +429,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: i128 = 127;
             let y: Option<i8> = x.checked_demote();
             assert_eq!(y, Some(127i8));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: i128 = 128;
             let y: Option<i8> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: i128 = -129;
             let y: i8 = x.saturating_demote();
             assert_eq!(y, i8::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: i128 = 128;
             let y: i8 = x.saturating_demote();
             assert_eq!(y, i8::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: i128 = 128;
             let y: i8 = x.wrapping_demote();
             assert_eq!(y, -128);
@@ -442,35 +468,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u16 = 255;
             let y: Option<u8> = x.checked_demote();
             assert_eq!(y, Some(255u8));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u16 = 256;
             let y: Option<u8> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u16 = 0;
             let y: u8 = x.saturating_demote();
             assert_eq!(y, u8::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u16 = 256;
             let y: u8 = x.saturating_demote();
             assert_eq!(y, u8::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u16 = 256;
             let y: u8 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -481,35 +507,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u32 = 65535;
             let y: Option<u16> = x.checked_demote();
             assert_eq!(y, Some(65535u16));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u32 = 65536;
             let y: Option<u16> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u32 = 0;
             let y: u16 = x.saturating_demote();
             assert_eq!(y, u16::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u32 = 65536;
             let y: u16 = x.saturating_demote();
             assert_eq!(y, u16::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u32 = 65536;
             let y: u16 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -520,35 +546,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u32 = 255;
             let y: Option<u8> = x.checked_demote();
             assert_eq!(y, Some(255u8));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u32 = 256;
             let y: Option<u8> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u32 = 0;
             let y: u8 = x.saturating_demote();
             assert_eq!(y, u8::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u32 = 256;
             let y: u8 = x.saturating_demote();
             assert_eq!(y, u8::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u32 = 256;
             let y: u8 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -559,35 +585,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u64 = 4294967295;
             let y: Option<u32> = x.checked_demote();
             assert_eq!(y, Some(4294967295u32));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u64 = 4294967296;
             let y: Option<u32> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u64 = 0;
             let y: u32 = x.saturating_demote();
             assert_eq!(y, u32::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u64 = 4294967296;
             let y: u32 = x.saturating_demote();
             assert_eq!(y, u32::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u64 = 4294967296;
             let y: u32 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -598,35 +624,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u64 = 65535;
             let y: Option<u16> = x.checked_demote();
             assert_eq!(y, Some(65535u16));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u64 = 65536;
             let y: Option<u16> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u64 = 0;
             let y: u16 = x.saturating_demote();
             assert_eq!(y, u16::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u64 = 65536;
             let y: u16 = x.saturating_demote();
             assert_eq!(y, u16::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u64 = 65536;
             let y: u16 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -637,35 +663,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u64 = 255;
             let y: Option<u8> = x.checked_demote();
             assert_eq!(y, Some(255u8));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u64 = 256;
             let y: Option<u8> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u64 = 0;
             let y: u8 = x.saturating_demote();
             assert_eq!(y, u8::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u64 = 256;
             let y: u8 = x.saturating_demote();
             assert_eq!(y, u8::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u64 = 256;
             let y: u8 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -676,35 +702,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u128 = 18446744073709551615;
             let y: Option<u64> = x.checked_demote();
             assert_eq!(y, Some(18446744073709551615u64));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u128 = 18446744073709551616;
             let y: Option<u64> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u128 = 0;
             let y: u64 = x.saturating_demote();
             assert_eq!(y, u64::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u128 = 18446744073709551616;
             let y: u64 = x.saturating_demote();
             assert_eq!(y, u64::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u128 = 18446744073709551616;
             let y: u64 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -715,35 +741,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u128 = 4294967295;
             let y: Option<u32> = x.checked_demote();
             assert_eq!(y, Some(4294967295u32));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u128 = 4294967296;
             let y: Option<u32> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u128 = 0;
             let y: u32 = x.saturating_demote();
             assert_eq!(y, u32::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u128 = 4294967296;
             let y: u32 = x.saturating_demote();
             assert_eq!(y, u32::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u128 = 4294967296;
             let y: u32 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -754,35 +780,35 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u128 = 65535;
             let y: Option<u16> = x.checked_demote();
             assert_eq!(y, Some(65535u16));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u128 = 65536;
             let y: Option<u16> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u128 = 0;
             let y: u16 = x.saturating_demote();
             assert_eq!(y, u16::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u128 = 65536;
             let y: u16 = x.saturating_demote();
             assert_eq!(y, u16::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u128 = 65536;
             let y: u16 = x.wrapping_demote();
             assert_eq!(y, 0);
@@ -793,38 +819,112 @@ mod tests {
         use crate::num::SafeDemote;
 
         #[test]
-        fn checked_demote_happy() {
+        fn test_checked_demote_happy() {
             let x: u128 = 255;
             let y: Option<u8> = x.checked_demote();
             assert_eq!(y, Some(255u8));
         }
 
         #[test]
-        fn checked_demote_unhappy() {
+        fn test_checked_demote_unhappy() {
             let x: u128 = 256;
             let y: Option<u8> = x.checked_demote();
             assert_eq!(y, None);
         }
 
         #[test]
-        fn saturating_demote_min() {
+        fn test_saturating_demote_min() {
             let x: u128 = 0;
             let y: u8 = x.saturating_demote();
             assert_eq!(y, u8::MIN);
         }
 
         #[test]
-        fn saturating_demote_max() {
+        fn test_saturating_demote_max() {
             let x: u128 = 256;
             let y: u8 = x.saturating_demote();
             assert_eq!(y, u8::MAX);
         }
 
         #[test]
-        fn wrapping_demote() {
+        fn test_wrapping_demote() {
             let x: u128 = 256;
             let y: u8 = x.wrapping_demote();
             assert_eq!(y, 0);
+        }
+    }
+
+    mod f64_to_f32 {
+        use crate::num::SafeDemote;
+
+        #[test]
+        fn test_checked_demote_happy() {
+            let x: f64 = 123.0;
+            let y: Option<f32> = x.checked_demote();
+            assert_eq!(y, Some(123.0f32));
+        }
+
+        #[test]
+        fn test_checked_demote_unhappy_due_to_infinity() {
+            let x: f64 = f64::MAX;
+            let y: Option<f32> = x.checked_demote();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_demote_unhappy_due_to_negative_infinity() {
+            let x: f64 = f64::MIN;
+            let y: Option<f32> = x.checked_demote();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_demote_within_range() {
+            let x: f64 = 456.789;
+            let y: f32 = x.saturating_demote();
+            assert_eq!(y, 456.789f32);
+        }
+
+        #[test]
+        fn test_saturating_demote_too_large() {
+            let x: f64 = f64::MAX;
+            let y: f32 = x.saturating_demote();
+            assert_eq!(y, f32::MAX);
+        }
+
+        #[test]
+        fn test_saturating_demote_too_small() {
+            let x: f64 = f64::MIN;
+            let y: f32 = x.saturating_demote();
+            assert_eq!(y, f32::MIN);
+        }
+
+        #[test]
+        fn test_saturating_demote_nan() {
+            let x: f64 = f64::NAN;
+            let y: f32 = x.saturating_demote();
+            assert!(y.is_nan());
+        }
+
+        #[test]
+        fn test_wrapping_demote_regular() {
+            let x: f64 = 789.123;
+            let y: f32 = x.wrapping_demote();
+            assert_eq!(y, 789.123f32);
+        }
+
+        #[test]
+        fn test_wrapping_demote_nan() {
+            let x: f64 = f64::NAN;
+            let y: f32 = x.wrapping_demote();
+            assert!(y.is_nan());
+        }
+
+        #[test]
+        fn test_wrapping_demote_infinity() {
+            let x: f64 = f64::INFINITY;
+            let y: f32 = x.wrapping_demote();
+            assert!(y.is_infinite() && y.is_sign_positive());
         }
     }
 }

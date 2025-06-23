@@ -505,7 +505,7 @@ pub struct AstPrefix {
     pub node: Box<Ast>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PrefixOperator {
     Plus(Token),
     Negate(Token),

@@ -17,7 +17,7 @@ pub trait Demote {
         From: SafeDemote<To>;
 }
 
-impl Demote for Context<'_> {
+impl Demote for Context {
     fn demote<From, To>(
         &self,
         from: From,
@@ -30,7 +30,7 @@ impl Demote for Context<'_> {
     }
 }
 
-impl Demote for &Context<'_> {
+impl Demote for &Context {
     fn demote<From, To>(
         &self,
         from: From,
@@ -46,12 +46,15 @@ impl Demote for &Context<'_> {
                     if let Some(column) = &self.column {
                         return crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
-                            column: column.name.to_string(),
-                            value: column.value,
+                            column: column.name.clone(),
+                            value: column.kind,
                         }));
                     }
-                    // expression_saturation
-                    unimplemented!()
+                    return crate::evaluate::Error(column_saturation(ColumnSaturation {
+                        span: span.into_span(),
+                        column: None,
+                        value: None,
+                    }));
                 })
                 .map(Some),
             // SaturationPolicy::Saturate => Ok(a.saturating_demote(b)),
@@ -66,43 +69,34 @@ mod tests {
     use crate::evaluate::{Context, Demote, EvaluationColumn};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
+    use reifydb_core::ValueKind;
     use reifydb_core::num::SafeDemote;
-    use reifydb_core::{BitVec, ValueKind};
-    use reifydb_testing::make_test_span;
+    use reifydb_diagnostic::Span;
 
     #[test]
     fn test_demote_ok() {
-        let ctx = Context {
-            column: Some(EvaluationColumn {
-                name: "test_column".to_string(),
-                value: ValueKind::Int1,
-                policies: vec![Saturation(Error)],
-            }),
-            mask: &BitVec::empty(),
-            columns: &[],
-            row_count: 0,
-            limit: None,
-        };
+        let mut ctx = Context::testing();
+        ctx.column = Some(EvaluationColumn {
+            name: Some("test_column".to_string()),
+            kind: Some(ValueKind::Int1),
+            policies: vec![Saturation(Error)],
+        });
 
-        let result = ctx.demote::<i16, i8>(1i16, || make_test_span());
+        let result = ctx.demote::<i16, i8>(1i16, || Span::testing_empty());
         assert_eq!(result, Ok(Some(1i8)));
     }
 
     #[test]
     fn test_demote_fail_with_error_policy() {
-        let ctx = Context {
-            column: Some(EvaluationColumn {
-                name: "test_column".to_string(),
-                value: ValueKind::Int1,
-                policies: vec![Saturation(Error)],
-            }),
-            mask: &BitVec::empty(),
-            columns: &[],
-            row_count: 0,
-            limit: None,
-        };
+        let mut ctx = Context::testing();
+        ctx.column = Some(EvaluationColumn {
+            name: Some("test_column".to_string()),
+            kind: Some(ValueKind::Int1),
+            policies: vec![Saturation(Error)],
+        });
 
-        let err = ctx.demote::<TestI16, TestI8>(TestI16 {}, || make_test_span()).err().unwrap();
+        let err =
+            ctx.demote::<TestI16, TestI8>(TestI16 {}, || Span::testing_empty()).err().unwrap();
 
         let diagnostic = err.diagnostic();
         assert_eq!(diagnostic.code, "PO_001");
@@ -110,19 +104,14 @@ mod tests {
 
     #[test]
     fn test_demote_fail_with_undefined_policy() {
-        let ctx = Context {
-            column: Some(EvaluationColumn {
-                name: "test_column".to_string(),
-                value: ValueKind::Int1,
-                policies: vec![Saturation(Undefined)],
-            }),
-            mask: &BitVec::empty(),
-            columns: &[],
-            row_count: 0,
-            limit: None,
-        };
+        let mut ctx = Context::testing();
+        ctx.column = Some(EvaluationColumn {
+            name: Some("test_column".to_string()),
+            kind: Some(ValueKind::Int1),
+            policies: vec![Saturation(Undefined)],
+        });
 
-        let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || make_test_span()).unwrap();
+        let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || Span::testing_empty()).unwrap();
         assert!(result.is_none());
     }
 

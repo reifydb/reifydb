@@ -70,7 +70,7 @@ impl ColumnValues {
         match value {
             ValueKind::Bool => Self::bool_with_capacity(capacity),
             ValueKind::Float4 => Self::float4_with_capacity(capacity),
-            ValueKind::Float8 => Self::float4_with_capacity(capacity),
+            ValueKind::Float8 => Self::float8_with_capacity(capacity),
             ValueKind::Int1 => Self::int1_with_capacity(capacity),
             ValueKind::Int2 => Self::int2_with_capacity(capacity),
             ValueKind::Int4 => Self::int4_with_capacity(capacity),
@@ -94,6 +94,20 @@ impl ColumnValues {
                     .iter()
                     .zip(validity.iter())
                     .map(|(v, va)| if *va { Value::Bool(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Float4(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::float4(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Float8(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::float8(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Int1(values, validity) => Box::new(

@@ -43,7 +43,57 @@ impl Evaluator {
                 }
                 Ok(ColumnValues::bool_with_validity(values, valid))
             }
-        
+
+            ValueRef::Float4(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Float4(v) => {
+                                values.push(v.value());
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0.0f32);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::float4_with_validity(values, valid))
+            }
+
+            ValueRef::Float8(_) => {
+                let mut values = Vec::new();
+                let mut valid = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.data.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= limit {
+                            break;
+                        }
+                        match v {
+                            Value::Float8(v) => {
+                                values.push(v.value());
+                                valid.push(true);
+                            }
+                            _ => {
+                                values.push(0.0f64);
+                                valid.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(ColumnValues::float8_with_validity(values, valid))
+            }
+
             ValueRef::Int1(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
@@ -119,7 +169,6 @@ impl Evaluator {
                 Ok(ColumnValues::int4_with_validity(values, valid))
             }
 
-
             ValueRef::Int8(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
@@ -144,8 +193,6 @@ impl Evaluator {
                 }
                 Ok(ColumnValues::int8_with_validity(values, valid))
             }
-
-
 
             ValueRef::Int16(_) => {
                 let mut values = Vec::new();
@@ -272,7 +319,6 @@ impl Evaluator {
                 Ok(ColumnValues::uint4_with_validity(values, valid))
             }
 
-
             ValueRef::Uint8(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
@@ -297,8 +343,6 @@ impl Evaluator {
                 }
                 Ok(ColumnValues::uint8_with_validity(values, valid))
             }
-
-
 
             ValueRef::Uint16(_) => {
                 let mut values = Vec::new();

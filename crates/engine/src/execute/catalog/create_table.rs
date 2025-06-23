@@ -81,7 +81,7 @@ mod tests {
             table: "test_table".to_string(),
             if_not_exists: false,
             columns: vec![],
-            span: Span::testing(),
+            span: Span::testing_empty(),
         };
 
         // First creation should succeed
@@ -128,7 +128,7 @@ mod tests {
             table: "test_table".to_string(),
             if_not_exists: false,
             columns: vec![],
-            span: Span::testing(),
+            span: Span::testing_empty(),
         };
 
         let result = execute_tx(&mut tx, PlanTx::CreateTable(plan.clone())).unwrap();
@@ -147,7 +147,7 @@ mod tests {
             table: "test_table".to_string(),
             if_not_exists: false,
             columns: vec![],
-            span: Span::testing(),
+            span: Span::testing_empty(),
         };
 
         let result = execute_tx(&mut tx, PlanTx::CreateTable(plan.clone())).unwrap();
@@ -171,7 +171,7 @@ mod tests {
             table: "my_table".to_string(),
             if_not_exists: false,
             columns: vec![],
-            span: Span::testing(),
+            span: Span::testing_empty(),
         };
 
         let err = execute_tx(&mut tx, PlanTx::CreateTable(plan)).unwrap_err();

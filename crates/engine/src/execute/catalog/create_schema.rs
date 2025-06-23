@@ -60,7 +60,7 @@ mod tests {
         let mut plan = CreateSchemaPlan {
             schema: "my_schema".to_string(),
             if_not_exists: false,
-            span: Span::testing(),
+            span: Span::testing_empty(),
         };
 
         // First creation should succeed

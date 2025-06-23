@@ -18,10 +18,10 @@ use reifydb_core::{BitVec, ValueKind};
 use reifydb_diagnostic::IntoSpan;
 use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct EvaluationColumn {
-    pub(crate) name: String,
-    pub(crate) value: ValueKind,
+    pub(crate) name: Option<String>,
+    pub(crate) kind: Option<ValueKind>,
     pub(crate) policies: Vec<ColumnPolicyKind>,
 }
 
@@ -38,15 +38,27 @@ impl EvaluationColumn {
 }
 
 #[derive(Debug)]
-pub(crate) struct Context<'a> {
+pub(crate) struct Context {
     pub(crate) column: Option<EvaluationColumn>,
-    pub(crate) mask: &'a BitVec,
-    pub(crate) columns: &'a [Column],
+    pub(crate) mask: BitVec,
+    pub(crate) columns: Vec<Column>,
     pub(crate) row_count: usize,
     pub(crate) limit: Option<usize>,
 }
 
-impl Context<'_> {
+impl Context {
+    pub fn testing() -> Self {
+        Self {
+            column: None,
+            mask: BitVec::new(0, false),
+            columns: vec![],
+            row_count: 1,
+            limit: None,
+        }
+    }
+}
+
+impl Context {
     pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
         self.column
             .as_ref()
@@ -55,7 +67,7 @@ impl Context<'_> {
     }
 }
 
-impl Context<'_> {
+impl Context {
     pub(crate) fn add<T: SafeAdd>(
         &self,
         l: T,
@@ -69,8 +81,8 @@ impl Context<'_> {
                     if let Some(column) = &self.column {
                         return crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
-                            column: column.name.to_string(),
-                            value: column.value,
+                            column: column.name.clone(),
+                            value: column.kind,
                         }));
                     }
                     // expression_saturation
@@ -96,8 +108,8 @@ impl Context<'_> {
                     if let Some(column) = &self.column {
                         return crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
-                            column: column.name.to_string(),
-                            value: column.value,
+                            column: column.name.clone(),
+                            value: column.kind,
                         }));
                     }
                     // expression_saturation

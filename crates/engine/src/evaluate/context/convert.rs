@@ -17,7 +17,7 @@ pub trait Convert {
         From: SafeConvert<To>;
 }
 
-impl Convert for Context<'_> {
+impl Convert for Context {
     fn convert<From, To>(
         &self,
         from: From,
@@ -30,7 +30,7 @@ impl Convert for Context<'_> {
     }
 }
 
-impl Convert for &Context<'_> {
+impl Convert for &Context {
     fn convert<From, To>(
         &self,
         from: From,
@@ -46,8 +46,8 @@ impl Convert for &Context<'_> {
                     if let Some(column) = &self.column {
                         return crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
-                            column: column.name.to_string(),
-                            value: column.value,
+                            column: column.name.clone(),
+                            value: column.kind,
                         }));
                     }
                     // expression_saturation

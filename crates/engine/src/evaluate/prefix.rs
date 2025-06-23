@@ -18,6 +18,36 @@ impl Evaluator {
             // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
             ColumnValues::Bool(_, _) => unimplemented!(),
 
+            ColumnValues::Float4(values, valid) => {
+                let mut result = Vec::with_capacity(values.len());
+                for (idx, val) in values.iter().enumerate() {
+                    if valid.get(idx).copied().unwrap_or(false) {
+                        result.push(match prefix.operator {
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
+                        });
+                    } else {
+                        result.push(0.0f32);
+                    }
+                }
+                Ok(ColumnValues::float4_with_validity(result, valid))
+            }
+
+            ColumnValues::Float8(values, valid) => {
+                let mut result = Vec::with_capacity(values.len());
+                for (idx, val) in values.iter().enumerate() {
+                    if valid.get(idx).copied().unwrap_or(false) {
+                        result.push(match prefix.operator {
+                            PrefixOperator::Minus(_) => -*val,
+                            PrefixOperator::Plus(_) => *val,
+                        });
+                    } else {
+                        result.push(0.0f64);
+                    }
+                }
+                Ok(ColumnValues::float8_with_validity(result, valid))
+            }
+
             ColumnValues::Int1(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
                 for (idx, val) in values.iter().enumerate() {
@@ -92,36 +122,7 @@ impl Evaluator {
                 }
                 Ok(ColumnValues::int16_with_validity(result, valid))
             }
-
-            ColumnValues::Float4(values, valid) => {
-                let mut result = Vec::with_capacity(values.len());
-                for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
-                        result.push(match prefix.operator {
-                            PrefixOperator::Minus(_) => -*val,
-                            PrefixOperator::Plus(_) => *val,
-                        });
-                    } else {
-                        result.push(0.0);
-                    }
-                }
-                Ok(ColumnValues::float4_with_validity(result, valid))
-            }
-
-            ColumnValues::Float8(values, valid) => {
-                let mut result = Vec::with_capacity(values.len());
-                for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
-                        result.push(match prefix.operator {
-                            PrefixOperator::Minus(_) => -*val,
-                            PrefixOperator::Plus(_) => *val,
-                        });
-                    } else {
-                        result.push(0.0);
-                    }
-                }
-                Ok(ColumnValues::float8_with_validity(result, valid))
-            }
+            
 
             // ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
             ColumnValues::String(_, _) => unimplemented!(),

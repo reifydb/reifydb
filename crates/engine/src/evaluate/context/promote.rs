@@ -17,7 +17,7 @@ pub trait Promote {
         From: SafePromote<To>;
 }
 
-impl Promote for Context<'_> {
+impl Promote for Context {
     fn promote<From, To>(
         &self,
         from: From,
@@ -30,7 +30,7 @@ impl Promote for Context<'_> {
     }
 }
 
-impl Promote for &Context<'_> {
+impl Promote for &Context {
     fn promote<From, To>(
         &self,
         from: From,
@@ -46,12 +46,15 @@ impl Promote for &Context<'_> {
                     if let Some(column) = &self.column {
                         return crate::evaluate::Error(column_saturation(ColumnSaturation {
                             span: span.into_span(),
-                            column: column.name.to_string(),
-                            value: column.value,
+                            column: column.name.clone(),
+                            value: column.kind,
                         }));
                     }
-                    // expression_saturation
-                    unimplemented!()
+                    return crate::evaluate::Error(column_saturation(ColumnSaturation {
+                        span: span.into_span(),
+                        column: None,
+                        value: None,
+                    }));
                 })
                 .map(Some),
             // SaturationPolicy::Saturate => Ok(a.saturating_promote(b)),
@@ -66,62 +69,48 @@ mod tests {
     use crate::evaluate::{Context, EvaluationColumn, Promote};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
+    use reifydb_core::ValueKind;
     use reifydb_core::num::SafePromote;
-    use reifydb_core::{BitVec, ValueKind};
-    use reifydb_testing::make_test_span;
+    use reifydb_diagnostic::Span;
 
     #[test]
     fn test_promote_ok() {
-        let ctx = Context {
-            column: Some(EvaluationColumn {
-                name: "test_column".to_string(),
-                value: ValueKind::Int2,
-                policies: vec![Saturation(Error)],
-            }),
-            mask: &BitVec::empty(),
-            columns: &[],
-            row_count: 0,
-            limit: None,
-        };
+        let mut ctx = Context::testing();
+        ctx.column = Some(EvaluationColumn {
+            name: Some("test_column".to_string()),
+            kind: Some(ValueKind::Int2),
+            policies: vec![Saturation(Error)],
+        });
 
-        let result = ctx.promote::<i8, i16>(1i8, || make_test_span());
+        let result = ctx.promote::<i8, i16>(1i8, || Span::testing_empty());
         assert_eq!(result, Ok(Some(1i16)));
     }
 
     #[test]
     fn test_promote_fail_with_error_policy() {
-        let ctx = Context {
-            column: Some(EvaluationColumn {
-                name: "test_column".to_string(),
-                value: ValueKind::Int2,
-                policies: vec![Saturation(Error)],
-            }),
-            mask: &BitVec::empty(),
-            columns: &[],
-            row_count: 0,
-            limit: None,
-        };
+        let mut ctx = Context::testing();
+        ctx.column = Some(EvaluationColumn {
+            name: Some("test_column".to_string()),
+            kind: Some(ValueKind::Int2),
+            policies: vec![Saturation(Error)],
+        });
 
-        let err = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).err().unwrap();
+        let err =
+            ctx.promote::<TestI8, TestI16>(TestI8 {}, || Span::testing_empty()).err().unwrap();
         let diagnostic = err.diagnostic();
         assert_eq!(diagnostic.code, "PO_001")
     }
 
     #[test]
     fn test_promote_fail_with_undefined_policy() {
-        let ctx = Context {
-            column: Some(EvaluationColumn {
-                name: "test_column".to_string(),
-                value: ValueKind::Int2,
-                policies: vec![Saturation(Undefined)],
-            }),
-            mask: &BitVec::empty(),
-            columns: &[],
-            row_count: 0,
-            limit: None,
-        };
+        let mut ctx = Context::testing();
+        ctx.column = Some(EvaluationColumn {
+            name: Some("test_column".to_string()),
+            kind: Some(ValueKind::Int2),
+            policies: vec![Saturation(Undefined)],
+        });
 
-        let result = ctx.promote::<TestI8, TestI16>(TestI8 {}, || make_test_span()).unwrap();
+        let result = ctx.promote::<TestI8, TestI16>(TestI8 {}, || Span::testing_empty()).unwrap();
         assert!(result.is_none());
     }
 

@@ -13,55 +13,13 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    // if let Err(e) = db.tx_as(
-    //     &root,
-    //     r#"create table test.arith(id: int2, num: int2)"#,
-    // ) {
-    //     println!("{}", e);
-    // }
-
-    if let Err(e) = db.tx_as(&root, r#"create table test.item(field_one: uint4)"#) {
-        println!("{}", e);
-    }
-
-    if let Err(e) = db.tx_as(&root, r#"insert (1),(2),(3) into test.item(field_one)"#) {
-        println!("{}", e);
-    }
-
-    // for l in db.rx_as(
-    //     &root,
-    //     r#"
-    //     from test.item
-    //     filter field_one + 10 > 2
-    //     select field_one, field_one + 1
-    //     limit 1
-    //     "#,
-    // ) {
-    //     println!("{}", l);
-    // }
-
-    // for l in db.rx_as(
-    //     &root,
-    //     r#"
-    //     select 1, 'test', true, false
-    //     "#,
-    // ) {
-    //     println!("{}", l);
-    // }
-
-    // for l in db.rx_as(
-    //     &root,
-    //     r#"
-    //         select cast(127 as int1) > cast(200 as uint1)
-    //     "#,
-    // ) {
-    //     println!("{}", l);
-    // }
+    db.tx_as(&root, r#"create table test.item(field_one: int1, field_two: int1)"#).unwrap();
+    db.tx_as(&root, r#"insert (1,-1), (-2,2) into test.item (field_one, field_two)"#).unwrap();
 
     for l in db.rx_as(
         &root,
         r#"
-            select cast(32767 as int2) < cast(100000 as int16)
+            from test.item filter field_one > 0 limit 1
         "#,
     ) {
         println!("{}", l);

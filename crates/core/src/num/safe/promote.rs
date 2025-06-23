@@ -36,3 +36,5 @@ impl_safe_promote!(u8 => u16, u32, u64, u128);
 impl_safe_promote!(u16 => u32, u64, u128);
 impl_safe_promote!(u32 => u64, u128);
 impl_safe_promote!(u64 => u128);
+
+impl_safe_promote!(f32 => f64);

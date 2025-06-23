@@ -20,8 +20,8 @@ impl LazyFrame {
                     &expr,
                     &Context {
                         column: None,
-                        mask: &BitVec::empty(),
-                        columns: &[],
+                        mask: BitVec::new(1, true),
+                        columns: Vec::new(),
                         row_count: 1,
                         limit: None,
                     },
@@ -46,6 +46,14 @@ impl LazyFrame {
             return Ok(self.frame);
         }
 
+        let ctx = Context {
+            column: None,
+            mask,
+            columns: self.frame.columns.clone(),
+            row_count: self.frame.row_count(),
+            limit: self.limit,
+        };
+
         let columns = self
             .expressions
             .iter()
@@ -54,17 +62,7 @@ impl LazyFrame {
                 let alias =
                     alias_expr.alias.clone().map(|a| a.0.fragment).unwrap_or(expr.span().fragment);
 
-                let values = evaluate(
-                    expr,
-                    &Context {
-                        column: None,
-                        mask: &mask,
-                        columns: self.frame.columns.as_slice(),
-                        row_count: self.frame.row_count(),
-                        limit: self.limit,
-                    },
-                )
-                .unwrap();
+                let values = evaluate(expr, &ctx).unwrap();
 
                 Column { name: alias.clone(), data: values }
             })

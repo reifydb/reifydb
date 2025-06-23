@@ -11,11 +11,11 @@ impl ColumnValues {
     pub fn adjust_column(
         &self,
         target: ValueKind,
-        cx: impl Promote + Demote + Convert,
+        ctx: impl Promote + Demote + Convert,
         span: impl Fn() -> Span,
     ) -> crate::Result<ColumnValues> {
         use ValueKind::*;
-
+        
         if target == self.kind() {
             return Ok(self.clone());
         }
@@ -33,7 +33,7 @@ impl ColumnValues {
                         $tgt_variant => return promote_vec::<$src_ty, $tgt_ty>(
                             values,
                             validity,
-                            cx,
+                            ctx,
                             &span,
                             $tgt_variant,
                             ColumnValues::push::<$tgt_ty>,
@@ -43,7 +43,7 @@ impl ColumnValues {
                         $dem_tgt_variant => return demote_vec::<$src_ty, $dem_tgt_ty>(
                                 values,
                                 validity,
-                                cx,
+                                ctx,
                                 &span,
                                 $dem_tgt_variant,
                                 ColumnValues::push::<$dem_tgt_ty>,
@@ -53,7 +53,7 @@ impl ColumnValues {
                         $conv_tgt_variant => return convert_vec::<$src_ty, $conv_tgt_ty>(
                             values,
                             validity,
-                            cx,
+                            ctx,
                             &span,
                             $conv_tgt_variant,
                             ColumnValues::push::<$conv_tgt_ty>,
@@ -65,10 +65,22 @@ impl ColumnValues {
         }
     }
 
+        adjust!(Float4, f32,
+            promote => [(Float8, f64) ],
+            demote => [ ],
+            convert => [ ]
+        );
+
+        adjust!(Float8, f64,
+            promote => [ ],
+            demote => [(Float4, f32)],
+            convert => []
+        );
+
         adjust!(Int1, i8,
             promote => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
             demote => [],
-            convert => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+            convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
         );
 
         adjust!(Int2, i16,
@@ -157,7 +169,7 @@ where
 fn promote_vec<From, To>(
     values: &[From],
     validity: &[bool],
-    cx: impl Promote,
+    ctx: impl Promote,
     span: impl Fn() -> Span,
     target_kind: ValueKind,
     mut push: impl FnMut(&mut ColumnValues, To),
@@ -168,7 +180,7 @@ where
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if validity[idx] {
-            match cx.promote::<From, To>(val, &span)? {
+            match ctx.promote::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
             }
@@ -182,7 +194,7 @@ where
 fn convert_vec<From, To>(
     values: &[From],
     validity: &[bool],
-    cx: impl Convert,
+    ctx: impl Convert,
     span: impl Fn() -> Span,
     target_kind: ValueKind,
     mut push: impl FnMut(&mut ColumnValues, To),
@@ -193,7 +205,7 @@ where
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if validity[idx] {
-            match cx.convert::<From, To>(val, &span)? {
+            match ctx.convert::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
             }
@@ -211,20 +223,19 @@ mod tests {
         use crate::frame::column::adjust::promote_vec;
         use reifydb_core::ValueKind;
         use reifydb_core::num::SafePromote;
-        use reifydb_diagnostic::IntoSpan;
-        use reifydb_testing::make_test_span;
+        use reifydb_diagnostic::{IntoSpan, Span};
 
         #[test]
         fn test_ok() {
             let values = [1i8, 2i8];
             let validity = [true, true];
-            let cx = TestCx::new();
+            let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
                 &validity,
-                &cx,
-                || make_test_span(),
+                &ctx,
+                || Span::testing_empty(),
                 ValueKind::Int2,
                 |col, v| col.push::<i16>(v),
             )
@@ -239,13 +250,13 @@ mod tests {
             // 42 mapped to None
             let values = [42i8];
             let validity = [true];
-            let cx = TestCx::new();
+            let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
                 &validity,
-                &cx,
-                || make_test_span(),
+                &ctx,
+                || Span::testing_empty(),
                 ValueKind::Int2,
                 |col, v| col.push::<i16>(v),
             )
@@ -258,13 +269,13 @@ mod tests {
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i8];
             let validity = [false];
-            let cx = TestCx::new();
+            let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
                 &validity,
-                &cx,
-                || make_test_span(),
+                &ctx,
+                || Span::testing_empty(),
                 ValueKind::Int2,
                 |col, v| col.push::<i16>(v),
             )
@@ -277,13 +288,13 @@ mod tests {
         fn test_mixed_validity_and_promote_failure() {
             let values = [1i8, 42i8, 3i8, 4i8];
             let validity = [true, true, false, true];
-            let cx = TestCx::new();
+            let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
                 &validity,
-                &cx,
-                || make_test_span(),
+                &ctx,
+                || Span::testing_empty(),
                 ValueKind::Int2,
                 |col, v| col.push::<i16>(v),
             )
@@ -294,15 +305,15 @@ mod tests {
             assert_eq!(result.validity(), &[true, false, false, true]);
         }
 
-        struct TestCx;
+        struct TestCtx;
 
-        impl TestCx {
+        impl TestCtx {
             fn new() -> Self {
                 Self
             }
         }
 
-        impl Promote for &TestCx {
+        impl Promote for &TestCtx {
             /// Can only used with i8
             fn promote<From, To>(
                 &self,
@@ -328,20 +339,19 @@ mod tests {
         use crate::frame::column::adjust::demote_vec;
         use reifydb_core::ValueKind;
         use reifydb_core::num::SafeDemote;
-        use reifydb_diagnostic::IntoSpan;
-        use reifydb_testing::make_test_span;
+        use reifydb_diagnostic::{IntoSpan, Span};
 
         #[test]
         fn test_ok() {
             let values = [1i16, 2i16];
             let validity = [true, true];
-            let cx = TestCx::new();
+            let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
                 &validity,
-                &cx,
-                || make_test_span(),
+                &ctx,
+                || Span::testing_empty(),
                 ValueKind::Int1,
                 |col, v| col.push::<i8>(v),
             )
@@ -356,13 +366,13 @@ mod tests {
         fn test_none_maps_to_undefined() {
             let values = [42i16];
             let validity = [true];
-            let cx = TestCx::new();
+            let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
                 &validity,
-                &cx,
-                || make_test_span(),
+                &ctx,
+                || Span::testing_empty(),
                 ValueKind::Int1,
                 |col, v| col.push::<i8>(v),
             )
@@ -375,13 +385,13 @@ mod tests {
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i16];
             let validity = [false];
-            let cx = TestCx::new();
+            let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
                 &validity,
-                &cx,
-                || make_test_span(),
+                &ctx,
+                || Span::testing_empty(),
                 ValueKind::Int1,
                 |col, v| col.push::<i8>(v),
             )
@@ -394,13 +404,13 @@ mod tests {
         fn test_mixed_validity_and_demote_failure() {
             let values = [1i16, 42i16, 3i16, 4i16];
             let validity = [true, true, false, true];
-            let cx = TestCx::new();
+            let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
                 &validity,
-                &cx,
-                || make_test_span(),
+                &ctx,
+                || Span::testing_empty(),
                 ValueKind::Int1,
                 |col, v| col.push::<i8>(v),
             )
@@ -411,15 +421,15 @@ mod tests {
             assert_eq!(result.validity(), &[true, false, false, true]);
         }
 
-        struct TestCx;
+        struct TestCtx;
 
-        impl TestCx {
+        impl TestCtx {
             fn new() -> Self {
                 Self
             }
         }
 
-        impl Demote for &TestCx {
+        impl Demote for &TestCtx {
             /// Can only be used with i16 → i8
             fn demote<From, To>(
                 &self,

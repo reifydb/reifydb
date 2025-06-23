@@ -510,8 +510,8 @@ mod tests {
 
     fn column_error_policy(name: &str, kind: ValueKind) -> EvaluationColumn {
         EvaluationColumn {
-            name: name.to_string(),
-            value: kind,
+            name: Some(name.to_string()),
+            kind: Some(kind),
             policies: vec![ColumnPolicyKind::Saturation(Error)],
         }
     }

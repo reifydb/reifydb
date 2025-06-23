@@ -36,16 +36,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
                         let context = Context {
                             column: Some(EvaluationColumn {
-                                name: column.name.clone(),
-                                value: column.value,
+                                name: Some(column.name.clone()),
+                                kind: Some(column.value),
                                 policies: column
                                     .policies
                                     .iter()
                                     .map(|cp| cp.policy.clone())
                                     .collect(),
                             }),
-                            mask: &BitVec::empty(),
-                            columns: &[],
+                            mask: BitVec::empty(),
+                            columns: Vec::new(),
                             row_count: 1,
                             limit: None,
                         };
