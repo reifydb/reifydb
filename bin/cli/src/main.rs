@@ -13,19 +13,13 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    // db.tx_as(&root, r#"create table test.item(field_one: float8, field_two: float8)"#).unwrap();
-    // db.tx_as(&root, r#"insert (-1.1,1.1), (-2.2,2.2) into test.item (field_one, field_two)"#).unwrap();
+    db.tx_as(&root, r#"create table test.item(field_one: bool, field_two: bool)"#).unwrap();
+    db.tx_as(&root, r#"insert (true, false), (false, true), (true,true), (false,false) into test.item (field_one, field_two)"#).unwrap();
 
     for l in db.rx_as(
         &root,
         r#"
-select
-  cast(100.111 as float4) < cast(200 as uint8),
-  cast(100.111 as float4) <= cast(200 as uint8),
-  cast(100.111 as float4) > cast(200 as uint8),
-  cast(100.111 as float4) >= cast(200 as uint8),
-  cast(100.111 as float4) == cast(200 as uint8),
-  cast(100.111 as float4) != cast(100 as uint8)'
+from test.item select field_one, field_two filter field_one == true
         "#,
     ) {
         println!("{}", l);

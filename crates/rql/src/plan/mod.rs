@@ -654,6 +654,9 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
 fn expression(ast: Ast) -> Result<Expression> {
     match ast {
         Ast::Literal(literal) => match literal {
+            AstLiteral::Boolean(literal) => {
+                Ok(Expression::Constant(ConstantExpression::Bool { span: literal.0.span }))
+            }
             AstLiteral::Number(literal) => {
                 Ok(Expression::Constant(ConstantExpression::Number { span: literal.0.span }))
             }
