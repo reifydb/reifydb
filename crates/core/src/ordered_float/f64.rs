@@ -73,7 +73,10 @@ impl Deref for OrderedF64 {
 
 impl Display for OrderedF64 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.0, f)
+        let value = self.0;
+        let out = format!("{:.6}", value);
+        let s = out.trim_end_matches('0').trim_end_matches('.').to_string();
+        f.write_str(&s)
     }
 }
 

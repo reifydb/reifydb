@@ -69,7 +69,7 @@ impl_safe_unsigned_convert!(u32 => i8, i16, i32, i64, i128);
 impl_safe_unsigned_convert!(u64 => i8, i16, i32, i64, i128);
 impl_safe_unsigned_convert!(u128 => i8, i16, i32, i64, i128);
 
-macro_rules! impl_safe_convert_float {
+macro_rules! impl_safe_convert_signed_to_float {
     ($mantissa_bits:expr; $src:ty => $($float:ty),* $(,)?) => {
         $(
             impl SafeConvert<$float> for $src {
@@ -103,19 +103,19 @@ macro_rules! impl_safe_convert_float {
     };
 }
 
-impl_safe_convert_float!(24;i8 => f32,);
-impl_safe_convert_float!(24;i16 => f32);
-impl_safe_convert_float!(24;i32 => f32);
-impl_safe_convert_float!(24;i64 => f32);
-impl_safe_convert_float!(24;i128 => f32);
+impl_safe_convert_signed_to_float!(24;i8 => f32,);
+impl_safe_convert_signed_to_float!(24;i16 => f32);
+impl_safe_convert_signed_to_float!(24;i32 => f32);
+impl_safe_convert_signed_to_float!(24;i64 => f32);
+impl_safe_convert_signed_to_float!(24;i128 => f32);
 
-impl_safe_convert_float!(53;i8 =>  f64);
-impl_safe_convert_float!(53;i16 => f64);
-impl_safe_convert_float!(53;i32 => f64);
-impl_safe_convert_float!(53;i64 =>  f64);
-impl_safe_convert_float!(53;i128 => f64);
+impl_safe_convert_signed_to_float!(53;i8 =>  f64);
+impl_safe_convert_signed_to_float!(53;i16 => f64);
+impl_safe_convert_signed_to_float!(53;i32 => f64);
+impl_safe_convert_signed_to_float!(53;i64 =>  f64);
+impl_safe_convert_signed_to_float!(53;i128 => f64);
 
-macro_rules! impl_safe_convert_float_unsigned {
+macro_rules! impl_safe_convert_unsigned_to_float {
     ($mantissa_bits:expr; $src:ty => $($float:ty),* $(,)?) => {
         $(
             impl SafeConvert<$float> for $src {
@@ -146,16 +146,16 @@ macro_rules! impl_safe_convert_float_unsigned {
     };
 }
 
-impl_safe_convert_float_unsigned!(24;u8 => f32);
-impl_safe_convert_float_unsigned!(24;u16 => f32);
-impl_safe_convert_float_unsigned!(24;u32 => f32);
-impl_safe_convert_float_unsigned!(24;u64 => f32);
-impl_safe_convert_float_unsigned!(24;u128 => f32);
-impl_safe_convert_float_unsigned!(53;u8 =>  f64);
-impl_safe_convert_float_unsigned!(53;u16 => f64);
-impl_safe_convert_float_unsigned!(53;u32 => f64);
-impl_safe_convert_float_unsigned!(53;u64 =>  f64);
-impl_safe_convert_float_unsigned!(53;u128 => f64);
+impl_safe_convert_unsigned_to_float!(24;u8 => f32);
+impl_safe_convert_unsigned_to_float!(24;u16 => f32);
+impl_safe_convert_unsigned_to_float!(24;u32 => f32);
+impl_safe_convert_unsigned_to_float!(24;u64 => f32);
+impl_safe_convert_unsigned_to_float!(24;u128 => f32);
+impl_safe_convert_unsigned_to_float!(53;u8 =>  f64);
+impl_safe_convert_unsigned_to_float!(53;u16 => f64);
+impl_safe_convert_unsigned_to_float!(53;u32 => f64);
+impl_safe_convert_unsigned_to_float!(53;u64 =>  f64);
+impl_safe_convert_unsigned_to_float!(53;u128 => f64);
 
 #[cfg(test)]
 mod tests {
@@ -1044,7 +1044,7 @@ mod tests {
             assert_eq!(y, i64::MIN as f64);
         }
     }
-  
+
     mod i128_to_u8 {
         use crate::num::SafeConvert;
 
@@ -1318,7 +1318,6 @@ mod tests {
             assert!(y.is_finite());
         }
     }
-
 
     mod u8_to_i8 {
         use crate::num::SafeConvert;
@@ -2038,7 +2037,7 @@ mod tests {
         fn test_wrapping_convert() {
             let x: u64 = 1;
             let y: f32 = x.wrapping_convert();
-            assert_eq!(y,1.0f32);
+            assert_eq!(y, 1.0f32);
         }
 
         #[test]
@@ -2312,7 +2311,7 @@ mod tests {
         fn test_wrapping_convert() {
             let x: u128 = 1;
             let y: f32 = x.wrapping_convert();
-            assert_eq!(y,1.0f32);
+            assert_eq!(y, 1.0f32);
         }
 
         #[test]

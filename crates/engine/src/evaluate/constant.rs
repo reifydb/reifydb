@@ -52,6 +52,13 @@ impl Evaluator {
                     ColumnValues::int16(vec![v; row_count])
                 } else if let Ok(v) = s.parse::<u128>() {
                     ColumnValues::uint16(vec![v; row_count])
+                } else if let Ok(v) = s.parse::<f32>() {
+                    if !v.is_finite() {
+                        if let Ok(v) = s.parse::<f64>() {
+                            return Ok(ColumnValues::float8(vec![v; row_count]));
+                        }
+                    }
+                    ColumnValues::float4(vec![v; row_count])
                 } else if let Ok(v) = s.parse::<f64>() {
                     ColumnValues::float8(vec![v; row_count])
                 } else {
@@ -209,16 +216,17 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::EvaluationColumn;
-    use ColumnSaturationPolicy::Error;
     use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
     use reifydb_core::ValueKind;
     use reifydb_diagnostic::{Line, Offset, Span};
+    use ColumnSaturationPolicy::Error;
 
     mod constant_value {
-        use crate::evaluate::Evaluator;
-        use crate::evaluate::constant::ConstantExpression;
         use crate::evaluate::constant::tests::make_span;
+        use crate::evaluate::constant::ConstantExpression;
+        use crate::evaluate::Evaluator;
         use crate::frame::ColumnValues;
+        use reifydb_diagnostic::Span;
 
         #[test]
         fn test_bool_true() {
@@ -232,6 +240,21 @@ mod tests {
             let expr = ConstantExpression::Bool { span: make_span("false") };
             let col = Evaluator::constant_value(&expr, 2).unwrap();
             assert_eq!(col, ColumnValues::bool(vec![false; 2]));
+        }
+
+        #[test]
+        fn test_float4() {
+            let expr = ConstantExpression::Number { span: make_span("3.14") };
+            let col = Evaluator::constant_value(&expr, 2).unwrap();
+            assert_eq!(col, ColumnValues::float4(vec![3.14; 2]));
+        }
+
+        #[test]
+        fn test_float8() {
+            let expr =
+                ConstantExpression::Number { span: Span::testing(f64::MAX.to_string().as_str()) };
+            let col = Evaluator::constant_value(&expr, 2).unwrap();
+            assert_eq!(col, ColumnValues::float8(vec![f64::MAX; 2]));
         }
 
         #[test]
@@ -279,13 +302,6 @@ mod tests {
         }
 
         #[test]
-        fn test_float8() {
-            let expr = ConstantExpression::Number { span: make_span("3.14") };
-            let col = Evaluator::constant_value(&expr, 2).unwrap();
-            assert_eq!(col, ColumnValues::float8(vec![3.14; 2]));
-        }
-
-        #[test]
         fn test_invalid_number_fallback_to_undefined() {
             let expr = ConstantExpression::Number { span: make_span("not_a_number") };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
@@ -315,8 +331,8 @@ mod tests {
     }
 
     mod constant_value_of {
-        use crate::evaluate::Evaluator;
         use crate::evaluate::constant::tests::make_span;
+        use crate::evaluate::Evaluator;
         use crate::frame::ColumnValues;
         use reifydb_core::ValueKind;
         use reifydb_rql::expression::ConstantExpression;
@@ -453,7 +469,6 @@ mod tests {
         fn test_float4_type_mismatch() {
             number_type_mismatch("not_a_float", ValueKind::Float4);
         }
-
 
         #[test]
         fn test_float8_ok() {

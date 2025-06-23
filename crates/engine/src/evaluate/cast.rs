@@ -167,6 +167,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::float8([-1.1]));
+        assert_eq!(result, ColumnValues::float8([-1.100000023841858]));
     }
 }

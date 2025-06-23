@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::CowVec;
-use reifydb_core::num::{is_equal, is_greater_than, IsNumber, Promote};
 use crate::evaluate::{Context, Evaluator};
 use crate::frame::ColumnValues;
+use reifydb_core::CowVec;
+use reifydb_core::num::{IsNumber, Promote, is_equal};
 use reifydb_rql::expression::EqualExpression;
 
 impl Evaluator {
@@ -496,4 +496,3 @@ where
 
     ColumnValues::bool_with_validity(values, valid)
 }
-

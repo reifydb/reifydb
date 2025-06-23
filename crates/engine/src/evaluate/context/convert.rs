@@ -50,8 +50,11 @@ impl Convert for &Context {
                             value: column.kind,
                         }));
                     }
-                    // expression_saturation
-                    unimplemented!()
+                    return crate::evaluate::Error(column_saturation(ColumnSaturation {
+                        span: span.into_span(),
+                        column: None,
+                        value: None,
+                    }));
                 })
                 .map(Some),
             // SaturationPolicy::Saturate => Ok(a.saturating_convert(b)),
