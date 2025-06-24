@@ -12,7 +12,7 @@ pub(crate) mod schema {
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
             Kind::Uint8,  // id
-            Kind::String, // name
+            Kind::Text, // name
         ])
     });
 }

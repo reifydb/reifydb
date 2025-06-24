@@ -67,7 +67,7 @@ impl From<Frame> for ExecutionResult {
                     ColumnValues::Int4(_, _) => Kind::Int4,
                     ColumnValues::Int8(_, _) => Kind::Int8,
                     ColumnValues::Int16(_, _) => Kind::Int16,
-                    ColumnValues::String(_, _) => Kind::String,
+                    ColumnValues::String(_, _) => Kind::Text,
                     ColumnValues::Uint1(_, _) => Kind::Uint1,
                     ColumnValues::Uint2(_, _) => Kind::Uint2,
                     ColumnValues::Uint4(_, _) => Kind::Uint4,

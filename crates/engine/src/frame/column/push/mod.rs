@@ -3,7 +3,10 @@
 
 use crate::frame::ColumnValues;
 use reifydb_core::CowVec;
+use reifydb_core::num::{IsNumber, SafePromote};
+use std::fmt::Debug;
 
+mod i8;
 mod undefined;
 mod value;
 
@@ -15,6 +18,7 @@ impl ColumnValues {
     pub fn push<T>(&mut self, value: T)
     where
         Self: Push<T>,
+        T: Debug,
     {
         <Self as Push<T>>::push(self, value)
     }
@@ -51,7 +55,7 @@ macro_rules! impl_push {
 impl_push!(bool, Bool);
 impl_push!(f32, Float4);
 impl_push!(f64, Float8);
-impl_push!(i8, Int1);
+// impl_push!(i8, Int1);
 impl_push!(i16, Int2);
 impl_push!(i32, Int4);
 impl_push!(i64, Int8);
@@ -226,10 +230,10 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "called `push::<i8>()` on ColumnValues")]
+        #[should_panic(expected = "called `push::<i16>()` on ColumnValues")]
         fn test_into_wrong_column_type() {
             let mut col = ColumnValues::bool(vec![true]);
-            col.push(3i8);
+            col.push(3i16);
         }
     }
 

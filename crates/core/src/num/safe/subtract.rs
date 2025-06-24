@@ -2,23 +2,23 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 pub trait SafeSubtract: Sized {
-    fn checked_sub(self, rhs: Self) -> Option<Self>;
-    fn saturating_sub(self, rhs: Self) -> Self;
-    fn wrapping_sub(self, rhs: Self) -> Self;
+    fn checked_sub(self, r: Self) -> Option<Self>;
+    fn saturating_sub(self, r: Self) -> Self;
+    fn wrapping_sub(self, r: Self) -> Self;
 }
 
 macro_rules! impl_safe_sub {
     ($($t:ty),*) => {
         $(
             impl SafeSubtract for $t {
-                fn checked_sub(self, rhs: Self) -> Option<Self> {
-                    self.checked_sub(rhs)
+                fn checked_sub(self, r: Self) -> Option<Self> {
+                    self.checked_sub(r)
                 }
-                fn saturating_sub(self, rhs: Self) -> Self {
-                    self.saturating_sub(rhs)
+                fn saturating_sub(self, r: Self) -> Self {
+                    self.saturating_sub(r)
                 }
-                fn wrapping_sub(self, rhs: Self) -> Self {
-                    self.wrapping_sub(rhs)
+                fn wrapping_sub(self, r: Self) -> Self {
+                    self.wrapping_sub(r)
                 }
             }
         )*

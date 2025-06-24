@@ -13,8 +13,8 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(field: int16)"#).unwrap();
-    db.tx_as(&root, r#"insert (-170_141_183_460_469_231_731_687_303_715_884_105_728) into test.item (field)"#).unwrap();
+    db.tx_as(&root, r#"create table test.item(field_one: int2 policy (saturation undefined), field_two: int2, field_three: int2 )"#).unwrap();
+    db.tx_as(&root, r#"insert (32767 + 1, 255 + 255, 120 + 3) into test.item (field_one, field_two, field_three)"#).unwrap();
     for l in db.rx_as(
         &root,
         r#"

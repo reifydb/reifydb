@@ -222,7 +222,7 @@ impl Evaluator {
                 }
             }
 
-            (ConstantExpression::Text { span }, Kind::String) => {
+            (ConstantExpression::Text { span }, Kind::Text) => {
                 ColumnValues::string(std::iter::repeat(span.fragment.clone()).take(row_count))
             }
 
@@ -503,7 +503,7 @@ mod tests {
         #[test]
         fn test_text_ok() {
             let expr = ConstantExpression::Text { span: make_span("hello") };
-            let col = Evaluator::constant_value_of(&expr, Kind::String, 3).unwrap();
+            let col = Evaluator::constant_value_of(&expr, Kind::Text, 3).unwrap();
             assert_eq!(col, ColumnValues::string(vec!["hello".to_string(); 3]));
         }
 

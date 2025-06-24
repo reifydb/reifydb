@@ -2,8 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::ColumnValues;
-use reifydb_core::Kind;
+use crate::frame::{ColumnValues, Push};
+use reifydb_core::num::{IsNumber, Promote, SafeAdd};
+use reifydb_core::{CowVec, GetKind, Kind};
+use reifydb_diagnostic::{IntoSpan, Span};
 use reifydb_rql::expression::AddExpression;
 
 impl Evaluator {
@@ -15,8 +17,8 @@ impl Evaluator {
         let left = self.evaluate(&add.left, ctx)?;
         let right = self.evaluate(&add.right, ctx)?;
 
-        let row_count = ctx.limit.unwrap_or(ctx.row_count);;
-        let column_value = Kind::promote(left.kind(), right.kind());
+        let row_count = ctx.limit.unwrap_or(ctx.row_count);
+        let kind = Kind::promote(left.kind(), right.kind());
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {
@@ -49,19 +51,8 @@ impl Evaluator {
                 Ok(ColumnValues::float8_with_validity(values, valid))
             }
 
-            (ColumnValues::Int2(l_vals, l_valid), ColumnValues::Int1(r_vals, r_valid)) => {
-                let mut values = Vec::with_capacity(row_count);
-                let mut valid = Vec::with_capacity(row_count);
-                for i in 0..row_count {
-                    if l_valid[i] && r_valid[i] {
-                        values.push(l_vals[i] + r_vals[i] as i16);
-                        valid.push(true);
-                    } else {
-                        values.push(0); // Placeholder
-                        valid.push(false);
-                    }
-                }
-                Ok(ColumnValues::int2_with_validity(values, valid))
+            (ColumnValues::Int2(l, lv), ColumnValues::Int1(r, rv)) => {
+                add_numeric(ctx, l, r, lv, rv, kind, &add.span)
             }
 
             (ColumnValues::Int1(l_vals, l_valid), ColumnValues::Int2(r_vals, r_valid)) => {
@@ -79,52 +70,8 @@ impl Evaluator {
                 Ok(ColumnValues::int2_with_validity(values, valid))
             }
 
-            (ColumnValues::Int1(l_vals, l_valid), ColumnValues::Int1(r_vals, r_valid)) => {
-                assert_eq!(l_vals.len(), r_vals.len());
-                assert_eq!(l_valid.len(), r_valid.len());
-                let mut result = ColumnValues::with_capacity(column_value, l_vals.len());
-
-                for i in 0..row_count {
-                    if l_valid[i] && r_valid[i] {
-                        // FIXME
-                        if let Some(value) =
-                            ctx.add(l_vals[i] as i16, r_vals[i] as i16, &add.span)?
-                        {
-                            result.push::<i16>(value);
-                            // values.push(value);
-                            // valid.push(true);
-                        } else {
-                            // values.push(0);
-                            // valid.push(false);
-                            // result.push_value(Value::Undefined)
-                            result.push_undefined()
-                        }
-                    } else {
-                        result.push_undefined()
-                        // values.push(0);
-                        // valid.push(false);
-                    }
-                }
-
-                //
-                // let mut values = Vec::with_capacity(row_count);
-                // let mut valid = Vec::with_capacity(row_count);
-                // for i in 0..row_count {
-                //     if l_valid[i] && r_valid[i] {
-                //         if let Some(value) = ctx.add(l_vals[i] as i16, r_vals[i] as i16, &span)? {
-                //             values.push(value);
-                //             valid.push(true);
-                //         } else {
-                //             values.push(0);
-                //             valid.push(false);
-                //         }
-                //     } else {
-                //         values.push(0);
-                //         valid.push(false);
-                //     }
-                // }
-                // Ok(ColumnValues::int2_with_validity(values, valid))
-                Ok(result)
+            (ColumnValues::Int1(l, lv), ColumnValues::Int1(r, rv)) => {
+                add_numeric(ctx, l, r, lv, rv, kind, &add.span)
             }
             (ColumnValues::Int2(l_vals, l_valid), ColumnValues::Int2(r_vals, r_valid)) => {
                 let mut values = Vec::with_capacity(row_count);
@@ -256,6 +203,41 @@ impl Evaluator {
             _ => Ok(ColumnValues::Undefined(row_count)),
         }
     }
+}
+
+fn add_numeric<L, R>(
+    ctx: &Context,
+    l: &CowVec<L>,
+    r: &CowVec<R>,
+    l_valid: &CowVec<bool>,
+    r_valid: &CowVec<bool>,
+    kind: Kind,
+    span: &Span,
+) -> crate::evaluate::Result<ColumnValues>
+where
+    L: GetKind + Promote<R> + Copy,
+    R: GetKind + IsNumber + Copy,
+    <L as Promote<R>>::Output: IsNumber,
+    <L as Promote<R>>::Output: SafeAdd,
+    ColumnValues: Push<<L as Promote<R>>::Output>,
+{
+    assert_eq!(l.len(), r.len());
+    assert_eq!(l.len(), r.len());
+
+    let mut result = ColumnValues::with_capacity(kind, l_valid.len());
+    for i in 0..l.len() {
+        if l_valid[i] && r_valid[i] {
+            if let Some(value) = ctx.add(l[i], r[i], span)? {
+                result.push(value);
+            } else {
+                result.push_undefined()
+            }
+        } else {
+            result.push_undefined()
+        }
+    }
+
+    Ok(result)
 }
 
 #[cfg(test)]

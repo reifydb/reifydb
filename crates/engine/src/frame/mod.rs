@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 pub use column::AsSlice;
-pub use column::{Column, ColumnValues};
+pub use column::{Column, ColumnValues, Push};
 pub use error::Error;
 pub use frame::Frame;
 pub use lazy::LazyFrame;

@@ -275,7 +275,7 @@ fn unmap_diagnostic(grpc: grpc_db::Diagnostic) -> reifydb_diagnostic::Diagnostic
                 5 => Kind::Int4,
                 6 => Kind::Int8,
                 7 => Kind::Int16,
-                8 => Kind::String,
+                8 => Kind::Text,
                 9 => Kind::Uint1,
                 10 => Kind::Uint2,
                 11 => Kind::Uint4,

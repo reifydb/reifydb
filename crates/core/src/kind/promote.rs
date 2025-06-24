@@ -1,11 +1,10 @@
-// Copyright (c) reifydb.com 2025.
-// This file is licensed under the AGPL-3.0-or-later.
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
 
 use crate::Kind;
 use std::cmp::min;
 
 impl Kind {
-
     /// Promote two ValueKinds to a common supertype, similar to PostgreSQL expression evaluation.
     pub fn promote(left: Kind, right: Kind) -> Kind {
         use Kind::*;
@@ -14,8 +13,8 @@ impl Kind {
             return Undefined;
         }
 
-        if left == String || right == String {
-            return String;
+        if left == Text || right == Text {
+            return Text;
         }
 
         if left == Bool || right == Bool {
@@ -71,7 +70,6 @@ impl Kind {
 #[cfg(test)]
 mod tests {
     use crate::Kind;
-    
 
     #[test]
     fn test_promote_bool() {
@@ -85,7 +83,7 @@ mod tests {
             (Bool, Int4, Bool),
             (Bool, Int8, Bool),
             (Bool, Int16, Bool),
-            (Bool, String, String),
+            (Bool, Text, Text),
             (Bool, Uint1, Bool),
             (Bool, Uint2, Bool),
             (Bool, Uint4, Bool),
@@ -110,7 +108,7 @@ mod tests {
             (Float4, Int4, Float8),
             (Float4, Int8, Float8),
             (Float4, Int16, Float8),
-            (Float4, String, String),
+            (Float4, Text, Text),
             (Float4, Uint1, Float8),
             (Float4, Uint2, Float8),
             (Float4, Uint4, Float8),
@@ -135,7 +133,7 @@ mod tests {
             (Float8, Int4, Float8),
             (Float8, Int8, Float8),
             (Float8, Int16, Float8),
-            (Float8, String, String),
+            (Float8, Text, Text),
             (Float8, Uint1, Float8),
             (Float8, Uint2, Float8),
             (Float8, Uint4, Float8),
@@ -160,7 +158,7 @@ mod tests {
             (Int1, Int4, Int8),
             (Int1, Int8, Int16),
             (Int1, Int16, Int16),
-            (Int1, String, String),
+            (Int1, Text, Text),
             (Int1, Uint1, Int2),
             (Int1, Uint2, Int4),
             (Int1, Uint4, Int8),
@@ -185,7 +183,7 @@ mod tests {
             (Int2, Int4, Int8),
             (Int2, Int8, Int16),
             (Int2, Int16, Int16),
-            (Int2, String, String),
+            (Int2, Text, Text),
             (Int2, Uint1, Int4),
             (Int2, Uint2, Int4),
             (Int2, Uint4, Int8),
@@ -210,7 +208,7 @@ mod tests {
             (Int4, Int4, Int8),
             (Int4, Int8, Int16),
             (Int4, Int16, Int16),
-            (Int4, String, String),
+            (Int4, Text, Text),
             (Int4, Uint1, Int8),
             (Int4, Uint2, Int8),
             (Int4, Uint4, Int8),
@@ -235,7 +233,7 @@ mod tests {
             (Int8, Int4, Int16),
             (Int8, Int8, Int16),
             (Int8, Int16, Int16),
-            (Int8, String, String),
+            (Int8, Text, Text),
             (Int8, Uint1, Int16),
             (Int8, Uint2, Int16),
             (Int8, Uint4, Int16),
@@ -260,7 +258,7 @@ mod tests {
             (Int16, Int4, Int16),
             (Int16, Int8, Int16),
             (Int16, Int16, Int16),
-            (Int16, String, String),
+            (Int16, Text, Text),
             (Int16, Uint1, Int16),
             (Int16, Uint2, Int16),
             (Int16, Uint4, Int16),
@@ -277,14 +275,14 @@ mod tests {
     fn test_promote_string() {
         use Kind::*;
         let kinds = [
-            Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16, String, Uint1, Uint2, Uint4,
-            Uint8, Uint16,
+            Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Text, Uint1, Uint2, Uint4, Uint8,
+            Uint16,
         ];
         for kind in kinds {
-            assert_eq!(Kind::promote(String, kind), String);
+            assert_eq!(Kind::promote(Text, kind), Text);
         }
 
-        assert_eq!(Kind::promote(String, Undefined), Undefined);
+        assert_eq!(Kind::promote(Text, Undefined), Undefined);
     }
 
     #[test]
@@ -299,7 +297,7 @@ mod tests {
             (Uint1, Int4, Int8),
             (Uint1, Int8, Int16),
             (Uint1, Int16, Int16),
-            (Uint1, String, String),
+            (Uint1, Text, Text),
             (Uint1, Uint1, Uint2),
             (Uint1, Uint2, Uint4),
             (Uint1, Uint4, Uint8),
@@ -324,7 +322,7 @@ mod tests {
             (Uint2, Int4, Int8),
             (Uint2, Int8, Int16),
             (Uint2, Int16, Int16),
-            (Uint2, String, String),
+            (Uint2, Text, Text),
             (Uint2, Uint1, Uint4),
             (Uint2, Uint2, Uint4),
             (Uint2, Uint4, Uint8),
@@ -349,7 +347,7 @@ mod tests {
             (Uint4, Int4, Int8),
             (Uint4, Int8, Int16),
             (Uint4, Int16, Int16),
-            (Uint4, String, String),
+            (Uint4, Text, Text),
             (Uint4, Uint1, Uint8),
             (Uint4, Uint2, Uint8),
             (Uint4, Uint4, Uint8),
@@ -374,7 +372,7 @@ mod tests {
             (Uint8, Int4, Int16),
             (Uint8, Int8, Int16),
             (Uint8, Int16, Int16),
-            (Uint8, String, String),
+            (Uint8, Text, Text),
             (Uint8, Uint1, Uint16),
             (Uint8, Uint2, Uint16),
             (Uint8, Uint4, Uint16),
@@ -399,7 +397,7 @@ mod tests {
             (Uint16, Int4, Int16),
             (Uint16, Int8, Int16),
             (Uint16, Int16, Int16),
-            (Uint16, String, String),
+            (Uint16, Text, Text),
             (Uint16, Uint1, Uint16),
             (Uint16, Uint2, Uint16),
             (Uint16, Uint4, Uint16),
@@ -416,8 +414,8 @@ mod tests {
     fn test_promote_undefined() {
         use Kind::*;
         let kinds = [
-            Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16, String, Uint1, Uint2, Uint4,
-            Uint8, Uint16, Undefined,
+            Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Text, Uint1, Uint2, Uint4, Uint8,
+            Uint16, Undefined,
         ];
         for kind in kinds {
             assert_eq!(Kind::promote(Undefined, kind), Undefined);

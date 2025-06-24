@@ -23,40 +23,40 @@ impl ColumnValues {
         macro_rules! adjust {
         (
             $src_variant:ident, $src_ty:ty,
-            promote => [ $( ($tgt_variant:ident, $tgt_ty:ty) ),* ],
-            demote => [ $( ($dem_tgt_variant:ident, $dem_tgt_ty:ty) ),* ],
-            convert => [ $( ($conv_tgt_variant:ident, $conv_tgt_ty:ty) ),* ]
+            promote => [ $( ($pro_variant:ident, $pro_ty:ty) ),* ],
+            demote => [ $( ($dem_variant:ident, $dem_ty:ty) ),* ],
+            convert => [ $( ($con_variant:ident, $con_ty:ty) ),* ]
         ) => {
             if let ColumnValues::$src_variant(values, validity) = self {
                 match target {
                     $(
-                        $tgt_variant => return promote_vec::<$src_ty, $tgt_ty>(
+                        $pro_variant => return promote_vec::<$src_ty, $pro_ty>(
                             values,
                             validity,
                             ctx,
                             &span,
-                            $tgt_variant,
-                            ColumnValues::push::<$tgt_ty>,
+                            $pro_variant,
+                            ColumnValues::push::<$pro_ty>,
                         ),
                     )*
                     $(
-                        $dem_tgt_variant => return demote_vec::<$src_ty, $dem_tgt_ty>(
+                        $dem_variant => return demote_vec::<$src_ty, $dem_ty>(
                                 values,
                                 validity,
                                 ctx,
                                 &span,
-                                $dem_tgt_variant,
-                                ColumnValues::push::<$dem_tgt_ty>,
+                                $dem_variant,
+                                ColumnValues::push::<$dem_ty>,
                             ),
                     )*
                     $(
-                        $conv_tgt_variant => return convert_vec::<$src_ty, $conv_tgt_ty>(
+                        $con_variant => return convert_vec::<$src_ty, $con_ty>(
                             values,
                             validity,
                             ctx,
                             &span,
-                            $conv_tgt_variant,
-                            ColumnValues::push::<$conv_tgt_ty>,
+                            $con_variant,
+                            ColumnValues::push::<$con_ty>,
                         ),
                     )*
                     _ => {}

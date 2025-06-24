@@ -83,7 +83,7 @@ impl Frame {
                         CowVec::new(vec![0i128; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    Kind::String => ColumnValues::string_with_validity(
+                    Kind::Text => ColumnValues::string_with_validity(
                         CowVec::new(vec![String::new(); size]),
                         CowVec::new(vec![false; size]),
                     ),
@@ -162,7 +162,7 @@ impl Frame {
                     vec.push(layout.get_i128(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::String(vec, valid), Kind::String) => {
+                (ColumnValues::String(vec, valid), Kind::Text) => {
                     vec.push(layout.get_str(&row, index).to_string());
                     valid.push(true);
                 }
@@ -299,7 +299,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::String(vec, valid), Kind::String) => {
+                (ColumnValues::String(vec, valid), Kind::Text) => {
                     match layout.try_get_str(row, index) {
                         Some(v) => {
                             vec.push(v.to_string());
@@ -794,7 +794,7 @@ mod tests {
         #[test]
         fn test_before_undefined_string() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[Kind::String]);
+            let layout = Layout::new(&[Kind::Text]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::String("reifydb".into())]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -1039,7 +1039,7 @@ mod tests {
         fn test_all_defined_string() {
             let mut test_instance = Frame::new(vec![Column::string("test", [])]);
 
-            let layout = Layout::new(&[Kind::String]);
+            let layout = Layout::new(&[Kind::Text]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::String("a".into())]);
             let mut row_two = layout.allocate_row();
@@ -1356,7 +1356,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::string("test", []), Column::string("undefined", [])]);
 
-            let layout = Layout::new(&[Kind::String, Kind::String]);
+            let layout = Layout::new(&[Kind::Text, Kind::Text]);
             let mut row = layout.allocate_row();
             layout.set_str(&mut row, 0, "reifydb");
             layout.set_undefined(&mut row, 1);

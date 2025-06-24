@@ -5,17 +5,17 @@
 
 use crate::num::is::IsNumber;
 
-pub trait Promote<Rhs> where Self: IsNumber, Rhs: IsNumber {
+pub trait Promote<R> where Self: IsNumber, R: IsNumber {
     type Output: IsNumber;
-    fn promote(self, rhs: Rhs) -> (Self::Output, Self::Output);
+    fn promote(self, r: R) -> (Self::Output, Self::Output);
 }
 
 macro_rules! impl_promote {
-    ($lhs:ty, $rhs:ty => $common:ty) => {
-        impl Promote<$rhs> for $lhs {
+    ($l:ty, $r:ty => $common:ty) => {
+        impl Promote<$r> for $l {
             type Output = $common;
-            fn promote(self, rhs: $rhs) -> (Self::Output, Self::Output) {
-                (self as $common, rhs as $common)
+            fn promote(self, r: $r) -> (Self::Output, Self::Output) {
+                (self as $common, r as $common)
             }
         }
     };

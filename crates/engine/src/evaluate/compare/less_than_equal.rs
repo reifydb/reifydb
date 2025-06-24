@@ -471,22 +471,22 @@ impl Evaluator {
 }
 
 pub fn compare_numeric<L, R>(
-    lhs: &CowVec<L>,
-    rhs: &CowVec<R>,
-    lhs_valid: &CowVec<bool>,
-    rhs_valid: &CowVec<bool>,
+    l: &CowVec<L>,
+    r: &CowVec<R>,
+    l_valid: &CowVec<bool>,
+    r_valid: &CowVec<bool>,
 ) -> ColumnValues
 where
     L: Promote<R> + Copy,
     R: IsNumber + Copy,
     <L as Promote<R>>::Output: PartialOrd,
 {
-    let mut values = Vec::with_capacity(lhs.len());
-    let mut valid = Vec::with_capacity(lhs.len());
+    let mut values = Vec::with_capacity(l.len());
+    let mut valid = Vec::with_capacity(l.len());
 
-    for i in 0..lhs.len() {
-        if lhs_valid[i] && rhs_valid[i] {
-            values.push(is_less_than_equal(lhs[i], rhs[i]));
+    for i in 0..l.len() {
+        if l_valid[i] && r_valid[i] {
+            values.push(is_less_than_equal(l[i], r[i]));
             valid.push(true);
         } else {
             values.push(false);

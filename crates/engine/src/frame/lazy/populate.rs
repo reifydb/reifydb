@@ -38,7 +38,7 @@ impl LazyFrame {
                     Kind::Int4 => ColumnValues::int4(vec![]),
                     Kind::Int8 => ColumnValues::int8(vec![]),
                     Kind::Int16 => ColumnValues::int16(vec![]),
-                    Kind::String => ColumnValues::string(vec![]),
+                    Kind::Text => ColumnValues::string(vec![]),
                     Kind::Uint1 => ColumnValues::uint1(vec![]),
                     Kind::Uint2 => ColumnValues::uint2(vec![]),
                     Kind::Uint4 => ColumnValues::uint4(vec![]),

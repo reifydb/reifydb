@@ -8,12 +8,13 @@ use reifydb_catalog::column_policy::{
     ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY,
 };
 
+mod arith;
 mod convert;
 mod demote;
 mod promote;
 
 use crate::frame::Column;
-use reifydb_core::num::{SafeAdd, SafeSubtract};
+use reifydb_core::num::SafeSubtract;
 use reifydb_core::{BitVec, Kind};
 use reifydb_diagnostic::r#type::TypeOutOfRange;
 use reifydb_diagnostic::{Diagnostic, IntoSpan};
@@ -68,35 +69,6 @@ impl Context {
 }
 
 impl Context {
-    pub(crate) fn add<T: SafeAdd>(
-        &self,
-        l: T,
-        r: T,
-        span: impl IntoSpan,
-    ) -> crate::evaluate::Result<Option<T>> {
-        match self.saturation_policy() {
-            ColumnSaturationPolicy::Error => l
-                .checked_add(r)
-                .ok_or_else(|| {
-                    if let Some(column) = &self.column {
-                        return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                            TypeOutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                ty: column.kind,
-                            },
-                        ));
-                    }
-                    // expression_saturation
-                    unimplemented!()
-                })
-                .map(Some),
-            // SaturationPolicy::Saturate => Ok(a.saturating_add(b)),
-            // SaturationPolicy::Wrap => Ok(a.wrapping_add(b)),
-            ColumnSaturationPolicy::Undefined => Ok(None),
-        }
-    }
-
     pub(crate) fn sub<T: SafeSubtract>(
         &self,
         l: T,
