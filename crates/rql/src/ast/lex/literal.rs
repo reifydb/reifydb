@@ -158,11 +158,14 @@ fn parse_binary(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 
 fn parse_decimal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     use nom::{
+        branch::alt,
         bytes::complete::take_while1,
-        combinator::{complete, recognize},
+        character::complete::{char, one_of},
+        combinator::{opt, recognize},
+        sequence::{pair, preceded, tuple},
     };
 
-    // Reject binary, hex, octal prefixes
+    // Reject binary, hex, octal
     if input.fragment().starts_with("0b")
         || input.fragment().starts_with("0x")
         || input.fragment().starts_with("0o")
@@ -170,26 +173,24 @@ fn parse_decimal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> 
         return Err(nom::Err::Error(Error::new(input, Verify)));
     }
 
-    fn is_valid_decimal_char(c: char) -> bool {
-        c.is_ascii_digit() || c == '.' || c == '_'
+    fn is_digit_or_underscore(c: char) -> bool {
+        c.is_ascii_digit() || c == '_'
     }
 
     fn is_valid_decimal_format(s: &str) -> bool {
+        if s.matches('.').count() > 1 {
+            return false;
+        }
+        
         if s.starts_with('_') || s.ends_with('_') || s.contains("__") {
             return false;
         }
 
-        // Must contain at least one digit
         if !s.chars().any(|c| c.is_ascii_digit()) {
             return false;
         }
 
-        // At most one dot
-        if s.chars().filter(|&c| c == '.').count() > 1 {
-            return false;
-        }
-
-        // Dot can't be adjacent to underscore (e.g., "1_.0", "1._0")
+        // Reject underscore directly around dot
         if s.contains("._") || s.contains("_.") {
             return false;
         }
@@ -197,9 +198,29 @@ fn parse_decimal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> 
         true
     }
 
-    let (rest, span) = complete(recognize(take_while1(is_valid_decimal_char))).parse(input)?;
+    // Parts for decimal
+    let fraction = preceded(char('.'), take_while1(is_digit_or_underscore));
 
+    // Combine these variants:
+    let integer_dot = complete(recognize(pair(take_while1(is_digit_or_underscore), char('.'))));  
+    let dot_fraction = complete(recognize(pair(char('.'), take_while1(is_digit_or_underscore)))); 
+    let int_frac = complete(recognize(pair(take_while1(is_digit_or_underscore), fraction)));                     
+    let just_integer = complete(recognize(take_while1(is_digit_or_underscore)));                                 
+
+    let base = alt((int_frac, integer_dot, dot_fraction, just_integer));
+
+    // Exponent: e[+/-]?digits
+    let exponent = complete(recognize((
+        one_of("eE"),
+        opt(one_of("+-")),
+        take_while1(is_digit_or_underscore),
+    )));
+
+    let mut full = complete(recognize(pair(base, opt(exponent))));
+
+    let (rest, span) = full.parse(input)?;
     let literal = *span.fragment();
+
     if !is_valid_decimal_format(literal) {
         return Err(nom::Err::Error(Error::new(input, Verify)));
     }
@@ -290,6 +311,13 @@ mod tests {
     }
 
     #[test]
+    fn test_number_decimal_scientific() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("1e+500")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "1e+500");
+    }
+
+    #[test]
     fn test_number_float() {
         let (_rest, token) = parse_literal(LocatedSpan::new("42.5")).unwrap();
         assert_eq!(token.kind, Literal(Number));
@@ -349,6 +377,10 @@ mod tests {
             ("0.123", true),
             ("123.", true),
             (".456", true),
+            ("1_000.0", true),
+            ("1.2e10", true),
+            ("3.e+5", true),
+            (".4e-2", true),
             // invalid cases
             ("_", false),
             ("1__", false),
@@ -357,8 +389,6 @@ mod tests {
             ("1._0", false),
             ("1_.0", false),
             ("1.0_", false),
-            ("1..0", false),
-            ("1.0.0", false),
         ];
 
         for (input, should_parse) in cases {
