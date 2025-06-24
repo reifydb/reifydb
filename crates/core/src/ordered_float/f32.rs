@@ -73,10 +73,7 @@ impl Deref for OrderedF32 {
 
 impl Display for OrderedF32 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let value = self.0;
-        let out = format!("{:.6}", value);
-        let s = out.trim_end_matches('0').trim_end_matches('.').to_string();
-        f.write_str(&s)
+        Display::fmt(&self.0, f)
     }
 }
 
