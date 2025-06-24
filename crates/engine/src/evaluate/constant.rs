@@ -5,6 +5,7 @@ use crate::evaluate;
 use crate::evaluate::{Context, Error, Evaluator};
 use crate::frame::ColumnValues;
 use reifydb_core::Kind;
+use reifydb_core::num::parse_float;
 use reifydb_diagnostic::Diagnostic;
 use reifydb_diagnostic::r#type::OutOfRange;
 use reifydb_rql::expression::ConstantExpression;
@@ -47,7 +48,7 @@ impl Evaluator {
                 let s = &span.fragment.replace("_", "");
 
                 if s.contains(".") {
-                    if let Ok(v) = s.parse::<f64>() {
+                    if let Ok(v) = parse_float(s) {
                         return Ok(ColumnValues::float8(vec![v; row_count]));
                     }
                     return Err(Error(Diagnostic::out_of_range(OutOfRange {
