@@ -3,7 +3,7 @@
 
 use crate::frame::{ColumnValues, Frame};
 use reifydb_core::row::{Layout, EncodedRow};
-use reifydb_core::{CowVec, ValueKind};
+use reifydb_core::{CowVec, Kind};
 
 impl Frame {
     pub fn append_frame(&mut self, other: Frame) -> crate::frame::Result<()> {
@@ -51,63 +51,63 @@ impl Frame {
         for (index, column) in self.columns.iter_mut().enumerate() {
             if let ColumnValues::Undefined(size) = column.data {
                 let new_data = match layout.value(index) {
-                    ValueKind::Bool => ColumnValues::bool_with_validity(
+                    Kind::Bool => ColumnValues::bool_with_validity(
                         CowVec::new(vec![false; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Float4 => ColumnValues::float4_with_validity(
+                    Kind::Float4 => ColumnValues::float4_with_validity(
                         CowVec::new(vec![0.0f32; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Float8 => ColumnValues::float8_with_validity(
+                    Kind::Float8 => ColumnValues::float8_with_validity(
                         CowVec::new(vec![0.0f64; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Int1 => ColumnValues::int1_with_validity(
+                    Kind::Int1 => ColumnValues::int1_with_validity(
                         CowVec::new(vec![0i8; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Int2 => ColumnValues::int2_with_validity(
+                    Kind::Int2 => ColumnValues::int2_with_validity(
                         CowVec::new(vec![0i16; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Int4 => ColumnValues::int4_with_validity(
+                    Kind::Int4 => ColumnValues::int4_with_validity(
                         CowVec::new(vec![0i32; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Int8 => ColumnValues::int8_with_validity(
+                    Kind::Int8 => ColumnValues::int8_with_validity(
                         CowVec::new(vec![0i64; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Int16 => ColumnValues::int16_with_validity(
+                    Kind::Int16 => ColumnValues::int16_with_validity(
                         CowVec::new(vec![0i128; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::String => ColumnValues::string_with_validity(
+                    Kind::String => ColumnValues::string_with_validity(
                         CowVec::new(vec![String::new(); size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Uint1 => ColumnValues::uint1_with_validity(
+                    Kind::Uint1 => ColumnValues::uint1_with_validity(
                         CowVec::new(vec![0u8; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Uint2 => ColumnValues::uint2_with_validity(
+                    Kind::Uint2 => ColumnValues::uint2_with_validity(
                         CowVec::new(vec![0u16; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Uint4 => ColumnValues::uint4_with_validity(
+                    Kind::Uint4 => ColumnValues::uint4_with_validity(
                         CowVec::new(vec![0u32; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Uint8 => ColumnValues::uint8_with_validity(
+                    Kind::Uint8 => ColumnValues::uint8_with_validity(
                         CowVec::new(vec![0u64; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Uint16 => ColumnValues::uint16_with_validity(
+                    Kind::Uint16 => ColumnValues::uint16_with_validity(
                         CowVec::new(vec![0u128; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    ValueKind::Undefined => column.data.clone(),
+                    Kind::Undefined => column.data.clone(),
                 };
 
                 column.data = new_data;
@@ -130,59 +130,59 @@ impl Frame {
     fn append_all_defined(&mut self, layout: &Layout, row: &EncodedRow) -> crate::frame::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
             match (&mut column.data, layout.value(index)) {
-                (ColumnValues::Bool(vec, valid), ValueKind::Bool) => {
+                (ColumnValues::Bool(vec, valid), Kind::Bool) => {
                     vec.push(layout.get_bool(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Float4(vec, valid), ValueKind::Float4) => {
+                (ColumnValues::Float4(vec, valid), Kind::Float4) => {
                     vec.push(layout.get_f32(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Float8(vec, valid), ValueKind::Float8) => {
+                (ColumnValues::Float8(vec, valid), Kind::Float8) => {
                     vec.push(layout.get_f64(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Int1(vec, valid), ValueKind::Int1) => {
+                (ColumnValues::Int1(vec, valid), Kind::Int1) => {
                     vec.push(layout.get_i8(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Int2(vec, valid), ValueKind::Int2) => {
+                (ColumnValues::Int2(vec, valid), Kind::Int2) => {
                     vec.push(layout.get_i16(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Int4(vec, valid), ValueKind::Int4) => {
+                (ColumnValues::Int4(vec, valid), Kind::Int4) => {
                     vec.push(layout.get_i32(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Int8(vec, valid), ValueKind::Int8) => {
+                (ColumnValues::Int8(vec, valid), Kind::Int8) => {
                     vec.push(layout.get_i64(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Int16(vec, valid), ValueKind::Int16) => {
+                (ColumnValues::Int16(vec, valid), Kind::Int16) => {
                     vec.push(layout.get_i128(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::String(vec, valid), ValueKind::String) => {
+                (ColumnValues::String(vec, valid), Kind::String) => {
                     vec.push(layout.get_str(&row, index).to_string());
                     valid.push(true);
                 }
-                (ColumnValues::Uint1(vec, valid), ValueKind::Uint1) => {
+                (ColumnValues::Uint1(vec, valid), Kind::Uint1) => {
                     vec.push(layout.get_u8(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Uint2(vec, valid), ValueKind::Uint2) => {
+                (ColumnValues::Uint2(vec, valid), Kind::Uint2) => {
                     vec.push(layout.get_u16(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Uint4(vec, valid), ValueKind::Uint4) => {
+                (ColumnValues::Uint4(vec, valid), Kind::Uint4) => {
                     vec.push(layout.get_u32(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Uint8(vec, valid), ValueKind::Uint8) => {
+                (ColumnValues::Uint8(vec, valid), Kind::Uint8) => {
                     vec.push(layout.get_u64(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::Uint16(vec, valid), ValueKind::Uint16) => {
+                (ColumnValues::Uint16(vec, valid), Kind::Uint16) => {
                     vec.push(layout.get_u128(&row, index));
                     valid.push(true);
                 }
@@ -203,7 +203,7 @@ impl Frame {
     fn append_fallback(&mut self, layout: &Layout, row: &EncodedRow) -> crate::frame::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
             match (&mut column.data, layout.value(index)) {
-                (ColumnValues::Bool(vec, valid), ValueKind::Bool) => {
+                (ColumnValues::Bool(vec, valid), Kind::Bool) => {
                     match layout.try_get_bool(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -215,7 +215,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Float4(vec, valid), ValueKind::Float4) => {
+                (ColumnValues::Float4(vec, valid), Kind::Float4) => {
                     match layout.try_get_f32(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -227,7 +227,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Float8(vec, valid), ValueKind::Float8) => {
+                (ColumnValues::Float8(vec, valid), Kind::Float8) => {
                     match layout.try_get_f64(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -239,7 +239,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Int1(vec, valid), ValueKind::Int1) => {
+                (ColumnValues::Int1(vec, valid), Kind::Int1) => {
                     match layout.try_get_i8(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -251,7 +251,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Int2(vec, valid), ValueKind::Int2) => {
+                (ColumnValues::Int2(vec, valid), Kind::Int2) => {
                     match layout.try_get_i16(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -263,7 +263,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Int4(vec, valid), ValueKind::Int4) => {
+                (ColumnValues::Int4(vec, valid), Kind::Int4) => {
                     match layout.try_get_i32(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -275,7 +275,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Int8(vec, valid), ValueKind::Int8) => {
+                (ColumnValues::Int8(vec, valid), Kind::Int8) => {
                     match layout.try_get_i64(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -287,7 +287,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Int16(vec, valid), ValueKind::Int16) => {
+                (ColumnValues::Int16(vec, valid), Kind::Int16) => {
                     match layout.try_get_i128(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -299,7 +299,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::String(vec, valid), ValueKind::String) => {
+                (ColumnValues::String(vec, valid), Kind::String) => {
                     match layout.try_get_str(row, index) {
                         Some(v) => {
                             vec.push(v.to_string());
@@ -311,7 +311,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Uint1(vec, valid), ValueKind::Uint1) => {
+                (ColumnValues::Uint1(vec, valid), Kind::Uint1) => {
                     match layout.try_get_u8(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -323,7 +323,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Uint2(vec, valid), ValueKind::Uint2) => {
+                (ColumnValues::Uint2(vec, valid), Kind::Uint2) => {
                     match layout.try_get_u16(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -335,7 +335,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Uint4(vec, valid), ValueKind::Uint4) => {
+                (ColumnValues::Uint4(vec, valid), Kind::Uint4) => {
                     match layout.try_get_u32(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -347,7 +347,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Uint8(vec, valid), ValueKind::Uint8) => {
+                (ColumnValues::Uint8(vec, valid), Kind::Uint8) => {
                     match layout.try_get_u64(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -359,7 +359,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Uint16(vec, valid), ValueKind::Uint16) => {
+                (ColumnValues::Uint16(vec, valid), Kind::Uint16) => {
                     match layout.try_get_u128(row, index) {
                         Some(v) => {
                             vec.push(v);
@@ -371,7 +371,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::Undefined(size), ValueKind::Undefined) => {
+                (ColumnValues::Undefined(size), Kind::Undefined) => {
                     *size += 1;
                 }
                 (_, _) => unreachable!(),
@@ -672,13 +672,13 @@ mod tests {
         use crate::frame::{Column, ColumnValues, Frame};
         use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
         use reifydb_core::row::Layout;
-        use reifydb_core::{Value, ValueKind};
+        use reifydb_core::{Value, Kind};
 
         #[test]
         fn test_before_undefined_bool() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
 
-            let layout = Layout::new(&[ValueKind::Bool]);
+            let layout = Layout::new(&[Kind::Bool]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Bool(true)]);
 
@@ -693,7 +693,7 @@ mod tests {
         #[test]
         fn test_before_undefined_float4() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Float4]);
+            let layout = Layout::new(&[Kind::Float4]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -707,7 +707,7 @@ mod tests {
         #[test]
         fn test_before_undefined_float8() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Float8]);
+            let layout = Layout::new(&[Kind::Float8]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -721,7 +721,7 @@ mod tests {
         #[test]
         fn test_before_undefined_int1() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Int1]);
+            let layout = Layout::new(&[Kind::Int1]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int1(42)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -735,7 +735,7 @@ mod tests {
         #[test]
         fn test_before_undefined_int2() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Int2]);
+            let layout = Layout::new(&[Kind::Int2]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int2(-1234)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -749,7 +749,7 @@ mod tests {
         #[test]
         fn test_before_undefined_int4() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Int4]);
+            let layout = Layout::new(&[Kind::Int4]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int4(56789)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -763,7 +763,7 @@ mod tests {
         #[test]
         fn test_before_undefined_int8() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Int8]);
+            let layout = Layout::new(&[Kind::Int8]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int8(-987654321)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -777,7 +777,7 @@ mod tests {
         #[test]
         fn test_before_undefined_int16() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Int16]);
+            let layout = Layout::new(&[Kind::Int16]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -794,7 +794,7 @@ mod tests {
         #[test]
         fn test_before_undefined_string() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::String]);
+            let layout = Layout::new(&[Kind::String]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::String("reifydb".into())]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -811,7 +811,7 @@ mod tests {
         #[test]
         fn test_before_undefined_uint1() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Uint1]);
+            let layout = Layout::new(&[Kind::Uint1]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Uint1(255)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -825,7 +825,7 @@ mod tests {
         #[test]
         fn test_before_undefined_uint2() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Uint2]);
+            let layout = Layout::new(&[Kind::Uint2]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Uint2(65535)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -839,7 +839,7 @@ mod tests {
         #[test]
         fn test_before_undefined_uint4() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Uint4]);
+            let layout = Layout::new(&[Kind::Uint4]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Uint4(4294967295)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -853,7 +853,7 @@ mod tests {
         #[test]
         fn test_before_undefined_uint8() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Uint8]);
+            let layout = Layout::new(&[Kind::Uint8]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
             test_instance.append_rows(&layout, [row]).unwrap();
@@ -870,7 +870,7 @@ mod tests {
         #[test]
         fn test_before_undefined_uint16() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[ValueKind::Uint16]);
+            let layout = Layout::new(&[Kind::Uint16]);
             let mut row = layout.allocate_row();
             layout.set_values(
                 &mut row,
@@ -891,7 +891,7 @@ mod tests {
         fn test_mismatched_columns() {
             let mut test_instance = Frame::new(vec![]);
 
-            let layout = Layout::new(&[ValueKind::Int2]);
+            let layout = Layout::new(&[Kind::Int2]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int2(2)]);
 
@@ -903,7 +903,7 @@ mod tests {
         fn test_ok() {
             let mut test_instance = test_instance_with_columns();
 
-            let layout = Layout::new(&[ValueKind::Int2, ValueKind::Bool]);
+            let layout = Layout::new(&[Kind::Int2, Kind::Bool]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Int2(2), Value::Bool(true)]);
             let mut row_two = layout.allocate_row();
@@ -919,7 +919,7 @@ mod tests {
         fn test_all_defined_bool() {
             let mut test_instance = Frame::new(vec![Column::bool("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Bool]);
+            let layout = Layout::new(&[Kind::Bool]);
             let mut row_one = layout.allocate_row();
             layout.set_bool(&mut row_one, 0, true);
             let mut row_two = layout.allocate_row();
@@ -934,7 +934,7 @@ mod tests {
         fn test_all_defined_float4() {
             let mut test_instance = Frame::new(vec![Column::float4("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Float4]);
+            let layout = Layout::new(&[Kind::Float4]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
             let mut row_two = layout.allocate_row();
@@ -949,7 +949,7 @@ mod tests {
         fn test_all_defined_float8() {
             let mut test_instance = Frame::new(vec![Column::float8("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Float8]);
+            let layout = Layout::new(&[Kind::Float8]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
             let mut row_two = layout.allocate_row();
@@ -964,7 +964,7 @@ mod tests {
         fn test_all_defined_int1() {
             let mut test_instance = Frame::new(vec![Column::int1("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int1]);
+            let layout = Layout::new(&[Kind::Int1]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Int1(1)]);
             let mut row_two = layout.allocate_row();
@@ -979,7 +979,7 @@ mod tests {
         fn test_all_defined_int2() {
             let mut test_instance = Frame::new(vec![Column::int2("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int2]);
+            let layout = Layout::new(&[Kind::Int2]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Int2(100)]);
             let mut row_two = layout.allocate_row();
@@ -994,7 +994,7 @@ mod tests {
         fn test_all_defined_int4() {
             let mut test_instance = Frame::new(vec![Column::int4("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int4]);
+            let layout = Layout::new(&[Kind::Int4]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Int4(1000)]);
             let mut row_two = layout.allocate_row();
@@ -1009,7 +1009,7 @@ mod tests {
         fn test_all_defined_int8() {
             let mut test_instance = Frame::new(vec![Column::int8("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int8]);
+            let layout = Layout::new(&[Kind::Int8]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Int8(10000)]);
             let mut row_two = layout.allocate_row();
@@ -1024,7 +1024,7 @@ mod tests {
         fn test_all_defined_int16() {
             let mut test_instance = Frame::new(vec![Column::int16("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int16]);
+            let layout = Layout::new(&[Kind::Int16]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Int16(1000)]);
             let mut row_two = layout.allocate_row();
@@ -1039,7 +1039,7 @@ mod tests {
         fn test_all_defined_string() {
             let mut test_instance = Frame::new(vec![Column::string("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::String]);
+            let layout = Layout::new(&[Kind::String]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::String("a".into())]);
             let mut row_two = layout.allocate_row();
@@ -1057,7 +1057,7 @@ mod tests {
         fn test_all_defined_uint1() {
             let mut test_instance = Frame::new(vec![Column::uint1("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint1]);
+            let layout = Layout::new(&[Kind::Uint1]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Uint1(1)]);
             let mut row_two = layout.allocate_row();
@@ -1072,7 +1072,7 @@ mod tests {
         fn test_all_defined_uint2() {
             let mut test_instance = Frame::new(vec![Column::uint2("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint2]);
+            let layout = Layout::new(&[Kind::Uint2]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Uint2(100)]);
             let mut row_two = layout.allocate_row();
@@ -1087,7 +1087,7 @@ mod tests {
         fn test_all_defined_uint4() {
             let mut test_instance = Frame::new(vec![Column::uint4("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint4]);
+            let layout = Layout::new(&[Kind::Uint4]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Uint4(1000)]);
             let mut row_two = layout.allocate_row();
@@ -1102,7 +1102,7 @@ mod tests {
         fn test_all_defined_uint8() {
             let mut test_instance = Frame::new(vec![Column::uint8("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint8]);
+            let layout = Layout::new(&[Kind::Uint8]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Uint8(10000)]);
             let mut row_two = layout.allocate_row();
@@ -1117,7 +1117,7 @@ mod tests {
         fn test_all_defined_uint16() {
             let mut test_instance = Frame::new(vec![Column::uint16("test", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint16]);
+            let layout = Layout::new(&[Kind::Uint16]);
             let mut row_one = layout.allocate_row();
             layout.set_values(&mut row_one, &[Value::Uint16(1000)]);
             let mut row_two = layout.allocate_row();
@@ -1132,7 +1132,7 @@ mod tests {
         fn test_row_with_undefined() {
             let mut test_instance = test_instance_with_columns();
 
-            let layout = Layout::new(&[ValueKind::Int2, ValueKind::Bool]);
+            let layout = Layout::new(&[Kind::Int2, Kind::Bool]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Undefined, Value::Bool(false)]);
 
@@ -1152,7 +1152,7 @@ mod tests {
         fn test_row_with_type_mismatch_fails() {
             let mut test_instance = test_instance_with_columns();
 
-            let layout = Layout::new(&[ValueKind::Bool, ValueKind::Bool]);
+            let layout = Layout::new(&[Kind::Bool, Kind::Bool]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Bool(true), Value::Bool(true)]);
 
@@ -1165,7 +1165,7 @@ mod tests {
         fn test_row_wrong_length_fails() {
             let mut test_instance = test_instance_with_columns();
 
-            let layout = Layout::new(&[ValueKind::Int2]);
+            let layout = Layout::new(&[Kind::Int2]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int2(2)]);
 
@@ -1179,7 +1179,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::bool("test", []), Column::bool("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Bool, ValueKind::Bool]);
+            let layout = Layout::new(&[Kind::Bool, Kind::Bool]);
             let mut row_one = layout.allocate_row();
             layout.set_bool(&mut row_one, 0, true);
             layout.set_undefined(&mut row_one, 1);
@@ -1202,7 +1202,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::float4("test", []), Column::float4("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Float4, ValueKind::Float4]);
+            let layout = Layout::new(&[Kind::Float4, Kind::Float4]);
             let mut row = layout.allocate_row();
             layout.set_f32(&mut row, 0, 1.5);
             layout.set_undefined(&mut row, 1);
@@ -1224,7 +1224,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::float8("test", []), Column::float8("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Float8, ValueKind::Float8]);
+            let layout = Layout::new(&[Kind::Float8, Kind::Float8]);
             let mut row = layout.allocate_row();
             layout.set_f64(&mut row, 0, 2.5);
             layout.set_undefined(&mut row, 1);
@@ -1246,7 +1246,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::int1("test", []), Column::int1("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int1, ValueKind::Int1]);
+            let layout = Layout::new(&[Kind::Int1, Kind::Int1]);
             let mut row = layout.allocate_row();
             layout.set_i8(&mut row, 0, 42);
             layout.set_undefined(&mut row, 1);
@@ -1268,7 +1268,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::int2("test", []), Column::int2("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int2, ValueKind::Int2]);
+            let layout = Layout::new(&[Kind::Int2, Kind::Int2]);
             let mut row = layout.allocate_row();
             layout.set_i16(&mut row, 0, -1234i16);
             layout.set_undefined(&mut row, 1);
@@ -1290,7 +1290,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::int4("test", []), Column::int4("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int4, ValueKind::Int4]);
+            let layout = Layout::new(&[Kind::Int4, Kind::Int4]);
             let mut row = layout.allocate_row();
             layout.set_i32(&mut row, 0, 56789);
             layout.set_undefined(&mut row, 1);
@@ -1312,7 +1312,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::int8("test", []), Column::int8("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int8, ValueKind::Int8]);
+            let layout = Layout::new(&[Kind::Int8, Kind::Int8]);
             let mut row = layout.allocate_row();
             layout.set_i64(&mut row, 0, -987654321);
             layout.set_undefined(&mut row, 1);
@@ -1334,7 +1334,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::int16("test", []), Column::int16("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Int16, ValueKind::Int16]);
+            let layout = Layout::new(&[Kind::Int16, Kind::Int16]);
             let mut row = layout.allocate_row();
             layout.set_i128(&mut row, 0, 123456789012345678901234567890i128);
             layout.set_undefined(&mut row, 1);
@@ -1356,7 +1356,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::string("test", []), Column::string("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::String, ValueKind::String]);
+            let layout = Layout::new(&[Kind::String, Kind::String]);
             let mut row = layout.allocate_row();
             layout.set_str(&mut row, 0, "reifydb");
             layout.set_undefined(&mut row, 1);
@@ -1378,7 +1378,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::uint1("test", []), Column::uint1("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint1, ValueKind::Uint1]);
+            let layout = Layout::new(&[Kind::Uint1, Kind::Uint1]);
             let mut row = layout.allocate_row();
             layout.set_u8(&mut row, 0, 255);
             layout.set_undefined(&mut row, 1);
@@ -1400,7 +1400,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::uint2("test", []), Column::uint2("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint2, ValueKind::Uint2]);
+            let layout = Layout::new(&[Kind::Uint2, Kind::Uint2]);
             let mut row = layout.allocate_row();
             layout.set_u16(&mut row, 0, 65535u16);
             layout.set_undefined(&mut row, 1);
@@ -1422,7 +1422,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::uint4("test", []), Column::uint4("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint4, ValueKind::Uint4]);
+            let layout = Layout::new(&[Kind::Uint4, Kind::Uint4]);
             let mut row = layout.allocate_row();
             layout.set_u32(&mut row, 0, 4294967295u32);
             layout.set_undefined(&mut row, 1);
@@ -1444,7 +1444,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::uint8("test", []), Column::uint8("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint8, ValueKind::Uint8]);
+            let layout = Layout::new(&[Kind::Uint8, Kind::Uint8]);
             let mut row = layout.allocate_row();
             layout.set_u64(&mut row, 0, 18446744073709551615u64);
             layout.set_undefined(&mut row, 1);
@@ -1466,7 +1466,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::uint16("test", []), Column::uint16("undefined", [])]);
 
-            let layout = Layout::new(&[ValueKind::Uint16, ValueKind::Uint16]);
+            let layout = Layout::new(&[Kind::Uint16, Kind::Uint16]);
             let mut row = layout.allocate_row();
             layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
             layout.set_undefined(&mut row, 1);

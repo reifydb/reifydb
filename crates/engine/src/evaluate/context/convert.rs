@@ -4,8 +4,8 @@
 use crate::evaluate::Context;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::num::SafeConvert;
-use reifydb_diagnostic::IntoSpan;
-use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
+use reifydb_diagnostic::r#type::TypeOutOfRange;
+use reifydb_diagnostic::{Diagnostic, IntoSpan};
 
 pub trait Convert {
     fn convert<From, To>(
@@ -44,17 +44,17 @@ impl Convert for &Context {
                 .checked_convert()
                 .ok_or_else(|| {
                     if let Some(column) = &self.column {
-                        return crate::evaluate::Error(column_saturation(ColumnSaturation {
-                            span: span.into_span(),
-                            column: column.name.clone(),
-                            value: column.kind,
-                        }));
+                        return crate::evaluate::Error(Diagnostic::type_out_of_range(
+                            TypeOutOfRange {
+                                span: span.into_span(),
+                                column: column.name.clone(),
+                                ty: column.kind,
+                            },
+                        ));
                     }
-                    return crate::evaluate::Error(column_saturation(ColumnSaturation {
-                        span: span.into_span(),
-                        column: None,
-                        value: None,
-                    }));
+                    return crate::evaluate::Error(Diagnostic::type_out_of_range(
+                        TypeOutOfRange { span: span.into_span(), column: None, ty: None },
+                    ));
                 })
                 .map(Some),
             // SaturationPolicy::Saturate => Ok(a.saturating_convert(b)),

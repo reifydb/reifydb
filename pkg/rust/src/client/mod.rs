@@ -4,7 +4,7 @@
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
 use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
-use reifydb_core::{Value, ValueKind};
+use reifydb_core::{Value, Kind};
 use reifydb_engine::{Column, CreateSchemaResult, CreateTableResult, ExecutionResult};
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -44,7 +44,7 @@ pub async fn parse_rx_query_result(
                 let labels = query
                     .columns
                     .into_iter()
-                    .map(|c| Column { kind: ValueKind::Bool, name: c.name })
+                    .map(|c| Column { kind: Kind::Bool, name: c.name })
                     .collect();
 
                 let rows = query
@@ -171,7 +171,7 @@ impl Client {
                     let labels = query
                         .columns
                         .into_iter()
-                        .map(|c| Column { name: c.name, kind: ValueKind::Bool })
+                        .map(|c| Column { name: c.name, kind: Kind::Bool })
                         .collect();
 
                     let rows = query
@@ -234,7 +234,7 @@ impl Client {
                     let labels = query
                         .columns
                         .into_iter()
-                        .map(|c| Column { name: c.name, kind: ValueKind::Bool })
+                        .map(|c| Column { name: c.name, kind: Kind::Bool })
                         .collect();
 
                     ExecutionResult::DescribeQuery { columns: labels }
@@ -267,22 +267,22 @@ fn unmap_diagnostic(grpc: grpc_db::Diagnostic) -> reifydb_diagnostic::Diagnostic
         column: grpc.column.map(|c| reifydb_diagnostic::DiagnosticColumn {
             name: c.name,
             value: match c.value {
-                0 => ValueKind::Bool,
-                1 => ValueKind::Float4,
-                2 => ValueKind::Float8,
-                3 => ValueKind::Int1,
-                4 => ValueKind::Int2,
-                5 => ValueKind::Int4,
-                6 => ValueKind::Int8,
-                7 => ValueKind::Int16,
-                8 => ValueKind::String,
-                9 => ValueKind::Uint1,
-                10 => ValueKind::Uint2,
-                11 => ValueKind::Uint4,
-                12 => ValueKind::Uint8,
-                13 => ValueKind::Uint16,
-                14 => ValueKind::Undefined,
-                _ => ValueKind::Undefined,
+                0 => Kind::Bool,
+                1 => Kind::Float4,
+                2 => Kind::Float8,
+                3 => Kind::Int1,
+                4 => Kind::Int2,
+                5 => Kind::Int4,
+                6 => Kind::Int8,
+                7 => Kind::Int16,
+                8 => Kind::String,
+                9 => Kind::Uint1,
+                10 => Kind::Uint2,
+                11 => Kind::Uint4,
+                12 => Kind::Uint8,
+                13 => Kind::Uint16,
+                14 => Kind::Undefined,
+                _ => Kind::Undefined,
             },
         }),
     }

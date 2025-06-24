@@ -6,15 +6,14 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 pub use span::{IntoSpan, Line, Offset, Span};
 
 pub mod catalog;
-pub mod policy;
 pub mod sequence;
 pub mod span;
+pub mod r#type;
 mod util;
-mod execute;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
@@ -31,7 +30,7 @@ pub struct Diagnostic {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiagnosticColumn {
     pub name: String,
-    pub value: ValueKind,
+    pub value: Kind,
 }
 
 #[derive(Debug, Clone, PartialEq)]

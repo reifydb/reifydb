@@ -12,7 +12,7 @@ use crate::function::{FunctionRegistry, math};
 pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
-use reifydb_core::{Value, ValueKind};
+use reifydb_core::{Value, Kind};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
@@ -22,7 +22,7 @@ use std::marker::PhantomData;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Column {
     pub name: String,
-    pub kind: ValueKind,
+    pub kind: Kind,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -59,21 +59,21 @@ impl From<Frame> for ExecutionResult {
             .iter()
             .map(|c| {
                 let value = match &c.data {
-                    ColumnValues::Bool(_, _) => ValueKind::Bool,
-                    ColumnValues::Float4(_, _) => ValueKind::Float4,
-                    ColumnValues::Float8(_, _) => ValueKind::Float8,
-                    ColumnValues::Int1(_, _) => ValueKind::Int1,
-                    ColumnValues::Int2(_, _) => ValueKind::Int2,
-                    ColumnValues::Int4(_, _) => ValueKind::Int4,
-                    ColumnValues::Int8(_, _) => ValueKind::Int8,
-                    ColumnValues::Int16(_, _) => ValueKind::Int16,
-                    ColumnValues::String(_, _) => ValueKind::String,
-                    ColumnValues::Uint1(_, _) => ValueKind::Uint1,
-                    ColumnValues::Uint2(_, _) => ValueKind::Uint2,
-                    ColumnValues::Uint4(_, _) => ValueKind::Uint4,
-                    ColumnValues::Uint8(_, _) => ValueKind::Uint8,
-                    ColumnValues::Uint16(_, _) => ValueKind::Uint16,
-                    ColumnValues::Undefined(_) => ValueKind::Undefined,
+                    ColumnValues::Bool(_, _) => Kind::Bool,
+                    ColumnValues::Float4(_, _) => Kind::Float4,
+                    ColumnValues::Float8(_, _) => Kind::Float8,
+                    ColumnValues::Int1(_, _) => Kind::Int1,
+                    ColumnValues::Int2(_, _) => Kind::Int2,
+                    ColumnValues::Int4(_, _) => Kind::Int4,
+                    ColumnValues::Int8(_, _) => Kind::Int8,
+                    ColumnValues::Int16(_, _) => Kind::Int16,
+                    ColumnValues::String(_, _) => Kind::String,
+                    ColumnValues::Uint1(_, _) => Kind::Uint1,
+                    ColumnValues::Uint2(_, _) => Kind::Uint2,
+                    ColumnValues::Uint4(_, _) => Kind::Uint4,
+                    ColumnValues::Uint8(_, _) => Kind::Uint8,
+                    ColumnValues::Uint16(_, _) => Kind::Uint16,
+                    ColumnValues::Undefined(_) => Kind::Undefined,
                 };
 
                 Column { name: c.name.clone(), kind: value }

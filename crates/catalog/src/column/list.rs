@@ -36,7 +36,7 @@ mod tests {
     use crate::column::{ColumnIndex, ColumnToCreate};
     use crate::table::TableId;
     use crate::test_utils::ensure_test_table;
-    use reifydb_core::ValueKind;
+    use reifydb_core::Kind;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
@@ -54,7 +54,7 @@ mod tests {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "b_col".to_string(),
-                value: ValueKind::Int4,
+                value: Kind::Int4,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(1),
@@ -71,7 +71,7 @@ mod tests {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "a_col".to_string(),
-                value: ValueKind::Bool,
+                value: Kind::Bool,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),

@@ -3,7 +3,7 @@
 
 mod span;
 
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 use reifydb_diagnostic::Span;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -96,7 +96,7 @@ pub struct CastExpression {
 #[derive(Debug, Clone)]
 pub struct KindExpression {
     pub span: Span,
-    pub kind: ValueKind,
+    pub kind: Kind,
 }
 
 #[derive(Debug, Clone)]

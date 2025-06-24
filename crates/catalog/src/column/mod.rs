@@ -3,7 +3,7 @@
 
 use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 pub use create::ColumnToCreate;
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 use std::ops::Deref;
 
 mod create;
@@ -15,7 +15,7 @@ mod list;
 pub struct Column {
     pub id: ColumnId,
     pub name: String,
-    pub value: ValueKind,
+    pub value: Kind,
     pub policies: Vec<ColumnPolicy>,
     pub index: ColumnIndex,
 }

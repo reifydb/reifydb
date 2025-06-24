@@ -11,7 +11,7 @@ pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
 pub use key::{EncodedKey, EncodedKeyRange};
 pub use retry::retry;
 pub use sort::{SortDirection, SortKey};
-pub use value::{Value, ValueKind};
+pub use value::{Value, Kind};
 pub use version::Version;
 
 mod bitvec;

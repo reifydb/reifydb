@@ -9,7 +9,7 @@ use reifydb_catalog::Catalog;
 use reifydb_catalog::key::{EncodableKey, TableRowKey};
 use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::row::Layout;
-use reifydb_core::{BitVec, ValueKind};
+use reifydb_core::{BitVec, Kind};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::InsertIntoTablePlan;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
@@ -25,7 +25,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             InsertIntoTablePlan::Values { schema, table, columns, rows_to_insert } => {
                 let mut rows = Vec::with_capacity(rows_to_insert.len());
 
-                let values: Vec<ValueKind> = columns.iter().map(|c| c.value).collect();
+                let values: Vec<Kind> = columns.iter().map(|c| c.value).collect();
                 let layout = Layout::new(&values);
 
                 for row_to_insert in rows_to_insert {

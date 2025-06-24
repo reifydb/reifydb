@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::function::FunctionMode;
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 use std::fmt;
 use std::fmt::Display;
 
@@ -21,8 +21,8 @@ pub enum FunctionError {
     InvalidArgumentType {
         function: String,
         index: usize,
-        expected_one_of: Vec<ValueKind>,
-        actual: ValueKind,
+        expected_one_of: Vec<Kind>,
+        actual: Kind,
     },
 
     /// One or more arguments are undefined when the function doesn't accept them.
@@ -159,8 +159,8 @@ mod tests {
         let err = FunctionError::InvalidArgumentType {
             function: "sqrt".to_string(),
             index: 4,
-            expected_one_of: vec![ValueKind::Int2],
-            actual: ValueKind::String,
+            expected_one_of: vec![Kind::Int2],
+            actual: Kind::String,
         };
         assert_eq!(
             err.to_string(),
@@ -173,8 +173,8 @@ mod tests {
         let err = FunctionError::InvalidArgumentType {
             function: "if".to_string(),
             index: 1,
-            expected_one_of: vec![ValueKind::Bool, ValueKind::Int2],
-            actual: ValueKind::String,
+            expected_one_of: vec![Kind::Bool, Kind::Int2],
+            actual: Kind::String,
         };
         assert_eq!(
             err.to_string(),

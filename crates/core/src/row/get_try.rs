@@ -63,12 +63,12 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    use crate::ValueKind;
+    use crate::Kind;
     use crate::row::Layout;
 
     #[test]
     fn test_try_get_bool() {
-        let layout = Layout::new(&[ValueKind::Bool]);
+        let layout = Layout::new(&[Kind::Bool]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_bool(&row, 0), None);
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_try_get_f32() {
-        let layout = Layout::new(&[ValueKind::Float4]);
+        let layout = Layout::new(&[Kind::Float4]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_f32(&row, 0), None);
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_try_get_f64() {
-        let layout = Layout::new(&[ValueKind::Float8]);
+        let layout = Layout::new(&[Kind::Float8]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_f64(&row, 0), None);
@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i8() {
-        let layout = Layout::new(&[ValueKind::Int1]);
+        let layout = Layout::new(&[Kind::Int1]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i8(&row, 0), None);
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i16() {
-        let layout = Layout::new(&[ValueKind::Int2]);
+        let layout = Layout::new(&[Kind::Int2]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i16(&row, 0), None);
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i32() {
-        let layout = Layout::new(&[ValueKind::Int4]);
+        let layout = Layout::new(&[Kind::Int4]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i32(&row, 0), None);
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i64() {
-        let layout = Layout::new(&[ValueKind::Int8]);
+        let layout = Layout::new(&[Kind::Int8]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i64(&row, 0), None);
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i128() {
-        let layout = Layout::new(&[ValueKind::Int16]);
+        let layout = Layout::new(&[Kind::Int16]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i128(&row, 0), None);
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_try_get_str() {
-        let layout = Layout::new(&[ValueKind::String]);
+        let layout = Layout::new(&[Kind::String]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_str(&row, 0), None);
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u8() {
-        let layout = Layout::new(&[ValueKind::Uint1]);
+        let layout = Layout::new(&[Kind::Uint1]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u8(&row, 0), None);
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u16() {
-        let layout = Layout::new(&[ValueKind::Uint2]);
+        let layout = Layout::new(&[Kind::Uint2]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u16(&row, 0), None);
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u32() {
-        let layout = Layout::new(&[ValueKind::Uint4]);
+        let layout = Layout::new(&[Kind::Uint4]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u32(&row, 0), None);
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u64() {
-        let layout = Layout::new(&[ValueKind::Uint8]);
+        let layout = Layout::new(&[Kind::Uint8]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u64(&row, 0), None);
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u128() {
-        let layout = Layout::new(&[ValueKind::Uint16]);
+        let layout = Layout::new(&[Kind::Uint16]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u128(&row, 0), None);

@@ -4,8 +4,8 @@
 use crate::evaluate::Context;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::num::SafePromote;
-use reifydb_diagnostic::IntoSpan;
-use reifydb_diagnostic::policy::{ColumnSaturation, column_saturation};
+use reifydb_diagnostic::r#type::TypeOutOfRange;
+use reifydb_diagnostic::{Diagnostic, IntoSpan};
 
 pub trait Promote {
     fn promote<From, To>(
@@ -44,17 +44,17 @@ impl Promote for &Context {
                 .checked_promote()
                 .ok_or_else(|| {
                     if let Some(column) = &self.column {
-                        return crate::evaluate::Error(column_saturation(ColumnSaturation {
-                            span: span.into_span(),
-                            column: column.name.clone(),
-                            value: column.kind,
-                        }));
+                        return crate::evaluate::Error(Diagnostic::type_out_of_range(
+                            TypeOutOfRange {
+                                span: span.into_span(),
+                                column: column.name.clone(),
+                                ty: column.kind,
+                            },
+                        ));
                     }
-                    return crate::evaluate::Error(column_saturation(ColumnSaturation {
-                        span: span.into_span(),
-                        column: None,
-                        value: None,
-                    }));
+                    return crate::evaluate::Error(Diagnostic::type_out_of_range(
+                        TypeOutOfRange { span: span.into_span(), column: None, ty: None },
+                    ));
                 })
                 .map(Some),
             // SaturationPolicy::Saturate => Ok(a.saturating_promote(b)),
@@ -69,7 +69,7 @@ mod tests {
     use crate::evaluate::{Context, EvaluationColumn, Promote};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
-    use reifydb_core::ValueKind;
+    use reifydb_core::Kind;
     use reifydb_core::num::SafePromote;
     use reifydb_diagnostic::Span;
 
@@ -78,7 +78,7 @@ mod tests {
         let mut ctx = Context::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            kind: Some(ValueKind::Int2),
+            kind: Some(Kind::Int2),
             policies: vec![Saturation(Error)],
         });
 
@@ -91,14 +91,14 @@ mod tests {
         let mut ctx = Context::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            kind: Some(ValueKind::Int2),
+            kind: Some(Kind::Int2),
             policies: vec![Saturation(Error)],
         });
 
         let err =
             ctx.promote::<TestI8, TestI16>(TestI8 {}, || Span::testing_empty()).err().unwrap();
         let diagnostic = err.diagnostic();
-        assert_eq!(diagnostic.code, "PO_001")
+        assert_eq!(diagnostic.code, "TYPE_001")
     }
 
     #[test]
@@ -106,7 +106,7 @@ mod tests {
         let mut ctx = Context::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            kind: Some(ValueKind::Int2),
+            kind: Some(Kind::Int2),
             policies: vec![Saturation(Undefined)],
         });
 

@@ -5,7 +5,7 @@ use crate::frame::lazy::Source;
 use crate::frame::{Column, ColumnValues, Frame, LazyFrame};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 use reifydb_core::row::Layout;
 use reifydb_transaction::Rx;
 
@@ -30,21 +30,21 @@ impl LazyFrame {
             .map(|col| {
                 let name = col.name.clone();
                 let data = match col.value {
-                    ValueKind::Bool => ColumnValues::bool(vec![]),
-                    ValueKind::Float4 => ColumnValues::float4(vec![]),
-                    ValueKind::Float8 => ColumnValues::float8(vec![]),
-                    ValueKind::Int1 => ColumnValues::int1(vec![]),
-                    ValueKind::Int2 => ColumnValues::int2(vec![]),
-                    ValueKind::Int4 => ColumnValues::int4(vec![]),
-                    ValueKind::Int8 => ColumnValues::int8(vec![]),
-                    ValueKind::Int16 => ColumnValues::int16(vec![]),
-                    ValueKind::String => ColumnValues::string(vec![]),
-                    ValueKind::Uint1 => ColumnValues::uint1(vec![]),
-                    ValueKind::Uint2 => ColumnValues::uint2(vec![]),
-                    ValueKind::Uint4 => ColumnValues::uint4(vec![]),
-                    ValueKind::Uint8 => ColumnValues::uint8(vec![]),
-                    ValueKind::Uint16 => ColumnValues::uint16(vec![]),
-                    ValueKind::Undefined => ColumnValues::Undefined(0),
+                    Kind::Bool => ColumnValues::bool(vec![]),
+                    Kind::Float4 => ColumnValues::float4(vec![]),
+                    Kind::Float8 => ColumnValues::float8(vec![]),
+                    Kind::Int1 => ColumnValues::int1(vec![]),
+                    Kind::Int2 => ColumnValues::int2(vec![]),
+                    Kind::Int4 => ColumnValues::int4(vec![]),
+                    Kind::Int8 => ColumnValues::int8(vec![]),
+                    Kind::Int16 => ColumnValues::int16(vec![]),
+                    Kind::String => ColumnValues::string(vec![]),
+                    Kind::Uint1 => ColumnValues::uint1(vec![]),
+                    Kind::Uint2 => ColumnValues::uint2(vec![]),
+                    Kind::Uint4 => ColumnValues::uint4(vec![]),
+                    Kind::Uint8 => ColumnValues::uint8(vec![]),
+                    Kind::Uint16 => ColumnValues::uint16(vec![]),
+                    Kind::Undefined => ColumnValues::Undefined(0),
                 };
                 Column { name, data }
             })

@@ -5,7 +5,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_core::num::IsNumber;
-use reifydb_core::{CowVec, Value, ValueKind};
+use reifydb_core::{CowVec, Value, Kind};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
@@ -66,23 +66,23 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn with_capacity(value: ValueKind, capacity: usize) -> Self {
+    pub fn with_capacity(value: Kind, capacity: usize) -> Self {
         match value {
-            ValueKind::Bool => Self::bool_with_capacity(capacity),
-            ValueKind::Float4 => Self::float4_with_capacity(capacity),
-            ValueKind::Float8 => Self::float8_with_capacity(capacity),
-            ValueKind::Int1 => Self::int1_with_capacity(capacity),
-            ValueKind::Int2 => Self::int2_with_capacity(capacity),
-            ValueKind::Int4 => Self::int4_with_capacity(capacity),
-            ValueKind::Int8 => Self::int8_with_capacity(capacity),
-            ValueKind::Int16 => Self::int16_with_capacity(capacity),
-            ValueKind::String => Self::string_with_capacity(capacity),
-            ValueKind::Uint1 => Self::uint1_with_capacity(capacity),
-            ValueKind::Uint2 => Self::uint2_with_capacity(capacity),
-            ValueKind::Uint4 => Self::uint4_with_capacity(capacity),
-            ValueKind::Uint8 => Self::uint8_with_capacity(capacity),
-            ValueKind::Uint16 => Self::uint16_with_capacity(capacity),
-            ValueKind::Undefined => Self::undefined(capacity),
+            Kind::Bool => Self::bool_with_capacity(capacity),
+            Kind::Float4 => Self::float4_with_capacity(capacity),
+            Kind::Float8 => Self::float8_with_capacity(capacity),
+            Kind::Int1 => Self::int1_with_capacity(capacity),
+            Kind::Int2 => Self::int2_with_capacity(capacity),
+            Kind::Int4 => Self::int4_with_capacity(capacity),
+            Kind::Int8 => Self::int8_with_capacity(capacity),
+            Kind::Int16 => Self::int16_with_capacity(capacity),
+            Kind::String => Self::string_with_capacity(capacity),
+            Kind::Uint1 => Self::uint1_with_capacity(capacity),
+            Kind::Uint2 => Self::uint2_with_capacity(capacity),
+            Kind::Uint4 => Self::uint4_with_capacity(capacity),
+            Kind::Uint8 => Self::uint8_with_capacity(capacity),
+            Kind::Uint16 => Self::uint16_with_capacity(capacity),
+            Kind::Undefined => Self::undefined(capacity),
         }
     }
 
@@ -529,23 +529,23 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn kind(&self) -> ValueKind {
+    pub fn kind(&self) -> Kind {
         match self {
-            ColumnValues::Bool(_, _) => ValueKind::Bool,
-            ColumnValues::Float4(_, _) => ValueKind::Float4,
-            ColumnValues::Float8(_, _) => ValueKind::Float8,
-            ColumnValues::Int1(_, _) => ValueKind::Int1,
-            ColumnValues::Int2(_, _) => ValueKind::Int2,
-            ColumnValues::Int4(_, _) => ValueKind::Int4,
-            ColumnValues::Int8(_, _) => ValueKind::Int8,
-            ColumnValues::Int16(_, _) => ValueKind::Int16,
-            ColumnValues::String(_, _) => ValueKind::String,
-            ColumnValues::Uint1(_, _) => ValueKind::Uint1,
-            ColumnValues::Uint2(_, _) => ValueKind::Uint2,
-            ColumnValues::Uint4(_, _) => ValueKind::Uint4,
-            ColumnValues::Uint8(_, _) => ValueKind::Uint8,
-            ColumnValues::Uint16(_, _) => ValueKind::Uint16,
-            ColumnValues::Undefined(_) => ValueKind::Undefined,
+            ColumnValues::Bool(_, _) => Kind::Bool,
+            ColumnValues::Float4(_, _) => Kind::Float4,
+            ColumnValues::Float8(_, _) => Kind::Float8,
+            ColumnValues::Int1(_, _) => Kind::Int1,
+            ColumnValues::Int2(_, _) => Kind::Int2,
+            ColumnValues::Int4(_, _) => Kind::Int4,
+            ColumnValues::Int8(_, _) => Kind::Int8,
+            ColumnValues::Int16(_, _) => Kind::Int16,
+            ColumnValues::String(_, _) => Kind::String,
+            ColumnValues::Uint1(_, _) => Kind::Uint1,
+            ColumnValues::Uint2(_, _) => Kind::Uint2,
+            ColumnValues::Uint4(_, _) => Kind::Uint4,
+            ColumnValues::Uint8(_, _) => Kind::Uint8,
+            ColumnValues::Uint16(_, _) => Kind::Uint16,
+            ColumnValues::Undefined(_) => Kind::Undefined,
         }
     }
 }

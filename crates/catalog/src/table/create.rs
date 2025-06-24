@@ -9,7 +9,7 @@ use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
 use crate::{Catalog, Error};
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
@@ -17,7 +17,7 @@ use reifydb_transaction::Tx;
 #[derive(Debug, Clone)]
 pub struct ColumnToCreate {
     pub name: String,
-    pub value: ValueKind,
+    pub value: Kind,
     pub policies: Vec<ColumnPolicyKind>,
 }
 

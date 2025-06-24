@@ -3,7 +3,7 @@
 
 pub(crate) mod schema {
     use once_cell::sync::Lazy;
-    use reifydb_core::ValueKind;
+    use reifydb_core::Kind;
     use reifydb_core::row::Layout;
 
     pub(crate) const ID: usize = 0;
@@ -11,8 +11,8 @@ pub(crate) mod schema {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            ValueKind::Uint8,  // id
-            ValueKind::String, // name
+            Kind::Uint8,  // id
+            Kind::String, // name
         ])
     });
 }

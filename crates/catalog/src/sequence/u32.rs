@@ -4,12 +4,12 @@
 use crate::Error;
 use once_cell::sync::Lazy;
 use reifydb_core::row::Layout;
-use reifydb_core::{EncodedKey, ValueKind};
+use reifydb_core::{EncodedKey, Kind};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
-static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[ValueKind::Uint4]));
+static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[Kind::Uint4]));
 
 pub(crate) struct SequenceGeneratorU32 {}
 
@@ -27,7 +27,7 @@ impl SequenceGeneratorU32 {
                 let next_value = value.saturating_add(1);
 
                 if value == next_value {
-                    return Err(Error(Diagnostic::sequence_exhausted(ValueKind::Uint4)));
+                    return Err(Error(Diagnostic::sequence_exhausted(Kind::Uint4)));
                 }
 
                 LAYOUT.set_u32(&mut row, 0, next_value);
@@ -47,7 +47,7 @@ impl SequenceGeneratorU32 {
 #[cfg(test)]
 mod tests {
     use crate::sequence::u32::{LAYOUT, SequenceGeneratorU32};
-    use reifydb_core::{EncodedKey, ValueKind};
+    use reifydb_core::{EncodedKey, Kind};
     use reifydb_diagnostic::Diagnostic;
     use reifydb_storage::{Unversioned, UnversionedScan, UnversionedSet};
     use reifydb_transaction::test_utils::TestTransaction;
@@ -80,6 +80,6 @@ mod tests {
         unversioned.set_unversioned(&EncodedKey::new("sequence"), row);
 
         let err = SequenceGeneratorU32::next(&mut tx, &EncodedKey::new("sequence")).unwrap_err();
-        assert_eq!(err.diagnostic(), Diagnostic::sequence_exhausted(ValueKind::Uint4));
+        assert_eq!(err.diagnostic(), Diagnostic::sequence_exhausted(Kind::Uint4));
     }
 }

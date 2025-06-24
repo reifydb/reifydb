@@ -3,18 +3,18 @@
 
 use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
 use reifydb_diagnostic::Span;
 
 impl ColumnValues {
     pub fn adjust_column(
         &self,
-        target: ValueKind,
+        target: Kind,
         ctx: impl Promote + Demote + Convert,
         span: impl Fn() -> Span,
     ) -> crate::Result<ColumnValues> {
-        use ValueKind::*;
+        use Kind::*;
 
         if target == self.kind() {
             return Ok(self.clone());
@@ -146,7 +146,7 @@ fn demote_vec<From, To>(
     validity: &[bool],
     demote: impl Demote,
     span: impl Fn() -> Span,
-    target_kind: ValueKind,
+    target_kind: Kind,
     mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
@@ -171,7 +171,7 @@ fn promote_vec<From, To>(
     validity: &[bool],
     ctx: impl Promote,
     span: impl Fn() -> Span,
-    target_kind: ValueKind,
+    target_kind: Kind,
     mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
@@ -196,7 +196,7 @@ fn convert_vec<From, To>(
     validity: &[bool],
     ctx: impl Convert,
     span: impl Fn() -> Span,
-    target_kind: ValueKind,
+    target_kind: Kind,
     mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
@@ -221,7 +221,7 @@ mod tests {
     mod promote {
         use crate::evaluate::Promote;
         use crate::frame::column::adjust::promote_vec;
-        use reifydb_core::ValueKind;
+        use reifydb_core::Kind;
         use reifydb_core::num::SafePromote;
         use reifydb_diagnostic::{IntoSpan, Span};
 
@@ -236,7 +236,7 @@ mod tests {
                 &validity,
                 &ctx,
                 || Span::testing_empty(),
-                ValueKind::Int2,
+                Kind::Int2,
                 |col, v| col.push::<i16>(v),
             )
             .unwrap();
@@ -257,7 +257,7 @@ mod tests {
                 &validity,
                 &ctx,
                 || Span::testing_empty(),
-                ValueKind::Int2,
+                Kind::Int2,
                 |col, v| col.push::<i16>(v),
             )
             .unwrap();
@@ -276,7 +276,7 @@ mod tests {
                 &validity,
                 &ctx,
                 || Span::testing_empty(),
-                ValueKind::Int2,
+                Kind::Int2,
                 |col, v| col.push::<i16>(v),
             )
             .unwrap();
@@ -295,7 +295,7 @@ mod tests {
                 &validity,
                 &ctx,
                 || Span::testing_empty(),
-                ValueKind::Int2,
+                Kind::Int2,
                 |col, v| col.push::<i16>(v),
             )
             .unwrap();
@@ -337,7 +337,7 @@ mod tests {
         use crate::evaluate::Demote;
         use crate::frame::AsSlice;
         use crate::frame::column::adjust::demote_vec;
-        use reifydb_core::ValueKind;
+        use reifydb_core::Kind;
         use reifydb_core::num::SafeDemote;
         use reifydb_diagnostic::{IntoSpan, Span};
 
@@ -352,7 +352,7 @@ mod tests {
                 &validity,
                 &ctx,
                 || Span::testing_empty(),
-                ValueKind::Int1,
+                Kind::Int1,
                 |col, v| col.push::<i8>(v),
             )
             .unwrap();
@@ -373,7 +373,7 @@ mod tests {
                 &validity,
                 &ctx,
                 || Span::testing_empty(),
-                ValueKind::Int1,
+                Kind::Int1,
                 |col, v| col.push::<i8>(v),
             )
             .unwrap();
@@ -392,7 +392,7 @@ mod tests {
                 &validity,
                 &ctx,
                 || Span::testing_empty(),
-                ValueKind::Int1,
+                Kind::Int1,
                 |col, v| col.push::<i8>(v),
             )
             .unwrap();
@@ -411,7 +411,7 @@ mod tests {
                 &validity,
                 &ctx,
                 || Span::testing_empty(),
-                ValueKind::Int1,
+                Kind::Int1,
                 |col, v| col.push::<i8>(v),
             )
             .unwrap();

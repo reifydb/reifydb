@@ -3,10 +3,10 @@
 
 use crate::Diagnostic;
 use crate::util::value_max;
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 
 impl Diagnostic {
-    pub fn sequence_exhausted(value: ValueKind) -> Self {
+    pub fn sequence_exhausted(value: Kind) -> Self {
         Diagnostic {
             code: "SQ_001".to_string(),
             message: format!("sequence generator of type `{}` is exhausted", value),
@@ -15,7 +15,7 @@ impl Diagnostic {
             help: Some(format!(
                 "maximum value for `{}` is `{}`",
                 value,
-                value_max(ValueKind::Uint4)
+                value_max(Kind::Uint4)
             )),
             column: None,
             notes: vec![],

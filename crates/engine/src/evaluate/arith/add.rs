@@ -3,7 +3,7 @@
 
 use crate::evaluate::{Context, Evaluator};
 use crate::frame::ColumnValues;
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 use reifydb_rql::expression::AddExpression;
 
 impl Evaluator {
@@ -16,7 +16,7 @@ impl Evaluator {
         let right = self.evaluate(&add.right, ctx)?;
 
         let row_count = ctx.limit.unwrap_or(ctx.row_count);;
-        let column_value = ValueKind::promote(left.kind(), right.kind());
+        let column_value = Kind::promote(left.kind(), right.kind());
 
         match (&left, &right) {
             (ColumnValues::Float4(l_vals, l_valid), ColumnValues::Float4(r_vals, r_valid)) => {

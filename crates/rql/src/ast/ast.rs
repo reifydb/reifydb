@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use reifydb_core::ValueKind;
+use reifydb_core::Kind;
 use std::ops::Index;
 
 #[derive(Debug)]
@@ -612,23 +612,23 @@ impl AstKind {
         self.token().value()
     }
 
-    pub fn kind(&self) -> ValueKind {
+    pub fn kind(&self) -> Kind {
         match self {
-            AstKind::Boolean(_) => ValueKind::Bool,
-            AstKind::Float4(_) => ValueKind::Float4,
-            AstKind::Float8(_) => ValueKind::Float8,
-            AstKind::Int1(_) => ValueKind::Int1,
-            AstKind::Int2(_) => ValueKind::Int2,
-            AstKind::Int4(_) => ValueKind::Int4,
-            AstKind::Int8(_) => ValueKind::Int8,
-            AstKind::Int16(_) => ValueKind::Int16,
+            AstKind::Boolean(_) => Kind::Bool,
+            AstKind::Float4(_) => Kind::Float4,
+            AstKind::Float8(_) => Kind::Float8,
+            AstKind::Int1(_) => Kind::Int1,
+            AstKind::Int2(_) => Kind::Int2,
+            AstKind::Int4(_) => Kind::Int4,
+            AstKind::Int8(_) => Kind::Int8,
+            AstKind::Int16(_) => Kind::Int16,
             AstKind::Number(_) => unimplemented!(),
-            AstKind::Text(_) => ValueKind::String,
-            AstKind::Uint1(_) => ValueKind::Uint1,
-            AstKind::Uint2(_) => ValueKind::Uint2,
-            AstKind::Uint4(_) => ValueKind::Uint4,
-            AstKind::Uint8(_) => ValueKind::Uint8,
-            AstKind::Uint16(_) => ValueKind::Uint16,
+            AstKind::Text(_) => Kind::String,
+            AstKind::Uint1(_) => Kind::Uint1,
+            AstKind::Uint2(_) => Kind::Uint2,
+            AstKind::Uint4(_) => Kind::Uint4,
+            AstKind::Uint8(_) => Kind::Uint8,
+            AstKind::Uint16(_) => Kind::Uint16,
         }
     }
 }
