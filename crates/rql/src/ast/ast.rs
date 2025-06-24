@@ -501,15 +501,25 @@ pub struct AstPolicyBlock {
 
 #[derive(Debug, PartialEq)]
 pub struct AstPrefix {
-    pub operator: PrefixOperator,
+    pub operator: AstPrefixOperator,
     pub node: Box<Ast>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum PrefixOperator {
+pub enum AstPrefixOperator {
     Plus(Token),
     Negate(Token),
     Not(Token),
+}
+
+impl AstPrefixOperator {
+    pub fn token(&self) -> &Token {
+        match self {
+            AstPrefixOperator::Plus(token) => token,
+            AstPrefixOperator::Negate(token) => token,
+            AstPrefixOperator::Not(token) => token,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

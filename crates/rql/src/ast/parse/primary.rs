@@ -4,8 +4,8 @@
 use crate::ast::lex::Literal::{False, Number, Text, True, Undefined};
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Operator, TokenKind};
-use crate::ast::parse::{Error, Parser, Precedence};
-use crate::ast::{Ast, AstPrefix, AstWildcard, PrefixOperator, parse};
+use crate::ast::parse::{Error, Parser};
+use crate::ast::{Ast, AstWildcard, parse};
 
 impl Parser {
     pub(crate) fn parse_primary(&mut self) -> parse::Result<Ast> {
@@ -24,13 +24,7 @@ impl Parser {
         let current = self.current()?;
         match &current.kind {
             TokenKind::Operator(operator) => match operator {
-                Operator::Plus | Operator::Minus | Operator::Bang => {
-                    let operator = self.parse_prefix_operator()?;
-                    Ok(Ast::Prefix(AstPrefix {
-                        operator,
-                        node: Box::new(self.parse_node(Precedence::Prefix)?),
-                    }))
-                }
+                Operator::Plus | Operator::Minus | Operator::Bang => self.parse_prefix(),
                 Operator::Asterisk => Ok(Ast::Wildcard(AstWildcard(self.advance()?))),
                 Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
@@ -64,81 +58,5 @@ impl Parser {
                 _ => Err(Error::unsupported(self.advance()?)),
             },
         }
-    }
-
-    pub(crate) fn parse_prefix_operator(&mut self) -> parse::Result<PrefixOperator> {
-        let token = self.advance()?;
-        match &token.kind {
-            TokenKind::Operator(operator) => match operator {
-                Operator::Plus => Ok(PrefixOperator::Plus(token)),
-                Operator::Minus => Ok(PrefixOperator::Negate(token)),
-                Operator::Bang => Ok(PrefixOperator::Not(token)),
-                _ => Err(Error::unsupported(token)),
-            },
-            _ => Err(Error::unsupported(token)),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::ast::Ast::Literal;
-    use crate::ast::lex::lex;
-    use crate::ast::parse::parse;
-    use crate::ast::{Ast, AstLiteral, AstPrefix, PrefixOperator};
-    use std::ops::Deref;
-
-    #[test]
-    fn test_plus() {
-        let tokens = lex("+(2)").unwrap();
-        let result = parse(tokens).unwrap();
-        assert_eq!(result.len(), 1);
-
-        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
-        assert!(matches!(*operator, PrefixOperator::Plus(_)));
-
-        let Ast::Tuple(tuple) = node.deref() else { panic!() };
-        let Literal(AstLiteral::Number(node)) = &tuple.nodes.first().unwrap() else { panic!() };
-        assert_eq!(node.value(), "2");
-    }
-
-    #[test]
-    fn test_negative() {
-        let tokens = lex("-2").unwrap();
-        let result = parse(tokens).unwrap();
-        assert_eq!(result.len(), 1);
-
-        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
-        assert!(matches!(*operator, PrefixOperator::Negate(_)));
-
-        let number = &node.as_literal_number() else { panic!() };
-        assert_eq!(number.value(), "2");
-    }
-
-    #[test]
-    fn test_negate() {
-        let tokens = lex("-(2)").unwrap();
-        let result = parse(tokens).unwrap();
-        assert_eq!(result.len(), 1);
-
-        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
-        assert!(matches!(*operator, PrefixOperator::Negate(_)));
-
-        let Ast::Tuple(tuple) = node.deref() else { panic!() };
-        let Literal(AstLiteral::Number(node)) = &tuple.nodes.first().unwrap() else { panic!() };
-        assert_eq!(node.value(), "2");
-    }
-
-    #[test]
-    fn test_not() {
-        let tokens = lex("!false").unwrap();
-        let result = parse(tokens).unwrap();
-        assert_eq!(result.len(), 1);
-
-        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
-        assert!(matches!(*operator, PrefixOperator::Not(_)));
-
-        let Literal(AstLiteral::Boolean(node)) = node.deref() else { panic!() };
-        assert!(!node.value());
     }
 }

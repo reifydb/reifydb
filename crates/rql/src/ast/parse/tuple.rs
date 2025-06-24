@@ -38,7 +38,7 @@ mod tests {
     use crate::ast::AstLiteral::Number;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
-    use crate::ast::{AstInfix, AstKind, InfixOperator, PrefixOperator};
+    use crate::ast::{AstInfix, AstKind, InfixOperator, AstPrefixOperator};
 
     #[test]
     fn test_empty_tuple() {
@@ -211,11 +211,8 @@ mod tests {
 
         let infix = node.nodes[0].as_infix();
 
-        let left = infix.left.as_prefix();
-        assert!(matches!(left.operator, PrefixOperator::Negate(_)));
-
-        let left_number = left.node.as_literal_number();
-        assert_eq!(left_number.value(), "1");
+        let left_number = infix.left.as_literal_number();
+        assert_eq!(left_number.value(), "-1");
 
         assert!(matches!(infix.operator, InfixOperator::Subtract(_)));
 

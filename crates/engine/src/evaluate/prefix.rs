@@ -122,7 +122,6 @@ impl Evaluator {
                 }
                 Ok(ColumnValues::int16_with_validity(result, valid))
             }
-            
 
             // ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
             ColumnValues::String(_, _) => unimplemented!(),

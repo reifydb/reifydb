@@ -63,7 +63,7 @@ mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::infix::{AstInfix, InfixOperator};
     use crate::ast::parse::parse;
-    use crate::ast::{AstLiteral, AstTuple, PrefixOperator};
+    use crate::ast::{AstLiteral, AstTuple, AstPrefixOperator};
 
     #[test]
     fn test_add() {
@@ -107,11 +107,8 @@ mod tests {
 
         let AstInfix { left, operator, right, .. } = result[0].as_infix();
 
-        let left = left.as_prefix();
-        assert!(matches!(left.operator, PrefixOperator::Negate(_)));
-
-        let left_number = left.node.as_literal_number();
-        assert_eq!(left_number.value(), "1");
+        let left = left.as_literal_number();
+        assert_eq!(left.value(), "-1");
 
         assert!(matches!(operator, InfixOperator::Subtract(_)));
 

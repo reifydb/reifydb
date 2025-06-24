@@ -21,6 +21,7 @@ mod select;
 mod tuple;
 mod kind;
 mod describe;
+mod prefix;
 
 pub use error::*;
 

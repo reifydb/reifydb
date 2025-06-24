@@ -341,15 +341,15 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                                                 let a = node.deref();
 
                                                 let (span, operator) = match operator {
-                                                    ast::PrefixOperator::Plus(token) => (
+                                                    ast::AstPrefixOperator::Plus(token) => (
                                                         token.span.clone(),
                                                         PrefixOperator::Plus(token.span),
                                                     ),
-                                                    ast::PrefixOperator::Negate(token) => (
+                                                    ast::AstPrefixOperator::Negate(token) => (
                                                         token.span.clone(),
                                                         PrefixOperator::Minus(token.span),
                                                     ),
-                                                    ast::PrefixOperator::Not(token) => {
+                                                    ast::AstPrefixOperator::Not(token) => {
                                                         unimplemented!()
                                                     }
                                                 };
@@ -626,13 +626,13 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 },
                 Ast::Prefix(node) => {
                     let (span, operator) = match node.operator {
-                        ast::PrefixOperator::Plus(token) => {
+                        ast::AstPrefixOperator::Plus(token) => {
                             (token.span.clone(), PrefixOperator::Plus(token.span))
                         }
-                        ast::PrefixOperator::Negate(token) => {
+                        ast::AstPrefixOperator::Negate(token) => {
                             (token.span.clone(), PrefixOperator::Minus(token.span))
                         }
-                        ast::PrefixOperator::Not(token) => unimplemented!(),
+                        ast::AstPrefixOperator::Not(token) => unimplemented!(),
                     };
 
                     AliasExpression {
@@ -675,13 +675,13 @@ fn expression(ast: Ast) -> Result<Expression> {
         }
         Ast::Prefix(prefix) => {
             let (span, operator) = match prefix.operator {
-                ast::PrefixOperator::Plus(token) => {
+                ast::AstPrefixOperator::Plus(token) => {
                     (token.span.clone(), PrefixOperator::Plus(token.span))
                 }
-                ast::PrefixOperator::Negate(token) => {
+                ast::AstPrefixOperator::Negate(token) => {
                     (token.span.clone(), PrefixOperator::Minus(token.span))
                 }
-                ast::PrefixOperator::Not(token) => unimplemented!(),
+                ast::AstPrefixOperator::Not(token) => unimplemented!(),
             };
 
             Ok(Expression::Prefix(PrefixExpression {

@@ -14,6 +14,11 @@ impl Evaluator {
         expr: &ConstantExpression,
         ctx: &Context,
     ) -> evaluate::Result<ColumnValues> {
+        // if let Some(column) = &ctx.column {
+        //     if let Some(kind) = column.kind {
+        //         return self.constant_of(expr, kind, ctx);
+        //     }
+        // }
         let row_count = ctx.limit.unwrap_or(ctx.row_count);
         Self::constant_value(&expr, row_count)
     }
@@ -38,7 +43,7 @@ impl Evaluator {
                 ColumnValues::bool(vec![span.fragment == "true"; row_count])
             }
             ConstantExpression::Number { span } => {
-                let s = &span.fragment;
+                let s = &span.fragment.replace("_", "");
                 // Try parsing in order from most specific to most general
                 if let Ok(v) = s.parse::<i8>() {
                     ColumnValues::int1(vec![v; row_count])
@@ -83,7 +88,7 @@ impl Evaluator {
             }
 
             (ConstantExpression::Number { span }, kind) => {
-                let s = &span.fragment;
+                let s = &span.fragment.replace("_", "");
                 match kind {
                     ValueKind::Float4 => match s.parse::<f32>() {
                         Ok(v) => ColumnValues::float4(vec![v; row_count]),
@@ -216,15 +221,15 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::EvaluationColumn;
+    use ColumnSaturationPolicy::Error;
     use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
     use reifydb_core::ValueKind;
     use reifydb_diagnostic::{Line, Offset, Span};
-    use ColumnSaturationPolicy::Error;
 
     mod constant_value {
-        use crate::evaluate::constant::tests::make_span;
-        use crate::evaluate::constant::ConstantExpression;
         use crate::evaluate::Evaluator;
+        use crate::evaluate::constant::ConstantExpression;
+        use crate::evaluate::constant::tests::make_span;
         use crate::frame::ColumnValues;
         use reifydb_diagnostic::Span;
 
@@ -331,8 +336,8 @@ mod tests {
     }
 
     mod constant_value_of {
-        use crate::evaluate::constant::tests::make_span;
         use crate::evaluate::Evaluator;
+        use crate::evaluate::constant::tests::make_span;
         use crate::frame::ColumnValues;
         use reifydb_core::ValueKind;
         use reifydb_rql::expression::ConstantExpression;

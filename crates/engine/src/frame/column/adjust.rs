@@ -15,7 +15,7 @@ impl ColumnValues {
         span: impl Fn() -> Span,
     ) -> crate::Result<ColumnValues> {
         use ValueKind::*;
-        
+
         if target == self.kind() {
             return Ok(self.clone());
         }
@@ -86,7 +86,7 @@ impl ColumnValues {
         adjust!(Int2, i16,
             promote => [(Int4, i32), (Int8, i64), (Int16, i128)],
             demote => [(Int1, i8)],
-            convert => [(Float4, f32), (Float8,f64), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+            convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
         );
 
         adjust!(Int4, i32,
@@ -98,13 +98,13 @@ impl ColumnValues {
         adjust!(Int8, i64,
             promote => [(Int16, i128)],
             demote => [(Int4, i32), (Int2, i16), (Int1, i8)],
-            convert => [(Float4, f32), (Float8,f64), (Uint8, u64), (Uint16, u128)]
+            convert => [(Float4, f32), (Float8,f64), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
         );
 
         adjust!(Int16, i128,
             promote => [],
             demote => [(Int8, i64), (Int4, i32), (Int2, i16), (Int1, i8)],
-            convert => [(Float4, f32), (Float8,f64), (Uint16, u128)]
+            convert => [(Float4, f32), (Float8,f64), (Uint8, u64), (Uint16, u128)]
         );
 
         adjust!(Uint1, u8,

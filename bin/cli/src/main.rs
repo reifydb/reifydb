@@ -13,13 +13,12 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(field_one: bool, field_two: bool)"#).unwrap();
-    db.tx_as(&root, r#"insert (true, false), (false, true), (true,true), (false,false) into test.item (field_one, field_two)"#).unwrap();
-
+    db.tx_as(&root, r#"create table test.item(field: int16)"#).unwrap();
+    db.tx_as(&root, r#"insert (-170_141_183_460_469_231_731_687_303_715_884_105_728) into test.item (field)"#).unwrap();
     for l in db.rx_as(
         &root,
         r#"
-from test.item select field_one, field_two filter field_one == true
+from test.item
         "#,
     ) {
         println!("{}", l);

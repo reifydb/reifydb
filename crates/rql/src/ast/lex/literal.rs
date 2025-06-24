@@ -5,12 +5,13 @@ use crate::ast::lex::Literal::{False, Number, Text, True, Undefined};
 use crate::ast::lex::{Token, TokenKind, as_span};
 use TokenKind::Literal;
 use nom::branch::alt;
-use nom::bytes::{is_not, tag, tag_no_case, take_while1};
-use nom::character::{char, digit1, multispace0};
+use nom::bytes::{is_not, tag_no_case};
+use nom::character::{char, multispace0};
 use nom::combinator::{complete, map, recognize};
-use nom::number::double;
-use nom::sequence::{delimited, preceded};
-use nom::{IResult, Parser};
+use nom::error::Error;
+use nom::error::ErrorKind::Verify;
+use nom::sequence::{delimited, pair, preceded};
+use nom::{AsChar, IResult, Parser};
 use nom_locate::LocatedSpan;
 
 /// Parses any literal
@@ -41,34 +42,168 @@ fn parse_text(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 
 /// Parses any numeric token (float, int, hex, octal, binary)
 fn parse_number(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    alt((parse_hex, parse_octal, parse_binary, parse_float, parse_decimal)).parse(input)
+    alt((parse_decimal, parse_hex, parse_binary, parse_octal)).parse(input)
 }
 
 fn parse_hex(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let inner = recognize(preceded(tag("0x"), take_while1(|c: char| c.is_ascii_hexdigit())));
-    let (rest, span) = complete(inner).parse(input)?;
+    use nom::{
+        bytes::complete::tag,
+        bytes::complete::take_while1,
+        combinator::{complete, recognize},
+        sequence::pair,
+    };
+
+    fn is_hex_or_underscore(c: char) -> bool {
+        c.is_ascii_hexdigit() || c == '_'
+    }
+
+    fn is_valid_hex_with_underscores(s: &str) -> bool {
+        let bytes = s.as_bytes();
+        if bytes.first() == Some(&b'_') || bytes.last() == Some(&b'_') {
+            return false;
+        }
+        !s.contains("__")
+    }
+
+    let full = recognize(pair(tag("0x"), take_while1(is_hex_or_underscore)));
+
+    let (rest, span) = complete(full).parse(input)?;
+
+    let literal = *span.fragment();
+    if !is_valid_hex_with_underscores(&literal[2..]) {
+        return Err(nom::Err::Error(Error::new(input, Verify)));
+    }
+
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
 fn parse_octal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let inner = recognize(preceded(tag("0o"), take_while1(|c: char| ('0'..='7').contains(&c))));
-    let (rest, span) = complete(inner).parse(input)?;
+    use nom::{
+        bytes::complete::{tag, take_while1},
+        combinator::{complete, recognize},
+        error::{Error, ErrorKind::Verify},
+        sequence::pair,
+    };
+
+    fn not_whitespace(c: char) -> bool {
+        !c.is_whitespace()
+    }
+
+    fn is_valid_octal_format(s: &str) -> bool {
+        // Must not start or end with _
+        if s.starts_with('_') || s.ends_with('_') {
+            return false;
+        }
+
+        // Must not contain double underscores
+        if s.contains("__") {
+            return false;
+        }
+
+        // Must contain at least one binary digit
+        s.chars().all(|c| c.is_oct_digit() || c == '_')
+    }
+
+    let (rest, span) =
+        complete(recognize(pair(tag("0o"), take_while1(not_whitespace)))).parse(input)?;
+
+    let literal = *span.fragment();
+    let suffix = &literal[2..]; // after "0x"
+    if !is_valid_octal_format(suffix) {
+        return Err(nom::Err::Error(Error::new(input, Verify)));
+    }
+
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
 fn parse_binary(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let inner = recognize(preceded(tag("0b"), take_while1(|c: char| c == '0' || c == '1')));
-    let (rest, span) = complete(inner).parse(input)?;
-    Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
-}
+    use nom::error::{Error, ErrorKind::Verify};
+    use nom::{
+        bytes::complete::{tag, take_while1},
+        combinator::{complete, recognize},
+        sequence::pair,
+    };
 
-fn parse_float(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = complete(recognize(double())).parse(input)?;
+    fn not_whitespace(c: char) -> bool {
+        !c.is_whitespace()
+    }
+
+    fn is_valid_binary_format(s: &str) -> bool {
+        // Must not start or end with _
+        if s.starts_with('_') || s.ends_with('_') {
+            return false;
+        }
+
+        // Must not contain double underscores
+        if s.contains("__") {
+            return false;
+        }
+
+        // Must contain at least one binary digit
+        s.chars().all(|c| c == '0' || c == '1' || c == '_')
+    }
+
+    // Recognize "0b" + valid char sequence
+    let (rest, span) =
+        complete(recognize(pair(tag("0b"), take_while1(not_whitespace)))).parse(input)?;
+
+    let literal = *span.fragment();
+    let suffix = &literal[2..]; // skip "0b"
+    if !is_valid_binary_format(suffix) {
+        return Err(nom::Err::Error(Error::new(input, Verify)));
+    }
+
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
 fn parse_decimal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = complete(digit1()).parse(input)?;
+    use nom::{
+        bytes::complete::take_while1,
+        combinator::{complete, recognize},
+    };
+
+    // Reject binary, hex, octal prefixes
+    if input.fragment().starts_with("0b")
+        || input.fragment().starts_with("0x")
+        || input.fragment().starts_with("0o")
+    {
+        return Err(nom::Err::Error(Error::new(input, Verify)));
+    }
+
+    fn is_valid_decimal_char(c: char) -> bool {
+        c.is_ascii_digit() || c == '.' || c == '_'
+    }
+
+    fn is_valid_decimal_format(s: &str) -> bool {
+        if s.starts_with('_') || s.ends_with('_') || s.contains("__") {
+            return false;
+        }
+
+        // Must contain at least one digit
+        if !s.chars().any(|c| c.is_ascii_digit()) {
+            return false;
+        }
+
+        // At most one dot
+        if s.chars().filter(|&c| c == '.').count() > 1 {
+            return false;
+        }
+
+        // Dot can't be adjacent to underscore (e.g., "1_.0", "1._0")
+        if s.contains("._") || s.contains("_.") {
+            return false;
+        }
+
+        true
+    }
+
+    let (rest, span) = complete(recognize(take_while1(is_valid_decimal_char))).parse(input)?;
+
+    let literal = *span.fragment();
+    if !is_valid_decimal_format(literal) {
+        return Err(nom::Err::Error(Error::new(input, Verify)));
+    }
+
     Ok((rest, Token { kind: Literal(Number), span: as_span(span) }))
 }
 
@@ -106,10 +241,24 @@ mod tests {
     }
 
     #[test]
+    fn test_number_hex_with_underscores() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("0x2A_AA")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "0x2A_AA");
+    }
+
+    #[test]
     fn test_number_octal() {
         let (_rest, token) = parse_literal(LocatedSpan::new("0o777")).unwrap();
         assert_eq!(token.kind, Literal(Number));
         assert_eq!(token.value(), "0o777");
+    }
+
+    #[test]
+    fn test_number_octal_with_underscores() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("0o777_555")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "0o777_555");
     }
 
     #[test]
@@ -120,6 +269,13 @@ mod tests {
     }
 
     #[test]
+    fn test_number_binary_with_underscores() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("0b111_010")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "0b111_010");
+    }
+
+    #[test]
     fn test_number_decimal() {
         let (_rest, token) = parse_literal(LocatedSpan::new("100")).unwrap();
         assert_eq!(token.kind, Literal(Number));
@@ -127,10 +283,24 @@ mod tests {
     }
 
     #[test]
+    fn test_number_decimal_with_underscores() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("1_000_000")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "1_000_000");
+    }
+
+    #[test]
     fn test_number_float() {
         let (_rest, token) = parse_literal(LocatedSpan::new("42.5")).unwrap();
         assert_eq!(token.kind, Literal(Number));
         assert_eq!(token.value(), "42.5");
+    }
+
+    #[test]
+    fn test_number_float_with_underscores() {
+        let (_rest, token) = parse_literal(LocatedSpan::new("1_142.5_234")).unwrap();
+        assert_eq!(token.kind, Literal(Number));
+        assert_eq!(token.value(), "1_142.5_234");
     }
 
     #[test]
@@ -162,5 +332,138 @@ mod tests {
     fn test_undefined() {
         let (_rest, token) = parse_literal(LocatedSpan::new("undefined")).unwrap();
         assert_eq!(token.kind, Literal(Undefined));
+    }
+
+    #[test]
+    fn test_parse_decimal() {
+        let cases = [
+            ("0", true),
+            ("42", true),
+            ("1234567890", true),
+            ("1_000", true),
+            ("12_345_678", true),
+            ("0.0", true),
+            ("42.5", true),
+            ("3.14159", true),
+            ("1_000.000_1", true),
+            ("0.123", true),
+            ("123.", true),
+            (".456", true),
+            // invalid cases
+            ("_", false),
+            ("1__", false),
+            ("_123", false),
+            ("123_", false),
+            ("1._0", false),
+            ("1_.0", false),
+            ("1.0_", false),
+            ("1..0", false),
+            ("1.0.0", false),
+        ];
+
+        for (input, should_parse) in cases {
+            let result = parse_literal(LocatedSpan::new(input));
+            match (result, should_parse) {
+                (Ok((_rest, token)), true) => {
+                    assert_eq!(token.kind, Literal(Number), "input = {}", input);
+                    assert_eq!(token.value(), input, "input = {}", input);
+                }
+                (Err(_), false) => {} // expected failure
+                (Ok(_), false) => panic!("input {:?} should NOT parse but did", input),
+                (Err(e), true) => panic!("input {:?} should parse but failed: {:?}", input, e),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_hex() {
+        let cases = [
+            ("0x0", true),
+            ("0x2A", true),
+            ("0xDEADBEEF", true),
+            ("0x2A_AA", true),
+            ("0xAB_CD_EF", true),
+            // invalid
+            ("0x_", false),
+            ("0x__AB", false),
+            ("0xAB__CD", false),
+            ("0x_1234", false),
+            ("0x1234_", false),
+            ("0x", false),
+        ];
+
+        for (input, should_parse) in cases {
+            let result = parse_literal(LocatedSpan::new(input));
+            match (result, should_parse) {
+                (Ok((_rest, token)), true) => {
+                    assert_eq!(token.kind, Literal(Number), "input = {}", input);
+                    assert_eq!(token.value(), input, "input = {}", input);
+                }
+                (Err(_), false) => {}
+                (Ok(_), false) => panic!("input {:?} should NOT parse but did", input),
+                (Err(e), true) => panic!("input {:?} should parse but failed: {:?}", input, e),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_octal() {
+        let cases = [
+            ("0o0", true),
+            ("0o7", true),
+            ("0o1234567", true),
+            ("0o12_34_56", true),
+            // invalid
+            ("0o_", false),
+            ("0o_123", false),
+            ("0o123_", false),
+            ("0o12__34", false),
+            ("0o8", false), // 8 is not valid in octal
+            ("0o", false),
+        ];
+
+        for (input, should_parse) in cases {
+            let result = parse_literal(LocatedSpan::new(input));
+            match (result, should_parse) {
+                (Ok((_rest, token)), true) => {
+                    assert_eq!(token.kind, Literal(Number), "input = {}", input);
+                    assert_eq!(token.value(), input, "input = {}", input);
+                }
+                (Err(_), false) => {}
+                (Ok(_), false) => panic!("input {:?} should NOT parse but did", input),
+                (Err(e), true) => panic!("input {:?} should parse but failed: {:?}", input, e),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_binary() {
+        let cases = [
+            ("0b0", true),
+            ("0b1", true),
+            ("0b101010", true),
+            ("0b1010_1100", true),
+            ("0b1_0_1_0", true),
+            // invalid
+            ("0b_", false),
+            ("0b_1010", false),
+            ("0b1010_", false),
+            ("0b10__10", false),
+            ("0b102", false), // 2 is not valid in binary
+            ("0b", false),
+        ];
+
+        for (input, should_parse) in cases {
+            let result = parse_literal(LocatedSpan::new(input));
+            match (result, should_parse) {
+                (Ok((_rest, token)), true) => {
+                    assert_eq!(token.kind, Literal(Number), "input = {}", input);
+                    assert_eq!(token.value(), input, "input = {}", input);
+                }
+                (Err(_), false) => {}
+                (Ok(_), false) => panic!("input {:?} should NOT parse but did", input),
+                (Err(e), true) => panic!("input {:?} should parse but failed: {:?}", input, e),
+            }
+        }
     }
 }
