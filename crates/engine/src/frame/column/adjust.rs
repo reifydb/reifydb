@@ -92,19 +92,19 @@ impl ColumnValues {
         adjust!(Int4, i32,
             promote => [(Int8, i64), (Int16, i128)],
             demote => [(Int2, i16), (Int1, i8)],
-            convert => [(Float4, f32), (Float8,f64),  (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+            convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
         );
 
         adjust!(Int8, i64,
             promote => [(Int16, i128)],
             demote => [(Int4, i32), (Int2, i16), (Int1, i8)],
-            convert => [(Float4, f32), (Float8,f64), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+            convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
         );
 
         adjust!(Int16, i128,
             promote => [],
             demote => [(Int8, i64), (Int4, i32), (Int2, i16), (Int1, i8)],
-            convert => [(Float4, f32), (Float8,f64), (Uint8, u64), (Uint16, u128)]
+            convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
         );
 
         adjust!(Uint1, u8,
@@ -116,25 +116,25 @@ impl ColumnValues {
         adjust!(Uint2, u16,
             promote => [(Uint4, u32), (Uint8, u64), (Uint16, u128)],
             demote => [(Uint1, u8)],
-            convert => [(Float4, f32), (Float8,f64), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+            convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
         );
 
         adjust!(Uint4, u32,
             promote => [(Uint8, u64), (Uint16, u128)],
             demote => [(Uint2, u16), (Uint1, u8)],
-            convert => [(Float4, f32), (Float8,f64), (Int4, i32), (Int8, i64), (Int16, i128)]
+            convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
         );
 
         adjust!(Uint8, u64,
             promote => [(Uint16, u128)],
             demote => [(Uint4, u32), (Uint2, u16), (Uint1, u8)],
-            convert => [(Float4, f32), (Float8,f64), (Int8, i64), (Int16, i128)]
+            convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
         );
 
         adjust!(Uint16, u128,
             promote => [],
             demote => [(Uint8, u64), (Uint4, u32), (Uint2, u16), (Uint1, u8)],
-            convert => [(Float4, f32), (Float8,f64), (Int16, i128)]
+            convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
         );
 
         unimplemented!("{:?} -> {:?}", self.kind(), target)

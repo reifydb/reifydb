@@ -49,7 +49,7 @@ impl Evaluator {
             Expression::Modulo(expr) => self.modulo(expr, ctx),
             Expression::Multiply(expr) => self.multiply(expr, ctx),
             Expression::Prefix(expr) => self.prefix(expr, ctx),
-            Expression::Subtract(expr) => self.subtract(expr, ctx),
+            Expression::Subtract(expr) => self.sub(expr, ctx),
             expr => unimplemented!("{expr:?}"),
         }
     }
@@ -62,13 +62,4 @@ pub fn evaluate(expr: &Expression, ctx: &Context) -> Result<ColumnValues> {
     evaluator.functions.register(math::AvgFunction {});
 
     evaluator.evaluate(expr, ctx)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn test() {
-        todo!()
-    }
 }

@@ -220,12 +220,3 @@ impl Evaluator {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn test() {
-        todo!()
-    }
-}

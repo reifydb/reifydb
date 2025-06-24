@@ -37,12 +37,3 @@ impl Frame {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn test() {
-        todo!()
-    }
-}

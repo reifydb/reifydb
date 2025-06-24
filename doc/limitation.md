@@ -21,3 +21,12 @@ rational:
         2. 
 
 use between 0.999 and 1.001 instead
+
+
+## max literal
+max accepted literal = max uint16 = 340282366920938463463374607431768211455
+uint16 is max supported type at the moment, therefore the type can not be widened and will always fails with an error message
+- this limitation might be removed when introducing a decimal and or bigint type
+
+## min literal
+max int16 -170141183460469231731687303715884105728 for the same reason

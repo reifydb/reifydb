@@ -36,7 +36,7 @@ impl Diagnostic {
 
         let message = match (&co.column, &co.kind) {
             (Some(column), Some(value)) => {
-                format!("type out of range in column `{}` type `{}`", column, value)
+                format!("value out of range in column `{}` type `{}`", column, value)
             }
             (Some(column), None) => format!("value out of range in column `{}`", column),
             (None, Some(value)) => format!("value out of range in type `{}`", value),

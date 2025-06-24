@@ -12,13 +12,13 @@ macro_rules! impl_safe_add {
         $(
             impl SafeAdd for $t {
                 fn checked_add(self, r: Self) -> Option<Self> {
-                    self.checked_add(r)
+                    <$t>::checked_add(self, r)
                 }
                 fn saturating_add(self, r: Self) -> Self {
-                    self.saturating_add(r)
+                    <$t>::saturating_add(self, r)
                 }
                 fn wrapping_add(self, r: Self) -> Self {
-                    self.wrapping_add(r)
+                    <$t>::wrapping_add(self, r)
                 }
             }
         )*

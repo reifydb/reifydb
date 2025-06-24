@@ -16,8 +16,7 @@ mod promote;
 use crate::frame::Column;
 use reifydb_core::num::SafeSubtract;
 use reifydb_core::{BitVec, Kind};
-use reifydb_diagnostic::r#type::OutOfRange;
-use reifydb_diagnostic::{Diagnostic, IntoSpan};
+use reifydb_diagnostic::IntoSpan;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvaluationColumn {
@@ -65,36 +64,5 @@ impl Context {
             .as_ref()
             .map(|c| c.saturation_policy())
             .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
-    }
-}
-
-impl Context {
-    pub(crate) fn sub<T: SafeSubtract>(
-        &self,
-        l: T,
-        r: T,
-        span: impl IntoSpan,
-    ) -> crate::evaluate::Result<Option<T>> {
-        match self.saturation_policy() {
-            ColumnSaturationPolicy::Error => l
-                .checked_sub(r)
-                .ok_or_else(|| {
-                    if let Some(column) = &self.column {
-                        return crate::evaluate::Error(Diagnostic::out_of_range(
-                            OutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                kind: column.kind,
-                            },
-                        ));
-                    }
-                    // expression_saturation
-                    unimplemented!()
-                })
-                .map(Some),
-            // SaturationPolicy::Saturate => Ok(a.saturating_add(b)),
-            // SaturationPolicy::Wrap => Ok(a.wrapping_add(b)),
-            ColumnSaturationPolicy::Undefined => Ok(None),
-        }
     }
 }

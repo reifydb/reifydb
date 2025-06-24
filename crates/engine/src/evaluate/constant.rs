@@ -57,7 +57,6 @@ impl Evaluator {
                     })));
                 }
 
-                // Try parsing in order from most specific to most general
                 if let Ok(v) = s.parse::<i8>() {
                     ColumnValues::int1(vec![v; row_count])
                 } else if let Ok(v) = s.parse::<i16>() {

@@ -107,12 +107,3 @@ impl Aggregate {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn test() {
-        todo!()
-    }
-}

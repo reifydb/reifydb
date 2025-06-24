@@ -12,13 +12,13 @@ macro_rules! impl_safe_sub {
         $(
             impl SafeSubtract for $t {
                 fn checked_sub(self, r: Self) -> Option<Self> {
-                    self.checked_sub(r)
+                    <$t>::checked_sub(self,r)
                 }
                 fn saturating_sub(self, r: Self) -> Self {
-                    self.saturating_sub(r)
+                    <$t>::saturating_sub(self, r)
                 }
                 fn wrapping_sub(self, r: Self) -> Self {
-                    self.wrapping_sub(r)
+                    <$t>::wrapping_sub(self, r)
                 }
             }
         )*

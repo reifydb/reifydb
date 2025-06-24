@@ -141,12 +141,3 @@ impl Frame {
         Ok(result)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn test() {
-        todo!()
-    }
-}

@@ -120,12 +120,3 @@ impl Frame {
         (0..row_count).map(move |row_idx| TransposedRow { row_idx, columns: &self.columns })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn test() {
-        todo!()
-    }
-}
