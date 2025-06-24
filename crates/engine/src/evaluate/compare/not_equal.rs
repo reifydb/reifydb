@@ -472,14 +472,14 @@ impl Evaluator {
 fn compare_bool(
     l: &CowVec<bool>,
     r: &CowVec<bool>,
-    l_valid: &CowVec<bool>,
-    r_valid: &CowVec<bool>,
+    lv: &CowVec<bool>,
+    rv: &CowVec<bool>,
 ) -> ColumnValues {
     let mut values = Vec::with_capacity(l.len());
     let mut valid = Vec::with_capacity(l.len());
 
     for i in 0..l.len() {
-        if l_valid[i] && r_valid[i] {
+        if lv[i] && rv[i] {
             values.push(l[i] != r[i]);
             valid.push(true);
         } else {
@@ -494,8 +494,8 @@ fn compare_bool(
 fn compare_numeric<L, R>(
     l: &CowVec<L>,
     r: &CowVec<R>,
-    l_valid: &CowVec<bool>,
-    r_valid: &CowVec<bool>,
+    lv: &CowVec<bool>,
+    rv: &CowVec<bool>,
 ) -> ColumnValues
 where
     L: Promote<R> + Copy,
@@ -506,7 +506,7 @@ where
     let mut valid = Vec::with_capacity(l.len());
 
     for i in 0..l.len() {
-        if l_valid[i] && r_valid[i] {
+        if lv[i] && rv[i] {
             values.push(is_not_equal(l[i], r[i]));
             valid.push(true);
         } else {

@@ -6,11 +6,18 @@ use reifydb_core::CowVec;
 use reifydb_core::num::{IsNumber, SafePromote};
 use std::fmt::Debug;
 
-mod i8;
-mod undefined;
-mod value;
+mod i128;
 mod i16;
 mod i32;
+mod i64;
+mod i8;
+mod u128;
+mod u16;
+mod u32;
+mod u64;
+mod u8;
+mod undefined;
+mod value;
 
 pub trait Push<T> {
     fn push(&mut self, value: T);
@@ -57,16 +64,6 @@ macro_rules! impl_push {
 impl_push!(bool, Bool);
 impl_push!(f32, Float4);
 impl_push!(f64, Float8);
-// impl_push!(i8, Int1);
-// impl_push!(i16, Int2);
-// impl_push!(i32, Int4);
-impl_push!(i64, Int8);
-impl_push!(i128, Int16);
-impl_push!(u8, Uint1);
-impl_push!(u16, Uint2);
-impl_push!(u32, Uint4);
-impl_push!(u64, Uint8);
-impl_push!(u128, Uint16);
 
 impl Push<String> for ColumnValues {
     fn push(&mut self, value: String) {

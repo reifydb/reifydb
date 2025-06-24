@@ -473,8 +473,8 @@ impl Evaluator {
 pub fn compare_numeric<L, R>(
     l: &CowVec<L>,
     r: &CowVec<R>,
-    l_valid: &CowVec<bool>,
-    r_valid: &CowVec<bool>,
+    lv: &CowVec<bool>,
+    rv: &CowVec<bool>,
 ) -> ColumnValues
 where
     L: Promote<R> + Copy,
@@ -485,7 +485,7 @@ where
     let mut valid = Vec::with_capacity(l.len());
 
     for i in 0..l.len() {
-        if l_valid[i] && r_valid[i] {
+        if lv[i] && rv[i] {
             values.push(is_greater_than(l[i], r[i]));
             valid.push(true);
         } else {

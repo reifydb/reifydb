@@ -271,7 +271,7 @@ mod tests {
         }
 
         #[test]
-        fn test_seven_fields_all_valid() {
+        fn test_seven_fields_allv() {
             let kinds = vec![Kind::Bool; 7];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
@@ -284,7 +284,7 @@ mod tests {
         }
 
         #[test]
-        fn test_seven_fields_partial_valid() {
+        fn test_seven_fields_partialv() {
             let kinds = vec![Kind::Bool; 7];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
@@ -314,7 +314,7 @@ mod tests {
         }
 
         #[test]
-        fn test_eight_fields_all_valid() {
+        fn test_eight_fields_allv() {
             let kinds = vec![Kind::Bool; 8];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
@@ -327,7 +327,7 @@ mod tests {
         }
 
         #[test]
-        fn test_eight_fields_partial_valid() {
+        fn test_eight_fields_partialv() {
             let kinds = vec![Kind::Bool; 8];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
@@ -344,7 +344,7 @@ mod tests {
         }
 
         #[test]
-        fn test_nine_fields_all_valid() {
+        fn test_nine_fields_allv() {
             let kinds = vec![Kind::Bool; 9];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
@@ -370,7 +370,7 @@ mod tests {
         }
 
         #[test]
-        fn test_nine_fields_partial_valid() {
+        fn test_nine_fields_partialv() {
             let kinds = vec![Kind::Bool; 9];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
@@ -387,7 +387,7 @@ mod tests {
         }
 
         #[test]
-        fn test_sixteen_fields_all_valid() {
+        fn test_sixteen_fields_allv() {
             let kinds = vec![Kind::Bool; 16];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
@@ -413,7 +413,7 @@ mod tests {
         }
 
         #[test]
-        fn test_sixteen_fields_partial_valid() {
+        fn test_sixteen_fields_partialv() {
             let kinds = vec![Kind::Bool; 16];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
