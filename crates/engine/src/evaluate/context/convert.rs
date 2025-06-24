@@ -40,26 +40,28 @@ impl Convert for &Context {
         From: SafeConvert<To>,
     {
         match self.saturation_policy() {
-            ColumnSaturationPolicy::Error => from
-                .checked_convert()
-                .ok_or_else(|| {
-                    if let Some(column) = &self.column {
+            ColumnSaturationPolicy::Error => {
+                from.checked_convert()
+                    .ok_or_else(|| {
+                        if let Some(column) = &self.column {
+                            return crate::evaluate::Error(Diagnostic::type_out_of_range(
+                                TypeOutOfRange {
+                                    span: span.into_span(),
+                                    column: column.name.clone(),
+                                    ty: column.kind,
+                                },
+                            ));
+                        }
                         return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                            TypeOutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                ty: column.kind,
-                            },
+                            TypeOutOfRange { span: span.into_span(), column: None, ty: None },
                         ));
-                    }
-                    return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                        TypeOutOfRange { span: span.into_span(), column: None, ty: None },
-                    ));
-                })
-                .map(Some),
-            // SaturationPolicy::Saturate => Ok(a.saturating_convert(b)),
-            // SaturationPolicy::Wrap => Ok(a.wrapping_convert(b)),
-            ColumnSaturationPolicy::Undefined => Ok(None),
+                    })
+                    .map(Some)
+            }
+            ColumnSaturationPolicy::Undefined => match from.checked_convert() {
+                None => Ok(None),
+                Some(value) => Ok(Some(value)),
+            },
         }
     }
 }

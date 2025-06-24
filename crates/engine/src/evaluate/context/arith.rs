@@ -40,9 +40,10 @@ impl Context {
                     })
                     .map(Some)
             }
-            // SaturationPolicy::Saturate => Ok(a.saturating_add(b)),
-            // SaturationPolicy::Wrap => Ok(a.wrapping_add(b)),
-            ColumnSaturationPolicy::Undefined => Ok(None),
+            ColumnSaturationPolicy::Undefined => match lp.checked_add(rp) {
+                None => Ok(None),
+                Some(value) => Ok(Some(value)),
+            },
         }
     }
 }

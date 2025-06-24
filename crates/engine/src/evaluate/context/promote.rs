@@ -40,26 +40,28 @@ impl Promote for &Context {
         From: SafePromote<To>,
     {
         match self.saturation_policy() {
-            ColumnSaturationPolicy::Error => from
-                .checked_promote()
-                .ok_or_else(|| {
-                    if let Some(column) = &self.column {
+            ColumnSaturationPolicy::Error => {
+                from.checked_promote()
+                    .ok_or_else(|| {
+                        if let Some(column) = &self.column {
+                            return crate::evaluate::Error(Diagnostic::type_out_of_range(
+                                TypeOutOfRange {
+                                    span: span.into_span(),
+                                    column: column.name.clone(),
+                                    ty: column.kind,
+                                },
+                            ));
+                        }
                         return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                            TypeOutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                ty: column.kind,
-                            },
+                            TypeOutOfRange { span: span.into_span(), column: None, ty: None },
                         ));
-                    }
-                    return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                        TypeOutOfRange { span: span.into_span(), column: None, ty: None },
-                    ));
-                })
-                .map(Some),
-            // SaturationPolicy::Saturate => Ok(a.saturating_promote(b)),
-            // SaturationPolicy::Wrap => Ok(a.wrapping_promote(b)),
-            ColumnSaturationPolicy::Undefined => Ok(None),
+                    })
+                    .map(Some)
+            }
+            ColumnSaturationPolicy::Undefined => match from.checked_promote() {
+                None => Ok(None),
+                Some(value) => Ok(Some(value)),
+            },
         }
     }
 }

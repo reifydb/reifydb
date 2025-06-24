@@ -224,6 +224,7 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(l.len(), r.len());
 
+    
     let mut result = ColumnValues::with_capacity(kind, l_valid.len());
     for i in 0..l.len() {
         if l_valid[i] && r_valid[i] {
@@ -236,7 +237,6 @@ where
             result.push_undefined()
         }
     }
-
     Ok(result)
 }
 

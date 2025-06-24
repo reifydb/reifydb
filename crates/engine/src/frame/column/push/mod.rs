@@ -9,6 +9,8 @@ use std::fmt::Debug;
 mod i8;
 mod undefined;
 mod value;
+mod i16;
+mod i32;
 
 pub trait Push<T> {
     fn push(&mut self, value: T);
@@ -56,8 +58,8 @@ impl_push!(bool, Bool);
 impl_push!(f32, Float4);
 impl_push!(f64, Float8);
 // impl_push!(i8, Int1);
-impl_push!(i16, Int2);
-impl_push!(i32, Int4);
+// impl_push!(i16, Int2);
+// impl_push!(i32, Int4);
 impl_push!(i64, Int8);
 impl_push!(i128, Int16);
 impl_push!(u8, Uint1);

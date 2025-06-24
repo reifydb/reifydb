@@ -14,11 +14,11 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
     db.tx_as(&root, r#"create table test.item(field_one: int2 policy (saturation undefined), field_two: int2, field_three: int2 )"#).unwrap();
-    db.tx_as(&root, r#"insert (32767 + 1, 255 + 255, 120 + 3) into test.item (field_one, field_two, field_three)"#).unwrap();
+    db.tx_as(&root, r#"insert (32768, 255 + 255, 120 + 3) into test.item (field_one, field_two, field_three)"#).unwrap();
     for l in db.rx_as(
         &root,
         r#"
-from test.item
+select 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8
         "#,
     ) {
         println!("{}", l);

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub use push::Push;
+pub use push::{Push};
 pub use slice::AsSlice;
 pub use values::ColumnValues;
 
