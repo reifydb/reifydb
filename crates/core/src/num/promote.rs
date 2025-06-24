@@ -7,51 +7,182 @@ use crate::num::is::IsNumber;
 
 pub trait Promote<R> where Self: IsNumber, R: IsNumber {
     type Output: IsNumber;
-    fn promote(self, r: R) -> (Self::Output, Self::Output);
+    fn checked_promote(self, r: R) -> Option<(Self::Output, Self::Output)>;
+    fn saturating_promote(self, r: R) -> (Self::Output, Self::Output);
+    fn wrapping_promote(self, r: R) -> (Self::Output, Self::Output);
+
 }
 
 macro_rules! impl_promote {
     ($l:ty, $r:ty => $common:ty) => {
         impl Promote<$r> for $l {
             type Output = $common;
-            fn promote(self, r: $r) -> (Self::Output, Self::Output) {
+
+            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(self).ok();
+                let r: Option<$common> = <$common>::try_from(r).ok();
+                match(l,r){
+                    (Some(l),Some(r)) => Some((l,r)),
+                    _ => None
+                }
+            }
+
+            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(self) {
+                    Ok(v) => v,
+                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX },
+                };
+                let r = match <$common>::try_from(r) {
+                    Ok(v) => v,
+                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX },
+                };
+                (l, r)
+            }
+
+            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
                 (self as $common, r as $common)
             }
         }
     };
 }
 
-impl_promote!(f32, f32 => f32);
-impl_promote!(f32, f64 => f64); impl_promote!(f64, f32 => f64);
-impl_promote!(f64, f64 => f64);
+macro_rules! impl_promote_float_float {
+    ($l:ty, $r:ty => $common:ty) => {
+        impl Promote<$r> for $l {
+            type Output = $common;
+
+            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)> {
+                if self.is_finite() && r.is_finite() {
+                    Some((self as $common, r as $common))
+                } else {
+                    None
+                }
+            }
+
+            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                let l = if self.is_finite() {
+                    self as $common
+                } else if self.is_sign_negative() {
+                    <$common>::MIN
+                } else {
+                    <$common>::MAX
+                };
+                let r = if r.is_finite() {
+                    r as $common
+                } else if r.is_sign_negative() {
+                    <$common>::MIN
+                } else {
+                    <$common>::MAX
+                };
+                (l, r)
+            }
+
+            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                (self as $common, r as $common)
+            }
+        }
+    };
+}
+
+macro_rules! impl_promote_float_integer {
+    ($l:ty, $r:ty => $common:ty) => {
+        impl Promote<$r> for $l {
+            type Output = $common;
+
+            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)> {
+                if self.is_finite() {
+                    Some((self as $common, r as $common))
+                } else {
+                    None
+                }
+            }
+
+            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                let l = if self.is_finite() {
+                    self as $common
+                } else if self.is_sign_negative() {
+                    <$common>::MIN
+                } else {
+                    <$common>::MAX
+                };
+
+                let r = r as $common;
+                (l, r)
+            }
+
+            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                (self as $common, r as $common)
+            }
+        }
+    };
+}
+
+
+macro_rules! impl_promote_integer_float {
+    ($l:ty, $r:ty => $common:ty) => {
+        impl Promote<$r> for $l {
+            type Output = $common;
+
+            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)> {
+                if r.is_finite() {
+                    Some((self as $common, r as $common))
+                } else {
+                    None
+                }
+            }
+
+            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                let l = self as $common;
+                let r = if r.is_finite() {
+                    r as $common
+                } else if r.is_sign_negative() {
+                    <$common>::MIN
+                } else {
+                    <$common>::MAX
+                };
+                (l, r)
+            }
+
+            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                (self as $common, r as $common)
+            }
+        }
+    };
+}
+
+
+
+impl_promote_float_float!(f32, f32 => f32);
+impl_promote_float_float!(f32, f64 => f64); impl_promote_float_float!(f64, f32 => f64);
+impl_promote_float_float!(f64, f64 => f64);
 
 // float - signed
 
-impl_promote!(f32, i8 => f64); impl_promote!(i8, f32 => f64);
-impl_promote!(f32, i16 => f64); impl_promote!(i16, f32 => f64);
-impl_promote!(f32, i32 => f64); impl_promote!(i32, f32 => f64);
-impl_promote!(f32, i64 => f64); impl_promote!(i64, f32 => f64);
-impl_promote!(f32, i128 => f64); impl_promote!(i128, f32 => f64);
+impl_promote_float_integer!(f32, i8 => f64); impl_promote_integer_float!(i8, f32 => f64);
+impl_promote_float_integer!(f32, i16 => f64); impl_promote_integer_float!(i16, f32 => f64);
+impl_promote_float_integer!(f32, i32 => f64); impl_promote_integer_float!(i32, f32 => f64);
+impl_promote_float_integer!(f32, i64 => f64); impl_promote_integer_float!(i64, f32 => f64);
+impl_promote_float_integer!(f32, i128 => f64); impl_promote_integer_float!(i128, f32 => f64);
 
-impl_promote!(f64, i8 => f64); impl_promote!(i8, f64 => f64);
-impl_promote!(f64, i16 => f64); impl_promote!(i16, f64 => f64);
-impl_promote!(f64, i32 => f64); impl_promote!(i32, f64 => f64);
-impl_promote!(f64, i64 => f64); impl_promote!(i64, f64 => f64);
-impl_promote!(f64, i128 => f64); impl_promote!(i128, f64 => f64);
+impl_promote_float_integer!(f64, i8 => f64); impl_promote_integer_float!(i8, f64 => f64);
+impl_promote_float_integer!(f64, i16 => f64); impl_promote_integer_float!(i16, f64 => f64);
+impl_promote_float_integer!(f64, i32 => f64); impl_promote_integer_float!(i32, f64 => f64);
+impl_promote_float_integer!(f64, i64 => f64); impl_promote_integer_float!(i64, f64 => f64);
+impl_promote_float_integer!(f64, i128 => f64); impl_promote_integer_float!(i128, f64 => f64);
 
 // float - unsigned
 
-impl_promote!(f32, u8 => f64); impl_promote!(u8, f32 => f64);
-impl_promote!(f32, u16 => f64); impl_promote!(u16, f32 => f64);
-impl_promote!(f32, u32 => f64); impl_promote!(u32, f32 => f64);
-impl_promote!(f32, u64 => f64); impl_promote!(u64, f32 => f64);
-impl_promote!(f32, u128 => f64); impl_promote!(u128, f32 => f64);
+impl_promote_float_integer!(f32, u8 => f64); impl_promote_integer_float!(u8, f32 => f64);
+impl_promote_float_integer!(f32, u16 => f64); impl_promote_integer_float!(u16, f32 => f64);
+impl_promote_float_integer!(f32, u32 => f64); impl_promote_integer_float!(u32, f32 => f64);
+impl_promote_float_integer!(f32, u64 => f64); impl_promote_integer_float!(u64, f32 => f64);
+impl_promote_float_integer!(f32, u128 => f64); impl_promote_integer_float!(u128, f32 => f64);
 
-impl_promote!(f64, u8 => f64); impl_promote!(u8, f64 => f64);
-impl_promote!(f64, u16 => f64); impl_promote!(u16, f64 => f64);
-impl_promote!(f64, u32 => f64); impl_promote!(u32, f64 => f64);
-impl_promote!(f64, u64 => f64); impl_promote!(u64, f64 => f64);
-impl_promote!(f64, u128 => f64); impl_promote!(u128, f64 => f64);
+impl_promote_float_integer!(f64, u8 => f64); impl_promote_integer_float!(u8, f64 => f64);
+impl_promote_float_integer!(f64, u16 => f64); impl_promote_integer_float!(u16, f64 => f64);
+impl_promote_float_integer!(f64, u32 => f64); impl_promote_integer_float!(u32, f64 => f64);
+impl_promote_float_integer!(f64, u64 => f64); impl_promote_integer_float!(u64, f64 => f64);
+impl_promote_float_integer!(f64, u128 => f64); impl_promote_integer_float!(u128, f64 => f64);
 
 // signed - signed 
 impl_promote!(i8, i8 => i8);

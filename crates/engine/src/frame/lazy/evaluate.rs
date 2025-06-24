@@ -13,8 +13,8 @@ impl LazyFrame {
         if self.source == Source::None {
             let mut columns = vec![];
 
-            for (idx, expr) in self.expressions.clone().into_iter().enumerate() {
-                let expr = expr.expression;
+            for (idx, expr) in self.expressions.iter().enumerate() {
+                let expr = &expr.expression;
 
                 let value = evaluate(
                     &expr,

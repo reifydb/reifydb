@@ -52,7 +52,6 @@ impl SafeDemote<f32> for f64 {
         if self.is_finite()
             && self >= f32::MIN as f64
             && self <= f32::MAX as f64
-            && (demoted as f64) == self
         {
             Some(demoted)
         } else {

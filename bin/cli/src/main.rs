@@ -13,12 +13,12 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(field_one: int1 policy (saturation error), field_two: int2, field_three: int1)"#).unwrap();
-    db.tx_as(&root, r#"insert (127 + 1, 255 + 255, 120 + 3) into test.item (field_one, field_two, field_three)"#).unwrap();
+    db.tx_as(&root, r#"create table test.item(field_one: float4, field_two: float4)"#).unwrap();
+    db.tx_as(&root, r#"insert (1.1,-1.1), (-2.2,2.2), (3.3,3.3), (-4.4,-4.4) into test.item (field_one, field_two)"#).unwrap();
     for l in db.rx_as(
         &root,
         r#"
-select 1 + 2 + 3 + 4
+select cast(0 as int4) != cast(340282366920938463463374607431768211455 as uint16)
         "#,
     ) {
         println!("{}", l);

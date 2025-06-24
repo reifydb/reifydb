@@ -4,7 +4,7 @@
 use crate::evaluate::Context;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::num::SafePromote;
-use reifydb_diagnostic::r#type::TypeOutOfRange;
+use reifydb_diagnostic::r#type::OutOfRange;
 use reifydb_diagnostic::{Diagnostic, IntoSpan};
 
 pub trait Promote {
@@ -44,16 +44,16 @@ impl Promote for &Context {
                 from.checked_promote()
                     .ok_or_else(|| {
                         if let Some(column) = &self.column {
-                            return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                                TypeOutOfRange {
+                            return crate::evaluate::Error(Diagnostic::out_of_range(
+                                OutOfRange {
                                     span: span.into_span(),
                                     column: column.name.clone(),
-                                    ty: column.kind,
+                                    kind: column.kind,
                                 },
                             ));
                         }
-                        return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                            TypeOutOfRange { span: span.into_span(), column: None, ty: None },
+                        return crate::evaluate::Error(Diagnostic::out_of_range(
+                            OutOfRange { span: span.into_span(), column: None, kind: None },
                         ));
                     })
                     .map(Some)

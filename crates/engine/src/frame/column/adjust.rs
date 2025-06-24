@@ -6,7 +6,6 @@ use crate::frame::ColumnValues;
 use reifydb_core::Kind;
 use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
 use reifydb_diagnostic::Span;
-use std::fmt::Debug;
 
 impl ColumnValues {
     pub fn adjust_column(
@@ -20,7 +19,7 @@ impl ColumnValues {
         if target == self.kind() {
             return Ok(self.clone());
         }
-
+        
         macro_rules! adjust {
         (
             $src_variant:ident, $src_ty:ty,
@@ -93,7 +92,7 @@ impl ColumnValues {
         adjust!(Int4, i32,
             promote => [(Int8, i64), (Int16, i128)],
             demote => [(Int2, i16), (Int1, i8)],
-            convert => [(Float4, f32), (Float8,f64), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+            convert => [(Float4, f32), (Float8,f64),  (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
         );
 
         adjust!(Int8, i64,
@@ -151,7 +150,7 @@ fn demote_vec<From, To>(
     mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
-    From: Debug + Copy + SafeDemote<To>,
+    From: Copy + SafeDemote<To>,
 {
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {

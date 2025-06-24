@@ -6,7 +6,7 @@ use crate::evaluate::{Context, Error, Evaluator};
 use crate::frame::ColumnValues;
 use reifydb_core::Kind;
 use reifydb_diagnostic::Diagnostic;
-use reifydb_diagnostic::r#type::TypeOutOfRange;
+use reifydb_diagnostic::r#type::OutOfRange;
 use reifydb_rql::expression::ConstantExpression;
 
 impl Evaluator {
@@ -45,6 +45,18 @@ impl Evaluator {
             }
             ConstantExpression::Number { span } => {
                 let s = &span.fragment.replace("_", "");
+
+                if s.contains(".") {
+                    if let Ok(v) = s.parse::<f64>() {
+                        return Ok(ColumnValues::float8(vec![v; row_count]));
+                    }
+                    return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                        span: expr.span(),
+                        column: None,
+                        kind: Some(Kind::Float8),
+                    })));
+                }
+
                 // Try parsing in order from most specific to most general
                 if let Ok(v) = s.parse::<i8>() {
                     ColumnValues::int1(vec![v; row_count])
@@ -58,17 +70,12 @@ impl Evaluator {
                     ColumnValues::int16(vec![v; row_count])
                 } else if let Ok(v) = s.parse::<u128>() {
                     ColumnValues::uint16(vec![v; row_count])
-                } else if let Ok(v) = s.parse::<f32>() {
-                    if !v.is_finite() {
-                        if let Ok(v) = s.parse::<f64>() {
-                            return Ok(ColumnValues::float8(vec![v; row_count]));
-                        }
-                    }
-                    ColumnValues::float4(vec![v; row_count])
-                } else if let Ok(v) = s.parse::<f64>() {
-                    ColumnValues::float8(vec![v; row_count])
                 } else {
-                    ColumnValues::Undefined(row_count)
+                    return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                        span: expr.span(),
+                        column: None,
+                        kind: Some(Kind::Uint16),
+                    })));
                 }
             }
             ConstantExpression::Text { span } => {
@@ -94,129 +101,129 @@ impl Evaluator {
                     Kind::Float4 => match s.parse::<f32>() {
                         Ok(v) => ColumnValues::float4(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Float8 => match s.parse::<f64>() {
                         Ok(v) => ColumnValues::float8(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Int1 => match s.parse::<i8>() {
                         Ok(v) => ColumnValues::int1(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Int2 => match s.parse::<i16>() {
                         Ok(v) => ColumnValues::int2(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Int4 => match s.parse::<i32>() {
                         Ok(v) => ColumnValues::int4(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Int8 => match s.parse::<i64>() {
                         Ok(v) => ColumnValues::int8(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Int16 => match s.parse::<i128>() {
                         Ok(v) => ColumnValues::int16(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Uint1 => match s.parse::<u8>() {
                         Ok(v) => ColumnValues::uint1(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Uint2 => match s.parse::<u16>() {
                         Ok(v) => ColumnValues::uint2(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Uint4 => match s.parse::<u32>() {
                         Ok(v) => ColumnValues::uint4(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Uint8 => match s.parse::<u64>() {
                         Ok(v) => ColumnValues::uint8(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
                     Kind::Uint16 => match s.parse::<u128>() {
                         Ok(v) => ColumnValues::uint16(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
-                                ty: Some(ty),
+                                kind: Some(ty),
                             })));
                         }
                     },
 
                     _ => {
-                        return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                        return Err(Error(Diagnostic::out_of_range(OutOfRange {
                             span: span.clone(),
                             column: None,
-                            ty: Some(ty),
+                            kind: Some(ty),
                         })));
                     }
                 }
@@ -229,10 +236,10 @@ impl Evaluator {
             (ConstantExpression::Undefined { .. }, _) => ColumnValues::Undefined(row_count),
 
             (_, kind) => {
-                return Err(Error(Diagnostic::type_out_of_range(TypeOutOfRange {
+                return Err(Error(Diagnostic::out_of_range(OutOfRange {
                     span: expr.span(),
                     column: None,
-                    ty: Some(kind),
+                    kind: Some(kind),
                 })));
             }
         })
@@ -252,7 +259,6 @@ mod tests {
         use crate::evaluate::constant::ConstantExpression;
         use crate::evaluate::constant::tests::make_span;
         use crate::frame::ColumnValues;
-        use reifydb_diagnostic::Span;
 
         #[test]
         fn test_bool_true() {
@@ -269,18 +275,10 @@ mod tests {
         }
 
         #[test]
-        fn test_float4() {
+        fn test_float8() {
             let expr = ConstantExpression::Number { span: make_span("3.14") };
             let col = Evaluator::constant_value(&expr, 2).unwrap();
-            assert_eq!(col, ColumnValues::float4(vec![3.14; 2]));
-        }
-
-        #[test]
-        fn test_float8() {
-            let expr =
-                ConstantExpression::Number { span: Span::testing(f64::MAX.to_string().as_str()) };
-            let col = Evaluator::constant_value(&expr, 2).unwrap();
-            assert_eq!(col, ColumnValues::float8(vec![f64::MAX; 2]));
+            assert_eq!(col, ColumnValues::float8(vec![3.14; 2]));
         }
 
         #[test]
@@ -330,8 +328,8 @@ mod tests {
         #[test]
         fn test_invalid_number_fallback_to_undefined() {
             let expr = ConstantExpression::Number { span: make_span("not_a_number") };
-            let col = Evaluator::constant_value(&expr, 1).unwrap();
-            assert_eq!(col, ColumnValues::Undefined(1));
+            let err = Evaluator::constant_value(&expr, 1).unwrap_err();
+            assert_eq!(err.diagnostic().code, "TYPE_001");
         }
 
         #[test]

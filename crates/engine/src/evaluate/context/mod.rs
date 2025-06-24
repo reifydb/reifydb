@@ -16,7 +16,7 @@ mod promote;
 use crate::frame::Column;
 use reifydb_core::num::SafeSubtract;
 use reifydb_core::{BitVec, Kind};
-use reifydb_diagnostic::r#type::TypeOutOfRange;
+use reifydb_diagnostic::r#type::OutOfRange;
 use reifydb_diagnostic::{Diagnostic, IntoSpan};
 
 #[derive(Clone, Debug)]
@@ -80,11 +80,11 @@ impl Context {
                 .checked_sub(r)
                 .ok_or_else(|| {
                     if let Some(column) = &self.column {
-                        return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                            TypeOutOfRange {
+                        return crate::evaluate::Error(Diagnostic::out_of_range(
+                            OutOfRange {
                                 span: span.into_span(),
                                 column: column.name.clone(),
-                                ty: column.kind,
+                                kind: column.kind,
                             },
                         ));
                     }

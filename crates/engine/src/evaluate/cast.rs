@@ -136,11 +136,7 @@ mod tests {
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),
-                expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(Span::testing_empty()),
-                    expression: Box::new(Constant(Number { span: Span::testing("1.1") })),
-                    span: Span::testing_empty(),
-                })),
+                expression: Box::new(Constant(Number { span: Span::testing("-1.1") })),
                 to: KindExpression { span: Span::testing_empty(), kind: Kind::Float4 },
             }),
             &ctx,
@@ -156,17 +152,13 @@ mod tests {
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),
-                expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(Span::testing_empty()),
-                    expression: Box::new(Constant(Number { span: Span::testing("1.1") })),
-                    span: Span::testing_empty(),
-                })),
+                expression: Box::new(Constant(Number { span: Span::testing("-1.1") })),
                 to: KindExpression { span: Span::testing_empty(), kind: Kind::Float8 },
             }),
             &ctx,
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::float8([-1.100000023841858]));
+        assert_eq!(result, ColumnValues::float8([-1.1]));
     }
 }

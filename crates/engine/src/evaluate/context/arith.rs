@@ -4,7 +4,7 @@
 use crate::evaluate::Context;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::num::{IsNumber, Promote, SafeAdd};
-use reifydb_diagnostic::r#type::TypeOutOfRange;
+use reifydb_diagnostic::r#type::OutOfRange;
 use reifydb_diagnostic::{Diagnostic, IntoSpan};
 
 impl Context {
@@ -20,30 +20,41 @@ impl Context {
         <L as Promote<R>>::Output: IsNumber,
         <L as Promote<R>>::Output: SafeAdd,
     {
-        let (lp, rp) = l.promote(r);
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
+                let Some((lp, rp)) = l.checked_promote(r) else {
+                    return Err(crate::evaluate::Error(Diagnostic::out_of_range(
+                        OutOfRange { span: span.into_span(), column: None, kind: None },
+                    )));
+                };
+
                 lp.checked_add(rp)
                     .ok_or_else(|| {
                         if let Some(column) = &self.column {
-                            return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                                TypeOutOfRange {
+                            return crate::evaluate::Error(Diagnostic::out_of_range(
+                                OutOfRange {
                                     span: span.into_span(),
                                     column: column.name.clone(),
-                                    ty: column.kind,
+                                    kind: column.kind,
                                 },
                             ));
                         }
-                        return crate::evaluate::Error(Diagnostic::type_out_of_range(
-                            TypeOutOfRange { span: span.into_span(), column: None, ty: None },
+                        return crate::evaluate::Error(Diagnostic::out_of_range(
+                            OutOfRange { span: span.into_span(), column: None, kind: None },
                         ));
                     })
                     .map(Some)
             }
-            ColumnSaturationPolicy::Undefined => match lp.checked_add(rp) {
-                None => Ok(None),
-                Some(value) => Ok(Some(value)),
-            },
+            ColumnSaturationPolicy::Undefined => {
+                let Some((lp, rp)) = l.checked_promote(r) else {
+                    return Ok(None);
+                };
+
+                match lp.checked_add(rp) {
+                    None => Ok(None),
+                    Some(value) => Ok(Some(value)),
+                }
+            }
         }
     }
 }

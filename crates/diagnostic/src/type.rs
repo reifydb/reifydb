@@ -5,15 +5,15 @@ use crate::util::value_range;
 use crate::{Diagnostic, DiagnosticColumn, Span};
 use reifydb_core::Kind;
 
-pub struct TypeOutOfRange {
+pub struct OutOfRange {
     pub span: Span,
     pub column: Option<String>,
-    pub ty: Option<Kind>,
+    pub kind: Option<Kind>,
 }
 
 impl Diagnostic {
-    pub fn type_out_of_range(co: TypeOutOfRange) -> Diagnostic {
-        let label = match (&co.ty, &co.column) {
+    pub fn out_of_range(co: OutOfRange) -> Diagnostic {
+        let label = match (&co.kind, &co.column) {
             (Some(ty), Some(column)) => Some(format!(
                 "value `{}` does not fit into `{}` (range: {})",
                 co.span.fragment,
@@ -34,7 +34,7 @@ impl Diagnostic {
             }
         };
 
-        let message = match (&co.column, &co.ty) {
+        let message = match (&co.column, &co.kind) {
             (Some(column), Some(value)) => {
                 format!("type out of range in column `{}` type `{}`", column, value)
             }
@@ -55,7 +55,7 @@ impl Diagnostic {
             label,
             help,
             notes: vec![],
-            column: match (&co.column, co.ty) {
+            column: match (&co.column, co.kind) {
                 (Some(name), Some(value)) => Some(DiagnosticColumn { name: name.clone(), value }),
                 _ => None,
             },

@@ -10,8 +10,7 @@ where
     R: IsNumber,
     <L as Promote<R>>::Output: IsNumber,
 {
-    let (lp, rp) = l.promote(r);
-    lp == rp
+    l.checked_promote(r).map(|(lp, rp)| lp == rp).unwrap_or(false)
 }
 
 pub fn is_not_equal<L, R>(l: L, r: R) -> bool
@@ -20,8 +19,7 @@ where
     R: IsNumber,
     <L as Promote<R>>::Output: IsNumber,
 {
-    let (lp, rp) = l.promote(r);
-    lp != rp
+    l.checked_promote(r).map(|(lp, rp)| lp != rp).unwrap_or(true)
 }
 
 pub fn is_greater_than<L, R>(l: L, r: R) -> bool
@@ -30,8 +28,7 @@ where
     R: IsNumber,
     <L as Promote<R>>::Output: IsNumber,
 {
-    let (lp, rp) = l.promote(r);
-    lp > rp
+    l.checked_promote(r).map(|(lp, rp)| lp > rp).unwrap_or(false)
 }
 
 pub fn is_greater_than_equal<L, R>(l: L, r: R) -> bool
@@ -40,8 +37,7 @@ where
     R: IsNumber,
     <L as Promote<R>>::Output: IsNumber,
 {
-    let (lp, rp) = l.promote(r);
-    lp >= rp
+    l.checked_promote(r).map(|(lp, rp)| lp >= rp).unwrap_or(false)
 }
 
 pub fn is_less_than<L, R>(l: L, r: R) -> bool
@@ -50,8 +46,7 @@ where
     R: IsNumber,
     <L as Promote<R>>::Output: IsNumber,
 {
-    let (lp, rp) = l.promote(r);
-    lp < rp
+    l.checked_promote(r).map(|(lp, rp)| lp < rp).unwrap_or(false)
 }
 
 pub fn is_less_than_equal<L, R>(l: L, r: R) -> bool
@@ -60,6 +55,5 @@ where
     R: IsNumber,
     <L as Promote<R>>::Output: IsNumber,
 {
-    let (lp, rp) = l.promote(r);
-    lp <= rp
+    l.checked_promote(r).map(|(lp, rp)| lp <= rp).unwrap_or(false)
 }
