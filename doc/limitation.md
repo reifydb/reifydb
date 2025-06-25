@@ -30,3 +30,6 @@ uint16 is max supported type at the moment, therefore the type can not be widene
 
 ## min literal
 max int16 -170141183460469231731687303715884105728 for the same reason
+
+## float 8
+float literal -  -1.8e308 to +1.8e308 for the same reason

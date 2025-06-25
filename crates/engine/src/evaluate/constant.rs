@@ -47,7 +47,7 @@ impl Evaluator {
             ConstantExpression::Number { span } => {
                 let s = &span.fragment.replace("_", "");
 
-                if s.contains(".") {
+                if s.contains(".") || s.contains("e") {
                     if let Ok(v) = parse_float(s) {
                         return Ok(ColumnValues::float8(vec![v; row_count]));
                     }
