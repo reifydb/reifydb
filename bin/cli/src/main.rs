@@ -13,16 +13,25 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
-    db.tx_as(&root, r#"insert (1), (2), (3), (4), (5), (6) into test.item (field)"#).unwrap();
+    db.tx_as(&root, r#"create table test.users(age: int4)"#).unwrap();
+    db.tx_as(&root, r#"insert (1), (2), (3), (4), (5), (6), (7), (8), (9), (10), (11), (12), (13) into test.users (age)"#).unwrap();
     for l in db.rx_as(
         &root,
         r#"
-        from test.item
+        from test.users filter age > 100 select age, age + 1  limit 3
         "#,
     ) {
         println!("{}", l);
     }
+
+    // for l in db.rx_as(
+    //     &root,
+    //     r#"
+    //         select 1 + 1,2 + 2,3 * 12
+    //     "#,
+    // ) {
+    //     println!("{}", l);
+    // }
 }
 
 // use reifydb::client::Client;

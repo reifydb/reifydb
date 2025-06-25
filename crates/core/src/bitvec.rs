@@ -78,6 +78,10 @@ impl BitVec {
     pub fn any(&self) -> bool {
         self.count_ones() > 0
     }
+
+    pub fn none(&self) -> bool {
+        self.count_ones() == 0
+    }
 }
 
 impl fmt::Display for BitVec {

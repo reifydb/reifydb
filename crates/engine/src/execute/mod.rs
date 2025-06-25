@@ -4,6 +4,7 @@
 mod catalog;
 mod display;
 mod error;
+mod query;
 mod write;
 
 use crate::execute;
@@ -12,7 +13,7 @@ use crate::function::{FunctionRegistry, math};
 pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
-use reifydb_core::{Value, Kind};
+use reifydb_core::{Kind, Value};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
@@ -263,8 +264,25 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 })
             }
             _ => {
-                let lazy = LazyFrame::compile(plan);
-                let result = lazy.evaluate(rx)?;
+
+                let mut frames = Vec::<Frame>::new();
+
+                let mut node = query::compile(plan, rx);
+                while let Some(batch) = node.next_batch() {
+                    let mut frame = batch.frame;
+                    // frame.filter(&batch.mask);
+                    frames.push(frame);
+                }
+
+                // todo!()
+                let mut result = frames.pop().unwrap_or(Frame::new(vec![]));
+                while let Some(frame) = frames.pop() {
+                    result.append_frame(frame).unwrap();
+                }
+
+                // let lazy = LazyFrame::compile(plan);
+                // let result = lazy.evaluate(rx)?;
+                // let result = Frame::new(vec![]);
                 Ok(result.into())
             }
         }
