@@ -152,7 +152,7 @@ macro_rules! impl_promote_integer_float {
 
 
 
-impl_promote_float_float!(f32, f32 => f32);
+impl_promote_float_float!(f32, f32 => f64);
 impl_promote_float_float!(f32, f64 => f64); impl_promote_float_float!(f64, f32 => f64);
 impl_promote_float_float!(f64, f64 => f64);
 
@@ -185,19 +185,19 @@ impl_promote_float_integer!(f64, u64 => f64); impl_promote_integer_float!(u64, f
 impl_promote_float_integer!(f64, u128 => f64); impl_promote_integer_float!(u128, f64 => f64);
 
 // signed - signed 
-impl_promote!(i8, i8 => i16);
-impl_promote!(i8, i16 => i16); impl_promote!(i16, i8 => i16);
-impl_promote!(i8, i32 => i32); impl_promote!(i32, i8 => i32);
-impl_promote!(i8, i64 => i64); impl_promote!(i64, i8 => i64);
+impl_promote!(i8, i8 => i128);
+impl_promote!(i8, i16 => i128); impl_promote!(i16, i8 => i128);
+impl_promote!(i8, i32 => i128); impl_promote!(i32, i8 => i128);
+impl_promote!(i8, i64 => i128); impl_promote!(i64, i8 => i128);
 impl_promote!(i8, i128 => i128); impl_promote!(i128, i8 => i128);
 
-impl_promote!(i16, i16 => i32);
-impl_promote!(i16, i32 => i32); impl_promote!(i32, i16 => i32);
-impl_promote!(i16, i64 => i64); impl_promote!(i64, i16 => i64);
+impl_promote!(i16, i16 => i128);
+impl_promote!(i16, i32 => i128); impl_promote!(i32, i16 => i128);
+impl_promote!(i16, i64 => i128); impl_promote!(i64, i16 => i128);
 impl_promote!(i16, i128 => i128); impl_promote!(i128, i16 => i128);
 
-impl_promote!(i32, i32 => i64);
-impl_promote!(i32, i64 => i64); impl_promote!(i64, i32 => i64);
+impl_promote!(i32, i32 => i128);
+impl_promote!(i32, i64 => i128); impl_promote!(i64, i32 => i128);
 impl_promote!(i32, i128 => i128); impl_promote!(i128, i32 => i128);
 
 impl_promote!(i64, i64 => i128);
@@ -206,19 +206,19 @@ impl_promote!(i64, i128 => i128); impl_promote!(i128, i64 => i128);
 impl_promote!(i128, i128 => i128);
 
 // unsigned - unsigned
-impl_promote!(u8, u8 => u16);
-impl_promote!(u8, u16 => u16); impl_promote!(u16, u8 => u16);
-impl_promote!(u8, u32 => u32); impl_promote!(u32, u8 => u32);
-impl_promote!(u8, u64 => u64); impl_promote!(u64, u8 => u64);
+impl_promote!(u8, u8 => u128);
+impl_promote!(u8, u16 => u128); impl_promote!(u16, u8 => u128);
+impl_promote!(u8, u32 => u128); impl_promote!(u32, u8 => u128);
+impl_promote!(u8, u64 => u128); impl_promote!(u64, u8 => u128);
 impl_promote!(u8, u128 => u128); impl_promote!(u128, u8 => u128);
 
-impl_promote!(u16, u16 => u32);
-impl_promote!(u16, u32 => u32); impl_promote!(u32, u16 => u32);
-impl_promote!(u16, u64 => u64); impl_promote!(u64, u16 => u64);
+impl_promote!(u16, u16 => u128);
+impl_promote!(u16, u32 => u128); impl_promote!(u32, u16 => u128);
+impl_promote!(u16, u64 => u128); impl_promote!(u64, u16 => u128);
 impl_promote!(u16, u128 => u128); impl_promote!(u128, u16 => u128);
 
-impl_promote!(u32, u32 => u64);
-impl_promote!(u32, u64 => u64); impl_promote!(u64, u32 => u64);
+impl_promote!(u32, u32 => u128);
+impl_promote!(u32, u64 => u128); impl_promote!(u64, u32 => u128);
 impl_promote!(u32, u128 => u128); impl_promote!(u128, u32 => u128);
 
 impl_promote!(u64, u64 => u128);

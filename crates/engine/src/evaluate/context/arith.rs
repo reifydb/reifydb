@@ -120,6 +120,6 @@ mod tests {
     fn test_add() {
         let test_instance = Context::testing();
         let result = test_instance.add(1i8, 255i16, Span::testing_empty());
-        assert_eq!(result, Ok(Some(256i16)));
+        assert_eq!(result, Ok(Some(256i128)));
     }
 }
