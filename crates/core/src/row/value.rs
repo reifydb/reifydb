@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ordered_float::{OrderedF32, OrderedF64};
+use crate::num::ordered_float::{OrderedF32, OrderedF64};
 use crate::row::{EncodedRow, Layout};
 use crate::{Value, Kind};
 

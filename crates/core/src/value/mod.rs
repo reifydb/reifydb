@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::Kind;
-use crate::ordered_float::{OrderedF32, OrderedF64};
+use crate::num::ordered_float::{OrderedF32, OrderedF64};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};

@@ -18,13 +18,7 @@ fn main() {
     for l in db.rx_as(
         &root,
         r#"
-select
-  cast(10000 as int16) < cast(-32768 as int2),
-  cast(10000 as int16) <= cast(-32768 as int2),
-  cast(-32768 as int16) > cast(32767 as int2),
-  cast(0 as int16) >= cast(32767 as int2),
-  cast(1 as int16) == cast(-1 as int2),
-  cast(42 as int16) != cast(42 as int2)
+        from test.users  select age filter age > 1 limit 3
         "#,
     ) {
         println!("{}", l);

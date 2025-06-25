@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ordered_float::error::OrderedFloatError;
+use crate::num::ordered_float::error::OrderedFloatError;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::cmp::Ordering;

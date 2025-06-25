@@ -26,7 +26,6 @@ pub mod hook;
 mod key;
 mod kind;
 pub mod num;
-pub mod ordered_float;
 mod retry;
 pub mod row;
 mod sort;

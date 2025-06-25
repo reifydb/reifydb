@@ -3,7 +3,7 @@
 
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
-use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
+use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
 use reifydb_core::{Value, Kind};
 use reifydb_engine::{Column, CreateSchemaResult, CreateTableResult, ExecutionResult};
 use std::net::SocketAddr;

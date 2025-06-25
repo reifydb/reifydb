@@ -99,7 +99,7 @@ mod tests {
 
     use super::*;
     use crate::Value;
-    use crate::ordered_float::{OrderedF32, OrderedF64};
+    use crate::num::ordered_float::{OrderedF32, OrderedF64};
     use serde::{Deserialize, Serialize};
     use serde_bytes::ByteBuf;
 

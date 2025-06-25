@@ -185,7 +185,7 @@ impl ColumnValues {
 mod tests {
     use crate::frame::ColumnValues;
     use reifydb_core::Value;
-    use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
+    use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
 
     #[test]
     fn test_bool() {

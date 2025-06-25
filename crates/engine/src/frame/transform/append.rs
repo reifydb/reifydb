@@ -670,7 +670,7 @@ mod tests {
 
     mod row {
         use crate::frame::{Column, ColumnValues, Frame};
-        use reifydb_core::ordered_float::{OrderedF32, OrderedF64};
+        use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
         use reifydb_core::row::Layout;
         use reifydb_core::{Value, Kind};
 
