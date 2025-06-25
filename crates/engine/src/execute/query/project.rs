@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, evaluate};
-use crate::execute::query::{NextBatch, Node};
+use crate::execute::query::{Batch, Node};
 use crate::frame::{Column, Frame, FrameLayout};
 use reifydb_core::BitVec;
 use reifydb_rql::expression::AliasExpression;
@@ -20,46 +20,46 @@ impl ProjectNode {
 }
 
 impl Node for ProjectNode {
-    fn next_batch(&mut self) -> crate::Result<NextBatch> {
-        match self.input.next_batch()? {
-            NextBatch::Some { frame, mask } => {
-                // let mut batch = self.input.next_batch()?;
-                let row_count = frame.row_count();
+    fn next(&mut self) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mask }) = self.input.next()? {
+            // let mut batch = self.input.next_batch()?;
+            let row_count = frame.row_count();
 
-                let ctx = Context {
-                    column: None,
-                    mask: mask.clone(),
-                    columns: frame.columns.clone(),
-                    // row_count: mask.count_ones(),
-                    row_count,
-                    limit: None,
-                };
+            let ctx = Context {
+                column: None,
+                mask: mask.clone(),
+                columns: frame.columns.clone(),
+                // row_count: mask.count_ones(),
+                row_count,
+                limit: None,
+            };
 
-                let columns = self
-                    .expressions
-                    .iter()
-                    .map(|alias_expr| {
-                        let expr = &alias_expr.expression;
-                        let alias = alias_expr
-                            .alias
-                            .clone()
-                            .map(|a| a.0.fragment)
-                            .unwrap_or(expr.span().fragment);
+            let columns = self
+                .expressions
+                .iter()
+                .map(|alias_expr| {
+                    let expr = &alias_expr.expression;
+                    let alias = alias_expr
+                        .alias
+                        .clone()
+                        .map(|a| a.0.fragment)
+                        .unwrap_or(expr.span().fragment);
 
-                        let values = evaluate(expr, &ctx).unwrap();
+                    let values = evaluate(expr, &ctx).unwrap();
 
-                        crate::frame::Column { name: alias.clone(), data: values }
-                    })
-                    .collect();
+                    crate::frame::Column { name: alias.clone(), data: values }
+                })
+                .collect();
 
-                self.layout = Some(FrameLayout::from_frame(&frame));
+            self.layout = Some(FrameLayout::from_frame(&frame));
 
-                Ok(NextBatch::Some { frame: Frame::new(columns), mask })
-            }
-            NextBatch::None { layout } => {
-                Ok(NextBatch::None { layout: self.layout.clone().unwrap_or(layout) })
-            }
+            return Ok(Some(Batch { frame: Frame::new(columns), mask }));
         }
+        Ok(None)
+    }
+
+    fn layout(&self) -> Option<FrameLayout> {
+        self.layout.clone().or(self.input.layout())
     }
 }
 
@@ -75,9 +75,9 @@ impl ProjectWithoutInputNode {
 }
 
 impl Node for ProjectWithoutInputNode {
-    fn next_batch(&mut self) -> crate::Result<NextBatch> {
-        if let Some(layout) = &self.layout {
-            return Ok(NextBatch::None { layout: layout.clone() });
+    fn next(&mut self) -> crate::Result<Option<Batch>> {
+        if self.layout.is_some() {
+            return Ok(None);
         }
 
         let mut columns = vec![];
@@ -94,14 +94,18 @@ impl Node for ProjectWithoutInputNode {
                     row_count: 1,
                     limit: None,
                 },
-            )
-            .unwrap();
+            )?;
+
             columns.push(Column { name: format!("{}", idx + 1), data: value });
         }
 
         let frame = Frame::new(columns);
         self.layout = Some(FrameLayout::from_frame(&frame));
         let row_count = frame.row_count();
-        Ok(NextBatch::Some { frame, mask: BitVec::new(row_count, true) })
+        Ok(Some(Batch { frame, mask: BitVec::new(row_count, true) }))
+    }
+
+    fn layout(&self) -> Option<FrameLayout> {
+        self.layout.clone()
     }
 }

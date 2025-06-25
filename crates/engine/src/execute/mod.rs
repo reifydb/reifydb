@@ -7,9 +7,9 @@ mod error;
 mod query;
 mod write;
 
-use crate::execute::query::NextBatch;
+use crate::execute::query::Batch;
 use crate::frame::{ColumnValues, Frame, FrameLayout};
-use crate::function::{math, FunctionRegistry};
+use crate::function::{FunctionRegistry, math};
 pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
@@ -260,37 +260,31 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             _ => {
                 let mut node = query::compile(plan, rx);
                 let mut result: Option<Frame> = None;
-                let mut fallback: Option<FrameLayout> = None;
+                // let mut fallback: Option<FrameLayout> = None;
 
-                while let Ok(batch) = node.next_batch() {
-                    match batch {
-                        NextBatch::Some { mut frame, mask } => {
-                            frame.filter(&mask)?;
-                            if let Some(mut result_frame) = result.take() {
-                                result_frame.append_frame(frame)?;
-                                result = Some(result_frame);
-                            } else {
-                                result = Some(frame);
-                            }
-                        }
-                        NextBatch::None { layout } => {
-                            fallback = Some(layout);
-                            break;
-                        }
+                while let Some(Batch { mut frame, mask }) = node.next()? {
+                    frame.filter(&mask)?;
+                    if let Some(mut result_frame) = result.take() {
+                        result_frame.append_frame(frame)?;
+                        result = Some(result_frame);
+                    } else {
+                        result = Some(frame);
                     }
                 }
 
-                match (result, fallback) {
-                    (Some(result), _) => Ok(result.into()),
-                    (None, Some(fallback)) => Ok(ExecutionResult::Query {
-                        columns: fallback
+                if let Some(frame) = result {
+                    Ok(frame.into())
+                } else {
+                    Ok(ExecutionResult::Query {
+                        columns: node
+                            .layout()
+                            .unwrap_or(FrameLayout { columns: vec![] })
                             .columns
                             .into_iter()
                             .map(|cl| Column { name: cl.name, kind: cl.kind })
                             .collect(),
                         rows: vec![],
-                    }),
-                    _ => Ok(ExecutionResult::Query { columns: vec![], rows: vec![] }),
+                    })
                 }
             }
         }

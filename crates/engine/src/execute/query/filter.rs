@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, evaluate};
-use crate::execute::query::{NextBatch, Node};
+use crate::execute::query::{Batch, Node};
 use crate::frame::{ColumnValues, Frame, FrameLayout};
 use reifydb_rql::expression::Expression;
 
@@ -18,7 +18,7 @@ impl<F: Fn(&Frame, usize) -> bool> FilterFunctionNode<F> {
 }
 
 impl<F: Fn(&Frame, usize) -> bool> Node for FilterFunctionNode<F> {
-    fn next_batch(&mut self) -> crate::Result<NextBatch> {
+    fn next(&mut self) -> crate::Result<Option<Batch>> {
         // while let Some(mut batch) = self.input.next_batch() {
         //     for i in 0..batch.frame.row_count() {
         //         if batch.mask.get(i) {
@@ -32,6 +32,10 @@ impl<F: Fn(&Frame, usize) -> bool> Node for FilterFunctionNode<F> {
         //     }
         // }
         // None
+        todo!()
+    }
+
+    fn layout(&self) -> Option<FrameLayout> {
         todo!()
     }
 }
@@ -49,79 +53,41 @@ impl FilterNode {
 }
 
 impl Node for FilterNode {
-    fn next_batch(&mut self) -> crate::Result<NextBatch> {
-        loop {
-            match self.input.next_batch()? {
-                NextBatch::Some { frame, mut mask } => {
-                    let row_count = frame.row_count(); // FIXME add a delegate - batch.row_count()
+    fn next(&mut self) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mut mask }) = self.input.next()? {
+            let row_count = frame.row_count(); // FIXME add a delegate - batch.row_count()
 
-                    let mut ctx = Context {
-                        column: None,
-                        mask,
-                        columns: frame.columns.clone(),
-                        row_count,
-                        limit: None,
-                    };
+            let mut ctx = Context {
+                column: None,
+                mask,
+                columns: frame.columns.clone(),
+                row_count,
+                limit: None,
+            };
 
-                    for filter_expr in &self.expressions {
-                        let result = evaluate(filter_expr, &ctx)?;
-                        match result {
-                            ColumnValues::Bool(values, valid) => {
-                                for i in 0..row_count {
-                                    ctx.mask.set(i, ctx.mask.get(i) && valid[i] && values[i]);
-                                }
-                            }
-                            _ => panic!("filter expression must evaluate to a boolean column"),
+            for filter_expr in &self.expressions {
+                let result = evaluate(filter_expr, &ctx)?;
+                match result {
+                    ColumnValues::Bool(values, valid) => {
+                        for i in 0..row_count {
+                            ctx.mask.set(i, ctx.mask.get(i) & &valid[i] & &values[i]);
                         }
                     }
-
-                    self.layout = Some(FrameLayout::from_frame(&frame));
-
-                    mask = ctx.mask;
-                    if mask.any() {
-                        return Ok(NextBatch::Some { frame, mask });
-                    } else {
-                        // return Ok(NextBatch::None { layout: FrameLayout::from_frame(&frame) });
-                        continue;
-                    }
-                }
-                NextBatch::None { layout } => {
-                    return Ok(NextBatch::None { layout: self.layout.clone().unwrap_or(layout) })
+                    _ => panic!("filter expression must evaluate to a boolean column"),
                 }
             }
-        }
 
-        // while let Some(mut batch) = self.input.next_batch() {
-        //
-        //     let row_count = batch.frame.row_count(); // FIXME add a delegate - batch.row_count()
-        //
-        //     let mut ctx = Context {
-        //         column: None,
-        //         mask: batch.mask,
-        //         columns: batch.frame.columns.clone(),
-        //         row_count,
-        //         limit: None,
-        //     };
-        //
-        //     for filter_expr in &self.expressions {
-        //         let result = evaluate(filter_expr, &ctx).unwrap();
-        //         match result {
-        //             ColumnValues::Bool(values, valid) => {
-        //                 for i in 0..row_count {
-        //                     ctx.mask.set(i, ctx.mask.get(i) && valid[i] && values[i]);
-        //                 }
-        //             }
-        //             _ => panic!("filter expression must evaluate to a boolean column"),
-        //         }
-        //     }
-        //
-        //     batch.mask = ctx.mask;
-        //     if batch.mask.any() {
-        //         // batch.frame.filter() ?
-        //         return Some(batch);
-        //     }
-        //
-        // }
-        // None
+            self.layout = Some(FrameLayout::from_frame(&frame));
+
+            mask = ctx.mask;
+            if mask.any() {
+                return Ok(Some(Batch { frame, mask }));
+            }
+        }
+        Ok(None)
+    }
+
+    fn layout(&self) -> Option<FrameLayout> {
+        self.layout.clone().or(self.input.layout())
     }
 }

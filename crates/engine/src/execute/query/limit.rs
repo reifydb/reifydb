@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::query::{NextBatch, Node};
+use crate::execute::query::{Batch, Node};
 use crate::frame::FrameLayout;
 
 pub(crate) struct LimitNode {
@@ -17,37 +17,35 @@ impl LimitNode {
 }
 
 impl Node for LimitNode {
-    fn next_batch(&mut self) -> crate::Result<NextBatch> {
-        loop {
-            return match self.input.next_batch()? {
-                NextBatch::Some { frame, mut mask } => {
-                    let visible: usize = mask.count_ones();
-                    if visible == 0 {
-                        continue;
-                    }
-                    if visible <= self.remaining {
-                        self.remaining -= visible;
-                        Ok(NextBatch::Some { frame, mask })
-                    } else {
-                        let mut kept = 0;
-                        for i in 0..mask.len() {
-                            if mask.get(i) {
-                                if kept >= self.remaining {
-                                    mask.set(i, false);
-                                } else {
-                                    kept += 1;
-                                }
-                            }
+    fn next(&mut self) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mut mask }) = self.input.next()? {
+            let visible: usize = mask.count_ones();
+            if visible == 0 {
+                continue;
+            }
+            self.layout = Some(FrameLayout::from_frame(&frame));
+            return if visible <= self.remaining {
+                self.remaining -= visible;
+                Ok(Some(Batch { frame, mask }))
+            } else {
+                let mut kept = 0;
+                for i in 0..mask.len() {
+                    if mask.get(i) {
+                        if kept >= self.remaining {
+                            mask.set(i, false);
+                        } else {
+                            kept += 1;
                         }
-                        self.remaining = 0;
-                        self.layout = Some(FrameLayout::from_frame(&frame));
-                        Ok(NextBatch::Some { frame, mask })
                     }
                 }
-                NextBatch::None { layout } => {
-                    Ok(NextBatch::None { layout: self.layout.clone().unwrap_or(layout) })
-                }
+                self.remaining = 0;
+                Ok(Some(Batch { frame, mask }))
             };
         }
+        Ok(None)
+    }
+
+    fn layout(&self) -> Option<FrameLayout> {
+        self.layout.clone().or(self.input.layout())
     }
 }

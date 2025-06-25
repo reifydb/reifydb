@@ -22,12 +22,7 @@ pub(crate) struct Batch {
     pub mask: BitVec,
 }
 
-#[derive(Debug)]
-pub enum NextBatch {
-    Some { frame: Frame, mask: BitVec },
-    None { layout: FrameLayout },
-}
-
 pub(crate) trait Node {
-    fn next_batch(&mut self) -> crate::Result<NextBatch>;
+    fn next(&mut self) -> crate::Result<Option<Batch>>;
+    fn layout(&self) -> Option<FrameLayout>;
 }
