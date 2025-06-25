@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
+use crate::num::SafeAdd;
+
 pub trait SafeSubtract: Sized {
     fn checked_sub(self, r: Self) -> Option<Self>;
     fn saturating_sub(self, r: Self) -> Self;
@@ -26,6 +28,46 @@ macro_rules! impl_safe_sub {
 }
 
 impl_safe_sub!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
+
+impl SafeSubtract for f32 {
+    fn checked_sub(self, r: Self) -> Option<Self> {
+        let result = self - r;
+        if result.is_finite() { Some(result) } else { None }
+    }
+
+    fn saturating_sub(self, r: Self) -> Self {
+        let result = self - r;
+        if result.is_infinite() {
+            if result.is_sign_negative() { f32::MIN } else { f32::MAX }
+        } else {
+            result
+        }
+    }
+
+    fn wrapping_sub(self, r: Self) -> Self {
+        self - r
+    }
+}
+
+impl SafeSubtract for f64 {
+    fn checked_sub(self, r: Self) -> Option<Self> {
+        let result = self - r;
+        if result.is_finite() { Some(result) } else { None }
+    }
+
+    fn saturating_sub(self, r: Self) -> Self {
+        let result = self - r;
+        if result.is_infinite() {
+            if result.is_sign_negative() { f64::MIN } else { f64::MAX }
+        } else {
+            result
+        }
+    }
+
+    fn wrapping_sub(self, r: Self) -> Self {
+        self - r
+    }
+}
 
 #[cfg(test)]
 mod tests {
