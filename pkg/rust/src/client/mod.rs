@@ -35,16 +35,18 @@ pub struct Client {
     pub socket_addr: SocketAddr,
 }
 
-pub async fn parse_rx_query_result(
+pub async fn parse_rx_query_results(
     mut stream: Streaming<grpc_db::RxResult>,
-) -> Result<ExecutionResult, tonic::Status> {
+) -> Result<Vec<ExecutionResult>, tonic::Status> {
+    let mut results = Vec::new();
+
     while let Some(msg) = stream.message().await? {
         match msg.result {
             Some(grpc_db::rx_result::Result::Query(query)) => {
-                let labels = query
+                let columns = query
                     .columns
                     .into_iter()
-                    .map(|c| Column { kind: Kind::Bool, name: c.name })
+                    .map(|c| Column { kind: Kind::Bool, name: c.name }) // TODO: replace Kind::Bool with correct type
                     .collect();
 
                 let rows = query
@@ -70,7 +72,6 @@ pub async fn parse_rx_query_result(
                                 grpc_db::value::Kind::Int16Value(i) => {
                                     Value::Int16(((i.high as i128) << 64) | i.low as i128)
                                 }
-
                                 grpc_db::value::Kind::Uint1Value(u) => Value::Uint1(u as u8),
                                 grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
                                 grpc_db::value::Kind::Uint4Value(u) => Value::Uint4(u),
@@ -78,30 +79,31 @@ pub async fn parse_rx_query_result(
                                 grpc_db::value::Kind::Uint16Value(u) => {
                                     Value::Uint16(((u.high as u128) << 64) | u.low as u128)
                                 }
-
                                 grpc_db::value::Kind::StringValue(s) => Value::String(s),
                                 grpc_db::value::Kind::UndefinedValue(_) => Value::Undefined,
-
                                 kind => unimplemented!("Value kind {:?} not yet supported", kind),
                             })
                             .collect()
                     })
                     .collect();
 
-                return Ok(ExecutionResult::Query { columns: labels, rows });
+                results.push(ExecutionResult::Query { columns, rows });
             }
             Some(grpc_db::rx_result::Result::Error(e)) => {
-                // return Err(tonic::Status::internal(e));
-                unimplemented!()
+                return Err(tonic::Status::internal(format!(
+                    "Query execution error: {:?}",
+                    e
+                )));
             }
             None => {
-                return Err(tonic::Status::internal("empty rx_result"));
+                return Err(tonic::Status::internal("Empty rx_result"));
             }
         }
     }
 
-    Err(tonic::Status::internal("no rx_result received"))
+    Ok(results)
 }
+
 
 impl Client {
     pub async fn rx(&self, query: &str) -> crate::Result<Vec<ExecutionResult>> {
@@ -119,9 +121,8 @@ impl Client {
             .insert("authorization", MetadataValue::from_str("Bearer mysecrettoken").unwrap());
 
         let stream = client.rx(request).await.unwrap().into_inner();
-        let result = parse_rx_query_result(stream).await.unwrap();
-
-        Ok(vec![result])
+        let result = parse_rx_query_results(stream).await.unwrap();
+        Ok(result)
     }
 
     pub async fn tx(&self, query: &str) -> crate::Result<Vec<ExecutionResult>> {
