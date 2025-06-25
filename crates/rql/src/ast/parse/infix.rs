@@ -63,7 +63,7 @@ mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::infix::{AstInfix, InfixOperator};
     use crate::ast::parse::parse;
-    use crate::ast::{AstLiteral, AstTuple, AstPrefixOperator};
+    use crate::ast::{AstLiteral, AstTuple};
 
     #[test]
     fn test_add() {
@@ -71,7 +71,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -88,7 +90,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -105,7 +109,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let AstInfix { left, operator, right, .. } = result[0].as_infix();
+        let AstInfix { left, operator, right, .. } = result[0].first_unchecked().as_infix();
 
         let left = left.as_literal_number();
         assert_eq!(left.value(), "-1");
@@ -122,7 +126,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -139,7 +145,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -156,7 +164,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -173,7 +183,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -190,7 +202,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -207,7 +221,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -224,7 +240,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -241,7 +259,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -258,7 +278,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { ref left, ref operator, ref right, .. }) = result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = result[0].first_unchecked() else {
+            panic!()
+        };
 
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
@@ -275,7 +297,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Infix(AstInfix { left, operator, right, .. }) = &result[0] else { panic!() };
+        let Infix(AstInfix { left, operator, right, .. }) = &result[0].first_unchecked() else {
+            panic!()
+        };
         let identifier = left.as_identifier();
         assert_eq!(identifier.value(), "test");
 
@@ -291,7 +315,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let AstInfix { left, operator, right, .. } = &result[0].as_infix();
+        let AstInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
         let identifier = left.as_identifier();
         assert_eq!(identifier.value(), "test");
 
@@ -310,7 +334,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let AstInfix { left, operator, right, .. } = &result[0].as_infix();
+        let AstInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
         {
             let AstInfix { left, operator, right, .. } = left.as_infix();
 
@@ -335,7 +359,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let AstInfix { left, operator, right, .. } = &result[0].as_infix();
+        let AstInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
         {
             let AstInfix { left, operator, right, .. } = left.as_infix();
             {
@@ -371,7 +395,7 @@ mod tests {
     //     let result = parse(&mut ctx, tokens).unwrap();
     //     assert_eq!(result.len(), 1);
     //
-    //     let block = result[0].as_infix();
+    //     let block = result[0].first_unchecked().as_infix();
     // }
     //
     // #[test]
@@ -381,7 +405,7 @@ mod tests {
     //     let result = parse(&mut ctx, tokens).unwrap();
     //     assert_eq!(result.len(), 1);
     //
-    //     let NodeInfix { left, operator, right, .. } = &result[0].as_infix();
+    //     let NodeInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
     //     let call = left.as_infix();
     //     {
     //         let NodeInfix { left, operator, right, .. } = call;
@@ -411,7 +435,7 @@ mod tests {
     //     let result = parse(&mut ctx, tokens).unwrap();
     //     assert_eq!(result.len(), 1);
     //
-    //     let NodeInfix { left, operator, right, .. } = &result[0].as_infix();
+    //     let NodeInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
     //     {
     //         let NodeInfix { left, operator, right, .. } = left.as_infix();
     //         let left = left.as_identifier();

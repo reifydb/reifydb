@@ -26,7 +26,7 @@ mod tests {
         let mut result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Identifier(AstIdentifier(token)) = result.pop().unwrap() else { panic!() };
+        let Identifier(AstIdentifier(token)) = result.pop().unwrap().0.pop().unwrap() else { panic!() };
         assert_eq!(token.value(), "x");
     }
 
@@ -36,7 +36,7 @@ mod tests {
         let mut result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Identifier(AstIdentifier(token)) = result.pop().unwrap() else { panic!() };
+        let Identifier(AstIdentifier(token)) = result.pop().unwrap().0.pop().unwrap() else { panic!() };
         assert_eq!(token.value(), "some_identifier");
     }
 }

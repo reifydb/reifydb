@@ -8,6 +8,24 @@ use std::ops::Index;
 #[derive(Debug)]
 pub struct AstStatement(pub Vec<Ast>);
 
+impl AstStatement {
+    pub fn first_unchecked(&self) -> &Ast {
+        self.0.first().unwrap()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Index<usize> for AstStatement {
+    type Output = Ast;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.0.index(index)
+    }
+}
+
 impl IntoIterator for AstStatement {
     type Item = Ast;
     type IntoIter = std::vec::IntoIter<Self::Item>;

@@ -36,7 +36,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let from = result.as_from();
+        let from = result.first_unchecked().as_from();
 
         match from {
             AstFrom::Store { store, schema, .. } => {
@@ -55,7 +55,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let from = result.as_from();
+        let from = result.first_unchecked().as_from();
 
         match from {
             AstFrom::Store {   .. } => unreachable!(),

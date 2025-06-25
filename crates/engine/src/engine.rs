@@ -6,7 +6,6 @@ use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
 use reifydb_core::hook::Hooks;
 use reifydb_rql::ast;
-use reifydb_rql::ast::Ast;
 use reifydb_rql::plan::{plan_rx, plan_tx};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::{Transaction, Tx};
@@ -81,26 +80,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut tx = self.begin().unwrap();
-
-        // let mut storage = self.transaction.versioned();
+        let mut tx = self.begin()?;
 
         for statement in statements {
-            match &statement.0[0] {
-                Ast::From(_) | Ast::Select(_) => {
-                    let plan = plan_rx(statement)?;
-                    let er = execute_rx::<VS, US>(&mut tx, plan)?;
-                    result.push(er);
-                }
-                _ => {
-                    let plan = plan_tx::<VS, US>(&mut tx, statement)?;
-                    let er = execute_tx(&mut tx, plan)?;
-                    result.push(er);
-                }
+            if let Some(plan) = plan_tx::<VS, US>(&mut tx, statement)? {
+                let er = execute_tx(&mut tx, plan)?;
+                result.push(er);
             }
         }
 
-        tx.commit().unwrap();
+        tx.commit()?;
 
         Ok(result)
     }
@@ -109,11 +98,12 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut rx = self.begin_read_only().unwrap();
+        let mut rx = self.begin_read_only()?;
         for statement in statements {
-            let plan = plan_rx(statement).unwrap();
-            let er = execute_rx::<VS, US>(&mut rx, plan).unwrap();
-            result.push(er);
+            if let Some(plan) = plan_rx(statement)? {
+                let er = execute_rx::<VS, US>(&mut rx, plan)?;
+                result.push(er);
+            }
         }
 
         Ok(result)

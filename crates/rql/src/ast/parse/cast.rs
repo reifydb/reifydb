@@ -31,7 +31,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let AstCast { node, to, .. } = result[0].as_cast();
+        let AstCast { node, to, .. } = result[0].first_unchecked().as_cast();
 
         let number = node.as_literal_number() else { panic!() };
         assert_eq!(number.value(), "9924");

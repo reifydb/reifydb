@@ -47,7 +47,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(AstLiteral::Text(node)) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Text(node)) = &result[0].first_unchecked() else { panic!() };
         assert_eq!(node.value(), "ElodiE");
     }
 
@@ -57,7 +57,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(AstLiteral::Number(node)) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Number(node)) = &result[0].first_unchecked() else { panic!() };
         assert_eq!(node.value(), "42");
     }
 
@@ -67,7 +67,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(AstLiteral::Boolean(node)) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Boolean(node)) = &result[0].first_unchecked() else { panic!() };
         assert!(node.value());
     }
 
@@ -77,7 +77,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(AstLiteral::Boolean(node)) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Boolean(node)) = &result[0].first_unchecked() else { panic!() };
         assert!(!node.value());
     }
 }

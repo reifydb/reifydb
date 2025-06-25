@@ -46,7 +46,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
         assert_eq!(node.nodes, vec![]);
     }
 
@@ -56,7 +56,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
         let Literal(Number(number)) = &node else { panic!() };
         assert_eq!(number.value(), "9924");
@@ -68,7 +68,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
         let Infix(AstInfix { left, operator, right, .. }) = &node else { panic!() };
 
@@ -92,7 +92,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = &result[0].as_tuple();
+        let node = &result[0].first_unchecked().as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
         let Identifier(node) = node else { panic!() };
         assert_eq!(node.value(), "u");
@@ -104,7 +104,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
         let Infix(AstInfix { left, operator, right, .. }) = &node else { panic!() };
 
@@ -120,7 +120,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
 
         let Some(Identifier(u_node)) = &node.nodes.first() else { panic!() };
         assert_eq!(u_node.value(), "u");
@@ -135,7 +135,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
 
         let Some(u_node) = node.nodes.first() else { panic!() };
         let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
@@ -156,7 +156,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
 
         let Some(u_node) = node.nodes.first() else { panic!() };
         let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
@@ -185,7 +185,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
 
         let Some(u_node) = node.nodes.first() else { panic!() };
         let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
@@ -206,7 +206,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let node = result[0].as_tuple();
+        let node = result[0].first_unchecked().as_tuple();
         assert_eq!(node.nodes.len(), 1);
 
         let infix = node.nodes[0].as_infix();

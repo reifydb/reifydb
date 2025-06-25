@@ -58,7 +58,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &result[0] else { panic!() };
+        let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &result[0].first_unchecked() else { panic!() };
         assert_eq!(token.value(), "-2");
     }
 
@@ -68,7 +68,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
+        let Ast::Prefix(AstPrefix { operator, node }) = result[0].first_unchecked() else {
+            panic!()
+        };
         assert!(matches!(*operator, AstPrefixOperator::Plus(_)));
 
         let Ast::Tuple(tuple) = node.deref() else { panic!() };
@@ -82,7 +84,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
+        let Ast::Prefix(AstPrefix { operator, node }) = result[0].first_unchecked() else {
+            panic!()
+        };
         assert!(matches!(*operator, AstPrefixOperator::Negate(_)));
 
         let Ast::Tuple(tuple) = node.deref() else { panic!() };
@@ -96,7 +100,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
+        let Ast::Prefix(AstPrefix { operator, node }) = result[0].first_unchecked() else {
+            panic!()
+        };
         assert!(matches!(*operator, AstPrefixOperator::Negate(_)));
 
         let Ast::Tuple(tuple) = node.deref() else { panic!() };
@@ -113,7 +119,9 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Ast::Prefix(AstPrefix { ref operator, ref node }) = result[0] else { panic!() };
+        let Ast::Prefix(AstPrefix { operator, node }) = result[0].first_unchecked() else {
+            panic!()
+        };
         assert!(matches!(*operator, AstPrefixOperator::Not(_)));
 
         let Literal(AstLiteral::Boolean(node)) = node.deref() else { panic!() };

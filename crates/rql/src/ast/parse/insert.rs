@@ -62,7 +62,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let insert = result.as_insert();
+        let insert = result.first_unchecked().as_insert();
 
         match insert {
             AstInsert { schema, store, columns, rows, .. } => {
@@ -108,7 +108,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let insert = result.as_insert();
+        let insert = result.first_unchecked().as_insert();
 
         match insert {
             AstInsert { schema, store, columns, rows, .. } => {
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let insert = result.as_insert();
+        let insert = result.first_unchecked().as_insert();
 
         match insert {
             AstInsert { schema, store, columns, rows, .. } => {
@@ -200,7 +200,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let insert = result.as_insert();
+        let insert = result.first_unchecked().as_insert();
 
         match insert {
             AstInsert { schema, store, columns, rows, .. } => {

@@ -45,7 +45,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let select = result.as_group_by();
+        let select = result.first_unchecked().as_group_by();
         assert_eq!(select.columns.len(), 1);
         assert!(matches!(select.columns[0], Ast::Identifier(_)));
         assert_eq!(select.columns[0].value(), "name");
@@ -58,7 +58,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let select = result.as_group_by();
+        let select = result.first_unchecked().as_group_by();
         assert_eq!(select.columns.len(), 2);
         assert!(matches!(select.columns[0], Ast::Identifier(_)));
         assert_eq!(select.columns[0].value(), "name");

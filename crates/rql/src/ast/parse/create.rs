@@ -115,7 +115,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let create = result.as_create();
+        let create = result.first_unchecked().as_create();
 
         match create {
             AstCreate::Schema { name, .. } => {
@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let create = result.as_create();
+        let create = result.first_unchecked().as_create();
 
         match create {
             AstCreate::Series { name, schema, columns, .. } => {
@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let create = result.as_create();
+        let create = result.first_unchecked().as_create();
 
         match create {
             AstCreate::Table { name, schema, columns, .. } => {
@@ -206,7 +206,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let create = result.as_create();
+        let create = result.first_unchecked().as_create();
 
         match create {
             AstCreate::Table { name, schema, columns, .. } => {
@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let create = result.as_create();
+        let create = result.first_unchecked().as_create();
         match create {
             AstCreate::DeferredView { name, schema, columns, .. } => {
                 assert_eq!(schema.value(), "test");

@@ -4,6 +4,7 @@
 mod block;
 mod cast;
 mod create;
+mod describe;
 mod diagnostic;
 mod error;
 mod filter;
@@ -12,23 +13,22 @@ mod group_by;
 mod identifier;
 mod infix;
 mod insert;
+mod kind;
 mod limit;
 mod literal;
 mod order_by;
 mod policy;
+mod prefix;
 mod primary;
 mod select;
 mod tuple;
-mod kind;
-mod describe;
-mod prefix;
 
 pub use error::*;
 
-use crate::ast::Ast;
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
 use crate::ast::parse::Error::UnexpectedEndOfFile;
+use crate::ast::{Ast, AstStatement};
 use std::cmp::PartialOrd;
 use std::collections::HashMap;
 
@@ -50,7 +50,7 @@ pub(crate) enum Precedence {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub(crate) fn parse<'a>(tokens: Vec<Token>) -> Result<Vec<Ast>> {
+pub(crate) fn parse<'a>(tokens: Vec<Token>) -> Result<Vec<AstStatement>> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
@@ -92,19 +92,44 @@ impl Parser {
         Self { tokens, precedence_map }
     }
 
-    fn parse(&mut self) -> Result<Vec<Ast>> {
-        let mut nodes = vec![];
+    fn parse(&mut self) -> Result<Vec<AstStatement>> {
+        let mut result = Vec::new();
         loop {
             if self.is_eof() {
                 break;
             }
-            nodes.push(self.parse_node(Precedence::None)?);
-            if !self.is_eof() {
-                self.consume_if(TokenKind::Separator(NewLine))?;
+
+            let mut nodes = vec![];
+            loop {
+                if self.is_eof()
+                    || self.consume_if(TokenKind::Separator(Separator::Semicolon))?.is_some()
+                {
+                    break;
+                }
+                nodes.push(self.parse_node(Precedence::None)?);
+                if !self.is_eof() {
+                    self.consume_if(TokenKind::Separator(NewLine))?;
+                }
             }
+
+            result.push(AstStatement(nodes));
         }
-        Ok(nodes)
+        Ok(result)
     }
+
+    // fn parse(&mut self) -> Result<Vec<Ast>> {
+    //     let mut nodes = vec![];
+    //     loop {
+    //         if self.is_eof() {
+    //             break;
+    //         }
+    //         nodes.push(self.parse_node(Precedence::None)?);
+    //         if !self.is_eof() {
+    //             self.consume_if(TokenKind::Separator(NewLine))?;
+    //         }
+    //     }
+    //     Ok(nodes)
+    // }
 
     pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast> {
         let mut left = self.parse_primary()?;

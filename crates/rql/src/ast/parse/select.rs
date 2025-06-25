@@ -45,7 +45,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let select = result.as_select();
+        let select = result.first_unchecked().as_select();
         assert_eq!(select.columns.len(), 1);
 
         let number = select.columns[0].as_literal_number();
@@ -60,7 +60,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let select = result.as_select();
+        let select = result.first_unchecked().as_select();
         assert_eq!(select.columns.len(), 2);
 
         let first = select.columns[0].as_infix();
@@ -82,7 +82,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let select = result.as_select();
+        let select = result.first_unchecked().as_select();
         assert_eq!(select.columns.len(), 1);
         assert!(matches!(select.columns[0], Ast::Wildcard(_)));
     }
@@ -94,7 +94,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let select = result.as_select();
+        let select = result.first_unchecked().as_select();
         assert_eq!(select.columns.len(), 1);
         assert!(matches!(select.columns[0], Ast::Identifier(_)));
         assert_eq!(select.columns[0].value(), "name");
@@ -107,7 +107,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let select = result.as_select();
+        let select = result.first_unchecked().as_select();
         assert_eq!(select.columns.len(), 2);
         assert!(matches!(select.columns[0], Ast::Identifier(_)));
         assert_eq!(select.columns[0].value(), "name");

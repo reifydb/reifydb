@@ -22,7 +22,7 @@ use reifydb_catalog::Catalog;
 use reifydb_catalog::column::Column;
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::{SortDirection, SortKey, Kind};
+use reifydb_core::{Kind, SortDirection, SortKey};
 use reifydb_diagnostic::{Diagnostic, Span};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Rx;
@@ -161,7 +161,24 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
     rx: &mut impl Rx,
     statement: AstStatement,
-) -> Result<PlanTx> {
+) -> Result<Option<PlanTx>> {
+    if statement.is_empty() {
+        return Ok(None);
+    }
+
+    match &statement[0] {
+        Ast::From(_) | Ast::Select(_) => {
+            return if let Some(plan) = plan_rx(statement)? {
+                match plan {
+                    PlanRx::Query(query_plan) => Ok(Some(PlanTx::Query(query_plan))),
+                }
+            } else {
+                Ok(None)
+            }
+        }
+        _ => {}
+    }
+
     for ast in statement.into_iter().rev() {
         match ast {
             Ast::Create(create) => {
@@ -190,18 +207,20 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                             });
                         }
 
-                        Ok(PlanTx::CreateDeferredView(CreateDeferredViewPlan {
+                        Ok(Some(PlanTx::CreateDeferredView(CreateDeferredViewPlan {
                             schema: schema.value().to_string(),
                             view: name.value().to_string(),
                             if_not_exists: false,
                             columns: result_columns,
-                        }))
+                        })))
                     }
-                    AstCreate::Schema { name, .. } => Ok(PlanTx::CreateSchema(CreateSchemaPlan {
-                        schema: name.value().to_string(),
-                        if_not_exists: false,
-                        span: name.0.span,
-                    })),
+                    AstCreate::Schema { name, .. } => {
+                        Ok(Some(PlanTx::CreateSchema(CreateSchemaPlan {
+                            schema: name.value().to_string(),
+                            if_not_exists: false,
+                            span: name.0.span,
+                        })))
+                    }
                     AstCreate::Series { schema, name, columns: definitions, .. } => {
                         // let mut columns: Vec<ColumnToCreate> = vec![];
                         //
@@ -252,13 +271,13 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                             });
                         }
 
-                        Ok(PlanTx::CreateTable(CreateTablePlan {
+                        Ok(Some(PlanTx::CreateTable(CreateTablePlan {
                             schema: schema.value().to_string(),
                             table: name.value().to_string(),
                             if_not_exists: false,
                             columns: result_columns,
                             span: schema.0.span,
-                        }))
+                        })))
                     }
                 };
             }
@@ -420,12 +439,12 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                         //             rows_to_insert,
                         //         }))
                         //     }
-                        Ok(PlanTx::InsertIntoTable(InsertIntoTablePlan::Values {
+                        Ok(Some(PlanTx::InsertIntoTable(InsertIntoTablePlan::Values {
                             schema: schema.name,
                             table: store,
                             columns,
                             rows_to_insert,
-                        }))
+                        })))
                         // }
                         // StoreKind::DeferredView => unreachable!(),
                         // }
@@ -434,13 +453,13 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                     }
                 };
             }
-            Ast::From(from) => return Ok(PlanTx::Query(plan_from(from, None)?)),
-            Ast::Select(select) => return Ok(PlanTx::Query(plan_select(select, None)?)),
-            node => unreachable!("{node:?}"),
+            Ast::From(from) => return Ok(Some(PlanTx::Query(plan_from(from, None)?))),
+            Ast::Select(select) => return Ok(Some(PlanTx::Query(plan_select(select, None)?))),
+            node => unimplemented!("{node:?}"),
         };
     }
 
-    unreachable!()
+    Ok(None)
 }
 
 pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
@@ -465,7 +484,7 @@ pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
     }
 }
 
-pub fn plan_rx(statement: AstStatement) -> Result<PlanRx> {
+pub fn plan_rx(statement: AstStatement) -> Result<Option<PlanRx>> {
     let mut head: Option<Box<QueryPlan>> = None;
 
     for ast in statement.into_iter().rev() {
@@ -473,7 +492,7 @@ pub fn plan_rx(statement: AstStatement) -> Result<PlanRx> {
         head = Some(Box::new(plan));
     }
 
-    Ok(head.map(|boxed| PlanRx::Query(*boxed)).unwrap())
+    Ok(head.map(|boxed| PlanRx::Query(*boxed)))
 }
 
 fn plan_ast_node(ast: Ast, next: Option<Box<QueryPlan>>) -> Result<QueryPlan> {

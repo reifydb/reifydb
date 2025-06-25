@@ -15,12 +15,12 @@ fn main() {
     db.tx_as(&root, r#"create schema test"#).unwrap();
     db.tx_as(&root, r#"create table test.users(age: int4)"#).unwrap();
     db.tx_as(&root, r#"insert (1), (2), (3), (4), (5), (6), (7), (8), (9), (10), (11), (12), (13) into test.users (age)"#).unwrap();
-    for l in db.rx_as(
+    for l in db.tx_as(
         &root,
         r#"
-        from test.users  select age filter age > 1 limit 3
+            from test.users limit 2;
         "#,
-    ) {
+    ).unwrap() {
         println!("{}", l);
     }
 

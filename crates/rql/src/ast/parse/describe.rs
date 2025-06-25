@@ -28,7 +28,7 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        match result.first().unwrap().as_describe() {
+        match result.first().unwrap().first_unchecked().as_describe() {
             AstDescribe::Query { node, .. } => {
                 let select = node.as_select();
                 assert_eq!(select.columns.len(), 1);

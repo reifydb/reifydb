@@ -34,7 +34,7 @@ mod tests {
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let limit = result.as_limit();
+        let limit = result.first_unchecked().as_limit();
         assert_eq!(limit.limit, 10);
     }
 }
