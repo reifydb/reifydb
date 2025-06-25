@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::CowVec;
-use reifydb_core::num::{is_greater_than, is_less_than, IsNumber, Promote};
 use crate::evaluate::{Context, Evaluator};
 use crate::frame::ColumnValues;
+use reifydb_core::CowVec;
+use reifydb_core::num::{IsNumber, Promote, is_less_than};
 use reifydb_rql::expression::LessThanExpression;
-
 
 impl Evaluator {
     pub(crate) fn less_than(

@@ -91,7 +91,6 @@ mod tests {
                     assert!(is_premium.value());
                 }
             }
-            _ => unreachable!(),
         }
     }
 
@@ -137,7 +136,6 @@ mod tests {
                     assert!(is_premium.value());
                 }
             }
-            _ => unreachable!(),
         }
     }
 
@@ -184,7 +182,6 @@ mod tests {
                     assert!(is_premium.value());
                 }
             }
-            _ => unreachable!(),
         }
     }
 
@@ -232,7 +229,6 @@ mod tests {
                     assert!(!is_premium.value());
                 }
             }
-            _ => unreachable!(),
         }
     }
 }

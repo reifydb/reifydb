@@ -80,7 +80,7 @@ impl Error {
             Error::Catalog(err) => err.diagnostic(),
             Error::Evaluation(err) => err.diagnostic(),
             Error::Execution(err) => err.diagnostic(),
-            Error::Frame(err) => unimplemented!(),
+            Error::Frame(_) => unimplemented!(),
             Error::Plan(err) => err.diagnostic(),
             Error::Transaction(_) => unimplemented!(),
         }

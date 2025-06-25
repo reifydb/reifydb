@@ -8,7 +8,7 @@ use reifydb_core::Version;
 impl VersionedScan for Lmdb {
     type ScanIter<'a> = Iter;
 
-    fn scan(&self, version: Version) -> Self::ScanIter<'_> {
+    fn scan(&self, _version: Version) -> Self::ScanIter<'_> {
         todo!()
     }
 }

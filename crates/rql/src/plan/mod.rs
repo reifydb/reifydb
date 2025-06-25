@@ -221,7 +221,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                             span: name.0.span,
                         })))
                     }
-                    AstCreate::Series { schema, name, columns: definitions, .. } => {
+                    AstCreate::Series {  .. } => {
                         // let mut columns: Vec<ColumnToCreate> = vec![];
                         //
                         // for definition in &definitions.nodes {
@@ -368,7 +368,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                                                         token.span.clone(),
                                                         PrefixOperator::Minus(token.span),
                                                     ),
-                                                    ast::AstPrefixOperator::Not(token) => {
+                                                    ast::AstPrefixOperator::Not(_token) => {
                                                         unimplemented!()
                                                     }
                                                 };
@@ -651,7 +651,7 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                         ast::AstPrefixOperator::Negate(token) => {
                             (token.span.clone(), PrefixOperator::Minus(token.span))
                         }
-                        ast::AstPrefixOperator::Not(token) => unimplemented!(),
+                        ast::AstPrefixOperator::Not(_token) => unimplemented!(),
                     };
 
                     AliasExpression {
@@ -700,7 +700,7 @@ fn expression(ast: Ast) -> Result<Expression> {
                 ast::AstPrefixOperator::Negate(token) => {
                     (token.span.clone(), PrefixOperator::Minus(token.span))
                 }
-                ast::AstPrefixOperator::Not(token) => unimplemented!(),
+                ast::AstPrefixOperator::Not(_token) => unimplemented!(),
             };
 
             Ok(Expression::Prefix(PrefixExpression {

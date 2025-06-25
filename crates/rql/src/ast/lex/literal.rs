@@ -7,10 +7,10 @@ use TokenKind::Literal;
 use nom::branch::alt;
 use nom::bytes::{is_not, tag_no_case};
 use nom::character::{char, multispace0};
-use nom::combinator::{complete, map, recognize};
+use nom::combinator::{complete, map};
 use nom::error::Error;
 use nom::error::ErrorKind::Verify;
-use nom::sequence::{delimited, pair, preceded};
+use nom::sequence::{delimited, preceded};
 use nom::{AsChar, IResult, Parser};
 use nom_locate::LocatedSpan;
 
@@ -162,7 +162,7 @@ fn parse_decimal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> 
         bytes::complete::take_while1,
         character::complete::{char, one_of},
         combinator::{opt, recognize},
-        sequence::{pair, preceded, tuple},
+        sequence::{pair, preceded},
     };
 
     // Reject binary, hex, octal
@@ -181,7 +181,7 @@ fn parse_decimal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> 
         if s.matches('.').count() > 1 {
             return false;
         }
-        
+
         if s.starts_with('_') || s.ends_with('_') || s.contains("__") {
             return false;
         }
@@ -202,19 +202,16 @@ fn parse_decimal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> 
     let fraction = preceded(char('.'), take_while1(is_digit_or_underscore));
 
     // Combine these variants:
-    let integer_dot = complete(recognize(pair(take_while1(is_digit_or_underscore), char('.'))));  
-    let dot_fraction = complete(recognize(pair(char('.'), take_while1(is_digit_or_underscore)))); 
-    let int_frac = complete(recognize(pair(take_while1(is_digit_or_underscore), fraction)));                     
-    let just_integer = complete(recognize(take_while1(is_digit_or_underscore)));                                 
+    let integer_dot = complete(recognize(pair(take_while1(is_digit_or_underscore), char('.'))));
+    let dot_fraction = complete(recognize(pair(char('.'), take_while1(is_digit_or_underscore))));
+    let int_frac = complete(recognize(pair(take_while1(is_digit_or_underscore), fraction)));
+    let just_integer = complete(recognize(take_while1(is_digit_or_underscore)));
 
     let base = alt((int_frac, integer_dot, dot_fraction, just_integer));
 
     // Exponent: e[+/-]?digits
-    let exponent = complete(recognize((
-        one_of("eE"),
-        opt(one_of("+-")),
-        take_while1(is_digit_or_underscore),
-    )));
+    let exponent =
+        complete(recognize((one_of("eE"), opt(one_of("+-")), take_while1(is_digit_or_underscore))));
 
     let mut full = complete(recognize(pair(base, opt(exponent))));
 

@@ -2,11 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 // #![cfg_attr(not(debug_assertions), deny(missing_docs))]
-// #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use error::Error;
 use reifydb_core::delta::Delta;
 use reifydb_core::delta::Delta::Set;
 use reifydb_core::encoding::keycode::serialize;
@@ -185,17 +184,17 @@ impl GroupNode {
 }
 
 impl Node for GroupNode {
-    fn apply(&self, delta: AsyncCowVec<Delta>, _version: Version) -> AsyncCowVec<Delta> {
-        let mut grouped: HashMap<EncodedKey, Vec<EncodedRow>> = HashMap::new();
+    fn apply(&self, _delta: AsyncCowVec<Delta>, _version: Version) -> AsyncCowVec<Delta> {
+        // let mut grouped: HashMap<EncodedKey, Vec<EncodedRow>> = HashMap::new();
 
-        for d in delta {
-            if let Delta::Set { row, .. } = d {
-                // let row: EncodedRow = deprecated_deserialize_row(&row).unwrap();
-                // let group_key = self.make_group_key(&row);
-                // grouped.entry(group_key).or_default().push(row);
-                unimplemented!()
-            }
-        }
+        // for d in delta {
+        //     if let Delta::Set { row, .. } = d {
+        //         // let row: EncodedRow = deprecated_deserialize_row(&row).unwrap();
+        //         // let group_key = self.make_group_key(&row);
+        //         // grouped.entry(group_key).or_default().push(row);
+        //         unimplemented!()
+        //     }
+        // }
 
         // AsyncCowVec::new(
         //     grouped
@@ -218,27 +217,27 @@ pub struct SumNode<VS: VersionedStorage> {
     pub sum: usize, // Index of the column to sum
 }
 
-impl<VS: VersionedStorage> SumNode<VS> {
-    fn make_state_key(&self, key: &EncodedKey) -> EncodedKey {
-        let mut raw = self.state_prefix.clone();
-        raw.extend_from_slice(b"::");
-        raw.extend_from_slice(key);
-        EncodedKey::new(raw)
-    }
-}
+// impl<VS: VersionedStorage> SumNode<VS> {
+//     fn make_state_key(&self, key: &EncodedKey) -> EncodedKey {
+//         let mut raw = self.state_prefix.clone();
+//         raw.extend_from_slice(b"::");
+//         raw.extend_from_slice(key);
+//         EncodedKey::new(raw)
+//     }
+// }
 
 impl<VS: VersionedStorage> Node for SumNode<VS> {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
         let mut updates = AsyncCowVec::default();
-        let mut sums: HashMap<EncodedKey, i8> = HashMap::new();
+        let sums: HashMap<EncodedKey, i8> = HashMap::new();
 
         for d in delta {
-            if let Delta::Set { key, row } = d {
-                let state_key = self.make_state_key(&key);
+            if let Set { .. } = d {
+                // let state_key = self.make_state_key(&key);
 
-                let current = *sums.entry(state_key.clone()).or_insert_with(|| {
-                    self.storage.get(&state_key, version).map(|v| v.row[0] as i8).unwrap_or(0)
-                });
+                // let current = *sums.entry(state_key.clone()).or_insert_with(|| {
+                //     self.storage.get(&state_key, version).map(|v| v.row[0] as i8).unwrap_or(0)
+                // });
 
                 // let row: Row = deserialize_row(&bytes).unwrap();
                 //

@@ -10,8 +10,8 @@ use reifydb_transaction::Tx;
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn create_deferred_view(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
-        plan: CreateDeferredViewPlan,
+        _tx: &mut impl Tx<VS, US>,
+        _plan: CreateDeferredViewPlan,
     ) -> crate::Result<ExecutionResult> {
         // if plan.if_not_exists {
         //     unimplemented!()

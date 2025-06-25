@@ -30,7 +30,7 @@ impl Expression {
             Expression::Divide(expr) => expr.span(),
             Expression::Modulo(expr) => expr.span(),
 
-            Expression::Tuple(expr) => {
+            Expression::Tuple(_expr) => {
                 // let spans = expr.elements.iter().map(|e| e.span()).collect::<Vec<_>>();
                 // Span::merge_all(spans).unwrap()
                 unimplemented!()
@@ -39,7 +39,7 @@ impl Expression {
 
             Expression::Prefix(expr) => expr.span(),
 
-            Expression::Call(expr) => {
+            Expression::Call(_expr) => {
                 // let mut spans = vec![&expr.span, expr.callee.span()];
                 // spans.extend(expr.arguments.iter().map(|a| a.span()));
                 // Span::merge_all(spans).unwrap()

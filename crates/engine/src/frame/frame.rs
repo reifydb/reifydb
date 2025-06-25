@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::frame::column::ColumnLayout;
 use crate::frame::iterator::FrameIter;
 use crate::frame::{Column, ColumnValues, ValueRef};
 use std::collections::HashMap;
@@ -12,7 +11,6 @@ pub struct Frame {
     pub columns: Vec<Column>,
     pub index: HashMap<String, usize>,
 }
-
 
 impl Frame {
     pub fn new(columns: Vec<Column>) -> Self {

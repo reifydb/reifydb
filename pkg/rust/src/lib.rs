@@ -20,7 +20,7 @@
 //! See also: [`testscript`] for running integration-style script tests.
 
 // #![cfg_attr(not(debug_assertions), deny(missing_docs))]
-// #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 

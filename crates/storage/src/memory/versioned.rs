@@ -56,10 +56,6 @@ impl VersionedRow {
         }
     }
 
-    pub(crate) fn try_lock(&self) -> bool {
-        self.op.compare_exchange(UNLOCKED, LOCKED, Ordering::AcqRel, Ordering::Relaxed).is_ok()
-    }
-
     pub(crate) fn unlock(&self) {
         self.op.store(UNLOCKED, Ordering::Release);
     }

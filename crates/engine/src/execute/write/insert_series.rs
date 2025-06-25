@@ -10,11 +10,11 @@ use reifydb_transaction::Tx;
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn insert_into_series(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
+        _tx: &mut impl Tx<VS, US>,
         plan: InsertIntoSeriesPlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {
-            InsertIntoSeriesPlan::Values { schema, series, columns, rows_to_insert } => {
+            InsertIntoSeriesPlan::Values { .. } => {
                 // let mut rows = Vec::with_capacity(rows_to_insert.len());
                 //
                 // for row in rows_to_insert {

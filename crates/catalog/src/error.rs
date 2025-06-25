@@ -8,7 +8,7 @@ use std::fmt::{Display, Formatter};
 pub struct Error(pub Diagnostic);
 
 impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }

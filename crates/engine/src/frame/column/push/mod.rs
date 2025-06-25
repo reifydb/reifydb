@@ -3,7 +3,6 @@
 
 use crate::frame::ColumnValues;
 use reifydb_core::CowVec;
-use reifydb_core::num::{IsNumber, SafePromote};
 use std::fmt::Debug;
 
 mod i128;

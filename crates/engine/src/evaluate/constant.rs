@@ -248,10 +248,6 @@ impl Evaluator {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluate::EvaluationColumn;
-    use ColumnSaturationPolicy::Error;
-    use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
-    use reifydb_core::Kind;
     use reifydb_diagnostic::{Line, Offset, Span};
 
     mod constant_value {
@@ -540,13 +536,5 @@ mod tests {
 
     fn make_span(value: &str) -> Span {
         Span { offset: Offset(0), line: Line(1), fragment: value.to_string() }
-    }
-
-    fn column_error_policy(name: &str, kind: Kind) -> EvaluationColumn {
-        EvaluationColumn {
-            name: Some(name.to_string()),
-            kind: Some(kind),
-            policies: vec![ColumnPolicyKind::Saturation(Error)],
-        }
     }
 }

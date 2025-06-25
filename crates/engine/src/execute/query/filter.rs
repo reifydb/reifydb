@@ -3,42 +3,8 @@
 
 use crate::evaluate::{Context, evaluate};
 use crate::execute::query::{Batch, Node};
-use crate::frame::{ColumnValues, Frame, FrameLayout};
+use crate::frame::{ColumnValues, FrameLayout};
 use reifydb_rql::expression::Expression;
-
-pub(crate) struct FilterFunctionNode<F: Fn(&Frame, usize) -> bool> {
-    input: Box<dyn Node>,
-    predicate: F,
-}
-
-impl<F: Fn(&Frame, usize) -> bool> FilterFunctionNode<F> {
-    pub fn new(input: Box<dyn Node>, predicate: F) -> Self {
-        Self { input, predicate }
-    }
-}
-
-impl<F: Fn(&Frame, usize) -> bool> Node for FilterFunctionNode<F> {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
-        // while let Some(mut batch) = self.input.next_batch() {
-        //     for i in 0..batch.frame.row_count() {
-        //         if batch.mask.get(i) {
-        //             if !(self.predicate)(&batch.frame, i) {
-        //                 batch.mask.set(i, false);
-        //             }
-        //         }
-        //     }
-        //     if batch.mask.any() {
-        //         return Some(batch);
-        //     }
-        // }
-        // None
-        todo!()
-    }
-
-    fn layout(&self) -> Option<FrameLayout> {
-        todo!()
-    }
-}
 
 pub(crate) struct FilterNode {
     input: Box<dyn Node>,

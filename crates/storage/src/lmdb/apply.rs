@@ -8,7 +8,7 @@ use reifydb_core::delta::Delta;
 use reifydb_core::{AsyncCowVec, Version};
 
 impl VersionedApply for Lmdb {
-    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
+    fn apply(&self, delta: AsyncCowVec<Delta>, _version: Version) {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {
             match delta {

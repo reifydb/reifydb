@@ -33,7 +33,7 @@ mod tests {
 
         let AstCast { node, to, .. } = result[0].first_unchecked().as_cast();
 
-        let number = node.as_literal_number() else { panic!() };
+        let number = node.as_literal_number();
         assert_eq!(number.value(), "9924");
         assert_eq!(to.value(), "int8");
     }

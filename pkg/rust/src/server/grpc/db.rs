@@ -6,7 +6,7 @@ use crate::server::grpc::grpc_db::{
 };
 use crate::server::grpc::{AuthenticatedUser, grpc_db};
 use reifydb_core::Value;
-use reifydb_transaction::{Rx, Transaction};
+use reifydb_transaction::Transaction;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::task::spawn_blocking;
@@ -53,95 +53,94 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
 
         let engine = self.engine.clone();
 
-
-
         spawn_blocking(move || {
             match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
                 Ok(results) => {
                     let mut responses: Vec<Result<TxResult, Status>> = vec![];
 
                     for res in results {
-                        let tx_result = match res {
-                            ExecutionResult::Query { columns: ls, rows: rs } => {
-                                let columns = ls
-                                    .iter()
-                                    .map(|c| grpc_db::Column {
-                                        name: c.name.clone(),
-                                        value: 0,
-                                    })
-                                    .collect();
+                        let tx_result =
+                            match res {
+                                ExecutionResult::Query { columns: ls, rows: rs } => {
+                                    let columns = ls
+                                        .iter()
+                                        .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
+                                        .collect();
 
-                                let rows = rs
-                                    .iter()
-                                    .map(|r| Row {
-                                        values: r.iter().map(value_to_query_value).collect(),
-                                    })
-                                    .collect();
+                                    let rows = rs
+                                        .iter()
+                                        .map(|r| Row {
+                                            values: r.iter().map(value_to_query_value).collect(),
+                                        })
+                                        .collect();
 
-                                TxResult {
-                                    result: Some(grpc_db::tx_result::Result::Query(QueryResult {
-                                        columns,
-                                        rows,
-                                    })),
+                                    TxResult {
+                                        result: Some(grpc_db::tx_result::Result::Query(
+                                            QueryResult { columns, rows },
+                                        )),
+                                    }
                                 }
-                            }
-                            ExecutionResult::DescribeQuery { columns: ls } => {
-                                let columns = ls
-                                    .iter()
-                                    .map(|c| grpc_db::Column {
-                                        name: c.name.clone(),
-                                        value: 0,
-                                    })
-                                    .collect();
+                                ExecutionResult::DescribeQuery { columns: ls } => {
+                                    let columns = ls
+                                        .iter()
+                                        .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
+                                        .collect();
 
-                                TxResult {
-                                    result: Some(grpc_db::tx_result::Result::Query(QueryResult {
-                                        columns,
-                                        rows: vec![],
-                                    })),
+                                    TxResult {
+                                        result: Some(grpc_db::tx_result::Result::Query(
+                                            QueryResult { columns, rows: vec![] },
+                                        )),
+                                    }
                                 }
-                            }
-                            ExecutionResult::CreateSchema(CreateSchemaResult { id, schema, created }) => TxResult {
-                                result: Some(CreateSchema(grpc_db::CreateSchema {
-                                    id: id.0,
+                                ExecutionResult::CreateSchema(CreateSchemaResult {
+                                    id,
                                     schema,
                                     created,
-                                })),
-                            },
-                            ExecutionResult::CreateSeries { .. } => {
-                                unimplemented!()
-                            }
-                            ExecutionResult::CreateTable(CreateTableResult {
-                                                             id,
-                                                             schema,
-                                                             table,
-                                                             created,
-                                                         }) => TxResult {
-                                result: Some(CreateTable(grpc_db::CreateTable {
-                                    id: id.0,
+                                }) => TxResult {
+                                    result: Some(CreateSchema(grpc_db::CreateSchema {
+                                        id: id.0,
+                                        schema,
+                                        created,
+                                    })),
+                                },
+                                ExecutionResult::CreateSeries { .. } => {
+                                    unimplemented!()
+                                }
+                                ExecutionResult::CreateTable(CreateTableResult {
+                                    id,
                                     schema,
                                     table,
                                     created,
-                                })),
-                            },
-                            ExecutionResult::InsertIntoSeries { schema, series, inserted } => TxResult {
-                                result: Some(InsertIntoSeries(grpc_db::InsertIntoSeries {
-                                    schema,
-                                    series,
-                                    inserted: inserted as u32,
-                                })),
-                            },
-                            ExecutionResult::InsertIntoTable { schema, table, inserted } => TxResult {
-                                result: Some(InsertIntoTable(grpc_db::InsertIntoTable {
-                                    schema,
-                                    table,
-                                    inserted: inserted as u32,
-                                })),
-                            },
-                            ExecutionResult::CreateDeferredView { .. } => {
-                                unimplemented!()
-                            }
-                        };
+                                }) => TxResult {
+                                    result: Some(CreateTable(grpc_db::CreateTable {
+                                        id: id.0,
+                                        schema,
+                                        table,
+                                        created,
+                                    })),
+                                },
+                                ExecutionResult::InsertIntoSeries { schema, series, inserted } => {
+                                    TxResult {
+                                        result: Some(InsertIntoSeries(grpc_db::InsertIntoSeries {
+                                            schema,
+                                            series,
+                                            inserted: inserted as u32,
+                                        })),
+                                    }
+                                }
+                                ExecutionResult::InsertIntoTable { schema, table, inserted } => {
+                                    TxResult {
+                                        result: Some(InsertIntoTable(grpc_db::InsertIntoTable {
+                                            schema,
+                                            table,
+                                            inserted: inserted as u32,
+                                        })),
+                                    }
+                                }
+                                ExecutionResult::CreateDeferredView { .. } => {
+                                    unimplemented!()
+                                }
+                            };
 
                         responses.push(Ok(tx_result));
                     }
@@ -158,8 +157,8 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
                 }
             }
         })
-            .await
-            .unwrap()
+        .await
+        .unwrap()
     }
 
     type RxStream = RxResultStream;
@@ -178,45 +177,30 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::D
         let engine = self.engine.clone();
 
         let results = spawn_blocking(move || {
-            engine
-                .rx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
-                .unwrap()
+            engine.rx_as(&Principal::System { id: 1, name: "root".to_string() }, &query).unwrap()
         })
-            .await
-            .unwrap();
+        .await
+        .unwrap();
 
-        let stream = tokio_stream::iter(results.into_iter().filter_map(|res| {
-            match res {
-                ExecutionResult::Query { columns: ls, rows: rs } => {
-                    let columns = ls
-                        .iter()
-                        .map(|c| grpc_db::Column {
-                            name: c.name.clone(),
-                            value: 0,
-                        })
-                        .collect();
+        let stream = tokio_stream::iter(results.into_iter().filter_map(|res| match res {
+            ExecutionResult::Query { columns: ls, rows: rs } => {
+                let columns =
+                    ls.iter().map(|c| grpc_db::Column { name: c.name.clone(), value: 0 }).collect();
 
-                    let rows = rs
-                        .iter()
-                        .map(|r| grpc_db::Row {
-                            values: r.iter().map(value_to_query_value).collect(),
-                        })
-                        .collect();
+                let rows = rs
+                    .iter()
+                    .map(|r| grpc_db::Row { values: r.iter().map(value_to_query_value).collect() })
+                    .collect();
 
-                    Some(Ok(RxResult {
-                        result: Some(grpc_db::rx_result::Result::Query(QueryResult {
-                            columns,
-                            rows,
-                        })),
-                    }))
-                }
-                _ => None, 
+                Some(Ok(RxResult {
+                    result: Some(grpc_db::rx_result::Result::Query(QueryResult { columns, rows })),
+                }))
             }
+            _ => None,
         }));
 
         Ok(Response::new(Box::pin(stream) as RxResultStream))
     }
-
 }
 
 fn value_to_query_value(value: &Value) -> grpc_db::Value {

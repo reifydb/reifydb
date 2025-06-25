@@ -9,8 +9,8 @@ use reifydb_transaction::Tx;
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn create_series(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
-        plan: CreateSeriesPlan,
+        _tx: &mut impl Tx<VS, US>,
+        _plan: CreateSeriesPlan,
     ) -> crate::Result<ExecutionResult> {
         // if plan.if_not_exists {
         //     unimplemented!()

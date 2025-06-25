@@ -34,11 +34,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::Ast::{Identifier, Infix, Literal, Kind};
+    use crate::ast::Ast::{Identifier, Infix, Kind, Literal};
     use crate::ast::AstLiteral::Number;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
-    use crate::ast::{AstInfix, AstKind, InfixOperator, AstPrefixOperator};
+    use crate::ast::{AstInfix, AstKind, InfixOperator};
 
     #[test]
     fn test_empty_tuple() {
@@ -70,14 +70,14 @@ mod tests {
 
         let node = result[0].first_unchecked().as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
-        let Infix(AstInfix { left, operator, right, .. }) = &node else { panic!() };
+        let Infix(AstInfix { left, right, .. }) = &node else { panic!() };
 
         let Literal(Number(left)) = &left.as_ref() else { panic!() };
         assert_eq!(left.value(), "1");
 
         let node = right.as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
-        let AstInfix { left,  right, .. } = &node.as_infix();
+        let AstInfix { left, right, .. } = &node.as_infix();
 
         let Literal(Number(left)) = &left.as_ref() else { panic!() };
         assert_eq!(left.value(), "2");
@@ -106,7 +106,7 @@ mod tests {
 
         let node = result[0].first_unchecked().as_tuple();
         let Some(node) = node.nodes.first() else { panic!() };
-        let Infix(AstInfix { left, operator, right, .. }) = &node else { panic!() };
+        let Infix(AstInfix { left, right, .. }) = &node else { panic!() };
 
         let identifier = &left.as_identifier();
         assert_eq!(identifier.value(), "u");
@@ -138,13 +138,13 @@ mod tests {
         let node = result[0].first_unchecked().as_tuple();
 
         let Some(u_node) = node.nodes.first() else { panic!() };
-        let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
+        let Infix(AstInfix { left, right, .. }) = &u_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "u");
         let Kind(AstKind::Boolean(_)) = right.as_ref() else { panic!() };
 
         let Some(v_node) = node.nodes.last() else { panic!() };
-        let Infix(AstInfix { left, operator, right, .. }) = &v_node else { panic!() };
+        let Infix(AstInfix { left, right, .. }) = &v_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "v");
         let Kind(AstKind::Text(_)) = right.as_ref() else { panic!() };
@@ -188,13 +188,13 @@ mod tests {
         let node = result[0].first_unchecked().as_tuple();
 
         let Some(u_node) = node.nodes.first() else { panic!() };
-        let Infix(AstInfix { left, operator, right, .. }) = &u_node else { panic!() };
+        let Infix(AstInfix { left, right, .. }) = &u_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "u");
         let Kind(AstKind::Boolean(_)) = right.as_ref() else { panic!() };
 
         let Some(v_node) = node.nodes.last() else { panic!() };
-        let Infix(AstInfix { left, operator, right, .. }) = &v_node else { panic!() };
+        let Infix(AstInfix { left, right, .. }) = &v_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "v");
         let Kind(AstKind::Text(_)) = right.as_ref() else { panic!() };

@@ -6,7 +6,7 @@ use crate::unversioned::UnversionedContains;
 use reifydb_core::EncodedKey;
 
 impl UnversionedContains for Sqlite {
-    fn contains_unversioned(&self, key: &EncodedKey) -> bool {
+    fn contains_unversioned(&self, _key: &EncodedKey) -> bool {
         todo!()
     }
 }

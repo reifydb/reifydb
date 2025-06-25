@@ -18,7 +18,6 @@ use crate::versioned::VersionedScanRange;
 use crate::{Unversioned, Versioned};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
-use rusqlite::fallible_iterator::FallibleIterator;
 use std::ops::Bound;
 
 impl VersionedScanRange for Memory {

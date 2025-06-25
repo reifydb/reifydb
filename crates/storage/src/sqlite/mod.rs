@@ -86,7 +86,7 @@ impl Sqlite {
 }
 
 impl VersionedApply for Sqlite {
-    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
+    fn apply(&self, delta: AsyncCowVec<Delta>, _version: Version) {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 
@@ -116,7 +116,7 @@ impl VersionedApply for Sqlite {
 }
 
 impl VersionedGet for Sqlite {
-    fn get(&self, key: &EncodedKey, version: Version) -> Option<Versioned> {
+    fn get(&self, key: &EncodedKey, _version: Version) -> Option<Versioned> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -146,7 +146,7 @@ impl VersionedContains for Sqlite {
 impl VersionedScan for Sqlite {
     type ScanIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
-    fn scan(&self, version: Version) -> Self::ScanIter<'_> {
+    fn scan(&self, _version: Version) -> Self::ScanIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -173,7 +173,7 @@ impl VersionedScan for Sqlite {
 impl VersionedScanRev for Sqlite {
     type ScanIterRev<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
-    fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_> {
+    fn scan_rev(&self, _version: Version) -> Self::ScanIterRev<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -200,7 +200,7 @@ impl VersionedScanRev for Sqlite {
 impl VersionedScanRange for Sqlite {
     type ScanRangeIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
-    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
+    fn scan_range(&self, range: EncodedKeyRange, _version: Version) -> Self::ScanRangeIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
@@ -234,7 +234,7 @@ impl VersionedScanRangeRev for Sqlite {
     fn scan_range_rev(
         &self,
         range: EncodedKeyRange,
-        version: Version,
+        _version: Version,
     ) -> Self::ScanRangeIterRev<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
 

@@ -13,7 +13,7 @@ impl Parser {
 
         let right = if let InfixOperator::Call(token) = &operator {
             Ast::Tuple(self.parse_tuple_call(token.clone())?)
-        } else if let InfixOperator::As(token) = &operator {
+        } else if let InfixOperator::As(_token) = &operator {
             self.parse_node(Precedence::None)?
         } else {
             self.parse_node(precedence)?

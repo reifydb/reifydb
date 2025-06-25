@@ -36,14 +36,10 @@ use std::collections::HashMap;
 pub(crate) enum Precedence {
     None,
     Assignment,
-    LogicalOr,
-    LogicalAnd,
-    Equality,
     Comparison,
     Term,
     Factor,
     Prefix,
-    Unary,
     Call,
     Primary,
 }
@@ -225,18 +221,6 @@ impl Parser {
         }
     }
 
-    pub(crate) fn peek_next(&self) -> Result<&Token> {
-        if self.tokens.len() < 2 {
-            return Err(Error::eof());
-        }
-        self.tokens.get(self.tokens.len() - 2).ok_or(Error::eof())
-    }
-
-    pub(crate) fn peek_next_expect(&self, expected: TokenKind) -> Result<()> {
-        let got = self.peek_next()?;
-        if got.kind == expected { Ok(()) } else { Err(Error::unexpected(expected, got.clone())) }
-    }
-
     fn is_eof(&self) -> bool {
         self.tokens.is_empty()
     }
@@ -414,79 +398,5 @@ mod tests {
         let parser = Parser::new(tokens);
         let result = parser.current_precedence();
         assert_eq!(result, Ok(Term))
-    }
-
-    #[test]
-    fn test_peek_next_but_eof() {
-        let tokens = lex("").unwrap();
-        let parser = Parser::new(tokens);
-        let result = parser.peek_next();
-        assert_eq!(result, Err(UnexpectedEndOfFile))
-    }
-
-    #[test]
-    fn test_peek_next_but_nothing_to_peek_next() {
-        let tokens = lex("true").unwrap();
-        let parser = Parser::new(tokens);
-        let result = parser.peek_next();
-        assert_eq!(result, Err(UnexpectedEndOfFile))
-    }
-
-    #[test]
-    fn test_peek_next() {
-        let tokens = lex("true false 1").unwrap();
-        let mut parser = Parser::new(tokens);
-
-        let false_token = parser.peek_next().unwrap().clone();
-        assert_eq!(false_token.kind, Literal(False));
-
-        parser.advance().unwrap();
-        let number_token = parser.peek_next().unwrap().clone();
-        assert_eq!(number_token.kind, Literal(Number));
-    }
-
-    #[test]
-    fn test_peek_next_expect_but_eof() {
-        let tokens = lex("").unwrap();
-        let parser = Parser::new(tokens);
-        let result = parser.peek_next_expect(Separator(Semicolon));
-        assert_eq!(result, Err(UnexpectedEndOfFile))
-    }
-
-    #[test]
-    fn test_peek_next_expect_but_nothing_to_peek_next() {
-        let tokens = lex("true").unwrap();
-        let parser = Parser::new(tokens);
-
-        let result = parser.peek_next_expect(Separator(Semicolon));
-        assert_eq!(result, Err(UnexpectedEndOfFile));
-    }
-
-    #[test]
-    fn test_peek_next_expect() {
-        let tokens = lex("true false 0o123").unwrap();
-        let mut parser = Parser::new(tokens);
-
-        let result = parser.peek_next_expect(Literal(False));
-        assert!(result.is_ok());
-
-        parser.advance().unwrap();
-
-        let result = parser.peek_next_expect(Literal(Number));
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_peek_next_expect_but_different() {
-        let tokens = lex("true 0b111").unwrap();
-        let parser = Parser::new(tokens);
-
-        let result = parser.peek_next_expect(Literal(False));
-        assert!(result.is_err());
-
-        if let Error::UnexpectedToken { expected, got, .. } = result.err().unwrap() {
-            assert_eq!(expected, Literal(False));
-            assert_eq!(got.kind, Literal(Number))
-        }
     }
 }

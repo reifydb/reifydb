@@ -13,39 +13,6 @@ pub trait Promote<R> where Self: IsNumber, R: IsNumber {
 
 }
 
-macro_rules! impl_promote {
-    ($l:ty, $r:ty => $common:ty) => {
-        impl Promote<$r> for $l {
-            type Output = $common;
-
-            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
-                let l: Option<$common> = <$common>::try_from(self).ok();
-                let r: Option<$common> = <$common>::try_from(r).ok();
-                match(l,r){
-                    (Some(l),Some(r)) => Some((l,r)),
-                    _ => None
-                }
-            }
-
-            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                let l = match <$common>::try_from(self) {
-                    Ok(v) => v,
-                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX },
-                };
-                let r = match <$common>::try_from(r) {
-                    Ok(v) => v,
-                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX },
-                };
-                (l, r)
-            }
-
-            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                (self as $common, r as $common)
-            }
-        }
-    };
-}
-
 macro_rules! impl_promote_float_float {
     ($l:ty, $r:ty => $common:ty) => {
         impl Promote<$r> for $l {
@@ -185,79 +152,200 @@ impl_promote_float_integer!(f64, u64 => f64); impl_promote_integer_float!(u64, f
 impl_promote_float_integer!(f64, u128 => f64); impl_promote_integer_float!(u128, f64 => f64);
 
 // signed - signed 
-impl_promote!(i8, i8 => i128);
-impl_promote!(i8, i16 => i128); impl_promote!(i16, i8 => i128);
-impl_promote!(i8, i32 => i128); impl_promote!(i32, i8 => i128);
-impl_promote!(i8, i64 => i128); impl_promote!(i64, i8 => i128);
-impl_promote!(i8, i128 => i128); impl_promote!(i128, i8 => i128);
+macro_rules! impl_promote_signed_signed {
+    ($l:ty, $r:ty => $common:ty) => {
+        impl Promote<$r> for $l {
+            type Output = $common;
 
-impl_promote!(i16, i16 => i128);
-impl_promote!(i16, i32 => i128); impl_promote!(i32, i16 => i128);
-impl_promote!(i16, i64 => i128); impl_promote!(i64, i16 => i128);
-impl_promote!(i16, i128 => i128); impl_promote!(i128, i16 => i128);
+            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(self).ok();
+                let r: Option<$common> = <$common>::try_from(r).ok();
+                match(l,r){
+                    (Some(l),Some(r)) => Some((l,r)),
+                    _ => None
+                }
+            }
 
-impl_promote!(i32, i32 => i128);
-impl_promote!(i32, i64 => i128); impl_promote!(i64, i32 => i128);
-impl_promote!(i32, i128 => i128); impl_promote!(i128, i32 => i128);
+            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(self) {
+                    Ok(v) => v,
+                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX },
+                };
+                let r = match <$common>::try_from(r) {
+                    Ok(v) => v,
+                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX },
+                };
+                (l, r)
+            }
 
-impl_promote!(i64, i64 => i128);
-impl_promote!(i64, i128 => i128); impl_promote!(i128, i64 => i128);
+            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                (self as $common, r as $common)
+            }
+        }
+    };
+}
+impl_promote_signed_signed!(i8, i8 => i128);
+impl_promote_signed_signed!(i8, i16 => i128); impl_promote_signed_signed!(i16, i8 => i128);
+impl_promote_signed_signed!(i8, i32 => i128); impl_promote_signed_signed!(i32, i8 => i128);
+impl_promote_signed_signed!(i8, i64 => i128); impl_promote_signed_signed!(i64, i8 => i128);
+impl_promote_signed_signed!(i8, i128 => i128); impl_promote_signed_signed!(i128, i8 => i128);
 
-impl_promote!(i128, i128 => i128);
+impl_promote_signed_signed!(i16, i16 => i128);
+impl_promote_signed_signed!(i16, i32 => i128); impl_promote_signed_signed!(i32, i16 => i128);
+impl_promote_signed_signed!(i16, i64 => i128); impl_promote_signed_signed!(i64, i16 => i128);
+impl_promote_signed_signed!(i16, i128 => i128); impl_promote_signed_signed!(i128, i16 => i128);
 
-// unsigned - unsigned
-impl_promote!(u8, u8 => u128);
-impl_promote!(u8, u16 => u128); impl_promote!(u16, u8 => u128);
-impl_promote!(u8, u32 => u128); impl_promote!(u32, u8 => u128);
-impl_promote!(u8, u64 => u128); impl_promote!(u64, u8 => u128);
-impl_promote!(u8, u128 => u128); impl_promote!(u128, u8 => u128);
+impl_promote_signed_signed!(i32, i32 => i128);
+impl_promote_signed_signed!(i32, i64 => i128); impl_promote_signed_signed!(i64, i32 => i128);
+impl_promote_signed_signed!(i32, i128 => i128); impl_promote_signed_signed!(i128, i32 => i128);
 
-impl_promote!(u16, u16 => u128);
-impl_promote!(u16, u32 => u128); impl_promote!(u32, u16 => u128);
-impl_promote!(u16, u64 => u128); impl_promote!(u64, u16 => u128);
-impl_promote!(u16, u128 => u128); impl_promote!(u128, u16 => u128);
+impl_promote_signed_signed!(i64, i64 => i128);
+impl_promote_signed_signed!(i64, i128 => i128); impl_promote_signed_signed!(i128, i64 => i128);
 
-impl_promote!(u32, u32 => u128);
-impl_promote!(u32, u64 => u128); impl_promote!(u64, u32 => u128);
-impl_promote!(u32, u128 => u128); impl_promote!(u128, u32 => u128);
+impl_promote_signed_signed!(i128, i128 => i128);
 
-impl_promote!(u64, u64 => u128);
-impl_promote!(u64, u128 => u128); impl_promote!(u128, u64 => u128);
+macro_rules! impl_promote_unsigned_unsigned {
+    ($l:ty, $r:ty => $common:ty) => {
+        impl Promote<$r> for $l {
+            type Output = $common;
 
-impl_promote!(u128, u128 => u128);
+            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(self).ok();
+                let r: Option<$common> = <$common>::try_from(r).ok();
+                match(l,r){
+                    (Some(l),Some(r)) => Some((l,r)),
+                    _ => None
+                }
+            }
+
+            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(self) {
+                    Ok(v) => v,
+                    Err(_) =>  <$common>::MAX,
+                };
+                let r = match <$common>::try_from(r) {
+                    Ok(v) => v,
+                    Err(_) => <$common>::MAX,
+                };
+                (l, r)
+            }
+
+            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                (self as $common, r as $common)
+            }
+        }
+    };
+}
+
+impl_promote_unsigned_unsigned!(u8, u8 => u128);
+impl_promote_unsigned_unsigned!(u8, u16 => u128); impl_promote_unsigned_unsigned!(u16, u8 => u128);
+impl_promote_unsigned_unsigned!(u8, u32 => u128); impl_promote_unsigned_unsigned!(u32, u8 => u128);
+impl_promote_unsigned_unsigned!(u8, u64 => u128); impl_promote_unsigned_unsigned!(u64, u8 => u128);
+impl_promote_unsigned_unsigned!(u8, u128 => u128); impl_promote_unsigned_unsigned!(u128, u8 => u128);
+
+impl_promote_unsigned_unsigned!(u16, u16 => u128);
+impl_promote_unsigned_unsigned!(u16, u32 => u128); impl_promote_unsigned_unsigned!(u32, u16 => u128);
+impl_promote_unsigned_unsigned!(u16, u64 => u128); impl_promote_unsigned_unsigned!(u64, u16 => u128);
+impl_promote_unsigned_unsigned!(u16, u128 => u128); impl_promote_unsigned_unsigned!(u128, u16 => u128);
+
+impl_promote_unsigned_unsigned!(u32, u32 => u128);
+impl_promote_unsigned_unsigned!(u32, u64 => u128); impl_promote_unsigned_unsigned!(u64, u32 => u128);
+impl_promote_unsigned_unsigned!(u32, u128 => u128); impl_promote_unsigned_unsigned!(u128, u32 => u128);
+
+impl_promote_unsigned_unsigned!(u64, u64 => u128);
+impl_promote_unsigned_unsigned!(u64, u128 => u128); impl_promote_unsigned_unsigned!(u128, u64 => u128);
+
+impl_promote_unsigned_unsigned!(u128, u128 => u128);
 
 
-// 8 signed <-> unsinged
-impl_promote!(i8, u8 => i128);    impl_promote!(u8, i8 => i128);
-impl_promote!(i8, u16 => i128);   impl_promote!(u16, i8 => i128);
-impl_promote!(i8, u32 => i128);   impl_promote!(u32, i8 => i128);
-impl_promote!(i8, u64 => i128);   impl_promote!(u64, i8 => i128);
-impl_promote!(i8, u128 => i128);  impl_promote!(u128, i8 => i128);
+macro_rules! impl_promote_signed_unsigned {
+    ($l:ty, $r:ty => $common:ty) => {
+        impl Promote<$r> for $l {
+            type Output = $common;
 
-// 16 signed <-> unsinged
-impl_promote!(i16, u8 => i128);   impl_promote!(u8, i16 => i128);
-impl_promote!(i16, u16 => i128);  impl_promote!(u16, i16 => i128);
-impl_promote!(i16, u32 => i128);  impl_promote!(u32, i16 => i128);
-impl_promote!(i16, u64 => i128);  impl_promote!(u64, i16 => i128);
-impl_promote!(i16, u128 => i128); impl_promote!(u128, i16 => i128);
+            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(self).ok();
+                let r: Option<$common> = <$common>::try_from(r).ok();
+                match(l,r){
+                    (Some(l),Some(r)) => Some((l,r)),
+                    _ => None
+                }
+            }
 
-// 32 signed <-> unsinged
-impl_promote!(i32, u8 => i128);   impl_promote!(u8, i32 => i128);
-impl_promote!(i32, u16 => i128);  impl_promote!(u16, i32 => i128);
-impl_promote!(i32, u32 => i128);  impl_promote!(u32, i32 => i128);
-impl_promote!(i32, u64 => i128);  impl_promote!(u64, i32 => i128);
-impl_promote!(i32, u128 => i128); impl_promote!(u128, i32 => i128);
+            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(self) {
+                    Ok(v) => v,
+                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX },
+                };
+                let r = match <$common>::try_from(r) {
+                    Ok(v) => v,
+                    Err(_) => <$common>::MAX,
+                };
+                (l, r)
+            }
 
-// 64 signed <-> unsinged
-impl_promote!(i64, u8 => i128);   impl_promote!(u8, i64 => i128);
-impl_promote!(i64, u16 => i128);  impl_promote!(u16, i64 => i128);
-impl_promote!(i64, u32 => i128);  impl_promote!(u32, i64 => i128);
-impl_promote!(i64, u64 => i128);  impl_promote!(u64, i64 => i128);
-impl_promote!(i64, u128 => i128); impl_promote!(u128, i64 => i128);
+            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                (self as $common, r as $common)
+            }
+        }
+    };
+}
 
-// 128 signed <-> unsinged
-impl_promote!(i128, u8 => i128);   impl_promote!(u8, i128 => i128);
-impl_promote!(i128, u16 => i128);  impl_promote!(u16, i128 => i128);
-impl_promote!(i128, u32 => i128);  impl_promote!(u32, i128 => i128);
-impl_promote!(i128, u64 => i128);  impl_promote!(u64, i128 => i128);
-impl_promote!(i128, u128 => i128); impl_promote!(u128, i128 => i128);
+macro_rules! impl_promote_unsigned_signed {
+    ($l:ty, $r:ty => $common:ty) => {
+        impl Promote<$r> for $l {
+            type Output = $common;
+
+            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(self).ok();
+                let r: Option<$common> = <$common>::try_from(r).ok();
+                match(l,r){
+                    (Some(l),Some(r)) => Some((l,r)),
+                    _ => None
+                }
+            }
+
+            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(self) {
+                    Ok(v) => v,
+                    Err(_) => <$common>::MAX,
+                };
+                let r = match <$common>::try_from(r) {
+                    Ok(v) => v,
+                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX },
+                };
+                (l, r)
+            }
+
+            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
+                (self as $common, r as $common)
+            }
+        }
+    };
+}
+
+impl_promote_signed_unsigned!(i8, u8 => i128);    impl_promote_unsigned_signed!(u8, i8 => i128);
+impl_promote_signed_unsigned!(i8, u16 => i128);   impl_promote_unsigned_signed!(u16, i8 => i128);
+impl_promote_signed_unsigned!(i8, u32 => i128);   impl_promote_unsigned_signed!(u32, i8 => i128);
+impl_promote_signed_unsigned!(i8, u64 => i128);   impl_promote_unsigned_signed!(u64, i8 => i128);
+impl_promote_signed_unsigned!(i8, u128 => i128);  impl_promote_unsigned_signed!(u128, i8 => i128);
+impl_promote_signed_unsigned!(i16, u8 => i128);   impl_promote_unsigned_signed!(u8, i16 => i128);
+impl_promote_signed_unsigned!(i16, u16 => i128);  impl_promote_unsigned_signed!(u16, i16 => i128);
+impl_promote_signed_unsigned!(i16, u32 => i128);  impl_promote_unsigned_signed!(u32, i16 => i128);
+impl_promote_signed_unsigned!(i16, u64 => i128);  impl_promote_unsigned_signed!(u64, i16 => i128);
+impl_promote_signed_unsigned!(i16, u128 => i128); impl_promote_unsigned_signed!(u128, i16 => i128);
+impl_promote_signed_unsigned!(i32, u8 => i128);   impl_promote_unsigned_signed!(u8, i32 => i128);
+impl_promote_signed_unsigned!(i32, u16 => i128);  impl_promote_unsigned_signed!(u16, i32 => i128);
+impl_promote_signed_unsigned!(i32, u32 => i128);  impl_promote_unsigned_signed!(u32, i32 => i128);
+impl_promote_signed_unsigned!(i32, u64 => i128);  impl_promote_unsigned_signed!(u64, i32 => i128);
+impl_promote_signed_unsigned!(i32, u128 => i128); impl_promote_unsigned_signed!(u128, i32 => i128);
+impl_promote_signed_unsigned!(i64, u8 => i128);   impl_promote_unsigned_signed!(u8, i64 => i128);
+impl_promote_signed_unsigned!(i64, u16 => i128);  impl_promote_unsigned_signed!(u16, i64 => i128);
+impl_promote_signed_unsigned!(i64, u32 => i128);  impl_promote_unsigned_signed!(u32, i64 => i128);
+impl_promote_signed_unsigned!(i64, u64 => i128);  impl_promote_unsigned_signed!(u64, i64 => i128);
+impl_promote_signed_unsigned!(i64, u128 => i128); impl_promote_unsigned_signed!(u128, i64 => i128);
+impl_promote_signed_unsigned!(i128, u8 => i128);   impl_promote_unsigned_signed!(u8, i128 => i128);
+impl_promote_signed_unsigned!(i128, u16 => i128);  impl_promote_unsigned_signed!(u16, i128 => i128);
+impl_promote_signed_unsigned!(i128, u32 => i128);  impl_promote_unsigned_signed!(u32, i128 => i128);
+impl_promote_signed_unsigned!(i128, u64 => i128);  impl_promote_unsigned_signed!(u64, i128 => i128);
+impl_promote_signed_unsigned!(i128, u128 => i128); impl_promote_unsigned_signed!(u128, i128 => i128);

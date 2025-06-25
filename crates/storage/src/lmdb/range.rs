@@ -23,7 +23,7 @@ impl VersionedScanRange for Lmdb {
 pub struct Range {
     env: Arc<Env>,
     db: Database<Bytes, Bytes>,
-    version: Version,
+    _version: Version,
     start: Bound<EncodedKey>,
     end: Bound<EncodedKey>,
     buffer: VecDeque<Versioned>,
@@ -42,7 +42,7 @@ impl Range {
         let start = range.start_bound().cloned();
         let end = range.end_bound().cloned();
 
-        Self { env, db, buffer: VecDeque::new(), version, last_key: None, start, end, batch_size }
+        Self { env, db, buffer: VecDeque::new(), _version: version, last_key: None, start, end, batch_size }
     }
 
     fn refill_buffer(&mut self) {
@@ -82,7 +82,7 @@ impl Range {
                         version: 0, // FIXME
                     })
                 }
-                Err(e) => {
+                Err(_) => {
                     // FIXME
                     // return Err(crate::Error::Persistence(e.into()));
                     unimplemented!();
@@ -109,7 +109,7 @@ impl UnversionedScanRange for Lmdb {
     where
         Self: 'a;
 
-    fn scan_range_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRange<'_> {
+    fn scan_range_unversioned(&self, _range: EncodedKeyRange) -> Self::ScanRange<'_> {
         todo!()
     }
 }

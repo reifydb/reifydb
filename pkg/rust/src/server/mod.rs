@@ -19,7 +19,7 @@ mod grpc;
 
 pub struct Server<S: Storage, T: Transaction<S, S>> {
     pub(crate) config: ServerConfig,
-    pub(crate) grpc: tonic::transport::Server,
+    pub(crate) _grpc: tonic::transport::Server,
     pub(crate) callbacks: Callbacks<S, T>,
     pub(crate) engine: Engine<S, S, T>,
 }
@@ -92,7 +92,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> Server<S, T> {
     pub fn new(transaction: T) -> Self {
         Self {
             config: ServerConfig::default(),
-            grpc: tonic::transport::Server::builder(),
+            _grpc: tonic::transport::Server::builder(),
             callbacks: Callbacks { before_bootstrap: vec![], on_create: vec![] },
             engine: Engine::new(transaction),
         }

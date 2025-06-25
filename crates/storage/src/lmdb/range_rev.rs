@@ -9,7 +9,7 @@ use reifydb_core::{EncodedKeyRange, Version};
 impl VersionedScanRangeRev for Lmdb {
     type ScanRangeIterRev<'a> = RangeRev;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIterRev<'_> {
+    fn scan_range_rev(&self, _range: EncodedKeyRange, _version: Version) -> Self::ScanRangeIterRev<'_> {
         todo!()
     }
 }
@@ -29,7 +29,7 @@ impl UnversionedScanRangeRev for Lmdb {
     
     = UnversionedRangeRev where Self: 'a;
 
-    fn scan_range_rev_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRangeRev<'_> {
+    fn scan_range_rev_unversioned(&self, _range: EncodedKeyRange) -> Self::ScanRangeRev<'_> {
         todo!()
     }
 }

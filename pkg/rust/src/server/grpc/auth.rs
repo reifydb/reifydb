@@ -33,6 +33,7 @@ fn extract_token(metadata: &MetadataMap) -> Result<String, Status> {
 }
 
 // Dummy parser — replace with JWT decoding
-fn decode_token_to_principal(token: &str) -> Result<AuthenticatedUser, ()> {
-    Ok(AuthenticatedUser { user_id: token.to_string(), roles: vec!["user".into()] })
+fn decode_token_to_principal(_token: &str) -> Result<AuthenticatedUser, ()> {
+    // Ok(AuthenticatedUser { user_id: token.to_string(), roles: vec!["user".into()] })
+    Ok(AuthenticatedUser { })
 }

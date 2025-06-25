@@ -23,7 +23,7 @@ pub fn db_service<S: Storage + 'static, T: Transaction<S, S> + 'static>(
 
 #[derive(Debug, Clone)]
 pub struct AuthenticatedUser {
-    pub user_id: String,
-    pub roles: Vec<String>,
+    // pub user_id: String,
+    // pub roles: Vec<String>,
     // add more fields like email, tenant_id, etc.
 }

@@ -116,7 +116,6 @@ impl Key {
             KeyKind::SystemSequence => {
                 SystemSequenceKey::decode(version, payload).map(Self::SystemSequence)
             }
-            _ => None,
         }
     }
 }

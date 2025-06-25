@@ -128,8 +128,8 @@ impl Evaluator {
 
             ColumnValues::Uint1(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
-                for (idx, val) in values.iter().enumerate() {
-                    let signed = *val as i8;
+                for val in values {
+                    let signed = val as i8;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
@@ -140,8 +140,8 @@ impl Evaluator {
 
             ColumnValues::Uint2(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
-                for (idx, val) in values.iter().enumerate() {
-                    let signed = *val as i16;
+                for val in values {
+                    let signed = val as i16;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
@@ -152,8 +152,8 @@ impl Evaluator {
 
             ColumnValues::Uint4(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
-                for (idx, val) in values.iter().enumerate() {
-                    let signed = *val as i32;
+                for val in values {
+                    let signed = val as i32;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
@@ -164,8 +164,8 @@ impl Evaluator {
 
             ColumnValues::Uint8(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
-                for (idx, val) in values.iter().enumerate() {
-                    let signed = *val as i64;
+                for val in values {
+                    let signed = val as i64;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
@@ -175,8 +175,8 @@ impl Evaluator {
             }
             ColumnValues::Uint16(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
-                for (idx, val) in values.iter().enumerate() {
-                    let signed = *val as i128;
+                for val in values {
+                    let signed = val as i128;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,

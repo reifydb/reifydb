@@ -15,7 +15,6 @@ use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
 use reifydb_core::{Kind, Value};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
-use reifydb_storage::memory::Memory;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::{Rx, Tx};
 use std::marker::PhantomData;
@@ -201,15 +200,7 @@ impl From<Frame> for ExecutionResult {
 
 pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     functions: FunctionRegistry,
-    frame: Frame,
     _marker: PhantomData<(VS, US)>,
-}
-
-impl Executor<Memory, Memory> {
-    #[cfg(test)]
-    pub fn testing() -> Self {
-        Self { functions: FunctionRegistry::new(), frame: Frame::empty(), _marker: PhantomData }
-    }
 }
 
 pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
@@ -218,7 +209,6 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
 ) -> crate::Result<ExecutionResult> {
     let mut executor: Executor<VS, US> = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from RX
-        frame: Frame::new(vec![]),
         _marker: PhantomData,
     };
 
@@ -234,7 +224,6 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
 ) -> crate::Result<ExecutionResult> {
     let mut executor: Executor<VS, US> = Executor {
         functions: FunctionRegistry::new(), // FIXME receive functions from TX
-        frame: Frame::new(vec![]),
         _marker: PhantomData,
     };
 
@@ -291,7 +280,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     }
 
     pub(crate) fn execute_rx(
-        mut self,
+        self,
         rx: &mut impl Rx,
         plan: PlanRx,
     ) -> crate::Result<ExecutionResult> {

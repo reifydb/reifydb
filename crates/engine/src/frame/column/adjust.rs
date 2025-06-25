@@ -335,7 +335,6 @@ mod tests {
 
     mod demote {
         use crate::evaluate::Demote;
-        use crate::frame::AsSlice;
         use crate::frame::column::adjust::demote_vec;
         use reifydb_core::Kind;
         use reifydb_core::num::SafeDemote;

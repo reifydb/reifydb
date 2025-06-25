@@ -2,16 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::frame::{Column, ColumnValues};
-use crate::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
+use crate::function::{Function, FunctionError, FunctionExecutor};
 
 pub struct AvgFunction;
 
 impl Function for AvgFunction {
     fn name(&self) -> &str {
         "avg"
-    }
-    fn modes(&self) -> &'static [FunctionMode] {
-        &[FunctionMode::Scalar, FunctionMode::Aggregate]
     }
 
     fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError> {

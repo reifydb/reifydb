@@ -4,7 +4,7 @@
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
 use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
-use reifydb_core::{Value, Kind};
+use reifydb_core::{Kind, Value};
 use reifydb_engine::{Column, CreateSchemaResult, CreateTableResult, ExecutionResult};
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -81,7 +81,6 @@ pub async fn parse_rx_query_results(
                                 }
                                 grpc_db::value::Kind::StringValue(s) => Value::String(s),
                                 grpc_db::value::Kind::UndefinedValue(_) => Value::Undefined,
-                                kind => unimplemented!("Value kind {:?} not yet supported", kind),
                             })
                             .collect()
                     })
@@ -90,10 +89,7 @@ pub async fn parse_rx_query_results(
                 results.push(ExecutionResult::Query { columns, rows });
             }
             Some(grpc_db::rx_result::Result::Error(e)) => {
-                return Err(tonic::Status::internal(format!(
-                    "Query execution error: {:?}",
-                    e
-                )));
+                return Err(tonic::Status::internal(format!("Query execution error: {:?}", e)));
             }
             None => {
                 return Err(tonic::Status::internal("Empty rx_result"));
@@ -103,7 +99,6 @@ pub async fn parse_rx_query_results(
 
     Ok(results)
 }
-
 
 impl Client {
     pub async fn rx(&self, query: &str) -> crate::Result<Vec<ExecutionResult>> {
@@ -218,11 +213,6 @@ impl Client {
 
                                         grpc_db::value::Kind::StringValue(s) => Value::String(s),
                                         grpc_db::value::Kind::UndefinedValue(_) => Value::Undefined,
-
-                                        kind => unimplemented!(
-                                            "Value kind {:?} not yet supported",
-                                            kind
-                                        ),
                                     }
                                 })
                                 .collect()

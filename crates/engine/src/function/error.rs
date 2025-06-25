@@ -7,6 +7,7 @@ use std::fmt;
 use std::fmt::Display;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum FunctionError {
     /// The function name is not registered.
     UnknownFunction(String),
@@ -18,12 +19,7 @@ pub enum FunctionError {
     TooManyArguments { function: String, max_args: usize, actual: usize },
 
     /// Argument has the wrong type.
-    InvalidArgumentType {
-        function: String,
-        index: usize,
-        expected_one_of: Vec<Kind>,
-        actual: Kind,
-    },
+    InvalidArgumentType { function: String, index: usize, expected_one_of: Vec<Kind>, actual: Kind },
 
     /// One or more arguments are undefined when the function doesn't accept them.
     UndefinedArgument { function: String, index: usize },
@@ -115,7 +111,7 @@ impl Display for FunctionError {
 }
 
 fn ordinal(index: usize) -> String {
-    debug_assert!(
+    assert!(
         index <= 20,
         "unlikely that a function will ever be called with more than 20 parameters"
     );

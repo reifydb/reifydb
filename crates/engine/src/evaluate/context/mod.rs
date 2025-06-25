@@ -14,9 +14,7 @@ mod demote;
 mod promote;
 
 use crate::frame::Column;
-use reifydb_core::num::SafeSubtract;
 use reifydb_core::{BitVec, Kind};
-use reifydb_diagnostic::IntoSpan;
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvaluationColumn {
@@ -31,7 +29,6 @@ impl EvaluationColumn {
             .iter()
             .find_map(|p| match p {
                 ColumnPolicyKind::Saturation(policy) => Some(policy),
-                _ => None,
             })
             .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
     }
@@ -47,6 +44,7 @@ pub(crate) struct Context {
 }
 
 impl Context {
+    #[cfg(test)]
     pub fn testing() -> Self {
         Self {
             column: None,

@@ -87,7 +87,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                                             ValueRef::Undefined => {
                                                 layout.set_undefined(&mut row, idx)
                                             }
-                                            _ => unimplemented!(),
                                         }
                                     }
                                     _ => unimplemented!(),

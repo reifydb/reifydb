@@ -13,6 +13,5 @@ pub use closer::Closer;
 pub use watermark::WaterMark;
 
 mod closer;
-mod error;
-mod watermark;
 mod process;
+mod watermark;

@@ -15,10 +15,11 @@ impl Diagnostic {
     pub fn out_of_range(co: OutOfRange) -> Diagnostic {
         let label = match (&co.kind, &co.column) {
             (Some(ty), Some(column)) => Some(format!(
-                "value `{}` does not fit into `{}` (range: {})",
+                "value `{}` does not fit into column `{}` of type `{}` (range: {})",
                 co.span.fragment,
+                column,
                 ty,
-                value_range(*ty)
+                value_range(*ty),
             )),
             (Some(ty), None) => Some(format!(
                 "value `{}` does not fit into type `{}` (range: {})",

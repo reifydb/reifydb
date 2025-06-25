@@ -12,7 +12,7 @@ impl UnversionedScanRange for Sqlite {
     where
         Self: 'a;
 
-    fn scan_range_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRange<'_> {
+    fn scan_range_unversioned(&self, _range: EncodedKeyRange) -> Self::ScanRange<'_> {
         todo!()
     }
 }

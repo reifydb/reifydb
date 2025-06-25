@@ -2,17 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::frame::{Column, ColumnValues};
-use crate::function::{Function, FunctionError, FunctionExecutor, FunctionMode};
+use crate::function::{Function, FunctionError, FunctionExecutor};
 
 pub struct AbsFunction;
 
 impl Function for AbsFunction {
     fn name(&self) -> &str {
         "abs"
-    }
-
-    fn modes(&self) -> &'static [FunctionMode] {
-        &[FunctionMode::Scalar]
     }
 
     // fn prepare(&self, _args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError> {

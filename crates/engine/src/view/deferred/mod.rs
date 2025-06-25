@@ -15,7 +15,7 @@ use std::thread;
 
 pub struct Engine<VS: VersionedStorage, US: UnversionedStorage> {
     tx: Sender<Work>,
-    orchestrator: Orchestrator,
+    _orchestrator: Orchestrator,
     _marker: std::marker::PhantomData<(VS, US)>,
 }
 
@@ -32,7 +32,7 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static> Engine<VS
         let result = Arc::new(Engine {
             tx,
             _marker: std::marker::PhantomData,
-            orchestrator: orchestrator.clone(),
+            _orchestrator: orchestrator.clone(),
         });
 
         thread::spawn(move || {

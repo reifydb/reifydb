@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn test_retry_closure_panics() {
         let result = std::panic::catch_unwind(|| {
-            retry::<(), ()>(2, || panic!("boom"));
+            let _ = retry::<(), ()>(2, || panic!("boom"));
         });
         assert!(result.is_err());
     }

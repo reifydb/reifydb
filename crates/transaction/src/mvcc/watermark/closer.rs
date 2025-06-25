@@ -108,12 +108,7 @@ impl Closer {
     pub fn new(initial: usize) -> Self {
         Self(Arc::new(CloserInner::with(initial)))
     }
-
-    /// Adds delta to the [`WaitGroup`].
-    pub fn add_running(&self, running: usize) {
-        self.wg.add(running);
-    }
-
+    
     /// Calls [`WaitGroup::done`] on the [`WaitGroup`].
     pub fn done(&self) {
         self.wg.done();

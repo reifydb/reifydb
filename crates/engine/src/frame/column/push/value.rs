@@ -176,7 +176,6 @@ impl ColumnValues {
             },
 
             Value::Undefined => self.push_undefined(),
-            _ => unimplemented!(),
         }
     }
 }

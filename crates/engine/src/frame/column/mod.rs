@@ -3,7 +3,6 @@
 
 pub use layout::ColumnLayout;
 pub use push::Push;
-pub use slice::AsSlice;
 pub use values::ColumnValues;
 
 mod adjust;

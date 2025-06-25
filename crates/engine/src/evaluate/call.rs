@@ -5,6 +5,7 @@ use crate::evaluate;
 use crate::evaluate::{Context, Evaluator};
 use crate::frame::{Column, ColumnValues};
 use reifydb_rql::expression::{CallExpression, Expression};
+use crate::function::FunctionError;
 
 impl Evaluator {
     pub(crate) fn call(
@@ -14,7 +15,9 @@ impl Evaluator {
     ) -> evaluate::Result<ColumnValues> {
         let virtual_columns = self.evaluate_virtual_column(&call.args, ctx).unwrap();
 
-        let functor = self.functions.get(call.func.0.fragment.as_str()).unwrap();
+        let function = &call.func.0.fragment;
+
+        let functor = self.functions.get(function.as_str()).ok_or(FunctionError::UnknownFunction(function.clone())).unwrap();
         let exec = functor.prepare().unwrap();
 
         let row_count = ctx.row_count;

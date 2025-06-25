@@ -87,7 +87,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> testscript::Runner
 
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let (shutdown_tx, _) = oneshot::channel();
         let server = self.server.take().unwrap();
 
         runtime.spawn(async move {

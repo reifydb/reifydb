@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
-use crate::num::SafeAdd;
-
 pub trait SafeSubtract: Sized {
     fn checked_sub(self, r: Self) -> Option<Self>;
     fn saturating_sub(self, r: Self) -> Self;

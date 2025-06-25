@@ -290,7 +290,7 @@ mod tests {
         }
 
         #[test]
-        fn test__empty_string_returns_degenerate_range() {
+        fn test_empty_string_returns_degenerate_range() {
             let r = EncodedKeyRange::parse("");
             let expected = EncodedKey::new([0xff]);
             assert_eq!(r.start, Bound::Included(expected.clone()));

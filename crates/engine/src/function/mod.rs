@@ -8,19 +8,18 @@ pub use error::FunctionError;
 mod error;
 
 use crate::frame::{Column, ColumnValues};
-use reifydb_core::Value;
-use reifydb_core::row::EncodedRowIter;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
 use std::sync::Arc;
+use reifydb_core::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionMode {
     // select abs(-1)
     Scalar,
     // from generate_series(1, 3)
-    Generator,
+    // Generator,
     // from test.table select avg(num)
     Aggregate,
 }
@@ -29,7 +28,7 @@ impl Display for FunctionMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let label = match self {
             FunctionMode::Scalar => "Scalar",
-            FunctionMode::Generator => "Generator",
+            // FunctionMode::Generator => "Generator",
             FunctionMode::Aggregate => "Aggregate",
         };
         write!(f, "{}", label)
@@ -38,8 +37,6 @@ impl Display for FunctionMode {
 
 pub trait Function: Send + Sync {
     fn name(&self) -> &str;
-    fn modes(&self) -> &'static [FunctionMode];
-
     // fn prepare(&self, args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError>;
     fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError>;
 }
@@ -59,15 +56,15 @@ pub trait FunctionExecutor: Send + Sync {
         })
     }
 
-    /// For scalar inputs => output rows (like `generate_series`)
-    fn eval_generator(&self, _args: &[Value]) -> Result<EncodedRowIter, FunctionError> {
-        Err(FunctionError::UnsupportedMode {
-            function: self.name().to_string(),
-            mode: FunctionMode::Generator,
-        })
-    }
+    // ///For scalar inputs => output rows (like `generate_series`)
+    // fn eval_generator(&self, _args: &[Value]) -> Result<EncodedRowIter, FunctionError> {
+    //     Err(FunctionError::UnsupportedMode {
+    //         function: self.name().to_string(),
+    //         mode: FunctionMode::Generator,
+    //     })
+    // }
 
-    /// For row streams => aggregated output (like `avg`)
+    ///For row streams => aggregated output (like `avg`)
     fn eval_aggregate(&mut self, _row: &[Value]) -> Result<(), FunctionError> {
         Err(FunctionError::UnsupportedMode {
             function: self.name().to_string(),
