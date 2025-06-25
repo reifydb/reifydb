@@ -56,12 +56,3 @@ impl Frame {
         self.columns.first().map_or(0, |col| col.data.len())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn implement() {
-        todo!()
-    }
-}

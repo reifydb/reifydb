@@ -67,12 +67,16 @@ impl BitVec {
 
     pub fn count_ones(&self) -> usize {
         let mut result = 0;
-        for i in 0..self.bits.len() {
+        for i in 0..self.len() {
             if self.get(i) {
                 result += 1;
             }
         }
         result
+    }
+
+    pub fn any(&self) -> bool {
+        self.count_ones() > 0
     }
 }
 

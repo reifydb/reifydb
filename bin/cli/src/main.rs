@@ -13,16 +13,16 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(field: float8 policy (saturation undefined))"#).unwrap();
-    db.tx_as(&root, r#"insert (-1e309) into test.item (field)"#).unwrap();
-//     for l in db.rx_as(
-//         &root,
-//         r#"
-// select cast(0 as int4) != cast(340282366920938463463374607431768211455 as uint16)
-//         "#,
-//     ) {
-//         println!("{}", l);
-//     }
+    db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
+    db.tx_as(&root, r#"insert (1), (2), (3), (4), (5), (6) into test.item (field)"#).unwrap();
+    for l in db.rx_as(
+        &root,
+        r#"
+        from test.item
+        "#,
+    ) {
+        println!("{}", l);
+    }
 }
 
 // use reifydb::client::Client;
