@@ -3,10 +3,10 @@
 
 #[cfg(test)]
 pub use column::AsSlice;
-pub use column::{Column, ColumnValues, Push};
+pub use column::{Column, ColumnLayout, ColumnValues, Push};
 pub use error::Error;
 pub use frame::Frame;
-pub use lazy::LazyFrame;
+pub use layout::FrameLayout;
 pub use reference::{RowRef, ValueRef};
 
 pub mod aggregate;
@@ -15,7 +15,7 @@ mod display;
 mod error;
 mod frame;
 mod iterator;
-mod lazy;
+mod layout;
 mod reference;
 mod transform;
 mod view;

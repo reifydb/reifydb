@@ -18,7 +18,7 @@ fn main() {
     for l in db.rx_as(
         &root,
         r#"
-        from test.users filter age > 100 select age, age + 1  limit 3
+        from test.users  select age filter age > 8 limit 3
         "#,
     ) {
         println!("{}", l);

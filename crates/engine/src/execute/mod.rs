@@ -7,9 +7,9 @@ mod error;
 mod query;
 mod write;
 
-use crate::execute;
-use crate::frame::{ColumnValues, Frame, LazyFrame};
-use crate::function::{FunctionRegistry, math};
+use crate::execute::query::NextBatch;
+use crate::frame::{ColumnValues, Frame, FrameLayout};
+use crate::function::{math, FunctionRegistry};
 pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
@@ -246,44 +246,52 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn execute_query_plan(
-        mut self,
+        self,
         rx: &mut impl Rx,
         plan: QueryPlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {
             QueryPlan::Describe { plan } => {
                 // FIXME evaluating the entire frame is quite wasteful but good enough to write some tests
-                let lazy = LazyFrame::compile(*plan);
-                let result = lazy.evaluate(rx)?;
-                Ok(ExecutionResult::DescribeQuery {
-                    columns: result
-                        .columns
-                        .into_iter()
-                        .map(|c| execute::Column { name: c.name, kind: c.data.kind() })
-                        .collect(),
-                })
+                let result = self.execute_query_plan(rx, *plan)?;
+                let ExecutionResult::Query { columns, .. } = result else { panic!() };
+                Ok(ExecutionResult::DescribeQuery { columns })
             }
             _ => {
-
-                let mut frames = Vec::<Frame>::new();
-
                 let mut node = query::compile(plan, rx);
-                while let Some(batch) = node.next_batch() {
-                    let mut frame = batch.frame;
-                    // frame.filter(&batch.mask);
-                    frames.push(frame);
+                let mut result: Option<Frame> = None;
+                let mut fallback: Option<FrameLayout> = None;
+
+                while let Ok(batch) = node.next_batch() {
+                    match batch {
+                        NextBatch::Some { mut frame, mask } => {
+                            frame.filter(&mask)?;
+                            if let Some(mut result_frame) = result.take() {
+                                result_frame.append_frame(frame)?;
+                                result = Some(result_frame);
+                            } else {
+                                result = Some(frame);
+                            }
+                        }
+                        NextBatch::None { layout } => {
+                            fallback = Some(layout);
+                            break;
+                        }
+                    }
                 }
 
-                // todo!()
-                let mut result = frames.pop().unwrap_or(Frame::new(vec![]));
-                while let Some(frame) = frames.pop() {
-                    result.append_frame(frame).unwrap();
+                match (result, fallback) {
+                    (Some(result), _) => Ok(result.into()),
+                    (None, Some(fallback)) => Ok(ExecutionResult::Query {
+                        columns: fallback
+                            .columns
+                            .into_iter()
+                            .map(|cl| Column { name: cl.name, kind: cl.kind })
+                            .collect(),
+                        rows: vec![],
+                    }),
+                    _ => Ok(ExecutionResult::Query { columns: vec![], rows: vec![] }),
                 }
-
-                // let lazy = LazyFrame::compile(plan);
-                // let result = lazy.evaluate(rx)?;
-                // let result = Frame::new(vec![]);
-                Ok(result.into())
             }
         }
     }
