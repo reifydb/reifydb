@@ -3,6 +3,7 @@
 
 use crate::key::{EncodableKey, KeyKind};
 use crate::schema::SchemaId;
+use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
@@ -17,8 +18,8 @@ impl EncodableKey for SchemaKey {
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
-        out.push(VERSION);
-        out.push(Self::KIND as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&self.schema.to_be_bytes());
         EncodedKey::new(out)
     }
@@ -37,15 +38,15 @@ impl SchemaKey {
 
     fn schema_start() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
-        out.push(VERSION);
-        out.push(KeyKind::Schema as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         EncodedKey::new(out)
     }
 
     fn schema_end() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
-        out.push(VERSION);
-        out.push(KeyKind::Schema as u8 + 1);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
         EncodedKey::new(out)
     }
 }

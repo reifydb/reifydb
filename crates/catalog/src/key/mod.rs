@@ -3,7 +3,9 @@
 
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
+pub use kind::KeyKind;
 use reifydb_core::EncodedKey;
+use reifydb_core::encoding::keycode;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
 pub use system_sequence::SystemSequenceKey;
@@ -14,6 +16,7 @@ pub use table_row_sequence::TableRowSequenceKey;
 
 mod column;
 mod column_policy;
+mod kind;
 mod schema;
 mod schema_table;
 mod system_sequence;
@@ -51,38 +54,6 @@ impl Key {
     }
 }
 
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyKind {
-    Schema = 0x01,
-    Table = 0x02,
-    TableRow = 0x03,
-    SchemaTable = 0x04,
-    SystemSequence = 0x05,
-    Column = 0x06,
-    TableColumn = 0x07,
-    TableRowSequence = 0x08,
-    ColumnPolicy = 0x09,
-}
-
-impl TryFrom<u8> for KeyKind {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0x06 => Ok(Self::Column),
-            0x09 => Ok(Self::ColumnPolicy),
-            0x01 => Ok(Self::Schema),
-            0x04 => Ok(Self::SchemaTable),
-            0x08 => Ok(Self::TableRowSequence),
-            0x05 => Ok(Self::SystemSequence),
-            0x02 => Ok(Self::Table),
-            0x07 => Ok(Self::TableColumn),
-            0x03 => Ok(Self::TableRow),
-            _ => Err(()),
-        }
-    }
-}
 
 pub trait EncodableKey {
     const KIND: KeyKind;
@@ -96,10 +67,10 @@ pub trait EncodableKey {
 
 impl Key {
     pub fn decode(key: &EncodedKey) -> Option<Self> {
-        let version = *key.get(0)?;
+        let version = keycode::deserialize(&key[0..1]).ok()?;
         let kind = *key.get(1)?;
         let payload = &key[2..];
-
+        
         match KeyKind::try_from(kind).ok()? {
             KeyKind::Column => ColumnKey::decode(version, payload).map(Self::Column),
             KeyKind::ColumnPolicy => {

@@ -4,6 +4,7 @@
 use crate::key::{EncodableKey, KeyKind};
 use crate::row::RowId;
 use crate::table::TableId;
+use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
@@ -19,20 +20,22 @@ impl EncodableKey for TableRowKey {
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(18);
-        out.push(VERSION);
-        out.push(Self::KIND as u8);
-        out.extend(&self.table.to_be_bytes());
-        out.extend(&self.row.to_be_bytes());
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
+        out.extend(&keycode::serialize(&self.table));
+        out.extend(&keycode::serialize(&self.row));
+
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 16);
-        Some(Self {
-            table: TableId(u64::from_be_bytes(payload[..8].try_into().unwrap())),
-            row: RowId(u64::from_be_bytes(payload[8..].try_into().unwrap())),
-        })
+
+        keycode::deserialize(&payload[..8])
+            .ok()
+            .zip(keycode::deserialize(&payload[8..]).ok())
+            .map(|(table, row)| TableRowKey { table, row })
     }
 }
 
@@ -46,17 +49,17 @@ impl TableRowKey {
 
     fn table_start(table_id: TableId) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
-        out.push(VERSION);
-        out.push(KeyKind::TableRow as u8);
-        out.extend(&table_id.to_be_bytes());
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
+        out.extend(&keycode::serialize(&table_id));
         EncodedKey::new(out)
     }
 
     fn table_end(table_id: TableId) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
-        out.push(VERSION);
-        out.push(KeyKind::TableRow as u8);
-        out.extend(&(*table_id + 1).to_be_bytes());
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
+        out.extend(&keycode::serialize(&(*table_id - 1)));
         EncodedKey::new(out)
     }
 }
@@ -73,24 +76,24 @@ mod tests {
         let encoded = key.encode();
 
         let expected: Vec<u8> = vec![
-            1,
+            0xFE,
             KeyKind::TableRow as u8,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0xAB,
-            0xCD,
-            0x12,
-            0x34,
-            0x56,
-            0x78,
-            0x9A,
-            0xBC,
-            0xDE,
-            0xF0,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0x54,
+            0x32,
+            0xED,
+            0xCB,
+            0xA9,
+            0x87,
+            0x65,
+            0x43,
+            0x21,
+            0x0F,
         ];
 
         assert_eq!(encoded.as_slice(), expected);
@@ -110,7 +113,7 @@ mod tests {
         let encoded2 = key2.encode();
         let encoded3 = key3.encode();
 
-        assert!(encoded1 < encoded2, "row_id ordering not preserved");
-        assert!(encoded2 < encoded3, "table_id ordering not preserved");
+        assert!(encoded3 < encoded2, "table_id ordering not preserved");
+        assert!(encoded2 < encoded1, "row_id ordering not preserved");
     }
 }

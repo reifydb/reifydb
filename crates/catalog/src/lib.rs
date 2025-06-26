@@ -11,11 +11,11 @@ pub mod column;
 pub mod column_policy;
 mod error;
 pub mod key;
+pub mod row;
 pub mod schema;
 pub mod sequence;
 pub mod table;
 pub mod test_utils;
-mod row;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

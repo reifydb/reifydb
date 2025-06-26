@@ -14,11 +14,14 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
     db.tx_as(&root, r#"create table test.users(age: int4)"#).unwrap();
+    db.tx_as(&root, r#"create table test.another(age: int4)"#).unwrap();
     db.tx_as(&root, r#"insert (1), (2), (3), (4), (5), (6), (7), (8), (9), (10), (11), (12), (13) into test.users (age)"#).unwrap();
+    db.tx_as(&root, r#"insert (21), (22), (23), (24), (25), (26), (27), (28), (29), (30), (31), (32), (33) into test.another (age)"#).unwrap();
     for l in db.tx_as(
         &root,
         r#"
-            from test.users limit 2;
+            from test.another limit 2;
+            from test.users limit 3;
         "#,
     ).unwrap() {
         println!("{}", l);

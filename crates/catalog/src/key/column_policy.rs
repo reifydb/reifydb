@@ -4,6 +4,7 @@
 use crate::column::ColumnId;
 use crate::column_policy::ColumnPolicyId;
 use crate::key::{EncodableKey, KeyKind};
+use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
@@ -19,8 +20,8 @@ impl EncodableKey for ColumnPolicyKey {
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(18);
-        out.push(VERSION);
-        out.push(Self::KIND as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&self.column.to_be_bytes());
         out.extend(&self.policy.to_be_bytes());
         EncodedKey::new(out)
@@ -43,16 +44,16 @@ impl ColumnPolicyKey {
 
     fn link_start(column: ColumnId) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
-        out.push(VERSION);
-        out.push(KeyKind::ColumnPolicy as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&column.to_be_bytes());
         EncodedKey::new(out)
     }
 
     fn link_end(column: ColumnId) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
-        out.push(VERSION);
-        out.push(KeyKind::ColumnPolicy as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&(*column + 1).to_be_bytes());
         EncodedKey::new(out)
     }

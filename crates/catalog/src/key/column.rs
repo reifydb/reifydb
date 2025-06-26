@@ -3,6 +3,7 @@
 
 use crate::column::ColumnId;
 use crate::key::{EncodableKey, KeyKind};
+use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
@@ -17,8 +18,8 @@ impl EncodableKey for ColumnKey {
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
-        out.push(VERSION);
-        out.push(Self::KIND as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&self.column.to_be_bytes());
         EncodedKey::new(out)
     }
@@ -37,15 +38,15 @@ impl ColumnKey {
 
     fn column_start() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
-        out.push(VERSION);
-        out.push(KeyKind::Column as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         EncodedKey::new(out)
     }
 
     fn column_end() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
-        out.push(VERSION);
-        out.push(KeyKind::Column as u8 + 1);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
         EncodedKey::new(out)
     }
 }

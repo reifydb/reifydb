@@ -4,6 +4,7 @@
 use crate::key::{EncodableKey, KeyKind};
 use crate::schema::SchemaId;
 use crate::table::TableId;
+use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
@@ -19,8 +20,8 @@ impl EncodableKey for SchemaTableKey {
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(18);
-        out.push(VERSION);
-        out.push(Self::KIND as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&self.schema.to_be_bytes());
         out.extend(&self.table.to_be_bytes());
         EncodedKey::new(out)
@@ -46,16 +47,16 @@ impl SchemaTableKey {
 
     fn link_start(schema_id: SchemaId) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
-        out.push(VERSION);
-        out.push(KeyKind::SchemaTable as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&schema_id.to_be_bytes());
         EncodedKey::new(out)
     }
 
     fn link_end(schema_id: SchemaId) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
-        out.push(VERSION);
-        out.push(KeyKind::SchemaTable as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&(*schema_id + 1).to_be_bytes());
         EncodedKey::new(out)
     }

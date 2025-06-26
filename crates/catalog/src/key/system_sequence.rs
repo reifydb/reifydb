@@ -3,6 +3,7 @@
 
 use crate::key::{EncodableKey, KeyKind};
 use crate::sequence::SystemSequenceId;
+use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
@@ -17,8 +18,8 @@ impl EncodableKey for SystemSequenceKey {
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(6);
-        out.push(VERSION);
-        out.push(Self::KIND as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&self.sequence.to_be_bytes());
         EncodedKey::new(out)
     }
@@ -39,15 +40,15 @@ impl SystemSequenceKey {
 
     fn sequence_start() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
-        out.push(VERSION);
-        out.push(KeyKind::SystemSequence as u8);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&Self::KIND));
         EncodedKey::new(out)
     }
 
     fn sequence_end() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
-        out.push(VERSION);
-        out.push(KeyKind::SystemSequence as u8 + 1);
+        out.extend(&keycode::serialize(&VERSION));
+        out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
         EncodedKey::new(out)
     }
 }
