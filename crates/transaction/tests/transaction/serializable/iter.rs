@@ -22,7 +22,7 @@ use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
 fn test_iter() {
-    let engine= Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::new(Memory::new(), Memory::new());
     let mut txn = engine.begin();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
@@ -31,52 +31,40 @@ fn test_iter() {
 
     let txn = engine.begin_read_only();
     let iter = txn.scan();
-    let mut count = 0;
-    for sv in iter {
-        count += 1;
-        assert_eq!(sv.key, as_key!(count));
-        assert_eq!(sv.row, as_row!(count));
+
+    for (expected, tv) in (1..=3).rev().zip(iter) {
+        assert_eq!(tv.key, as_key!(expected));
+        assert_eq!(tv.row, as_row!(expected));
     }
-    assert_eq!(count, 3);
 
     let iter = txn.scan_rev();
-    let mut count = 3;
-    for sv in iter {
-        assert_eq!(sv.key, as_key!(count));
-        assert_eq!(sv.row, as_row!(count));
-        count -= 1;
+    for (expected, tv) in (1..=3).zip(iter) {
+        assert_eq!(tv.key, as_key!(expected));
+        assert_eq!(tv.row, as_row!(expected));
     }
-    assert_eq!(count, 0);
 }
 
 #[test]
 fn test_iter2() {
-    let engine= Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::new(Memory::new(), Memory::new());
     let mut txn = engine.begin();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
 
     let iter = txn.scan().unwrap();
-    let mut count = 0;
-    for sv in iter {
-        count += 1;
-        assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.row(), &as_row!(count));
-        assert_eq!(sv.version(), 0);
+    for (expected, tv) in (1..=3).rev().zip(iter) {
+        assert_eq!(tv.key(), &as_key!(expected));
+        assert_eq!(tv.row(), &as_row!(expected));
+        assert_eq!(tv.version(), 0);
     }
-    assert_eq!(count, 3);
 
     let iter = txn.scan_rev().unwrap();
-    let mut count = 3;
-    for sv in iter {
-        assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.row(), &as_row!(count));
-        count -= 1;
+    for (expected, tv) in (1..=3).zip(iter) {
+        assert_eq!(tv.key(), &as_key!(expected));
+        assert_eq!(tv.row(), &as_row!(expected));
+        assert_eq!(tv.version(), 0);
     }
-
-    assert_eq!(count, 0);
-
     txn.commit().unwrap();
 
     let mut txn = engine.begin();
@@ -85,52 +73,41 @@ fn test_iter2() {
     txn.set(&as_key!(6), as_row!(6)).unwrap();
 
     let iter = txn.scan().unwrap();
-    let mut count = 0;
-    for sv in iter {
-        count += 1;
-        assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.row(), &as_row!(count));
-        assert_eq!(sv.version(), 1);
+    for (expected, tv) in (1..=6).rev().zip(iter) {
+        assert_eq!(tv.key(), &as_key!(expected));
+        assert_eq!(tv.row(), &as_row!(expected));
+        assert_eq!(tv.version(), 1);
     }
-    assert_eq!(count, 6);
 
     let iter = txn.scan_rev().unwrap();
-    let mut count = 6;
-    for sv in iter {
-        assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.row(), &as_row!(count));
-        assert_eq!(sv.version(), 1);
-        count -= 1;
+    for (expected, tv) in (1..=6).zip(iter) {
+        assert_eq!(tv.key(), &as_key!(expected));
+        assert_eq!(tv.row(), &as_row!(expected));
+        assert_eq!(tv.version(), 1);
     }
 }
 
 #[test]
 fn test_iter3() {
-    let engine= Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::new(Memory::new(), Memory::new());
     let mut txn = engine.begin();
     txn.set(&as_key!(4), as_row!(4)).unwrap();
     txn.set(&as_key!(5), as_row!(5)).unwrap();
     txn.set(&as_key!(6), as_row!(6)).unwrap();
 
     let iter = txn.scan().unwrap();
-    let mut count = 3;
-    for sv in iter {
-        count += 1;
-        assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.row(), &as_row!(count));
-        assert_eq!(sv.version(), 0);
+    for (expected, tv) in (4..=6).rev().zip(iter) {
+        assert_eq!(tv.key(), &as_key!(expected));
+        assert_eq!(tv.row(), &as_row!(expected));
+        assert_eq!(tv.version(), 0);
     }
-    assert_eq!(count, 6);
 
     let iter = txn.scan_rev().unwrap();
-    let mut count = 6;
-    for sv in iter {
-        assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.row(), &as_row!(count));
-        assert_eq!(sv.version(), 0);
-        count -= 1;
+    for (expected, tv) in (4..=6).zip(iter) {
+        assert_eq!(tv.key(), &as_key!(expected));
+        assert_eq!(tv.row(), &as_row!(expected));
+        assert_eq!(tv.version(), 0);
     }
-    assert_eq!(count, 3);
 
     txn.commit().unwrap();
 
@@ -140,24 +117,18 @@ fn test_iter3() {
     txn.set(&as_key!(3), as_row!(3)).unwrap();
 
     let iter = txn.scan().unwrap();
-    let mut count = 0;
-    for sv in iter {
-        count += 1;
-        assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.row(), &as_row!(count));
-        assert_eq!(sv.version(), 1);
+    for (expected, tv) in (1..=6).rev().zip(iter) {
+        assert_eq!(tv.key(), &as_key!(expected));
+        assert_eq!(tv.row(), &as_row!(expected));
+        assert_eq!(tv.version(), 1);
     }
-    assert_eq!(count, 6);
 
     let iter = txn.scan_rev().unwrap();
-    let mut count = 6;
-    for sv in iter {
-        assert_eq!(sv.key(), &as_key!(count));
-        assert_eq!(sv.row(), &as_row!(count));
-        assert_eq!(sv.version(), 1);
-        count -= 1;
+    for (expected, tv) in (1..=6).zip(iter) {
+        assert_eq!(tv.key(), &as_key!(expected));
+        assert_eq!(tv.row(), &as_row!(expected));
+        assert_eq!(tv.version(), 1);
     }
-    assert_eq!(count, 0);
 }
 
 /// a3, a2, b4 (del), b3, c2, c1
@@ -168,7 +139,7 @@ fn test_iter3() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_iter_edge_case() {
-    let engine= Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::new(Memory::new(), Memory::new());
 
     // c1
     {
@@ -231,25 +202,25 @@ fn test_iter_edge_case() {
     let mut txn = engine.begin();
     let itr = txn.scan().unwrap();
     let itr5 = txn4.scan().unwrap();
-    check_iter(itr, &[13, 32]);
-    check_iter(itr5, &[13, 24]);
+    check_iter(itr, &[32, 13]);
+    check_iter(itr5, &[24, 13]);
 
     let itr = txn.scan_rev().unwrap();
     let itr5 = txn4.scan_rev().unwrap();
-    check_rev_iter(itr, &[32, 13]);
-    check_rev_iter(itr5, &[24, 13]);
+    check_rev_iter(itr, &[13, 32]);
+    check_rev_iter(itr5, &[13, 24]);
 
     txn.as_of_version(3);
     let itr = txn.scan().unwrap();
-    check_iter(itr, &[13, 23, 32]);
+    check_iter(itr, &[32, 23, 13]);
     let itr = txn.scan_rev().unwrap();
-    check_rev_iter(itr, &[32, 23, 13]);
+    check_rev_iter(itr, &[13, 23, 32]);
 
     txn.as_of_version(2);
     let itr = txn.scan().unwrap();
-    check_iter(itr, &[12, 32]);
+    check_iter(itr, &[32, 12]);
     let itr = txn.scan_rev().unwrap();
-    check_rev_iter(itr, &[32, 12]);
+    check_rev_iter(itr, &[12, 32]);
 
     txn.as_of_version(1);
     let itr = txn.scan().unwrap();
@@ -265,7 +236,7 @@ fn test_iter_edge_case() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_iter_edge_case2() {
-    let engine= Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::new(Memory::new(), Memory::new());
 
     // c1
     {
@@ -321,23 +292,23 @@ fn test_iter_edge_case2() {
 
     let mut txn = engine.begin();
     let itr = txn.scan().unwrap();
-    check_iter(itr, &[13, 32]);
+    check_iter(itr, &[32, 13]);
     let itr = txn.scan_rev().unwrap();
-    check_rev_iter(itr, &[32, 13]);
+    check_rev_iter(itr, &[13, 32]);
 
     txn.as_of_version(3);
     let itr = txn.scan().unwrap();
-    check_iter(itr, &[13, 23, 32]);
+    check_iter(itr, &[32, 23, 13]);
 
     let itr = txn.scan_rev().unwrap();
-    check_rev_iter(itr, &[32, 23, 13]);
+    check_rev_iter(itr, &[13, 23, 32]);
 
     txn.as_of_version(2);
     let itr = txn.scan().unwrap();
-    check_iter(itr, &[12, 32]);
+    check_iter(itr, &[32, 12]);
 
     let itr = txn.scan_rev().unwrap();
-    check_rev_iter(itr, &[32, 12]);
+    check_rev_iter(itr, &[12, 32]);
 
     txn.as_of_version(1);
     let itr = txn.scan().unwrap();

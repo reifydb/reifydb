@@ -1,55 +1,40 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-// This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Erik Grinaker
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
 use crate::encoding::Error;
-use crate::{encoding, invalid_data};
+use crate::{encoding, error};
 use serde::de::{DeserializeSeed, EnumAccess, IntoDeserializer, SeqAccess, VariantAccess, Visitor};
 
-/// Deserializes keys from byte slices into a given type. The format is not
-/// self-describing, so the caller must provide a concrete type to deserialize
-/// into.
 pub(crate) struct Deserializer<'de> {
     pub(crate) input: &'de [u8],
 }
 
 impl<'de> Deserializer<'de> {
-    /// Creates a deserializer for a byte slice.
     pub fn from_bytes(input: &'de [u8]) -> Self {
         Deserializer { input }
     }
 
-    /// Chops off and returns the next len bytes of the byte slice, or errors if
-    /// there aren't enough bytes left.
     fn take_bytes(&mut self, len: usize) -> encoding::Result<&[u8]> {
         if self.input.len() < len {
-            return invalid_data!("insufficient bytes, expected {len} bytes for {:x?}", self.input);
+            return error!("insufficient bytes, expected {len} bytes for {:x?}", self.input);
         }
         let bytes = &self.input[..len];
         self.input = &self.input[len..];
         Ok(bytes)
     }
 
-    /// Decodes and chops off the next encoded byte slice.
     fn decode_next_bytes(&mut self) -> encoding::Result<Vec<u8>> {
         let mut decoded = Vec::new();
         let mut iter = self.input.iter().enumerate();
         let taken = loop {
             match iter.next() {
-                Some((_, 0x00)) => match iter.next() {
-                    Some((i, 0x00)) => break i + 1,        // terminator
-                    Some((_, 0xff)) => decoded.push(0x00), // escaped 0x00
-                    _ => return invalid_data!("invalid escape sequence"),
+                Some((_, 0xff)) => match iter.next() {
+                    Some((i, 0xff)) => break i + 1,        // terminator
+                    Some((_, 0x00)) => decoded.push(0xff), // escaped 0xff
+                    _ => return error!("invalid escape sequence"),
                 },
                 Some((_, b)) => decoded.push(*b),
-                None => return invalid_data!("unexpected end of input"),
+                None => return error!("unexpected end of input"),
             }
         };
         self.input = &self.input[taken..];
@@ -57,7 +42,6 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-/// For details on serialization formats, see Serializer.
 impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
     type Error = Error;
 
@@ -67,64 +51,97 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
 
     fn deserialize_bool<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         visitor.visit_bool(match self.take_bytes(1)?[0] {
-            0x00 => false,
-            0x01 => true,
-            b => return invalid_data!("invalid boolean value {b}"),
+            0x01 => false,
+            0x00 => true,
+            b => return error!("invalid boolean value {b}"),
         })
     }
 
     fn deserialize_i8<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         let mut byte = self.take_bytes(1)?[0];
-        byte ^= 1 << 7; // flip sign bit
+        byte = !byte;
+        byte ^= 1 << 7; // restore original sign
         visitor.visit_i8(byte as i8)
     }
 
     fn deserialize_i16<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         let mut bytes = self.take_bytes(2)?.to_vec();
-        bytes[0] ^= 1 << 7; // flip sign bit
+        for b in &mut bytes {
+            *b = !*b;
+        }
+        bytes[0] ^= 1 << 7;
         visitor.visit_i16(i16::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_i32<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         let mut bytes = self.take_bytes(4)?.to_vec();
-        bytes[0] ^= 1 << 7; // flip sign bit
+        for b in &mut bytes {
+            *b = !*b;
+        }
+        bytes[0] ^= 1 << 7;
         visitor.visit_i32(i32::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_i64<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         let mut bytes = self.take_bytes(8)?.to_vec();
-        bytes[0] ^= 1 << 7; // flip sign bit
+        for b in &mut bytes {
+            *b = !*b;
+        }
+        bytes[0] ^= 1 << 7;
         visitor.visit_i64(i64::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_i128<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         let mut bytes = self.take_bytes(16)?.to_vec();
-        bytes[0] ^= 1 << 7; // flip sign bit
+        for b in &mut bytes {
+            *b = !*b;
+        }
+        bytes[0] ^= 1 << 7;
         visitor.visit_i128(i128::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_u8<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
-        visitor.visit_u8(self.take_bytes(1)?[0])
+        let byte = !self.take_bytes(1)?[0];
+        visitor.visit_u8(byte)
     }
 
     fn deserialize_u16<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
-        visitor.visit_u16(u16::from_be_bytes(self.take_bytes(2)?.try_into()?))
+        let mut bytes = self.take_bytes(2)?.to_vec();
+        for b in &mut bytes {
+            *b = !*b;
+        }
+        visitor.visit_u16(u16::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_u32<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
-        visitor.visit_u32(u32::from_be_bytes(self.take_bytes(4)?.try_into()?))
+        let mut bytes = self.take_bytes(4)?.to_vec();
+        for b in &mut bytes {
+            *b = !*b;
+        }
+        visitor.visit_u32(u32::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_u64<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
-        visitor.visit_u64(u64::from_be_bytes(self.take_bytes(8)?.try_into()?))
+        let mut bytes = self.take_bytes(8)?.to_vec();
+        for b in &mut bytes {
+            *b = !*b;
+        }
+        visitor.visit_u64(u64::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_u128<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
-        visitor.visit_u128(u128::from_be_bytes(self.take_bytes(16)?.try_into()?))
+        let mut bytes = self.take_bytes(16)?.to_vec();
+        for b in &mut bytes {
+            *b = !*b;
+        }
+        visitor.visit_u128(u128::from_be_bytes(bytes.as_slice().try_into()?))
     }
 
     fn deserialize_f32<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         let mut bytes = self.take_bytes(4)?.to_vec();
+        for b in &mut bytes {
+            *b = !*b;
+        }
         match bytes[0] >> 7 {
             0 => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
             1 => bytes[0] ^= 1 << 7,                      // positive, flip sign bit
@@ -135,6 +152,9 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
 
     fn deserialize_f64<V: Visitor<'de>>(self, visitor: V) -> encoding::Result<V::Value> {
         let mut bytes = self.take_bytes(8)?.to_vec();
+        for b in &mut bytes {
+            *b = !*b;
+        }
         match bytes[0] >> 7 {
             0 => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
             1 => bytes[0] ^= 1 << 7,                      // positive, flip sign bit
@@ -243,7 +263,6 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
     }
 }
 
-/// Sequences are simply deserialized until the byte slice is exhausted.
 impl<'de> SeqAccess<'de> for Deserializer<'de> {
     type Error = Error;
 
@@ -258,7 +277,6 @@ impl<'de> SeqAccess<'de> for Deserializer<'de> {
     }
 }
 
-/// Enum variants are deserialized by their index.
 impl<'de> EnumAccess<'de> for &mut Deserializer<'de> {
     type Error = Error;
     type Variant = Self;
@@ -273,7 +291,6 @@ impl<'de> EnumAccess<'de> for &mut Deserializer<'de> {
     }
 }
 
-/// Enum variant contents are deserialized as sequences.
 impl<'de> VariantAccess<'de> for &mut Deserializer<'de> {
     type Error = Error;
 

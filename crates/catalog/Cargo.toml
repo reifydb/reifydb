@@ -13,5 +13,6 @@ reifydb-storage = { workspace = true }
 reifydb-transaction = { workspace = true }
 
 once_cell = {workspace = true}
+serde = { workspace = true }
 
 [dev-dependencies]

@@ -37,10 +37,10 @@ impl EncodedKeyRange {
         Self { start, end }
     }
 
-    /// Constructs a key range from an optional inclusive start key to an optional exclusive end key.
+    /// Constructs a key range from an optional inclusive start key to an optional inclusive end key.
     ///
     /// - `start`: If provided, marks the inclusive lower bound of the range. If `None`, the range is unbounded below.
-    /// - `end`: If provided, marks the exclusive upper bound of the range. If `None`, the range is unbounded above.
+    /// - `end`: If provided, marks the inclusive upper bound of the range. If `None`, the range is unbounded above.
     ///
     /// This function does not modify the input keys and assumes they are already exact keys
     /// (not prefixes). If you need to scan all keys with a given prefix, use [`EncodedKeyRange::prefix`] instead.
@@ -53,7 +53,7 @@ impl EncodedKeyRange {
         };
 
         let end = match end {
-            Some(e) => Bound::Excluded(e),
+            Some(e) => Bound::Included(e),
             None => Bound::Unbounded,
         };
 
@@ -183,14 +183,14 @@ mod tests {
         use crate::encoding::keycode;
         use crate::key::EncodedKey;
         use crate::key::EncodedKeyRange;
-        use crate::key::range::tests::{excluded, included};
+        use crate::key::range::tests::included;
         use std::ops::Bound;
 
         #[test]
         fn test_start_and_end() {
             let range = EncodedKeyRange::start_end(Some(as_key!(1)), Some(as_key!(2)));
             assert_eq!(range.start, included(&as_key!(1)));
-            assert_eq!(range.end, excluded(&as_key!(2)));
+            assert_eq!(range.end, included(&as_key!(2)));
         }
 
         #[test]
@@ -204,7 +204,7 @@ mod tests {
         fn test_end_only() {
             let range = EncodedKeyRange::start_end(None, Some(as_key!(2)));
             assert_eq!(range.start, Bound::Unbounded);
-            assert_eq!(range.end, excluded(&as_key!(2)));
+            assert_eq!(range.end, included(&as_key!(2)));
         }
 
         #[test]
@@ -218,14 +218,14 @@ mod tests {
         fn test_full_byte_range() {
             let range = EncodedKeyRange::start_end(Some(as_key!(0x00)), Some(as_key!(0xff)));
             assert_eq!(range.start, included(&as_key!(0x00)));
-            assert_eq!(range.end, excluded(&as_key!(0xff)));
+            assert_eq!(range.end, included(&as_key!(0xff)));
         }
 
         #[test]
         fn test_identical_bounds() {
             let range = EncodedKeyRange::start_end(Some(as_key!(0x42)), Some(as_key!(0x42)));
             assert_eq!(range.start, included(&as_key!(0x42)));
-            assert_eq!(range.end, excluded(&as_key!(0x42)));
+            assert_eq!(range.end, included(&as_key!(0x42)));
         }
     }
 

@@ -11,7 +11,7 @@ use std::string::FromUtf8Error;
 pub struct Error(pub String);
 
 #[macro_export]
-macro_rules! invalid_data {
+macro_rules! error {
     ($($args:tt)*) => { Err(Error(format!($($args)*)).into()) };
 }
 

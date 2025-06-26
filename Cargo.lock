@@ -1364,6 +1364,7 @@ dependencies = [
  "reifydb-diagnostic",
  "reifydb-storage",
  "reifydb-transaction",
+ "serde",
 ]
 
 [[package]]
