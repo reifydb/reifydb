@@ -6,11 +6,14 @@ use crate::function::{FunctionError, ScalarFunction};
 
 pub struct Avg {}
 
-impl ScalarFunction for Avg {
-    fn name(&self) -> &str {
-        "avg"
-    }
+impl Avg {
+    pub fn new() -> Self {
+        Self {}
 
+    }
+}
+
+impl ScalarFunction for Avg {
     fn scalar(&self, columns: &[Column], row_count: usize) -> Result<ColumnValues, FunctionError> {
         let mut sum = vec![0.0f64; row_count];
         let mut count = vec![0u32; row_count];

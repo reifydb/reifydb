@@ -9,7 +9,7 @@ mod write;
 
 use crate::execute::query::Batch;
 use crate::frame::{ColumnValues, Frame, FrameLayout};
-use crate::function::{FunctionRegistry, math};
+use crate::function::{Functions, math};
 pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
@@ -179,7 +179,7 @@ impl From<Frame> for ExecutionResult {
 }
 
 pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
-    functions: FunctionRegistry,
+    functions: Functions,
     _marker: PhantomData<(VS, US)>,
 }
 
@@ -188,12 +188,12 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     plan: PlanRx,
 ) -> crate::Result<ExecutionResult> {
     let mut executor: Executor<VS, US> = Executor {
-        functions: FunctionRegistry::new(), // FIXME receive functions from RX
+        functions: Functions::new(), // FIXME receive functions from RX
         _marker: PhantomData,
     };
 
-    executor.functions.register_scalar(math::scalar::Abs {});
-    executor.functions.register_scalar(math::scalar::Avg {});
+    executor.functions.register_scalar("abs", math::scalar::Abs::new);
+    executor.functions.register_scalar("avg", math::scalar::Avg::new);
 
     executor.execute_rx(rx, plan)
 }
@@ -203,12 +203,14 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
     plan: PlanTx,
 ) -> crate::Result<ExecutionResult> {
     let mut executor: Executor<VS, US> = Executor {
-        functions: FunctionRegistry::new(), // FIXME receive functions from TX
+        functions: Functions::new(), // FIXME receive functions from TX
         _marker: PhantomData,
     };
 
-    executor.functions.register_scalar(math::scalar::Abs {});
-    executor.functions.register_scalar(math::scalar::Avg {});
+    executor.functions.register_aggregate("sum", math::aggregate::Sum::new);
+
+    executor.functions.register_scalar("abs", math::scalar::Abs::new);
+    executor.functions.register_scalar("avg", math::scalar::Avg::new);
 
     executor.execute_tx(tx, plan)
 }
@@ -227,9 +229,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 Ok(ExecutionResult::DescribeQuery { columns })
             }
             _ => {
-                let mut node = query::compile(plan, rx);
+                let mut node = query::compile(plan, rx, &self.functions);
                 let mut result: Option<Frame> = None;
-                // let mut fallback: Option<FrameLayout> = None;
 
                 while let Some(Batch { mut frame, mask }) = node.next()? {
                     frame.filter(&mask)?;

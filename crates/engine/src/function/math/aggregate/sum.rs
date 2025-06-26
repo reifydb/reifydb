@@ -10,11 +10,13 @@ pub struct Sum {
     pub sums: HashMap<Vec<Value>, f64>,
 }
 
-impl AggregateFunction for Sum {
-    fn name(&self) -> &str {
-        "sum"
+impl Sum {
+    pub fn new() -> Self {
+        Self { sums: HashMap::new() }
     }
+}
 
+impl AggregateFunction for Sum {
     fn aggregate(
         &mut self,
         column: &Column,

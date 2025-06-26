@@ -3,23 +3,19 @@
 
 use crate::frame::{Column, ColumnValues};
 pub use error::FunctionError;
+pub use registry::Functions;
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 mod error;
 pub mod math;
+mod registry;
 
 pub trait ScalarFunction {
-    fn name(&self) -> &str;
-    
-    fn scalar(&self, _columns: &[Column], _row_count: usize)
-    -> Result<ColumnValues, FunctionError>;
+    fn scalar(&self, columns: &[Column], row_count: usize) -> Result<ColumnValues, FunctionError>;
 }
 
 pub trait AggregateFunction {
-    fn name(&self) -> &str;
-    
     fn aggregate(
         &mut self,
         column: &Column,
@@ -28,22 +24,4 @@ pub trait AggregateFunction {
     ) -> Result<(), FunctionError>;
 
     fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), FunctionError>;
-}
-
-pub struct FunctionRegistry {
-    scalars: HashMap<String, Arc<dyn ScalarFunction>>,
-}
-
-impl FunctionRegistry {
-    pub fn new() -> Self {
-        Self { scalars: HashMap::new() }
-    }
-
-    pub fn get_scalar(&self, name: &str) -> Option<Arc<dyn ScalarFunction>> {
-        self.scalars.get(name).cloned()
-    }
-
-    pub fn register_scalar<F: ScalarFunction + 'static>(&mut self, func: F) {
-        self.scalars.insert(func.name().to_string(), Arc::new(func));
-    }
 }

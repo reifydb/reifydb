@@ -36,6 +36,7 @@ impl Node for AggregateNode {
         let (keys, aggregates) = parse_keys_and_aggregates(&self.group_by, &self.project)?;
 
         // prepare aggregates
+        // let mut function = math::aggregate::Sum { sums: HashMap::new() };
         let mut function = math::aggregate::Sum { sums: HashMap::new() };
 
         while let Some(Batch { mut frame, mask }) = self.input.next()? {

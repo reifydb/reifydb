@@ -4,7 +4,7 @@
 use crate::frame::ColumnValues;
 use reifydb_rql::expression::Expression;
 
-use crate::function::{FunctionRegistry, math};
+use crate::function::{Functions, math};
 pub use error::Error;
 
 pub(crate) use context::{Context, Convert, Demote, EvaluationColumn, Promote};
@@ -22,12 +22,12 @@ mod prefix;
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) struct Evaluator {
-    functions: FunctionRegistry,
+    functions: Functions,
 }
 
 impl Default for Evaluator {
     fn default() -> Self {
-        Self { functions: FunctionRegistry::new() }
+        Self { functions: Functions::new() }
     }
 }
 
@@ -56,10 +56,10 @@ impl Evaluator {
 }
 
 pub fn evaluate(expr: &Expression, ctx: &Context) -> Result<ColumnValues> {
-    let mut evaluator = Evaluator { functions: FunctionRegistry::new() };
+    let mut evaluator = Evaluator { functions: Functions::new() };
 
-    evaluator.functions.register_scalar(math::scalar::Abs {});
-    evaluator.functions.register_scalar(math::scalar::Avg {});
+    evaluator.functions.register_scalar("abs", math::scalar::Abs::new);
+    evaluator.functions.register_scalar("avg", math::scalar::Avg::new);
 
     evaluator.evaluate(expr, ctx)
 }

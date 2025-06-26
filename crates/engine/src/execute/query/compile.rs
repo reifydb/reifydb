@@ -5,6 +5,7 @@ use crate::execute::query::aggregate::AggregateNode;
 use crate::execute::query::project::ProjectWithoutInputNode;
 use crate::execute::query::{FilterNode, LimitNode, Node, ProjectNode, ScanFrameNode};
 use crate::frame::{Column, ColumnValues, Frame};
+use crate::function::Functions;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
 use reifydb_core::Kind;
@@ -12,7 +13,11 @@ use reifydb_core::row::Layout;
 use reifydb_rql::plan::QueryPlan;
 use reifydb_transaction::Rx;
 
-pub(crate) fn compile(mut plan: QueryPlan, rx: &mut impl Rx) -> Box<dyn Node> {
+pub(crate) fn compile(
+    mut plan: QueryPlan,
+    rx: &mut impl Rx,
+    functions: &Functions,
+) -> Box<dyn Node> {
     let mut result: Option<Box<dyn Node>> = None;
 
     loop {

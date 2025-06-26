@@ -6,11 +6,13 @@ use crate::function::{FunctionError, ScalarFunction};
 
 pub struct Abs;
 
-impl ScalarFunction for Abs {
-    fn name(&self) -> &str {
-        "abs"
+impl Abs {
+    pub fn new() -> Self {
+        Self {}
     }
+}
 
+impl ScalarFunction for Abs {
     fn scalar(&self, columns: &[Column], row_count: usize) -> Result<ColumnValues, FunctionError> {
         let column = columns.get(0).unwrap();
 
