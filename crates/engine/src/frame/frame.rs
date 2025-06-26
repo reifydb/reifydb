@@ -38,7 +38,11 @@ impl Frame {
         self.columns.iter().map(|c| c.data.get(i)).collect()
     }
 
-    pub fn column(&self, name: &str) -> Option<&ColumnValues> {
+    pub fn column(&self, name: &str) -> Option<&Column> {
+        self.index.get(name).map(|&i| &self.columns[i])
+    }
+
+    pub fn column_values(&self, name: &str) -> Option<&ColumnValues> {
         self.index.get(name).map(|&i| &self.columns[i].data)
     }
 

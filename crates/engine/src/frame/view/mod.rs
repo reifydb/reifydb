@@ -2,4 +2,3 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 mod group_by;
-mod transpose;

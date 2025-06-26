@@ -3,8 +3,11 @@
 
 use crate::execute::query::{Batch, Node};
 use crate::frame::aggregate::Aggregate;
-use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
+use crate::frame::{Column, Frame, FrameLayout};
+use crate::function::math::SumAggregateFunction;
+use reifydb_core::BitVec;
 use reifydb_rql::expression::{AliasExpression, Expression};
+use std::collections::HashMap;
 use std::ops::Deref;
 
 pub(crate) struct AggregateNode {
@@ -26,39 +29,44 @@ impl AggregateNode {
 
 impl Node for AggregateNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
+        if self.layout().is_some() {
+            return Ok(None);
+        }
+
+        let (keys, aggregates) = parse_keys_and_aggregates(&self.group_by, &self.project)?;
+
+        // prepare aggregates
+        let mut function = SumAggregateFunction { sums: HashMap::new() };
+
         while let Some(Batch { mut frame, mask }) = self.input.next()? {
             // TODO: Load and merge multiple batches if needed
 
-            let (keys, aggregates) = parse_keys_and_aggregates(&self.group_by, &self.project)?;
+            // FIXME introduce concept of TableKey  / Unique Key - 1 to many columns - form a unique key
+            // FIXME which is simple hash used to group / join
 
             let groups = frame.group_by_view(&keys)?;
 
-            let mut key_columns: Vec<Column> = keys
-                .iter()
-                .map(|k| Column { name: k.to_string(), data: ColumnValues::float8([]) })
-                .collect();
-
-            let mut aggregate_columns: Vec<Column> = aggregates
-                .iter()
-                .map(|agg| Column { name: agg.display_name(), data: ColumnValues::undefined(0) })
-                .collect();
-
-            for (group_key, indices) in groups {
-                for (value, column) in group_key.into_iter().zip(key_columns.iter_mut()) {
-                    column.data.push_value(value);
-                }
-
-                for (agg, column) in aggregates.iter().zip(aggregate_columns.iter_mut()) {
-                    column.data.extend(agg.evaluate(&frame, &indices)?)?;
+            for aggregate in &aggregates {
+                match aggregate {
+                    Aggregate::Sum(col) => {
+                        function.aggregate(frame.column(&col).unwrap(), &mask, &groups).unwrap();
+                    }
+                    _ => unimplemented!(),
                 }
             }
-
-            let frame = Frame::new(key_columns.into_iter().chain(aggregate_columns).collect());
-            self.layout = Some(FrameLayout::from_frame(&frame));
-            return Ok(Some(Batch { frame, mask }));
         }
+        let mut result_columns = Vec::new();
 
-        Ok(None)
+        // FIXME Finalize aggregates and make sure that everything is sorted
+        let result = function.finalize().unwrap();
+
+        result_columns.push(Column { name: "sum".to_string(), data: result.1 });
+
+        let frame = Frame::new(result_columns);
+        self.layout = Some(FrameLayout::from_frame(&frame));
+        return Ok(Some(Batch { frame, mask: BitVec::new(10000, true) })); // FIXME
+
+        // Ok(None)
     }
 
     fn layout(&self) -> Option<FrameLayout> {

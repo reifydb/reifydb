@@ -68,4 +68,6 @@ impl FunctionExecutor for AvgExecutor {
 
         Ok(ColumnValues::float8_with_validity(values, valids))
     }
+    
+    
 }

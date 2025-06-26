@@ -8,11 +8,11 @@ pub use error::FunctionError;
 mod error;
 
 use crate::frame::{Column, ColumnValues};
+use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
 use std::sync::Arc;
-use reifydb_core::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionMode {
@@ -35,13 +35,13 @@ impl Display for FunctionMode {
     }
 }
 
-pub trait Function: Send + Sync {
+pub trait Function {
     fn name(&self) -> &str;
     // fn prepare(&self, args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError>;
     fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError>;
 }
 
-pub trait FunctionExecutor: Send + Sync {
+pub trait FunctionExecutor {
     fn name(&self) -> &str;
 
     /// For scalar input => scalar output
@@ -64,15 +64,23 @@ pub trait FunctionExecutor: Send + Sync {
     //     })
     // }
 
-    ///For row streams => aggregated output (like `avg`)
-    fn eval_aggregate(&mut self, _row: &[Value]) -> Result<(), FunctionError> {
+    ///For column => aggregated output (like `avg`)
+    fn eval_aggregate(
+        &mut self,
+        column: &Column,
+        mask: &BitVec,
+        groups: &HashMap<Vec<Value>, Vec<usize>>,
+    ) -> Result<(), FunctionError> {
         Err(FunctionError::UnsupportedMode {
             function: self.name().to_string(),
             mode: FunctionMode::Aggregate,
         })
     }
 
-    fn finalize_aggregate(&self) -> Result<Value, FunctionError> {
+    fn finalize_aggregate(self) -> Result<(Vec<Value>, ColumnValues), FunctionError>
+    where
+        Self: Sized,
+    {
         Err(FunctionError::UnsupportedMode {
             function: self.name().to_string(),
             mode: FunctionMode::Aggregate,

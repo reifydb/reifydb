@@ -3,6 +3,8 @@
 
 pub use abs::*;
 pub use avg::*;
+pub use sum::*;
 
 mod abs;
 mod avg;
+mod sum;

@@ -3,6 +3,7 @@
 
 use crate::frame::Error;
 use crate::frame::{ColumnValues, Frame};
+use reifydb_core::BitVec;
 
 #[derive(Debug)]
 pub enum Aggregate {
@@ -14,7 +15,26 @@ pub enum Aggregate {
 }
 
 impl Aggregate {
-    pub fn evaluate(&self, df: &Frame, indices: &[usize]) -> crate::frame::Result<ColumnValues> {
+    pub fn evaluate(
+        &self,
+        column: &ColumnValues,
+        mask: &BitVec,
+        indices: &[usize],
+    ) -> crate::frame::Result<ColumnValues> {
+        match &column {
+            ColumnValues::Float8(values, validity) => {
+                let sum: f64 = indices.iter().filter(|&&i| validity[i]).map(|&i| values[i]).sum();
+                Ok(ColumnValues::float8([sum]))
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn old_evaluate(
+        &self,
+        df: &Frame,
+        indices: &[usize],
+    ) -> crate::frame::Result<ColumnValues> {
         let col = |name: &str| {
             df.columns
                 .iter()
