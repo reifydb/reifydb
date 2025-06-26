@@ -11,13 +11,13 @@ pub(crate) use context::{Context, Convert, Demote, EvaluationColumn, Promote};
 
 mod arith;
 mod call;
+mod cast;
 mod column;
 mod compare;
 mod constant;
 mod context;
 mod error;
 mod prefix;
-mod cast;
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
@@ -58,8 +58,8 @@ impl Evaluator {
 pub fn evaluate(expr: &Expression, ctx: &Context) -> Result<ColumnValues> {
     let mut evaluator = Evaluator { functions: FunctionRegistry::new() };
 
-    evaluator.functions.register(math::AbsFunction {});
-    evaluator.functions.register(math::AvgFunction {});
+    evaluator.functions.register_scalar(math::scalar::Abs {});
+    evaluator.functions.register_scalar(math::scalar::Avg {});
 
     evaluator.evaluate(expr, ctx)
 }

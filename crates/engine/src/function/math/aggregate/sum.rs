@@ -2,29 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::frame::{Column, ColumnValues};
-use crate::function::{Function, FunctionError, FunctionExecutor};
+use crate::function::{AggregateFunction, FunctionError};
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
 
-pub struct SumFunction {}
+pub struct Sum {
+    pub sums: HashMap<Vec<Value>, f64>,
+}
 
-impl Function for SumFunction {
+impl AggregateFunction for Sum {
     fn name(&self) -> &str {
         "sum"
     }
 
-    fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
-        // Ok(Box::new(SumExecutor { sums: HashMap::new() }))
-        unimplemented!()
-    }
-}
-
-pub struct SumAggregateFunction {
-    pub sums: HashMap<Vec<Value>, f64>,
-}
-
-impl SumAggregateFunction {
-    pub fn aggregate(
+    fn aggregate(
         &mut self,
         column: &Column,
         mask: &BitVec,
@@ -44,11 +35,11 @@ impl SumAggregateFunction {
         }
     }
 
-    pub fn finalize(self) -> Result<(Vec<Vec<Value>>, ColumnValues), FunctionError> {
+    fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), FunctionError> {
         let mut keys = Vec::with_capacity(self.sums.len());
         let mut values = ColumnValues::float8_with_capacity(self.sums.len());
 
-        for (key, sum) in self.sums {
+        for (key, sum) in std::mem::take(&mut self.sums) {
             keys.push(key);
             values.push(sum);
         }

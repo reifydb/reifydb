@@ -2,32 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::frame::{Column, ColumnValues};
-use crate::function::{Function, FunctionError, FunctionExecutor};
+use crate::function::{FunctionError, ScalarFunction};
 
-pub struct AbsFunction;
+pub struct Abs;
 
-impl Function for AbsFunction {
+impl ScalarFunction for Abs {
     fn name(&self) -> &str {
         "abs"
     }
 
-    fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
-        Ok(Box::new(AbsExecutor))
-    }
-}
-
-struct AbsExecutor;
-
-impl FunctionExecutor for AbsExecutor {
-    fn name(&self) -> &str {
-        "abs"
-    }
-
-    fn eval_scalar(
-        &self,
-        columns: &[Column],
-        row_count: usize,
-    ) -> Result<ColumnValues, FunctionError> {
+    fn scalar(&self, columns: &[Column], row_count: usize) -> Result<ColumnValues, FunctionError> {
         let column = columns.get(0).unwrap();
 
         match &column.data {

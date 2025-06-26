@@ -2,32 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::frame::{Column, ColumnValues};
-use crate::function::{Function, FunctionError, FunctionExecutor};
+use crate::function::{FunctionError, ScalarFunction};
 
-pub struct AvgFunction;
+pub struct Avg {}
 
-impl Function for AvgFunction {
+impl ScalarFunction for Avg {
     fn name(&self) -> &str {
         "avg"
     }
 
-    fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
-        Ok(Box::new(AvgExecutor {}))
-    }
-}
-
-struct AvgExecutor {}
-
-impl FunctionExecutor for AvgExecutor {
-    fn name(&self) -> &str {
-        "avg"
-    }
-
-    fn eval_scalar(
-        &self,
-        columns: &[Column],
-        row_count: usize,
-    ) -> Result<ColumnValues, FunctionError> {
+    fn scalar(&self, columns: &[Column], row_count: usize) -> Result<ColumnValues, FunctionError> {
         let mut sum = vec![0.0f64; row_count];
         let mut count = vec![0u32; row_count];
 
@@ -68,6 +52,4 @@ impl FunctionExecutor for AvgExecutor {
 
         Ok(ColumnValues::float8_with_validity(values, valids))
     }
-    
-    
 }

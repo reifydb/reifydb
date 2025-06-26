@@ -54,7 +54,6 @@ pub struct CreateTableResult {
 
 impl From<Frame> for ExecutionResult {
     fn from(value: Frame) -> Self {
-    
         let columns: Vec<Column> = value
             .columns
             .iter()
@@ -193,8 +192,8 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
         _marker: PhantomData,
     };
 
-    executor.functions.register(math::AbsFunction {});
-    executor.functions.register(math::AvgFunction {});
+    executor.functions.register_scalar(math::scalar::Abs {});
+    executor.functions.register_scalar(math::scalar::Avg {});
 
     executor.execute_rx(rx, plan)
 }
@@ -208,8 +207,8 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
         _marker: PhantomData,
     };
 
-    executor.functions.register(math::AbsFunction {});
-    executor.functions.register(math::AvgFunction {});
+    executor.functions.register_scalar(math::scalar::Abs {});
+    executor.functions.register_scalar(math::scalar::Avg {});
 
     executor.execute_tx(tx, plan)
 }

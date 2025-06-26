@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::function::FunctionMode;
 use reifydb_core::Kind;
 use std::fmt;
 use std::fmt::Display;
@@ -23,9 +22,6 @@ pub enum FunctionError {
 
     /// One or more arguments are undefined when the function doesn't accept them.
     UndefinedArgument { function: String, index: usize },
-
-    /// The function is being used in an unsupported context.
-    UnsupportedMode { function: String, mode: FunctionMode },
 
     /// Function requires input rows but received none.
     MissingInput { function: String },
@@ -91,10 +87,6 @@ impl Display for FunctionError {
                 )
             }
 
-            UnsupportedMode { function, mode } => {
-                write!(f, "function '{}' does not support mode: {}", function, mode)
-            }
-
             MissingInput { function } => {
                 write!(f, "function '{}' requires input rows but none were provided", function)
             }
@@ -128,7 +120,6 @@ impl std::error::Error for FunctionError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::function::FunctionMode;
 
     #[test]
     fn test_unknown_function_display() {
@@ -185,15 +176,6 @@ mod tests {
             err.to_string(),
             "function 'max' does not accept undefined for the 3rd argument"
         );
-    }
-
-    #[test]
-    fn test_unsupported_mode_display() {
-        let err = FunctionError::UnsupportedMode {
-            function: "rownum".to_string(),
-            mode: FunctionMode::Aggregate,
-        };
-        assert_eq!(err.to_string(), "function 'rownum' does not support mode: Aggregate");
     }
 
     #[test]
