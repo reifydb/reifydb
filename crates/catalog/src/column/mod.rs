@@ -4,6 +4,9 @@
 use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 pub use create::ColumnToCreate;
 use reifydb_core::Kind;
+use serde::de::Visitor;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
 use std::ops::Deref;
 
 mod create;
@@ -41,6 +44,38 @@ impl PartialEq<u64> for ColumnId {
 impl From<ColumnId> for u64 {
     fn from(value: ColumnId) -> Self {
         value.0
+    }
+}
+
+impl Serialize for ColumnId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for ColumnId {
+    fn deserialize<D>(deserializer: D) -> Result<ColumnId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct U64Visitor;
+
+        impl Visitor<'_> for U64Visitor {
+            type Value = ColumnId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an unsigned 64-bit number")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(ColumnId(value))
+            }
+        }
+
+        deserializer.deserialize_u64(U64Visitor)
     }
 }
 

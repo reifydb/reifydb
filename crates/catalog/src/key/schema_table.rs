@@ -22,18 +22,19 @@ impl EncodableKey for SchemaTableKey {
         let mut out = Vec::with_capacity(18);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&self.schema.to_be_bytes());
-        out.extend(&self.table.to_be_bytes());
+        out.extend(&keycode::serialize(&self.schema));
+        out.extend(&keycode::serialize(&self.table));
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 16);
-        Some(Self {
-            schema: SchemaId(u64::from_be_bytes(payload[..8].try_into().unwrap())),
-            table: TableId(u64::from_be_bytes(payload[8..].try_into().unwrap())),
-        })
+
+        keycode::deserialize(&payload[..8])
+            .ok()
+            .zip(keycode::deserialize(&payload[8..]).ok())
+            .map(|(schema, table)| Self { schema, table })
     }
 }
 
@@ -49,7 +50,7 @@ impl SchemaTableKey {
         let mut out = Vec::with_capacity(6);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&schema_id.to_be_bytes());
+        out.extend(&keycode::serialize(&schema_id));
         EncodedKey::new(out)
     }
 
@@ -57,48 +58,34 @@ impl SchemaTableKey {
         let mut out = Vec::with_capacity(6);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&(*schema_id + 1).to_be_bytes());
+        out.extend(&keycode::serialize(&(*schema_id - 1)));
         EncodedKey::new(out)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, KeyKind, SchemaTableKey};
+    use crate::key::{EncodableKey, SchemaTableKey};
     use crate::schema::SchemaId;
     use crate::table::TableId;
 
     #[test]
     fn test_encode_decode() {
-        let key = SchemaTableKey { schema: SchemaId(0x12345678), table: TableId(0xABCD) };
+        let key = SchemaTableKey { schema: SchemaId(0xABCD), table: TableId(0x123456789ABCDEF0) };
         let encoded = key.encode();
 
         let expected: Vec<u8> = vec![
-            1,
-            KeyKind::SchemaTable as u8,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x12,
-            0x34,
-            0x56,
-            0x78,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0xAB,
-            0xCD,
+            0xFE, // version
+            0xFB, // kind
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43,
+            0x21, 0x0F,
         ];
 
         assert_eq!(encoded.as_slice(), expected);
 
         let key = SchemaTableKey::decode(1, &expected[2..]).unwrap();
-        assert_eq!(key.schema, 0x12345678);
-        assert_eq!(key.table, 0xABCD);
+        assert_eq!(key.schema, 0xABCD);
+        assert_eq!(key.table, 0x123456789ABCDEF0);
     }
 
     #[test]
@@ -111,7 +98,7 @@ mod tests {
         let encoded2 = key2.encode();
         let encoded3 = key3.encode();
 
-        assert!(encoded1 < encoded2, "row_id ordering not preserved");
-        assert!(encoded2 < encoded3, "table_id ordering not preserved");
+        assert!(encoded3 < encoded2, "ordering not preserved");
+        assert!(encoded2 < encoded1, "ordering not preserved");
     }
 }

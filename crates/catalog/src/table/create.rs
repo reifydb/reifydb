@@ -172,12 +172,12 @@ mod tests {
             tx.scan_range(SchemaTableKey::full_scan(SchemaId(1))).unwrap().collect::<Vec<_>>();
         assert_eq!(links.len(), 2);
 
-        let link = &links[0];
+        let link = &links[1];
         let row = &link.row;
         assert_eq!(table_schema::LAYOUT.get_u64(row, table_schema::ID), 1);
         assert_eq!(table_schema::LAYOUT.get_str(row, table_schema::NAME), "test_table");
 
-        let link = &links[1];
+        let link = &links[0];
         let row = &link.row;
         assert_eq!(table_schema::LAYOUT.get_u64(row, table_schema::ID), 2);
         assert_eq!(table_schema::LAYOUT.get_str(row, table_schema::NAME), "another_table");

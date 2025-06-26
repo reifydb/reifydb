@@ -54,7 +54,6 @@ impl Key {
     }
 }
 
-
 pub trait EncodableKey {
     const KIND: KeyKind;
 
@@ -68,10 +67,10 @@ pub trait EncodableKey {
 impl Key {
     pub fn decode(key: &EncodedKey) -> Option<Self> {
         let version = keycode::deserialize(&key[0..1]).ok()?;
-        let kind = *key.get(1)?;
+        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
         let payload = &key[2..];
-        
-        match KeyKind::try_from(kind).ok()? {
+
+        match kind {
             KeyKind::Column => ColumnKey::decode(version, payload).map(Self::Column),
             KeyKind::ColumnPolicy => {
                 ColumnPolicyKey::decode(version, payload).map(Self::ColumnPolicy)

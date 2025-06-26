@@ -35,7 +35,7 @@ impl EncodableKey for TableRowKey {
         keycode::deserialize(&payload[..8])
             .ok()
             .zip(keycode::deserialize(&payload[8..]).ok())
-            .map(|(table, row)| TableRowKey { table, row })
+            .map(|(table, row)| Self { table, row })
     }
 }
 
@@ -66,7 +66,7 @@ impl TableRowKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, KeyKind, TableRowKey};
+    use crate::key::{EncodableKey, TableRowKey};
     use crate::row::RowId;
     use crate::table::TableId;
 
@@ -76,24 +76,10 @@ mod tests {
         let encoded = key.encode();
 
         let expected: Vec<u8> = vec![
-            0xFE,
-            KeyKind::TableRow as u8,
-            0xFF,
-            0xFF,
-            0xFF,
-            0xFF,
-            0xFF,
-            0xFF,
-            0x54,
-            0x32,
-            0xED,
-            0xCB,
-            0xA9,
-            0x87,
-            0x65,
-            0x43,
-            0x21,
-            0x0F,
+            0xFE, // version
+            0xFC, // kind
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43,
+            0x21, 0x0F,
         ];
 
         assert_eq!(encoded.as_slice(), expected);
@@ -113,7 +99,7 @@ mod tests {
         let encoded2 = key2.encode();
         let encoded3 = key3.encode();
 
-        assert!(encoded3 < encoded2, "table_id ordering not preserved");
-        assert!(encoded2 < encoded1, "row_id ordering not preserved");
+        assert!(encoded3 < encoded2, "ordering not preserved");
+        assert!(encoded2 < encoded1, "ordering not preserved");
     }
 }

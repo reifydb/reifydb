@@ -20,14 +20,14 @@ impl EncodableKey for TableKey {
         let mut out = Vec::with_capacity(10);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&self.table.to_be_bytes());
+        out.extend(&keycode::serialize(&self.table));
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 8);
-        Some(Self { table: TableId(u64::from_be_bytes(payload[..].try_into().unwrap())) })
+        keycode::deserialize(&payload[..8]).ok().map(|table| Self { table })
     }
 }
 
@@ -53,15 +53,18 @@ impl TableKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, KeyKind, TableKey};
+    use crate::key::{EncodableKey, TableKey};
     use crate::table::TableId;
 
     #[test]
     fn test_encode_decode() {
         let key = TableKey { table: TableId(0xABCD) };
         let encoded = key.encode();
-        let expected =
-            vec![1, KeyKind::Table as u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAB, 0xCD];
+        let expected = vec![
+            0xFE, // version
+            0xFD, // kind
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32,
+        ];
         assert_eq!(encoded.as_slice(), expected);
 
         let key = TableKey::decode(1, &encoded[2..]).unwrap();

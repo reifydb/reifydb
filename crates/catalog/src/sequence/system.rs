@@ -11,6 +11,9 @@ use once_cell::sync::Lazy;
 use reifydb_core::EncodedKey;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
+use serde::de::Visitor;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
 use std::ops::Deref;
 
 #[repr(transparent)]
@@ -28,6 +31,38 @@ impl Deref for SystemSequenceId {
 impl PartialEq<u32> for SystemSequenceId {
     fn eq(&self, other: &u32) -> bool {
         self.0.eq(other)
+    }
+}
+
+impl Serialize for SystemSequenceId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u32(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for SystemSequenceId {
+    fn deserialize<D>(deserializer: D) -> Result<SystemSequenceId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct U32Visitor;
+
+        impl Visitor<'_> for U32Visitor {
+            type Value = SystemSequenceId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an unsigned 32-bit number")
+            }
+
+            fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E> {
+                Ok(SystemSequenceId(value))
+            }
+        }
+
+        deserializer.deserialize_u32(U32Visitor)
     }
 }
 

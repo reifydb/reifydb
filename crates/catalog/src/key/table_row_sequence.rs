@@ -20,14 +20,14 @@ impl EncodableKey for TableRowSequenceKey {
         let mut out = Vec::with_capacity(10);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&self.table.to_be_bytes());
+        out.extend(&keycode::serialize(&self.table));
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 8);
-        Some(Self { table: TableId(u64::from_be_bytes(payload[..].try_into().unwrap())) })
+        keycode::deserialize(&payload[..8]).ok().map(|table| Self { table })
     }
 }
 
@@ -53,7 +53,7 @@ impl TableRowSequenceKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, KeyKind, TableRowSequenceKey};
+    use crate::key::{EncodableKey, TableRowSequenceKey};
     use crate::table::TableId;
 
     #[test]
@@ -61,16 +61,9 @@ mod tests {
         let key = TableRowSequenceKey { table: TableId(0xABCD) };
         let encoded = key.encode();
         let expected = vec![
-            1,
-            KeyKind::TableRowSequence as u8,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0xAB,
-            0xCD,
+            0xFE, // version
+            0xF7, // kind
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32,
         ];
         assert_eq!(encoded.as_slice(), expected);
 

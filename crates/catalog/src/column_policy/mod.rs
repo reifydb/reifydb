@@ -7,6 +7,9 @@ mod list;
 
 use crate::column::ColumnId;
 use reifydb_diagnostic::Diagnostic;
+use serde::de::Visitor;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
@@ -31,6 +34,38 @@ impl PartialEq<u64> for ColumnPolicyId {
 impl From<ColumnPolicyId> for u64 {
     fn from(value: ColumnPolicyId) -> Self {
         value.0
+    }
+}
+
+impl Serialize for ColumnPolicyId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for ColumnPolicyId {
+    fn deserialize<D>(deserializer: D) -> Result<ColumnPolicyId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct U64Visitor;
+
+        impl Visitor<'_> for U64Visitor {
+            type Value = ColumnPolicyId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an unsigned 64-bit number")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(ColumnPolicyId(value))
+            }
+        }
+
+        deserializer.deserialize_u64(U64Visitor)
     }
 }
 

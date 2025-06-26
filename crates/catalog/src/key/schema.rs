@@ -20,14 +20,14 @@ impl EncodableKey for SchemaKey {
         let mut out = Vec::with_capacity(10);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&self.schema.to_be_bytes());
+        out.extend(&keycode::serialize(&self.schema));
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 8);
-        Some(Self { schema: SchemaId(u64::from_be_bytes(payload[..].try_into().unwrap())) })
+        keycode::deserialize(&payload[..8]).ok().map(|schema| Self { schema })
     }
 }
 
@@ -53,15 +53,14 @@ impl SchemaKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, KeyKind, SchemaKey};
+    use crate::key::{EncodableKey, SchemaKey};
     use crate::schema::SchemaId;
 
     #[test]
     fn test_encode_decode() {
         let key = SchemaKey { schema: SchemaId(0xABCD) };
         let encoded = key.encode();
-        let expected =
-            vec![1, KeyKind::Schema as u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAB, 0xCD];
+        let expected = vec![0xFE, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32];
         assert_eq!(encoded.as_slice(), expected);
 
         let key = SchemaKey::decode(1, &encoded[2..]).unwrap();

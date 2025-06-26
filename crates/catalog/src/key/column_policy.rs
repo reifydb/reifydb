@@ -22,18 +22,19 @@ impl EncodableKey for ColumnPolicyKey {
         let mut out = Vec::with_capacity(18);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&self.column.to_be_bytes());
-        out.extend(&self.policy.to_be_bytes());
+        out.extend(&keycode::serialize(&self.column));
+        out.extend(&keycode::serialize(&self.policy));
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 16);
-        Some(Self {
-            column: ColumnId(u64::from_be_bytes(payload[..8].try_into().unwrap())),
-            policy: ColumnPolicyId(u64::from_be_bytes(payload[8..].try_into().unwrap())),
-        })
+
+        keycode::deserialize(&payload[..8])
+            .ok()
+            .zip(keycode::deserialize(&payload[8..]).ok())
+            .map(|(column, policy)| Self { column, policy })
     }
 }
 
@@ -46,7 +47,7 @@ impl ColumnPolicyKey {
         let mut out = Vec::with_capacity(10);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&column.to_be_bytes());
+        out.extend(&keycode::serialize(&column));
         EncodedKey::new(out)
     }
 
@@ -54,7 +55,7 @@ impl ColumnPolicyKey {
         let mut out = Vec::with_capacity(10);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&(*column + 1).to_be_bytes());
+        out.extend(&keycode::serialize(&(*column - 1)));
         EncodedKey::new(out)
     }
 }
@@ -63,39 +64,28 @@ impl ColumnPolicyKey {
 mod tests {
     use crate::column::ColumnId;
     use crate::column_policy::ColumnPolicyId;
-    use crate::key::{ColumnPolicyKey, EncodableKey, KeyKind};
+    use crate::key::{ColumnPolicyKey, EncodableKey};
 
     #[test]
     fn test_encode_decode() {
-        let key = ColumnPolicyKey { column: ColumnId(0xABCD), policy: ColumnPolicyId(0x12345678) };
+        let key = ColumnPolicyKey {
+            column: ColumnId(0xABCD),
+            policy: ColumnPolicyId(0x123456789ABCDEF0),
+        };
         let encoded = key.encode();
 
         let expected: Vec<u8> = vec![
-            1,
-            KeyKind::ColumnPolicy as u8,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0xAB,
-            0xCD,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x12,
-            0x34,
-            0x56,
-            0x78,
+            0xFE, // version
+            0xF6, // kind
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43,
+            0x21, 0x0F,
         ];
 
         assert_eq!(encoded.as_slice(), expected);
 
         let key = ColumnPolicyKey::decode(1, &expected[2..]).unwrap();
         assert_eq!(key.column, 0xABCD);
-        assert_eq!(key.policy, 0x12345678);
+        assert_eq!(key.policy, 0x123456789ABCDEF0);
     }
 
     #[test]
@@ -108,7 +98,7 @@ mod tests {
         let encoded2 = key2.encode();
         let encoded3 = key3.encode();
 
-        assert!(encoded1 < encoded2, "row_id ordering not preserved");
-        assert!(encoded2 < encoded3, "table_id ordering not preserved");
+        assert!(encoded3 < encoded2, "ordering not preserved");
+        assert!(encoded2 < encoded1, "ordering not preserved");
     }
 }

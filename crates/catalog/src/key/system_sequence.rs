@@ -20,16 +20,14 @@ impl EncodableKey for SystemSequenceKey {
         let mut out = Vec::with_capacity(6);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&self.sequence.to_be_bytes());
+        out.extend(&keycode::serialize(&self.sequence));
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 4);
-        Some(Self {
-            sequence: SystemSequenceId(u32::from_be_bytes(payload[..].try_into().unwrap())),
-        })
+        keycode::deserialize(&payload).ok().map(|sequence| Self { sequence })
     }
 }
 
@@ -55,14 +53,18 @@ impl SystemSequenceKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, KeyKind, SystemSequenceKey};
+    use crate::key::{EncodableKey, SystemSequenceKey};
     use crate::sequence::SystemSequenceId;
 
     #[test]
     fn test_encode_decode() {
         let key = SystemSequenceKey { sequence: SystemSequenceId(0xABCD) };
         let encoded = key.encode();
-        let expected = vec![1, KeyKind::SystemSequence as u8, 0x00, 0x00, 0xAB, 0xCD];
+        let expected = vec![
+            0xFE, // version
+            0xFA, // kind
+            0xFF, 0xFF, 0x54, 0x32,
+        ];
         assert_eq!(encoded.as_slice(), expected);
 
         let key = SystemSequenceKey::decode(1, &encoded[2..]).unwrap();

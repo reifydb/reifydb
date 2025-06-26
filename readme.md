@@ -7,7 +7,7 @@
 
 update goldenfiles
 ```
-export UPDATE_GOLDENFILES=1 make test
+UPDATE_GOLDENFILES=1 make test
 ```
 
 ## Commercial Support
