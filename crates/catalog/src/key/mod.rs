@@ -130,10 +130,10 @@ mod tests {
         ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableKey,
         TableRowKey,
     };
+    use crate::row::RowId;
     use crate::schema::SchemaId;
     use crate::sequence::SystemSequenceId;
     use crate::table::TableId;
-    use reifydb_core::catalog::RowId;
 
     #[test]
     fn test_column() {

@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::key::{EncodableKey, TableRowSequenceKey};
+use crate::row::RowId;
 use crate::sequence::u64::SequenceGeneratorU64;
 use crate::table::TableId;
-use reifydb_core::catalog::RowId;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 

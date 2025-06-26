@@ -16,7 +16,6 @@ pub use value::Value;
 pub use version::Version;
 
 mod bitvec;
-pub mod catalog;
 pub mod clock;
 mod cowvec;
 pub mod delta;

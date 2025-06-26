@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::key::{EncodableKey, KeyKind};
+use crate::row::RowId;
 use crate::table::TableId;
-use reifydb_core::catalog::RowId;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug)]
@@ -64,8 +64,8 @@ impl TableRowKey {
 #[cfg(test)]
 mod tests {
     use crate::key::{EncodableKey, KeyKind, TableRowKey};
+    use crate::row::RowId;
     use crate::table::TableId;
-    use reifydb_core::catalog::RowId;
 
     #[test]
     fn test_encode_decode() {

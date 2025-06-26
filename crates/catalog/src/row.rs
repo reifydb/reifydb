@@ -21,21 +21,3 @@ impl PartialEq<u64> for RowId {
         self.0.eq(other)
     }
 }
-
-
-
-
-// #[derive(Debug, PartialEq)]
-// pub struct Table {
-//     pub id: TableId,
-//     pub schema: SchemaId,
-//     pub name: String,
-// }
-// 
-// #[derive(Debug)]
-// pub struct TableToCreate {
-//     pub id: TableId,
-//     pub schema: SchemaId,
-//     pub name: String,
-// }
-// 
