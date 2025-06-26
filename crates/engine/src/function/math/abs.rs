@@ -11,7 +11,6 @@ impl Function for AbsFunction {
         "abs"
     }
 
-    // fn prepare(&self, _args: &[Expression]) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
     fn prepare(&self) -> Result<Box<dyn FunctionExecutor>, FunctionError> {
         Ok(Box::new(AbsExecutor))
     }

@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::execute::query::aggregate::AggregateNode;
 use crate::execute::query::project::ProjectWithoutInputNode;
-use crate::execute::query::{
-    FilterNode, LimitNode, Node, ProjectNode, ScanFrameNode,
-};
+use crate::execute::query::{FilterNode, LimitNode, Node, ProjectNode, ScanFrameNode};
 use crate::frame::{Column, ColumnValues, Frame};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
@@ -18,6 +17,15 @@ pub(crate) fn compile(mut plan: QueryPlan, rx: &mut impl Rx) -> Box<dyn Node> {
 
     loop {
         plan = match plan {
+            QueryPlan::Aggregate { group_by, project, next } => {
+                let input = result.expect("aggregate requires input");
+                result = Some(Box::new(AggregateNode::new(input, group_by, project)));
+                if let Some(next) = next {
+                    *next
+                } else {
+                    break;
+                }
+            }
             QueryPlan::Limit { limit, next } => {
                 let input = result.expect("limit requires input");
                 result = Some(Box::new(LimitNode::new(input, limit)));
@@ -111,7 +119,7 @@ pub(crate) fn compile(mut plan: QueryPlan, rx: &mut impl Rx) -> Box<dyn Node> {
                 }
             }
 
-            QueryPlan::Aggregate { .. } | QueryPlan::Sort { .. } | QueryPlan::Describe { .. } => {
+            QueryPlan::Sort { .. } | QueryPlan::Describe { .. } => {
                 unimplemented!("Unsupported plan node in bottom-up compilation");
             }
         };

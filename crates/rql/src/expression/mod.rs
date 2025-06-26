@@ -234,6 +234,24 @@ pub struct CallExpression {
     pub span: Span,
 }
 
+impl CallExpression {
+    pub fn span(&self) -> Span {
+        Span {
+            offset: self.func.0.offset,
+            line: self.func.0.line,
+            fragment: format!(
+                "{}({})",
+                self.func.0.fragment,
+                self.args
+                    .iter()
+                    .map(|arg| arg.span().fragment.clone())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        }
+    }
+}
+
 impl Display for CallExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = self.args.iter().map(|arg| format!("{}", arg)).collect::<Vec<_>>().join(", ");

@@ -54,30 +54,11 @@ pub struct CreateTableResult {
 
 impl From<Frame> for ExecutionResult {
     fn from(value: Frame) -> Self {
+    
         let columns: Vec<Column> = value
             .columns
             .iter()
-            .map(|c| {
-                let value = match &c.data {
-                    ColumnValues::Bool(_, _) => Kind::Bool,
-                    ColumnValues::Float4(_, _) => Kind::Float4,
-                    ColumnValues::Float8(_, _) => Kind::Float8,
-                    ColumnValues::Int1(_, _) => Kind::Int1,
-                    ColumnValues::Int2(_, _) => Kind::Int2,
-                    ColumnValues::Int4(_, _) => Kind::Int4,
-                    ColumnValues::Int8(_, _) => Kind::Int8,
-                    ColumnValues::Int16(_, _) => Kind::Int16,
-                    ColumnValues::String(_, _) => Kind::Text,
-                    ColumnValues::Uint1(_, _) => Kind::Uint1,
-                    ColumnValues::Uint2(_, _) => Kind::Uint2,
-                    ColumnValues::Uint4(_, _) => Kind::Uint4,
-                    ColumnValues::Uint8(_, _) => Kind::Uint8,
-                    ColumnValues::Uint16(_, _) => Kind::Uint16,
-                    ColumnValues::Undefined(_) => Kind::Undefined,
-                };
-
-                Column { name: c.name.clone(), kind: value }
-            })
+            .map(|c| Column { name: c.name.clone(), kind: c.data.kind() })
             .collect();
 
         let row_count = value.columns.first().map_or(0, |col| col.data.len());

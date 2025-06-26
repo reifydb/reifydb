@@ -17,7 +17,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i].clone());
                         new_valid.push(valid[i]);
@@ -32,7 +32,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -47,7 +47,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -62,7 +62,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -77,7 +77,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -92,7 +92,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -107,7 +107,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -122,7 +122,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -137,7 +137,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -152,7 +152,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -167,7 +167,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -182,7 +182,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -197,7 +197,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
                         new_valid.push(valid[i]);
@@ -212,7 +212,7 @@ impl ColumnValues {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
-                for i in 0..mask.len() {
+                for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i].clone());
                         new_valid.push(valid[i]);

@@ -4,6 +4,7 @@
 use crate::frame::Error;
 use crate::frame::{ColumnValues, Frame};
 
+#[derive(Debug)]
 pub enum Aggregate {
     Sum(String),
     Count(String),
@@ -35,10 +36,26 @@ impl Aggregate {
 
                     Ok(ColumnValues::float8_with_validity(vec![v], vec![is_valid]))
                 }
+                ColumnValues::Float8(vals, valid) => {
+                    let (sum, count): (i32, usize) = indices
+                        .iter()
+                        .filter(|&&i| valid[i])
+                        .map(|&i| (vals[i] as i32, 1))
+                        .fold((0, 0), |(a, b), (v, c)| (a + v, b + c));
+
+                    let (v, is_valid) =
+                        if count > 0 { ((sum as f64 / count as f64), true) } else { (0.0, false) };
+
+                    Ok(ColumnValues::float8_with_validity(vec![v], vec![is_valid]))
+                }
                 _ => Err("AVG only supports Int2 columns".into()),
             },
 
             Aggregate::Sum(col_name) => match &col(col_name)?.data {
+                ColumnValues::Float8(vals, valid) => {
+                    let sum: f64 = indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i]).sum();
+                    Ok(ColumnValues::float8([sum]))
+                }
                 ColumnValues::Int2(vals, valid) => {
                     let sum: i32 =
                         indices.iter().filter(|&&i| valid[i]).map(|&i| vals[i] as i32).sum();

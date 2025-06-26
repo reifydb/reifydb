@@ -39,11 +39,8 @@ impl Expression {
 
             Expression::Prefix(expr) => expr.span(),
 
-            Expression::Call(_expr) => {
-                // let mut spans = vec![&expr.span, expr.callee.span()];
-                // spans.extend(expr.arguments.iter().map(|a| a.span()));
-                // Span::merge_all(spans).unwrap()
-                unimplemented!()
+            Expression::Call(expr) => {
+                expr.span()
             }
         }
     }

@@ -13,15 +13,15 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.users(age: int4)"#).unwrap();
-    db.tx_as(&root, r#"create table test.another(age: int4)"#).unwrap();
-    db.tx_as(&root, r#"insert (1), (2), (3), (4), (5), (6), (7), (8), (9), (10), (11), (12), (13) into test.users (age)"#).unwrap();
-    db.tx_as(&root, r#"insert (21), (22), (23), (24), (25), (26), (27), (28), (29), (30), (31), (32), (33) into test.another (age)"#).unwrap();
+    db.tx_as(&root, r#"create table test.users(age: float8, num: float8)"#).unwrap();
+    db.tx_as(&root, r#"insert (3,1), (1,1), (1,3), (2,2), (2,4), (2,6) into test.users (age, num)"#).unwrap();
+    // db.tx_as(&root, r#"insert (21), (22), (23), (24), (25), (26), (27), (28), (29), (30), (31), (32), (33) into test.another (age)"#).unwrap();
     for l in db.tx_as(
         &root,
         r#"
-            from test.another limit 2;
-            from test.users limit 3;
+            from test.users 
+            group by age 
+            select sum(num);
         "#,
     ).unwrap() {
         println!("{}", l);
