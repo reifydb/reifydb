@@ -3,17 +3,45 @@
 
 use reifydb_diagnostic::Diagnostic;
 use std::fmt::{Display, Formatter};
+use tonic::Status;
 
-#[derive(Debug, PartialEq)]
-pub struct Error {
-    pub source: String,
-    pub diagnostic: Diagnostic,
+#[derive(Debug)]
+pub enum Error {
+    ConnectionError { message: String },
+    ExecutionError { source: String, diagnostic: Diagnostic },
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.diagnostic.to_string(&self.source))
+        match self {
+            Error::ConnectionError { message } => write!(f, "connection error: {}", message),
+            Error::ExecutionError { source, diagnostic } => {
+                f.write_str(&diagnostic.to_string(source.as_str()))
+            }
+        }
     }
 }
 
 impl std::error::Error for Error {}
+
+impl Error {
+    pub fn connection_error(message: impl Into<String>) -> Self {
+        Self::ConnectionError { message: message.into() }
+    }
+
+    pub fn execution_error(source: &str, diagnostic: Diagnostic) -> Self {
+        Self::ExecutionError { source: source.to_string(), diagnostic }
+    }
+}
+
+impl From<Status> for Error {
+    fn from(err: Status) -> Self {
+        Self::ConnectionError { message: err.to_string() }
+    }
+}
+
+impl From<tonic::transport::Error> for Error {
+    fn from(err: tonic::transport::Error) -> Self {
+        Self::ConnectionError { message: err.to_string() }
+    }
+}

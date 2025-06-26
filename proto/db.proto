@@ -103,18 +103,20 @@ message Diagnostic {string code = 1;
   repeated string notes = 6;
   DiagnosticColumn column = 7;}
 
-enum ValueKind {UNDEFINED = 0;
-  BOOL = 1;
-  FLOAT4 = 2;
-  FLOAT8 = 3;
-  INT1 = 4;
-  INT2 = 5;
-  INT4 = 6;
-  INT8 = 7;
-  INT16 = 8;
-  STRING = 9;
-  UINT1 = 10;
-  UINT2 = 11;
-  UINT4 = 12;
-  UINT8 = 13;
-  UINT16 = 14;}
+enum ValueKind {
+  UNDEFINED = 0x00;
+  BOOL = 0x0E;
+  FLOAT4 = 0x01;
+  FLOAT8 = 0x02;
+  INT1 = 0x03;
+  INT2 = 0x04;
+  INT4 = 0x05;
+  INT8 = 0x06;
+  INT16 = 0x07;
+  TEXT = 0x08;
+  UINT1 = 0x09;
+  UINT2 = 0x0A;
+  UINT4 = 0x0B;
+  UINT8 = 0x0C;
+  UINT16 = 0x0D;
+}

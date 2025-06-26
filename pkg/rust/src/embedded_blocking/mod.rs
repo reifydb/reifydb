@@ -32,12 +32,11 @@ impl<'a, S: Storage + 'static, T: Transaction<S, S> + 'static> Embedded<S, T> {
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         self.engine.tx_as(principal, rql).map_err(|err| {
             let diagnostic = err.diagnostic();
-            Error { diagnostic, source: rql.to_string() }
+            Error::ExecutionError { diagnostic, source: rql.to_string() }
         })
     }
 
     pub fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
-        
         self.engine.rx_as(principal, rql).unwrap()
     }
 

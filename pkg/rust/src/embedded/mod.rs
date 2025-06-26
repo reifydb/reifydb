@@ -38,7 +38,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> DB<'_> for Embedded<S
         spawn_blocking(move || {
             engine.tx_as(&principal, &rql).map_err(|err| {
                 let diagnostic = err.diagnostic();
-                Error { diagnostic, source: rql.to_string() }
+                Error::ExecutionError { diagnostic, source: rql.to_string() }
             })
         })
         .await
@@ -53,7 +53,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> DB<'_> for Embedded<S
         spawn_blocking(move || {
             engine.rx_as(&principal, &rql).map_err(|err| {
                 let diagnostic = err.diagnostic();
-                Error { diagnostic, source: rql.to_string() }
+                Error::ExecutionError { diagnostic, source: rql.to_string() }
             })
         })
         .await
