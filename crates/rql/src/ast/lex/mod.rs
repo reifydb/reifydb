@@ -20,7 +20,7 @@ use nom::combinator::complete;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
-use reifydb_diagnostic::{Line, Offset, Span};
+use reifydb_core::{Line, Offset, Span};
 
 mod display;
 mod error;

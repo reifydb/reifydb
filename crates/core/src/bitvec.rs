@@ -30,6 +30,20 @@ impl BitVec {
         bv
     }
 
+    pub fn extend(&mut self, other: &BitVec) {
+        let total_len = self.len + other.len;
+        let total_byte_len = (total_len + 7) / 8;
+
+        self.bits.resize(total_byte_len, 0);
+
+        for i in 0..other.len {
+            let bit = other.get(i);
+            self.set(self.len + i, bit);
+        }
+
+        self.len = total_len;
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }

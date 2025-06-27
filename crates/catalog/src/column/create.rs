@@ -7,8 +7,8 @@ use crate::key::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
 use crate::table::TableId;
 use crate::{Catalog, Error};
-use reifydb_core::Kind;
-use reifydb_diagnostic::{Diagnostic, Span};
+use reifydb_core::{Kind, Span};
+use reifydb_diagnostic::Diagnostic;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 

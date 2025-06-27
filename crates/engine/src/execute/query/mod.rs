@@ -16,6 +16,7 @@ mod filter;
 mod limit;
 mod project;
 mod scan;
+mod order;
 
 #[derive(Debug)]
 pub(crate) struct Batch {

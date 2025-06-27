@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::query::aggregate::AggregateNode;
+use crate::execute::query::order::OrderNode;
 use crate::execute::query::project::ProjectWithoutInputNode;
 use crate::execute::query::{FilterNode, LimitNode, Node, ProjectNode, ScanFrameNode};
 use crate::frame::{Column, ColumnValues, Frame};
@@ -48,6 +49,16 @@ pub(crate) fn compile(
                 let input = result.expect("filter requires input");
                 result = Some(Box::new(FilterNode::new(input, vec![expression])));
 
+                if let Some(next) = next {
+                    *next
+                } else {
+                    break;
+                }
+            }
+
+            QueryPlan::Order { order_by, next } => {
+                let input = result.expect("order requires input");
+                result = Some(Box::new(OrderNode::new(input, order_by)));
                 if let Some(next) = next {
                     *next
                 } else {
@@ -125,7 +136,7 @@ pub(crate) fn compile(
                 }
             }
 
-            QueryPlan::Sort { .. } | QueryPlan::Describe { .. } => {
+            QueryPlan::Describe { .. } => {
                 unimplemented!("Unsupported plan node in bottom-up compilation");
             }
         };

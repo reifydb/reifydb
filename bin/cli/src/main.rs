@@ -13,7 +13,22 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.users(age: int4, num: float8)"#).unwrap();
+    db.tx_as(&root, r#"create table test.arith(id: int2, value: int2, num: int2)"#).unwrap();
+    db.tx_as(&root, r#"insert (1,1,5), (1,1,10), (1,2,15), (2,1,10), (2,1,30) into test.arith(id,value,num)"#).unwrap();
+
+    for l in db
+        .tx_as(
+            &root,
+            r#"
+            from test.arith group by id select id, avg(value), avg(num) order by id
+        "#,
+        )
+        .unwrap()
+    {
+        println!("{}", l);
+    }    
+    
+    db.tx_as(&root, r#"create table test.users(age: int2, num: float8)"#).unwrap();
     db.tx_as(
         &root,
         r#"insert (3,1), (1,1), (1,3), (2,2), (2,4), (2,6) into test.users (age, num)"#,
@@ -28,6 +43,7 @@ fn main() {
             select age, num
             group by age
             select age, sum(num), min(num), max(num)
+            order by age 
         "#,
         )
         .unwrap()

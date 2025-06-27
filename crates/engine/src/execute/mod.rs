@@ -190,6 +190,13 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     let executor: Executor<VS, US> = Executor {
         // FIXME receive functions from RX
         functions: Functions::builder()
+
+            .register_aggregate("sum", math::aggregate::Sum::new)
+            .register_aggregate("min", math::aggregate::Min::new)
+            .register_aggregate("max", math::aggregate::Max::new)
+            .register_aggregate("avg", math::aggregate::Avg::new)
+
+
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),
@@ -206,9 +213,13 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
     // FIXME receive functions from TX
     let executor: Executor<VS, US> = Executor {
         functions: Functions::builder()
+
             .register_aggregate("sum", math::aggregate::Sum::new)
             .register_aggregate("min", math::aggregate::Min::new)
             .register_aggregate("max", math::aggregate::Max::new)
+            .register_aggregate("avg", math::aggregate::Avg::new)
+
+
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),

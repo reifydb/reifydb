@@ -5,7 +5,7 @@ use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::Kind;
 use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
-use reifydb_diagnostic::Span;
+use reifydb_core::Span;
 
 impl ColumnValues {
     pub fn adjust_column(
@@ -223,7 +223,7 @@ mod tests {
         use crate::frame::column::adjust::promote_vec;
         use reifydb_core::Kind;
         use reifydb_core::num::SafePromote;
-        use reifydb_diagnostic::{IntoSpan, Span};
+        use reifydb_core::{IntoSpan, Span};
 
         #[test]
         fn test_ok() {
@@ -338,7 +338,7 @@ mod tests {
         use crate::frame::column::adjust::demote_vec;
         use reifydb_core::Kind;
         use reifydb_core::num::SafeDemote;
-        use reifydb_diagnostic::{IntoSpan, Span};
+        use reifydb_core::{IntoSpan, Span};
 
         #[test]
         fn test_ok() {

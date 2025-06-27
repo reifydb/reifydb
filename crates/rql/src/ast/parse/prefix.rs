@@ -7,7 +7,7 @@ use crate::ast::parse::{Error, Parser, Precedence};
 use crate::ast::{
     Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind, parse,
 };
-use reifydb_diagnostic::Span;
+use reifydb_core::Span;
 
 impl Parser {
     pub(crate) fn parse_prefix(&mut self) -> parse::Result<Ast> {
@@ -58,7 +58,10 @@ mod tests {
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &result[0].first_unchecked() else { panic!() };
+        let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &result[0].first_unchecked()
+        else {
+            panic!()
+        };
         assert_eq!(token.value(), "-2");
     }
 

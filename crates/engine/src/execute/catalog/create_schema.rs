@@ -49,7 +49,7 @@ mod tests {
     use crate::ExecutionResult;
     use crate::execute::SchemaId;
     use crate::execute::{CreateSchemaResult, execute_tx};
-    use reifydb_diagnostic::Span;
+    use reifydb_core::Span;
     use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
     use reifydb_transaction::test_utils::TestTransaction;
 

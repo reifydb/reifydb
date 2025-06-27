@@ -6,7 +6,8 @@ use crate::schema::Schema;
 use crate::schema::layout::schema;
 use crate::sequence::SystemSequence;
 use crate::{Catalog, Error};
-use reifydb_diagnostic::{Diagnostic, Span};
+use reifydb_core::Span;
+use reifydb_diagnostic::Diagnostic;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 

@@ -5,7 +5,7 @@ use crate::evaluate::{Context, Evaluator};
 use crate::frame::{ColumnValues, Push};
 use reifydb_core::num::{IsNumber, Promote, SafeAdd};
 use reifydb_core::{CowVec, GetKind, Kind};
-use reifydb_diagnostic::Span;
+use reifydb_core::Span;
 use reifydb_rql::expression::AddExpression;
 
 impl Evaluator {

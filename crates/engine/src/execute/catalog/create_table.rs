@@ -66,7 +66,7 @@ mod tests {
     use crate::{ExecutionResult, execute_tx};
     use reifydb_catalog::table::TableId;
     use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
-    use reifydb_diagnostic::Span;
+    use reifydb_core::Span;
     use reifydb_rql::plan::PlanTx;
     use reifydb_transaction::test_utils::TestTransaction;
 

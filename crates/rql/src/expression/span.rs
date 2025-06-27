@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 use crate::expression::{AddExpression, CastExpression, ConstantExpression, DivideExpression, Expression, ModuloExpression, MultiplyExpression, PrefixExpression, SubtractExpression};
-use reifydb_diagnostic::Span;
+use reifydb_core::Span;
 
 impl Expression {
     pub fn lazy_span(&self) -> impl Fn() -> Span + '_ {

@@ -248,7 +248,7 @@ impl Evaluator {
 
 #[cfg(test)]
 mod tests {
-    use reifydb_diagnostic::{Line, Offset, Span};
+    use reifydb_core::{Line, Offset, Span};
 
     mod constant_value {
         use crate::evaluate::Evaluator;

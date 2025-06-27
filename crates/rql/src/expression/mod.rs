@@ -4,7 +4,7 @@
 mod span;
 
 use reifydb_core::Kind;
-use reifydb_diagnostic::Span;
+use reifydb_core::Span;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 

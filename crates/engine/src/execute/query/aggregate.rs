@@ -5,7 +5,7 @@ use crate::execute::query::{Batch, Node};
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
 use reifydb_core::{BitVec, Value};
-use reifydb_diagnostic::Span;
+use reifydb_core::Span;
 use reifydb_rql::expression::{AliasExpression, Expression};
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
@@ -69,9 +69,11 @@ impl Node for AggregateNode {
             match projection {
                 Projection::Group { alias, column, .. } => {
                     let col_idx = keys.iter().position(|k| k == &column).unwrap();
+
                     let mut c = Column {
                         name: alias.fragment,
-                        data: ColumnValues::int4_with_capacity(group_key_order.len()),
+                        // FIXME this must be set based on the actual key
+                        data: ColumnValues::int2_with_capacity(group_key_order.len()),
                     };
                     for key in &group_key_order {
                         c.data.push_value(key[col_idx].clone());

@@ -36,7 +36,7 @@ mod tests {
     use ConstantExpression::Number;
     use Expression::{Cast, Constant};
     use reifydb_core::Kind;
-    use reifydb_diagnostic::Span;
+    use reifydb_core::Span;
     use reifydb_rql::expression::Expression::Prefix;
     use reifydb_rql::expression::{
         CastExpression, ConstantExpression, KindExpression, PrefixExpression, PrefixOperator,

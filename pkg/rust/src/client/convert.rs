@@ -3,15 +3,15 @@
 
 use crate::client::grpc_db;
 use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
-use reifydb_core::{Kind, Value};
+use reifydb_core::{Kind, Line, Offset, Span, Value};
 
 pub(crate) fn convert_diagnostic(grpc: grpc_db::Diagnostic) -> reifydb_diagnostic::Diagnostic {
     reifydb_diagnostic::Diagnostic {
         code: grpc.code,
         message: grpc.message,
-        span: grpc.span.map(|s| reifydb_diagnostic::Span {
-            offset: reifydb_diagnostic::Offset(s.offset),
-            line: reifydb_diagnostic::Line(s.line),
+        span: grpc.span.map(|s| Span {
+            offset: Offset(s.offset),
+            line: Line(s.line),
             fragment: s.fragment,
         }),
         label: if grpc.label.is_empty() { None } else { Some(grpc.label) },

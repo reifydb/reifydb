@@ -5,4 +5,3 @@ mod append;
 mod filter;
 mod limit;
 mod select;
-mod sort;

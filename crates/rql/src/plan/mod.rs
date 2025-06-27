@@ -22,8 +22,8 @@ use reifydb_catalog::Catalog;
 use reifydb_catalog::column::Column;
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::{Kind, SortDirection, SortKey};
-use reifydb_diagnostic::{Diagnostic, Span};
+use reifydb_core::{Kind, OrderDirection, OrderKey, Span};
+use reifydb_diagnostic::Diagnostic;
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Rx;
 
@@ -146,8 +146,8 @@ pub enum QueryPlan {
         expressions: Vec<AliasExpression>,
         next: Option<Box<QueryPlan>>,
     },
-    Sort {
-        keys: Vec<SortKey>,
+    Order {
+        order_by: Vec<OrderKey>,
         next: Option<Box<QueryPlan>>,
     },
     Limit {
@@ -174,7 +174,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                 }
             } else {
                 Ok(None)
-            }
+            };
         }
         _ => {}
     }
@@ -221,7 +221,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                             span: name.0.span,
                         })))
                     }
-                    AstCreate::Series {  .. } => {
+                    AstCreate::Series { .. } => {
                         // let mut columns: Vec<ColumnToCreate> = vec![];
                         //
                         // for definition in &definitions.nodes {
@@ -507,13 +507,13 @@ fn plan_ast_node(ast: Ast, next: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
         Ast::GroupBy(group) => plan_group_by(group, next),
         Ast::Filter(filter) => plan_filter(filter, next),
         Ast::Select(select) => plan_select(select, next),
-        Ast::OrderBy(order) => Ok(QueryPlan::Sort {
-            keys: order
+        Ast::OrderBy(order) => Ok(QueryPlan::Order {
+            order_by: order
                 .columns
                 .into_iter()
                 .map(|ast| match ast {
                     Ast::Identifier(ident) => {
-                        SortKey { column: ident.name(), direction: SortDirection::Asc }
+                        OrderKey { column: ident.0.span, direction: OrderDirection::Desc }
                     }
                     _ => unimplemented!(),
                 })
