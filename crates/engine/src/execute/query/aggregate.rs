@@ -4,10 +4,9 @@
 use crate::execute::query::{Batch, Node};
 use crate::frame::aggregate::Aggregate;
 use crate::frame::{Column, Frame, FrameLayout};
-use crate::function::{AggregateFunction, math};
+use crate::function::{AggregateFunction, Functions};
 use reifydb_core::BitVec;
 use reifydb_rql::expression::{AliasExpression, Expression};
-use std::collections::HashMap;
 use std::ops::Deref;
 
 pub(crate) struct AggregateNode {
@@ -15,6 +14,7 @@ pub(crate) struct AggregateNode {
     group_by: Vec<AliasExpression>,
     project: Vec<AliasExpression>,
     layout: Option<FrameLayout>,
+    functions: Functions,
 }
 
 impl AggregateNode {
@@ -22,8 +22,9 @@ impl AggregateNode {
         input: Box<dyn Node>,
         group_by: Vec<AliasExpression>,
         project: Vec<AliasExpression>,
+        functions: Functions,
     ) -> Self {
-        Self { input, group_by, project, layout: None }
+        Self { input, group_by, project, layout: None, functions }
     }
 }
 
@@ -37,7 +38,7 @@ impl Node for AggregateNode {
 
         // prepare aggregates
         // let mut function = math::aggregate::Sum { sums: HashMap::new() };
-        let mut function = math::aggregate::Sum { sums: HashMap::new() };
+        let mut function = self.functions.get_aggregate("sum").unwrap();
 
         while let Some(Batch { mut frame, mask }) = self.input.next()? {
             // TODO: Load and merge multiple batches if needed

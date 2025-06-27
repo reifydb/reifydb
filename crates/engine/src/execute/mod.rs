@@ -188,12 +188,13 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     plan: PlanRx,
 ) -> crate::Result<ExecutionResult> {
     let mut executor: Executor<VS, US> = Executor {
-        functions: Functions::new(), // FIXME receive functions from RX
+        // FIXME receive functions from RX
+        functions: Functions::builder()
+            .register_scalar("abs", math::scalar::Abs::new)
+            .register_scalar("avg", math::scalar::Avg::new)
+            .build(),
         _marker: PhantomData,
     };
-
-    executor.functions.register_scalar("abs", math::scalar::Abs::new);
-    executor.functions.register_scalar("avg", math::scalar::Avg::new);
 
     executor.execute_rx(rx, plan)
 }
@@ -202,15 +203,15 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
     tx: &mut impl Tx<VS, US>,
     plan: PlanTx,
 ) -> crate::Result<ExecutionResult> {
+    // FIXME receive functions from TX
     let mut executor: Executor<VS, US> = Executor {
-        functions: Functions::new(), // FIXME receive functions from TX
+        functions: Functions::builder()
+            .register_aggregate("sum", math::aggregate::Sum::new)
+            .register_scalar("abs", math::scalar::Abs::new)
+            .register_scalar("avg", math::scalar::Avg::new)
+            .build(),
         _marker: PhantomData,
     };
-
-    executor.functions.register_aggregate("sum", math::aggregate::Sum::new);
-
-    executor.functions.register_scalar("abs", math::scalar::Abs::new);
-    executor.functions.register_scalar("avg", math::scalar::Avg::new);
 
     executor.execute_tx(tx, plan)
 }
@@ -229,7 +230,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 Ok(ExecutionResult::DescribeQuery { columns })
             }
             _ => {
-                let mut node = query::compile(plan, rx, &self.functions);
+                let mut node = query::compile(plan, rx, self.functions);
                 let mut result: Option<Frame> = None;
 
                 while let Some(Batch { mut frame, mask }) = node.next()? {

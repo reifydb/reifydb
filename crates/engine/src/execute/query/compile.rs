@@ -16,7 +16,7 @@ use reifydb_transaction::Rx;
 pub(crate) fn compile(
     mut plan: QueryPlan,
     rx: &mut impl Rx,
-    functions: &Functions,
+    functions: Functions,
 ) -> Box<dyn Node> {
     let mut result: Option<Box<dyn Node>> = None;
 
@@ -24,7 +24,8 @@ pub(crate) fn compile(
         plan = match plan {
             QueryPlan::Aggregate { group_by, project, next } => {
                 let input = result.expect("aggregate requires input");
-                result = Some(Box::new(AggregateNode::new(input, group_by, project)));
+                result =
+                    Some(Box::new(AggregateNode::new(input, group_by, project, functions.clone())));
                 if let Some(next) = next {
                     *next
                 } else {

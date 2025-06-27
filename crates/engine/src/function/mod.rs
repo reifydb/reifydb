@@ -3,7 +3,7 @@
 
 use crate::frame::{Column, ColumnValues};
 pub use error::FunctionError;
-pub use registry::Functions;
+pub use registry::{Functions, FunctionsBuilder};
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
 
@@ -11,11 +11,11 @@ mod error;
 pub mod math;
 mod registry;
 
-pub trait ScalarFunction {
+pub trait ScalarFunction: Send + Sync {
     fn scalar(&self, columns: &[Column], row_count: usize) -> Result<ColumnValues, FunctionError>;
 }
 
-pub trait AggregateFunction {
+pub trait AggregateFunction: Send + Sync {
     fn aggregate(
         &mut self,
         column: &Column,

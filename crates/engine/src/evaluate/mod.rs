@@ -27,7 +27,7 @@ pub(crate) struct Evaluator {
 
 impl Default for Evaluator {
     fn default() -> Self {
-        Self { functions: Functions::new() }
+        Self { functions: Functions::builder().build() }
     }
 }
 
@@ -56,10 +56,12 @@ impl Evaluator {
 }
 
 pub fn evaluate(expr: &Expression, ctx: &Context) -> Result<ColumnValues> {
-    let mut evaluator = Evaluator { functions: Functions::new() };
-
-    evaluator.functions.register_scalar("abs", math::scalar::Abs::new);
-    evaluator.functions.register_scalar("avg", math::scalar::Avg::new);
+    let mut evaluator = Evaluator {
+        functions: Functions::builder()
+            .register_scalar("abs", math::scalar::Abs::new)
+            .register_scalar("avg", math::scalar::Avg::new)
+            .build(),
+    };
 
     evaluator.evaluate(expr, ctx)
 }

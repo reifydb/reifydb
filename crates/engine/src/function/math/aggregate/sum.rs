@@ -7,7 +7,7 @@ use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
 
 pub struct Sum {
-    pub sums: HashMap<Vec<Value>, f64>,
+    pub sums: HashMap<Vec<Value>, Value>,
 }
 
 impl Sum {
@@ -29,9 +29,9 @@ impl AggregateFunction for Sum {
                     let sum: f64 =
                         indices.iter().filter(|&&i| validity[i]).map(|&i| values[i]).sum();
 
-                    self.sums.insert(group.clone(), sum);
+                    self.sums.insert(group.clone(), Value::float8(sum));
                 }
-                return Ok(());
+                Ok(())
             }
             _ => unimplemented!(),
         }
@@ -43,7 +43,7 @@ impl AggregateFunction for Sum {
 
         for (key, sum) in std::mem::take(&mut self.sums) {
             keys.push(key);
-            values.push(sum);
+            values.push_value(sum);
         }
 
         Ok((keys, values))
