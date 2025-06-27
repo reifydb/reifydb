@@ -2,12 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::query::{Batch, Node};
-use crate::frame::aggregate::Aggregate;
-use crate::frame::{Column, Frame, FrameLayout};
-use crate::function::{AggregateFunction, Functions};
-use reifydb_core::BitVec;
+use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
+use crate::function::{AggregateFunction, FunctionError, Functions};
+use reifydb_core::{BitVec, Value};
+use reifydb_diagnostic::Span;
 use reifydb_rql::expression::{AliasExpression, Expression};
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
+
+enum Projection {
+    Aggregate { column: String, alias: Span, function: Box<dyn AggregateFunction> },
+    Group { column: String, alias: Span },
+}
 
 pub(crate) struct AggregateNode {
     input: Box<dyn Node>,
@@ -34,41 +40,59 @@ impl Node for AggregateNode {
             return Ok(None);
         }
 
-        let (keys, aggregates) = parse_keys_and_aggregates(&self.group_by, &self.project)?;
+        let (keys, mut projections) =
+            parse_keys_and_aggregates(&self.group_by, &self.project, &self.functions)?;
 
-        // prepare aggregates
-        // let mut function = math::aggregate::Sum { sums: HashMap::new() };
-        let mut function = self.functions.get_aggregate("sum").unwrap();
+        let mut seen_groups = HashSet::<Vec<Value>>::new();
+        let mut group_key_order: Vec<Vec<Value>> = Vec::new();
 
-        while let Some(Batch { mut frame, mask }) = self.input.next()? {
-            // TODO: Load and merge multiple batches if needed
-
-            // FIXME introduce concept of TableKey  / Unique Key - 1 to many columns - form a unique key
-            // FIXME which is simple hash used to group / join
-
+        while let Some(Batch { frame, mask }) = self.input.next()? {
             let groups = frame.group_by_view(&keys)?;
 
-            for aggregate in &aggregates {
-                match aggregate {
-                    Aggregate::Sum(col) => {
-                        function.aggregate(frame.column(&col).unwrap(), &mask, &groups).unwrap();
-                    }
-                    _ => unimplemented!(),
+            for (group_key, _) in &groups {
+                if seen_groups.insert(group_key.clone()) {
+                    group_key_order.push(group_key.clone());
+                }
+            }
+
+            for projection in &mut projections {
+                if let Projection::Aggregate { function, column, .. } = projection {
+                    let column = frame.column(column).unwrap();
+                    function.aggregate(column, &mask, &groups).unwrap();
                 }
             }
         }
+
         let mut result_columns = Vec::new();
 
-        // FIXME Finalize aggregates and make sure that everything is sorted
-        let result = function.finalize().unwrap();
+        for projection in projections {
+            match projection {
+                Projection::Group { alias, column, .. } => {
+                    let col_idx = keys.iter().position(|k| k == &column).unwrap();
+                    let mut c = Column {
+                        name: alias.fragment,
+                        data: ColumnValues::int4_with_capacity(group_key_order.len()),
+                    };
+                    for key in &group_key_order {
+                        c.data.push_value(key[col_idx].clone());
+                    }
+                    result_columns.push(c);
+                }
+                Projection::Aggregate { alias, mut function, .. } => {
+                    let (keys_out, mut values) = function.finalize().unwrap();
+                    align_column_values(&group_key_order, &keys_out, &mut values).unwrap();
+                    result_columns.push(Column { name: alias.fragment, data: values });
+                }
+            }
+        }
 
-        result_columns.push(Column { name: "sum".to_string(), data: result.1 });
+        let row_count = group_key_order.len();
+        let mask = BitVec::new(row_count, true);
 
         let frame = Frame::new(result_columns);
         self.layout = Some(FrameLayout::from_frame(&frame));
-        return Ok(Some(Batch { frame, mask: BitVec::new(10000, true) })); // FIXME
 
-        // Ok(None)
+        Ok(Some(Batch { frame, mask }))
     }
 
     fn layout(&self) -> Option<FrameLayout> {
@@ -79,9 +103,10 @@ impl Node for AggregateNode {
 fn parse_keys_and_aggregates<'a>(
     group_by: &'a [AliasExpression],
     project: &'a [AliasExpression],
-) -> crate::Result<(Vec<&'a str>, Vec<Aggregate>)> {
+    functions: &'a Functions,
+) -> crate::Result<(Vec<&'a str>, Vec<Projection>)> {
     let mut keys = Vec::new();
-    let mut aggregates = Vec::new();
+    let mut projections = Vec::new();
 
     for gb in group_by {
         match gb.expression.deref() {
@@ -92,21 +117,21 @@ fn parse_keys_and_aggregates<'a>(
     }
 
     for p in project {
-        dbg!(&p.expression);
         match p.expression.deref() {
+            Expression::Column(c) => projections.push(Projection::Group {
+                column: c.0.fragment.to_string(),
+                alias: p.expression.span(),
+            }),
             Expression::Call(call) => {
                 let func = call.func.0.fragment.as_str();
                 match call.args.first().map(|arg| arg) {
                     Some(Expression::Column(c)) => {
-                        let col = c.0.fragment.to_string();
-                        let agg = match func {
-                            "avg" => Aggregate::Avg(col),
-                            "sum" => Aggregate::Sum(col),
-                            "count" => Aggregate::Count(col),
-                            // _ => return Err(crate::Error::Unsupported(format!("Aggregate function `{}` is not implemented", func))),
-                            _ => unimplemented!(),
-                        };
-                        aggregates.push(agg);
+                        let function = functions.get_aggregate(func).unwrap();
+                        projections.push(Projection::Aggregate {
+                            column: c.0.fragment.to_string(),
+                            alias: p.expression.span(),
+                            function,
+                        });
                     }
                     // _ => return Err(crate::Error::Unsupported("Aggregate args must be columns".into())),
                     _ => panic!(),
@@ -117,5 +142,30 @@ fn parse_keys_and_aggregates<'a>(
         }
     }
 
-    Ok((keys, aggregates))
+    Ok((keys, projections))
+}
+
+fn align_column_values(
+    group_key_order: &[Vec<Value>],
+    keys: &[Vec<Value>],
+    values: &mut ColumnValues,
+) -> Result<(), FunctionError> {
+    let mut key_to_index = HashMap::new();
+    for (i, key) in keys.iter().enumerate() {
+        key_to_index.insert(key, i);
+    }
+
+    let reorder_indices: Vec<usize> = group_key_order
+        .iter()
+        .map(|k| {
+            key_to_index
+                .get(k)
+                .copied()
+                // .ok_or_else(|| FunctionError::Internal(format!("Group key {:?} missing in aggregate output", k)))
+                .ok_or_else(|| panic!("Group key {:?} missing in aggregate output", k))
+        })
+        .collect::<Result<_, _>>()?;
+
+    values.reorder(&reorder_indices);
+    Ok(())
 }

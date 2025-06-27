@@ -10,12 +10,12 @@ pub(crate) use limit::LimitNode;
 pub(crate) use project::ProjectNode;
 pub(crate) use scan::ScanFrameNode;
 
+mod aggregate;
 mod compile;
 mod filter;
 mod limit;
 mod project;
 mod scan;
-mod aggregate;
 
 #[derive(Debug)]
 pub(crate) struct Batch {

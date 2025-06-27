@@ -3,7 +3,7 @@
 
 use crate::frame::{Column, ColumnValues};
 pub use error::FunctionError;
-pub use registry::{Functions, FunctionsBuilder};
+pub use registry::Functions;
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
 

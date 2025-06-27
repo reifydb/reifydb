@@ -6,17 +6,17 @@ use crate::function::{AggregateFunction, FunctionError};
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
 
-pub struct Sum {
-    pub sums: HashMap<Vec<Value>, Value>,
+pub struct Min {
+    pub mins: HashMap<Vec<Value>, f64>,
 }
 
-impl Sum {
+impl Min {
     pub fn new() -> Self {
-        Self { sums: HashMap::new() }
+        Self { mins: HashMap::new() }
     }
 }
 
-impl AggregateFunction for Sum {
+impl AggregateFunction for Min {
     fn aggregate(
         &mut self,
         column: &Column,
@@ -26,13 +26,18 @@ impl AggregateFunction for Sum {
         match &column.data {
             ColumnValues::Float8(values, validity) => {
                 for (group, indices) in groups {
-                    let sum: f64 = indices
+                    let min_val = indices
                         .iter()
                         .filter(|&&i| validity[i] && mask.get(i))
                         .map(|&i| values[i])
-                        .sum();
+                        .min_by(|a, b| a.partial_cmp(b).unwrap());
 
-                    self.sums.insert(group.clone(), Value::float8(sum));
+                    if let Some(min_val) = min_val {
+                        self.mins
+                            .entry(group.clone())
+                            .and_modify(|v| *v = f64::min(*v, min_val))
+                            .or_insert(min_val);
+                    }
                 }
                 Ok(())
             }
@@ -41,12 +46,12 @@ impl AggregateFunction for Sum {
     }
 
     fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), FunctionError> {
-        let mut keys = Vec::with_capacity(self.sums.len());
-        let mut values = ColumnValues::float8_with_capacity(self.sums.len());
+        let mut keys = Vec::with_capacity(self.mins.len());
+        let mut values = ColumnValues::float8_with_capacity(self.mins.len());
 
-        for (key, sum) in std::mem::take(&mut self.sums) {
+        for (key, min) in std::mem::take(&mut self.mins) {
             keys.push(key);
-            values.push_value(sum);
+            values.push_value(Value::float8(min));
         }
 
         Ok((keys, values))

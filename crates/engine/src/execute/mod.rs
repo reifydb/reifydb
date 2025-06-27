@@ -187,7 +187,7 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     rx: &mut impl Rx,
     plan: PlanRx,
 ) -> crate::Result<ExecutionResult> {
-    let mut executor: Executor<VS, US> = Executor {
+    let executor: Executor<VS, US> = Executor {
         // FIXME receive functions from RX
         functions: Functions::builder()
             .register_scalar("abs", math::scalar::Abs::new)
@@ -204,9 +204,11 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
     plan: PlanTx,
 ) -> crate::Result<ExecutionResult> {
     // FIXME receive functions from TX
-    let mut executor: Executor<VS, US> = Executor {
+    let executor: Executor<VS, US> = Executor {
         functions: Functions::builder()
             .register_aggregate("sum", math::aggregate::Sum::new)
+            .register_aggregate("min", math::aggregate::Min::new)
+            .register_aggregate("max", math::aggregate::Max::new)
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),

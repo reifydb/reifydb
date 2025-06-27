@@ -7,7 +7,6 @@ pub use frame::Frame;
 pub use layout::FrameLayout;
 pub use reference::{RowRef, ValueRef};
 
-pub mod aggregate;
 mod column;
 mod display;
 mod error;

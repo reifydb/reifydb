@@ -6,17 +6,17 @@ use crate::function::{AggregateFunction, FunctionError};
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
 
-pub struct Sum {
-    pub sums: HashMap<Vec<Value>, Value>,
+pub struct Max {
+    pub maxs: HashMap<Vec<Value>, f64>,
 }
 
-impl Sum {
+impl Max {
     pub fn new() -> Self {
-        Self { sums: HashMap::new() }
+        Self { maxs: HashMap::new() }
     }
 }
 
-impl AggregateFunction for Sum {
+impl AggregateFunction for Max {
     fn aggregate(
         &mut self,
         column: &Column,
@@ -26,13 +26,18 @@ impl AggregateFunction for Sum {
         match &column.data {
             ColumnValues::Float8(values, validity) => {
                 for (group, indices) in groups {
-                    let sum: f64 = indices
+                    let max_val = indices
                         .iter()
                         .filter(|&&i| validity[i] && mask.get(i))
                         .map(|&i| values[i])
-                        .sum();
+                        .max_by(|a, b| a.partial_cmp(b).unwrap());
 
-                    self.sums.insert(group.clone(), Value::float8(sum));
+                    if let Some(max_val) = max_val {
+                        self.maxs
+                            .entry(group.clone())
+                            .and_modify(|v| *v = f64::max(*v, max_val))
+                            .or_insert(max_val);
+                    }
                 }
                 Ok(())
             }
@@ -41,12 +46,12 @@ impl AggregateFunction for Sum {
     }
 
     fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), FunctionError> {
-        let mut keys = Vec::with_capacity(self.sums.len());
-        let mut values = ColumnValues::float8_with_capacity(self.sums.len());
+        let mut keys = Vec::with_capacity(self.maxs.len());
+        let mut values = ColumnValues::float8_with_capacity(self.maxs.len());
 
-        for (key, sum) in std::mem::take(&mut self.sums) {
+        for (key, max) in std::mem::take(&mut self.maxs) {
             keys.push(key);
-            values.push_value(sum);
+            values.push_value(Value::float8(max));
         }
 
         Ok((keys, values))
