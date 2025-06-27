@@ -1,10 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::{Token, TokenKind, as_span};
+use crate::ast::lex::{as_span, Token, TokenKind};
 use nom::branch::alt;
 use nom::bytes::{tag, tag_no_case};
-use nom::combinator::value;
+use nom::character::satisfy;
+use nom::combinator::{not, peek, value};
+use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
 
@@ -59,6 +61,10 @@ operator! {
     As               => "as"
 }
 
+fn is_ident_continue(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
 pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     let start = input;
 
@@ -77,7 +83,10 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
             value(Operator::BangEqual, tag("!=")),
             value(Operator::OpenParen, tag("(")),
             value(Operator::CloseParen, tag(")")),
-            value(Operator::As, tag_no_case("as")),
+            value(
+                Operator::As,
+                terminated(tag_no_case("as"), not(peek(satisfy(is_ident_continue)))),
+            ),
         )),
         alt((
             value(Operator::OpenBracket, tag("[")),
@@ -110,8 +119,8 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::lex::operator::{parse_operator, Operator};
     use crate::ast::lex::TokenKind;
-    use crate::ast::lex::operator::{Operator, parse_operator};
     use nom_locate::LocatedSpan;
 
     #[test]

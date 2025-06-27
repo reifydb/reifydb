@@ -494,7 +494,8 @@ impl AstLiteralUndefined {
 #[derive(Debug, PartialEq)]
 pub struct AstOrderBy {
     pub token: Token,
-    pub columns: Vec<Ast>,
+    pub columns: Vec<AstIdentifier>,
+    pub directions: Vec<Option<AstIdentifier>>,
 }
 
 #[derive(Debug, PartialEq)]

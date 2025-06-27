@@ -113,19 +113,6 @@ impl Parser {
         Ok(result)
     }
 
-    // fn parse(&mut self) -> Result<Vec<Ast>> {
-    //     let mut nodes = vec![];
-    //     loop {
-    //         if self.is_eof() {
-    //             break;
-    //         }
-    //         nodes.push(self.parse_node(Precedence::None)?);
-    //         if !self.is_eof() {
-    //             self.consume_if(TokenKind::Separator(NewLine))?;
-    //         }
-    //     }
-    //     Ok(nodes)
-    // }
 
     pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast> {
         let mut left = self.parse_primary()?;

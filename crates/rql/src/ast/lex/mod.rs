@@ -176,4 +176,11 @@ mod tests {
         assert_eq!(token.kind, TokenKind::Keyword(Keyword::Select));
         assert_eq!(token.span.fragment.as_str(), "SELECT");
     }
+
+    #[test]
+    fn test_desc() {
+        let (_rest, token) = token(span("DESC")).unwrap();
+        assert_eq!(token.kind, TokenKind::Identifier);
+        assert_eq!(token.span.fragment.as_str(), "DESC");
+    }
 }

@@ -110,11 +110,20 @@ fn keyword_tag<'a>(
     tag_str: &'static str,
 ) -> impl Parser<Span<'a>, Output = Keyword, Error = nom::error::Error<Span<'a>>> + 'a {
     move |input: Span<'a>| {
-        map(
-            terminated(tag_no_case(tag_str), not(peek(alt((alphanumeric1, tag("_")))))),
+        let original = input;
+
+        let res = map(
+            terminated(tag_no_case(tag_str), not(peek(alt((alphanumeric1::<nom_locate::LocatedSpan<&str>, nom::error::Error<Span<'a>>>, tag("_")))))),
             move |_| kw,
-        )
-        .parse(input)
+        ).parse(input);
+
+        match res {
+            Ok(ok) => Ok(ok),
+            Err(_) => Err(nom::Err::Error(nom::error::Error {
+                input: original,
+                code: nom::error::ErrorKind::Tag,
+            })),
+        }
     }
 }
 pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
@@ -192,6 +201,13 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
 mod tests {
     use crate::ast::lex::keyword::{Keyword, parse_keyword};
     use crate::ast::lex::{LocatedSpan, TokenKind};
+
+    #[test]
+    fn test_desc() {
+        let input = LocatedSpan::new("desc");
+        let result = parse_keyword(input);
+        assert!(result.is_err(), "expected error parsing invalid keyword, got: {:?}", result);
+    }
 
     #[test]
     fn test_parse_keyword_invalid() {
@@ -333,6 +349,7 @@ mod tests {
         test_not_keyword_join => ( "join"),
         test_not_keyword_on => ( "on"),
         test_not_keyword_as => ( "as"),
+        test_not_keyword_asc => ( "asc"),
         test_not_keyword_using => ( "using"),
         test_not_keyword_union => ( "union"),
         test_not_keyword_intersect => ( "intersect"),

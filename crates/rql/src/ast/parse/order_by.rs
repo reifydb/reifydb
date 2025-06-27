@@ -3,7 +3,7 @@
 
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Separator::Comma;
-use crate::ast::parse::{Parser, Precedence};
+use crate::ast::parse::Parser;
 use crate::ast::{AstOrderBy, parse};
 
 impl Parser {
@@ -12,15 +12,21 @@ impl Parser {
         let _ = self.consume_keyword(Keyword::By)?;
 
         let mut columns = Vec::new();
+        let mut directions = Vec::new();
 
         loop {
-            columns.push(self.parse_node(Precedence::None)?);
+            columns.push(self.parse_identifier()?);
+
+            if !self.is_eof() && !self.current()?.is_separator(Comma) {
+                directions.push(Some(self.parse_identifier()?));
+            } else {
+                directions.push(None);
+            }
 
             if self.is_eof() {
                 break;
             }
 
-            // consume comma and continue
             if self.current()?.is_separator(Comma) {
                 self.advance()?;
             } else {
@@ -28,14 +34,13 @@ impl Parser {
             }
         }
 
-        Ok(AstOrderBy { token, columns })
+        Ok(AstOrderBy { token, columns, directions })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Ast;
     use crate::ast::lex::lex;
 
     #[test]
@@ -45,10 +50,42 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let select = result.first_unchecked().as_order_by();
-        assert_eq!(select.columns.len(), 1);
-        assert!(matches!(select.columns[0], Ast::Identifier(_)));
-        assert_eq!(select.columns[0].value(), "name");
+        let order_by = result.first_unchecked().as_order_by();
+        assert_eq!(order_by.columns.len(), 1);
+        assert_eq!(order_by.directions.len(), 1);
+
+        assert_eq!(order_by.columns[0].value(), "name");
+        assert_eq!(order_by.directions[0].as_ref(), None);
+    }
+
+    #[test]
+    fn test_single_column_asc() {
+        let tokens = lex("ORDER BY name ASC").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let order_by = result.first_unchecked().as_order_by();
+        assert_eq!(order_by.columns.len(), 1);
+        assert_eq!(order_by.directions.len(), 1);
+
+        assert_eq!(order_by.columns[0].value(), "name");
+        assert_eq!(order_by.directions[0].as_ref().unwrap().value(), "ASC");
+    }
+
+    #[test]
+    fn test_single_column_desc() {
+        let tokens = lex("ORDER BY name DESC").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let order_by = result.first_unchecked().as_order_by();
+        assert_eq!(order_by.columns.len(), 1);
+        assert_eq!(order_by.directions.len(), 1);
+
+        assert_eq!(order_by.columns[0].value(), "name");
+        assert_eq!(order_by.directions[0].as_ref().unwrap().value(), "DESC");
     }
 
     #[test]
@@ -58,12 +95,32 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let select = result.first_unchecked().as_order_by();
-        assert_eq!(select.columns.len(), 2);
-        assert!(matches!(select.columns[0], Ast::Identifier(_)));
-        assert_eq!(select.columns[0].value(), "name");
+        let order_by = result.first_unchecked().as_order_by();
+        assert_eq!(order_by.columns.len(), 2);
+        assert_eq!(order_by.directions.len(), 2);
 
-        assert!(matches!(select.columns[1], Ast::Identifier(_)));
-        assert_eq!(select.columns[1].value(), "age");
+        assert_eq!(order_by.columns[0].value(), "name");
+        assert_eq!(order_by.directions[0].as_ref(), None);
+
+        assert_eq!(order_by.columns[1].value(), "age");
+        assert_eq!(order_by.directions[1].as_ref(), None);
+    }
+
+    #[test]
+    fn test_multiple_columns_asc_desc() {
+        let tokens = lex("ORDER BY name ASC,age DESC").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let order_by = result.first_unchecked().as_order_by();
+        assert_eq!(order_by.columns.len(), 2);
+        assert_eq!(order_by.directions.len(), 2);
+
+        assert_eq!(order_by.columns[0].value(), "name");
+        assert_eq!(order_by.directions[0].as_ref().unwrap().value(), "ASC");
+
+        assert_eq!(order_by.columns[1].value(), "age");
+        assert_eq!(order_by.directions[1].as_ref().unwrap().value(), "DESC");
     }
 }

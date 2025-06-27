@@ -20,7 +20,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            from test.arith group by id select id, avg(value), avg(num) order by id
+            from test.arith group by id select id order by id 
         "#,
         )
         .unwrap()

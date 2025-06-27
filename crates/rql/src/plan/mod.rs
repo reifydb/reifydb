@@ -3,7 +3,7 @@
 
 use crate::ast::{
     Ast, AstCreate, AstDescribe, AstFilter, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral,
-    AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement, InfixOperator,
+    AstOrderBy, AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement, InfixOperator,
 };
 use std::collections::HashMap;
 use std::mem;
@@ -507,23 +507,33 @@ fn plan_ast_node(ast: Ast, next: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
         Ast::GroupBy(group) => plan_group_by(group, next),
         Ast::Filter(filter) => plan_filter(filter, next),
         Ast::Select(select) => plan_select(select, next),
-        Ast::OrderBy(order) => Ok(QueryPlan::Order {
-            order_by: order
-                .columns
-                .into_iter()
-                .map(|ast| match ast {
-                    Ast::Identifier(ident) => {
-                        OrderKey { column: ident.0.span, direction: OrderDirection::Desc }
-                    }
-                    _ => unimplemented!(),
-                })
-                .collect(),
-            next,
-        }),
+        Ast::OrderBy(order) => plan_order_by(order, next),
         Ast::Limit(limit) => Ok(QueryPlan::Limit { limit: limit.limit, next }),
 
         _ => unimplemented!("Unsupported AST node"),
     }
+}
+
+fn plan_order_by(order: AstOrderBy, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    let order_by: Vec<_> = order
+        .columns
+        .into_iter()
+        .zip(order.directions)
+        .map(|(column, direction)| {
+            let direction = direction
+                .map(|direction| match direction.value().to_lowercase().as_str() {
+                    "asc" => OrderDirection::Asc,
+                    "desc" => OrderDirection::Desc,
+                    _ => unimplemented!(),
+
+                })
+                .unwrap_or(OrderDirection::Desc);
+
+            OrderKey { column: column.0.span, direction }
+        })
+        .collect();
+
+    Ok(QueryPlan::Order { order_by, next: head })
 }
 
 fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
