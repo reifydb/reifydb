@@ -35,11 +35,12 @@ TEST_SUITE_DIR := ../testsuite
 
 # List of test suites
 TEST_SUITES := \
+	smoke \
 	compatibility \
 	diagnostic \
 	functional \
 	regression \
-	smoke
+	stress
 
 .PHONY: testlocal
 testlocal:
