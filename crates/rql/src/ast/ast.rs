@@ -294,7 +294,7 @@ impl Ast {
 #[derive(Debug, PartialEq)]
 pub struct AstCast {
     pub token: Token,
-    pub tuple: Box<AstTuple>,
+    pub tuple: AstTuple,
 }
 
 #[derive(Debug, PartialEq)]

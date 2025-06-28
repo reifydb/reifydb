@@ -8,7 +8,7 @@ use crate::ast::{AstCast, parse};
 impl Parser {
     pub(crate) fn parse_cast(&mut self) -> parse::Result<AstCast> {
         let token = self.consume_keyword(Cast)?;
-        let tuple = Box::new(self.parse_tuple()?);
+        let tuple = self.parse_tuple()?;
         Ok(AstCast { token, tuple })
     }
 }
