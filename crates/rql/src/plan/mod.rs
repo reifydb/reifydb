@@ -2,8 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{
-    Ast, AstCreate, AstDescribe, AstFilter, AstFrom, AstGroupBy, AstInfix, AstInsert, AstLiteral,
-    AstOrderBy, AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement, InfixOperator,
+    Ast, AstAggregateBy, AstCreate, AstDescribe, AstFilter, AstFrom, AstInfix, AstInsert,
+    AstLiteral, AstOrderBy, AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement,
+    InfixOperator,
 };
 use std::collections::HashMap;
 use std::mem;
@@ -126,7 +127,7 @@ pub enum InsertIntoSeriesPlan {
 #[derive(Debug)]
 pub enum QueryPlan {
     Aggregate {
-        group_by: Vec<AliasExpression>,
+        by: Vec<AliasExpression>,
         project: Vec<AliasExpression>,
         next: Option<Box<QueryPlan>>,
     },
@@ -504,7 +505,7 @@ fn plan_ast_node(ast: Ast, next: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
         },
 
         Ast::From(from) => plan_from(from, next),
-        Ast::GroupBy(group) => plan_group_by(group, next),
+        Ast::AggregateBy(group) => plan_aggregate(group, next),
         Ast::Filter(filter) => plan_filter(filter, next),
         Ast::Select(select) => plan_select(select, next),
         Ast::OrderBy(order) => plan_order_by(order, next),
@@ -525,7 +526,6 @@ fn plan_order_by(order: AstOrderBy, head: Option<Box<QueryPlan>>) -> Result<Quer
                     "asc" => OrderDirection::Asc,
                     "desc" => OrderDirection::Desc,
                     _ => unimplemented!(),
-
                 })
                 .unwrap_or(OrderDirection::Desc);
 
@@ -536,46 +536,40 @@ fn plan_order_by(order: AstOrderBy, head: Option<Box<QueryPlan>>) -> Result<Quer
     Ok(QueryPlan::Order { order_by, next: head })
 }
 
-fn plan_group_by(group: AstGroupBy, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
-    // if head is project - then use this
-    // if head is something else - unhandled for now probably an error
-    // if head is none -> just project with group by columns as is
-    match head {
-        Some(head) => match *head {
-            QueryPlan::Project { next, expressions } => Ok(QueryPlan::Aggregate {
-                group_by: group
-                    .columns
-                    .into_iter()
-                    .map(|ast| match ast {
-                        Ast::Identifier(node) => AliasExpression {
-                            alias: Some(IdentExpression(node.0.span.clone())),
-                            expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
-                        },
-                        _ => unimplemented!(),
-                    })
-                    .collect(),
+fn plan_aggregate(aggregate: AstAggregateBy, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    let by = aggregate
+        .by
+        .into_iter()
+        .map(|ast| match ast {
+            Ast::Identifier(node) => AliasExpression {
+                alias: Some(IdentExpression(node.0.span.clone())),
+                expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
+            },
+            ast => unimplemented!("{ast:?}"),
+        })
+        .collect::<Vec<_>>();
 
-                project: expressions,
-                next,
-            }),
-            _ => unimplemented!(),
-        },
-        None => {
-            let columns = group
-                .columns
-                .into_iter()
-                .map(|ast| match ast {
-                    Ast::Identifier(node) => AliasExpression {
-                        alias: Some(IdentExpression(node.0.span.clone())),
-                        expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
-                    },
-                    ast => unimplemented!("{ast:?}"),
-                })
-                .collect::<Vec<_>>();
+    // FIXME this is duplicated code from plan_select
+    let project = aggregate
+        .projections
+        .into_iter()
+        .map(|ast| match ast {
+            // Ast::Block(_) => {}
+            // Ast::Create(_) => {}
+            // Ast::From(_) => {}
+            Ast::Identifier(node) => AliasExpression {
+                alias: Some(IdentExpression(node.0.span.clone())),
+                expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
+            },
+            Ast::Infix(node) => AliasExpression {
+                alias: None,
+                expression: Box::new(expression_infix(node).unwrap()),
+            },
+            ast => unimplemented!("{:?}", ast),
+        })
+        .collect();
 
-            Ok(QueryPlan::Aggregate { group_by: columns.clone(), project: columns, next: None })
-        }
-    }
+    Ok(QueryPlan::Aggregate { by, project, next: head })
 }
 
 fn plan_from(from: AstFrom, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {

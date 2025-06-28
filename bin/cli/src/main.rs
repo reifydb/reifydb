@@ -20,7 +20,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            from test.arith group by id select id order by id 
+            from test.arith aggregate min(value) by id  
         "#,
         )
         .unwrap()
@@ -41,10 +41,9 @@ fn main() {
             r#"
             from test.users
             select age, num
-            group by age
-            select age, sum(num), min(num), max(num)
-            order by age 
-        "#,
+            aggregate sum(num), min(num), max(num) by age
+            
+            "#,
         )
         .unwrap()
     {

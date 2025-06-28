@@ -41,6 +41,23 @@ impl AggregateFunction for Min {
                 }
                 Ok(())
             }
+            ColumnValues::Int2(values, validity) => {
+                for (group, indices) in groups {
+                    let min_val = indices
+                        .iter()
+                        .filter(|&&i| validity[i] && mask.get(i))
+                        .map(|&i| values[i])
+                        .min_by(|a, b| a.partial_cmp(b).unwrap());
+
+                    if let Some(min_val) = min_val {
+                        self.mins
+                            .entry(group.clone())
+                            .and_modify(|v| *v = f64::min(*v, min_val as f64))
+                            .or_insert(min_val as f64);
+                    }
+                }
+                Ok(())
+            }
             _ => unimplemented!(),
         }
     }

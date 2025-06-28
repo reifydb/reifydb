@@ -23,7 +23,7 @@ pub(crate) fn compile(
 
     loop {
         plan = match plan {
-            QueryPlan::Aggregate { group_by, project, next } => {
+            QueryPlan::Aggregate { by: group_by, project, next } => {
                 let input = result.expect("aggregate requires input");
                 result =
                     Some(Box::new(AggregateNode::new(input, group_by, project, functions.clone())));

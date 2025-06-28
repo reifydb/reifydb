@@ -9,7 +9,7 @@ mod diagnostic;
 mod error;
 mod filter;
 mod from;
-mod group_by;
+mod aggregate;
 mod identifier;
 mod infix;
 mod insert;

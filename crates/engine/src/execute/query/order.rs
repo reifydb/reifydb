@@ -54,8 +54,7 @@ impl Node for OrderNode {
                     .columns
                     .iter()
                     .find(|c| c.name == key.column.fragment)
-                    .ok_or_else(|| Error(query::column_not_found(key.column.clone())))
-                    .unwrap();
+                    .ok_or_else(|| Error(query::column_not_found(key.column.clone())))?;
                 Ok::<_, crate::Error>((&col.data, &key.direction))
             })
             .collect::<Result<Vec<_>, _>>()?;

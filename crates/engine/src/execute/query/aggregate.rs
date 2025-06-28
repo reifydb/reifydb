@@ -4,8 +4,8 @@
 use crate::execute::query::{Batch, Node};
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
-use reifydb_core::{BitVec, Value};
 use reifydb_core::Span;
+use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::{AliasExpression, Expression};
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
@@ -17,7 +17,7 @@ enum Projection {
 
 pub(crate) struct AggregateNode {
     input: Box<dyn Node>,
-    group_by: Vec<AliasExpression>,
+    by: Vec<AliasExpression>,
     project: Vec<AliasExpression>,
     layout: Option<FrameLayout>,
     functions: Functions,
@@ -26,11 +26,11 @@ pub(crate) struct AggregateNode {
 impl AggregateNode {
     pub fn new(
         input: Box<dyn Node>,
-        group_by: Vec<AliasExpression>,
+        by: Vec<AliasExpression>,
         project: Vec<AliasExpression>,
         functions: Functions,
     ) -> Self {
-        Self { input, group_by, project, layout: None, functions }
+        Self { input, by, project, layout: None, functions }
     }
 }
 
@@ -41,7 +41,7 @@ impl Node for AggregateNode {
         }
 
         let (keys, mut projections) =
-            parse_keys_and_aggregates(&self.group_by, &self.project, &self.functions)?;
+            parse_keys_and_aggregates(&self.by, &self.project, &self.functions)?;
 
         let mut seen_groups = HashSet::<Vec<Value>>::new();
         let mut group_key_order: Vec<Vec<Value>> = Vec::new();
@@ -103,27 +103,26 @@ impl Node for AggregateNode {
 }
 
 fn parse_keys_and_aggregates<'a>(
-    group_by: &'a [AliasExpression],
+    by: &'a [AliasExpression],
     project: &'a [AliasExpression],
     functions: &'a Functions,
 ) -> crate::Result<(Vec<&'a str>, Vec<Projection>)> {
     let mut keys = Vec::new();
     let mut projections = Vec::new();
 
-    for gb in group_by {
+    for gb in by {
         match gb.expression.deref() {
-            Expression::Column(c) => keys.push(c.0.fragment.as_str()),
-            // _ => return Err(crate::Error::Unsupported("Non-column group by not supported".into())),
+            Expression::Column(c) => {
+                keys.push(c.0.fragment.as_str());
+                projections
+                    .push(Projection::Group { column: c.0.fragment.to_string(), alias: c.span() })
+            } // _ => return Err(crate::Error::Unsupported("Non-column group by not supported".into())),
             _ => panic!("Non-column group by not supported"),
         }
     }
 
     for p in project {
         match p.expression.deref() {
-            Expression::Column(c) => projections.push(Projection::Group {
-                column: c.0.fragment.to_string(),
-                alias: p.expression.span(),
-            }),
             Expression::Call(call) => {
                 let func = call.func.0.fragment.as_str();
                 match call.args.first().map(|arg| arg) {

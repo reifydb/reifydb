@@ -48,7 +48,7 @@ keyword! {
     By         => "BY",
     From       => "FROM",
     Where      => "WHERE",
-    Group      => "GROUP",
+    Aggregate  => "AGGREGATE",
     Having     => "HAVING",
     Order      => "ORDER",
     Limit      => "LIMIT",
@@ -113,9 +113,16 @@ fn keyword_tag<'a>(
         let original = input;
 
         let res = map(
-            terminated(tag_no_case(tag_str), not(peek(alt((alphanumeric1::<nom_locate::LocatedSpan<&str>, nom::error::Error<Span<'a>>>, tag("_")))))),
+            terminated(
+                tag_no_case(tag_str),
+                not(peek(alt((
+                    alphanumeric1::<nom_locate::LocatedSpan<&str>, nom::error::Error<Span<'a>>>,
+                    tag("_"),
+                )))),
+            ),
             move |_| kw,
-        ).parse(input);
+        )
+        .parse(input);
 
         match res {
             Ok(ok) => Ok(ok),
@@ -135,7 +142,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::By, "BY"),
             keyword_tag(Keyword::From, "FROM"),
             keyword_tag(Keyword::Where, "WHERE"),
-            keyword_tag(Keyword::Group, "GROUP"),
+            keyword_tag(Keyword::Aggregate, "AGGREGATE"),
             keyword_tag(Keyword::Having, "HAVING"),
             keyword_tag(Keyword::Order, "ORDER"),
             keyword_tag(Keyword::Limit, "LIMIT"),
@@ -256,7 +263,7 @@ mod tests {
         test_keyword_by => (By, "BY"),
         test_keyword_from => (From, "FROM"),
         test_keyword_where => (Where, "WHERE"),
-        test_keyword_group => (Group, "GROUP"),
+        test_keyword_group => (Aggregate, "AGGREGATE"),
         test_keyword_having => (Having, "HAVING"),
         test_keyword_order => (Order, "ORDER"),
         test_keyword_limit => (Limit, "LIMIT"),

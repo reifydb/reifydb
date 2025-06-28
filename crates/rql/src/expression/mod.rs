@@ -179,6 +179,12 @@ pub struct NotEqualExpression {
 #[derive(Debug, Clone)]
 pub struct ColumnExpression(pub Span);
 
+impl ColumnExpression {
+    pub fn span(&self) -> Span {
+        self.0.clone()
+    }
+}
+
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -43,7 +43,7 @@ pub enum Ast {
     Describe(AstDescribe),
     Filter(AstFilter),
     From(AstFrom),
-    GroupBy(AstGroupBy),
+    AggregateBy(AstAggregateBy),
     Identifier(AstIdentifier),
     Infix(AstInfix),
     Insert(AstInsert),
@@ -71,7 +71,7 @@ impl Ast {
             },
             Ast::Filter(node) => &node.token,
             Ast::From(node) => node.token(),
-            Ast::GroupBy(node) => &node.token,
+            Ast::AggregateBy(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
             Ast::Insert(node) => &node.token,
@@ -100,6 +100,13 @@ impl Ast {
 }
 
 impl Ast {
+    pub fn is_aggregate_by(&self) -> bool {
+        matches!(self, Ast::AggregateBy(_))
+    }
+    pub fn as_aggregate_by(&self) -> &AstAggregateBy {
+        if let Ast::AggregateBy(result) = self { result } else { panic!("not aggregate by") }
+    }
+
     pub fn is_block(&self) -> bool {
         matches!(self, Ast::Block(_))
     }
@@ -140,13 +147,6 @@ impl Ast {
     }
     pub fn as_from(&self) -> &AstFrom {
         if let Ast::From(result) = self { result } else { panic!("not from") }
-    }
-
-    pub fn is_group_by(&self) -> bool {
-        matches!(self, Ast::GroupBy(_))
-    }
-    pub fn as_group_by(&self) -> &AstGroupBy {
-        if let Ast::GroupBy(result) = self { result } else { panic!("not group by") }
     }
 
     pub fn is_identifier(&self) -> bool {
@@ -375,9 +375,10 @@ pub enum AstFrom {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct AstGroupBy {
+pub struct AstAggregateBy {
     pub token: Token,
-    pub columns: Vec<Ast>,
+    pub by: Vec<Ast>,
+    pub projections: Vec<Ast>,
 }
 
 impl AstFrom {
