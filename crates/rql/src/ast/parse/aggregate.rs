@@ -82,6 +82,30 @@ mod tests {
     }
 
     #[test]
+    fn test_alias() {
+        let tokens = lex("AGGREGATE min(age) as min_age BY name").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let aggregate = result.first_unchecked().as_aggregate_by();
+        assert_eq!(aggregate.projections.len(), 1);
+
+        let projection = &aggregate.projections[0].as_infix();
+        let identifier = projection.left.as_identifier();
+        assert_eq!(identifier.value(), "min");
+
+        assert!(matches!(projection.operator, InfixOperator::Call(_)));
+        let tuple = projection.right.as_tuple();
+        let identifier = tuple.nodes[0].as_identifier();
+        assert_eq!(identifier.value(), "age");
+
+        assert_eq!(aggregate.by.len(), 1);
+        assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
+        assert_eq!(aggregate.by[0].value(), "name");
+    }
+
+    #[test]
     fn test_no_projection_single_column() {
         let tokens = lex("AGGREGATE BY name").unwrap();
         let mut parser = Parser::new(tokens);

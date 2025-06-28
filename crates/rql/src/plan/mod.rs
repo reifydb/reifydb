@@ -847,6 +847,16 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
                 span: token.span,
             }))
         }
+        InfixOperator::As(token) => {
+            let left = expression(*infix.left)?;
+            let right = expression(*infix.right)?;
+
+            Ok(Expression::Alias(AliasExpression {
+                alias: Some(IdentExpression(right.span())),
+                expression: Box::new(left),
+                span: token.span
+            }))
+        }
 
         operator => unimplemented!("not implemented: {operator:?}"),
         // InfixOperator::Arrow(_) => {}

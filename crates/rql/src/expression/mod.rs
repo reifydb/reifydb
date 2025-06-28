@@ -12,6 +12,7 @@ use std::fmt::{Display, Formatter};
 pub struct AliasExpression {
     pub alias: Option<IdentExpression>,
     pub expression: Box<Expression>,
+    pub span: Span
 }
 
 impl Display for AliasExpression {

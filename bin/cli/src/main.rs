@@ -41,7 +41,7 @@ fn main() {
             r#"
             from test.users
             select age, num
-            aggregate sum(num), min(num), max(num) by age
+            aggregate sum(num) as a, min(num) as b, max(num) as c by age
             
             "#,
         )

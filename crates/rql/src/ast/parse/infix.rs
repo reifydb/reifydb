@@ -48,6 +48,7 @@ impl Parser {
                 Operator::Arrow => Ok(InfixOperator::Arrow(token)),
                 Operator::Dot => Ok(InfixOperator::AccessProperty(token)),
                 Operator::DoubleColon => Ok(InfixOperator::AccessPackage(token)),
+                Operator::As => Ok(InfixOperator::As(token)),
                 _ => Err(Error::unsupported(token)),
             },
             _ => Err(Error::unsupported(token)),
@@ -64,6 +65,18 @@ mod tests {
     use crate::ast::parse::infix::{AstInfix, InfixOperator};
     use crate::ast::parse::parse;
     use crate::ast::{AstLiteral, AstTuple};
+
+    #[test]
+    fn test_as() {
+        let tokens = lex("1 as one").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let infix = result[0].first_unchecked().as_infix();
+        assert_eq!(infix.left.as_literal_number().value(), "1");
+        assert!(matches!(infix.operator, InfixOperator::As(_)));
+        assert_eq!(infix.right.as_identifier().value(), "one");
+    }
 
     #[test]
     fn test_add() {
