@@ -54,7 +54,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         let lazy_span = expr.lazy_span();
                         match &expr {
                             expr => {
-                                let cvs = evaluate(expr, &context)?;
+                                let cvs = evaluate(expr, &context)?.data;
                                 match cvs.len() {
                                     1 => {
                                         // FIXME ensure its the right value

@@ -3,7 +3,7 @@
 
 use crate::evaluate;
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::ColumnValues;
+use crate::frame::Column;
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 
@@ -12,17 +12,22 @@ impl Evaluator {
         &mut self,
         cast: &CastExpression,
         ctx: &Context,
-    ) -> evaluate::Result<ColumnValues> {
-        
+    ) -> evaluate::Result<Column> {
         // FIXME optimization does not apply for prefix expressions, like cast(-2 as int1) at the moment
         match cast.expression.deref() {
             // Optimization: it is a constant value and we now the target kind, therefore it is possible to create the values directly
             // which means there is no reason to further adjust the column
             Expression::Constant(expr) => self.constant_of(expr, cast.to.kind, ctx),
-            expr => Ok(self
-                .evaluate(expr, ctx)?
-                .adjust_column(cast.to.kind, ctx, cast.expression.lazy_span())
-                .unwrap()), // FIXME
+            expr => {
+                let column = self.evaluate(expr, ctx)?;
+                Ok(Column {
+                    name: column.name,
+                    data: column
+                        .data
+                        .adjust_column(cast.to.kind, ctx, cast.expression.lazy_span())
+                        .unwrap(),
+                })
+            } // FIXME
         }
     }
 }
@@ -55,7 +60,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::int4([42]));
+        assert_eq!(result.data, ColumnValues::int4([42]));
     }
 
     #[test]
@@ -75,7 +80,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::int4([-42]));
+        assert_eq!(result.data, ColumnValues::int4([-42]));
     }
 
     #[test]
@@ -95,7 +100,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::int1([-128]));
+        assert_eq!(result.data, ColumnValues::int1([-128]));
     }
 
     #[test]
@@ -111,7 +116,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::float8([4.2]));
+        assert_eq!(result.data, ColumnValues::float8([4.2]));
     }
 
     #[test]
@@ -127,7 +132,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::float4([4.2]));
+        assert_eq!(result.data, ColumnValues::float4([4.2]));
     }
 
     #[test]
@@ -143,7 +148,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::float4([-1.1]));
+        assert_eq!(result.data, ColumnValues::float4([-1.1]));
     }
 
     #[test]
@@ -159,6 +164,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, ColumnValues::float8([-1.1]));
+        assert_eq!(result.data, ColumnValues::float8([-1.1]));
     }
 }

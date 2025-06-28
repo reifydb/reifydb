@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::{ColumnValues, Push};
+use crate::frame::{Column, ColumnValues, Push};
+use reifydb_core::Span;
 use reifydb_core::num::{IsNumber, Promote, SafeSubtract};
 use reifydb_core::{CowVec, GetKind, Kind};
-use reifydb_core::Span;
 use reifydb_rql::expression::SubtractExpression;
 
 impl Evaluator {
@@ -13,12 +13,12 @@ impl Evaluator {
         &mut self,
         sub: &SubtractExpression,
         ctx: &Context,
-    ) -> crate::evaluate::Result<ColumnValues> {
+    ) -> crate::evaluate::Result<Column> {
         let left = self.evaluate(&sub.left, ctx)?;
         let right = self.evaluate(&sub.right, ctx)?;
         let kind = Kind::promote(left.kind(), right.kind());
 
-        match (&left, &right) {
+        match (&left.data, &right.data) {
             // Float4
             (ColumnValues::Float4(l, lv), ColumnValues::Float4(r, rv)) => {
                 sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
@@ -496,7 +496,7 @@ fn sub_numeric<L, R>(
     rv: &CowVec<bool>,
     kind: Kind,
     span: Span,
-) -> crate::evaluate::Result<ColumnValues>
+) -> crate::evaluate::Result<Column>
 where
     L: GetKind + Promote<R> + Copy,
     R: GetKind + IsNumber + Copy,
@@ -507,17 +507,18 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(l.len(), r.len());
 
-    let mut result = ColumnValues::with_capacity(kind, lv.len());
+    let mut data = ColumnValues::with_capacity(kind, lv.len());
     for i in 0..l.len() {
         if lv[i] && rv[i] {
             if let Some(value) = ctx.sub(l[i], r[i], &span)? {
-                result.push(value);
+                data.push(value);
             } else {
-                result.push_undefined()
+                data.push_undefined()
             }
         } else {
-            result.push_undefined()
+            data.push_undefined()
         }
     }
-    Ok(result)
+
+    Ok(Column { name: span.fragment, data })
 }

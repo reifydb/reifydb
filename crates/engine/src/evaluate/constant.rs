@@ -3,7 +3,7 @@
 
 use crate::evaluate;
 use crate::evaluate::{Context, Error, Evaluator};
-use crate::frame::ColumnValues;
+use crate::frame::{Column, ColumnValues};
 use reifydb_core::Kind;
 use reifydb_core::num::parse_float;
 use reifydb_diagnostic::Diagnostic;
@@ -15,14 +15,9 @@ impl Evaluator {
         &mut self,
         expr: &ConstantExpression,
         ctx: &Context,
-    ) -> evaluate::Result<ColumnValues> {
-        // if let Some(column) = &ctx.column {
-        //     if let Some(kind) = column.kind {
-        //         return self.constant_of(expr, kind, ctx);
-        //     }
-        // }
+    ) -> evaluate::Result<Column> {
         let row_count = ctx.limit.unwrap_or(ctx.row_count);
-        Self::constant_value(&expr, row_count)
+        Ok(Column { name: expr.span().fragment, data: Self::constant_value(&expr, row_count)? })
     }
 
     pub(crate) fn constant_of(
@@ -30,9 +25,12 @@ impl Evaluator {
         expr: &ConstantExpression,
         kind: Kind,
         ctx: &Context,
-    ) -> evaluate::Result<ColumnValues> {
+    ) -> evaluate::Result<Column> {
         let row_count = ctx.limit.unwrap_or(ctx.row_count);
-        Self::constant_value_of(&expr, kind, row_count)
+        Ok(Column {
+            name: expr.span().fragment,
+            data: Self::constant_value_of(&expr, kind, row_count)?,
+        })
     }
 
     // FIXME rather than static parsing - it should use the context it is in, this will avoid data wrangling down the line

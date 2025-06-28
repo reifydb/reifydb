@@ -98,6 +98,19 @@ mod tests {
     }
 
     #[test]
+    fn test_cast_infix() {
+        let tokens = lex("cast(-1, int1) < cast(1, int16)").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let AstInfix { left, operator, right, .. } = result[0].first_unchecked().as_infix();
+        assert!(matches!(operator, InfixOperator::LessThan(_)));
+
+        left.as_cast();
+        right.as_cast();
+    }
+
+    #[test]
     fn test_subtract() {
         let tokens = lex("1 - 2").unwrap();
         let result = parse(tokens).unwrap();

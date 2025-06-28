@@ -3,7 +3,7 @@
 
 use crate::evaluate;
 use crate::evaluate::{Context, Evaluator, evaluate};
-use crate::frame::ColumnValues;
+use crate::frame::{Column, ColumnValues};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
@@ -11,10 +11,10 @@ impl Evaluator {
         &mut self,
         prefix: &PrefixExpression,
         ctx: &Context,
-    ) -> evaluate::Result<ColumnValues> {
-        let values = evaluate(&prefix.expression, ctx)?;
+    ) -> evaluate::Result<Column> {
+        let column = evaluate(&prefix.expression, ctx)?;
 
-        match values {
+        match column.data {
             // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
             ColumnValues::Bool(_, _) => unimplemented!(),
 
@@ -30,7 +30,10 @@ impl Evaluator {
                         result.push(0.0f32);
                     }
                 }
-                Ok(ColumnValues::float4_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::float4_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Float8(values, valid) => {
@@ -45,7 +48,10 @@ impl Evaluator {
                         result.push(0.0f64);
                     }
                 }
-                Ok(ColumnValues::float8_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::float8_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Int1(values, valid) => {
@@ -60,7 +66,10 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(ColumnValues::int1_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int1_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Int2(values, valid) => {
@@ -75,7 +84,10 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(ColumnValues::int2_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int2_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Int4(values, valid) => {
@@ -90,7 +102,10 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(ColumnValues::int4_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int4_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Int8(values, valid) => {
@@ -105,7 +120,10 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(ColumnValues::int8_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int8_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Int16(values, valid) => {
@@ -120,7 +138,10 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(ColumnValues::int16_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int16_with_validity(result, valid),
+                })
             }
 
             // ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
@@ -135,7 +156,10 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(ColumnValues::int1_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int1_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Uint2(values, valid) => {
@@ -147,7 +171,10 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(ColumnValues::int2_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int2_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Uint4(values, valid) => {
@@ -159,7 +186,10 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(ColumnValues::int4_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int4_with_validity(result, valid),
+                })
             }
 
             ColumnValues::Uint8(values, valid) => {
@@ -171,7 +201,10 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(ColumnValues::int8_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int8_with_validity(result, valid),
+                })
             }
             ColumnValues::Uint16(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());
@@ -182,7 +215,10 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(ColumnValues::int16_with_validity(result, valid))
+                Ok(Column {
+                    name: column.name,
+                    data: ColumnValues::int16_with_validity(result, valid),
+                })
             }
             // ColumnValues::Undefined(_) => {
             //     Err("Cannot apply prefix operator to undefined values".into())

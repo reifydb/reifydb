@@ -3,6 +3,7 @@
 
 pub use layout::ColumnLayout;
 pub use push::Push;
+use reifydb_core::Kind;
 pub use values::ColumnValues;
 
 mod adjust;
@@ -20,6 +21,16 @@ mod values;
 pub struct Column {
     pub name: String,
     pub data: ColumnValues,
+}
+
+impl Column {
+    pub fn kind(&self) -> Kind {
+        self.data.kind()
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        self.data.is_numeric()
+    }
 }
 
 impl Column {
@@ -202,14 +213,5 @@ impl Column {
 
     pub fn undefined(name: &str, len: usize) -> Self {
         Self { name: name.to_string(), data: ColumnValues::undefined(len) }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn implement() {
-        todo!()
     }
 }

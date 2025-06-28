@@ -3,18 +3,18 @@
 
 use crate::evaluate::{Context, evaluate};
 use crate::execute::query::{Batch, Node};
-use crate::frame::{Column, Frame, FrameLayout};
+use crate::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
-use reifydb_rql::expression::AliasExpression;
+use reifydb_rql::expression::Expression;
 
 pub(crate) struct ProjectNode {
     input: Box<dyn Node>,
-    expressions: Vec<AliasExpression>,
+    expressions: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
 impl ProjectNode {
-    pub fn new(input: Box<dyn Node>, expressions: Vec<AliasExpression>) -> Self {
+    pub fn new(input: Box<dyn Node>, expressions: Vec<Expression>) -> Self {
         Self { input, expressions, layout: None }
     }
 }
@@ -22,14 +22,12 @@ impl ProjectNode {
 impl Node for ProjectNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mask }) = self.input.next()? {
-            // let mut batch = self.input.next_batch()?;
             let row_count = frame.row_count();
 
             let ctx = Context {
                 column: None,
                 mask: mask.clone(),
                 columns: frame.columns.clone(),
-                // row_count: mask.count_ones(),
                 row_count,
                 limit: None,
             };
@@ -37,17 +35,9 @@ impl Node for ProjectNode {
             let columns = self
                 .expressions
                 .iter()
-                .map(|alias_expr| {
-                    let expr = &alias_expr.expression;
-                    let alias = alias_expr
-                        .alias
-                        .clone()
-                        .map(|a| a.0.fragment)
-                        .unwrap_or(expr.span().fragment);
-
-                    let values = evaluate(expr, &ctx).unwrap();
-
-                    crate::frame::Column { name: alias.clone(), data: values }
+                .map(|expr| {
+                    let column = evaluate(expr, &ctx).unwrap();
+                    crate::frame::Column { name: expr.span().fragment, data: column.data }
                 })
                 .collect();
 
@@ -64,12 +54,12 @@ impl Node for ProjectNode {
 }
 
 pub(crate) struct ProjectWithoutInputNode {
-    expressions: Vec<AliasExpression>,
+    expressions: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
 impl ProjectWithoutInputNode {
-    pub fn new(expressions: Vec<AliasExpression>) -> Self {
+    pub fn new(expressions: Vec<Expression>) -> Self {
         Self { expressions, layout: None }
     }
 }
@@ -82,10 +72,8 @@ impl Node for ProjectWithoutInputNode {
 
         let mut columns = vec![];
 
-        for (idx, expr) in self.expressions.iter().enumerate() {
-            let expr = &expr.expression;
-
-            let value = evaluate(
+        for expr in self.expressions.iter() {
+            let column = evaluate(
                 &expr,
                 &Context {
                     column: None,
@@ -96,7 +84,7 @@ impl Node for ProjectWithoutInputNode {
                 },
             )?;
 
-            columns.push(Column { name: format!("{}", idx + 1), data: value });
+            columns.push(column);
         }
 
         let frame = Frame::new(columns);

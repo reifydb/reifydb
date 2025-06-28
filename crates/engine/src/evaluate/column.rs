@@ -3,7 +3,7 @@
 
 use crate::evaluate;
 use crate::evaluate::{Context, Evaluator};
-use crate::frame::{ColumnValues, ValueRef};
+use crate::frame::{Column, ColumnValues, ValueRef};
 use reifydb_core::Value;
 use reifydb_rql::expression::ColumnExpression;
 
@@ -12,9 +12,9 @@ impl Evaluator {
         &mut self,
         column: &ColumnExpression,
         ctx: &Context,
-    ) -> evaluate::Result<ColumnValues> {
-        let name = &column.0.fragment;
-        let col = ctx.columns.iter().find(|c| &c.name == name).expect("Unknown column");
+    ) -> evaluate::Result<Column> {
+        let name = column.0.fragment.to_string();
+        let col = ctx.columns.iter().find(|c| &c.name == name.as_str()).expect("Unknown column");
 
         let limit = ctx.limit.unwrap_or(usize::MAX);
 
@@ -41,7 +41,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::bool_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::bool_with_validity(values, valid) })
             }
 
             ValueRef::Float4(_) => {
@@ -66,7 +66,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::float4_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::float4_with_validity(values, valid) })
             }
 
             ValueRef::Float8(_) => {
@@ -91,7 +91,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::float8_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::float8_with_validity(values, valid) })
             }
 
             ValueRef::Int1(_) => {
@@ -116,7 +116,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::int1_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::int1_with_validity(values, valid) })
             }
 
             ValueRef::Int2(_) => {
@@ -141,7 +141,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::int2_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::int2_with_validity(values, valid) })
             }
 
             ValueRef::Int4(_) => {
@@ -166,7 +166,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::int4_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::int4_with_validity(values, valid) })
             }
 
             ValueRef::Int8(_) => {
@@ -191,7 +191,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::int8_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::int8_with_validity(values, valid) })
             }
 
             ValueRef::Int16(_) => {
@@ -216,7 +216,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::int16_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::int16_with_validity(values, valid) })
             }
 
             ValueRef::String(_) => {
@@ -241,7 +241,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::string_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::string_with_validity(values, valid) })
             }
 
             ValueRef::Uint1(_) => {
@@ -266,7 +266,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::uint1_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::uint1_with_validity(values, valid) })
             }
 
             ValueRef::Uint2(_) => {
@@ -291,7 +291,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::uint2_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::uint2_with_validity(values, valid) })
             }
 
             ValueRef::Uint4(_) => {
@@ -316,7 +316,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::uint4_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::uint4_with_validity(values, valid) })
             }
 
             ValueRef::Uint8(_) => {
@@ -341,7 +341,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::uint8_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::uint8_with_validity(values, valid) })
             }
 
             ValueRef::Uint16(_) => {
@@ -366,7 +366,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(ColumnValues::uint16_with_validity(values, valid))
+                Ok(Column { name, data: ColumnValues::uint16_with_validity(values, valid) })
             }
 
             _ => unimplemented!(),

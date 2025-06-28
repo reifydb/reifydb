@@ -126,35 +126,13 @@ pub enum InsertIntoSeriesPlan {
 
 #[derive(Debug)]
 pub enum QueryPlan {
-    Aggregate {
-        by: Vec<AliasExpression>,
-        project: Vec<AliasExpression>,
-        next: Option<Box<QueryPlan>>,
-    },
-    Describe {
-        plan: Box<QueryPlan>,
-    },
-    ScanTable {
-        schema: String,
-        table: String,
-        next: Option<Box<QueryPlan>>,
-    },
-    Filter {
-        expression: Expression,
-        next: Option<Box<QueryPlan>>,
-    },
-    Project {
-        expressions: Vec<AliasExpression>,
-        next: Option<Box<QueryPlan>>,
-    },
-    Order {
-        order_by: Vec<OrderKey>,
-        next: Option<Box<QueryPlan>>,
-    },
-    Limit {
-        limit: usize,
-        next: Option<Box<QueryPlan>>,
-    },
+    Aggregate { by: Vec<Expression>, project: Vec<Expression>, next: Option<Box<QueryPlan>> },
+    Describe { plan: Box<QueryPlan> },
+    ScanTable { schema: String, table: String, next: Option<Box<QueryPlan>> },
+    Filter { expression: Expression, next: Option<Box<QueryPlan>> },
+    Project { expressions: Vec<Expression>, next: Option<Box<QueryPlan>> },
+    Order { order_by: Vec<OrderKey>, next: Option<Box<QueryPlan>> },
+    Limit { limit: usize, next: Option<Box<QueryPlan>> },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -541,10 +519,7 @@ fn plan_aggregate(aggregate: AstAggregateBy, head: Option<Box<QueryPlan>>) -> Re
         .by
         .into_iter()
         .map(|ast| match ast {
-            Ast::Identifier(node) => AliasExpression {
-                alias: Some(IdentExpression(node.0.span.clone())),
-                expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
-            },
+            Ast::Identifier(node) => Expression::Column(ColumnExpression(node.0.span)),
             ast => unimplemented!("{ast:?}"),
         })
         .collect::<Vec<_>>();
@@ -557,14 +532,8 @@ fn plan_aggregate(aggregate: AstAggregateBy, head: Option<Box<QueryPlan>>) -> Re
             // Ast::Block(_) => {}
             // Ast::Create(_) => {}
             // Ast::From(_) => {}
-            Ast::Identifier(node) => AliasExpression {
-                alias: Some(IdentExpression(node.0.span.clone())),
-                expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
-            },
-            Ast::Infix(node) => AliasExpression {
-                alias: None,
-                expression: Box::new(expression_infix(node).unwrap()),
-            },
+            Ast::Identifier(node) => Expression::Column(ColumnExpression(node.0.span)),
+            Ast::Infix(node) => expression_infix(node).unwrap(),
             ast => unimplemented!("{:?}", ast),
         })
         .collect();
@@ -602,50 +571,34 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                 // Ast::Block(_) => {}
                 // Ast::Create(_) => {}
                 // Ast::From(_) => {}
-                Ast::Identifier(node) => AliasExpression {
-                    alias: Some(IdentExpression(node.0.span.clone())),
-                    expression: Box::new(Expression::Column(ColumnExpression(node.0.span))),
-                },
-                Ast::Infix(node) => AliasExpression {
-                    alias: None,
-                    expression: Box::new(expression_infix(node).unwrap()),
-                },
-                Ast::Cast(node) => AliasExpression {
-                    alias: None,
-                    expression: Box::new(Expression::Cast(CastExpression {
+                Ast::Identifier(node) => Expression::Column(ColumnExpression(node.0.span)),
+                Ast::Infix(node) => expression_infix(node).unwrap(),
+                Ast::Cast(node) => {
+                    let mut tuple = node.tuple;
+                    let expr = tuple.nodes.remove(0);
+                    let ast_kind = tuple.nodes.pop().unwrap();
+                    let kind = ast_kind.as_kind().kind();
+                    let span = ast_kind.as_kind().token().span.clone();
+
+                    Expression::Cast(CastExpression {
                         span: node.token.span,
-                        expression: Box::new(expression(*node.node).unwrap()),
-                        to: KindExpression {
-                            span: node.to.token().span.clone(),
-                            kind: node.to.kind(),
-                        },
-                    })),
-                },
+                        expression: Box::new(expression(expr).unwrap()),
+                        to: KindExpression { span, kind },
+                    })
+                }
                 Ast::Literal(node) => match node {
-                    AstLiteral::Boolean(node) => AliasExpression {
-                        alias: None,
-                        expression: Box::new(Expression::Constant(ConstantExpression::Bool {
-                            span: node.0.span,
-                        })),
-                    },
-                    AstLiteral::Number(node) => AliasExpression {
-                        alias: None,
-                        expression: Box::new(Expression::Constant(ConstantExpression::Number {
-                            span: node.0.span,
-                        })),
-                    },
-                    AstLiteral::Text(node) => AliasExpression {
-                        alias: None,
-                        expression: Box::new(Expression::Constant(ConstantExpression::Text {
-                            span: node.0.span,
-                        })),
-                    },
-                    AstLiteral::Undefined(node) => AliasExpression {
-                        alias: None,
-                        expression: Box::new(Expression::Constant(ConstantExpression::Undefined {
-                            span: node.0.span,
-                        })),
-                    },
+                    AstLiteral::Boolean(node) => {
+                        Expression::Constant(ConstantExpression::Bool { span: node.0.span })
+                    }
+                    AstLiteral::Number(node) => {
+                        Expression::Constant(ConstantExpression::Number { span: node.0.span })
+                    }
+                    AstLiteral::Text(node) => {
+                        Expression::Constant(ConstantExpression::Text { span: node.0.span })
+                    }
+                    AstLiteral::Undefined(node) => {
+                        Expression::Constant(ConstantExpression::Undefined { span: node.0.span })
+                    }
                 },
                 Ast::Prefix(node) => {
                     let (span, operator) = match node.operator {
@@ -658,14 +611,11 @@ fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryP
                         ast::AstPrefixOperator::Not(_token) => unimplemented!(),
                     };
 
-                    AliasExpression {
-                        alias: None,
-                        expression: Box::new(Expression::Prefix(PrefixExpression {
-                            operator,
-                            expression: Box::new(expression(*node.node).unwrap()), //FIXME
-                            span,
-                        })),
-                    }
+                    Expression::Prefix(PrefixExpression {
+                        operator,
+                        expression: Box::new(expression(*node.node).unwrap()), //FIXME
+                        span,
+                    })
                 }
                 ast => unimplemented!("{:?}", ast),
             })
@@ -713,11 +663,19 @@ fn expression(ast: Ast) -> Result<Expression> {
                 span,
             }))
         }
-        Ast::Cast(node) => Ok(Expression::Cast(CastExpression {
-            span: node.token.span,
-            expression: Box::new(expression(*node.node).unwrap()),
-            to: KindExpression { span: node.to.token().span.clone(), kind: node.to.kind() },
-        })),
+        Ast::Cast(node) => {
+            let mut tuple = node.tuple;
+            let ast_kind = tuple.nodes.pop().unwrap();
+            let expr = tuple.nodes.pop().unwrap();
+            let kind = ast_kind.as_kind().kind();
+            let span = ast_kind.as_kind().token().span.clone();
+            
+            Ok(Expression::Cast(CastExpression {
+                span: node.token.span,
+                expression: Box::new(expression(expr).unwrap()),
+                to: KindExpression { span, kind },
+            }))
+        }
         Ast::Kind(node) => Ok(Expression::Kind(KindExpression {
             span: node.token().span.clone(),
             kind: node.kind(),
@@ -852,9 +810,9 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
             let right = expression(*infix.right)?;
 
             Ok(Expression::Alias(AliasExpression {
-                alias: Some(IdentExpression(right.span())),
+                alias: IdentExpression(right.span()),
                 expression: Box::new(left),
-                span: token.span
+                span: token.span,
             }))
         }
 

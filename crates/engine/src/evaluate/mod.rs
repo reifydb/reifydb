@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::frame::ColumnValues;
+use crate::frame::Column;
 use reifydb_rql::expression::Expression;
 
 use crate::function::{Functions, math};
@@ -9,6 +9,7 @@ pub use error::Error;
 
 pub(crate) use context::{Context, Convert, Demote, EvaluationColumn, Promote};
 
+mod alias;
 mod arith;
 mod call;
 mod cast;
@@ -32,8 +33,9 @@ impl Default for Evaluator {
 }
 
 impl Evaluator {
-    pub(crate) fn evaluate(&mut self, expr: &Expression, ctx: &Context) -> Result<ColumnValues> {
+    pub(crate) fn evaluate(&mut self, expr: &Expression, ctx: &Context) -> Result<Column> {
         match expr {
+            Expression::Alias(expr) => self.alias(expr, ctx),
             Expression::Add(expr) => self.add(expr, ctx),
             Expression::Divide(expr) => self.divide(expr, ctx),
             Expression::Call(expr) => self.call(expr, ctx),
@@ -55,7 +57,7 @@ impl Evaluator {
     }
 }
 
-pub fn evaluate(expr: &Expression, ctx: &Context) -> Result<ColumnValues> {
+pub fn evaluate(expr: &Expression, ctx: &Context) -> Result<Column> {
     let mut evaluator = Evaluator {
         functions: Functions::builder()
             .register_scalar("abs", math::scalar::Abs::new)

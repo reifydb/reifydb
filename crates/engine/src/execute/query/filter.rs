@@ -33,7 +33,7 @@ impl Node for FilterNode {
 
             for filter_expr in &self.expressions {
                 let result = evaluate(filter_expr, &ctx)?;
-                match result {
+                match result.data {
                     ColumnValues::Bool(values, valid) => {
                         for i in 0..row_count {
                             ctx.mask.set(i, ctx.mask.get(i) & &valid[i] & &values[i]);

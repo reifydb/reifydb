@@ -59,6 +59,7 @@ struct Parser {
 impl Parser {
     fn new(mut tokens: Vec<Token>) -> Self {
         let mut precedence_map = HashMap::new();
+        precedence_map.insert(Operator::As, Precedence::Assignment);
         precedence_map.insert(Operator::Equal, Precedence::Assignment);
 
         precedence_map.insert(Operator::DoubleEqual, Precedence::Comparison);
@@ -83,7 +84,6 @@ impl Parser {
 
         precedence_map.insert(Operator::Arrow, Precedence::Primary);
         precedence_map.insert(Operator::Colon, Precedence::Primary);
-        precedence_map.insert(Operator::As, Precedence::Primary);
 
         tokens.reverse();
         Self { tokens, precedence_map }

@@ -10,18 +10,14 @@ use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]
 pub struct AliasExpression {
-    pub alias: Option<IdentExpression>,
+    pub alias: IdentExpression,
     pub expression: Box<Expression>,
-    pub span: Span
+    pub span: Span,
 }
 
 impl Display for AliasExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(alias) = &self.alias {
-            Display::fmt(&alias, f)
-        } else {
-            Display::fmt(&self.expression, f)
-        }
+        Display::fmt(&self.alias, f)
     }
 }
 
@@ -142,11 +138,23 @@ pub struct GreaterThanExpression {
     pub span: Span,
 }
 
+impl GreaterThanExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GreaterThanEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
+}
+
+impl GreaterThanEqualExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -156,11 +164,23 @@ pub struct LessThanExpression {
     pub span: Span,
 }
 
+impl LessThanExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LessThanEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
+}
+
+impl LessThanEqualExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -170,11 +190,23 @@ pub struct EqualExpression {
     pub span: Span,
 }
 
+impl EqualExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct NotEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
+}
+
+impl NotEqualExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -6,9 +6,8 @@ use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
 use reifydb_core::Span;
 use reifydb_core::{BitVec, Value};
-use reifydb_rql::expression::{AliasExpression, Expression};
+use reifydb_rql::expression::Expression;
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
 
 enum Projection {
     Aggregate { column: String, alias: Span, function: Box<dyn AggregateFunction> },
@@ -17,8 +16,8 @@ enum Projection {
 
 pub(crate) struct AggregateNode {
     input: Box<dyn Node>,
-    by: Vec<AliasExpression>,
-    project: Vec<AliasExpression>,
+    by: Vec<Expression>,
+    project: Vec<Expression>,
     layout: Option<FrameLayout>,
     functions: Functions,
 }
@@ -26,8 +25,8 @@ pub(crate) struct AggregateNode {
 impl AggregateNode {
     pub fn new(
         input: Box<dyn Node>,
-        by: Vec<AliasExpression>,
-        project: Vec<AliasExpression>,
+        by: Vec<Expression>,
+        project: Vec<Expression>,
         functions: Functions,
     ) -> Self {
         Self { input, by, project, layout: None, functions }
@@ -103,15 +102,15 @@ impl Node for AggregateNode {
 }
 
 fn parse_keys_and_aggregates<'a>(
-    by: &'a [AliasExpression],
-    project: &'a [AliasExpression],
+    by: &'a [Expression],
+    project: &'a [Expression],
     functions: &'a Functions,
 ) -> crate::Result<(Vec<&'a str>, Vec<Projection>)> {
     let mut keys = Vec::new();
     let mut projections = Vec::new();
 
     for gb in by {
-        match gb.expression.deref() {
+        match gb {
             Expression::Column(c) => {
                 keys.push(c.0.fragment.as_str());
                 projections
@@ -122,7 +121,7 @@ fn parse_keys_and_aggregates<'a>(
     }
 
     for p in project {
-        match p.expression.deref() {
+        match p {
             Expression::Call(call) => {
                 let func = call.func.0.fragment.as_str();
                 match call.args.first().map(|arg| arg) {
@@ -130,7 +129,7 @@ fn parse_keys_and_aggregates<'a>(
                         let function = functions.get_aggregate(func).unwrap();
                         projections.push(Projection::Aggregate {
                             column: c.0.fragment.to_string(),
-                            alias: p.expression.span(),
+                            alias: p.span(),
                             function,
                         });
                     }
@@ -142,7 +141,6 @@ fn parse_keys_and_aggregates<'a>(
             _ => panic!(),
         }
     }
-
     Ok((keys, projections))
 }
 

@@ -60,6 +60,12 @@ pub enum Ast {
     Wildcard(AstWildcard),
 }
 
+impl Default for Ast {
+    fn default() -> Self {
+        Self::Nop
+    }
+}
+
 impl Ast {
     pub fn token(&self) -> &Token {
         match self {
@@ -288,8 +294,7 @@ impl Ast {
 #[derive(Debug, PartialEq)]
 pub struct AstCast {
     pub token: Token,
-    pub node: Box<Ast>,
-    pub to: AstKind,
+    pub tuple: Box<AstTuple>,
 }
 
 #[derive(Debug, PartialEq)]

@@ -13,42 +13,47 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.arith(id: int2, value: int2, num: int2)"#).unwrap();
-    db.tx_as(&root, r#"insert (1,1,5), (1,1,10), (1,2,15), (2,1,10), (2,1,30) into test.arith(id,value,num)"#).unwrap();
+    db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
+    // let err = db.tx_as(&root, r#"insert (129) into test.item (field)"#).unwrap_err();
+    // println!("{}", err);
 
     for l in db
-        .tx_as(
+        .rx_as(
             &root,
             r#"
-            from test.arith aggregate min(value) by id  
+select 
+      cast(-2, float8) < cast(-1.1, float8),
+      cast(0, float8) < cast(1.1, float8),
+      cast(1.1, float8) < cast(1.1, float8)
+
         "#,
         )
-        .unwrap()
+        // .unwrap()
     {
         println!("{}", l);
     }    
     
-    db.tx_as(&root, r#"create table test.users(age: int2, num: float8)"#).unwrap();
-    db.tx_as(
-        &root,
-        r#"insert (3,1), (1,1), (1,3), (2,2), (2,4), (2,6) into test.users (age, num)"#,
-    )
-    .unwrap();
-    // db.tx_as(&root, r#"insert (21), (22), (23), (24), (25), (26), (27), (28), (29), (30), (31), (32), (33) into test.another (age)"#).unwrap();
-    for l in db
-        .tx_as(
-            &root,
-            r#"
-            from test.users
-            select age, num
-            aggregate sum(num) as a, min(num) as b, max(num) as c by age
-            
-            "#,
-        )
-        .unwrap()
-    {
-        println!("{}", l);
-    }
+    // db.tx_as(&root, r#"create table test.users(age: int2, num: float8)"#).unwrap();
+    // db.tx_as(
+    //     &root,
+    //     r#"insert (3,1), (1,1), (1,3), (2,2), (2,4), (2,6) into test.users (age, num)"#,
+    // )
+    // .unwrap();
+    // // db.tx_as(&root, r#"insert (21), (22), (23), (24), (25), (26), (27), (28), (29), (30), (31), (32), (33) into test.another (age)"#).unwrap();
+    // for l in db
+    //     .tx_as(
+    //         &root,
+    //         r#"
+    //         from test.users
+    //         select age, num
+    //         aggregate sum(num) as a, min(num) as b, max(num) as c by age
+    //
+    //         "#,
+    //     )
+    //     .unwrap()
+    // {
+    //     println!("{}", l);
+    // }
 
     // for l in db.rx_as(
     //     &root,

@@ -92,13 +92,19 @@ mod tests {
         assert_eq!(aggregate.projections.len(), 1);
 
         let projection = &aggregate.projections[0].as_infix();
-        let identifier = projection.left.as_identifier();
+        
+        let min_age = projection.left.as_infix();
+        let identifier = min_age.left.as_identifier();
         assert_eq!(identifier.value(), "min");
 
-        assert!(matches!(projection.operator, InfixOperator::Call(_)));
-        let tuple = projection.right.as_tuple();
+        assert!(matches!(min_age.operator, InfixOperator::Call(_)));
+        let tuple = min_age.right.as_tuple();
         let identifier = tuple.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
+        
+        assert!(matches!(projection.operator, InfixOperator::As(_)));
+        let identifier = projection.right.as_identifier();
+        assert_eq!(identifier.value(), "min_age");
 
         assert_eq!(aggregate.by.len(), 1);
         assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
