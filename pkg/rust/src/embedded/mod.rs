@@ -25,7 +25,7 @@ where
 impl<S: Storage, T: Transaction<S, S>> Embedded<S, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
-        (Self { engine: Engine::new(transaction) }, principal)
+        (Self { engine: Engine::new(transaction).unwrap() }, principal)
     }
 }
 

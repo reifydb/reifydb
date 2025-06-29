@@ -94,7 +94,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> Server<S, T> {
             config: ServerConfig::default(),
             _grpc: tonic::transport::Server::builder(),
             callbacks: Callbacks { before_bootstrap: vec![], on_create: vec![] },
-            engine: Engine::new(transaction),
+            engine: Engine::new(transaction).unwrap(),
         }
     }
 

@@ -22,9 +22,9 @@ where
 }
 
 impl<S: Storage, T: Transaction<S, S>> Embedded<S, T> {
-    pub fn new(transaction: T) -> (Self, Principal) {
+    pub fn new(transaction: T) -> crate::Result<(Self, Principal)> {
         let principal = Principal::System { id: 1, name: "root".to_string() };
-        (Self { engine: Engine::new(transaction) }, principal)
+        Ok((Self { engine: Engine::new(transaction)? }, principal))
     }
 }
 

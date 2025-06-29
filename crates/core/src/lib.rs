@@ -33,6 +33,7 @@ mod span;
 mod value;
 mod version;
 pub mod wait_group;
+mod interface;
 
 #[derive(Copy, Clone, Debug)]
 pub enum StoreKind {

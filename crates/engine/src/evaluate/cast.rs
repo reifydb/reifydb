@@ -34,18 +34,18 @@ impl Evaluator {
 
 #[cfg(test)]
 mod tests {
+    use crate::evaluate::evaluate;
     use crate::evaluate::Context;
     use crate::evaluate::Expression;
-    use crate::evaluate::evaluate;
     use crate::frame::ColumnValues;
-    use ConstantExpression::Number;
-    use Expression::{Cast, Constant};
     use reifydb_core::Kind;
     use reifydb_core::Span;
     use reifydb_rql::expression::Expression::Prefix;
     use reifydb_rql::expression::{
         CastExpression, ConstantExpression, KindExpression, PrefixExpression, PrefixOperator,
     };
+    use ConstantExpression::Number;
+    use Expression::{Cast, Constant};
 
     #[test]
     fn test_cast_integer() {

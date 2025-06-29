@@ -16,6 +16,7 @@ pub enum KeyKind {
     TableColumn = 0x07,
     TableRowSequence = 0x08,
     ColumnPolicy = 0x09,
+    SystemVersion = 0x0A,
 }
 
 impl From<KeyKind> for u8 {

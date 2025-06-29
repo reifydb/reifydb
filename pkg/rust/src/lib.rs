@@ -95,7 +95,7 @@ impl ReifyDB {
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking()
     -> (embedded_blocking::Embedded<Memory, Serializable<Memory, Memory>>, Principal) {
-        embedded_blocking::Embedded::new(serializable(Memory::new()))
+        embedded_blocking::Embedded::new(serializable(Memory::new())).unwrap()
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
@@ -120,14 +120,14 @@ impl ReifyDB {
     pub fn embedded_with<S: Storage, T: Transaction<S, S>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<S, T>, Principal) {
-        embedded_blocking::Embedded::new(transaction)
+        embedded_blocking::Embedded::new(transaction).unwrap()
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking_with<S: Storage, T: Transaction<S, S>>(
         transaction: T,
     ) -> (embedded_blocking::Embedded<S, T>, Principal) {
-        embedded_blocking::Embedded::new(transaction)
+        embedded_blocking::Embedded::new(transaction).unwrap()
     }
 
     #[cfg(feature = "server")]

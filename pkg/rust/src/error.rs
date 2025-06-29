@@ -8,6 +8,7 @@ use tonic::Status;
 #[derive(Debug)]
 pub enum Error {
     ConnectionError { message: String },
+    EngineError { message: String },
     ExecutionError { source: String, diagnostic: Diagnostic },
 }
 
@@ -15,6 +16,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::ConnectionError { message } => write!(f, "connection error: {}", message),
+            Error::EngineError { message } => write!(f, "engine error: {}", message),
             Error::ExecutionError { source, diagnostic } => {
                 f.write_str(&diagnostic.to_string(source.as_str()))
             }
@@ -43,5 +45,11 @@ impl From<Status> for Error {
 impl From<tonic::transport::Error> for Error {
     fn from(err: tonic::transport::Error) -> Self {
         Self::ConnectionError { message: err.to_string() }
+    }
+}
+
+impl From<reifydb_engine::Error> for Error {
+    fn from(err: reifydb_engine::Error) -> Self {
+        Self::EngineError { message: err.to_string() }
     }
 }

@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{execute_rx, execute_tx};
+use crate::system::SystemBootHook;
 use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
-use reifydb_core::hook::Hooks;
+use reifydb_core::hook::{Hooks, OnAfterBootHookContext};
 use reifydb_rql::ast;
 use reifydb_rql::plan::{plan_rx, plan_tx};
 use reifydb_storage::{UnversionedStorage, VersionedStorage};
@@ -48,14 +49,28 @@ pub struct EngineInner<VS: VersionedStorage, US: UnversionedStorage, T: Transact
 impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transaction<VS, US>>
     Engine<VS, US, T>
 {
-    pub fn new(transaction: T) -> Self {
+    pub fn new(transaction: T) -> crate::Result<Self> {
         let storage = transaction.versioned();
         let deferred_view = view::deferred::Engine::new(storage);
         let hooks = transaction.hooks();
         let result =
             Self(Arc::new(EngineInner { transaction, hooks, deferred_view, _marker: PhantomData }));
         result.setup_hooks();
-        result
+        result.boot()?;
+        Ok(result)
+    }
+}
+
+impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transaction<VS, US>>
+    Engine<VS, US, T>
+{
+    pub fn boot(&self) -> crate::Result<()> {
+        self.hooks
+            .lifecycle()
+            .after_boot()
+            .for_each(|hook| Ok(hook.on_after_boot(OnAfterBootHookContext {})?))
+            .unwrap(); // FIXME
+        Ok(())
     }
 }
 
@@ -63,6 +78,7 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transa
     Engine<VS, US, T>
 {
     pub fn setup_hooks(&self) {
+        self.hooks.lifecycle().after_boot().register(Arc::new(SystemBootHook {}));
         self.hooks.transaction().post_commit().register(self.deferred_view.clone());
     }
 }

@@ -18,9 +18,13 @@ impl<T: Send + Sync + 'static + ?Sized> Registry<T> {
         self.hooks.write().unwrap().push(hook);
     }
 
-    pub fn for_each<F: Fn(&Arc<T>)>(&self, f: F) {
+    pub fn for_each<F>(&self, f: F) -> Result<(), Box<dyn std::error::Error>>
+    where
+        F: Fn(&Arc<T>) -> Result<(), Box<dyn std::error::Error>>,
+    {
         for hook in self.hooks.read().unwrap().iter() {
-            f(hook);
+            f(hook)?;
         }
+        Ok(())
     }
 }

@@ -9,6 +9,7 @@ use reifydb_core::encoding::keycode;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
 pub use system_sequence::SystemSequenceKey;
+pub use system_version::SystemVersionKey;
 pub use table::TableKey;
 pub use table_column::TableColumnKey;
 pub use table_row::TableRowKey;
@@ -20,6 +21,7 @@ mod kind;
 mod schema;
 mod schema_table;
 mod system_sequence;
+mod system_version;
 mod table;
 mod table_column;
 mod table_row;
@@ -36,6 +38,7 @@ pub enum Key {
     TableColumn(TableColumnKey),
     TableRow(TableRowKey),
     TableRowSequence(TableRowSequenceKey),
+    SystemVersion(SystemVersionKey),
 }
 
 impl Key {
@@ -50,6 +53,7 @@ impl Key {
             Key::TableRow(key) => key.encode(),
             Key::TableRowSequence(key) => key.encode(),
             Key::SystemSequence(key) => key.encode(),
+            Key::SystemVersion(key) => key.encode(),
         }
     }
 }
@@ -86,6 +90,7 @@ impl Key {
             KeyKind::SystemSequence => {
                 SystemSequenceKey::decode(version, payload).map(Self::SystemSequence)
             }
+            KeyKind::SystemVersion => SystemVersionKey::decode(version, payload).map(Self::SystemVersion),
         }
     }
 }

@@ -59,16 +59,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
 
             for (version, deltas) in grouped {
                 self.engine.hooks.transaction().pre_commit().for_each(|hook| {
-                    hook.on_pre_commit(deltas.clone(), version).unwrap(); // FIXME instead of panic interrupt flow and rollback
-                });
+                    hook.on_pre_commit(deltas.clone(), version)?;
+                    Ok(())
+                })?;
 
                 self.engine.versioned.apply(deltas.clone(), version);
 
-                self.engine
-                    .hooks
-                    .transaction()
-                    .post_commit()
-                    .for_each(|hook| hook.on_post_commit(deltas.clone(), version));
+                self.engine.hooks.transaction().post_commit().for_each(|hook| {
+                    hook.on_post_commit(deltas.clone(), version);
+                    Ok(())
+                })?;
             }
 
             Ok(())
