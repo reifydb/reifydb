@@ -23,7 +23,7 @@ use reifydb_core::clock::LocalClock;
 use reifydb_core::delta::Delta;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
-use reifydb_storage::UnversionedStorage;
+use reifydb_core::interface::UnversionedStorage;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
 use std::sync::MutexGuard;

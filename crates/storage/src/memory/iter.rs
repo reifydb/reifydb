@@ -11,10 +11,8 @@
 
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
-use crate::unversioned::UnversionedScan;
-use crate::versioned::VersionedScan;
-use crate::{Unversioned, Versioned};
 use crossbeam_skiplist::map::Iter as MapIter;
+use reifydb_core::interface::{Unversioned, UnversionedScan, Versioned, VersionedScan};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
 use std::ops::Bound;

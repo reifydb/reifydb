@@ -12,7 +12,7 @@ use reifydb_core::row::Layout;
 use reifydb_core::{BitVec, Kind};
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::InsertIntoTablePlan;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {

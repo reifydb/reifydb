@@ -6,7 +6,7 @@ use crate::key::{EncodableKey, SchemaKey};
 use crate::schema::layout::schema;
 use crate::schema::{Schema, SchemaId};
 use reifydb_core::row::EncodedRow;
-use reifydb_storage::Versioned;
+use reifydb_core::interface::Versioned;
 use reifydb_transaction::Rx;
 
 impl Catalog {

@@ -8,7 +8,7 @@ use crate::view::deferred::work::work;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::PostCommitHook;
 use reifydb_core::{AsyncCowVec, Version};
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, mpsc};
 use std::thread;

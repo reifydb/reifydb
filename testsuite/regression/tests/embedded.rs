@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::embedded::Embedded;
-use reifydb::reifydb_storage::Storage;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::{DB, Principal, ReifyDB, lmdb, memory, optimistic, serializable, sqlite};
 use reifydb_testing::tempdir::temp_dir;
@@ -13,6 +12,7 @@ use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
+use reifydb::interface::Storage;
 
 pub struct Runner<S: Storage + 'static, T: Transaction<S,S> + 'static> {
     engine: Embedded<S, T>,

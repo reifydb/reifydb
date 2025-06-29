@@ -8,7 +8,7 @@ use reifydb_auth::Principal;
 use reifydb_core::hook::{Hooks, OnAfterBootHookContext};
 use reifydb_rql::ast;
 use reifydb_rql::plan::{plan_rx, plan_tx};
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::{Transaction, Tx};
 use std::marker::PhantomData;
 use std::ops::Deref;

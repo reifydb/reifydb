@@ -25,7 +25,7 @@ use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::{Kind, OrderDirection, OrderKey, Span};
 use reifydb_diagnostic::Diagnostic;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Rx;
 
 mod error;
@@ -669,7 +669,7 @@ fn expression(ast: Ast) -> Result<Expression> {
             let expr = tuple.nodes.pop().unwrap();
             let kind = ast_kind.as_kind().kind();
             let span = ast_kind.as_kind().token().span.clone();
-            
+
             Ok(Expression::Cast(CastExpression {
                 span: node.token.span,
                 expression: Box::new(expression(expr).unwrap()),

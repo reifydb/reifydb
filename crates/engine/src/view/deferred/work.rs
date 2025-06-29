@@ -3,7 +3,7 @@
 
 use crate::view::deferred::Work;
 use crate::view::flow::{CountNode, Graph, GroupNode, Orchestrator, SumNode};
-use reifydb_storage::VersionedStorage;
+use reifydb_core::interface::VersionedStorage;
 use std::sync::mpsc::Receiver;
 
 pub(crate) fn work<VS: VersionedStorage>(

@@ -7,7 +7,7 @@ use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;
 use reifydb_diagnostic::Diagnostic;
 use reifydb_rql::plan::CreateSchemaPlan;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {

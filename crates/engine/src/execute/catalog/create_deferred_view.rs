@@ -4,7 +4,7 @@
 use crate::execute::Executor;
 use crate::ExecutionResult;
 use reifydb_rql::plan::CreateDeferredViewPlan;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {

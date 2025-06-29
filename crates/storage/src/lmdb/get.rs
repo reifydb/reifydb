@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::unversioned::UnversionedGet;
-use crate::{Unversioned, Versioned, VersionedGet};
+use reifydb_core::interface::{Unversioned, UnversionedGet, Versioned, VersionedGet};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, Version};
 

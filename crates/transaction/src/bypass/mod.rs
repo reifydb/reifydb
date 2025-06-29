@@ -3,7 +3,7 @@
 
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::{Unversioned, UnversionedStorage};
+use reifydb_core::interface::{Unversioned, UnversionedStorage};
 
 pub struct BypassRx<US: UnversionedStorage> {
     unversioned: US,

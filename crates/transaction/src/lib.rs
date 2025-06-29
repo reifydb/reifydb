@@ -9,7 +9,7 @@
 pub use bypass::{BypassRx, BypassTx};
 pub use error::Error;
 use reifydb_core::hook::Hooks;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 pub use rx::*;
 pub use tx::*;
 

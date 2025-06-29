@@ -17,8 +17,8 @@ use crate::server::grpc::grpc_db::tx_result::Result::{
     CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
 };
 use reifydb_auth::Principal;
+use reifydb_core::interface::Storage;
 use reifydb_engine::{CreateSchemaResult, CreateTableResult, Engine, ExecutionResult};
-use reifydb_storage::Storage;
 use tokio_stream::once;
 
 pub struct DbService<S: Storage + 'static, T: Transaction<S, S> + 'static> {

@@ -37,13 +37,13 @@ use std::path::Path;
 use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
+use reifydb_core::interface::Storage;
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 pub use reifydb_storage;
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::Sqlite;
-use reifydb_storage::Storage;
 pub use reifydb_transaction;
 use reifydb_transaction::Transaction;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;

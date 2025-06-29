@@ -12,7 +12,7 @@
 use reifydb_core::delta::Delta;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
-use reifydb_storage::Versioned;
+use reifydb_core::interface::Versioned;
 use std::cmp;
 use std::cmp::Reverse;
 

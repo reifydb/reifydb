@@ -2,14 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::unversioned::UnversionedScanRangeRev;
-use crate::{Unversioned, Versioned, VersionedScanRangeRev};
+use reifydb_core::interface::{
+    Unversioned, UnversionedScanRangeRev, Versioned, VersionedScanRangeRev,
+};
 use reifydb_core::{EncodedKeyRange, Version};
 
 impl VersionedScanRangeRev for Lmdb {
     type ScanRangeIterRev<'a> = RangeRev;
 
-    fn scan_range_rev(&self, _range: EncodedKeyRange, _version: Version) -> Self::ScanRangeIterRev<'_> {
+    fn scan_range_rev(
+        &self,
+        _range: EncodedKeyRange,
+        _version: Version,
+    ) -> Self::ScanRangeIterRev<'_> {
         todo!()
     }
 }
@@ -26,8 +31,9 @@ impl Iterator for RangeRev {
 
 impl UnversionedScanRangeRev for Lmdb {
     type ScanRangeRev<'a>
-    
-    = UnversionedRangeRev where Self: 'a;
+        = UnversionedRangeRev
+    where
+        Self: 'a;
 
     fn scan_range_rev_unversioned(&self, _range: EncodedKeyRange) -> Self::ScanRangeRev<'_> {
         todo!()

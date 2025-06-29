@@ -18,11 +18,11 @@ mod range_rev;
 mod versioned;
 
 use crate::memory::versioned::VersionedRow;
-use crate::unversioned::{UnversionedRemove, UnversionedSet, UnversionedStorage};
-use crate::{GetHooks, Storage, VersionedStorage};
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::EncodedKey;
 use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{GetHooks, UnversionedSet};
+use reifydb_core::interface::{Storage, UnversionedRemove, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::EncodedRow;
 
 #[derive(Clone)]

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::sqlite::Sqlite;
-use crate::{Unversioned, UnversionedScan};
+use reifydb_core::interface::{Unversioned, UnversionedScan};
 
 pub struct UnversionedIter {}
 

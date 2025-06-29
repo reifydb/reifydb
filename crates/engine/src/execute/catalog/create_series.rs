@@ -3,7 +3,7 @@
 
 use crate::execute::{ExecutionResult, Executor};
 use reifydb_rql::plan::CreateSeriesPlan;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {

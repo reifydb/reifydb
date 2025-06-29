@@ -5,7 +5,7 @@ use crate::Rx;
 use crate::bypass::BypassTx;
 use reifydb_core::EncodedKey;
 use reifydb_core::row::EncodedRow;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use std::sync::MutexGuard;
 
 pub trait Tx<VS: VersionedStorage, US: UnversionedStorage>: Rx {

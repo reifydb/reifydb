@@ -2,23 +2,22 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 mod apply;
+mod contains;
 mod get;
 mod iter;
-mod range;
-mod contains;
-mod range_rev;
 mod iter_rev;
+mod range;
+mod range_rev;
 
-use crate::unversioned::{UnversionedRemove, UnversionedSet, UnversionedStorage};
-use crate::versioned::{
-    VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanRange,
-    VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
-};
-use crate::{GetHooks, Storage, Versioned};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{
+    GetHooks, Storage, UnversionedRemove, UnversionedSet, UnversionedStorage, Versioned,
+    VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanRange,
+    VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
+};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 use rusqlite::{OptionalExtension, params};
@@ -151,7 +150,9 @@ impl VersionedScan for Sqlite {
 
         let conn = self.get_conn();
         let mut stmt = conn
-            .prepare("SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key ASC")
+            .prepare(
+                "SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key ASC",
+            )
             .unwrap();
 
         let rows = stmt
@@ -178,7 +179,9 @@ impl VersionedScanRev for Sqlite {
 
         let conn = self.get_conn();
         let mut stmt = conn
-            .prepare("SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key DESC")
+            .prepare(
+                "SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key DESC",
+            )
             .unwrap();
 
         let rows = stmt

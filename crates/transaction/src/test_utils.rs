@@ -3,9 +3,9 @@
 
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
 use crate::{BypassTx, Rx, Transaction, Tx, VersionedIter};
+use reifydb_core::interface::Versioned;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::Versioned;
 use reifydb_storage::memory::Memory;
 use std::sync::MutexGuard;
 

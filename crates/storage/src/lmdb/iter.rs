@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::{Unversioned, UnversionedScan, Versioned, VersionedScan};
 use reifydb_core::Version;
+use reifydb_core::interface::{Unversioned, UnversionedScan, Versioned, VersionedScan};
 
 impl VersionedScan for Lmdb {
     type ScanIter<'a> = Iter;

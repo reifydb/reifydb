@@ -17,7 +17,7 @@ use crate::mvcc::types::Pending;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::EncodedKey;
 use reifydb_core::either::Either;
-use reifydb_storage::VersionedStorage;
+use reifydb_core::interface::VersionedStorage;
 use std::collections::btree_map::Range as BTreeMapRange;
 
 pub struct TransactionRange<'a, VS, C>

@@ -14,9 +14,7 @@ use crossbeam_skiplist::map::Iter as MapIter;
 
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
-use crate::unversioned::UnversionedScanRev;
-use crate::versioned::VersionedScanRev;
-use crate::{Unversioned, Versioned};
+use reifydb_core::interface::{Unversioned, UnversionedScanRev, Versioned, VersionedScanRev};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
 use std::ops::Bound;

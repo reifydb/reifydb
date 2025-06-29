@@ -23,6 +23,7 @@ pub mod delta;
 pub mod either;
 pub mod encoding;
 pub mod hook;
+pub mod interface;
 mod key;
 mod kind;
 pub mod num;
@@ -33,7 +34,6 @@ mod span;
 mod value;
 mod version;
 pub mod wait_group;
-mod interface;
 
 #[derive(Copy, Clone, Debug)]
 pub enum StoreKind {

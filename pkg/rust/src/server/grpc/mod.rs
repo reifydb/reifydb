@@ -3,8 +3,8 @@
 
 use crate::server::grpc::db::DbService;
 use crate::server::grpc::grpc_db::db_server::DbServer;
+use reifydb_core::interface::Storage;
 use reifydb_engine::Engine;
-use reifydb_storage::Storage;
 use reifydb_transaction::Transaction;
 
 pub mod auth;

@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Unversioned;
 use crate::sqlite::Sqlite;
-use crate::unversioned::UnversionedScanRangeRev;
 use reifydb_core::EncodedKeyRange;
+use reifydb_core::interface::{Unversioned, UnversionedScanRangeRev};
 
 impl UnversionedScanRangeRev for Sqlite {
     type ScanRangeRev<'a>

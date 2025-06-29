@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::reifydb_storage::Storage;
+use reifydb::interface::Storage;
 use reifydb::reifydb_storage::lmdb::Lmdb;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};

@@ -11,7 +11,7 @@ use reifydb_core::delta::Delta::Set;
 use reifydb_core::encoding::keycode::serialize;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, Version};
-use reifydb_storage::VersionedStorage;
+use reifydb_core::interface::VersionedStorage;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 
@@ -263,7 +263,7 @@ impl<VS: VersionedStorage> Node for SumNode<VS> {
 #[cfg(test)]
 mod tests {
     use crate::view::flow::{CountNode, Graph, GroupNode, SumNode};
-    use reifydb_storage::VersionedStorage;
+    use reifydb_core::interface::VersionedStorage;
 
     fn create_count_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
         let group_node = Box::new(GroupNode {

@@ -11,7 +11,7 @@ use crate::table::{Table, TableId};
 use crate::{Catalog, Error};
 use reifydb_core::{Kind, Span};
 use reifydb_diagnostic::Diagnostic;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
 #[derive(Debug, Clone)]

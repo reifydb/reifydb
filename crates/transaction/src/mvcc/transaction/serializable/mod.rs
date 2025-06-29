@@ -17,7 +17,7 @@ pub use read::*;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::hook::Hooks;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 pub use write::*;
 
 pub(crate) mod read;

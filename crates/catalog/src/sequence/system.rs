@@ -9,7 +9,7 @@ use crate::sequence::u64::SequenceGeneratorU64;
 use crate::table::TableId;
 use once_cell::sync::Lazy;
 use reifydb_core::EncodedKey;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

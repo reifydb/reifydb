@@ -14,7 +14,7 @@
 // use reifydb_core::encoding::format::Formatter;
 // use reifydb_core::row::EncodedRow;
 // use reifydb_core::{EncodedKey, EncodedKeyRange};
-// use reifydb_storage::Stored;
+// use reifydb_core::interface::Stored;
 // use reifydb_storage::memory::Memory;
 // use reifydb_testing::testscript;
 // use reifydb_transaction::Tx;

@@ -5,7 +5,7 @@ use crate::key::{EncodableKey, TableRowSequenceKey};
 use crate::row::RowId;
 use crate::sequence::u64::SequenceGeneratorU64;
 use crate::table::TableId;
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_transaction::Tx;
 
 pub struct TableRowSequence {}

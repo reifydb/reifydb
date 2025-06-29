@@ -16,7 +16,7 @@ use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
-use reifydb_storage::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 
 pub struct TransactionRx<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) engine: Serializable<VS, US>,

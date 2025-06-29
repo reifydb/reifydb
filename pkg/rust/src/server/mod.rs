@@ -4,8 +4,8 @@
 use crate::server::grpc::db_service;
 pub use config::{DatabaseConfig, ServerConfig};
 use reifydb_auth::Principal;
+use reifydb_core::interface::Storage;
 use reifydb_engine::{Engine, ExecutionResult};
-use reifydb_storage::Storage;
 use reifydb_transaction::Transaction;
 use std::ops::Deref;
 use std::pin::Pin;

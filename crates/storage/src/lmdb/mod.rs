@@ -1,11 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::unversioned::{UnversionedRemove, UnversionedSet, UnversionedStorage};
-use crate::{GetHooks, Storage, VersionedStorage};
 use heed::types::Bytes;
 use heed::{Database, Env, EnvOpenOptions};
 use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{
+    GetHooks, Storage, UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
+};
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;

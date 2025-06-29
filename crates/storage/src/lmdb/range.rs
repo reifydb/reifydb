@@ -2,10 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use crate::unversioned::UnversionedScanRange;
-use crate::{Unversioned, Versioned, VersionedScanRange};
 use heed::types::Bytes;
 use heed::{Database, Env};
+use reifydb_core::interface::{Unversioned, UnversionedScanRange, Versioned, VersionedScanRange};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
 use std::collections::{Bound, VecDeque};
@@ -42,7 +41,16 @@ impl Range {
         let start = range.start_bound().cloned();
         let end = range.end_bound().cloned();
 
-        Self { env, db, buffer: VecDeque::new(), _version: version, last_key: None, start, end, batch_size }
+        Self {
+            env,
+            db,
+            buffer: VecDeque::new(),
+            _version: version,
+            last_key: None,
+            start,
+            end,
+            batch_size,
+        }
     }
 
     fn refill_buffer(&mut self) {

@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::VersionedContains;
 use crate::memory::Memory;
-use crate::unversioned::UnversionedContains;
+use reifydb_core::interface::{UnversionedContains, VersionedContains};
 use reifydb_core::{EncodedKey, Version};
 use std::collections::Bound;
 

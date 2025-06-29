@@ -16,7 +16,7 @@ use reifydb_core::encoding::format::Formatter;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
-use reifydb_storage::{VersionedStorage, Versioned};
+use reifydb_core::interface::{VersionedStorage, Versioned};
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;

@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Unversioned;
 use crate::sqlite::Sqlite;
-use crate::unversioned::UnversionedGet;
+use reifydb_core::interface::{Unversioned, UnversionedGet};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey};
 use rusqlite::{OptionalExtension, params};

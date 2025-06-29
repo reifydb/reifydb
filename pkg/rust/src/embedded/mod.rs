@@ -3,8 +3,8 @@
 
 use crate::{DB, Error};
 use reifydb_auth::Principal;
+use reifydb_core::interface::Storage;
 use reifydb_engine::{Engine, ExecutionResult};
-use reifydb_storage::Storage;
 use reifydb_transaction::Transaction;
 use tokio::task::spawn_blocking;
 

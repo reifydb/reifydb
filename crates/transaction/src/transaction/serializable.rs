@@ -7,7 +7,7 @@ use crate::{Rx, Transaction, Tx, VersionedIter};
 use reifydb_core::hook::Hooks;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::{UnversionedStorage, Versioned, VersionedStorage};
+use reifydb_core::interface::{UnversionedStorage, Versioned, VersionedStorage};
 use std::sync::MutexGuard;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Serializable<VS, US> {

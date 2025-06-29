@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb_core::interface::{Unversioned, UnversionedScanRev};
 use crate::sqlite::Sqlite;
-use crate::unversioned::UnversionedScanRev;
-use crate::Unversioned;
 
 pub struct UnversionedIterRev {}
 

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::embedded_blocking::Embedded;
-use reifydb::reifydb_storage::Storage;
+use reifydb::interface::Storage;
 use reifydb::reifydb_transaction::Transaction;
 use reifydb::{Principal, ReifyDB, lmdb, memory, optimistic, serializable, sqlite};
 use reifydb_testing::tempdir::temp_dir;

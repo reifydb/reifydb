@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_storage::Versioned;
+use reifydb_core::interface::Versioned;
 
 pub type VersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
 
