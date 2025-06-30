@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
@@ -20,10 +20,10 @@ use crate::mvcc::types::Committed;
 pub use read::TransactionRx;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::hook::Hooks;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
+use reifydb_storage::memory::Memory;
 pub use write::TransactionTx;
-use crate::BypassTx;
 
 mod read;
 mod write;
@@ -47,14 +47,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Clone for Optimistic<VS, US> 
 pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
     pub(crate) versioned: VS,
-    pub(crate) bypass: Mutex<BypassTx<US>>,
-    pub(crate) hooks: Hooks,
+    pub(crate) unversioned: RwLock<US>,
+    pub(crate) hooks: Hooks<US>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
-    fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks) -> Self {
+    fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks<US>) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
-        Self { tm, versioned, bypass: Mutex::new(BypassTx::new(unversioned)), hooks }
+        Self { tm, versioned, unversioned: RwLock::new(unversioned), hooks }
     }
 
     fn version(&self) -> Version {
@@ -63,9 +63,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Optimistic<VS, US> {
-    pub fn new(versioned: VS, unversioned: US) -> Self {
-        let hooks = versioned.hooks();
+    pub fn new(versioned: VS, unversioned: US, hooks: Hooks<US>) -> Self {
         Self(Arc::new(Inner::new(core::any::type_name::<Self>(), versioned, unversioned, hooks)))
+    }
+}
+
+impl Optimistic<Memory, Memory> {
+    pub fn testing() -> Self {
+        Self::new(Memory::default(), Memory::default(), Hooks::default())
     }
 }
 

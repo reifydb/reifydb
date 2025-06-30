@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
+use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{BoxedVersionedIter, Rx, Transaction, Tx, Versioned};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
 use reifydb_storage::memory::Memory;
-use std::sync::MutexGuard;
-use crate::BypassTx;
-use crate::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
+use std::sync::RwLockWriteGuard;
 
 pub struct TestTransaction {
     engine: Optimistic<Memory, Memory>,
@@ -24,7 +24,7 @@ impl Default for TestTransaction {
 impl TestTransaction {
     pub fn new() -> Self {
         let unversioned = Memory::default();
-        let engine = Optimistic::new(Memory::new(), unversioned.clone());
+        let engine = Optimistic::new(Memory::new(), unversioned.clone(), Hooks::default());
         let tx = engine.begin();
         Self { engine, tx, unversioned }
     }
@@ -39,7 +39,6 @@ impl TestTransaction {
 }
 
 impl Rx for TestTransaction {
-
     fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
         Ok(self.tx.get(key)?.map(|tv| Versioned {
             key: tv.key().clone(),
@@ -113,7 +112,7 @@ impl Rx for TestTransaction {
     }
 }
 
-impl Tx<Memory, Memory, BypassTx<Memory>> for TestTransaction {
+impl Tx<Memory, Memory> for TestTransaction {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
         Ok(self.tx.set(key, row)?)
     }
@@ -130,7 +129,7 @@ impl Tx<Memory, Memory, BypassTx<Memory>> for TestTransaction {
         self.tx.rollback()
     }
 
-    fn bypass(&mut self) -> MutexGuard<BypassTx<Memory>> {
-        self.tx.bypass()
+    fn unversioned(&mut self) -> RwLockWriteGuard<Memory> {
+        self.tx.unversioned()
     }
 }

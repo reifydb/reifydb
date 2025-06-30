@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::lmdb::Lmdb;
-use reifydb_core::Version;
 use reifydb_core::interface::{Unversioned, UnversionedScan, Versioned, VersionedScan};
+use reifydb_core::{Error, Version};
 
 impl VersionedScan for Lmdb {
     type ScanIter<'a> = Iter;
@@ -36,7 +36,7 @@ impl<'a> Iterator for UnversionedIter {
 impl UnversionedScan for Lmdb {
     type ScanIter<'a> = UnversionedIter;
 
-    fn scan_unversioned(&self) -> Self::ScanIter<'_> {
+    fn scan(&self) -> Result<Self::ScanIter<'_>, Error> {
         todo!()
     }
 }

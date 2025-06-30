@@ -3,7 +3,7 @@
 
 use crate::memory::Memory;
 use reifydb_core::interface::{UnversionedContains, VersionedContains};
-use reifydb_core::{EncodedKey, Version};
+use reifydb_core::{EncodedKey, Error, Version};
 use std::collections::Bound;
 
 impl VersionedContains for Memory {
@@ -19,7 +19,7 @@ impl VersionedContains for Memory {
 }
 
 impl UnversionedContains for Memory {
-    fn contains_unversioned(&self, key: &EncodedKey) -> bool {
-        self.unversioned.get(key).is_some()
+    fn contains(&self, key: &EncodedKey) -> Result<bool, Error> {
+        Ok(self.unversioned.get(key).is_some())
     }
 }

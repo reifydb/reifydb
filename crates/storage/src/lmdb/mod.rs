@@ -3,9 +3,8 @@
 
 use heed::types::Bytes;
 use heed::{Database, Env, EnvOpenOptions};
-use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    GetHooks, Storage, UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
+    UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
 };
 use std::ops::Deref;
 use std::path::Path;
@@ -25,7 +24,6 @@ pub struct Lmdb(Arc<LmdbInner>);
 pub struct LmdbInner {
     pub(crate) env: Arc<Env>,
     pub(crate) db: Database<Bytes, Bytes>,
-    pub(crate) hooks: Hooks,
 }
 
 impl Deref for Lmdb {
@@ -44,13 +42,7 @@ impl Lmdb {
         let db = env.create_database::<Bytes, Bytes>(&mut tx, None).unwrap();
         tx.commit().unwrap();
 
-        Self(Arc::new(LmdbInner { env: Arc::new(env), db, hooks: Default::default() }))
-    }
-}
-
-impl GetHooks for Lmdb {
-    fn hooks(&self) -> Hooks {
-        self.hooks.clone()
+        Self(Arc::new(LmdbInner { env: Arc::new(env), db }))
     }
 }
 
@@ -58,4 +50,3 @@ impl VersionedStorage for Lmdb {}
 impl UnversionedStorage for Lmdb {}
 impl UnversionedSet for Lmdb {}
 impl UnversionedRemove for Lmdb {}
-impl Storage for Lmdb {}

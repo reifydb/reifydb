@@ -15,7 +15,6 @@ use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
 use crate::{as_key, as_row};
-use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
 use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
@@ -23,7 +22,7 @@ use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
 fn test_versions() {
-    let engine = Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::testing();
 
     let k0 = as_key!(0);
 

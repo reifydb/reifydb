@@ -16,22 +16,26 @@ use crate::server::grpc::grpc_db::tx_result::Result::{
     CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
 };
 use reifydb_auth::Principal;
-use reifydb_core::interface::{Bypass, Storage, Transaction};
+use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::{CreateSchemaResult, CreateTableResult, Engine, ExecutionResult};
 use tokio_stream::once;
 
-pub struct DbService<
-    S: Storage + 'static,
-    BP: Bypass<S> + 'static,
-    T: Transaction<S, S, BP> + 'static,
-> {
-    pub(crate) engine: Arc<Engine<S, S, BP, T>>,
+pub struct DbService<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
+    pub(crate) engine: Arc<Engine<VS, US, T>>,
 }
 
-impl<S: Storage + 'static, BP: Bypass<S> + 'static, T: Transaction<S, S, BP> + 'static>
-    DbService<S, BP, T>
+impl<VS, US, T> DbService<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
-    pub fn new(engine: Engine<S, S, BP, T>) -> Self {
+    pub fn new(engine: Engine<VS, US, T>) -> Self {
         Self { engine: Arc::new(engine) }
     }
 }
@@ -40,8 +44,11 @@ pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::TxResult, St
 pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::RxResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<S: Storage + 'static, BP: Bypass<S> + 'static, T: Transaction<S, S, BP> + 'static>
-    grpc_db::db_server::Db for DbService<S, BP, T>
+impl<VS, US, T> grpc_db::db_server::Db for DbService<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
     type TxStream = TxResultStream;
 

@@ -5,14 +5,14 @@ use crate::execute::{ExecutionResult, Executor};
 use crate::{CreateTableResult, Error};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::table::TableToCreate;
-use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_rql::plan::CreateTablePlan;
 
-impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US, BP> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn create_table(
         &mut self,
-        tx: &mut impl Tx<VS, US, BP>,
+        tx: &mut impl Tx<VS, US>,
         plan: CreateTablePlan,
     ) -> crate::Result<ExecutionResult> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? else {

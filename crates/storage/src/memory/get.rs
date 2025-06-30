@@ -3,7 +3,7 @@
 
 use crate::memory::Memory;
 use reifydb_core::interface::{Unversioned, UnversionedGet, Versioned, VersionedGet};
-use reifydb_core::{EncodedKey, Version};
+use reifydb_core::{EncodedKey, Error, Version};
 use std::collections::Bound;
 
 impl VersionedGet for Memory {
@@ -23,8 +23,10 @@ impl VersionedGet for Memory {
 }
 
 impl UnversionedGet for Memory {
-    fn get_unversioned(&self, key: &EncodedKey) -> Option<Unversioned> {
-        let item = self.unversioned.get(key)?;
-        Some(Unversioned { key: key.clone(), row: item.value().clone() })
+    fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>, Error> {
+        Ok(self
+            .unversioned
+            .get(key)
+            .map(|item| Unversioned { key: key.clone(), row: item.value().clone() }))
     }
 }

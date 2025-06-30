@@ -6,14 +6,13 @@ use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
 use crate::{as_key, as_row, from_row};
-use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
 fn test_write() {
     let key = as_key!("foo");
 
-    let engine= Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::testing();
     {
         let mut tx = engine.begin();
         assert_eq!(tx.version(), 0);
@@ -34,7 +33,7 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-    let engine= Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::testing();
 
     {
         let mut txn = engine.begin();

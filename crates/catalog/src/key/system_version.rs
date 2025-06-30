@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub struct SystemVersionKey {
-    version: SystemVersion,
+    pub version: SystemVersion,
 }
 
 #[repr(u8)]

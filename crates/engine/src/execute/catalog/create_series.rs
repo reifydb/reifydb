@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{ExecutionResult, Executor};
-use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::CreateSeriesPlan;
 
-impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US, BP> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn create_series(
         &mut self,
-        _tx: &mut impl Tx<VS, US, BP>,
+        _tx: &mut impl Tx<VS, US>,
         _plan: CreateSeriesPlan,
     ) -> crate::Result<ExecutionResult> {
         // if plan.if_not_exists {

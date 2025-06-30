@@ -15,14 +15,13 @@ use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
 use crate::{as_row, from_row};
-use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_write() {
     let key = as_key!("foo");
 
-    let engine = Optimistic::new(Memory::new(), Memory::new());
+    let engine = Optimistic::testing();
     {
         let mut tx = engine.begin();
         assert_eq!(tx.version(), 0);
@@ -43,7 +42,7 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-    let engine = Optimistic::new(Memory::new(), Memory::new());
+    let engine = Optimistic::testing();
 
     {
         let mut txn = engine.begin();

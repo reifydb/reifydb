@@ -9,7 +9,7 @@ use reifydb_core::encoding::keycode;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
 pub use system_sequence::SystemSequenceKey;
-pub use system_version::SystemVersionKey;
+pub use system_version::{SystemVersion, SystemVersionKey};
 pub use table::TableKey;
 pub use table_column::TableColumnKey;
 pub use table_row::TableRowKey;
@@ -90,7 +90,9 @@ impl Key {
             KeyKind::SystemSequence => {
                 SystemSequenceKey::decode(version, payload).map(Self::SystemSequence)
             }
-            KeyKind::SystemVersion => SystemVersionKey::decode(version, payload).map(Self::SystemVersion),
+            KeyKind::SystemVersion => {
+                SystemVersionKey::decode(version, payload).map(Self::SystemVersion)
+            }
         }
     }
 }

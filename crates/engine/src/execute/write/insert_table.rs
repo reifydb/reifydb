@@ -8,16 +8,16 @@ use crate::{Error, ExecutionResult};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::{EncodableKey, TableRowKey};
 use reifydb_catalog::sequence::TableRowSequence;
-use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{BitVec, Kind};
 use reifydb_diagnostic::catalog::table_not_found;
 use reifydb_rql::plan::InsertIntoTablePlan;
 
-impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US, BP> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn insert_into_table(
         &mut self,
-        tx: &mut impl Tx<VS, US, BP>,
+        tx: &mut impl Tx<VS, US>,
         plan: InsertIntoTablePlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {

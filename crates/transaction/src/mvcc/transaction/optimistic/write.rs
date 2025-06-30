@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::bypass::BypassTx;
 use crate::mvcc::error::{MvccError, TransactionError};
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
@@ -24,7 +23,7 @@ use reifydb_core::delta::Delta;
 use reifydb_core::row::EncodedRow;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
-use std::sync::MutexGuard;
+use std::sync::RwLockWriteGuard;
 
 pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
     engine: Optimistic<VS, US>,
@@ -75,8 +74,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         })
     }
 
-    pub fn bypass(&mut self) -> MutexGuard<'_, BypassTx<US>> {
-        self.engine.bypass.lock().unwrap()
+    pub fn unversioned(&mut self) -> RwLockWriteGuard<'_, US> {
+        self.engine.unversioned.write().unwrap()
     }
 }
 

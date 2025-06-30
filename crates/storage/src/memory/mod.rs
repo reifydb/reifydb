@@ -20,9 +20,9 @@ mod versioned;
 use crate::memory::versioned::VersionedRow;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::EncodedKey;
-use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{GetHooks, UnversionedSet};
-use reifydb_core::interface::{Storage, UnversionedRemove, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{
+    UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
+};
 use reifydb_core::row::EncodedRow;
 
 #[derive(Clone)]
@@ -31,7 +31,6 @@ pub struct Memory(Arc<MemoryInner>);
 pub struct MemoryInner {
     versioned: SkipMap<EncodedKey, VersionedRow>,
     unversioned: SkipMap<EncodedKey, EncodedRow>,
-    hooks: Hooks,
 }
 
 impl Deref for Memory {
@@ -50,17 +49,7 @@ impl Default for Memory {
 
 impl Memory {
     pub fn new() -> Self {
-        Self(Arc::new(MemoryInner {
-            versioned: SkipMap::new(),
-            unversioned: SkipMap::new(),
-            hooks: Default::default(),
-        }))
-    }
-}
-
-impl GetHooks for Memory {
-    fn hooks(&self) -> Hooks {
-        self.hooks.clone()
+        Self(Arc::new(MemoryInner { versioned: SkipMap::new(), unversioned: SkipMap::new() }))
     }
 }
 
@@ -68,4 +57,3 @@ impl VersionedStorage for Memory {}
 impl UnversionedStorage for Memory {}
 impl UnversionedSet for Memory {}
 impl UnversionedRemove for Memory {}
-impl Storage for Memory {}

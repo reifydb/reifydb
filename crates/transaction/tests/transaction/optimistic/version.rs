@@ -14,7 +14,6 @@ use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
 use crate::{as_key, as_row, from_row};
-use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
 use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
@@ -22,7 +21,7 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_versions() {
-    let engine = Optimistic::new(Memory::new(), Memory::new());
+    let engine = Optimistic::testing();
 
     let k0 = as_key!(0);
 

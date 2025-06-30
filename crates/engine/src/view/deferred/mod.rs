@@ -21,7 +21,7 @@ pub struct Engine<VS: VersionedStorage, US: UnversionedStorage> {
 
 pub(crate) type Work = (AsyncCowVec<Delta>, Version);
 
-impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static> Engine<VS, US> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Engine<VS, US> {
     pub fn new(storage: VS) -> Arc<Self> {
         let (tx, rx) = mpsc::channel();
 
@@ -43,7 +43,7 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static> Engine<VS
     }
 }
 
-impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static> PostCommitHook
+impl<VS: VersionedStorage, US: UnversionedStorage> PostCommitHook
     for Engine<VS, US>
 {
     fn on_post_commit(&self, deltas: AsyncCowVec<Delta>, version: Version) {

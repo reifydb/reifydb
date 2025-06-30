@@ -13,7 +13,7 @@ use crate::function::{Functions, math};
 pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
-use reifydb_core::interface::{Bypass, Rx, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, Value};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
 use std::marker::PhantomData;
@@ -177,16 +177,16 @@ impl From<Frame> for ExecutionResult {
     }
 }
 
-pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> {
+pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     functions: Functions,
-    _marker: PhantomData<(VS, US, BP)>,
+    _marker: PhantomData<(VS, US)>,
 }
 
-pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     rx: &mut impl Rx,
     plan: PlanRx,
 ) -> crate::Result<ExecutionResult> {
-    let executor: Executor<VS, US, BP> = Executor {
+    let executor: Executor<VS, US> = Executor {
         // FIXME receive functions from RX
         functions: Functions::builder()
             .register_aggregate("sum", math::aggregate::Sum::new)
@@ -202,12 +202,12 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
     executor.execute_rx(rx, plan)
 }
 
-pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
-    tx: &mut impl Tx<VS, US, BP>,
+pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
+    tx: &mut impl Tx<VS, US>,
     plan: PlanTx,
 ) -> crate::Result<ExecutionResult> {
     // FIXME receive functions from TX
-    let executor: Executor<VS, US, BP> = Executor {
+    let executor: Executor<VS, US> = Executor {
         functions: Functions::builder()
             .register_aggregate("sum", math::aggregate::Sum::new)
             .register_aggregate("min", math::aggregate::Min::new)
@@ -222,7 +222,7 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
     executor.execute_tx(tx, plan)
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US, BP> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn execute_query_plan(
         self,
         rx: &mut impl Rx,
@@ -279,7 +279,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, 
 
     pub(crate) fn execute_tx(
         mut self,
-        tx: &mut impl Tx<VS, US, BP>,
+        tx: &mut impl Tx<VS, US>,
         plan: PlanTx,
     ) -> crate::Result<ExecutionResult> {
         match plan {

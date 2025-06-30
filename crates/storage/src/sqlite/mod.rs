@@ -12,11 +12,10 @@ mod range_rev;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
-use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    GetHooks, Storage, UnversionedRemove, UnversionedSet, UnversionedStorage, Versioned,
-    VersionedApply, VersionedContains, VersionedGet, VersionedScan, VersionedScanRange,
-    VersionedScanRangeRev, VersionedScanRev, VersionedStorage,
+    UnversionedRemove, UnversionedSet, UnversionedStorage, Versioned, VersionedApply,
+    VersionedContains, VersionedGet, VersionedScan, VersionedScanRange, VersionedScanRangeRev,
+    VersionedScanRev, VersionedStorage,
 };
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
@@ -30,7 +29,6 @@ pub struct Sqlite(Arc<SqliteInner>);
 
 pub struct SqliteInner {
     pool: Arc<Pool<SqliteConnectionManager>>,
-    hooks: Hooks,
 }
 
 impl Deref for Sqlite {
@@ -65,7 +63,7 @@ impl Sqlite {
                      value   BLOB NOT NULL,
                      PRIMARY KEY (key, version)
                  );
-                 
+
                  CREATE TABLE IF NOT EXISTS unversioned (
                      key     BLOB NOT NULL,
                      value   BLOB NOT NULL,
@@ -76,7 +74,7 @@ impl Sqlite {
             .unwrap();
         }
 
-        Self(Arc::new(SqliteInner { pool: Arc::new(pool), hooks: Default::default() }))
+        Self(Arc::new(SqliteInner { pool: Arc::new(pool) }))
     }
 
     fn get_conn(&self) -> PooledConnection<SqliteConnectionManager> {
@@ -265,17 +263,10 @@ impl VersionedScanRangeRev for Sqlite {
     }
 }
 
-impl GetHooks for Sqlite {
-    fn hooks(&self) -> Hooks {
-        self.hooks.clone()
-    }
-}
-
 impl VersionedStorage for Sqlite {}
 impl UnversionedStorage for Sqlite {}
 impl UnversionedSet for Sqlite {}
 impl UnversionedRemove for Sqlite {}
-impl Storage for Sqlite {}
 
 fn bound_to_bytes(bound: &Bound<EncodedKey>) -> Vec<u8> {
     match bound {

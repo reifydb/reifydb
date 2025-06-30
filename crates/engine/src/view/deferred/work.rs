@@ -30,7 +30,7 @@ pub(crate) fn work<VS: VersionedStorage>(
     // }
 }
 
-pub(crate) fn create_count_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
+pub(crate) fn create_count_graph<VS: VersionedStorage>(storage: VS) -> Graph {
     let group_node =
         Box::new(GroupNode { state_prefix: b"view::group_count".to_vec(), group_by: vec![0, 1] });
 
@@ -41,7 +41,7 @@ pub(crate) fn create_count_graph<VS: VersionedStorage + 'static>(storage: VS) ->
     result
 }
 
-pub(crate) fn create_sum_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
+pub(crate) fn create_sum_graph<VS: VersionedStorage>(storage: VS) -> Graph {
     let group_node =
         Box::new(GroupNode { state_prefix: b"view::group_count".to_vec(), group_by: vec![0, 1] });
     let count_node = Box::new(SumNode { state_prefix: b"view::sum".to_vec(), storage, sum: 2 });

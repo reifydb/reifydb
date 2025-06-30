@@ -3,7 +3,7 @@
 
 use crate::Error;
 use once_cell::sync::Lazy;
-use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{EncodedKey, Kind};
 use reifydb_diagnostic::sequence::sequence_exhausted;
@@ -13,17 +13,13 @@ static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[Kind::Uint8]));
 pub(crate) struct SequenceGeneratorU64 {}
 
 impl SequenceGeneratorU64 {
-    pub(crate) fn next<VS, US, BP>(
-        tx: &mut impl Tx<VS, US, BP>,
-        key: &EncodedKey,
-    ) -> crate::Result<u64>
+    pub(crate) fn next<VS, US>(tx: &mut impl Tx<VS, US>, key: &EncodedKey) -> crate::Result<u64>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
-        BP: Bypass<US>,
     {
-        let mut bypass = tx.bypass();
-        match bypass.get(key)? {
+        let mut uversioned = tx.unversioned();
+        match uversioned.get(key)? {
             Some(unversioned) => {
                 let mut row = unversioned.row;
                 let value = LAYOUT.get_u64(&row, 0);
@@ -34,13 +30,13 @@ impl SequenceGeneratorU64 {
                 }
 
                 LAYOUT.set_u64(&mut row, 0, next_value);
-                bypass.set(key, row)?;
+                uversioned.set(key, row)?;
                 Ok(value)
             }
             None => {
                 let mut new_row = LAYOUT.allocate_row();
                 LAYOUT.set_u64(&mut new_row, 0, 2u64);
-                bypass.set(key, new_row)?;
+                uversioned.set(key, new_row)?;
                 Ok(1)
             }
         }
@@ -64,7 +60,7 @@ mod tests {
         }
 
         let unversioned = tx.unversioned();
-        let mut unversioned: Vec<Unversioned> = unversioned.scan_unversioned().collect();
+        let mut unversioned: Vec<Unversioned> = unversioned.scan().unwrap().collect();
         assert_eq!(unversioned.len(), 1);
 
         let unversioned = unversioned.pop().unwrap();
@@ -80,7 +76,7 @@ mod tests {
         LAYOUT.set_u64(&mut row, 0, u64::MAX);
 
         let mut unversioned = tx.unversioned();
-        unversioned.set_unversioned(&EncodedKey::new("sequence"), row);
+        unversioned.set(&EncodedKey::new("sequence"), row);
 
         let err = SequenceGeneratorU64::next(&mut tx, &EncodedKey::new("sequence")).unwrap_err();
         assert_eq!(err.diagnostic(), sequence_exhausted(Kind::Uint8));

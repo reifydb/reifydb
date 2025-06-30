@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::sqlite::Sqlite;
+use reifydb_core::Error;
 use reifydb_core::interface::{Unversioned, UnversionedScan};
 
 pub struct UnversionedIter {}
@@ -17,7 +18,7 @@ impl<'a> Iterator for UnversionedIter {
 impl UnversionedScan for Sqlite {
     type ScanIter<'a> = UnversionedIter;
 
-    fn scan_unversioned(&self) -> Self::ScanIter<'_> {
+    fn scan(&self) -> Result<Self::ScanIter<'_>, Error> {
         todo!()
     }
 }

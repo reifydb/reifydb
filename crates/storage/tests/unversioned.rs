@@ -13,10 +13,10 @@ use reifydb_core::delta::Delta;
 use reifydb_core::encoding::binary::decode_binary;
 use reifydb_core::encoding::format;
 use reifydb_core::encoding::format::Formatter;
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{async_cow_vec, EncodedKey, EncodedKeyRange};
-use reifydb_storage::memory::Memory;
 use reifydb_core::interface::{Unversioned, UnversionedStorage};
+use reifydb_core::row::EncodedRow;
+use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
+use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
@@ -49,7 +49,7 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 let mut args = command.consume_args();
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 args.reject_rest()?;
-                let value = self.storage.get_unversioned(&key).map(|sv| sv.row.to_vec());
+                let value = self.storage.get(&key).unwrap().map(|sv| sv.row.to_vec());
                 writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
             }
             // contains KEY
@@ -57,7 +57,7 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 let mut args = command.consume_args();
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 args.reject_rest()?;
-                let contains = self.storage.contains_unversioned(&key);
+                let contains = self.storage.contains(&key).unwrap();
                 writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
             }
 
@@ -68,9 +68,9 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_unversioned())
+                    print(&mut output, self.storage.scan().unwrap())
                 } else {
-                    print(&mut output, self.storage.scan_rev_unversioned())
+                    print(&mut output, self.storage.scan_rev().unwrap())
                 };
             }
             // scan_range RANGE [reverse=BOOL]
@@ -83,9 +83,9 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_range_unversioned(range))
+                    print(&mut output, self.storage.scan_range(range).unwrap())
                 } else {
-                    print(&mut output, self.storage.scan_range_rev_unversioned(range))
+                    print(&mut output, self.storage.scan_range_rev(range).unwrap())
                 };
             }
 
@@ -98,9 +98,9 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_prefix_unversioned(&prefix))
+                    print(&mut output, self.storage.scan_prefix(&prefix).unwrap())
                 } else {
-                    print(&mut output, self.storage.scan_prefix_rev_unversioned(&prefix))
+                    print(&mut output, self.storage.scan_prefix_rev(&prefix).unwrap())
                 };
             }
 
@@ -112,7 +112,7 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.apply_unversioned(async_cow_vec![(Delta::Set { key, row })])
+                self.storage.apply(async_cow_vec![(Delta::Set { key, row })]).unwrap()
             }
 
             // remove KEY
@@ -121,7 +121,7 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 args.reject_rest()?;
 
-                self.storage.apply_unversioned(async_cow_vec![(Delta::Remove { key })])
+                self.storage.apply(async_cow_vec![(Delta::Remove { key })]).unwrap()
             }
 
             name => return Err(format!("invalid command {name}").into()),

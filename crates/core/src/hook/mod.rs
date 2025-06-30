@@ -3,9 +3,10 @@
 
 use crate::hook::lifecycle::LifecycleHookRegistry;
 use crate::hook::transaction::TransactionHookRegistry;
+use crate::interface::UnversionedStorage;
+pub use lifecycle::{OnAfterBootHook, OnAfterBootHookContext};
 use std::ops::Deref;
 use std::sync::Arc;
-pub use lifecycle::{OnAfterBootHook, OnAfterBootHookContext};
 pub use transaction::{PostCommitHook, PreCommitHook};
 
 mod lifecycle;
@@ -13,22 +14,33 @@ mod registry;
 mod transaction;
 
 #[derive(Clone)]
-pub struct Hooks(Arc<HooksInner>);
+pub struct Hooks<US>(Arc<HooksInner<US>>)
+where
+    US: UnversionedStorage;
 
-pub struct HooksInner {
-    lifecycle: LifecycleHookRegistry,
+pub struct HooksInner<US>
+where
+    US: UnversionedStorage,
+{
+    lifecycle: LifecycleHookRegistry<US>,
     transaction: TransactionHookRegistry,
 }
 
-impl Deref for Hooks {
-    type Target = HooksInner;
+impl<US> Deref for Hooks<US>
+where
+    US: UnversionedStorage,
+{
+    type Target = HooksInner<US>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Default for Hooks {
+impl<US> Default for Hooks<US>
+where
+    US: UnversionedStorage,
+{
     fn default() -> Self {
         Self(Arc::new(HooksInner {
             lifecycle: LifecycleHookRegistry::default(),
@@ -37,8 +49,11 @@ impl Default for Hooks {
     }
 }
 
-impl Hooks {
-    pub fn lifecycle(&self) -> &LifecycleHookRegistry {
+impl<US> Hooks<US>
+where
+    US: UnversionedStorage,
+{
+    pub fn lifecycle(&self) -> &LifecycleHookRegistry<US> {
         &self.lifecycle
     }
 

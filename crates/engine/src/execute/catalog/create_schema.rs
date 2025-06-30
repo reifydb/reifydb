@@ -5,14 +5,14 @@ use crate::execute::{ExecutionResult, Executor};
 use crate::{CreateSchemaResult, Error};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;
-use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_diagnostic::catalog::schema_already_exists;
 use reifydb_rql::plan::CreateSchemaPlan;
 
-impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US, BP> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn create_schema(
         &mut self,
-        tx: &mut impl Tx<VS, US, BP>,
+        tx: &mut impl Tx<VS, US>,
         plan: CreateSchemaPlan,
     ) -> crate::Result<ExecutionResult> {
         if let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? {

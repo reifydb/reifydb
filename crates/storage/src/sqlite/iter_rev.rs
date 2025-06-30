@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::interface::{Unversioned, UnversionedScanRev};
 use crate::sqlite::Sqlite;
+use reifydb_core::Error;
+use reifydb_core::interface::{Unversioned, UnversionedScanRev};
 
 pub struct UnversionedIterRev {}
 
@@ -17,7 +18,7 @@ impl<'a> Iterator for UnversionedIterRev {
 impl UnversionedScanRev for Sqlite {
     type ScanIterRev<'a> = crate::sqlite::iter::UnversionedIter;
 
-    fn scan_rev_unversioned(&self) -> Self::ScanIterRev<'_> {
+    fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>, Error> {
         todo!()
     }
 }

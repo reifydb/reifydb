@@ -13,14 +13,13 @@ use crate::transaction::EncodedKey;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
 use crate::{as_key, as_row};
-use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
 fn test_read_after_write() {
     const N: u64 = 100;
 
-    let engine= Optimistic::new(Memory::new(), Memory::new());
+    let engine = Optimistic::testing();
 
     let handles = (0..N)
         .map(|i| {

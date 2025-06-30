@@ -4,23 +4,24 @@
 use crate::sqlite::Sqlite;
 use reifydb_core::interface::{Unversioned, UnversionedGet};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey};
+use reifydb_core::{AsyncCowVec, EncodedKey, Error};
 use rusqlite::{OptionalExtension, params};
 
 impl UnversionedGet for Sqlite {
-    fn get_unversioned(&self, key: &EncodedKey) -> Option<Unversioned> {
+    fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>, Error> {
         let conn = self.get_conn();
-        conn.query_row(
-            "SELECT key, value FROM unversioned WHERE key = ?1  LIMIT 1",
-            params![key.to_vec()],
-            |row| {
-                Ok(Unversioned {
-                    key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                    row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                })
-            },
-        )
-        .optional()
-        .unwrap()
+        Ok(conn
+            .query_row(
+                "SELECT key, value FROM unversioned WHERE key = ?1  LIMIT 1",
+                params![key.to_vec()],
+                |row| {
+                    Ok(Unversioned {
+                        key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+                        row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
+                    })
+                },
+            )
+            .optional()
+            .unwrap())
     }
 }

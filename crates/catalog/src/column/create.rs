@@ -7,7 +7,7 @@ use crate::key::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
 use crate::table::TableId;
 use crate::{Catalog, Error};
-use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, Span};
 use reifydb_diagnostic::catalog::column_already_exists;
 
@@ -24,8 +24,8 @@ pub struct ColumnToCreate<'a> {
 }
 
 impl Catalog {
-    pub(crate) fn create_column<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
-        tx: &mut impl Tx<VS, US, BP>,
+    pub(crate) fn create_column<VS: VersionedStorage, US: UnversionedStorage>(
+        tx: &mut impl Tx<VS, US>,
         table: TableId,
         column_to_create: ColumnToCreate,
     ) -> crate::Result<Column> {

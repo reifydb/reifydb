@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::sqlite::Sqlite;
-use reifydb_core::EncodedKeyRange;
 use reifydb_core::interface::{Unversioned, UnversionedScanRange};
+use reifydb_core::{EncodedKeyRange, Error};
 
 impl UnversionedScanRange for Sqlite {
     type ScanRange<'a>
@@ -11,7 +11,7 @@ impl UnversionedScanRange for Sqlite {
     where
         Self: 'a;
 
-    fn scan_range_unversioned(&self, _range: EncodedKeyRange) -> Self::ScanRange<'_> {
+    fn scan_range(&self, _range: EncodedKeyRange) -> Result<Self::ScanRange<'_>, Error> {
         todo!()
     }
 }

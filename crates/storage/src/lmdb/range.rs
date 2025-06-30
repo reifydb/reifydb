@@ -6,7 +6,7 @@ use heed::types::Bytes;
 use heed::{Database, Env};
 use reifydb_core::interface::{Unversioned, UnversionedScanRange, Versioned, VersionedScanRange};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
+use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Error, Version};
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -117,7 +117,7 @@ impl UnversionedScanRange for Lmdb {
     where
         Self: 'a;
 
-    fn scan_range_unversioned(&self, _range: EncodedKeyRange) -> Self::ScanRange<'_> {
+    fn scan_range(&self, _range: EncodedKeyRange) -> Result<Self::ScanRange<'_>, Error> {
         todo!()
     }
 }

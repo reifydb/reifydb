@@ -265,7 +265,7 @@ mod tests {
     use crate::view::flow::{CountNode, Graph, GroupNode, SumNode};
     use reifydb_core::interface::VersionedStorage;
 
-    fn create_count_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
+    fn create_count_graph<VS: VersionedStorage>(storage: VS) -> Graph {
         let group_node = Box::new(GroupNode {
             state_prefix: b"view::group_count".to_vec(),
             group_by: vec![0, 1],
@@ -278,7 +278,7 @@ mod tests {
         result
     }
 
-    fn create_sum_graph<VS: VersionedStorage + 'static>(storage: VS) -> Graph {
+    fn create_sum_graph<VS: VersionedStorage>(storage: VS) -> Graph {
         let group_node = Box::new(GroupNode {
             state_prefix: b"view::group_count".to_vec(),
             group_by: vec![0, 1],

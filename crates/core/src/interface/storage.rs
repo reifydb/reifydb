@@ -2,9 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::delta::Delta;
-use crate::interface::GetHooks;
 use crate::row::EncodedRow;
-use crate::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
+use crate::{AsyncCowVec, EncodedKey, EncodedKeyRange, Error, Version};
 
 #[derive(Debug)]
 pub struct Versioned {
@@ -19,13 +18,10 @@ pub struct Unversioned {
     pub row: EncodedRow,
 }
 
-pub trait Storage: VersionedStorage + UnversionedStorage {}
-
 pub trait VersionedStorage:
     Send
     + Sync
     + Clone
-    + GetHooks
     + VersionedApply
     + VersionedGet
     + VersionedContains
@@ -33,6 +29,7 @@ pub trait VersionedStorage:
     + VersionedScanRev
     + VersionedScanRange
     + VersionedScanRangeRev
+    + 'static
 {
 }
 
@@ -99,7 +96,6 @@ pub trait UnversionedStorage:
     Send
     + Sync
     + Clone
-    + GetHooks
     + UnversionedApply
     + UnversionedGet
     + UnversionedContains
@@ -109,33 +105,31 @@ pub trait UnversionedStorage:
     + UnversionedScanRev
     + UnversionedScanRange
     + UnversionedScanRangeRev
+    + 'static
 {
 }
 
 pub trait UnversionedApply {
-    fn apply_unversioned(&mut self, delta: AsyncCowVec<Delta>);
+    fn apply(&mut self, delta: AsyncCowVec<Delta>) -> Result<(), Error>;
 }
 
 pub trait UnversionedGet {
-    fn get_unversioned(&self, key: &EncodedKey) -> Option<Unversioned>;
+    fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>, Error>;
 }
 
 pub trait UnversionedContains {
-    fn contains_unversioned(&self, key: &EncodedKey) -> bool;
+    fn contains(&self, key: &EncodedKey) -> Result<bool, Error>;
 }
 
 pub trait UnversionedSet: UnversionedApply {
-    fn set_unversioned(&mut self, key: &EncodedKey, row: EncodedRow) {
-        Self::apply_unversioned(
-            self,
-            AsyncCowVec::new(vec![Delta::Set { key: key.clone(), row: row.clone() }]),
-        )
+    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
+        Self::apply(self, AsyncCowVec::new(vec![Delta::Set { key: key.clone(), row: row.clone() }]))
     }
 }
 
 pub trait UnversionedRemove: UnversionedApply {
-    fn remove_unversioned(&mut self, key: &EncodedKey) {
-        Self::apply_unversioned(self, AsyncCowVec::new(vec![Delta::Remove { key: key.clone() }]))
+    fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
+        Self::apply(self, AsyncCowVec::new(vec![Delta::Remove { key: key.clone() }]))
     }
 }
 
@@ -147,7 +141,7 @@ pub trait UnversionedScan {
     where
         Self: 'a;
 
-    fn scan_unversioned(&self) -> Self::ScanIter<'_>;
+    fn scan(&self) -> Result<Self::ScanIter<'_>, Error>;
 }
 
 pub trait UnversionedScanRev {
@@ -155,7 +149,7 @@ pub trait UnversionedScanRev {
     where
         Self: 'a;
 
-    fn scan_rev_unversioned(&self) -> Self::ScanIterRev<'_>;
+    fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>, Error>;
 }
 
 pub trait UnversionedScanRange {
@@ -163,10 +157,10 @@ pub trait UnversionedScanRange {
     where
         Self: 'a;
 
-    fn scan_range_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRange<'_>;
+    fn scan_range(&self, range: EncodedKeyRange) -> Result<Self::ScanRange<'_>, Error>;
 
-    fn scan_prefix_unversioned(&self, prefix: &EncodedKey) -> Self::ScanRange<'_> {
-        self.scan_range_unversioned(EncodedKeyRange::prefix(prefix))
+    fn scan_prefix(&self, prefix: &EncodedKey) -> Result<Self::ScanRange<'_>, Error> {
+        self.scan_range(EncodedKeyRange::prefix(prefix))
     }
 }
 
@@ -175,9 +169,9 @@ pub trait UnversionedScanRangeRev {
     where
         Self: 'a;
 
-    fn scan_range_rev_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRangeRev<'_>;
+    fn scan_range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>, Error>;
 
-    fn scan_prefix_rev_unversioned(&self, prefix: &EncodedKey) -> Self::ScanRangeRev<'_> {
-        self.scan_range_rev_unversioned(EncodedKeyRange::prefix(prefix))
+    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> Result<Self::ScanRangeRev<'_>, Error> {
+        self.scan_range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

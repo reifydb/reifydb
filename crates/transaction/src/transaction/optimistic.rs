@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::bypass::BypassTx;
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
@@ -9,11 +8,9 @@ use reifydb_core::interface::{
 };
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
-use std::sync::MutexGuard;
+use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US, BypassTx<US>>
-    for Optimistic<VS, US>
-{
+impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optimistic<VS, US> {
     type Rx = TransactionRx<VS, US>;
     type Tx = TransactionTx<VS, US>;
 
@@ -25,12 +22,20 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US, BypassTx<
         Ok(self.begin())
     }
 
-    fn hooks(&self) -> Hooks {
+    fn hooks(&self) -> Hooks<US> {
         self.hooks.clone()
     }
 
     fn versioned(&self) -> VS {
         self.versioned.clone()
+    }
+
+    fn begin_unversioned_read_only(&self) -> RwLockReadGuard<'_, US> {
+        self.unversioned.read().unwrap()
+    }
+
+    fn begin_unversioned(&self) -> RwLockWriteGuard<'_, US> {
+        self.unversioned.write().unwrap()
     }
 }
 
@@ -152,9 +157,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> 
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US, BypassTx<US>>
-    for TransactionTx<VS, US>
-{
+impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<VS, US> {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
         TransactionTx::set(self, key, row)?;
         Ok(())
@@ -175,7 +178,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US, BypassTx<US>>
         Ok(())
     }
 
-    fn bypass(&mut self) -> MutexGuard<'_, BypassTx<US>> {
-        TransactionTx::bypass(self)
+    fn unversioned(&mut self) -> RwLockWriteGuard<'_, US> {
+        TransactionTx::unversioned(self)
     }
 }

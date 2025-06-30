@@ -6,13 +6,11 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use bypass::BypassTx;
 pub use error::Error;
 
 mod error;
 pub mod mvcc;
 
-mod bypass;
 pub mod test_utils;
 mod transaction;
 

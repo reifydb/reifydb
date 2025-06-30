@@ -4,7 +4,7 @@
 use crate::lmdb::Lmdb;
 use reifydb_core::interface::{Unversioned, UnversionedGet, Versioned, VersionedGet};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey, Version};
+use reifydb_core::{AsyncCowVec, EncodedKey, Error, Version};
 
 impl VersionedGet for Lmdb {
     fn get(&self, key: &EncodedKey, version: Version) -> Option<Versioned> {
@@ -18,11 +18,11 @@ impl VersionedGet for Lmdb {
 }
 
 impl UnversionedGet for Lmdb {
-    fn get_unversioned(&self, key: &EncodedKey) -> Option<Unversioned> {
+    fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>, Error> {
         let txn = self.env.read_txn().unwrap(); // FIXME
-        self.db.get(&txn, key).unwrap().map(|bytes| Unversioned {
+        Ok(self.db.get(&txn, key).unwrap().map(|bytes| Unversioned {
             key: key.clone(),
             row: EncodedRow(AsyncCowVec::new(bytes.to_vec())),
-        })
+        }))
     }
 }

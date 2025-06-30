@@ -2,11 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::interface::{Storage, Transaction};
-use reifydb::reifydb_storage::lmdb::Lmdb;
-use reifydb::reifydb_transaction::BypassTx;
+use reifydb::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{ReifyDB, memory, optimistic, retry, serializable, sqlite};
+use reifydb::{ReifyDB, lmdb, memory, optimistic, retry, serializable, sqlite};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
@@ -18,14 +16,24 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct ClientRunner<S: Storage, T: Transaction<S, S, BypassTx<S>>> {
-    server: Option<Server<S, BypassTx<S>, T>>,
+pub struct ClientRunner<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
+    server: Option<Server<VS, US, T>>,
     client: Client,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<S: Storage + 'static, T: Transaction<S, S, BypassTx<S>> + 'static> ClientRunner<S, T> {
+impl<VS, US, T> ClientRunner<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
     pub fn new(transaction: T) -> Self {
         let socket_addr = free_local_socket();
 
@@ -39,8 +47,11 @@ impl<S: Storage + 'static, T: Transaction<S, S, BypassTx<S>> + 'static> ClientRu
     }
 }
 
-impl<S: Storage + 'static, T: Transaction<S, S, BypassTx<S>> + 'static> testscript::Runner
-    for ClientRunner<S, T>
+impl<VS, US, T> testscript::Runner for ClientRunner<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
@@ -124,10 +135,8 @@ fn test_optimistic_memory(path: &Path) {
 
 fn test_optimistic_lmdb(path: &Path) {
     temp_dir(|db_path| {
-        retry(3, || {
-            testscript::run_path(&mut ClientRunner::new(optimistic(Lmdb::new(db_path))), path)
-        })
-        .expect("test failed")
+        retry(3, || testscript::run_path(&mut ClientRunner::new(optimistic(lmdb(db_path))), path))
+            .expect("test failed")
     })
 }
 
@@ -149,10 +158,8 @@ fn test_serializable_memory(path: &Path) {
 
 fn test_serializable_lmdb(path: &Path) {
     temp_dir(|db_path| {
-        retry(3, || {
-            testscript::run_path(&mut ClientRunner::new(serializable(Lmdb::new(db_path))), path)
-        })
-        .expect("test failed")
+        retry(3, || testscript::run_path(&mut ClientRunner::new(serializable(lmdb(db_path))), path))
+            .expect("test failed")
     })
 }
 

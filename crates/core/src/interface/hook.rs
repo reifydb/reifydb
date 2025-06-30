@@ -2,7 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::hook::Hooks;
+use crate::interface::UnversionedStorage;
 
-pub trait GetHooks {
-    fn hooks(&self) -> Hooks;
+pub trait GetHooks<US>
+where
+    US: UnversionedStorage,
+{
+    fn hooks(&self) -> Hooks<US>;
 }

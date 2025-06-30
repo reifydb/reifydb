@@ -3,37 +3,46 @@
 
 use crate::Error;
 use reifydb_auth::Principal;
-use reifydb_core::interface::{Bypass, Storage, Transaction};
+use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::{Engine, ExecutionResult};
 
-pub struct Embedded<
-    S: Storage + 'static,
-    BP: Bypass<S> + 'static,
-    T: Transaction<S, S, BP> + 'static,
-> {
-    engine: Engine<S, S, BP, T>,
+pub struct Embedded<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
+    engine: Engine<VS, US, T>,
 }
 
-impl<S, BP, T> Clone for Embedded<S, BP, T>
+impl<VS, US, T> Clone for Embedded<VS, US, T>
 where
-    S: Storage,
-    BP: Bypass<S>,
-    T: Transaction<S, S, BP>,
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
 
-impl<S: Storage, BP: Bypass<S>, T: Transaction<S, S, BP>> Embedded<S, BP, T> {
+impl<VS, US, T> Embedded<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
     pub fn new(transaction: T) -> crate::Result<(Self, Principal)> {
         let principal = Principal::System { id: 1, name: "root".to_string() };
         Ok((Self { engine: Engine::new(transaction)? }, principal))
     }
 }
 
-impl<'a, S: Storage + 'static, BP: Bypass<S> + 'static, T: Transaction<S, S, BP> + 'static>
-    Embedded<S, BP, T>
+impl<'a, VS, US, T> Embedded<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         self.engine.tx_as(principal, rql).map_err(|err| {

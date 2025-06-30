@@ -5,7 +5,7 @@ use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::{UnversionedApply, VersionedApply};
-use reifydb_core::{AsyncCowVec, Version};
+use reifydb_core::{AsyncCowVec, Error, Version};
 
 impl VersionedApply for Memory {
     fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
@@ -32,7 +32,7 @@ impl VersionedApply for Memory {
 }
 
 impl UnversionedApply for Memory {
-    fn apply_unversioned(&mut self, delta: AsyncCowVec<Delta>) {
+    fn apply(&mut self, delta: AsyncCowVec<Delta>) -> Result<(), Error> {
         for delta in delta {
             match delta {
                 Delta::Set { key, row } => {
@@ -43,5 +43,6 @@ impl UnversionedApply for Memory {
                 }
             }
         }
+        Ok(())
     }
 }

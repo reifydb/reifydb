@@ -5,14 +5,13 @@ use crate::transaction::EncodedKey;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
 use crate::{as_key, as_row};
-use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
 fn test_read_after_write() {
     const N: u64 = 100;
 
-    let engine = Serializable::new(Memory::new(), Memory::new());
+    let engine = Serializable::testing();
 
     let handles = (0..N)
         .map(|i| {

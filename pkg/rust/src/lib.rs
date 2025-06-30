@@ -37,7 +37,8 @@ use std::path::Path;
 use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
-use reifydb_core::interface::{Storage, Transaction};
+use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 pub use reifydb_storage;
@@ -45,7 +46,6 @@ use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::Sqlite;
 pub use reifydb_transaction;
-use reifydb_transaction::BypassTx;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 #[cfg(any(feature = "server", feature = "client"))]
@@ -71,14 +71,12 @@ pub struct ReifyDB {}
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait DB<'a>: Sized {
-    /// runs tx
     fn tx_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<ExecutionResult>>> + Send;
 
-    /// runs rx
     fn rx_as(
         &self,
         principal: &Principal,
@@ -88,24 +86,21 @@ pub trait DB<'a>: Sized {
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded()
-    -> (Embedded<Memory, BypassTx<Memory>, Serializable<Memory, Memory>>, Principal) {
+    pub fn embedded() -> (Embedded<Memory, Memory, Serializable<Memory, Memory>>, Principal) {
         Embedded::new(serializable(memory()))
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking() -> (
-        embedded_blocking::Embedded<Memory, BypassTx<Memory>, Serializable<Memory, Memory>>,
-        Principal,
-    ) {
-        embedded_blocking::Embedded::new(serializable(Memory::new())).unwrap()
+    pub fn embedded_blocking()
+    -> (embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>>, Principal) {
+        embedded_blocking::Embedded::new(serializable(memory())).unwrap()
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
     pub fn embedded() -> (
         embedded_blocking::Embedded<
             Memory,
-            BypassTx<Memory>,
+            Memory,
             ::reifydb_transaction::mvcc::transaction::serializable::Serializable<Memory, Memory>,
         >,
         Principal,
@@ -114,55 +109,81 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<S: Storage, T: Transaction<S, S, BypassTx<S>>>(
-        transaction: T,
-    ) -> (embedded::Embedded<S, BypassTx<S>, T>, Principal) {
+    pub fn embedded_with<VS, US, T>(transaction: T) -> (Embedded<VS, US, T>, Principal)
+    where
+        VS: VersionedStorage,
+        US: UnversionedStorage,
+        T: Transaction<VS, US>,
+    {
         Embedded::new(transaction)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<S: Storage, T: Transaction<S, S, BypassTx<S>>>(
+    pub fn embedded_with<VS, US, T>(
         transaction: T,
-    ) -> (embedded_blocking::Embedded<S, BypassTx<S>, T>, Principal) {
+    ) -> (embedded_blocking::Embedded<VS, US, T>, Principal)
+    where
+        VS: VersionedStorage,
+        US: UnversionedStorage,
+        T: Transaction<VS, US>,
+    {
         embedded_blocking::Embedded::new(transaction).unwrap()
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<S: Storage, T: Transaction<S, S, BypassTx<S>>>(
+    pub fn embedded_blocking_with<VS, US, T>(
         transaction: T,
-    ) -> (embedded_blocking::Embedded<S, BypassTx<S>, T>, Principal) {
+    ) -> (embedded_blocking::Embedded<VS, US, T>, Principal)
+    where
+        VS: VersionedStorage,
+        US: UnversionedStorage,
+        T: Transaction<VS, US>,
+    {
         embedded_blocking::Embedded::new(transaction).unwrap()
     }
 
     #[cfg(feature = "server")]
-    pub fn server() -> Server<Memory, BypassTx<Memory>, Serializable<Memory, Memory>> {
+    pub fn server() -> Server<Memory, Memory, Serializable<Memory, Memory>> {
         Server::new(serializable(memory()))
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<S: Storage + 'static, T: Transaction<S, S, BypassTx<S>> + 'static>(
-        transaction: T,
-    ) -> Server<S, BypassTx<S>, T> {
+    pub fn server_with<VS, US, T>(transaction: T) -> Server<VS, US, T>
+    where
+        VS: VersionedStorage,
+        US: UnversionedStorage,
+        T: Transaction<VS, US>,
+    {
         Server::new(transaction)
     }
 }
 
-pub fn serializable<S: Storage>(storage: S) -> Serializable<S, S> {
-    Serializable::new(storage.clone(), storage)
+pub fn serializable<VS, US>(storage: (VS, US)) -> Serializable<VS, US>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+{
+    Serializable::new(storage.0, storage.1, Hooks::default())
 }
 
-pub fn optimistic<S: Storage>(storage: S) -> Optimistic<S, S> {
-    Optimistic::new(storage.clone(), storage)
+pub fn optimistic<VS, US>(storage: (VS, US)) -> Optimistic<VS, US>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+{
+    Optimistic::new(storage.0, storage.1, Hooks::default())
 }
 
-pub fn memory() -> Memory {
-    Memory::default()
+pub fn memory() -> (Memory, Memory) {
+    (Memory::default(), Memory::default())
 }
 
-pub fn lmdb(path: &Path) -> Lmdb {
-    Lmdb::new(path)
+pub fn lmdb(path: &Path) -> (Lmdb, Lmdb) {
+    let result = Lmdb::new(path);
+    (result.clone(), result)
 }
 
-pub fn sqlite(path: &Path) -> Sqlite {
-    Sqlite::new(path)
+pub fn sqlite(path: &Path) -> (Sqlite, Sqlite) {
+    let result = Sqlite::new(path);
+    (result.clone(), result)
 }

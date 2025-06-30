@@ -13,10 +13,10 @@ use crossbeam_skiplist::map::Range as MapRange;
 
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
-use std::ops::Bound;
 use reifydb_core::interface::{Unversioned, UnversionedScanRange, Versioned, VersionedScanRange};
+use reifydb_core::row::EncodedRow;
+use reifydb_core::{EncodedKey, EncodedKeyRange, Error, Version};
+use std::ops::Bound;
 
 impl VersionedScanRange for Memory {
     type ScanRangeIter<'a>
@@ -61,8 +61,8 @@ impl UnversionedScanRange for Memory {
     where
         Self: 'a;
 
-    fn scan_range_unversioned(&self, range: EncodedKeyRange) -> Self::ScanRange<'_> {
-        UnversionedRange { range: self.unversioned.range(range) }
+    fn scan_range(&self, range: EncodedKeyRange) -> Result<Self::ScanRange<'_>, Error> {
+        Ok(UnversionedRange { range: self.unversioned.range(range) })
     }
 }
 
