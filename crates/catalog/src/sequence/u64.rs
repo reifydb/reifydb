@@ -76,7 +76,7 @@ mod tests {
         LAYOUT.set_u64(&mut row, 0, u64::MAX);
 
         let mut unversioned = tx.unversioned();
-        unversioned.set(&EncodedKey::new("sequence"), row);
+        unversioned.set(&EncodedKey::new("sequence"), row).unwrap();
 
         let err = SequenceGeneratorU64::next(&mut tx, &EncodedKey::new("sequence")).unwrap_err();
         assert_eq!(err.diagnostic(), sequence_exhausted(Kind::Uint8));

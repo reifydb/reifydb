@@ -12,27 +12,26 @@ fn main() {
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(lmdb(&Path::new("/tmp/db"))));
     // let (db, root) = ReifyDB::embedded_blocking_with(optimistic(sqlite(&Path::new("/tmp/db/"))));
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
-    db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
+    // db.tx_as(&root, r#"create schema test"#).unwrap();
+    // db.tx_as(&root, r#"create table test.item(field: int1)"#).unwrap();
     // let err = db.tx_as(&root, r#"insert (129) into test.item (field)"#).unwrap_err();
     // println!("{}", err);
 
-    for l in db
-        .rx_as(
-            &root,
-            r#"
-select 
+    for l in db.rx_as(
+        &root,
+        r#"
+select
       cast(-2, float8) < cast(-1.1, float8),
       cast(0, float8) < cast(1.1, float8),
       cast(1.1, float8) < cast(1.1, float8)
 
         "#,
-        )
-        // .unwrap()
+    )
+    // .unwrap()
     {
         println!("{}", l);
-    }    
-    
+    }
+
     // db.tx_as(&root, r#"create table test.users(age: int2, num: float8)"#).unwrap();
     // db.tx_as(
     //     &root,

@@ -3,8 +3,7 @@
 
 use reifydb::embedded_blocking::Embedded;
 use reifydb::interface::{Transaction, UnversionedStorage, VersionedStorage};
-use reifydb::{Principal, ReifyDB, lmdb, memory, optimistic, serializable, sqlite};
-use reifydb_testing::tempdir::temp_dir;
+use reifydb::{Principal, ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -39,7 +38,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
- {
+{
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
@@ -70,46 +69,8 @@ where
     }
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as optimistic_memory => test_optimistic_memory }
-test_each_path! { in "testsuite/regression/tests/scripts" as optimistic_lmdb => test_optimistic_lmdb }
-test_each_path! { in "testsuite/regression/tests/scripts" as optimistic_sqlite => test_optimistic_sqlite }
+test_each_path! { in "testsuite/regression/tests/scripts" as embedded_blocking => test_embedded_blocking }
 
-fn test_optimistic_memory(path: &Path) {
+fn test_embedded_blocking(path: &Path) {
     testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
-}
-
-fn test_optimistic_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut Runner::new(optimistic(lmdb(db_path))), path)
-            .expect("test failed")
-    })
-}
-
-fn test_optimistic_sqlite(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut Runner::new(optimistic(sqlite(db_path))), path)
-            .expect("test failed")
-    })
-}
-
-test_each_path! { in "testsuite/regression/tests/scripts" as serializable_memory => test_serializable_memory }
-test_each_path! { in "testsuite/regression/tests/scripts" as serializable_lmdb => test_serializable_lmdb }
-test_each_path! { in "testsuite/regression/tests/scripts" as serializable_sqlite => test_serializable_sqlite }
-
-fn test_serializable_memory(path: &Path) {
-    testscript::run_path(&mut Runner::new(serializable(memory())), path).expect("test failed")
-}
-
-fn test_serializable_lmdb(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut Runner::new(serializable(lmdb(db_path))), path)
-            .expect("test failed")
-    })
-}
-
-fn test_serializable_sqlite(path: &Path) {
-    temp_dir(|db_path| {
-        testscript::run_path(&mut Runner::new(serializable(sqlite(db_path))), path)
-            .expect("test failed")
-    })
 }

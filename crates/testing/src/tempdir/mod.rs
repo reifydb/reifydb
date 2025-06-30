@@ -2,22 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use std::path::Path;
-use std::{env, fs, panic};
+use std::{env, fs};
 
-pub fn temp_dir<F>(f: F)
+pub fn temp_dir<F>(f: F) -> std::io::Result<()>
 where
-    F: FnOnce(&Path) + panic::UnwindSafe,
+    F: FnOnce(&Path) -> std::io::Result<()>,
 {
     let mut path = env::temp_dir();
     path.push(format!("reifydb-{}", uuid::Uuid::new_v4()));
 
-    fs::create_dir(&path).unwrap();
-    let result = panic::catch_unwind(|| {
-        f(&path);
-    });
+    fs::create_dir(&path)?;
+    let result = f(&path);
 
     let _ = fs::remove_dir_all(&path);
-    if let Err(payload) = result {
-        panic::resume_unwind(payload);
-    }
+    result
 }
