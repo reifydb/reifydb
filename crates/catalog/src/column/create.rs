@@ -7,10 +7,9 @@ use crate::key::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
 use crate::table::TableId;
 use crate::{Catalog, Error};
+use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, Span};
-use reifydb_diagnostic::Diagnostic;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
+use reifydb_diagnostic::catalog::column_already_exists;
 
 pub struct ColumnToCreate<'a> {
     pub span: Option<Span>,
@@ -25,14 +24,14 @@ pub struct ColumnToCreate<'a> {
 }
 
 impl Catalog {
-    pub(crate) fn create_column<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    pub(crate) fn create_column<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
         table: TableId,
         column_to_create: ColumnToCreate,
     ) -> crate::Result<Column> {
         // FIXME policies
         if let Some(column) = Catalog::get_column_by_name(tx, table, &column_to_create.column)? {
-            return Err(Error(Diagnostic::column_already_exists(
+            return Err(Error(column_already_exists(
                 None,
                 column_to_create.schema_name,
                 column_to_create.table_name,

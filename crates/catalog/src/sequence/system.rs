@@ -9,8 +9,7 @@ use crate::sequence::u64::SequenceGeneratorU64;
 use crate::table::TableId;
 use once_cell::sync::Lazy;
 use reifydb_core::EncodedKey;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
+use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -86,32 +85,36 @@ static COLUMN_POLICY_KEY: Lazy<EncodedKey> =
 pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
-    pub(crate) fn next_schema_id<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    pub(crate) fn next_schema_id<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
     ) -> crate::Result<SchemaId> {
         SequenceGeneratorU64::next(tx, &SCHEMA_KEY).map(SchemaId)
     }
 }
 
 impl SystemSequence {
-    pub(crate) fn next_table_id<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    pub(crate) fn next_table_id<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
     ) -> crate::Result<TableId> {
         SequenceGeneratorU64::next(tx, &TABLE_KEY).map(TableId)
     }
 }
 
 impl SystemSequence {
-    pub(crate) fn next_column_id<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    pub(crate) fn next_column_id<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
     ) -> crate::Result<ColumnId> {
         SequenceGeneratorU64::next(tx, &COLUMN_KEY).map(ColumnId)
     }
 }
 
 impl SystemSequence {
-    pub(crate) fn next_column_policy_id<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    pub(crate) fn next_column_policy_id<
+        VS: VersionedStorage,
+        US: UnversionedStorage,
+        BP: Bypass<US>,
+    >(
+        tx: &mut impl Tx<VS, US, BP>,
     ) -> crate::Result<ColumnPolicyId> {
         SequenceGeneratorU64::next(tx, &COLUMN_POLICY_KEY).map(ColumnPolicyId)
     }

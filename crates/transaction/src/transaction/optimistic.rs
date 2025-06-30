@@ -3,22 +3,25 @@
 
 use crate::bypass::BypassTx;
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
-use crate::{Rx, Transaction, Tx, VersionedIter};
 use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{
+    BoxedVersionedIter, Rx, Transaction, Tx, UnversionedStorage, Versioned, VersionedStorage,
+};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_core::interface::{UnversionedStorage, Versioned, VersionedStorage};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
 use std::sync::MutexGuard;
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optimistic<VS, US> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US, BypassTx<US>>
+    for Optimistic<VS, US>
+{
     type Rx = TransactionRx<VS, US>;
     type Tx = TransactionTx<VS, US>;
 
-    fn begin_read_only(&self) -> crate::Result<Self::Rx> {
+    fn begin_read_only(&self) -> Result<Self::Rx, Error> {
         Ok(self.begin_read_only())
     }
 
-    fn begin(&self) -> crate::Result<Self::Tx> {
+    fn begin(&self) -> Result<Self::Tx, Error> {
         Ok(self.begin())
     }
 
@@ -32,7 +35,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optim
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionRx<VS, US> {
-    fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
+    fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
         Ok(TransactionRx::get(self, key).map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -40,43 +43,43 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionRx<VS, US> 
         }))
     }
 
-    fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+    fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
         Ok(TransactionRx::contains_key(self, key))
     }
 
-    fn scan(&mut self) -> crate::Result<VersionedIter> {
+    fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
         let iter = TransactionRx::scan(self);
         Ok(Box::new(iter.into_iter()))
     }
 
-    fn scan_rev(&mut self) -> crate::Result<VersionedIter> {
+    fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
         let iter = TransactionRx::scan_rev(self);
         Ok(Box::new(iter.into_iter()))
     }
 
-    fn scan_range(&mut self, range: EncodedKeyRange) -> crate::Result<VersionedIter> {
+    fn scan_range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
         let iter = TransactionRx::scan_range(self, range);
         Ok(Box::new(iter.into_iter()))
     }
 
-    fn scan_range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<VersionedIter> {
+    fn scan_range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
         let iter = TransactionRx::scan_range_rev(self, range);
         Ok(Box::new(iter.into_iter()))
     }
 
-    fn scan_prefix(&mut self, prefix: &EncodedKey) -> crate::Result<VersionedIter> {
+    fn scan_prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
         let iter = TransactionRx::scan_prefix(self, prefix);
         Ok(Box::new(iter.into_iter()))
     }
 
-    fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<VersionedIter> {
+    fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
         let iter = TransactionRx::scan_prefix_rev(self, prefix);
         Ok(Box::new(iter.into_iter()))
     }
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> {
-    fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
+    fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
         Ok(TransactionTx::get(self, key)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -84,11 +87,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> 
         }))
     }
 
-    fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+    fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
         Ok(TransactionTx::contains_key(self, key)?)
     }
 
-    fn scan(&mut self) -> crate::Result<VersionedIter> {
+    fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
         let iter = self.scan()?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -98,7 +101,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> 
         Ok(Box::new(iter))
     }
 
-    fn scan_rev(&mut self) -> crate::Result<VersionedIter> {
+    fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
         let iter = self.scan_rev()?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -108,7 +111,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> 
         Ok(Box::new(iter))
     }
 
-    fn scan_range(&mut self, range: EncodedKeyRange) -> crate::Result<VersionedIter> {
+    fn scan_range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
         let iter = self.scan_range(range)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -118,7 +121,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> 
         Ok(Box::new(iter))
     }
 
-    fn scan_range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<VersionedIter> {
+    fn scan_range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
         let iter = self.scan_range_rev(range)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -128,7 +131,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> 
         Ok(Box::new(iter))
     }
 
-    fn scan_prefix(&mut self, prefix: &EncodedKey) -> crate::Result<VersionedIter> {
+    fn scan_prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
         let iter = self.scan_prefix(prefix)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -138,7 +141,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> 
         Ok(Box::new(iter))
     }
 
-    fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<VersionedIter> {
+    fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
         let iter = self.scan_prefix_rev(prefix)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -149,23 +152,25 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionTx<VS, US> 
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<VS, US> {
-    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
+impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US, BypassTx<US>>
+    for TransactionTx<VS, US>
+{
+    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
         TransactionTx::set(self, key, row)?;
         Ok(())
     }
 
-    fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+    fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
         TransactionTx::remove(self, key)?;
         Ok(())
     }
 
-    fn commit(mut self) -> crate::Result<()> {
+    fn commit(mut self) -> Result<(), Error> {
         TransactionTx::commit(&mut self)?;
         Ok(())
     }
 
-    fn rollback(mut self) -> crate::Result<()> {
+    fn rollback(mut self) -> Result<(), Error> {
         TransactionTx::rollback(&mut self)?;
         Ok(())
     }

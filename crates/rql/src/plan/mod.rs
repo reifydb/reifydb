@@ -23,10 +23,9 @@ use reifydb_catalog::Catalog;
 use reifydb_catalog::column::Column;
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
+use reifydb_core::interface::{Rx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, OrderDirection, OrderKey, Span};
-use reifydb_diagnostic::Diagnostic;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Rx;
+use reifydb_diagnostic::catalog::table_not_found;
 
 mod error;
 pub mod node;
@@ -270,7 +269,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                         let Some(table) =
                             Catalog::get_table_by_name(rx, schema.id, &store.fragment).unwrap()
                         else {
-                            return Err(Error(Diagnostic::table_not_found(
+                            return Err(Error(table_not_found(
                                 store.clone(),
                                 &schema.name,
                                 &store.fragment,

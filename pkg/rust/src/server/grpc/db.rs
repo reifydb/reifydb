@@ -5,8 +5,7 @@ use crate::server::grpc::grpc_db::{
     Int128, QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult, UInt128,
 };
 use crate::server::grpc::{AuthenticatedUser, grpc_db};
-use reifydb_core::Value;
-use reifydb_transaction::Transaction;
+use reifydb_core::{Diagnostic, Value};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::task::spawn_blocking;
@@ -17,16 +16,22 @@ use crate::server::grpc::grpc_db::tx_result::Result::{
     CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
 };
 use reifydb_auth::Principal;
-use reifydb_core::interface::Storage;
+use reifydb_core::interface::{Bypass, Storage, Transaction};
 use reifydb_engine::{CreateSchemaResult, CreateTableResult, Engine, ExecutionResult};
 use tokio_stream::once;
 
-pub struct DbService<S: Storage + 'static, T: Transaction<S, S> + 'static> {
-    pub(crate) engine: Arc<Engine<S, S, T>>,
+pub struct DbService<
+    S: Storage + 'static,
+    BP: Bypass<S> + 'static,
+    T: Transaction<S, S, BP> + 'static,
+> {
+    pub(crate) engine: Arc<Engine<S, S, BP, T>>,
 }
 
-impl<S: Storage + 'static, T: Transaction<S, S> + 'static> DbService<S, T> {
-    pub fn new(engine: Engine<S, S, T>) -> Self {
+impl<S: Storage + 'static, BP: Bypass<S> + 'static, T: Transaction<S, S, BP> + 'static>
+    DbService<S, BP, T>
+{
+    pub fn new(engine: Engine<S, S, BP, T>) -> Self {
         Self { engine: Arc::new(engine) }
     }
 }
@@ -35,8 +40,8 @@ pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::TxResult, St
 pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::RxResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<S: Storage + 'static, T: Transaction<S, S> + 'static> grpc_db::db_server::Db
-    for DbService<S, T>
+impl<S: Storage + 'static, BP: Bypass<S> + 'static, T: Transaction<S, S, BP> + 'static>
+    grpc_db::db_server::Db for DbService<S, BP, T>
 {
     type TxStream = TxResultStream;
 
@@ -231,7 +236,7 @@ fn value_to_query_value(value: &Value) -> grpc_db::Value {
     }
 }
 
-fn map_diagnostic(diagnostic: reifydb_diagnostic::Diagnostic) -> grpc_db::Diagnostic {
+fn map_diagnostic(diagnostic: Diagnostic) -> grpc_db::Diagnostic {
     grpc_db::Diagnostic {
         code: diagnostic.code.to_string(),
         message: diagnostic.message,

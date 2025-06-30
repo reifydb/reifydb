@@ -3,21 +3,24 @@
 
 use crate::Error;
 use once_cell::sync::Lazy;
+use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{EncodedKey, Kind};
-use reifydb_diagnostic::Diagnostic;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
+use reifydb_diagnostic::sequence::sequence_exhausted;
 
 static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[Kind::Uint8]));
 
 pub(crate) struct SequenceGeneratorU64 {}
 
 impl SequenceGeneratorU64 {
-    pub(crate) fn next<VS, US>(tx: &mut impl Tx<VS, US>, key: &EncodedKey) -> crate::Result<u64>
+    pub(crate) fn next<VS, US, BP>(
+        tx: &mut impl Tx<VS, US, BP>,
+        key: &EncodedKey,
+    ) -> crate::Result<u64>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
+        BP: Bypass<US>,
     {
         let mut bypass = tx.bypass();
         match bypass.get(key)? {
@@ -27,7 +30,7 @@ impl SequenceGeneratorU64 {
                 let next_value = value.saturating_add(1);
 
                 if value == next_value {
-                    return Err(Error(Diagnostic::sequence_exhausted(Kind::Uint8)));
+                    return Err(Error(sequence_exhausted(Kind::Uint8)));
                 }
 
                 LAYOUT.set_u64(&mut row, 0, next_value);
@@ -47,9 +50,9 @@ impl SequenceGeneratorU64 {
 #[cfg(test)]
 mod tests {
     use crate::sequence::u64::{LAYOUT, SequenceGeneratorU64};
-    use reifydb_core::{EncodedKey, Kind};
-    use reifydb_diagnostic::Diagnostic;
     use reifydb_core::interface::{Unversioned, UnversionedScan, UnversionedSet};
+    use reifydb_core::{EncodedKey, Kind};
+    use reifydb_diagnostic::sequence::sequence_exhausted;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
@@ -80,6 +83,6 @@ mod tests {
         unversioned.set_unversioned(&EncodedKey::new("sequence"), row);
 
         let err = SequenceGeneratorU64::next(&mut tx, &EncodedKey::new("sequence")).unwrap_err();
-        assert_eq!(err.diagnostic(), Diagnostic::sequence_exhausted(Kind::Uint8));
+        assert_eq!(err.diagnostic(), sequence_exhausted(Kind::Uint8));
     }
 }

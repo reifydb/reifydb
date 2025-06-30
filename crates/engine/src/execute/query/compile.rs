@@ -10,9 +10,9 @@ use crate::function::Functions;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
 use reifydb_core::Kind;
+use reifydb_core::interface::Rx;
 use reifydb_core::row::Layout;
 use reifydb_rql::plan::QueryPlan;
-use reifydb_transaction::Rx;
 
 pub(crate) fn compile(
     mut plan: QueryPlan,

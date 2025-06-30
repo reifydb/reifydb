@@ -6,8 +6,7 @@ use crate::evaluate::{Context, Error, Evaluator};
 use crate::frame::{Column, ColumnValues};
 use reifydb_core::Kind;
 use reifydb_core::num::parse_float;
-use reifydb_diagnostic::Diagnostic;
-use reifydb_diagnostic::r#type::OutOfRange;
+use reifydb_diagnostic::r#type::{OutOfRange, out_of_range};
 use reifydb_rql::expression::ConstantExpression;
 
 impl Evaluator {
@@ -49,7 +48,7 @@ impl Evaluator {
                     if let Ok(v) = parse_float(s) {
                         return Ok(ColumnValues::float8(vec![v; row_count]));
                     }
-                    return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                    return Err(Error(out_of_range(OutOfRange {
                         span: expr.span(),
                         column: None,
                         kind: Some(Kind::Float8),
@@ -69,7 +68,7 @@ impl Evaluator {
                 } else if let Ok(v) = s.parse::<u128>() {
                     ColumnValues::uint16(vec![v; row_count])
                 } else {
-                    return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                    return Err(Error(out_of_range(OutOfRange {
                         span: expr.span(),
                         column: None,
                         kind: Some(Kind::Uint16),
@@ -99,7 +98,7 @@ impl Evaluator {
                     Kind::Float4 => match s.parse::<f32>() {
                         Ok(v) => ColumnValues::float4(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -109,7 +108,7 @@ impl Evaluator {
                     Kind::Float8 => match s.parse::<f64>() {
                         Ok(v) => ColumnValues::float8(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -119,7 +118,7 @@ impl Evaluator {
                     Kind::Int1 => match s.parse::<i8>() {
                         Ok(v) => ColumnValues::int1(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -129,7 +128,7 @@ impl Evaluator {
                     Kind::Int2 => match s.parse::<i16>() {
                         Ok(v) => ColumnValues::int2(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -139,7 +138,7 @@ impl Evaluator {
                     Kind::Int4 => match s.parse::<i32>() {
                         Ok(v) => ColumnValues::int4(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -149,7 +148,7 @@ impl Evaluator {
                     Kind::Int8 => match s.parse::<i64>() {
                         Ok(v) => ColumnValues::int8(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -159,7 +158,7 @@ impl Evaluator {
                     Kind::Int16 => match s.parse::<i128>() {
                         Ok(v) => ColumnValues::int16(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -169,7 +168,7 @@ impl Evaluator {
                     Kind::Uint1 => match s.parse::<u8>() {
                         Ok(v) => ColumnValues::uint1(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -179,7 +178,7 @@ impl Evaluator {
                     Kind::Uint2 => match s.parse::<u16>() {
                         Ok(v) => ColumnValues::uint2(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -189,7 +188,7 @@ impl Evaluator {
                     Kind::Uint4 => match s.parse::<u32>() {
                         Ok(v) => ColumnValues::uint4(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -199,7 +198,7 @@ impl Evaluator {
                     Kind::Uint8 => match s.parse::<u64>() {
                         Ok(v) => ColumnValues::uint8(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -209,7 +208,7 @@ impl Evaluator {
                     Kind::Uint16 => match s.parse::<u128>() {
                         Ok(v) => ColumnValues::uint16(vec![v; row_count]),
                         Err(_) => {
-                            return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                            return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
                                 kind: Some(ty),
@@ -218,7 +217,7 @@ impl Evaluator {
                     },
 
                     _ => {
-                        return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                        return Err(Error(out_of_range(OutOfRange {
                             span: span.clone(),
                             column: None,
                             kind: Some(ty),
@@ -234,7 +233,7 @@ impl Evaluator {
             (ConstantExpression::Undefined { .. }, _) => ColumnValues::Undefined(row_count),
 
             (_, kind) => {
-                return Err(Error(Diagnostic::out_of_range(OutOfRange {
+                return Err(Error(out_of_range(OutOfRange {
                     span: expr.span(),
                     column: None,
                     kind: Some(kind),

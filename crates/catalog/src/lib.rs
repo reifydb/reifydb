@@ -6,10 +6,10 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use error::Error;
+use reifydb_core::Error;
+
 pub mod column;
 pub mod column_policy;
-mod error;
 pub mod key;
 pub mod row;
 pub mod schema;

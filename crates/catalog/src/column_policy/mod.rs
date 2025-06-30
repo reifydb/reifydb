@@ -6,12 +6,12 @@ mod layout;
 mod list;
 
 use crate::column::ColumnId;
-use reifydb_diagnostic::Diagnostic;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
+use reifydb_core::Diagnostic;
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]

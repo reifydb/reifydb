@@ -8,17 +8,16 @@ use crate::{Error, ExecutionResult};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::{EncodableKey, TableRowKey};
 use reifydb_catalog::sequence::TableRowSequence;
+use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{BitVec, Kind};
-use reifydb_diagnostic::Diagnostic;
+use reifydb_diagnostic::catalog::table_not_found;
 use reifydb_rql::plan::InsertIntoTablePlan;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US, BP> {
     pub(crate) fn insert_into_table(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl Tx<VS, US, BP>,
         plan: InsertIntoTablePlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {
@@ -100,7 +99,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 let schema = Catalog::get_schema_by_name(tx, &schema)?.unwrap();
                 let Some(table) = Catalog::get_table_by_name(tx, schema.id, &table.fragment)?
                 else {
-                    return Err(Error::execution(Diagnostic::table_not_found(
+                    return Err(Error::execution(table_not_found(
                         table.clone(),
                         &schema.name,
                         &table.fragment,

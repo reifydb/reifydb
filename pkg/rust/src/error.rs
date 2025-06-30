@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_diagnostic::Diagnostic;
+use reifydb_core::Diagnostic;
+use reifydb_diagnostic::DefaultRenderer;
 use std::fmt::{Display, Formatter};
 use tonic::Status;
 
@@ -17,8 +18,8 @@ impl Display for Error {
         match self {
             Error::ConnectionError { message } => write!(f, "connection error: {}", message),
             Error::EngineError { message } => write!(f, "engine error: {}", message),
-            Error::ExecutionError { source, diagnostic } => {
-                f.write_str(&diagnostic.to_string(source.as_str()))
+            Error::ExecutionError { diagnostic, source } => {
+                f.write_str(&DefaultRenderer::render_string(&diagnostic, source))
             }
         }
     }

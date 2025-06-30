@@ -4,9 +4,8 @@
 use crate::server::grpc::db_service;
 pub use config::{DatabaseConfig, ServerConfig};
 use reifydb_auth::Principal;
-use reifydb_core::interface::Storage;
+use reifydb_core::interface::{Bypass, Storage, Transaction};
 use reifydb_engine::{Engine, ExecutionResult};
-use reifydb_transaction::Transaction;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -17,20 +16,20 @@ use tonic::transport::Error;
 mod config;
 mod grpc;
 
-pub struct Server<S: Storage, T: Transaction<S, S>> {
+pub struct Server<S: Storage, BP: Bypass<S>, T: Transaction<S, S, BP>> {
     pub(crate) config: ServerConfig,
     pub(crate) _grpc: tonic::transport::Server,
-    pub(crate) callbacks: Callbacks<S, T>,
-    pub(crate) engine: Engine<S, S, T>,
+    pub(crate) callbacks: Callbacks<S, BP, T>,
+    pub(crate) engine: Engine<S, S, BP, T>,
 }
 
-impl<S: Storage, T: Transaction<S, S>> Server<S, T> {
+impl<S: Storage, BP: Bypass<S>, T: Transaction<S, S, BP>> Server<S, BP, T> {
     pub fn with_config(mut self, config: ServerConfig) -> Self {
         self.config = config;
         self
     }
 
-    pub fn with_engine(mut self, engine: Engine<S, S, T>) -> Self {
+    pub fn with_engine(mut self, engine: Engine<S, S, BP, T>) -> Self {
         self.engine = engine;
         self
     }
@@ -38,9 +37,9 @@ impl<S: Storage, T: Transaction<S, S>> Server<S, T> {
 
 pub type Callback<T> = Box<dyn FnOnce(T) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-pub struct Callbacks<S: Storage, T: Transaction<S, S>> {
+pub struct Callbacks<S: Storage, BP: Bypass<S>, T: Transaction<S, S, BP>> {
     before_bootstrap: Vec<Callback<BeforeBootstrap>>,
-    on_create: Vec<Callback<OnCreate<S, T>>>,
+    on_create: Vec<Callback<OnCreate<S, BP, T>>>,
 }
 
 #[derive(Clone)]
@@ -74,11 +73,11 @@ impl Deref for BeforeBootstrap {
     }
 }
 
-pub struct OnCreate<S: Storage, T: Transaction<S, S>> {
-    engine: Engine<S, S, T>,
+pub struct OnCreate<S: Storage, BP: Bypass<S>, T: Transaction<S, S, BP>> {
+    engine: Engine<S, S, BP, T>,
 }
 
-impl<S: Storage, T: Transaction<S, S>> OnCreate<S, T> {
+impl<S: Storage, BP: Bypass<S>, T: Transaction<S, S, BP>> OnCreate<S, BP, T> {
     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
         self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
     }
@@ -88,7 +87,9 @@ impl<S: Storage, T: Transaction<S, S>> OnCreate<S, T> {
     }
 }
 
-impl<S: Storage + 'static, T: Transaction<S, S> + 'static> Server<S, T> {
+impl<S: Storage + 'static, BP: Bypass<S> + 'static, T: Transaction<S, S, BP> + 'static>
+    Server<S, BP, T>
+{
     pub fn new(transaction: T) -> Self {
         Self {
             config: ServerConfig::default(),
@@ -110,7 +111,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> Server<S, T> {
     /// will only be invoked when a new database gets created
     pub fn on_create<F, Fut>(mut self, func: F) -> Self
     where
-        F: FnOnce(OnCreate<S, T>) -> Fut + Send + 'static,
+        F: FnOnce(OnCreate<S, BP, T>) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.callbacks.on_create.push(Box::new(move |ctx| Box::pin(func(ctx))));

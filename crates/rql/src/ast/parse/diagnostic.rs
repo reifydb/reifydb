@@ -4,7 +4,7 @@
 use crate::ast::parse::Error;
 use crate::ast::parse::Error::{InvalidType, UnexpectedToken, UnsupportedToken};
 use Error::{InvalidPolicy, UnexpectedEndOfFile};
-use reifydb_diagnostic::Diagnostic;
+use reifydb_core::Diagnostic;
 
 impl Error {
     pub fn diagnostic(self) -> Diagnostic {

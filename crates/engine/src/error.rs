@@ -2,14 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{evaluate, execute, frame};
-use reifydb_diagnostic::Diagnostic;
+use reifydb_core::Diagnostic;
 use reifydb_rql::{ast, plan};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum Error {
     Ast(ast::Error),
-    Catalog(reifydb_catalog::Error),
+    Catalog(reifydb_core::Error), // FIXME this is broken just a quick hack for now
     Evaluation(evaluate::Error),
     Execution(execute::Error),
     Frame(frame::Error),
@@ -32,12 +32,6 @@ impl Display for Error {
 impl From<ast::Error> for Error {
     fn from(err: ast::Error) -> Self {
         Self::Ast(err)
-    }
-}
-
-impl From<reifydb_catalog::Error> for Error {
-    fn from(err: reifydb_catalog::Error) -> Self {
-        Self::Catalog(err)
     }
 }
 
@@ -84,5 +78,19 @@ impl Error {
             Error::Plan(err) => err.diagnostic(),
             Error::Transaction(_) => unimplemented!(),
         }
+    }
+}
+
+impl From<Error> for reifydb_core::Error {
+    fn from(err: Error) -> Self {
+        Self(err.diagnostic())
+    }
+}
+
+
+// FIXME
+impl From<reifydb_core::Error> for Error {
+    fn from(err: reifydb_core::Error) -> Self {
+        Self::Catalog(err)
     }
 }

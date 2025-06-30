@@ -6,7 +6,7 @@ use crate::column::layout::table_column;
 use crate::column::{Column, ColumnId};
 use crate::key::TableColumnKey;
 use crate::table::TableId;
-use reifydb_transaction::Rx;
+use reifydb_core::interface::Rx;
 
 impl Catalog {
     pub fn list_columns(rx: &mut impl Rx, table: TableId) -> crate::Result<Vec<Column>> {

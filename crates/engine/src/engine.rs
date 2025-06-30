@@ -6,48 +6,60 @@ use crate::system::SystemBootHook;
 use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
 use reifydb_core::hook::{Hooks, OnAfterBootHookContext};
+use reifydb_core::interface::{Bypass, Transaction, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::ast;
 use reifydb_rql::plan::{plan_rx, plan_tx};
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::{Transaction, Tx};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub struct Engine<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>>(
-    Arc<EngineInner<VS, US, T>>,
-);
+pub struct Engine<
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    BP: Bypass<US>,
+    T: Transaction<VS, US, BP>,
+>(Arc<EngineInner<VS, US, BP, T>>);
 
-impl<VS, US, T> Clone for Engine<VS, US, T>
+impl<VS, US, BP, T> Clone for Engine<VS, US, BP, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    BP: Bypass<US>,
+    T: Transaction<VS, US, BP>,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Deref
-    for Engine<VS, US, T>
+impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>, T: Transaction<VS, US, BP>> Deref
+    for Engine<VS, US, BP, T>
 {
-    type Target = EngineInner<VS, US, T>;
+    type Target = EngineInner<VS, US, BP, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct EngineInner<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> {
+pub struct EngineInner<
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    BP: Bypass<US>,
+    T: Transaction<VS, US, BP>,
+> {
     transaction: T,
     hooks: Hooks,
     deferred_view: Arc<view::deferred::Engine<VS, US>>,
-    _marker: PhantomData<(VS, US)>,
+    _marker: PhantomData<(VS, US, BP)>,
 }
 
-impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transaction<VS, US>>
-    Engine<VS, US, T>
+impl<
+    VS: VersionedStorage + 'static,
+    US: UnversionedStorage + 'static,
+    BP: Bypass<US> + 'static,
+    T: Transaction<VS, US, BP>,
+> Engine<VS, US, BP, T>
 {
     pub fn new(transaction: T) -> crate::Result<Self> {
         let storage = transaction.versioned();
@@ -61,8 +73,12 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transa
     }
 }
 
-impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transaction<VS, US>>
-    Engine<VS, US, T>
+impl<
+    VS: VersionedStorage + 'static,
+    US: UnversionedStorage + 'static,
+    BP: Bypass<US> + 'static,
+    T: Transaction<VS, US, BP>,
+> Engine<VS, US, BP, T>
 {
     pub fn boot(&self) -> crate::Result<()> {
         self.hooks
@@ -74,8 +90,12 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transa
     }
 }
 
-impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transaction<VS, US>>
-    Engine<VS, US, T>
+impl<
+    VS: VersionedStorage + 'static,
+    US: UnversionedStorage + 'static,
+    BP: Bypass<US> + 'static,
+    T: Transaction<VS, US, BP>,
+> Engine<VS, US, BP, T>
 {
     pub fn setup_hooks(&self) {
         self.hooks.lifecycle().after_boot().register(Arc::new(SystemBootHook {}));
@@ -83,7 +103,9 @@ impl<VS: VersionedStorage + 'static, US: UnversionedStorage + 'static, T: Transa
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engine<VS, US, T> {
+impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>, T: Transaction<VS, US, BP>>
+    Engine<VS, US, BP, T>
+{
     pub fn begin(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin().unwrap())
     }
@@ -117,7 +139,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         let mut rx = self.begin_read_only()?;
         for statement in statements {
             if let Some(plan) = plan_rx(statement)? {
-                let er = execute_rx::<VS, US>(&mut rx, plan)?;
+                let er = execute_rx::<VS, US, BP>(&mut rx, plan)?;
                 result.push(er);
             }
         }

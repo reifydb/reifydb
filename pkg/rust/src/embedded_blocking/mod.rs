@@ -3,32 +3,38 @@
 
 use crate::Error;
 use reifydb_auth::Principal;
-use reifydb_core::interface::Storage;
+use reifydb_core::interface::{Bypass, Storage, Transaction};
 use reifydb_engine::{Engine, ExecutionResult};
-use reifydb_transaction::Transaction;
 
-pub struct Embedded<S: Storage + 'static, T: Transaction<S, S> + 'static> {
-    engine: Engine<S, S, T>,
+pub struct Embedded<
+    S: Storage + 'static,
+    BP: Bypass<S> + 'static,
+    T: Transaction<S, S, BP> + 'static,
+> {
+    engine: Engine<S, S, BP, T>,
 }
 
-impl<S, T> Clone for Embedded<S, T>
+impl<S, BP, T> Clone for Embedded<S, BP, T>
 where
     S: Storage,
-    T: Transaction<S, S>,
+    BP: Bypass<S>,
+    T: Transaction<S, S, BP>,
 {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
 
-impl<S: Storage, T: Transaction<S, S>> Embedded<S, T> {
+impl<S: Storage, BP: Bypass<S>, T: Transaction<S, S, BP>> Embedded<S, BP, T> {
     pub fn new(transaction: T) -> crate::Result<(Self, Principal)> {
         let principal = Principal::System { id: 1, name: "root".to_string() };
         Ok((Self { engine: Engine::new(transaction)? }, principal))
     }
 }
 
-impl<'a, S: Storage + 'static, T: Transaction<S, S> + 'static> Embedded<S, T> {
+impl<'a, S: Storage + 'static, BP: Bypass<S> + 'static, T: Transaction<S, S, BP> + 'static>
+    Embedded<S, BP, T>
+{
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         self.engine.tx_as(principal, rql).map_err(|err| {
             let diagnostic = err.diagnostic();

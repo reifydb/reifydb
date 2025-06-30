@@ -3,33 +3,39 @@
 
 use crate::{DB, Error};
 use reifydb_auth::Principal;
-use reifydb_core::interface::Storage;
+use reifydb_core::interface::{Bypass, Storage, Transaction};
 use reifydb_engine::{Engine, ExecutionResult};
-use reifydb_transaction::Transaction;
 use tokio::task::spawn_blocking;
 
-pub struct Embedded<S: Storage + 'static, T: Transaction<S, S> + 'static> {
-    engine: Engine<S, S, T>,
+pub struct Embedded<
+    S: Storage + 'static,
+    BP: Bypass<S> + 'static,
+    T: Transaction<S, S, BP> + 'static,
+> {
+    engine: Engine<S, S, BP, T>,
 }
 
-impl<S, T> Clone for Embedded<S, T>
+impl<S, BP, T> Clone for Embedded<S, BP, T>
 where
     S: Storage,
-    T: Transaction<S, S>,
+    BP: Bypass<S>,
+    T: Transaction<S, S, BP>,
 {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
 
-impl<S: Storage, T: Transaction<S, S>> Embedded<S, T> {
+impl<S: Storage, BP: Bypass<S>, T: Transaction<S, S, BP>> Embedded<S, BP, T> {
     pub fn new(transaction: T) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
         (Self { engine: Engine::new(transaction).unwrap() }, principal)
     }
 }
 
-impl<S: Storage + 'static, T: Transaction<S, S> + 'static> DB<'_> for Embedded<S, T> {
+impl<S: Storage + 'static, BP: Bypass<S> + 'static, T: Transaction<S, S, BP> + 'static> DB<'_>
+    for Embedded<S, BP, T>
+{
     async fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let rql = rql.to_string();
         let principal = principal.clone();

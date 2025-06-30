@@ -3,10 +3,10 @@
 
 use crate::client::grpc_db;
 use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
-use reifydb_core::{Kind, Line, Offset, Span, Value};
+use reifydb_core::{Diagnostic, DiagnosticColumn, Kind, Line, Offset, Span, Value};
 
-pub(crate) fn convert_diagnostic(grpc: grpc_db::Diagnostic) -> reifydb_diagnostic::Diagnostic {
-    reifydb_diagnostic::Diagnostic {
+pub(crate) fn convert_diagnostic(grpc: grpc_db::Diagnostic) -> Diagnostic {
+    Diagnostic {
         code: grpc.code,
         message: grpc.message,
         span: grpc.span.map(|s| Span {
@@ -17,10 +17,9 @@ pub(crate) fn convert_diagnostic(grpc: grpc_db::Diagnostic) -> reifydb_diagnosti
         label: if grpc.label.is_empty() { None } else { Some(grpc.label) },
         help: if grpc.help.is_empty() { None } else { Some(grpc.help) },
         notes: grpc.notes,
-        column: grpc.column.map(|c| reifydb_diagnostic::DiagnosticColumn {
-            name: c.name,
-            value: Kind::from_u8(c.value as u8),
-        }),
+        column: grpc
+            .column
+            .map(|c| DiagnosticColumn { name: c.name, value: Kind::from_u8(c.value as u8) }),
     }
 }
 

@@ -9,10 +9,9 @@ use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
 use crate::{Catalog, Error};
+use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, Span};
-use reifydb_diagnostic::Diagnostic;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
+use reifydb_diagnostic::catalog::{schema_not_found, table_already_exists};
 
 #[derive(Debug, Clone)]
 pub struct ColumnToCreate {
@@ -30,16 +29,16 @@ pub struct TableToCreate {
 }
 
 impl Catalog {
-    pub fn create_table<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    pub fn create_table<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
         to_create: TableToCreate,
     ) -> crate::Result<Table> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &to_create.schema)? else {
-            return Err(Error(Diagnostic::schema_not_found(to_create.span, &to_create.schema)));
+            return Err(Error(schema_not_found(to_create.span, &to_create.schema)));
         };
 
         if let Some(table) = Catalog::get_table_by_name(tx, schema.id, &to_create.table)? {
-            return Err(Error(Diagnostic::table_already_exists(
+            return Err(Error(table_already_exists(
                 to_create.span,
                 &schema.name,
                 &table.name,
@@ -55,8 +54,8 @@ impl Catalog {
         Ok(Catalog::get_table(tx, table_id)?.unwrap())
     }
 
-    fn store_table<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    fn store_table<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
         table: TableId,
         schema: SchemaId,
         to_create: &TableToCreate,
@@ -71,8 +70,8 @@ impl Catalog {
         Ok(())
     }
 
-    fn link_table_to_schema<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    fn link_table_to_schema<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
         schema: SchemaId,
         table: TableId,
         name: &str,
@@ -84,8 +83,8 @@ impl Catalog {
         Ok(())
     }
 
-    fn insert_columns<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    fn insert_columns<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
         table: TableId,
         to_create: TableToCreate,
     ) -> crate::Result<()> {
@@ -118,7 +117,7 @@ mod tests {
     use crate::table::TableToCreate;
     use crate::table::layout::table_schema;
     use crate::test_utils::ensure_test_schema;
-    use reifydb_transaction::Rx;
+    use reifydb_core::interface::Rx;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

@@ -4,13 +4,12 @@
 use crate::ExecutionResult;
 use crate::execute::Executor;
 use reifydb_rql::plan::InsertIntoSeriesPlan;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
+use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US,BP> {
     pub(crate) fn insert_into_series(
         &mut self,
-        _tx: &mut impl Tx<VS, US>,
+        _tx: &mut impl Tx<VS, US, BP>,
         plan: InsertIntoSeriesPlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {

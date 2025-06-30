@@ -13,10 +13,9 @@ use crate::function::{Functions, math};
 pub use error::Error;
 use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
+use reifydb_core::interface::{Bypass, Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, Value};
 use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::{Rx, Tx};
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -178,25 +177,22 @@ impl From<Frame> for ExecutionResult {
     }
 }
 
-pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
+pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> {
     functions: Functions,
-    _marker: PhantomData<(VS, US)>,
+    _marker: PhantomData<(VS, US, BP)>,
 }
 
-pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
+pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
     rx: &mut impl Rx,
     plan: PlanRx,
 ) -> crate::Result<ExecutionResult> {
-    let executor: Executor<VS, US> = Executor {
+    let executor: Executor<VS, US, BP> = Executor {
         // FIXME receive functions from RX
         functions: Functions::builder()
-
             .register_aggregate("sum", math::aggregate::Sum::new)
             .register_aggregate("min", math::aggregate::Min::new)
             .register_aggregate("max", math::aggregate::Max::new)
             .register_aggregate("avg", math::aggregate::Avg::new)
-
-
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),
@@ -206,20 +202,17 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     executor.execute_rx(rx, plan)
 }
 
-pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
-    tx: &mut impl Tx<VS, US>,
+pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+    tx: &mut impl Tx<VS, US, BP>,
     plan: PlanTx,
 ) -> crate::Result<ExecutionResult> {
     // FIXME receive functions from TX
-    let executor: Executor<VS, US> = Executor {
+    let executor: Executor<VS, US, BP> = Executor {
         functions: Functions::builder()
-
             .register_aggregate("sum", math::aggregate::Sum::new)
             .register_aggregate("min", math::aggregate::Min::new)
             .register_aggregate("max", math::aggregate::Max::new)
             .register_aggregate("avg", math::aggregate::Avg::new)
-
-
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),
@@ -229,7 +222,7 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
     executor.execute_tx(tx, plan)
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US, BP> {
     pub(crate) fn execute_query_plan(
         self,
         rx: &mut impl Rx,
@@ -286,7 +279,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
     pub(crate) fn execute_tx(
         mut self,
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl Tx<VS, US, BP>,
         plan: PlanTx,
     ) -> crate::Result<ExecutionResult> {
         match plan {

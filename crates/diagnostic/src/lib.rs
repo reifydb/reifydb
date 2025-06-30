@@ -6,48 +6,23 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb_core::{Kind, Span};
+use reifydb_core::{Diagnostic, Span};
 
 pub mod catalog;
+pub mod query;
 pub mod sequence;
 pub mod r#type;
 mod util;
-pub mod query;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Diagnostic {
-    pub code: String,
-    pub message: String,
-    pub column: Option<DiagnosticColumn>,
-
-    pub span: Option<Span>,
-    pub label: Option<String>,
-    pub help: Option<String>,
-    pub notes: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagnosticColumn {
-    pub name: String,
-    pub value: Kind,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagnosticTable {
-    pub schema: String,
-    pub name: String,
-    pub columns: Vec<DiagnosticColumn>,
-}
-
-pub fn get_line(source: &str, line: u32) -> &str {
-    source.lines().nth((line - 1) as usize).unwrap_or("")
-}
 
 pub trait DiagnosticRenderer {
     fn render(&self, diagnostic: &Diagnostic, source: &str) -> String;
 }
 
 pub struct DefaultRenderer;
+
+pub fn get_line(source: &str, line: u32) -> &str {
+    source.lines().nth((line - 1) as usize).unwrap_or("")
+}
 
 use std::fmt::Write;
 
@@ -103,8 +78,8 @@ impl DiagnosticRenderer for DefaultRenderer {
     }
 }
 
-impl Diagnostic {
-    pub fn to_string(&self, source: &str) -> String {
-        DefaultRenderer.render(self, source)
+impl DefaultRenderer {
+    pub fn render_string(diagnostic: &Diagnostic, source: &str) -> String {
+        DefaultRenderer.render(diagnostic, source)
     }
 }

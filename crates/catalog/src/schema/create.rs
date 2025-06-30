@@ -7,9 +7,8 @@ use crate::schema::layout::schema;
 use crate::sequence::SystemSequence;
 use crate::{Catalog, Error};
 use reifydb_core::Span;
-use reifydb_diagnostic::Diagnostic;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
+use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_diagnostic::catalog::schema_already_exists;
 
 #[derive(Debug, Clone)]
 pub struct SchemaToCreate {
@@ -18,15 +17,12 @@ pub struct SchemaToCreate {
 }
 
 impl Catalog {
-    pub fn create_schema<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+    pub fn create_schema<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>>(
+        tx: &mut impl Tx<VS, US, BP>,
         to_create: SchemaToCreate,
     ) -> crate::Result<Schema> {
         if let Some(schema) = Catalog::get_schema_by_name(tx, &to_create.name)? {
-            return Err(Error(Diagnostic::schema_already_exists(
-                to_create.schema_span,
-                &schema.name,
-            )));
+            return Err(Error(schema_already_exists(to_create.schema_span, &schema.name)));
         }
 
         let schema_id = SystemSequence::next_schema_id(tx)?;

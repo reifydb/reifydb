@@ -70,3 +70,15 @@ impl MvccError {
         Self::Commit(err.to_string())
     }
 }
+
+impl From<TransactionError> for reifydb_core::Error {
+    fn from(_err: TransactionError) -> Self {
+        todo!()
+    }
+}
+
+impl From<MvccError> for reifydb_core::Error {
+    fn from(_err: MvccError) -> Self {
+        todo!()
+    }
+}

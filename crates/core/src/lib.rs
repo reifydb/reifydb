@@ -8,6 +8,8 @@
 
 pub use bitvec::BitVec;
 pub use cowvec::{r#async::AsyncCowVec, sync::CowVec};
+pub use diagnostic::{Diagnostic, DiagnosticColumn, DiagnosticTable};
+pub use error::Error;
 pub use key::{EncodedKey, EncodedKeyRange};
 pub use kind::{GetKind, Kind};
 pub use order::{OrderDirection, OrderKey};
@@ -20,8 +22,10 @@ mod bitvec;
 pub mod clock;
 mod cowvec;
 pub mod delta;
+mod diagnostic;
 pub mod either;
 pub mod encoding;
+mod error;
 pub mod hook;
 pub mod interface;
 mod key;

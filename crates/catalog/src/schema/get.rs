@@ -5,9 +5,8 @@ use crate::Catalog;
 use crate::key::{EncodableKey, SchemaKey};
 use crate::schema::layout::schema;
 use crate::schema::{Schema, SchemaId};
+use reifydb_core::interface::{Rx, Versioned};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::interface::Versioned;
-use reifydb_transaction::Rx;
 
 impl Catalog {
     pub fn get_schema_by_name(rx: &mut impl Rx, name: &str) -> crate::Result<Option<Schema>> {

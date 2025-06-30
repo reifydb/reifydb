@@ -7,7 +7,7 @@ use crate::column::{Column, ColumnId, ColumnIndex};
 use crate::key::{ColumnKey, EncodableKey, TableColumnKey};
 use crate::table::TableId;
 use reifydb_core::Kind;
-use reifydb_transaction::Rx;
+use reifydb_core::interface::Rx;
 
 impl Catalog {
     pub fn get_column(rx: &mut impl Rx, column: ColumnId) -> crate::Result<Option<Column>> {

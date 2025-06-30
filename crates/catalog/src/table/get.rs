@@ -6,8 +6,7 @@ use crate::key::{EncodableKey, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
-use reifydb_core::interface::Versioned;
-use reifydb_transaction::Rx;
+use reifydb_core::interface::{Rx, Versioned};
 
 impl Catalog {
     pub fn get_table_by_name(

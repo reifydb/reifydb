@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::interface::Storage;
+use reifydb::interface::{Storage, Transaction};
 use reifydb::reifydb_storage::lmdb::Lmdb;
-use reifydb::reifydb_transaction::Transaction;
+use reifydb::reifydb_transaction::BypassTx;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
 use reifydb::{ReifyDB, memory, optimistic, retry, serializable, sqlite};
 use reifydb_testing::network::free_local_socket;
@@ -18,14 +18,14 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct ClientRunner<S: Storage, T: Transaction<S, S>> {
-    server: Option<Server<S, T>>,
+pub struct ClientRunner<S: Storage, T: Transaction<S, S, BypassTx<S>>> {
+    server: Option<Server<S, BypassTx<S>, T>>,
     client: Client,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<S: Storage + 'static, T: Transaction<S, S> + 'static> ClientRunner<S, T> {
+impl<S: Storage + 'static, T: Transaction<S, S, BypassTx<S>> + 'static> ClientRunner<S, T> {
     pub fn new(transaction: T) -> Self {
         let socket_addr = free_local_socket();
 
@@ -39,7 +39,7 @@ impl<S: Storage + 'static, T: Transaction<S, S> + 'static> ClientRunner<S, T> {
     }
 }
 
-impl<S: Storage + 'static, T: Transaction<S, S> + 'static> testscript::Runner
+impl<S: Storage + 'static, T: Transaction<S, S, BypassTx<S>> + 'static> testscript::Runner
     for ClientRunner<S, T>
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {

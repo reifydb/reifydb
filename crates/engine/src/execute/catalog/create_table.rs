@@ -5,22 +5,18 @@ use crate::execute::{ExecutionResult, Executor};
 use crate::{CreateTableResult, Error};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::table::TableToCreate;
-use reifydb_diagnostic::Diagnostic;
+use reifydb_core::interface::{Bypass, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_rql::plan::CreateTablePlan;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
-use reifydb_transaction::Tx;
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+impl<VS: VersionedStorage, US: UnversionedStorage, BP: Bypass<US>> Executor<VS, US, BP> {
     pub(crate) fn create_table(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl Tx<VS, US, BP>,
         plan: CreateTablePlan,
     ) -> crate::Result<ExecutionResult> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? else {
-            return Err(Error::execution(Diagnostic::schema_not_found(
-                Some(plan.span),
-                &plan.schema,
-            )));
+            return Err(Error::execution(schema_not_found(Some(plan.span), &plan.schema)));
         };
 
         if let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table)? {
@@ -33,7 +29,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 }));
             }
 
-            return Err(Error::execution(Diagnostic::table_already_exists(
+            return Err(Error::execution(table_already_exists(
                 Some(plan.span),
                 &schema.name,
                 &table.name,
@@ -122,8 +118,7 @@ mod tests {
         ensure_test_schema(&mut tx);
         create_schema(&mut tx, "another_schema");
 
-        let
-        plan = CreateTablePlan {
+        let plan = CreateTablePlan {
             schema: "test_schema".to_string(),
             table: "test_table".to_string(),
             if_not_exists: false,

@@ -3,9 +3,8 @@
 
 use crate::server::grpc::db::DbService;
 use crate::server::grpc::grpc_db::db_server::DbServer;
-use reifydb_core::interface::Storage;
+use reifydb_core::interface::{Bypass, Storage, Transaction};
 use reifydb_engine::Engine;
-use reifydb_transaction::Transaction;
 
 pub mod auth;
 mod db;
@@ -15,9 +14,13 @@ pub(crate) mod grpc_db {
 }
 
 // FIXME return result
-pub fn db_service<S: Storage + 'static, T: Transaction<S, S> + 'static>(
-    engine: Engine<S, S, T>,
-) -> DbServer<DbService<S, T>> {
+pub fn db_service<
+    S: Storage + 'static,
+    BP: Bypass<S> + 'static,
+    T: Transaction<S, S, BP> + 'static,
+>(
+    engine: Engine<S, S, BP, T>,
+) -> DbServer<DbService<S, BP, T>> {
     DbServer::new(DbService::new(engine))
 }
 
