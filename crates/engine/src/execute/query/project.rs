@@ -2,24 +2,24 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, evaluate};
-use crate::execute::query::{Batch, Node};
+use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct ProjectNode {
-    input: Box<dyn Node>,
+    input: Box<dyn ExecutionPlan>,
     expressions: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
 impl ProjectNode {
-    pub fn new(input: Box<dyn Node>, expressions: Vec<Expression>) -> Self {
+    pub fn new(input: Box<dyn ExecutionPlan>, expressions: Vec<Expression>) -> Self {
         Self { input, expressions, layout: None }
     }
 }
 
-impl Node for ProjectNode {
+impl ExecutionPlan for ProjectNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mask }) = self.input.next()? {
             let row_count = frame.row_count();
@@ -64,7 +64,7 @@ impl ProjectWithoutInputNode {
     }
 }
 
-impl Node for ProjectWithoutInputNode {
+impl ExecutionPlan for ProjectWithoutInputNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);

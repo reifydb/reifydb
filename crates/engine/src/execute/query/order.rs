@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::Error;
-use crate::execute::query::{Batch, Node};
+use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::OrderDirection::{Asc, Desc};
 use reifydb_core::{BitVec, OrderKey};
@@ -10,17 +10,17 @@ use reifydb_diagnostic::query;
 use std::cmp::Ordering::Equal;
 
 pub(crate) struct OrderNode {
-    input: Box<dyn Node>,
+    input: Box<dyn ExecutionPlan>,
     order_by: Vec<OrderKey>,
 }
 
 impl OrderNode {
-    pub(crate) fn new(input: Box<dyn Node>, order_by: Vec<OrderKey>) -> Self {
+    pub(crate) fn new(input: Box<dyn ExecutionPlan>, order_by: Vec<OrderKey>) -> Self {
         Self { input, order_by }
     }
 }
 
-impl Node for OrderNode {
+impl ExecutionPlan for OrderNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         let mut frame_opt: Option<Frame> = None;
         let mut mask_opt: Option<BitVec> = None;

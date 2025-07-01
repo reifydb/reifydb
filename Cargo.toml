@@ -1,7 +1,9 @@
 [workspace]
 resolver = "2"
 
-members = ["bin/cli",
+members = [
+    "bin/cli",
+    "bin/playground",
     "bin/server",
     "crates/auth",
     "crates/catalog",
@@ -17,7 +19,9 @@ members = ["bin/cli",
     "testsuite/regression",
 ]
 
-default-members = ["bin/cli",
+default-members = [
+    "bin/cli",
+    "bin/playground",
     "bin/server",
     "crates/auth",
     "crates/catalog",

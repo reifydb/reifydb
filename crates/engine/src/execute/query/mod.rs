@@ -25,7 +25,7 @@ pub(crate) struct Batch {
     pub mask: BitVec,
 }
 
-pub(crate) trait Node {
+pub(crate) trait ExecutionPlan {
     fn next(&mut self) -> crate::Result<Option<Batch>>;
     fn layout(&self) -> Option<FrameLayout>;
 }

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::query::{Batch, Node};
+use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
 
@@ -16,7 +16,7 @@ impl ScanFrameNode {
     }
 }
 
-impl Node for ScanFrameNode {
+impl ExecutionPlan for ScanFrameNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         if let Some(frame) = self.frame.take() {
             self.layout = Some(FrameLayout::from_frame(&frame));

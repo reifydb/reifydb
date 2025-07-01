@@ -1409,6 +1409,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-playground"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
+]
+
+[[package]]
 name = "reifydb-py"
 version = "0.0.1"
 dependencies = [

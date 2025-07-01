@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::query::{Batch, Node};
+use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
 use reifydb_core::Span;
@@ -15,7 +15,7 @@ enum Projection {
 }
 
 pub(crate) struct AggregateNode {
-    input: Box<dyn Node>,
+    input: Box<dyn ExecutionPlan>,
     by: Vec<Expression>,
     project: Vec<Expression>,
     layout: Option<FrameLayout>,
@@ -24,7 +24,7 @@ pub(crate) struct AggregateNode {
 
 impl AggregateNode {
     pub fn new(
-        input: Box<dyn Node>,
+        input: Box<dyn ExecutionPlan>,
         by: Vec<Expression>,
         project: Vec<Expression>,
         functions: Functions,
@@ -33,7 +33,7 @@ impl AggregateNode {
     }
 }
 
-impl Node for AggregateNode {
+impl ExecutionPlan for AggregateNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         if self.layout().is_some() {
             return Ok(None);

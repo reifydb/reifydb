@@ -2,24 +2,24 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, evaluate};
-use crate::execute::query::{Batch, Node};
+use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct LeftJoinNode {
-    left: Box<dyn Node>,
-    right: Box<dyn Node>,
+    left: Box<dyn ExecutionPlan>,
+    right: Box<dyn ExecutionPlan>,
     on: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
 impl LeftJoinNode {
-    pub fn new(left: Box<dyn Node>, right: Box<dyn Node>, on: Vec<Expression>) -> Self {
+    pub fn new(left: Box<dyn ExecutionPlan>, right: Box<dyn ExecutionPlan>, on: Vec<Expression>) -> Self {
         Self { left, right, on, layout: None }
     }
 
-    fn load_and_merge_all(node: &mut Box<dyn Node>) -> crate::Result<Frame> {
+    fn load_and_merge_all(node: &mut Box<dyn ExecutionPlan>) -> crate::Result<Frame> {
         let mut result: Option<Frame> = None;
 
         while let Some(Batch { mut frame, mask }) = node.next()? {
@@ -37,7 +37,7 @@ impl LeftJoinNode {
     }
 }
 
-impl Node for LeftJoinNode {
+impl ExecutionPlan for LeftJoinNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);

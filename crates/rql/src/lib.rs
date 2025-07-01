@@ -8,6 +8,8 @@
 
 pub use error::Error;
 
+pub type Result<T> = std::result::Result<T, Error>;
+
 pub mod ast;
 mod error;
 pub mod expression;

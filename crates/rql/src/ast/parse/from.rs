@@ -14,10 +14,17 @@ impl Parser {
         if self.current()?.is_operator(OpenParen) {
             Ok(AstFrom::Query { token, query: self.parse_block()? })
         } else {
-            let schema = self.parse_identifier()?;
-            self.consume_operator(Operator::Dot)?;
-            let store = self.parse_identifier()?;
-            Ok(AstFrom::Store { token, schema, store })
+            let identifier = self.parse_identifier()?;
+
+            let (schema, table) = if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
+                self.consume_operator(Operator::Dot)?;
+                let table = self.parse_identifier()?;
+                (Some(identifier), table)
+            } else {
+                (None, identifier)
+            };
+
+            Ok(AstFrom::Table { token, schema, table })
         }
     }
 }
@@ -29,7 +36,7 @@ mod tests {
     use crate::ast::parse::Parser;
 
     #[test]
-    fn test_parse_from_identifier() {
+    fn test_from_schema_and_table() {
         let tokens = lex("FROM reifydb.users").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
@@ -39,16 +46,35 @@ mod tests {
         let from = result.first_unchecked().as_from();
 
         match from {
-            AstFrom::Store { store, schema, .. } => {
-                assert_eq!(store.value(), "users");
-                assert_eq!(schema.value(), "reifydb");
+            AstFrom::Table { table, schema, .. } => {
+                assert_eq!(schema.as_ref().unwrap().value(), "reifydb");
+                assert_eq!(table.value(), "users");
             }
             AstFrom::Query { .. } => unreachable!(),
         }
     }
 
     #[test]
-    fn test_parse_from_block() {
+    fn test_from_table_without_schema() {
+        let tokens = lex("FROM users").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let from = result.first_unchecked().as_from();
+
+        match from {
+            AstFrom::Table { table, schema, .. } => {
+                assert_eq!(schema, &None);
+                assert_eq!(table.value(), "users");
+            }
+            AstFrom::Query { .. } => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_from_block() {
         let tokens = lex("FROM ( FROM reifydb.users SELECT name )").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
@@ -58,16 +84,16 @@ mod tests {
         let from = result.first_unchecked().as_from();
 
         match from {
-            AstFrom::Store {   .. } => unreachable!(),
+            AstFrom::Table { .. } => unreachable!(),
             AstFrom::Query { query, .. } => {
                 let block = query;
                 assert_eq!(block.len(), 2);
 
                 let from = block[0].as_from();
                 match from {
-                    AstFrom::Store { store, schema, .. } => {
-                        assert_eq!(store.value(), "users");
-                        assert_eq!(schema.value(), "reifydb");
+                    AstFrom::Table { table, schema, .. } => {
+                        assert_eq!(schema.as_ref().unwrap().value(), "reifydb");
+                        assert_eq!(table.value(), "users");
                     }
                     AstFrom::Query { .. } => unreachable!(),
                 }

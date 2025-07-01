@@ -2,23 +2,23 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate::{Context, evaluate};
-use crate::execute::query::{Batch, Node};
+use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::{ColumnValues, FrameLayout};
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct FilterNode {
-    input: Box<dyn Node>,
+    input: Box<dyn ExecutionPlan>,
     expressions: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
 impl FilterNode {
-    pub fn new(input: Box<dyn Node>, expressions: Vec<Expression>) -> Self {
+    pub fn new(input: Box<dyn ExecutionPlan>, expressions: Vec<Expression>) -> Self {
         Self { input, expressions, layout: None }
     }
 }
 
-impl Node for FilterNode {
+impl ExecutionPlan for FilterNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mut mask }) = self.input.next()? {
             let row_count = frame.row_count(); // FIXME add a delegate - batch.row_count()

@@ -1,22 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::query::{Batch, Node};
+use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::FrameLayout;
 
 pub(crate) struct LimitNode {
-    input: Box<dyn Node>,
+    input: Box<dyn ExecutionPlan>,
     remaining: usize,
     layout: Option<FrameLayout>,
 }
 
 impl LimitNode {
-    pub(crate) fn new(input: Box<dyn Node>, limit: usize) -> Self {
+    pub(crate) fn new(input: Box<dyn ExecutionPlan>, limit: usize) -> Self {
         Self { input, remaining: limit, layout: None }
     }
 }
 
-impl Node for LimitNode {
+impl ExecutionPlan for LimitNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mut mask }) = self.input.next()? {
             let visible: usize = mask.count_ones();

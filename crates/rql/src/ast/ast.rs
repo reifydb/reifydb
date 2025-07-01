@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use reifydb_core::Kind;
+use reifydb_core::{Kind, Span};
 use std::ops::Index;
 
 #[derive(Debug)]
@@ -15,6 +15,10 @@ impl AstStatement {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -386,7 +390,7 @@ pub struct AstFilter {
 
 #[derive(Debug, PartialEq)]
 pub enum AstFrom {
-    Store { token: Token, schema: AstIdentifier, store: AstIdentifier },
+    Table { token: Token, schema: Option<AstIdentifier>, table: AstIdentifier },
     Query { token: Token, query: AstBlock },
 }
 
@@ -400,7 +404,7 @@ pub struct AstAggregateBy {
 impl AstFrom {
     pub fn token(&self) -> &Token {
         match self {
-            AstFrom::Store { token, .. } => token,
+            AstFrom::Table { token, .. } => token,
             AstFrom::Query { token, .. } => token,
         }
     }
@@ -430,6 +434,10 @@ impl AstIdentifier {
 
     pub fn name(&self) -> String {
         self.value().to_string()
+    }
+
+    pub fn span(self) -> Span {
+        self.0.span
     }
 }
 
