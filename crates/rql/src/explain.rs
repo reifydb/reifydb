@@ -3,6 +3,7 @@
 
 use crate::ast::lex::explain::explain_lex;
 use crate::ast::parse::explain::explain_ast;
+use crate::plan::logical::explain::explain_logical_plan;
 use reifydb_core::{Error, Explain};
 
 pub struct ExplainAst {}
@@ -25,7 +26,7 @@ pub struct ExplainLogicalPlan {}
 
 impl Explain for ExplainLogicalPlan {
     fn explain(query: &str) -> Result<String, Error> {
-        todo!()
+        explain_logical_plan(query)
     }
 }
 

@@ -3,6 +3,7 @@
 
 mod expression;
 mod query;
+pub(crate) mod explain;
 
 use crate::ast::{Ast, AstStatement};
 use crate::expression::Expression;

@@ -27,7 +27,7 @@ use std::mem;
 use std::ops::Deref;
 
 mod error;
-mod logical;
+pub(crate) mod logical;
 mod physical;
 mod planner;
 
