@@ -3,7 +3,7 @@
 
 use crate::ast::lex::{Operator, TokenKind};
 use crate::ast::parse::{Error, Parser, Precedence};
-use crate::ast::{Ast, AstInfix, InfixOperator, parse};
+use crate::ast::{parse, Ast, AstInfix, InfixOperator};
 
 impl Parser {
     pub(crate) fn parse_infix(&mut self, left: Ast) -> parse::Result<AstInfix> {
@@ -46,8 +46,8 @@ impl Parser {
                 Operator::RightAngleEqual => Ok(InfixOperator::GreaterThanEqual(token)),
                 Operator::Colon => Ok(InfixOperator::TypeAscription(token)),
                 Operator::Arrow => Ok(InfixOperator::Arrow(token)),
-                Operator::Dot => Ok(InfixOperator::AccessProperty(token)),
-                Operator::DoubleColon => Ok(InfixOperator::AccessPackage(token)),
+                Operator::Dot => Ok(InfixOperator::AccessTable(token)),
+                Operator::DoubleColon => Ok(InfixOperator::AccessExtension(token)),
                 Operator::As => Ok(InfixOperator::As(token)),
                 _ => Err(Error::unsupported(token)),
             },
@@ -58,15 +58,15 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Deref;
+	use std::ops::Deref;
 
-    use crate::ast::Ast::{Infix, Literal};
-    use crate::ast::lex::lex;
-    use crate::ast::parse::infix::{AstInfix, InfixOperator};
-    use crate::ast::parse::parse;
-    use crate::ast::{AstLiteral, AstTuple};
+	use crate::ast::lex::lex;
+	use crate::ast::parse::infix::{AstInfix, InfixOperator};
+	use crate::ast::parse::parse;
+	use crate::ast::Ast::{Infix, Literal};
+	use crate::ast::{AstLiteral, AstTuple};
 
-    #[test]
+	#[test]
     fn test_as() {
         let tokens = lex("1 as one").unwrap();
         let result = parse(tokens).unwrap();
@@ -355,8 +355,8 @@ mod tests {
     }
 
     #[test]
-    fn test_call_package_function() {
-        let tokens = lex("some_package::some_function()").unwrap();
+    fn test_call_extension_function() {
+        let tokens = lex("some_extension::some_function()").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
@@ -365,9 +365,9 @@ mod tests {
             let AstInfix { left, operator, right, .. } = left.as_infix();
 
             let package = left.as_identifier();
-            assert_eq!(package.value(), "some_package");
+            assert_eq!(package.value(), "some_extension");
 
-            assert!(matches!(operator, InfixOperator::AccessPackage(_)));
+            assert!(matches!(operator, InfixOperator::AccessExtension(_)));
 
             let function = right.as_identifier();
             assert_eq!(function.value(), "some_function");
@@ -393,13 +393,13 @@ mod tests {
                 let root_package = left.as_identifier();
                 assert_eq!(root_package.value(), "reify");
 
-                assert!(matches!(operator, InfixOperator::AccessPackage(_)));
+                assert!(matches!(operator, InfixOperator::AccessExtension(_)));
 
                 let root_package = right.as_identifier();
                 assert_eq!(root_package.value(), "db");
             }
 
-            assert!(matches!(operator, InfixOperator::AccessPackage(_)));
+            assert!(matches!(operator, InfixOperator::AccessExtension(_)));
 
             let function = right.as_identifier();
             assert_eq!(function.value(), "log");

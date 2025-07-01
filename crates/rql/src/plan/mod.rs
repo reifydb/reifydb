@@ -8,7 +8,7 @@ use crate::ast::{
     InfixOperator,
 };
 use crate::expression::{
-    AccessPropertyExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
+    AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
     ColumnExpression, ConstantExpression, DivideExpression, EqualExpression, Expression,
     GreaterThanEqualExpression, GreaterThanExpression, IdentExpression, KindExpression,
     LessThanEqualExpression, LessThanExpression, ModuloExpression, MultiplyExpression,
@@ -156,7 +156,7 @@ pub enum QueryPlan {
     LeftJoin {
         left: Box<QueryPlan>,
         right: Box<QueryPlan>,
-        conditions: Vec<Expression>,
+        on: Vec<Expression>,
         next: Option<Box<QueryPlan>>,
     },
 }
@@ -595,10 +595,10 @@ fn plan_join(join: AstJoin, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
             // let left = head.ok_or_else(|| panic!("left side of join is missing"))?;
             // let right = Box::new(plan_ast_node(*with, head)?);
 
-            let conditions = on.into_iter().map(expression).collect::<Result<Vec<_>>>()?;
+            let on = on.into_iter().map(expression).collect::<Result<Vec<_>>>()?;
             // dbg!(&conditions);
 
-            // todo!();
+            dbg!(&with);
 
             Ok(QueryPlan::LeftJoin {
                 left: Box::new(QueryPlan::ScanTable {
@@ -611,7 +611,7 @@ fn plan_join(join: AstJoin, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
                     table: "two".to_string(),
                     next: None,
                 }),
-                conditions,
+                on,
                 next: head,
             })
         }
@@ -743,13 +743,13 @@ fn expression(ast: Ast) -> Result<Expression> {
 
 fn expression_infix(infix: AstInfix) -> Result<Expression> {
     match infix.operator {
-        InfixOperator::AccessProperty(token) => {
+        InfixOperator::AccessTable(token) => {
             let Ast::Identifier(left) = infix.left.deref() else { unimplemented!() };
             let Ast::Identifier(right) = infix.right.deref() else { unimplemented!() };
 
-            Ok(Expression::AccessProperty(AccessPropertyExpression {
-                target: left.0.span.clone(),
-                property: right.0.span.clone(),
+            Ok(Expression::AccessTable(AccessTableExpression {
+                table: left.0.span.clone(),
+                column: right.0.span.clone(),
             }))
         }
 

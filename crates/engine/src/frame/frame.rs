@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Frame {
+    pub name: String,
     pub columns: Vec<Column>,
     pub index: HashMap<String, usize>,
 }
@@ -21,11 +22,20 @@ impl Frame {
 
         let index = columns.iter().enumerate().map(|(i, col)| (col.name.clone(), i)).collect();
 
-        Self { columns, index }
+        Self { name: "frame".to_string(), columns, index }
+    }
+
+    pub fn new_with_name(columns: Vec<Column>, name: impl Into<String>) -> Self {
+        let n = columns.first().map_or(0, |c| c.data.len());
+        assert!(columns.iter().all(|c| c.data.len() == n));
+
+        let index = columns.iter().enumerate().map(|(i, col)| (col.name.clone(), i)).collect();
+
+        Self { name: name.into(), columns, index }
     }
 
     pub fn empty() -> Self {
-        Self { columns: vec![], index: HashMap::new() }
+        Self { name: "frame".to_string(), columns: vec![], index: HashMap::new() }
     }
 
     pub fn shape(&self) -> (usize, usize) {
@@ -68,6 +78,14 @@ impl Frame {
 
     pub fn get_row(&self, index: usize) -> Vec<Value> {
         self.columns.iter().map(|col| col.data.get(index)).collect()
+    }
+}
+
+impl Frame {
+    pub fn qualify_columns(&mut self) {
+        for col in &mut self.columns {
+            col.name = format!("{}_{}", self.name, col.name);
+        }
     }
 }
 

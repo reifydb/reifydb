@@ -4,19 +4,19 @@
 use crate::evaluate::{Context, Evaluator};
 use crate::frame::Column;
 use reifydb_core::Span;
-use reifydb_rql::expression::{AccessPropertyExpression, ColumnExpression, Expression};
+use reifydb_rql::expression::{AccessTableExpression, ColumnExpression, Expression};
 
 impl Evaluator {
-    pub(crate) fn access_property(
+    pub(crate) fn access(
         &mut self,
-        expr: &AccessPropertyExpression,
+        expr: &AccessTableExpression,
         ctx: &Context,
     ) -> crate::evaluate::Result<Column> {
         self.evaluate(
             &Expression::Column(ColumnExpression(Span {
-                offset: expr.target.offset,
-                line: expr.target.line,
-                fragment: format!("{}_{}", expr.target.fragment, expr.property.fragment),
+                offset: expr.table.offset,
+                line: expr.table.line,
+                fragment: format!("{}_{}", expr.table.fragment, expr.column.fragment),
             })),
             &ctx,
         )

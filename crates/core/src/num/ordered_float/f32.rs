@@ -87,15 +87,15 @@ impl Eq for OrderedF32 {}
 
 impl PartialOrd for OrderedF32 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        self.0.partial_cmp(&other.0)
     }
 }
 
 impl Ord for OrderedF32 {
     fn cmp(&self, other: &Self) -> Ordering {
-        let a = self.0.to_bits() ^ ((self.0.to_bits() >> 31) & 0x7fffffff);
-        let b = other.0.to_bits() ^ ((other.0.to_bits() >> 31) & 0x7fffffff);
-        a.cmp(&b)
+        let l = self.0.to_bits() ^ ((self.0.to_bits() >> 31) & 0x7fffffff);
+        let r = other.0.to_bits() ^ ((other.0.to_bits() >> 31) & 0x7fffffff);
+        l.cmp(&r)
     }
 }
 

@@ -23,7 +23,7 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
-    AccessProperty(AccessPropertyExpression),
+    AccessTable(AccessTableExpression),
 
     Alias(AliasExpression),
 
@@ -65,14 +65,14 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AccessPropertyExpression {
-    pub target: Span,
-    pub property: Span,
+pub struct AccessTableExpression {
+    pub table: Span,
+    pub column: Span,
 }
 
-impl AccessPropertyExpression {
+impl AccessTableExpression {
     pub fn span(&self) -> Span {
-        Span::merge_all([self.target.clone(), self.property.clone()])
+        Span::merge_all([self.table.clone(), self.column.clone()])
     }
 }
 
@@ -235,7 +235,7 @@ impl ColumnExpression {
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::AccessProperty(AccessPropertyExpression { target, property }) => {
+            Expression::AccessTable(AccessTableExpression { table: target, column: property }) => {
                 write!(f, "{}.{}", target.fragment, property.fragment)
             }
             Expression::Alias(AliasExpression { expression, .. }) => write!(f, "{}", expression),

@@ -87,15 +87,15 @@ impl Eq for OrderedF64 {}
 
 impl PartialOrd for OrderedF64 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        self.0.partial_cmp(&other.0)
     }
 }
 
 impl Ord for OrderedF64 {
     fn cmp(&self, other: &Self) -> Ordering {
-        let a = self.0.to_bits() ^ ((self.0.to_bits() >> 63) & 0x7fffffffffffffff);
-        let b = other.0.to_bits() ^ ((other.0.to_bits() >> 63) & 0x7fffffffffffffff);
-        a.cmp(&b)
+        let l = self.0.to_bits() ^ ((self.0.to_bits() >> 63) & 0x7fffffffffffffff);
+        let r = other.0.to_bits() ^ ((other.0.to_bits() >> 63) & 0x7fffffffffffffff);
+        l.cmp(&r)
     }
 }
 

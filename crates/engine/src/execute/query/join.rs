@@ -10,13 +10,13 @@ use reifydb_rql::expression::Expression;
 pub(crate) struct LeftJoinNode {
     left: Box<dyn Node>,
     right: Box<dyn Node>,
-    conditions: Vec<Expression>,
+    on: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
 impl LeftJoinNode {
-    pub fn new(left: Box<dyn Node>, right: Box<dyn Node>, conditions: Vec<Expression>) -> Self {
-        Self { left, right, conditions, layout: None }
+    pub fn new(left: Box<dyn Node>, right: Box<dyn Node>, on: Vec<Expression>) -> Self {
+        Self { left, right, on, layout: None }
     }
 
     fn load_and_merge_all(node: &mut Box<dyn Node>) -> crate::Result<Frame> {
@@ -31,8 +31,9 @@ impl LeftJoinNode {
                 result = Some(frame);
             }
         }
-
-        Ok(result.unwrap_or_else(Frame::empty))
+        let mut result = result.unwrap_or_else(Frame::empty);
+        result.qualify_columns();
+        Ok(result)
     }
 }
 
@@ -42,20 +43,22 @@ impl Node for LeftJoinNode {
             return Ok(None);
         }
 
-        let mut left_frame = Self::load_and_merge_all(&mut self.left)?;
-        let mut right_frame = Self::load_and_merge_all(&mut self.right)?;
+        let left_frame = Self::load_and_merge_all(&mut self.left)?;
+        let right_frame = Self::load_and_merge_all(&mut self.right)?;
 
         let left_rows = left_frame.row_count();
         let right_rows = right_frame.row_count();
         let right_width = right_frame.column_count();
 
+        let names: Vec<&str> = left_frame
+            .columns
+            .iter()
+            .chain(&right_frame.columns)
+            .map(|col| col.name.as_str())
+            .collect();
+
         let mut result_rows = Vec::new();
         let mut mask = BitVec::new(0, true);
-
-        left_frame.columns.get_mut(0).unwrap().name = "one_field".to_string();
-        right_frame.columns.get_mut(0).unwrap().name = "two_field".to_string();
-
-        let names = ["one_field", "two_field"];
 
         for i in 0..left_rows {
             let left_row = left_frame.get_row(i);
@@ -71,10 +74,11 @@ impl Node for LeftJoinNode {
                     column: None,
                     mask: BitVec::new(1, true),
                     columns: all_values
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, v)| Column {
-                            name: names[i].to_string(),
+                        .iter()
+                        .cloned()
+                        .zip(names.iter().cloned())
+                        .map(|(v, name)| Column {
+                            name: name.to_string(),
                             data: ColumnValues::from(v),
                         })
                         .collect(),
@@ -82,13 +86,9 @@ impl Node for LeftJoinNode {
                     limit: Some(1),
                 };
 
-                let all_true = self.conditions.iter().fold(true, |acc, cond| {
+                let all_true = self.on.iter().fold(true, |acc, cond| {
                     let col = evaluate(cond, &ctx).unwrap();
-                    match col.data.get(0) {
-                        Value::Bool(true) => acc,
-                        Value::Bool(false) => false,
-                        _ => false,
-                    }
+                    matches!(col.data.get(0), Value::Bool(true)) && acc
                 });
 
                 if all_true {

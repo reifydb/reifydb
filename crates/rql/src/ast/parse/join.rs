@@ -52,7 +52,7 @@ mod tests {
         let AstJoin::LeftJoin { with: with, on, .. } = &join else { panic!() };
         let with = with.as_infix();
         assert_eq!(with.left.as_identifier().value(), "schema");
-        assert!(matches!(with.operator, InfixOperator::AccessProperty(_)));
+        assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
         assert_eq!(with.right.as_identifier().value(), "orders");
 
         assert_eq!(on.len(), 1);
@@ -60,7 +60,7 @@ mod tests {
         {
             let left = on.left.as_infix();
             assert_eq!(left.left.as_identifier().value(), "user");
-            assert!(matches!(left.operator, InfixOperator::AccessProperty(_)));
+            assert!(matches!(left.operator, InfixOperator::AccessTable(_)));
             assert_eq!(left.right.as_identifier().value(), "id");
         }
 
@@ -69,7 +69,7 @@ mod tests {
         {
             let right = on.right.as_infix();
             assert_eq!(right.left.as_identifier().value(), "orders");
-            assert!(matches!(right.operator, InfixOperator::AccessProperty(_)));
+            assert!(matches!(right.operator, InfixOperator::AccessTable(_)));
             assert_eq!(right.right.as_identifier().value(), "user_id");
         }
     }

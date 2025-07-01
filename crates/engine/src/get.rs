@@ -149,6 +149,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::bool_with_validity([true], [true]),
@@ -160,7 +161,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_bool("col", 0), None);
         }
 
@@ -169,6 +170,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::bool_with_validity([true], [false]),
@@ -183,6 +185,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -201,6 +204,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::float4_with_validity([3.14], [true]),
@@ -212,7 +216,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_float4("col", 0), None);
         }
 
@@ -221,6 +225,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::float4_with_validity([3.14], [false]),
@@ -235,6 +240,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -253,6 +259,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::float8_with_validity([2.718], [true]),
@@ -264,7 +271,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_float8("col", 0), None);
         }
 
@@ -273,6 +280,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::float8_with_validity([2.718], [false]),
@@ -287,6 +295,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -306,6 +315,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int1_with_validity([1], [true]),
@@ -317,7 +327,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_int1("col", 0), None);
         }
 
@@ -326,6 +336,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int1_with_validity([1], [false]),
@@ -340,6 +351,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -358,6 +370,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int2_with_validity([2], [true]),
@@ -369,7 +382,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_int2("col", 0), None);
         }
 
@@ -378,6 +391,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int2_with_validity([2], [false]),
@@ -392,6 +406,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -410,6 +425,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([42], [true]),
@@ -421,7 +437,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_int4("col", 0), None);
         }
 
@@ -430,6 +446,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([42], [false]),
@@ -444,6 +461,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::float4_with_validity([3.14], [true]),
@@ -462,6 +480,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int8_with_validity([8], [true]),
@@ -473,7 +492,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_int8("col", 0), None);
         }
 
@@ -482,6 +501,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int8_with_validity([8], [false]),
@@ -496,6 +516,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -514,6 +535,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int16_with_validity([16], [true]),
@@ -525,7 +547,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_int16("col", 0), None);
         }
 
@@ -534,6 +556,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int16_with_validity([16], [false]),
@@ -548,6 +571,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -567,6 +591,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint1_with_validity([1], [true]),
@@ -578,7 +603,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_uint1("col", 0), None);
         }
 
@@ -587,6 +612,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint1_with_validity([1], [false]),
@@ -601,6 +627,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -619,6 +646,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint2_with_validity([2], [true]),
@@ -630,7 +658,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_uint2("col", 0), None);
         }
 
@@ -639,6 +667,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint2_with_validity([2], [false]),
@@ -653,6 +682,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -671,6 +701,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint4_with_validity([4], [true]),
@@ -682,7 +713,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_uint4("col", 0), None);
         }
 
@@ -691,6 +722,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint4_with_validity([4], [false]),
@@ -705,6 +737,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -723,6 +756,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint8_with_validity([8], [true]),
@@ -734,7 +768,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_uint8("col", 0), None);
         }
 
@@ -743,6 +777,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint8_with_validity([8], [false]),
@@ -757,6 +792,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -775,6 +811,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint16_with_validity([16], [true]),
@@ -786,7 +823,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_uint16("col", 0), None);
         }
 
@@ -795,6 +832,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::uint16_with_validity([16], [false]),
@@ -809,6 +847,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([123], [true]),
@@ -828,6 +867,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::string_with_validity(["hello".to_string()], [true]),
@@ -839,7 +879,7 @@ mod tests {
 
         #[test]
         fn test_value_not_found() {
-            let frame = Frame { columns: vec![], index: HashMap::new() };
+            let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
             assert_eq!(frame.get_string("col", 0), None);
         }
 
@@ -848,6 +888,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::string_with_validity(["hello".to_string()], [false]),
@@ -862,6 +903,7 @@ mod tests {
             let mut index = HashMap::new();
             index.insert("col".into(), 0);
             let frame = Frame {
+                name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
                     data: ColumnValues::int4_with_validity([1], [true]),

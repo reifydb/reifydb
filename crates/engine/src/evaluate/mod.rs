@@ -36,7 +36,7 @@ impl Default for Evaluator {
 impl Evaluator {
     pub(crate) fn evaluate(&mut self, expr: &Expression, ctx: &Context) -> Result<Column> {
         match expr {
-            Expression::AccessProperty(expr) => self.access_property(expr, ctx),
+            Expression::AccessTable(expr) => self.access(expr, ctx),
             Expression::Alias(expr) => self.alias(expr, ctx),
             Expression::Add(expr) => self.add(expr, ctx),
             Expression::Divide(expr) => self.divide(expr, ctx),

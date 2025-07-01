@@ -34,10 +34,10 @@ pub(crate) fn compile(
                     break;
                 }
             }
-            QueryPlan::LeftJoin { left, right, conditions, next } => {
+            QueryPlan::LeftJoin { left, right, on, next } => {
                 let left_node = compile(*left, rx, functions.clone());
                 let right_node = compile(*right, rx, functions.clone());
-                result = Some(Box::new(LeftJoinNode::new(left_node, right_node, conditions)));
+                result = Some(Box::new(LeftJoinNode::new(left_node, right_node, on)));
                 if let Some(next) = next {
                     *next
                 } else {
@@ -125,7 +125,7 @@ pub(crate) fn compile(
                     })
                     .collect();
 
-                let mut frame = Frame::new(columns);
+                let mut frame = Frame::new_with_name(columns, table.name);
 
                 frame
                     .append_rows(

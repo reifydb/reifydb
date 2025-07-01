@@ -80,7 +80,20 @@ impl Value {
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
-            (Value::Int2(a), Value::Int2(b)) => a.partial_cmp(b),
+            (Value::Bool(l), Value::Bool(r)) => l.partial_cmp(r),
+            (Value::Float4(l), Value::Float4(r)) => l.partial_cmp(r),
+            (Value::Float8(l), Value::Float8(r)) => l.partial_cmp(r),
+            (Value::Int1(l), Value::Int1(r)) => l.partial_cmp(r),
+            (Value::Int2(l), Value::Int2(r)) => l.partial_cmp(r),
+            (Value::Int4(l), Value::Int4(r)) => l.partial_cmp(r),
+            (Value::Int8(l), Value::Int8(r)) => l.partial_cmp(r),
+            (Value::Int16(l), Value::Int16(r)) => l.partial_cmp(r),
+            (Value::String(l), Value::String(r)) => l.partial_cmp(r),
+            (Value::Uint1(l), Value::Uint1(r)) => l.partial_cmp(r),
+            (Value::Uint2(l), Value::Uint2(r)) => l.partial_cmp(r),
+            (Value::Uint4(l), Value::Uint4(r)) => l.partial_cmp(r),
+            (Value::Uint8(l), Value::Uint8(r)) => l.partial_cmp(r),
+            (Value::Uint16(l), Value::Uint16(r)) => l.partial_cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -89,7 +102,20 @@ impl PartialOrd for Value {
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (Value::Int2(a), Value::Int2(b)) => a.cmp(b),
+            (Value::Bool(l), Value::Bool(r)) => l.cmp(r),
+            (Value::Float4(l), Value::Float4(r)) => l.cmp(r),
+            (Value::Float8(l), Value::Float8(r)) => l.cmp(r),
+            (Value::Int1(l), Value::Int1(r)) => l.cmp(r),
+            (Value::Int2(l), Value::Int2(r)) => l.cmp(r),
+            (Value::Int4(l), Value::Int4(r)) => l.cmp(r),
+            (Value::Int8(l), Value::Int8(r)) => l.cmp(r),
+            (Value::Int16(l), Value::Int16(r)) => l.cmp(r),
+            (Value::String(l), Value::String(r)) => l.cmp(r),
+            (Value::Uint1(l), Value::Uint1(r)) => l.cmp(r),
+            (Value::Uint2(l), Value::Uint2(r)) => l.cmp(r),
+            (Value::Uint4(l), Value::Uint4(r)) => l.cmp(r),
+            (Value::Uint8(l), Value::Uint8(r)) => l.cmp(r),
+            (Value::Uint16(l), Value::Uint16(r)) => l.cmp(r),
             _ => unimplemented!(),
         }
     }
