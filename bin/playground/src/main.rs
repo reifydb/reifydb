@@ -15,6 +15,7 @@ fn main() {
     db.tx_as(&root, r#"create schema test"#).unwrap();
     db.tx_as(&root, r#"create table test.one(field: int1, other: int1)"#).unwrap();
     db.tx_as(&root, r#"create table test.two(field: int1)"#).unwrap();
+    let err = db.tx_as(&root, r#"insert (-129,2),(2,2),(3,2),(4,2),(5,2) into test.one (field, other)"#).unwrap();
     let err = db.tx_as(&root, r#"insert (1,2),(2,2),(3,2),(4,2),(5,2) into test.one (field, other)"#).unwrap();
     let err = db.tx_as(&root, r#"insert (2),(3) into test.two (field)"#).unwrap();
     // println!("{}", err);

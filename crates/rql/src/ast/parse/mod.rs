@@ -1,28 +1,29 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+mod aggregate;
 mod block;
 mod cast;
 mod create;
 mod describe;
 mod diagnostic;
 mod error;
+pub(crate) mod explain;
 mod filter;
 mod from;
-mod aggregate;
 mod identifier;
 mod infix;
 mod insert;
+mod join;
 mod kind;
 mod limit;
 mod literal;
-mod order_by;
+mod order;
 mod policy;
 mod prefix;
 mod primary;
 mod select;
 mod tuple;
-mod join;
 
 pub use error::*;
 
@@ -114,7 +115,6 @@ impl Parser {
         }
         Ok(result)
     }
-
 
     pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast> {
         let mut left = self.parse_primary()?;
@@ -226,7 +226,7 @@ mod tests {
     use crate::ast::lex::Operator::Plus;
     use crate::ast::lex::Separator::Semicolon;
     use crate::ast::lex::TokenKind::{Identifier, Literal, Separator};
-    use crate::ast::lex::{TokenKind, lex};
+    use crate::ast::lex::{lex, TokenKind};
     use crate::ast::parse::Error::UnexpectedEndOfFile;
     use crate::ast::parse::Precedence::Term;
     use crate::ast::parse::{Error, Parser, Precedence};

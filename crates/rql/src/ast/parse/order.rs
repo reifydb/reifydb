@@ -4,10 +4,10 @@
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::Parser;
-use crate::ast::{AstOrderBy, parse};
+use crate::ast::{AstOrder, parse};
 
 impl Parser {
-    pub(crate) fn parse_order_by(&mut self) -> parse::Result<AstOrderBy> {
+    pub(crate) fn parse_order_by(&mut self) -> parse::Result<AstOrder> {
         let token = self.consume_keyword(Keyword::Order)?;
         let _ = self.consume_keyword(Keyword::By)?;
 
@@ -34,7 +34,7 @@ impl Parser {
             }
         }
 
-        Ok(AstOrderBy { token, columns, directions })
+        Ok(AstOrder { token, columns, directions })
     }
 }
 

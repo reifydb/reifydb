@@ -8,8 +8,8 @@ pub use error::Error;
 
 mod ast;
 mod error;
-mod lex;
-mod parse;
+pub(crate) mod lex;
+pub(crate) mod parse;
 
 pub fn parse(str: &str) -> Result<Vec<AstStatement>, Error> {
     let tokens = lex(str)?;

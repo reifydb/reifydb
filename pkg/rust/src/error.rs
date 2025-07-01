@@ -54,3 +54,9 @@ impl From<reifydb_engine::Error> for Error {
         Self::EngineError { message: err.to_string() }
     }
 }
+
+impl From<reifydb_core::Error> for Error {
+    fn from(err: reifydb_core::Error) -> Self {
+        Self::ExecutionError { source: "".to_string(), diagnostic: err.diagnostic() }
+    }
+}

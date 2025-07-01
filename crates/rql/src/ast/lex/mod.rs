@@ -24,6 +24,7 @@ use reifydb_core::{Line, Offset, Span};
 
 mod display;
 mod error;
+pub(crate) mod explain;
 mod identifier;
 mod keyword;
 mod literal;

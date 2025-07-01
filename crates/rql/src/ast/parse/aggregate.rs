@@ -4,10 +4,10 @@
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstAggregateBy, parse};
+use crate::ast::{AstAggregate, parse};
 
 impl Parser {
-    pub(crate) fn parse_group_by(&mut self) -> parse::Result<AstAggregateBy> {
+    pub(crate) fn parse_group_by(&mut self) -> parse::Result<AstAggregate> {
         let token = self.consume_keyword(Keyword::Aggregate)?;
 
         let mut projections = Vec::new();
@@ -47,7 +47,7 @@ impl Parser {
             }
         }
 
-        Ok(AstAggregateBy { token, by, projections })
+        Ok(AstAggregate { token, by, projections })
     }
 }
 

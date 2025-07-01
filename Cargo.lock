@@ -1435,7 +1435,9 @@ dependencies = [
  "reifydb-core",
  "reifydb-diagnostic",
  "reifydb-storage",
+ "reifydb-testing",
  "reifydb-transaction",
+ "test_each_file",
 ]
 
 [[package]]

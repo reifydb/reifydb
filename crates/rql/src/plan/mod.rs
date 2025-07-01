@@ -3,8 +3,8 @@
 
 use crate::ast;
 use crate::ast::{
-    Ast, AstAggregateBy, AstCreate, AstDescribe, AstFilter, AstFrom, AstInfix, AstInsert, AstJoin,
-    AstLiteral, AstOrderBy, AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement,
+    Ast, AstAggregate, AstCreate, AstDescribe, AstFilter, AstFrom, AstInfix, AstInsert, AstJoin,
+    AstLiteral, AstOrder, AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement,
     InfixOperator,
 };
 use crate::expression::{
@@ -25,12 +25,11 @@ use reifydb_diagnostic::catalog::table_not_found;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::Deref;
-use logical::compile_logical;
 
 mod error;
-mod planner;
 mod logical;
 mod physical;
+mod planner;
 
 pub type RowToInsert = Vec<Expression>;
 
@@ -492,19 +491,19 @@ pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 }
 
 pub fn plan_rx(ast: AstStatement) -> Result<Option<PlanRx>> {
-    // let mut head: Option<Box<QueryPlan>> = None;
-    // 
-    // for ast in statement.into_iter().rev() {
-    //     let plan = plan_ast_node(ast, head)?;
-    //     head = Some(Box::new(plan));
-    // }
-    // 
-    // Ok(head.map(|boxed| PlanRx::Query(*boxed)))
-    
-    let nodes = compile_logical(ast);
-    dbg!(&nodes);
-    
-    Ok(None)
+    let mut head: Option<Box<PhysicalQueryPlan>> = None;
+
+    for ast in ast.into_iter().rev() {
+        let plan = plan_ast_node(ast, head)?;
+        head = Some(Box::new(plan));
+    }
+
+    Ok(head.map(|boxed| PlanRx::Query(*boxed)))
+
+    // let nodes = compile_logical(ast);
+    // dbg!(&nodes);
+    //
+    // Ok(None)
 }
 
 fn plan_ast_node(ast: Ast, next: Option<Box<PhysicalQueryPlan>>) -> Result<PhysicalQueryPlan> {
@@ -516,10 +515,10 @@ fn plan_ast_node(ast: Ast, next: Option<Box<PhysicalQueryPlan>>) -> Result<Physi
         },
 
         Ast::From(from) => plan_from(from, next),
-        Ast::AggregateBy(group) => plan_aggregate(group, next),
+        Ast::Aggregate(group) => plan_aggregate(group, next),
         Ast::Filter(filter) => plan_filter(filter, next),
         Ast::Select(select) => plan_select(select, next),
-        Ast::OrderBy(order) => plan_order_by(order, next),
+        Ast::Order(order) => plan_order_by(order, next),
         Ast::Limit(limit) => Ok(PhysicalQueryPlan::Limit { limit: limit.limit, next }),
         Ast::Join(join) => plan_join(join, next),
 
@@ -527,7 +526,10 @@ fn plan_ast_node(ast: Ast, next: Option<Box<PhysicalQueryPlan>>) -> Result<Physi
     }
 }
 
-fn plan_order_by(order: AstOrderBy, head: Option<Box<PhysicalQueryPlan>>) -> Result<PhysicalQueryPlan> {
+fn plan_order_by(
+    order: AstOrder,
+    head: Option<Box<PhysicalQueryPlan>>,
+) -> Result<PhysicalQueryPlan> {
     let order_by: Vec<_> = order
         .columns
         .into_iter()
@@ -548,7 +550,10 @@ fn plan_order_by(order: AstOrderBy, head: Option<Box<PhysicalQueryPlan>>) -> Res
     Ok(PhysicalQueryPlan::Order { order_by, next: head })
 }
 
-fn plan_aggregate(aggregate: AstAggregateBy, head: Option<Box<PhysicalQueryPlan>>) -> Result<PhysicalQueryPlan> {
+fn plan_aggregate(
+    aggregate: AstAggregate,
+    head: Option<Box<PhysicalQueryPlan>>,
+) -> Result<PhysicalQueryPlan> {
     let by = aggregate
         .by
         .into_iter()
@@ -586,7 +591,10 @@ fn plan_from(from: AstFrom, head: Option<Box<PhysicalQueryPlan>>) -> Result<Phys
     }
 }
 
-fn plan_filter(filter: AstFilter, head: Option<Box<PhysicalQueryPlan>>) -> Result<PhysicalQueryPlan> {
+fn plan_filter(
+    filter: AstFilter,
+    head: Option<Box<PhysicalQueryPlan>>,
+) -> Result<PhysicalQueryPlan> {
     Ok(PhysicalQueryPlan::Filter {
         expression: match *filter.node {
             Ast::Infix(node) => expression_infix(node)?,
@@ -625,7 +633,10 @@ fn plan_join(join: AstJoin, head: Option<Box<PhysicalQueryPlan>>) -> Result<Phys
     }
 }
 
-fn plan_select(select: AstSelect, head: Option<Box<PhysicalQueryPlan>>) -> Result<PhysicalQueryPlan> {
+fn plan_select(
+    select: AstSelect,
+    head: Option<Box<PhysicalQueryPlan>>,
+) -> Result<PhysicalQueryPlan> {
     Ok(PhysicalQueryPlan::Project {
         expressions: select
             .columns

@@ -39,9 +39,9 @@ impl IntoIterator for AstStatement {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Ast {
-    AggregateBy(AstAggregateBy),
+    Aggregate(AstAggregate),
     Block(AstBlock),
     Cast(AstCast),
     Create(AstCreate),
@@ -55,7 +55,7 @@ pub enum Ast {
     Limit(AstLimit),
     Literal(AstLiteral),
     Nop,
-    OrderBy(AstOrderBy),
+    Order(AstOrder),
     Policy(AstPolicy),
     PolicyBlock(AstPolicyBlock),
     Prefix(AstPrefix),
@@ -82,7 +82,7 @@ impl Ast {
             },
             Ast::Filter(node) => &node.token,
             Ast::From(node) => node.token(),
-            Ast::AggregateBy(node) => &node.token,
+            Ast::Aggregate(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
             Ast::Insert(node) => &node.token,
@@ -97,7 +97,7 @@ impl Ast {
                 AstJoin::LeftJoin { token, .. } => token,
             },
             Ast::Nop => unreachable!(),
-            Ast::OrderBy(node) => &node.token,
+            Ast::Order(node) => &node.token,
             Ast::Policy(node) => &node.token,
             Ast::PolicyBlock(node) => &node.token,
             Ast::Prefix(node) => node.node.token(),
@@ -115,10 +115,10 @@ impl Ast {
 
 impl Ast {
     pub fn is_aggregate_by(&self) -> bool {
-        matches!(self, Ast::AggregateBy(_))
+        matches!(self, Ast::Aggregate(_))
     }
-    pub fn as_aggregate_by(&self) -> &AstAggregateBy {
-        if let Ast::AggregateBy(result) = self { result } else { panic!("not aggregate by") }
+    pub fn as_aggregate_by(&self) -> &AstAggregate {
+        if let Ast::Aggregate(result) = self { result } else { panic!("not aggregate by") }
     }
 
     pub fn is_block(&self) -> bool {
@@ -255,10 +255,10 @@ impl Ast {
     }
 
     pub fn is_order_by(&self) -> bool {
-        matches!(self, Ast::OrderBy(_))
+        matches!(self, Ast::Order(_))
     }
-    pub fn as_order_by(&self) -> &AstOrderBy {
-        if let Ast::OrderBy(result) = self { result } else { panic!("not order by") }
+    pub fn as_order_by(&self) -> &AstOrder {
+        if let Ast::Order(result) = self { result } else { panic!("not order by") }
     }
     pub fn is_policy(&self) -> bool {
         matches!(self, Ast::Policy(_))
@@ -306,13 +306,13 @@ impl Ast {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstCast {
     pub token: Token,
     pub tuple: AstTuple,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstBlock {
     pub token: Token,
     pub nodes: Vec<Ast>,
@@ -332,7 +332,7 @@ impl Index<usize> for AstBlock {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstCreate {
     DeferredView {
         token: Token,
@@ -359,12 +359,12 @@ pub enum AstCreate {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstDescribe {
     Query { token: Token, node: Box<Ast> },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstColumnToCreate {
     pub name: AstIdentifier,
     pub ty: AstKind,
@@ -382,20 +382,20 @@ impl AstCreate {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstFilter {
     pub token: Token,
     pub node: Box<Ast>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstFrom {
     Table { token: Token, schema: Option<AstIdentifier>, table: AstIdentifier },
     Query { token: Token, query: AstBlock },
 }
 
-#[derive(Debug, PartialEq)]
-pub struct AstAggregateBy {
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstAggregate {
     pub token: Token,
     pub by: Vec<Ast>,
     pub projections: Vec<Ast>,
@@ -410,13 +410,13 @@ impl AstFrom {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstLimit {
     pub token: Token,
     pub limit: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstLiteral {
     Boolean(AstLiteralBoolean),
     Number(AstLiteralNumber),
@@ -424,7 +424,7 @@ pub enum AstLiteral {
     Undefined(AstLiteralUndefined),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstIdentifier(pub Token);
 
 impl AstIdentifier {
@@ -441,7 +441,7 @@ impl AstIdentifier {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InfixOperator {
     Add(Token),
     As(Token),
@@ -463,7 +463,7 @@ pub enum InfixOperator {
     TypeAscription(Token),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstInfix {
     pub token: Token,
     pub left: Box<Ast>,
@@ -471,7 +471,7 @@ pub struct AstInfix {
     pub right: Box<Ast>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstInsert {
     pub token: Token,
     pub schema: AstIdentifier,
@@ -480,12 +480,12 @@ pub struct AstInsert {
     pub rows: Vec<AstTuple>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstJoin {
     LeftJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstLiteralNumber(pub Token);
 
 impl AstLiteralNumber {
@@ -494,7 +494,7 @@ impl AstLiteralNumber {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstLiteralText(pub Token);
 
 impl AstLiteralText {
@@ -503,7 +503,7 @@ impl AstLiteralText {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstLiteralBoolean(pub Token);
 
 impl<'a> AstLiteralBoolean {
@@ -512,7 +512,7 @@ impl<'a> AstLiteralBoolean {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstLiteralUndefined(pub Token);
 
 impl AstLiteralUndefined {
@@ -521,40 +521,40 @@ impl AstLiteralUndefined {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct AstOrderBy {
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstOrder {
     pub token: Token,
     pub columns: Vec<AstIdentifier>,
     pub directions: Vec<Option<AstIdentifier>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstPolicyKind {
     Saturation,
     Default,
     NotUndefined,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstPolicy {
     pub token: Token,
     pub policy: AstPolicyKind,
     pub value: Box<Ast>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstPolicyBlock {
     pub token: Token,
     pub policies: Vec<AstPolicy>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstPrefix {
     pub operator: AstPrefixOperator,
     pub node: Box<Ast>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstPrefixOperator {
     Plus(Token),
     Negate(Token),
@@ -571,7 +571,7 @@ impl AstPrefixOperator {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstSelect {
     pub token: Token,
     pub columns: Vec<Ast>,
@@ -591,7 +591,7 @@ impl AstSelect {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstTuple {
     pub token: Token,
     pub nodes: Vec<Ast>,
@@ -611,7 +611,7 @@ impl Index<usize> for AstTuple {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstKind {
     Boolean(Token),
 
@@ -682,5 +682,5 @@ impl AstKind {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstWildcard(pub Token);

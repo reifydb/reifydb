@@ -30,7 +30,7 @@ pub use reifydb_core::*;
 /// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
 pub use reifydb_engine;
 /// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
-pub use reifydb_rql;
+pub use reifydb_rql as rql;
 use std::path::Path;
 
 #[cfg(feature = "embedded")]
