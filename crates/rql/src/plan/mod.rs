@@ -1,22 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::ast;
 use crate::ast::{
-    Ast, AstAggregateBy, AstCreate, AstDescribe, AstFilter, AstFrom, AstInfix, AstInsert,
+    Ast, AstAggregateBy, AstCreate, AstDescribe, AstFilter, AstFrom, AstInfix, AstInsert, AstJoin,
     AstLiteral, AstOrderBy, AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement,
     InfixOperator,
 };
-use std::collections::HashMap;
-use std::mem;
-use std::ops::Deref;
-
-use crate::ast;
 use crate::expression::{
-    AddExpression, AliasExpression, CallExpression, CastExpression, ColumnExpression,
-    ConstantExpression, DivideExpression, EqualExpression, Expression, GreaterThanEqualExpression,
-    GreaterThanExpression, IdentExpression, KindExpression, LessThanEqualExpression,
-    LessThanExpression, ModuloExpression, MultiplyExpression, NotEqualExpression, PrefixExpression,
-    PrefixOperator, SubtractExpression, TupleExpression,
+    AccessPropertyExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
+    ColumnExpression, ConstantExpression, DivideExpression, EqualExpression, Expression,
+    GreaterThanEqualExpression, GreaterThanExpression, IdentExpression, KindExpression,
+    LessThanEqualExpression, LessThanExpression, ModuloExpression, MultiplyExpression,
+    NotEqualExpression, PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
 };
 pub use error::Error;
 use reifydb_catalog::Catalog;
@@ -26,6 +22,9 @@ use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::{Rx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, OrderDirection, OrderKey, Span};
 use reifydb_diagnostic::catalog::table_not_found;
+use std::collections::HashMap;
+use std::mem;
+use std::ops::Deref;
 
 mod error;
 pub mod node;
@@ -125,13 +124,41 @@ pub enum InsertIntoSeriesPlan {
 
 #[derive(Debug)]
 pub enum QueryPlan {
-    Aggregate { by: Vec<Expression>, project: Vec<Expression>, next: Option<Box<QueryPlan>> },
-    Describe { plan: Box<QueryPlan> },
-    ScanTable { schema: String, table: String, next: Option<Box<QueryPlan>> },
-    Filter { expression: Expression, next: Option<Box<QueryPlan>> },
-    Project { expressions: Vec<Expression>, next: Option<Box<QueryPlan>> },
-    Order { order_by: Vec<OrderKey>, next: Option<Box<QueryPlan>> },
-    Limit { limit: usize, next: Option<Box<QueryPlan>> },
+    Aggregate {
+        by: Vec<Expression>,
+        project: Vec<Expression>,
+        next: Option<Box<QueryPlan>>,
+    },
+    Describe {
+        plan: Box<QueryPlan>,
+    },
+    ScanTable {
+        schema: String,
+        table: String,
+        next: Option<Box<QueryPlan>>,
+    },
+    Filter {
+        expression: Expression,
+        next: Option<Box<QueryPlan>>,
+    },
+    Project {
+        expressions: Vec<Expression>,
+        next: Option<Box<QueryPlan>>,
+    },
+    Order {
+        order_by: Vec<OrderKey>,
+        next: Option<Box<QueryPlan>>,
+    },
+    Limit {
+        limit: usize,
+        next: Option<Box<QueryPlan>>,
+    },
+    LeftJoin {
+        left: Box<QueryPlan>,
+        right: Box<QueryPlan>,
+        conditions: Vec<Expression>,
+        next: Option<Box<QueryPlan>>,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -487,6 +514,7 @@ fn plan_ast_node(ast: Ast, next: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
         Ast::Select(select) => plan_select(select, next),
         Ast::OrderBy(order) => plan_order_by(order, next),
         Ast::Limit(limit) => Ok(QueryPlan::Limit { limit: limit.limit, next }),
+        Ast::Join(join) => plan_join(join, next),
 
         _ => unimplemented!("Unsupported AST node"),
     }
@@ -559,6 +587,35 @@ fn plan_filter(filter: AstFilter, head: Option<Box<QueryPlan>>) -> Result<QueryP
         },
         next: head,
     })
+}
+
+fn plan_join(join: AstJoin, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    match join {
+        AstJoin::LeftJoin { with, on, .. } => {
+            // let left = head.ok_or_else(|| panic!("left side of join is missing"))?;
+            // let right = Box::new(plan_ast_node(*with, head)?);
+
+            let conditions = on.into_iter().map(expression).collect::<Result<Vec<_>>>()?;
+            // dbg!(&conditions);
+
+            // todo!();
+
+            Ok(QueryPlan::LeftJoin {
+                left: Box::new(QueryPlan::ScanTable {
+                    schema: "test".to_string(),
+                    table: "one".to_string(),
+                    next: None,
+                }),
+                right: Box::new(QueryPlan::ScanTable {
+                    schema: "test".to_string(),
+                    table: "two".to_string(),
+                    next: None,
+                }),
+                conditions,
+                next: head,
+            })
+        }
+    }
 }
 
 fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
@@ -686,6 +743,16 @@ fn expression(ast: Ast) -> Result<Expression> {
 
 fn expression_infix(infix: AstInfix) -> Result<Expression> {
     match infix.operator {
+        InfixOperator::AccessProperty(token) => {
+            let Ast::Identifier(left) = infix.left.deref() else { unimplemented!() };
+            let Ast::Identifier(right) = infix.right.deref() else { unimplemented!() };
+
+            Ok(Expression::AccessProperty(AccessPropertyExpression {
+                target: left.0.span.clone(),
+                property: right.0.span.clone(),
+            }))
+        }
+
         InfixOperator::Add(token) => {
             let left = expression(*infix.left)?;
             let right = expression(*infix.right)?;
@@ -818,7 +885,6 @@ fn expression_infix(infix: AstInfix) -> Result<Expression> {
         operator => unimplemented!("not implemented: {operator:?}"),
         // InfixOperator::Arrow(_) => {}
         // InfixOperator::AccessPackage(_) => {}
-        // InfixOperator::AccessProperty(_) => {}
         // InfixOperator::Assign(_) => {}
         // InfixOperator::Subtract(_) => {}
         // InfixOperator::Multiply(_) => {}

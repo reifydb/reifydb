@@ -44,6 +44,21 @@ impl BitVec {
         self.len = total_len;
     }
 
+    pub fn push(&mut self, bit: bool) {
+        let word_index = self.len / 64;
+        let bit_index = self.len % 64;
+
+        if word_index >= self.bits.len() {
+            self.bits.push(0);
+        }
+
+        if bit {
+            self.bits[word_index] |= 1 << bit_index;
+        }
+
+        self.len += 1;
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }

@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::evaluate;
-use crate::evaluate::{Context, Evaluator};
-use crate::frame::{Column, ColumnValues, ValueRef};
+use crate::evaluate::{Context, Error, Evaluator};
+use crate::frame::{Column, ColumnValues};
 use reifydb_core::Value;
+use reifydb_diagnostic::query::column_not_found;
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
@@ -14,12 +15,16 @@ impl Evaluator {
         ctx: &Context,
     ) -> evaluate::Result<Column> {
         let name = column.0.fragment.to_string();
-        let col = ctx.columns.iter().find(|c| &c.name == name.as_str()).expect("Unknown column");
+        let col = ctx
+            .columns
+            .iter()
+            .find(|c| &c.name == name.as_str())
+            .ok_or(Error(column_not_found(column.0.clone())))?;
 
         let limit = ctx.limit.unwrap_or(usize::MAX);
 
         match col.data.get(0) {
-            ValueRef::Bool(_) => {
+            Value::Bool(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -44,7 +49,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::bool_with_validity(values, valid) })
             }
 
-            ValueRef::Float4(_) => {
+            Value::Float4(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -69,7 +74,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::float4_with_validity(values, valid) })
             }
 
-            ValueRef::Float8(_) => {
+            Value::Float8(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -94,7 +99,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::float8_with_validity(values, valid) })
             }
 
-            ValueRef::Int1(_) => {
+            Value::Int1(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -119,7 +124,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::int1_with_validity(values, valid) })
             }
 
-            ValueRef::Int2(_) => {
+            Value::Int2(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -144,7 +149,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::int2_with_validity(values, valid) })
             }
 
-            ValueRef::Int4(_) => {
+            Value::Int4(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -169,7 +174,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::int4_with_validity(values, valid) })
             }
 
-            ValueRef::Int8(_) => {
+            Value::Int8(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -194,7 +199,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::int8_with_validity(values, valid) })
             }
 
-            ValueRef::Int16(_) => {
+            Value::Int16(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -219,7 +224,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::int16_with_validity(values, valid) })
             }
 
-            ValueRef::String(_) => {
+            Value::String(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -244,7 +249,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::string_with_validity(values, valid) })
             }
 
-            ValueRef::Uint1(_) => {
+            Value::Uint1(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -269,7 +274,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::uint1_with_validity(values, valid) })
             }
 
-            ValueRef::Uint2(_) => {
+            Value::Uint2(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -294,7 +299,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::uint2_with_validity(values, valid) })
             }
 
-            ValueRef::Uint4(_) => {
+            Value::Uint4(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -319,7 +324,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::uint4_with_validity(values, valid) })
             }
 
-            ValueRef::Uint8(_) => {
+            Value::Uint8(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -344,7 +349,7 @@ impl Evaluator {
                 Ok(Column { name, data: ColumnValues::uint8_with_validity(values, valid) })
             }
 
-            ValueRef::Uint16(_) => {
+            Value::Uint16(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;

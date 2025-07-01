@@ -22,6 +22,7 @@ mod prefix;
 mod primary;
 mod select;
 mod tuple;
+mod join;
 
 pub use error::*;
 

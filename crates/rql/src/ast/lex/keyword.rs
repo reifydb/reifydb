@@ -54,6 +54,7 @@ keyword! {
     Limit      => "LIMIT",
     Offset     => "OFFSET",
 
+    Left       => "LEFT",
     Join       => "JOIN",
     On         => "ON",
     Using      => "USING",
@@ -116,8 +117,9 @@ fn keyword_tag<'a>(
             terminated(
                 tag_no_case(tag_str),
                 not(peek(alt((
-                    alphanumeric1::<nom_locate::LocatedSpan<&str>, nom::error::Error<Span<'a>>>,
+                    alphanumeric1::<LocatedSpan<&str>, nom::error::Error<Span<'a>>>,
                     tag("_"),
+                    tag("."),
                 )))),
             ),
             move |_| kw,
@@ -154,6 +156,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Update, "UPDATE"),
             keyword_tag(Keyword::Set, "SET"),
             keyword_tag(Keyword::Delete, "DELETE"),
+            keyword_tag(Keyword::Left, "LEFT"),
             keyword_tag(Keyword::Join, "JOIN"),
             keyword_tag(Keyword::On, "ON"),
             keyword_tag(Keyword::Using, "USING"),
@@ -273,6 +276,7 @@ mod tests {
         test_keyword_update => (Update, "UPDATE"),
         test_keyword_set => (Set, "SET"),
         test_keyword_delete => (Delete, "DELETE"),
+        test_keyword_left => (Left, "LEFT"),
         test_keyword_join => (Join, "JOIN"),
         test_keyword_on => (On, "ON"),
         test_keyword_using => (Using, "USING"),
@@ -311,7 +315,7 @@ mod tests {
     }
 
     fn check_no_keyword(repr: &str) {
-        for pattern in ["_something_else_", "somethingElse", "123"] {
+        for pattern in ["_something_else_", "somethingElse", "123", ".test"] {
             for mode in [false, true] {
                 let input_str = if mode {
                     format!("{pattern}{repr} rest")
@@ -322,7 +326,7 @@ mod tests {
                 let input = LocatedSpan::new(input_str.as_str());
 
                 let result = parse_keyword(input);
-                assert!(result.is_err(), "matched as keyword: {}", repr);
+                assert!(result.is_err(), "matched {} as keyword: {}", input, repr);
             }
         }
     }
@@ -353,6 +357,7 @@ mod tests {
         test_not_keyword_update => ( "update"),
         test_not_keyword_set => ( "set"),
         test_not_keyword_delete => ( "delete"),
+        test_not_keyword_left => ( "left"),
         test_not_keyword_join => ( "join"),
         test_not_keyword_on => ( "on"),
         test_not_keyword_as => ( "as"),

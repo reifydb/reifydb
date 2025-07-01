@@ -1,110 +1,112 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::frame::{ColumnValues, ValueRef};
+use crate::frame::ColumnValues;
+use reifydb_core::Value;
+use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
 
 impl ColumnValues {
-    pub fn get(&self, index: usize) -> ValueRef {
+    pub fn get(&self, index: usize) -> Value {
         match self {
             ColumnValues::Bool(v, b) => {
                 if b[index] {
-                    ValueRef::Bool(&v[index])
+                    Value::Bool(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Float4(v, b) => {
                 if b[index] {
-                    ValueRef::Float4(&v[index])
+                    OrderedF32::try_from(v[index]).map(Value::Float4).unwrap_or(Value::Undefined)
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Float8(v, b) => {
                 if b[index] {
-                    ValueRef::Float8(&v[index])
+                    OrderedF64::try_from(v[index]).map(Value::Float8).unwrap_or(Value::Undefined)
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Int1(v, b) => {
                 if b[index] {
-                    ValueRef::Int1(&v[index])
+                    Value::Int1(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Int2(v, b) => {
                 if b[index] {
-                    ValueRef::Int2(&v[index])
+                    Value::Int2(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Int4(v, b) => {
                 if b[index] {
-                    ValueRef::Int4(&v[index])
+                    Value::Int4(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Int8(v, b) => {
                 if b[index] {
-                    ValueRef::Int8(&v[index])
+                    Value::Int8(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Int16(v, b) => {
                 if b[index] {
-                    ValueRef::Int16(&v[index])
+                    Value::Int16(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::String(v, b) => {
                 if b[index] {
-                    ValueRef::String(&v[index])
+                    Value::String(v[index].clone())
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Uint1(v, b) => {
                 if b[index] {
-                    ValueRef::Uint1(&v[index])
+                    Value::Uint1(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Uint2(v, b) => {
                 if b[index] {
-                    ValueRef::Uint2(&v[index])
+                    Value::Uint2(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Uint4(v, b) => {
                 if b[index] {
-                    ValueRef::Uint4(&v[index])
+                    Value::Uint4(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Uint8(v, b) => {
                 if b[index] {
-                    ValueRef::Uint8(&v[index])
+                    Value::Uint8(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
             ColumnValues::Uint16(v, b) => {
                 if b[index] {
-                    ValueRef::Uint16(&v[index])
+                    Value::Uint16(v[index])
                 } else {
-                    ValueRef::Undefined
+                    Value::Undefined
                 }
             }
-            ColumnValues::Undefined(_) => ValueRef::Undefined,
+            ColumnValues::Undefined(_) => Value::Undefined,
         }
     }
 }

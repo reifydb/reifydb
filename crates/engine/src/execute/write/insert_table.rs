@@ -3,14 +3,13 @@
 
 use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
-use crate::frame::ValueRef;
 use crate::{Error, ExecutionResult};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::{EncodableKey, TableRowKey};
 use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
-use reifydb_core::{BitVec, Kind};
+use reifydb_core::{BitVec, Kind, Value};
 use reifydb_diagnostic::catalog::table_not_found;
 use reifydb_rql::plan::InsertIntoTablePlan;
 
@@ -61,31 +60,21 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                                             cvs.adjust_column(column.value, &context, &lazy_span)?;
 
                                         match r.get(0) {
-                                            ValueRef::Bool(v) => layout.set_bool(&mut row, idx, *v),
-                                            ValueRef::Float4(v) => {
-                                                layout.set_f32(&mut row, idx, *v)
-                                            }
-                                            ValueRef::Float8(v) => {
-                                                layout.set_f64(&mut row, idx, *v)
-                                            }
-                                            ValueRef::Int1(v) => layout.set_i8(&mut row, idx, *v),
-                                            ValueRef::Int2(v) => layout.set_i16(&mut row, idx, *v),
-                                            ValueRef::Int4(v) => layout.set_i32(&mut row, idx, *v),
-                                            ValueRef::Int8(v) => layout.set_i64(&mut row, idx, *v),
-                                            ValueRef::Int16(v) => {
-                                                layout.set_i128(&mut row, idx, *v)
-                                            }
-                                            ValueRef::String(v) => layout.set_str(&mut row, idx, v),
-                                            ValueRef::Uint1(v) => layout.set_u8(&mut row, idx, *v),
-                                            ValueRef::Uint2(v) => layout.set_u16(&mut row, idx, *v),
-                                            ValueRef::Uint4(v) => layout.set_u32(&mut row, idx, *v),
-                                            ValueRef::Uint8(v) => layout.set_u64(&mut row, idx, *v),
-                                            ValueRef::Uint16(v) => {
-                                                layout.set_u128(&mut row, idx, *v)
-                                            }
-                                            ValueRef::Undefined => {
-                                                layout.set_undefined(&mut row, idx)
-                                            }
+                                            Value::Bool(v) => layout.set_bool(&mut row, idx, v),
+                                            Value::Float4(v) => layout.set_f32(&mut row, idx, *v),
+                                            Value::Float8(v) => layout.set_f64(&mut row, idx, *v),
+                                            Value::Int1(v) => layout.set_i8(&mut row, idx, v),
+                                            Value::Int2(v) => layout.set_i16(&mut row, idx, v),
+                                            Value::Int4(v) => layout.set_i32(&mut row, idx, v),
+                                            Value::Int8(v) => layout.set_i64(&mut row, idx, v),
+                                            Value::Int16(v) => layout.set_i128(&mut row, idx, v),
+                                            Value::String(v) => layout.set_str(&mut row, idx, v),
+                                            Value::Uint1(v) => layout.set_u8(&mut row, idx, v),
+                                            Value::Uint2(v) => layout.set_u16(&mut row, idx, v),
+                                            Value::Uint4(v) => layout.set_u32(&mut row, idx, v),
+                                            Value::Uint8(v) => layout.set_u64(&mut row, idx, v),
+                                            Value::Uint16(v) => layout.set_u128(&mut row, idx, v),
+                                            Value::Undefined => layout.set_undefined(&mut row, idx),
                                         }
                                     }
                                     _ => unimplemented!(),

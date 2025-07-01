@@ -17,6 +17,7 @@ mod limit;
 mod project;
 mod scan;
 mod order;
+mod join;
 
 #[derive(Debug)]
 pub(crate) struct Batch {

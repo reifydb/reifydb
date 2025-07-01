@@ -11,7 +11,6 @@ impl Parser {
         let token = self.consume_keyword(Keyword::Select)?;
 
         let mut columns = Vec::new();
-
         loop {
             columns.push(self.parse_node(Precedence::None)?);
 

@@ -37,16 +37,17 @@ impl IntoIterator for AstStatement {
 
 #[derive(Debug, PartialEq)]
 pub enum Ast {
+    AggregateBy(AstAggregateBy),
     Block(AstBlock),
     Cast(AstCast),
     Create(AstCreate),
     Describe(AstDescribe),
     Filter(AstFilter),
     From(AstFrom),
-    AggregateBy(AstAggregateBy),
     Identifier(AstIdentifier),
     Infix(AstInfix),
     Insert(AstInsert),
+    Join(AstJoin),
     Limit(AstLimit),
     Literal(AstLiteral),
     Nop,
@@ -87,6 +88,9 @@ impl Ast {
                 AstLiteral::Number(node) => &node.0,
                 AstLiteral::Text(node) => &node.0,
                 AstLiteral::Undefined(node) => &node.0,
+            },
+            Ast::Join(node) => match node {
+                AstJoin::LeftJoin { token, .. } => token,
             },
             Ast::Nop => unreachable!(),
             Ast::OrderBy(node) => &node.token,
@@ -174,6 +178,13 @@ impl Ast {
     }
     pub fn as_insert(&self) -> &AstInsert {
         if let Ast::Insert(result) = self { result } else { panic!("not insert") }
+    }
+
+    pub fn is_join(&self) -> bool {
+        matches!(self, Ast::Join(_))
+    }
+    pub fn as_join(&self) -> &AstJoin {
+        if let Ast::Join(result) = self { result } else { panic!("not join") }
     }
 
     pub fn is_limit(&self) -> bool {
@@ -459,6 +470,11 @@ pub struct AstInsert {
     pub store: AstIdentifier,
     pub columns: AstTuple,
     pub rows: Vec<AstTuple>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum AstJoin {
+    LeftJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },
 }
 
 #[derive(Debug, PartialEq, Clone)]

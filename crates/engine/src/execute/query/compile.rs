@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::query::aggregate::AggregateNode;
+use crate::execute::query::join::LeftJoinNode;
 use crate::execute::query::order::OrderNode;
 use crate::execute::query::project::ProjectWithoutInputNode;
 use crate::execute::query::{FilterNode, LimitNode, Node, ProjectNode, ScanFrameNode};
@@ -27,6 +28,16 @@ pub(crate) fn compile(
                 let input = result.expect("aggregate requires input");
                 result =
                     Some(Box::new(AggregateNode::new(input, group_by, project, functions.clone())));
+                if let Some(next) = next {
+                    *next
+                } else {
+                    break;
+                }
+            }
+            QueryPlan::LeftJoin { left, right, conditions, next } => {
+                let left_node = compile(*left, rx, functions.clone());
+                let right_node = compile(*right, rx, functions.clone());
+                result = Some(Box::new(LeftJoinNode::new(left_node, right_node, conditions)));
                 if let Some(next) = next {
                     *next
                 } else {

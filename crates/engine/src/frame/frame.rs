@@ -2,7 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::frame::iterator::FrameIter;
-use crate::frame::{Column, ColumnValues, ValueRef};
+use crate::frame::{Column, ColumnValues};
+use reifydb_core::Kind::Undefined;
+use reifydb_core::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -34,7 +36,7 @@ impl Frame {
         self.shape().0 == 0
     }
 
-    pub fn row(&self, i: usize) -> Vec<ValueRef> {
+    pub fn row(&self, i: usize) -> Vec<Value> {
         self.columns.iter().map(|c| c.data.get(i)).collect()
     }
 
@@ -58,5 +60,36 @@ impl Frame {
 
     pub fn row_count(&self) -> usize {
         self.columns.first().map_or(0, |col| col.data.len())
+    }
+
+    pub fn column_count(&self) -> usize {
+        self.columns.len()
+    }
+
+    pub fn get_row(&self, index: usize) -> Vec<Value> {
+        self.columns.iter().map(|col| col.data.get(index)).collect()
+    }
+}
+
+impl Frame {
+    pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
+        let column_count = names.len();
+
+        let mut columns: Vec<Column> = names
+            .iter()
+            .map(|name| Column {
+                name: name.to_string(),
+                data: ColumnValues::with_capacity(Undefined, 0),
+            })
+            .collect();
+
+        for row in result_rows {
+            assert_eq!(row.len(), column_count, "row length does not match column count");
+            for (i, value) in row.iter().enumerate() {
+                columns[i].data.push_value(value.clone());
+            }
+        }
+
+        Frame::new(columns)
     }
 }

@@ -1,12 +1,16 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
-use crate::expression::{AddExpression, CastExpression, ConstantExpression, DivideExpression, Expression, ModuloExpression, MultiplyExpression, PrefixExpression, SubtractExpression};
+use crate::expression::{
+    AddExpression, CastExpression, ConstantExpression, DivideExpression, Expression,
+    ModuloExpression, MultiplyExpression, PrefixExpression, SubtractExpression,
+};
 use reifydb_core::Span;
 
 impl Expression {
     pub fn lazy_span(&self) -> impl Fn() -> Span + '_ {
         move || match self {
+            Expression::AccessProperty(expr) => expr.span(),
             Expression::Alias(expr) => expr.expression.span(),
             Expression::Cast(CastExpression { expression: expr, .. }) => expr.span(),
             Expression::Constant(expr) => match expr {
@@ -39,9 +43,7 @@ impl Expression {
 
             Expression::Prefix(expr) => expr.span(),
 
-            Expression::Call(expr) => {
-                expr.span()
-            }
+            Expression::Call(expr) => expr.span(),
         }
     }
 }
