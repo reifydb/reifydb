@@ -398,7 +398,7 @@ pub enum AstFrom {
 pub struct AstAggregate {
     pub token: Token,
     pub by: Vec<Ast>,
-    pub projections: Vec<Ast>,
+    pub select: Vec<Ast>,
 }
 
 impl AstFrom {
@@ -574,20 +574,20 @@ impl AstPrefixOperator {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstSelect {
     pub token: Token,
-    pub columns: Vec<Ast>,
+    pub select: Vec<Ast>,
 }
 
 impl Index<usize> for AstSelect {
     type Output = Ast;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.columns[index]
+        &self.select[index]
     }
 }
 
 impl AstSelect {
     pub fn len(&self) -> usize {
-        self.columns.len()
+        self.select.len()
     }
 }
 

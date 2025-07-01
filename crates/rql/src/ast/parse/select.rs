@@ -26,7 +26,7 @@ impl Parser {
             }
         }
 
-        Ok(AstSelect { token, columns })
+        Ok(AstSelect { token, select: columns })
     }
 }
 
@@ -45,9 +45,9 @@ mod tests {
 
         let result = result.pop().unwrap();
         let select = result.first_unchecked().as_select();
-        assert_eq!(select.columns.len(), 1);
+        assert_eq!(select.select.len(), 1);
 
-        let number = select.columns[0].as_literal_number();
+        let number = select.select[0].as_literal_number();
         assert_eq!(number.value(), "1");
     }
 
@@ -60,14 +60,14 @@ mod tests {
 
         let result = result.pop().unwrap();
         let select = result.first_unchecked().as_select();
-        assert_eq!(select.columns.len(), 2);
+        assert_eq!(select.select.len(), 2);
 
-        let first = select.columns[0].as_infix();
+        let first = select.select[0].as_infix();
         assert_eq!(first.left.as_literal_number().value(), "1");
         assert!(matches!(first.operator, InfixOperator::Add(_)));
         assert_eq!(first.right.as_literal_number().value(), "2");
 
-        let second = select.columns[1].as_infix();
+        let second = select.select[1].as_infix();
         assert_eq!(second.left.as_literal_number().value(), "4");
         assert!(matches!(second.operator, InfixOperator::Multiply(_)));
         assert_eq!(second.right.as_literal_number().value(), "3");
@@ -82,8 +82,8 @@ mod tests {
 
         let result = result.pop().unwrap();
         let select = result.first_unchecked().as_select();
-        assert_eq!(select.columns.len(), 1);
-        assert!(matches!(select.columns[0], Ast::Wildcard(_)));
+        assert_eq!(select.select.len(), 1);
+        assert!(matches!(select.select[0], Ast::Wildcard(_)));
     }
 
     #[test]
@@ -94,9 +94,9 @@ mod tests {
 
         let result = result.pop().unwrap();
         let select = result.first_unchecked().as_select();
-        assert_eq!(select.columns.len(), 1);
-        assert!(matches!(select.columns[0], Ast::Identifier(_)));
-        assert_eq!(select.columns[0].value(), "name");
+        assert_eq!(select.select.len(), 1);
+        assert!(matches!(select.select[0], Ast::Identifier(_)));
+        assert_eq!(select.select[0].value(), "name");
     }
 
     #[test]
@@ -107,11 +107,11 @@ mod tests {
 
         let result = result.pop().unwrap();
         let select = result.first_unchecked().as_select();
-        assert_eq!(select.columns.len(), 2);
-        assert!(matches!(select.columns[0], Ast::Identifier(_)));
-        assert_eq!(select.columns[0].value(), "name");
+        assert_eq!(select.select.len(), 2);
+        assert!(matches!(select.select[0], Ast::Identifier(_)));
+        assert_eq!(select.select[0].value(), "name");
 
-        assert!(matches!(select.columns[1], Ast::Identifier(_)));
-        assert_eq!(select.columns[1].value(), "age");
+        assert!(matches!(select.select[1], Ast::Identifier(_)));
+        assert_eq!(select.select[1].value(), "age");
     }
 }

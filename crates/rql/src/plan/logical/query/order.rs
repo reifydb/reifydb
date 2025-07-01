@@ -2,10 +2,27 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::AstOrder;
-use crate::plan::logical::{Compiler, LogicalQueryPlan};
+use crate::plan::logical::{Compiler, LogicalQueryPlan, OrderNode};
+use reifydb_core::{OrderDirection, OrderKey};
 
 impl Compiler {
-    pub(crate) fn compile_order(&self, ast: AstOrder) -> crate::Result<Vec<LogicalQueryPlan>> {
-        todo!()
+    pub(crate) fn compile_order(&self, ast: AstOrder) -> crate::Result<LogicalQueryPlan> {
+        Ok(LogicalQueryPlan::Order(OrderNode {
+            by: ast
+                .columns
+                .into_iter()
+                .zip(ast.directions)
+                .map(|(column, direction)| {
+                    let direction = direction
+                        .map(|direction| match direction.value().to_lowercase().as_str() {
+                            "asc" => OrderDirection::Asc,
+                            _ => OrderDirection::Desc,
+                        })
+                        .unwrap_or(OrderDirection::Desc);
+
+                    OrderKey { column: column.span(), direction }
+                })
+                .collect(),
+        }))
     }
 }

@@ -238,10 +238,12 @@ impl Display for Expression {
             Expression::AccessTable(AccessTableExpression { table: target, column: property }) => {
                 write!(f, "{}.{}", target.fragment, property.fragment)
             }
-            Expression::Alias(AliasExpression { expression, .. }) => write!(f, "{}", expression),
+            Expression::Alias(AliasExpression { alias, expression, .. }) => {
+                write!(f, "{} as {}", expression, alias)
+            }
             Expression::Cast(CastExpression { expression: expr, .. }) => write!(f, "{}", expr),
-            Expression::Constant(span) => write!(f, "{}", span),
-            Expression::Column(ColumnExpression(span)) => write!(f, "{}", span.fragment),
+            Expression::Constant(span) => write!(f, "Constant({})", span),
+            Expression::Column(ColumnExpression(span)) => write!(f, "Column({})", span.fragment),
             Expression::Add(AddExpression { left, right, .. }) => {
                 write!(f, "({} + {})", left, right)
             }

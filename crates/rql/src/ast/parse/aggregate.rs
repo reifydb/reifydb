@@ -47,7 +47,7 @@ impl Parser {
             }
         }
 
-        Ok(AstAggregate { token, by, projections })
+        Ok(AstAggregate { token, by, select: projections })
     }
 }
 
@@ -65,9 +65,9 @@ mod tests {
 
         let result = result.pop().unwrap();
         let aggregate = result.first_unchecked().as_aggregate_by();
-        assert_eq!(aggregate.projections.len(), 1);
+        assert_eq!(aggregate.select.len(), 1);
 
-        let projection = &aggregate.projections[0].as_infix();
+        let projection = &aggregate.select[0].as_infix();
         let identifier = projection.left.as_identifier();
         assert_eq!(identifier.value(), "min");
 
@@ -89,9 +89,9 @@ mod tests {
 
         let result = result.pop().unwrap();
         let aggregate = result.first_unchecked().as_aggregate_by();
-        assert_eq!(aggregate.projections.len(), 1);
+        assert_eq!(aggregate.select.len(), 1);
 
-        let projection = &aggregate.projections[0].as_infix();
+        let projection = &aggregate.select[0].as_infix();
         
         let min_age = projection.left.as_infix();
         let identifier = min_age.left.as_identifier();
@@ -119,7 +119,7 @@ mod tests {
 
         let result = result.pop().unwrap();
         let aggregate = result.first_unchecked().as_aggregate_by();
-        assert_eq!(aggregate.projections.len(), 0);
+        assert_eq!(aggregate.select.len(), 0);
 
         assert_eq!(aggregate.by.len(), 1);
         assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
@@ -134,7 +134,7 @@ mod tests {
 
         let result = result.pop().unwrap();
         let aggregate = result.first_unchecked().as_aggregate_by();
-        assert_eq!(aggregate.projections.len(), 0);
+        assert_eq!(aggregate.select.len(), 0);
         assert_eq!(aggregate.by.len(), 2);
 
         assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
@@ -152,9 +152,9 @@ mod tests {
 
         let result = result.pop().unwrap();
         let aggregate = result.first_unchecked().as_aggregate_by();
-        assert_eq!(aggregate.projections.len(), 2);
+        assert_eq!(aggregate.select.len(), 2);
 
-        let projection = &aggregate.projections[0].as_infix();
+        let projection = &aggregate.select[0].as_infix();
         let identifier = projection.left.as_identifier();
         assert_eq!(identifier.value(), "min");
 
@@ -163,7 +163,7 @@ mod tests {
         let identifier = tuple.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
 
-        let projection = &aggregate.projections[1].as_infix();
+        let projection = &aggregate.select[1].as_infix();
         let identifier = projection.left.as_identifier();
         assert_eq!(identifier.value(), "max");
 

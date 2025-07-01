@@ -14,19 +14,17 @@ use crate::expression::{
     LessThanEqualExpression, LessThanExpression, ModuloExpression, MultiplyExpression,
     NotEqualExpression, PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
 };
-pub use error::Error;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::column::Column;
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::{Rx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Kind, OrderDirection, OrderKey, Span};
+use reifydb_core::{Error, Kind, OrderDirection, OrderKey, Span};
 use reifydb_diagnostic::catalog::table_not_found;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::Deref;
 
-mod error;
 pub(crate) mod logical;
 mod physical;
 mod planner;
@@ -565,7 +563,7 @@ fn plan_aggregate(
 
     // FIXME this is duplicated code from plan_select
     let project = aggregate
-        .projections
+        .select
         .into_iter()
         .map(|ast| match ast {
             // Ast::Block(_) => {}
@@ -639,7 +637,7 @@ fn plan_select(
 ) -> Result<PhysicalQueryPlan> {
     Ok(PhysicalQueryPlan::Project {
         expressions: select
-            .columns
+            .select
             .into_iter()
             .map(|ast| match ast {
                 // Ast::Block(_) => {}

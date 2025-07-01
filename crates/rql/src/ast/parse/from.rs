@@ -99,8 +99,8 @@ mod tests {
                 }
 
                 let select = block[1].as_select();
-                assert_eq!(select.columns.len(), 1);
-                let column = select.columns[0].as_identifier();
+                assert_eq!(select.select.len(), 1);
+                let column = select.select[0].as_identifier();
                 assert_eq!(column.value(), "name");
             }
         }

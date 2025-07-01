@@ -77,7 +77,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         },
         Ast::Aggregate(a) => {
             children.extend(a.by);
-            children.extend(a.projections);
+            children.extend(a.select);
         }
         Ast::Insert(i) => {
             children.extend(i.columns.nodes);
@@ -89,7 +89,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
             children.push(*with);
             children.extend(on);
         }
-        Ast::Select(s) => children.extend(s.columns),
+        Ast::Select(s) => children.extend(s.select),
         Ast::Order(o) => {
             for col in &o.columns {
                 children.push(Ast::Identifier(col.clone()));

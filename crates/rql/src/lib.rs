@@ -6,13 +6,12 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use error::Error;
 pub use explain::{ExplainAst, ExplainLex, ExplainLogicalPlan, ExplainPhysicalPlan};
+use reifydb_core::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod ast;
-mod error;
 mod explain;
 pub mod expression;
 pub mod plan;

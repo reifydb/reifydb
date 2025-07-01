@@ -3,7 +3,7 @@
 
 use crate::{evaluate, execute, frame};
 use reifydb_core::Diagnostic;
-use reifydb_rql::{ast, plan};
+use reifydb_rql::ast;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
@@ -13,7 +13,6 @@ pub enum Error {
     Evaluation(evaluate::Error),
     Execution(execute::Error),
     Frame(frame::Error),
-    Plan(plan::Error),
     Transaction(reifydb_transaction::Error),
 }
 
@@ -53,12 +52,6 @@ impl From<frame::Error> for Error {
     }
 }
 
-impl From<plan::Error> for Error {
-    fn from(err: plan::Error) -> Self {
-        Self::Plan(err)
-    }
-}
-
 impl From<reifydb_transaction::Error> for Error {
     fn from(err: reifydb_transaction::Error) -> Self {
         Self::Transaction(err)
@@ -75,7 +68,6 @@ impl Error {
             Error::Evaluation(err) => err.diagnostic(),
             Error::Execution(err) => err.diagnostic(),
             Error::Frame(_) => unimplemented!(),
-            Error::Plan(err) => err.diagnostic(),
             Error::Transaction(_) => unimplemented!(),
         }
     }
@@ -86,7 +78,6 @@ impl From<Error> for reifydb_core::Error {
         Self(err.diagnostic())
     }
 }
-
 
 // FIXME
 impl From<reifydb_core::Error> for Error {

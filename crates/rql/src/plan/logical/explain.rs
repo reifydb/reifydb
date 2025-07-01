@@ -3,7 +3,7 @@
 
 use crate::ast::parse;
 use crate::plan::logical::{
-    AggregateNode, FilterNode, JoinLeftNode, LimitNode, LogicalQueryPlan, OrderNode, ProjectNode,
+    AggregateNode, FilterNode, JoinLeftNode, LimitNode, LogicalQueryPlan, OrderNode, SelectNode,
     TableScanNode, compile_logical,
 };
 use reifydb_core::Error;
@@ -39,31 +39,28 @@ fn render_logical_plan_inner(
         LogicalQueryPlan::Limit(LimitNode { limit }) => {
             output.push_str(&format!("{}{} Limit {}\n", prefix, branch, limit));
         }
-        LogicalQueryPlan::Filter(FilterNode { filter }) => {
+        LogicalQueryPlan::Filter(FilterNode { condition }) => {
             output.push_str(&format!("{}{} Filter\n", prefix, branch));
-            for (i, cond) in filter.iter().enumerate() {
-                let cond_last = i == filter.len() - 1;
-                output.push_str(&format!(
-                    "{}{} condition: {}\n",
-                    child_prefix,
-                    if cond_last { "└──" } else { "├──" },
-                    cond.to_string()
-                ));
-            }
+            output.push_str(&format!(
+                "{}{} condition: {}\n",
+                child_prefix,
+                "└──",
+                condition.to_string()
+            ));
         }
-        LogicalQueryPlan::Project(ProjectNode { project }) => {
-            output.push_str(&format!("{}{} Project\n", prefix, branch));
-            for (i, expr) in project.iter().enumerate() {
-                let last = i == project.len() - 1;
+        LogicalQueryPlan::Select(SelectNode { select }) => {
+            output.push_str(&format!("{}{} Select\n", prefix, branch));
+            for (i, expr) in select.iter().enumerate() {
+                let last = i == select.len() - 1;
                 output.push_str(&format!(
-                    "{}{} column: {}\n",
+                    "{}{} {}\n",
                     child_prefix,
                     if last { "└──" } else { "├──" },
                     expr.to_string()
                 ));
             }
         }
-        LogicalQueryPlan::Aggregate(AggregateNode { by, project }) => {
+        LogicalQueryPlan::Aggregate(AggregateNode { by, select }) => {
             output.push_str(&format!("{}{} Aggregate\n", prefix, branch));
             if !by.is_empty() {
                 output.push_str(&format!(
@@ -72,11 +69,11 @@ fn render_logical_plan_inner(
                     by.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
                 ));
             }
-            if !project.is_empty() {
+            if !select.is_empty() {
                 output.push_str(&format!(
-                    "{}└── project: {}\n",
+                    "{}└── select: {}\n",
                     child_prefix,
-                    project.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+                    select.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
                 ));
             }
         }
@@ -92,8 +89,8 @@ fn render_logical_plan_inner(
                 ));
             }
         }
-        LogicalQueryPlan::JoinLeft(JoinLeftNode { on }) => {
-            output.push_str(&format!("{}{} JoinLeft\n", prefix, branch));
+        LogicalQueryPlan::JoinLeft(JoinLeftNode { with, on }) => {
+            output.push_str(&format!("{}{} Join(Left): {}\n", prefix, branch, with));
             for (i, cond) in on.iter().enumerate() {
                 let last = i == on.len() - 1;
                 output.push_str(&format!(
