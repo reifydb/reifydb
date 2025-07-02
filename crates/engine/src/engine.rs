@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::{execute_query, execute};
+use crate::execute::{execute, execute_query};
 use crate::system::SystemBootHook;
 use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
@@ -89,14 +89,18 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         Ok(self.transaction.begin_read_only().unwrap())
     }
 
-    pub fn execute_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
+    pub fn execute_as(
+        &self,
+        _principal: &Principal,
+        rql: &str,
+    ) -> crate::Result<Vec<ExecutionResult>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
         let mut tx = self.begin()?;
 
         for statement in statements {
-            if let Some(plan) = plan::<VS, US>(statement)? {
+            if let Some(plan) = plan(&mut tx, statement)? {
                 let er = execute(&mut tx, plan)?;
                 result.push(er);
             }
@@ -107,13 +111,17 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         Ok(result)
     }
 
-    pub fn query_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
+    pub fn query_as(
+        &self,
+        _principal: &Principal,
+        rql: &str,
+    ) -> crate::Result<Vec<ExecutionResult>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
         let mut rx = self.begin_read_only()?;
         for statement in statements {
-            if let Some(plan) = plan_query(statement)? {
+            if let Some(plan) = plan_query(&mut rx, statement)? {
                 let er = execute_query::<VS, US>(&mut rx, plan)?;
                 result.push(er);
             }

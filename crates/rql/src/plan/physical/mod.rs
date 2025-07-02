@@ -1,39 +1,70 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+mod create;
 pub(crate) mod explain;
+mod insert;
 
 use crate::expression::Expression;
 use crate::plan::logical::{LogicalPlan, LogicalQueryPlan};
 use crate::plan::physical::PhysicalQueryPlan::TableScan;
 use reifydb_catalog::column::Column;
 use reifydb_catalog::table::ColumnToCreate;
+use reifydb_core::interface::Rx;
 use reifydb_core::{OrderKey, Span};
 
 struct Compiler {}
 
-pub fn compile_physical(logical: Vec<LogicalPlan>) -> crate::Result<Option<PhysicalPlan>> {
-    let compiler = Compiler {};
-    compiler.compile(logical)
+pub fn compile_physical(
+    rx: &mut impl Rx,
+    logical: Vec<LogicalPlan>,
+) -> crate::Result<Option<PhysicalPlan>> {
+    Compiler::compile(rx, logical)
 }
 
 pub fn compile_physical_query(
+    rx: &mut impl Rx,
     logical: Vec<LogicalQueryPlan>,
 ) -> crate::Result<Option<PhysicalQueryPlan>> {
-    let compiler = Compiler {};
-    compiler.compile_query(logical)
+    Compiler::compile_query(rx, logical)
 }
 
 impl Compiler {
-    fn compile(&self, logical: Vec<LogicalPlan>) -> crate::Result<Option<PhysicalPlan>> {
+
+    fn compile(rx: &mut impl Rx, logical: Vec<LogicalPlan>) -> crate::Result<Option<PhysicalPlan>> {
         if logical.is_empty() {
             return Ok(None);
         }
-        todo!()
+
+        let mut stack: Vec<PhysicalPlan> = Vec::new();
+        for plan in logical {
+            match plan {
+                LogicalPlan::CreateSchema(create) => {
+                    stack.push(Self::compile_create_schema(rx, create)?);
+                }
+                LogicalPlan::CreateTable(create) => {
+                    stack.push(Self::compile_create_table(rx, create)?);
+                }
+                LogicalPlan::InsertIntoTable(insert) => {
+                    stack.push(Self::compile_insert_into_table(rx, insert)?)
+                }
+                LogicalPlan::Query(query) => {
+                    dbg!(&query);
+                }
+                _ => unimplemented!(),
+            }
+        }
+
+        if stack.len() != 1 {
+            // return Err("Logical plan did not reduce to a single physical plan".into());
+            panic!("logical plan did not reduce to a single physical plan"); // FIXME
+        }
+
+        Ok(Some(stack.pop().unwrap()))
     }
 
     fn compile_query(
-        &self,
+        rx: &mut impl Rx,
         logical: Vec<LogicalQueryPlan>,
     ) -> crate::Result<Option<PhysicalQueryPlan>> {
         if logical.is_empty() {
@@ -42,8 +73,8 @@ impl Compiler {
 
         let mut stack: Vec<PhysicalQueryPlan> = Vec::new();
 
-        for node in logical {
-            match node {
+        for plan in logical {
+            match plan {
                 LogicalQueryPlan::Aggregate(aggregate) => {
                     let input = stack.pop().unwrap(); // FIXME
                     stack.push(PhysicalQueryPlan::Aggregate(AggregateNode {
@@ -71,7 +102,7 @@ impl Compiler {
 
                 LogicalQueryPlan::JoinLeft(join) => {
                     let left = stack.pop().unwrap(); // FIXME;
-                    let right = compile_physical_query(join.with)?.unwrap();
+                    let right = compile_physical_query(rx, join.with)?.unwrap();
                     stack.push(PhysicalQueryPlan::JoinLeft(JoinLeftNode {
                         left: Box::new(left),
                         right: Box::new(right),
@@ -141,16 +172,9 @@ pub struct CreateTablePlan {
     pub columns: Vec<ColumnToCreate>,
 }
 
-pub type RowToInsert = Vec<Expression>;
-
 #[derive(Debug, Clone)]
 pub enum InsertIntoTablePlan {
-    Values {
-        schema: Span,
-        table: Span,
-        columns: Vec<Column>,
-        rows_to_insert: Vec<RowToInsert>,
-    },
+    Values { schema: Span, table: Span, columns: Vec<Column>, rows_to_insert: Vec<Vec<Expression>> },
 }
 
 #[derive(Debug, Clone)]

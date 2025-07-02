@@ -4,12 +4,11 @@
 mod create;
 pub(crate) mod explain;
 mod expression;
+mod insert;
 mod query;
-mod write;
 
 use crate::ast::{Ast, AstStatement};
 use crate::expression::Expression;
-use reifydb_catalog::column::Column;
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::{OrderKey, Span};
 
@@ -29,10 +28,21 @@ impl Compiler {
             return Ok(vec![]);
         }
 
+        match &ast[0] {
+            Ast::From(_) | Ast::Select(_) => {
+                return Ok(Self::compile_query(ast)?
+                    .into_iter()
+                    .map(LogicalPlan::Query)
+                    .collect::<Vec<_>>());
+            }
+            _ => {}
+        }
+
         let mut result = Vec::with_capacity(ast.len());
         for node in ast {
             match node {
                 Ast::Create(node) => result.push(Self::compile_create(node)?),
+                Ast::InsertIntoTable(node) => result.push(Self::compile_insert_into_table(node)?),
                 _ => unreachable!(),
             }
         }
@@ -99,11 +109,9 @@ pub struct CreateTableNode {
     pub columns: Vec<ColumnToCreate>,
 }
 
-pub type RowToInsert = Vec<Expression>;
-
 #[derive(Debug)]
 pub enum InsertIntoTableNode {
-    Values { schema: Span, table: Span, columns: Vec<Column>, rows_to_insert: Vec<RowToInsert> },
+    Values { schema: Span, table: Span, columns: Vec<Span>, rows_to_insert: Vec<Vec<Expression>> },
 }
 
 #[derive(Debug)]

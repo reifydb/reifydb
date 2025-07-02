@@ -4,7 +4,7 @@
 use crate::ast::parse;
 use crate::plan::logical::compile_logical_query;
 use crate::plan::physical;
-use crate::plan::physical::{PhysicalQueryPlan, compile_physical_query};
+use crate::plan::physical::PhysicalQueryPlan;
 use reifydb_core::Error;
 use std::fmt::Write;
 
@@ -14,7 +14,8 @@ pub(crate) fn explain_physical_plan(query: &str) -> Result<String, Error> {
     let mut plans = Vec::new();
     for statement in statements {
         let logical = compile_logical_query(statement).unwrap(); // FIXME
-        plans.extend(compile_physical_query(logical))
+        // plans.extend(compile_physical_query(logical))
+        todo!()
     }
 
     let mut result = String::new();

@@ -5,10 +5,10 @@ use crate::ast::lex::Keyword::Into;
 use crate::ast::lex::Operator::OpenParen;
 use crate::ast::lex::{Keyword, Operator, Separator, TokenKind};
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstInsert, AstTuple, parse};
+use crate::ast::{AstInsertIntoTable, AstTuple, parse};
 
 impl Parser {
-    pub(crate) fn parse_insert(&mut self) -> parse::Result<AstInsert> {
+    pub(crate) fn parse_insert(&mut self) -> parse::Result<AstInsertIntoTable> {
         let token = self.consume_keyword(Keyword::Insert)?;
 
         let mut rows = Vec::new();
@@ -41,13 +41,13 @@ impl Parser {
 
         let columns = self.parse_tuple()?;
 
-        Ok(AstInsert { token, schema, store, columns, rows })
+        Ok(AstInsertIntoTable { token, schema, table: store, columns, rows })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::AstInsert;
+    use crate::ast::AstInsertIntoTable;
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
 
@@ -65,7 +65,7 @@ mod tests {
         let insert = result.first_unchecked().as_insert();
 
         match insert {
-            AstInsert { schema, store, columns, rows, .. } => {
+            AstInsertIntoTable { schema, table: store, columns, rows, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(store.value(), "users");
 
@@ -110,7 +110,7 @@ mod tests {
         let insert = result.first_unchecked().as_insert();
 
         match insert {
-            AstInsert { schema, store, columns, rows, .. } => {
+            AstInsertIntoTable { schema, table: store, columns, rows, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(store.value(), "users");
 
@@ -156,7 +156,7 @@ mod tests {
         let insert = result.first_unchecked().as_insert();
 
         match insert {
-            AstInsert { schema, store, columns, rows, .. } => {
+            AstInsertIntoTable { schema, table: store, columns, rows, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(store.value(), "users");
 
@@ -200,7 +200,7 @@ mod tests {
         let insert = result.first_unchecked().as_insert();
 
         match insert {
-            AstInsert { schema, store, columns, rows, .. } => {
+            AstInsertIntoTable { schema, table: store, columns, rows, .. } => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(store.value(), "users");
 

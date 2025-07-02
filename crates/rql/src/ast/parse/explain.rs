@@ -34,7 +34,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::From(_) => "From",
         Ast::Identifier(_) => "Identifier",
         Ast::Infix(_) => "Infix",
-        Ast::Insert(_) => "Insert",
+        Ast::InsertIntoTable(_) => "Insert",
         Ast::Join(_) => "Join",
         Ast::Limit(_) => "Limit",
         Ast::Literal(_) => "Literal",
@@ -79,7 +79,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
             children.extend(a.by);
             children.extend(a.select);
         }
-        Ast::Insert(i) => {
+        Ast::InsertIntoTable(i) => {
             children.extend(i.columns.nodes);
             for row in &i.rows {
                 children.extend(row.nodes.clone());
