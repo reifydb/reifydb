@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::embedded::Embedded;
-use reifydb::interface::{Transaction, UnversionedStorage, VersionedStorage};
-use reifydb::{DB, Principal, ReifyDB, memory, optimistic};
+use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::{DB, ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -11,6 +11,7 @@ use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
+use reifydb::auth::Principal;
 
 pub struct Runner<VS, US, T>
 where

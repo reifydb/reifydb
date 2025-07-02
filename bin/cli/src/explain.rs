@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb::Error;
+use reifydb::core::Explain;
 use reifydb::rql::{ExplainAst, ExplainLex, ExplainLogicalPlan, ExplainPhysicalPlan};
-use reifydb::{Error, Explain};
 
 pub fn lex(query: &str) -> Result<(), Error> {
     let text = ExplainLex::explain(query)?;

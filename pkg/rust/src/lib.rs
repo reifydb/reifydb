@@ -25,12 +25,13 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use error::Error;
-pub use reifydb_auth::Principal;
-pub use reifydb_core::*;
-/// The execution engine layer, responsible for evaluating query plans and orchestrating data flow between layers.
-pub use reifydb_engine;
-/// The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
+pub use reifydb_auth as auth;
+pub use reifydb_core as core;
+pub use reifydb_engine as engine;
 pub use reifydb_rql as rql;
+pub use reifydb_storage as storage;
+pub use reifydb_transaction as transaction;
+
 use std::path::Path;
 
 #[cfg(feature = "embedded")]
@@ -41,15 +42,14 @@ use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
-pub use reifydb_storage;
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::Sqlite;
-pub use reifydb_transaction;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 #[cfg(any(feature = "server", feature = "client"))]
 pub use tokio::*;
+use reifydb_auth::Principal;
 
 #[cfg(feature = "client")]
 pub mod client;

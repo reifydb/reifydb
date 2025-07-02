@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::client::Client;
-use reifydb::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::retry;
 use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{ReifyDB, memory, optimistic, retry};
+use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;

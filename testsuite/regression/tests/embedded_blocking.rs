@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb::auth::Principal;
+use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::embedded_blocking::Embedded;
-use reifydb::interface::{Transaction, UnversionedStorage, VersionedStorage};
-use reifydb::{Principal, ReifyDB, memory, optimistic};
+use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
