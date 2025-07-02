@@ -12,9 +12,8 @@ jobs:
       - name: 🧰 Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: 🛠️ Install Rust and nextest
+      - name: 🛠️ Install Rust
         uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-nextest
 
       - name: ⬇️ Checkout main repo
         uses: actions/checkout@v4
@@ -24,4 +23,4 @@ jobs:
       - name: 🧪 Run test
         run: |
           cd reifydb
-          ~/.cargo/bin/cargo nextest run --no-fail-fast
+          ~/.cargo/bin/cargo test
