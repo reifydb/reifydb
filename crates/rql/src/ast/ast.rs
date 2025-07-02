@@ -334,29 +334,41 @@ impl Index<usize> for AstBlock {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstCreate {
-    DeferredView {
-        token: Token,
-        schema: AstIdentifier,
-        name: AstIdentifier,
-        columns: Vec<AstColumnToCreate>,
-        // FIXME query
-    },
-    Schema {
-        token: Token,
-        name: AstIdentifier,
-    },
-    Series {
-        token: Token,
-        schema: AstIdentifier,
-        name: AstIdentifier,
-        columns: Vec<AstColumnToCreate>,
-    },
-    Table {
-        token: Token,
-        schema: AstIdentifier,
-        name: AstIdentifier,
-        columns: Vec<AstColumnToCreate>,
-    },
+    DeferredView(AstCreateDeferredView),
+    Schema(AstCreateSchema),
+    Series(AstCreateSeries),
+    Table(AstCreateTable),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateDeferredView {
+    pub token: Token,
+    pub schema: AstIdentifier,
+    pub name: AstIdentifier,
+    pub columns: Vec<AstColumnToCreate>,
+    // FIXME query
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateSchema {
+    pub token: Token,
+    pub name: AstIdentifier,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateSeries {
+    pub token: Token,
+    pub schema: AstIdentifier,
+    pub name: AstIdentifier,
+    pub columns: Vec<AstColumnToCreate>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateTable {
+    pub token: Token,
+    pub schema: AstIdentifier,
+    pub name: AstIdentifier,
+    pub columns: Vec<AstColumnToCreate>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -374,10 +386,10 @@ pub struct AstColumnToCreate {
 impl AstCreate {
     pub fn token(&self) -> &Token {
         match self {
-            AstCreate::DeferredView { token, .. } => token,
-            AstCreate::Schema { token, .. } => token,
-            AstCreate::Series { token, .. } => token,
-            AstCreate::Table { token, .. } => token,
+            AstCreate::DeferredView(AstCreateDeferredView { token, .. }) => token,
+            AstCreate::Schema(AstCreateSchema { token, .. }) => token,
+            AstCreate::Series(AstCreateSeries { token, .. }) => token,
+            AstCreate::Table(AstCreateTable { token, .. }) => token,
         }
     }
 }

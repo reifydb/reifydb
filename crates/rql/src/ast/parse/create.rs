@@ -6,7 +6,10 @@ use crate::ast::lex::Operator::CloseParen;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, Operator, Token, TokenKind};
 use crate::ast::parse::Parser;
-use crate::ast::{AstColumnToCreate, AstCreate, parse};
+use crate::ast::{
+    AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema, AstCreateSeries,
+    AstCreateTable, parse,
+};
 use Keyword::{Create, Schema};
 use Operator::Colon;
 
@@ -37,7 +40,7 @@ impl Parser {
     }
 
     fn parse_schema(&mut self, token: Token) -> parse::Result<AstCreate> {
-        Ok(AstCreate::Schema { token, name: self.parse_identifier()? })
+        Ok(AstCreate::Schema(AstCreateSchema { token, name: self.parse_identifier()? }))
     }
 
     fn parse_series(&mut self, token: Token) -> parse::Result<AstCreate> {
@@ -46,7 +49,7 @@ impl Parser {
         let name = self.parse_identifier()?;
         let columns = self.parse_columns()?;
 
-        Ok(AstCreate::Series { token, name, schema, columns })
+        Ok(AstCreate::Series(AstCreateSeries { token, name, schema, columns }))
     }
 
     fn parse_deferred_view(&mut self, token: Token) -> parse::Result<AstCreate> {
@@ -55,7 +58,7 @@ impl Parser {
         let name = self.parse_identifier()?;
         let columns = self.parse_columns()?;
 
-        Ok(AstCreate::DeferredView { token, name, schema, columns })
+        Ok(AstCreate::DeferredView(AstCreateDeferredView { token, name, schema, columns }))
     }
 
     fn parse_table(&mut self, token: Token) -> parse::Result<AstCreate> {
@@ -64,7 +67,7 @@ impl Parser {
         let name = self.parse_identifier()?;
         let columns = self.parse_columns()?;
 
-        Ok(AstCreate::Table { token, name, schema, columns })
+        Ok(AstCreate::Table(AstCreateTable { token, name, schema, columns }))
     }
 
     fn parse_columns(&mut self) -> parse::Result<Vec<AstColumnToCreate>> {
@@ -105,7 +108,10 @@ impl Parser {
 mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
-    use crate::ast::{AstCreate, AstPolicyKind};
+    use crate::ast::{
+        AstCreate, AstCreateDeferredView, AstCreateSchema, AstCreateSeries, AstCreateTable,
+        AstPolicyKind,
+    };
 
     #[test]
     fn test_create_schema() {
@@ -118,7 +124,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Schema { name, .. } => {
+            AstCreate::Schema(AstCreateSchema { name, .. }) => {
                 assert_eq!(name.value(), "REIFYDB");
             }
             _ => unreachable!(),
@@ -139,7 +145,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Series { name, schema, columns, .. } => {
+            AstCreate::Series(AstCreateSeries { name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "metrics");
 
@@ -166,7 +172,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Table { name, schema, columns, .. } => {
+            AstCreate::Table(AstCreateTable { name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "users");
                 assert_eq!(columns.len(), 3);
@@ -209,7 +215,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Table { name, schema, columns, .. } => {
+            AstCreate::Table(AstCreateTable { name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "items");
 
@@ -242,7 +248,7 @@ mod tests {
         let result = result.pop().unwrap();
         let create = result.first_unchecked().as_create();
         match create {
-            AstCreate::DeferredView { name, schema, columns, .. } => {
+            AstCreate::DeferredView(AstCreateDeferredView { name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "views");
 

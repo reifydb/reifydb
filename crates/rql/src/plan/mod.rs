@@ -3,8 +3,8 @@
 
 use crate::ast;
 use crate::ast::{
-    Ast, AstCreate, AstInfix, AstInsert, AstLiteral, AstPolicy, AstPolicyKind, AstPrefix,
-    AstStatement, InfixOperator,
+    Ast, AstCreate, AstCreateDeferredView, AstCreateSchema, AstCreateTable, AstInfix, AstInsert,
+    AstLiteral, AstPolicy, AstPolicyKind, AstPrefix, AstStatement, InfixOperator,
 };
 use crate::expression::{
     AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
@@ -149,7 +149,12 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
         match ast {
             Ast::Create(create) => {
                 return match create {
-                    AstCreate::DeferredView { schema, name, columns, .. } => {
+                    AstCreate::DeferredView(AstCreateDeferredView {
+                        schema,
+                        name,
+                        columns,
+                        ..
+                    }) => {
                         let mut result_columns: Vec<ColumnToCreate> = vec![];
 
                         for col in columns.iter() {
@@ -180,7 +185,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                             columns: result_columns,
                         })))
                     }
-                    AstCreate::Schema { name, .. } => {
+                    AstCreate::Schema(AstCreateSchema { name, .. }) => {
                         Ok(Some(PlanTx::CreateSchema(CreateSchemaPlan {
                             schema: name.value().to_string(),
                             if_not_exists: false,
@@ -213,7 +218,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                         // }))
                         unimplemented!()
                     }
-                    AstCreate::Table { schema, name, columns, .. } => {
+                    AstCreate::Table(AstCreateTable { schema, name, columns, .. }) => {
                         let mut result_columns: Vec<ColumnToCreate> = vec![];
 
                         for col in columns.iter() {

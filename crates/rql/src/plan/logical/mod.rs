@@ -1,12 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+mod create;
 pub(crate) mod explain;
 mod expression;
 mod query;
+mod write;
 
 use crate::ast::{Ast, AstStatement};
 use crate::expression::Expression;
+use reifydb_catalog::column::Column;
+use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::{OrderKey, Span};
 
 struct Compiler {}
@@ -20,6 +24,7 @@ impl Compiler {
         let mut result = Vec::with_capacity(ast.len());
         for node in ast {
             match node {
+                // Ast::Create(node) => result.push(Self::compile_create(node)?),
                 Ast::Aggregate(node) => result.push(Self::compile_aggregate(node)?),
                 Ast::Filter(node) => result.push(Self::compile_filter(node)?),
                 Ast::From(node) => result.push(Self::compile_from(node)?),
@@ -32,6 +37,42 @@ impl Compiler {
         }
         Ok(result)
     }
+}
+
+#[derive(Debug)]
+pub enum LogicalPlan {
+    CreateSchema(CreateSchemaNode),
+    CreateSequence(CreateSequenceNode),
+    CreateTable(CreateTableNode),
+    InsertIntoTable(InsertIntoTableNode),
+    Query(LogicalQueryPlan),
+}
+
+#[derive(Debug)]
+pub struct CreateSchemaNode {
+    pub schema: Span,
+    pub if_not_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateSequenceNode {
+    pub schema: Span,
+    pub if_not_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateTableNode {
+    pub schema: Span,
+    pub table: Span,
+    pub if_not_exists: bool,
+    pub columns: Vec<ColumnToCreate>,
+}
+
+pub type RowToInsert = Vec<Expression>;
+
+#[derive(Debug)]
+pub enum InsertIntoTableNode {
+    Values { schema: Span, table: Span, columns: Vec<Column>, rows_to_insert: Vec<RowToInsert> },
 }
 
 #[derive(Debug)]

@@ -50,7 +50,7 @@ impl Parser {
 mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
-    use crate::ast::{AstCreate, AstPolicyKind};
+    use crate::ast::{AstCreate, AstCreateTable, AstPolicyKind};
 
     #[test]
     fn test_saturation_error() {
@@ -105,7 +105,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Table { name, schema, columns, .. } => {
+            AstCreate::Table(AstCreateTable { name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "items");
                 assert_eq!(columns.len(), 1);
