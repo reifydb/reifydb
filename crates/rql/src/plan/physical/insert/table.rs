@@ -17,9 +17,7 @@ impl Compiler {
         rx: &mut impl Rx,
         insert: InsertIntoTableNode,
     ) -> crate::Result<PhysicalPlan> {
-        let InsertIntoTableNode::Values { schema, table, columns, rows_to_insert } = insert else {
-            unimplemented!()
-        };
+        let InsertIntoTableNode::Values { schema, table, columns, rows_to_insert } = insert;
 
         let schema = schema.to_string();
         let store = table;

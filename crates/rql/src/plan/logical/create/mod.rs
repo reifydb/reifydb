@@ -8,7 +8,6 @@ mod table;
 
 use crate::ast::{AstCreate, AstPolicy, AstPolicyKind};
 use crate::plan::logical::{Compiler, LogicalPlan};
-use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 
 impl Compiler {

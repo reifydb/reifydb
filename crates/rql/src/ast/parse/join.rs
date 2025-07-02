@@ -49,7 +49,7 @@ mod tests {
         let result = result.pop().unwrap();
         let join = result.first_unchecked().as_join();
 
-        let AstJoin::LeftJoin { with: with, on, .. } = &join else { panic!() };
+        let AstJoin::LeftJoin { with, on, .. } = &join;
         let with = with.as_infix();
         assert_eq!(with.left.as_identifier().value(), "schema");
         assert!(matches!(with.operator, InfixOperator::AccessTable(_)));

@@ -5,7 +5,7 @@ use crate::ast::AstCreateSeries;
 use crate::plan::logical::{Compiler, LogicalPlan};
 
 impl Compiler {
-    pub(crate) fn compile_create_series(ast: AstCreateSeries) -> crate::Result<LogicalPlan> {
+    pub(crate) fn compile_create_series(_ast: AstCreateSeries) -> crate::Result<LogicalPlan> {
         unimplemented!()
     }
 }

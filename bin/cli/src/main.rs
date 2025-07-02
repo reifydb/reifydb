@@ -11,6 +11,7 @@ use reifydb_cli::cli;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if let Err(err) = cli(args) {
+        println!("{err:?}");
         std::process::exit(1)
     }
 }
