@@ -151,7 +151,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                 return match create {
                     AstCreate::DeferredView(AstCreateDeferredView {
                         schema,
-                        name,
+                                                view: name,
                         columns,
                         ..
                     }) => {
@@ -218,7 +218,7 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                         // }))
                         unimplemented!()
                     }
-                    AstCreate::Table(AstCreateTable { schema, name, columns, .. }) => {
+                    AstCreate::Table(AstCreateTable { schema, table: name, columns, .. }) => {
                         let mut result_columns: Vec<ColumnToCreate> = vec![];
 
                         for col in columns.iter() {

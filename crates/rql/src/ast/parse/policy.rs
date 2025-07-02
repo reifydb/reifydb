@@ -105,7 +105,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Table(AstCreateTable { name, schema, columns, .. }) => {
+            AstCreate::Table(AstCreateTable { table: name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "items");
                 assert_eq!(columns.len(), 1);

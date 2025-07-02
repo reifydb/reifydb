@@ -344,7 +344,7 @@ pub enum AstCreate {
 pub struct AstCreateDeferredView {
     pub token: Token,
     pub schema: AstIdentifier,
-    pub name: AstIdentifier,
+    pub view: AstIdentifier,
     pub columns: Vec<AstColumnToCreate>,
     // FIXME query
 }
@@ -367,7 +367,7 @@ pub struct AstCreateSeries {
 pub struct AstCreateTable {
     pub token: Token,
     pub schema: AstIdentifier,
-    pub name: AstIdentifier,
+    pub table: AstIdentifier,
     pub columns: Vec<AstColumnToCreate>,
 }
 

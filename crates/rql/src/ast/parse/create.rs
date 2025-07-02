@@ -58,7 +58,7 @@ impl Parser {
         let name = self.parse_identifier()?;
         let columns = self.parse_columns()?;
 
-        Ok(AstCreate::DeferredView(AstCreateDeferredView { token, name, schema, columns }))
+        Ok(AstCreate::DeferredView(AstCreateDeferredView { token, view: name, schema, columns }))
     }
 
     fn parse_table(&mut self, token: Token) -> parse::Result<AstCreate> {
@@ -67,7 +67,7 @@ impl Parser {
         let name = self.parse_identifier()?;
         let columns = self.parse_columns()?;
 
-        Ok(AstCreate::Table(AstCreateTable { token, name, schema, columns }))
+        Ok(AstCreate::Table(AstCreateTable { token, table: name, schema, columns }))
     }
 
     fn parse_columns(&mut self) -> parse::Result<Vec<AstColumnToCreate>> {
@@ -172,7 +172,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Table(AstCreateTable { name, schema, columns, .. }) => {
+            AstCreate::Table(AstCreateTable { table: name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "users");
                 assert_eq!(columns.len(), 3);
@@ -215,7 +215,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Table(AstCreateTable { name, schema, columns, .. }) => {
+            AstCreate::Table(AstCreateTable { table: name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "items");
 
@@ -248,7 +248,7 @@ mod tests {
         let result = result.pop().unwrap();
         let create = result.first_unchecked().as_create();
         match create {
-            AstCreate::DeferredView(AstCreateDeferredView { name, schema, columns, .. }) => {
+            AstCreate::DeferredView(AstCreateDeferredView { view: name, schema, columns, .. }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "views");
 

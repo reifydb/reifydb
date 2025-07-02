@@ -41,11 +41,20 @@ impl Compiler {
 
 #[derive(Debug)]
 pub enum LogicalPlan {
+    CreateDeferredView(CreateDeferredViewNode),
     CreateSchema(CreateSchemaNode),
     CreateSequence(CreateSequenceNode),
     CreateTable(CreateTableNode),
     InsertIntoTable(InsertIntoTableNode),
     Query(LogicalQueryPlan),
+}
+
+#[derive(Debug)]
+pub struct CreateDeferredViewNode {
+    pub schema: Span,
+    pub view: Span,
+    pub if_not_exists: bool,
+    pub columns: Vec<ColumnToCreate>,
 }
 
 #[derive(Debug)]
