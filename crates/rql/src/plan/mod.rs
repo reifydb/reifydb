@@ -26,7 +26,7 @@ use std::mem;
 use std::ops::Deref;
 
 pub(crate) mod logical;
-mod physical;
+pub(crate) mod physical;
 mod planner;
 
 pub type RowToInsert = Vec<Expression>;
@@ -34,7 +34,7 @@ pub type RowToInsert = Vec<Expression>;
 #[derive(Debug)]
 pub enum PlanRx {
     /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
-    Query(PhysicalQueryPlan),
+    Query(QueryPlan),
 }
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ pub enum PlanTx {
     /// A INSERT INTO SERIES plan. Inserts values into the table
     InsertIntoSeries(InsertIntoSeriesPlan),
     /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
-    Query(PhysicalQueryPlan),
+    Query(QueryPlan),
 }
 
 #[derive(Debug)]
@@ -122,41 +122,41 @@ pub enum InsertIntoSeriesPlan {
 }
 
 #[derive(Debug)]
-pub enum PhysicalQueryPlan {
+pub enum QueryPlan {
     Aggregate {
         by: Vec<Expression>,
         project: Vec<Expression>,
-        next: Option<Box<PhysicalQueryPlan>>,
+        next: Option<Box<QueryPlan>>,
     },
     Describe {
-        plan: Box<PhysicalQueryPlan>,
+        plan: Box<QueryPlan>,
     },
     ScanTable {
         schema: String,
         table: String,
-        next: Option<Box<PhysicalQueryPlan>>,
+        next: Option<Box<QueryPlan>>,
     },
     Filter {
         expression: Expression,
-        next: Option<Box<PhysicalQueryPlan>>,
+        next: Option<Box<QueryPlan>>,
     },
     Project {
         expressions: Vec<Expression>,
-        next: Option<Box<PhysicalQueryPlan>>,
+        next: Option<Box<QueryPlan>>,
     },
     Order {
         order_by: Vec<OrderKey>,
-        next: Option<Box<PhysicalQueryPlan>>,
+        next: Option<Box<QueryPlan>>,
     },
     Limit {
         limit: usize,
-        next: Option<Box<PhysicalQueryPlan>>,
+        next: Option<Box<QueryPlan>>,
     },
-    LeftJoin {
-        left: Box<PhysicalQueryPlan>,
-        right: Box<PhysicalQueryPlan>,
+    JoinLeft {
+        left: Box<QueryPlan>,
+        right: Box<QueryPlan>,
         on: Vec<Expression>,
-        next: Option<Box<PhysicalQueryPlan>>,
+        next: Option<Box<QueryPlan>>,
     },
 }
 
@@ -489,7 +489,7 @@ pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 }
 
 pub fn plan_rx(ast: AstStatement) -> Result<Option<PlanRx>> {
-    let mut head: Option<Box<PhysicalQueryPlan>> = None;
+    let mut head: Option<Box<QueryPlan>> = None;
 
     for ast in ast.into_iter().rev() {
         let plan = plan_ast_node(ast, head)?;
@@ -504,11 +504,11 @@ pub fn plan_rx(ast: AstStatement) -> Result<Option<PlanRx>> {
     // Ok(None)
 }
 
-fn plan_ast_node(ast: Ast, next: Option<Box<PhysicalQueryPlan>>) -> Result<PhysicalQueryPlan> {
+fn plan_ast_node(ast: Ast, next: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
     match ast {
         Ast::Describe(describe) => match describe {
             AstDescribe::Query { node, .. } => {
-                Ok(PhysicalQueryPlan::Describe { plan: Box::new(plan_ast_node(*node, next)?) })
+                Ok(QueryPlan::Describe { plan: Box::new(plan_ast_node(*node, next)?) })
             }
         },
 
@@ -517,17 +517,14 @@ fn plan_ast_node(ast: Ast, next: Option<Box<PhysicalQueryPlan>>) -> Result<Physi
         Ast::Filter(filter) => plan_filter(filter, next),
         Ast::Select(select) => plan_select(select, next),
         Ast::Order(order) => plan_order_by(order, next),
-        Ast::Limit(limit) => Ok(PhysicalQueryPlan::Limit { limit: limit.limit, next }),
+        Ast::Limit(limit) => Ok(QueryPlan::Limit { limit: limit.limit, next }),
         Ast::Join(join) => plan_join(join, next),
 
         _ => unimplemented!("Unsupported AST node"),
     }
 }
 
-fn plan_order_by(
-    order: AstOrder,
-    head: Option<Box<PhysicalQueryPlan>>,
-) -> Result<PhysicalQueryPlan> {
+fn plan_order_by(order: AstOrder, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
     let order_by: Vec<_> = order
         .columns
         .into_iter()
@@ -545,13 +542,10 @@ fn plan_order_by(
         })
         .collect();
 
-    Ok(PhysicalQueryPlan::Order { order_by, next: head })
+    Ok(QueryPlan::Order { order_by, next: head })
 }
 
-fn plan_aggregate(
-    aggregate: AstAggregate,
-    head: Option<Box<PhysicalQueryPlan>>,
-) -> Result<PhysicalQueryPlan> {
+fn plan_aggregate(aggregate: AstAggregate, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
     let by = aggregate
         .by
         .into_iter()
@@ -575,12 +569,12 @@ fn plan_aggregate(
         })
         .collect();
 
-    Ok(PhysicalQueryPlan::Aggregate { by, project, next: head })
+    Ok(QueryPlan::Aggregate { by, project, next: head })
 }
 
-fn plan_from(from: AstFrom, head: Option<Box<PhysicalQueryPlan>>) -> Result<PhysicalQueryPlan> {
+fn plan_from(from: AstFrom, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
     match from {
-        AstFrom::Table { schema, table, .. } => Ok(PhysicalQueryPlan::ScanTable {
+        AstFrom::Table { schema, table, .. } => Ok(QueryPlan::ScanTable {
             schema: schema.unwrap().value().to_string(),
             next: head,
             table: table.value().to_string(),
@@ -589,11 +583,8 @@ fn plan_from(from: AstFrom, head: Option<Box<PhysicalQueryPlan>>) -> Result<Phys
     }
 }
 
-fn plan_filter(
-    filter: AstFilter,
-    head: Option<Box<PhysicalQueryPlan>>,
-) -> Result<PhysicalQueryPlan> {
-    Ok(PhysicalQueryPlan::Filter {
+fn plan_filter(filter: AstFilter, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    Ok(QueryPlan::Filter {
         expression: match *filter.node {
             Ast::Infix(node) => expression_infix(node)?,
             node => unimplemented!("{node:?}"),
@@ -602,7 +593,7 @@ fn plan_filter(
     })
 }
 
-fn plan_join(join: AstJoin, head: Option<Box<PhysicalQueryPlan>>) -> Result<PhysicalQueryPlan> {
+fn plan_join(join: AstJoin, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
     match join {
         AstJoin::LeftJoin { with, on, .. } => {
             // let left = head.ok_or_else(|| panic!("left side of join is missing"))?;
@@ -613,13 +604,13 @@ fn plan_join(join: AstJoin, head: Option<Box<PhysicalQueryPlan>>) -> Result<Phys
 
             dbg!(&with);
 
-            Ok(PhysicalQueryPlan::LeftJoin {
-                left: Box::new(PhysicalQueryPlan::ScanTable {
+            Ok(QueryPlan::JoinLeft {
+                left: Box::new(QueryPlan::ScanTable {
                     schema: "test".to_string(),
                     table: "one".to_string(),
                     next: None,
                 }),
-                right: Box::new(PhysicalQueryPlan::ScanTable {
+                right: Box::new(QueryPlan::ScanTable {
                     schema: "test".to_string(),
                     table: "two".to_string(),
                     next: None,
@@ -631,11 +622,8 @@ fn plan_join(join: AstJoin, head: Option<Box<PhysicalQueryPlan>>) -> Result<Phys
     }
 }
 
-fn plan_select(
-    select: AstSelect,
-    head: Option<Box<PhysicalQueryPlan>>,
-) -> Result<PhysicalQueryPlan> {
-    Ok(PhysicalQueryPlan::Project {
+fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
+    Ok(QueryPlan::Project {
         expressions: select
             .select
             .into_iter()

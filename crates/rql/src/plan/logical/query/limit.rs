@@ -5,7 +5,7 @@ use crate::ast::AstLimit;
 use crate::plan::logical::{Compiler, LimitNode, LogicalQueryPlan};
 
 impl Compiler {
-    pub(crate) fn compile_limit(&self, ast: AstLimit) -> crate::Result<LogicalQueryPlan> {
+    pub(crate) fn compile_limit(ast: AstLimit) -> crate::Result<LogicalQueryPlan> {
         Ok(LogicalQueryPlan::Limit(LimitNode { limit: ast.limit }))
     }
 }

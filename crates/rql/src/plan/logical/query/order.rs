@@ -6,7 +6,7 @@ use crate::plan::logical::{Compiler, LogicalQueryPlan, OrderNode};
 use reifydb_core::{OrderDirection, OrderKey};
 
 impl Compiler {
-    pub(crate) fn compile_order(&self, ast: AstOrder) -> crate::Result<LogicalQueryPlan> {
+    pub(crate) fn compile_order(ast: AstOrder) -> crate::Result<LogicalQueryPlan> {
         Ok(LogicalQueryPlan::Order(OrderNode {
             by: ast
                 .columns

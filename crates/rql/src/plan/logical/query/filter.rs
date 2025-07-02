@@ -6,7 +6,7 @@ use crate::plan::expression;
 use crate::plan::logical::{Compiler, FilterNode, LogicalQueryPlan};
 
 impl Compiler {
-    pub(crate) fn compile_filter(&self, ast: AstFilter) -> crate::Result<LogicalQueryPlan> {
+    pub(crate) fn compile_filter(ast: AstFilter) -> crate::Result<LogicalQueryPlan> {
         Ok(LogicalQueryPlan::Filter(FilterNode { condition: expression(*ast.node)? }))
     }
 }

@@ -9,11 +9,11 @@ use crate::plan::logical::{
 use reifydb_core::Error;
 
 pub(crate) fn explain_logical_plan(query: &str) -> Result<String, Error> {
-    let statements = parse(query).unwrap();
+    let statements = parse(query).unwrap(); // FIXME
 
     let mut plans = Vec::new();
     for statement in statements {
-        plans.extend(compile_logical(statement).unwrap())
+        plans.extend(compile_logical(statement).unwrap()) // FIXME
     }
 
     let mut result = String::new();
@@ -90,15 +90,12 @@ fn render_logical_plan_inner(
             }
         }
         LogicalQueryPlan::JoinLeft(JoinLeftNode { with, on }) => {
-            output.push_str(&format!("{}{} Join(Left): {}\n", prefix, branch, with));
-            for (i, cond) in on.iter().enumerate() {
-                let last = i == on.len() - 1;
-                output.push_str(&format!(
-                    "{}{} on: {}\n",
-                    child_prefix,
-                    if last { "└──" } else { "├──" },
-                    cond.to_string()
-                ));
+            let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
+            output.push_str(&format!("{}{}Join(Left) [{}]\n", prefix, branch, on));
+
+            for (i, plan) in with.iter().enumerate() {
+                let last = i == with.len() - 1;
+                render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
             }
         }
         LogicalQueryPlan::TableScan(TableScanNode { schema, table }) => {

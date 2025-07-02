@@ -15,7 +15,7 @@ use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, Value};
-use reifydb_rql::plan::{PlanRx, PlanTx, PhysicalQueryPlan};
+use reifydb_rql::plan::{PlanRx, PlanTx, QueryPlan};
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -224,12 +224,12 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn execute_query_plan(
-        self,
-        rx: &mut impl Rx,
-        plan: PhysicalQueryPlan,
+		self,
+		rx: &mut impl Rx,
+		plan: QueryPlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {
-            PhysicalQueryPlan::Describe { plan } => {
+            QueryPlan::Describe { plan } => {
                 // FIXME evaluating the entire frame is quite wasteful but good enough to write some tests
                 let result = self.execute_query_plan(rx, *plan)?;
                 let ExecutionResult::Query { columns, .. } = result else { panic!() };

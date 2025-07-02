@@ -17,7 +17,7 @@ impl Client {
 
         wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await?;
         let uri = format!("http://{}", self.socket_addr);
-        let mut client = grpc_db::db_client::DbClient::connect(uri).await.unwrap();
+        let mut client = grpc_db::db_client::DbClient::connect(uri).await?;
 
         let mut request = tonic::Request::new(grpc_db::RxRequest { query: query.into() });
 
@@ -27,8 +27,8 @@ impl Client {
 
         let mut results = Vec::new();
 
-        let mut stream = client.rx(request).await.unwrap().into_inner();
-        while let Some(msg) = stream.message().await.unwrap() {
+        let mut stream = client.rx(request).await?.into_inner();
+        while let Some(msg) = stream.message().await? {
             if let Some(result) = msg.result {
                 results.push(convert_result(result, query)?);
             }

@@ -5,7 +5,7 @@ use crate::ast::AstFrom;
 use crate::plan::logical::{Compiler, LogicalQueryPlan, TableScanNode};
 
 impl Compiler {
-    pub(crate) fn compile_from(&self, ast: AstFrom) -> crate::Result<LogicalQueryPlan> {
+    pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalQueryPlan> {
         match ast {
             AstFrom::Table { schema, table, .. } => {
                 Ok(LogicalQueryPlan::TableScan(TableScanNode {

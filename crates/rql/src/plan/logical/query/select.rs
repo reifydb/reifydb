@@ -6,7 +6,7 @@ use crate::plan::expression;
 use crate::plan::logical::{Compiler, LogicalQueryPlan, SelectNode};
 
 impl Compiler {
-    pub(crate) fn compile_select(&self, ast: AstSelect) -> crate::Result<LogicalQueryPlan> {
+    pub(crate) fn compile_select(ast: AstSelect) -> crate::Result<LogicalQueryPlan> {
         Ok(LogicalQueryPlan::Select(SelectNode {
             select: ast
                 .select

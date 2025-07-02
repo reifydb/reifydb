@@ -13,18 +13,18 @@ use reifydb_catalog::key::TableRowKey;
 use reifydb_core::Kind;
 use reifydb_core::interface::Rx;
 use reifydb_core::row::Layout;
-use reifydb_rql::plan::PhysicalQueryPlan;
+use reifydb_rql::plan::QueryPlan;
 
 pub(crate) fn compile(
-    mut plan: PhysicalQueryPlan,
-    rx: &mut impl Rx,
-    functions: Functions,
+	mut plan: QueryPlan,
+	rx: &mut impl Rx,
+	functions: Functions,
 ) -> Box<dyn ExecutionPlan> {
     let mut result: Option<Box<dyn ExecutionPlan>> = None;
 
     loop {
         plan = match plan {
-            PhysicalQueryPlan::Aggregate { by: group_by, project, next } => {
+            QueryPlan::Aggregate { by: group_by, project, next } => {
                 let input = result.expect("aggregate requires input");
                 result =
                     Some(Box::new(AggregateNode::new(input, group_by, project, functions.clone())));
@@ -34,7 +34,7 @@ pub(crate) fn compile(
                     break;
                 }
             }
-            PhysicalQueryPlan::LeftJoin { left, right, on, next } => {
+            QueryPlan::JoinLeft { left, right, on, next } => {
                 let left_node = compile(*left, rx, functions.clone());
                 let right_node = compile(*right, rx, functions.clone());
                 result = Some(Box::new(LeftJoinNode::new(left_node, right_node, on)));
@@ -44,7 +44,7 @@ pub(crate) fn compile(
                     break;
                 }
             }
-            PhysicalQueryPlan::Limit { limit, next } => {
+            QueryPlan::Limit { limit, next } => {
                 let input = result.expect("limit requires input");
                 result = Some(Box::new(LimitNode::new(input, limit)));
                 if let Some(next) = next {
@@ -54,7 +54,7 @@ pub(crate) fn compile(
                 }
             }
 
-            PhysicalQueryPlan::Filter { expression, next } => {
+            QueryPlan::Filter { expression, next } => {
                 // FIXME if multiple filter expressions follow each other - dump then into one node
 
                 let input = result.expect("filter requires input");
@@ -67,7 +67,7 @@ pub(crate) fn compile(
                 }
             }
 
-            PhysicalQueryPlan::Order { order_by, next } => {
+            QueryPlan::Order { order_by, next } => {
                 let input = result.expect("order requires input");
                 result = Some(Box::new(OrderNode::new(input, order_by)));
                 if let Some(next) = next {
@@ -77,7 +77,7 @@ pub(crate) fn compile(
                 }
             }
 
-            PhysicalQueryPlan::Project { expressions, next } => {
+            QueryPlan::Project { expressions, next } => {
                 if let Some(input) = result {
                     result = Some(Box::new(ProjectNode::new(input, expressions)));
                 } else {
@@ -91,7 +91,7 @@ pub(crate) fn compile(
                 }
             }
 
-            PhysicalQueryPlan::ScanTable { schema, table, next, .. } => {
+            QueryPlan::ScanTable { schema, table, next, .. } => {
                 let schema = Catalog::get_schema_by_name(rx, &schema).unwrap().unwrap();
                 let table = Catalog::get_table_by_name(rx, schema.id, &table).unwrap().unwrap();
 
@@ -147,7 +147,7 @@ pub(crate) fn compile(
                 }
             }
 
-            PhysicalQueryPlan::Describe { .. } => {
+            QueryPlan::Describe { .. } => {
                 unimplemented!("Unsupported plan node in bottom-up compilation");
             }
         };
