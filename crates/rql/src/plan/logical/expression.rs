@@ -80,7 +80,7 @@ impl Compiler {
 
     pub(crate) fn compile_expression_infix(ast: AstInfix) -> crate::Result<Expression> {
         match ast.operator {
-            InfixOperator::AccessTable(token) => {
+            InfixOperator::AccessTable(_) => {
                 let Ast::Identifier(left) = *ast.left else { unimplemented!() };
                 let Ast::Identifier(right) = *ast.right else { unimplemented!() };
 
