@@ -21,26 +21,26 @@ fn main() {
     let err = db.execute_as(&root, r#"insert (2),(3) into test.two (field)"#).unwrap();
     // println!("{}", err);
     
-    // for l in db.execute_as(
-    //     &root,
-    //     r#"
-    //     from test.one left join test.two on one.field == two.field
-    //     "#,
-    // )
-    // .unwrap()
-    // {
-    //     println!("{}", l);
-    // }
-
-    for l in db.query_as(
+    for l in db.execute_as(
         &root,
         r#"
         from test.one left join test.two on one.field == two.field
         "#,
     )
+    .unwrap()
     {
         println!("{}", l);
     }
+
+    // for l in db.query_as(
+    //     &root,
+    //     r#"
+    //     from test.one left join test.two on one.field == two.field
+    //     "#,
+    // )
+    // {
+    //     println!("{}", l);
+    // }
 
 
     // for l in db.query_as(

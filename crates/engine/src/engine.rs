@@ -8,7 +8,7 @@ use reifydb_auth::Principal;
 use reifydb_core::hook::{Hooks, OnAfterBootHookContext};
 use reifydb_core::interface::{Transaction, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::ast;
-use reifydb_rql::plan::{plan, plan_query};
+use reifydb_rql::plan::plan;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -121,7 +121,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
 
         let mut rx = self.begin_read_only()?;
         for statement in statements {
-            if let Some(plan) = plan_query(&mut rx, statement)? {
+            if let Some(plan) = plan(&mut rx, statement)? {
                 let er = execute_query::<VS, US>(&mut rx, plan)?;
                 result.push(er);
             }

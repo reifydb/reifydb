@@ -14,35 +14,35 @@ use reifydb_core::Kind;
 use reifydb_core::interface::Rx;
 use reifydb_core::row::Layout;
 use reifydb_rql::plan::physical;
-use reifydb_rql::plan::physical::PhysicalQueryPlan;
+use reifydb_rql::plan::physical::PhysicalPlan;
 
 pub(crate) fn compile(
-    plan: PhysicalQueryPlan,
+    plan: PhysicalPlan,
     rx: &mut impl Rx,
     functions: Functions,
 ) -> Box<dyn ExecutionPlan> {
     match plan {
-        PhysicalQueryPlan::Aggregate(physical::AggregateNode { by, select, input }) => {
+        PhysicalPlan::Aggregate(physical::AggregateNode { by, select, input }) => {
             let input_node = compile(*input, rx, functions.clone());
             Box::new(AggregateNode::new(input_node, by, select, functions))
         }
 
-        PhysicalQueryPlan::Filter(physical::FilterNode { conditions, input }) => {
+        PhysicalPlan::Filter(physical::FilterNode { conditions, input }) => {
             let input_node = compile(*input, rx, functions);
             Box::new(FilterNode::new(input_node, conditions))
         }
 
-        PhysicalQueryPlan::Limit(physical::LimitNode { limit, input }) => {
+        PhysicalPlan::Limit(physical::LimitNode { limit, input }) => {
             let input_node = compile(*input, rx, functions);
             Box::new(LimitNode::new(input_node, limit))
         }
 
-        PhysicalQueryPlan::Order(physical::OrderNode { by, input }) => {
+        PhysicalPlan::Order(physical::OrderNode { by, input }) => {
             let input_node = compile(*input, rx, functions);
             Box::new(OrderNode::new(input_node, by))
         }
 
-        PhysicalQueryPlan::Select(physical::SelectNode { select, input }) => {
+        PhysicalPlan::Select(physical::SelectNode { select, input }) => {
             if let Some(input) = input {
                 let input_node = compile(*input, rx, functions);
                 Box::new(ProjectNode::new(input_node, select))
@@ -51,13 +51,13 @@ pub(crate) fn compile(
             }
         }
 
-        PhysicalQueryPlan::JoinLeft(physical::JoinLeftNode { left, right, on }) => {
+        PhysicalPlan::JoinLeft(physical::JoinLeftNode { left, right, on }) => {
             let left_node = compile(*left, rx, functions.clone());
             let right_node = compile(*right, rx, functions);
             Box::new(LeftJoinNode::new(left_node, right_node, on))
         }
 
-        PhysicalQueryPlan::TableScan(physical::TableScanNode { schema, table }) => {
+        PhysicalPlan::TableScan(physical::TableScanNode { schema, table }) => {
             // If schema is NONE resolve table directly by name
             let schema =
                 Catalog::get_schema_by_name(rx, &schema.as_ref().unwrap().fragment.as_str())
@@ -111,5 +111,9 @@ pub(crate) fn compile(
 
             Box::new(ScanFrameNode::new(frame))
         }
+        PhysicalPlan::CreateDeferredView(_)
+        | PhysicalPlan::CreateSchema(_)
+        | PhysicalPlan::CreateTable(_)
+        | PhysicalPlan::InsertIntoTable(_) => unreachable!(),
     }
 }

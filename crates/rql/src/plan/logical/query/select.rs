@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::AstSelect;
-use crate::plan::logical::{Compiler, LogicalQueryPlan, SelectNode};
+use crate::plan::logical::{Compiler, LogicalPlan, SelectNode};
 
 impl Compiler {
-    pub(crate) fn compile_select(ast: AstSelect) -> crate::Result<LogicalQueryPlan> {
-        Ok(LogicalQueryPlan::Select(SelectNode {
+    pub(crate) fn compile_select(ast: AstSelect) -> crate::Result<LogicalPlan> {
+        Ok(LogicalPlan::Select(SelectNode {
             select: ast
                 .select
                 .into_iter()

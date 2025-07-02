@@ -3,8 +3,8 @@
 
 use crate::ast::parse;
 use crate::plan::logical::{
-    AggregateNode, FilterNode, JoinLeftNode, LimitNode, LogicalQueryPlan, OrderNode, SelectNode,
-    TableScanNode, compile_logical_query,
+    AggregateNode, FilterNode, JoinLeftNode, LimitNode, LogicalPlan, OrderNode, SelectNode,
+    TableScanNode, compile_logical,
 };
 use reifydb_core::Error;
 
@@ -13,7 +13,7 @@ pub(crate) fn explain_logical_plan(query: &str) -> Result<String, Error> {
 
     let mut plans = Vec::new();
     for statement in statements {
-        plans.extend(compile_logical_query(statement).unwrap()) // FIXME
+        plans.extend(compile_logical(statement).unwrap()) // FIXME
     }
 
     let mut result = String::new();
@@ -26,20 +26,21 @@ pub(crate) fn explain_logical_plan(query: &str) -> Result<String, Error> {
     Ok(result)
 }
 
-fn render_logical_plan_inner(
-    plan: &LogicalQueryPlan,
-    prefix: &str,
-    is_last: bool,
-    output: &mut String,
-) {
+fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, output: &mut String) {
     let branch = if is_last { "└──" } else { "├──" };
     let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
 
     match plan {
-        LogicalQueryPlan::Limit(LimitNode { limit }) => {
+        LogicalPlan::CreateDeferredView(_) => unimplemented!(),
+        LogicalPlan::CreateSchema(_) => unimplemented!(),
+        LogicalPlan::CreateSequence(_) => unimplemented!(),
+        LogicalPlan::CreateTable(_) => unimplemented!(),
+        LogicalPlan::InsertIntoTable(_) => unimplemented!(),
+
+        LogicalPlan::Limit(LimitNode { limit }) => {
             output.push_str(&format!("{}{} Limit {}\n", prefix, branch, limit));
         }
-        LogicalQueryPlan::Filter(FilterNode { condition }) => {
+        LogicalPlan::Filter(FilterNode { condition }) => {
             output.push_str(&format!("{}{} Filter\n", prefix, branch));
             output.push_str(&format!(
                 "{}{} condition: {}\n",
@@ -48,7 +49,7 @@ fn render_logical_plan_inner(
                 condition.to_string()
             ));
         }
-        LogicalQueryPlan::Select(SelectNode { select }) => {
+        LogicalPlan::Select(SelectNode { select }) => {
             output.push_str(&format!("{}{} Select\n", prefix, branch));
             for (i, expr) in select.iter().enumerate() {
                 let last = i == select.len() - 1;
@@ -60,7 +61,7 @@ fn render_logical_plan_inner(
                 ));
             }
         }
-        LogicalQueryPlan::Aggregate(AggregateNode { by, select }) => {
+        LogicalPlan::Aggregate(AggregateNode { by, select }) => {
             output.push_str(&format!("{}{} Aggregate\n", prefix, branch));
             if !by.is_empty() {
                 output.push_str(&format!(
@@ -77,7 +78,7 @@ fn render_logical_plan_inner(
                 ));
             }
         }
-        LogicalQueryPlan::Order(OrderNode { by }) => {
+        LogicalPlan::Order(OrderNode { by }) => {
             output.push_str(&format!("{}{} Order\n", prefix, branch));
             for (i, key) in by.iter().enumerate() {
                 let last = i == by.len() - 1;
@@ -89,7 +90,7 @@ fn render_logical_plan_inner(
                 ));
             }
         }
-        LogicalQueryPlan::JoinLeft(JoinLeftNode { with, on }) => {
+        LogicalPlan::JoinLeft(JoinLeftNode { with, on }) => {
             let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
             output.push_str(&format!("{}{}Join(Left) [{}]\n", prefix, branch, on));
 
@@ -98,7 +99,7 @@ fn render_logical_plan_inner(
                 render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
             }
         }
-        LogicalQueryPlan::TableScan(TableScanNode { schema, table }) => {
+        LogicalPlan::TableScan(TableScanNode { schema, table }) => {
             let name = match schema {
                 Some(s) => format!("{}.{}", s.fragment, table.fragment),
                 None => table.fragment.to_string(),

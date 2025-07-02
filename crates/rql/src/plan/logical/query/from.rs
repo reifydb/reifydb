@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::AstFrom;
-use crate::plan::logical::{Compiler, LogicalQueryPlan, TableScanNode};
+use crate::plan::logical::{Compiler, LogicalPlan, TableScanNode};
 
 impl Compiler {
-    pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalQueryPlan> {
+    pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalPlan> {
         match ast {
             AstFrom::Table { schema, table, .. } => {
-                Ok(LogicalQueryPlan::TableScan(TableScanNode {
+                Ok(LogicalPlan::TableScan(TableScanNode {
                     schema: schema.map(|schema| schema.span()),
                     table: table.span(),
                 }))

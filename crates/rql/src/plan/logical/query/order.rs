@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::AstOrder;
-use crate::plan::logical::{Compiler, LogicalQueryPlan, OrderNode};
+use crate::plan::logical::{Compiler, LogicalPlan, OrderNode};
 use reifydb_core::{OrderDirection, OrderKey};
 
 impl Compiler {
-    pub(crate) fn compile_order(ast: AstOrder) -> crate::Result<LogicalQueryPlan> {
-        Ok(LogicalQueryPlan::Order(OrderNode {
+    pub(crate) fn compile_order(ast: AstOrder) -> crate::Result<LogicalPlan> {
+        Ok(LogicalPlan::Order(OrderNode {
             by: ast
                 .columns
                 .into_iter()

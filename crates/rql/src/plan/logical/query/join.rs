@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::{Ast, AstInfix, AstJoin, InfixOperator};
-use crate::plan::logical::LogicalQueryPlan::TableScan;
-use crate::plan::logical::{Compiler, JoinLeftNode, LogicalQueryPlan, TableScanNode};
+use crate::plan::logical::LogicalPlan::TableScan;
+use crate::plan::logical::{Compiler, JoinLeftNode, LogicalPlan, TableScanNode};
 
 impl Compiler {
-    pub(crate) fn compile_join(ast: AstJoin) -> crate::Result<LogicalQueryPlan> {
+    pub(crate) fn compile_join(ast: AstJoin) -> crate::Result<LogicalPlan> {
         match ast {
             AstJoin::LeftJoin { with, on, .. } => {
                 let with = match *with {
@@ -24,7 +24,7 @@ impl Compiler {
                     }
                     _ => unimplemented!(),
                 };
-                Ok(LogicalQueryPlan::JoinLeft(JoinLeftNode {
+                Ok(LogicalPlan::JoinLeft(JoinLeftNode {
                     with,
                     on: on
                         .into_iter()

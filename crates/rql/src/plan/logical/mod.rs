@@ -18,24 +18,10 @@ pub fn compile_logical(ast: AstStatement) -> crate::Result<Vec<LogicalPlan>> {
     Compiler::compile(ast)
 }
 
-pub fn compile_logical_query(ast: AstStatement) -> crate::Result<Vec<LogicalQueryPlan>> {
-    Compiler::compile_query(ast)
-}
-
 impl Compiler {
     fn compile(ast: AstStatement) -> crate::Result<Vec<LogicalPlan>> {
         if ast.is_empty() {
             return Ok(vec![]);
-        }
-
-        match &ast[0] {
-            Ast::From(_) | Ast::Select(_) => {
-                return Ok(Self::compile_query(ast)?
-                    .into_iter()
-                    .map(LogicalPlan::Query)
-                    .collect::<Vec<_>>());
-            }
-            _ => {}
         }
 
         let mut result = Vec::with_capacity(ast.len());
@@ -43,20 +29,7 @@ impl Compiler {
             match node {
                 Ast::Create(node) => result.push(Self::compile_create(node)?),
                 Ast::InsertIntoTable(node) => result.push(Self::compile_insert_into_table(node)?),
-                _ => unreachable!(),
-            }
-        }
-        Ok(result)
-    }
 
-    fn compile_query(ast: AstStatement) -> crate::Result<Vec<LogicalQueryPlan>> {
-        if ast.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let mut result = Vec::with_capacity(ast.len());
-        for node in ast {
-            match node {
                 Ast::Aggregate(node) => result.push(Self::compile_aggregate(node)?),
                 Ast::Filter(node) => result.push(Self::compile_filter(node)?),
                 Ast::From(node) => result.push(Self::compile_from(node)?),
@@ -78,7 +51,14 @@ pub enum LogicalPlan {
     CreateSequence(CreateSequenceNode),
     CreateTable(CreateTableNode),
     InsertIntoTable(InsertIntoTableNode),
-    Query(LogicalQueryPlan),
+    // Query
+    Aggregate(AggregateNode),
+    Filter(FilterNode),
+    JoinLeft(JoinLeftNode),
+    Limit(LimitNode),
+    Order(OrderNode),
+    Select(SelectNode),
+    TableScan(TableScanNode),
 }
 
 #[derive(Debug)]
@@ -115,17 +95,6 @@ pub enum InsertIntoTableNode {
 }
 
 #[derive(Debug)]
-pub enum LogicalQueryPlan {
-    Aggregate(AggregateNode),
-    Filter(FilterNode),
-    JoinLeft(JoinLeftNode),
-    Limit(LimitNode),
-    Order(OrderNode),
-    Select(SelectNode),
-    TableScan(TableScanNode),
-}
-
-#[derive(Debug)]
 pub struct AggregateNode {
     pub by: Vec<Expression>,
     pub select: Vec<Expression>,
@@ -138,7 +107,7 @@ pub struct FilterNode {
 
 #[derive(Debug)]
 pub struct JoinLeftNode {
-    pub with: Vec<LogicalQueryPlan>,
+    pub with: Vec<LogicalPlan>,
     pub on: Vec<Expression>,
 }
 #[derive(Debug)]

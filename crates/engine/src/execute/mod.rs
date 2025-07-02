@@ -15,7 +15,7 @@ use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, Value};
-use reifydb_rql::plan::physical::{PhysicalPlan, PhysicalQueryPlan};
+use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -184,7 +184,7 @@ pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
 
 pub fn execute_query<VS: VersionedStorage, US: UnversionedStorage>(
     rx: &mut impl Rx,
-    plan: PhysicalQueryPlan,
+    plan: PhysicalPlan,
 ) -> crate::Result<ExecutionResult> {
     let executor: Executor<VS, US> = Executor {
         // FIXME receive functions from RX
@@ -226,10 +226,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn execute_query_plan(
         self,
         rx: &mut impl Rx,
-        plan: PhysicalQueryPlan,
+        plan: PhysicalPlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {
-            // PhysicalQueryPlan::Describe { plan } => {
+            // PhysicalPlan::Describe { plan } => {
             //     // FIXME evaluating the entire frame is quite wasteful but good enough to write some tests
             //     let result = self.execute_query_plan(rx, *plan)?;
             //     let ExecutionResult::Query { columns, .. } = result else { panic!() };
@@ -270,9 +270,23 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn execute_rx(
         self,
         rx: &mut impl Rx,
-        plan: PhysicalQueryPlan,
+        plan: PhysicalPlan,
     ) -> crate::Result<ExecutionResult> {
-        self.execute_query_plan(rx, plan)
+        match plan {
+            // Query
+            PhysicalPlan::Aggregate(_)
+            | PhysicalPlan::Filter(_)
+            | PhysicalPlan::JoinLeft(_)
+            | PhysicalPlan::Limit(_)
+            | PhysicalPlan::Order(_)
+            | PhysicalPlan::Select(_)
+            | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
+
+            PhysicalPlan::CreateDeferredView(_)
+            | PhysicalPlan::CreateSchema(_)
+            | PhysicalPlan::CreateTable(_)
+            | PhysicalPlan::InsertIntoTable(_) => unreachable!(), // FIXME return explanatory diagnostic
+        }
     }
 
     pub(crate) fn execute_tx(
@@ -285,7 +299,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
             PhysicalPlan::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
-            PhysicalPlan::Query(plan) => self.execute_query_plan(tx, plan),
+            // Query
+            PhysicalPlan::Aggregate(_)
+            | PhysicalPlan::Filter(_)
+            | PhysicalPlan::JoinLeft(_)
+            | PhysicalPlan::Limit(_)
+            | PhysicalPlan::Order(_)
+            | PhysicalPlan::Select(_)
+            | PhysicalPlan::TableScan(_) => self.execute_query_plan(tx, plan),
         }
     }
 }
