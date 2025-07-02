@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::{execute_rx, execute_tx};
+use crate::execute::{execute_query, execute};
 use crate::system::SystemBootHook;
 use crate::{ExecutionResult, view};
 use reifydb_auth::Principal;
 use reifydb_core::hook::{Hooks, OnAfterBootHookContext};
 use reifydb_core::interface::{Transaction, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::ast;
-use reifydb_rql::plan::{plan_rx, plan_tx};
+use reifydb_rql::plan::{plan, plan_query};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -89,15 +89,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         Ok(self.transaction.begin_read_only().unwrap())
     }
 
-    pub fn tx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
+    pub fn execute_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
         let mut tx = self.begin()?;
 
         for statement in statements {
-            if let Some(plan) = plan_tx::<VS, US>(&mut tx, statement)? {
-                let er = execute_tx(&mut tx, plan)?;
+            if let Some(plan) = plan::<VS, US>(statement)? {
+                let er = execute(&mut tx, plan)?;
                 result.push(er);
             }
         }
@@ -107,14 +107,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         Ok(result)
     }
 
-    pub fn rx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
+    pub fn query_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
         let mut rx = self.begin_read_only()?;
         for statement in statements {
-            if let Some(plan) = plan_rx(statement)? {
-                let er = execute_rx::<VS, US>(&mut rx, plan)?;
+            if let Some(plan) = plan_query(statement)? {
+                let er = execute_query::<VS, US>(&mut rx, plan)?;
                 result.push(er);
             }
         }

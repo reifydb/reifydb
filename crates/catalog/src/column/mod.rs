@@ -14,7 +14,7 @@ mod get;
 mod layout;
 mod list;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Column {
     pub id: ColumnId,
     pub name: String,

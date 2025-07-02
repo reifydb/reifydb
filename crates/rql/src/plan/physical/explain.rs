@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::parse;
-use crate::plan::logical::compile_logical;
+use crate::plan::logical::compile_logical_query;
 use crate::plan::physical;
-use crate::plan::physical::{PhysicalQueryPlan, compile_physical};
+use crate::plan::physical::{PhysicalQueryPlan, compile_physical_query};
 use reifydb_core::Error;
 use std::fmt::Write;
 
@@ -13,8 +13,8 @@ pub(crate) fn explain_physical_plan(query: &str) -> Result<String, Error> {
 
     let mut plans = Vec::new();
     for statement in statements {
-        let logical = compile_logical(statement).unwrap(); // FIXME
-        plans.extend(compile_physical(logical))
+        let logical = compile_logical_query(statement).unwrap(); // FIXME
+        plans.extend(compile_physical_query(logical))
     }
 
     let mut result = String::new();

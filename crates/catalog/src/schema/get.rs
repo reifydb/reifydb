@@ -9,7 +9,11 @@ use reifydb_core::interface::{Rx, Versioned};
 use reifydb_core::row::EncodedRow;
 
 impl Catalog {
-    pub fn get_schema_by_name(rx: &mut impl Rx, name: &str) -> crate::Result<Option<Schema>> {
+    pub fn get_schema_by_name(
+        rx: &mut impl Rx,
+        name: impl AsRef<str>,
+    ) -> crate::Result<Option<Schema>> {
+        let name = name.as_ref();
         Ok(rx.scan_range(SchemaKey::full_scan())?.find_map(|versioned| {
             let row: &EncodedRow = &versioned.row;
             let schema_name = schema::LAYOUT.get_str(row, schema::NAME);

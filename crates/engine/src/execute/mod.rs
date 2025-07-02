@@ -15,8 +15,7 @@ use reifydb_catalog::schema::SchemaId;
 use reifydb_catalog::table::TableId;
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Kind, Value};
-use reifydb_rql::plan::physical::PhysicalQueryPlan;
-use reifydb_rql::plan::{PlanRx, PlanTx};
+use reifydb_rql::plan::physical::{PhysicalPlan, PhysicalQueryPlan};
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -183,9 +182,9 @@ pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     _marker: PhantomData<(VS, US)>,
 }
 
-pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
+pub fn execute_query<VS: VersionedStorage, US: UnversionedStorage>(
     rx: &mut impl Rx,
-    plan: PlanRx,
+    plan: PhysicalQueryPlan,
 ) -> crate::Result<ExecutionResult> {
     let executor: Executor<VS, US> = Executor {
         // FIXME receive functions from RX
@@ -203,9 +202,9 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     executor.execute_rx(rx, plan)
 }
 
-pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
+pub fn execute<VS: VersionedStorage, US: UnversionedStorage>(
     tx: &mut impl Tx<VS, US>,
-    plan: PlanTx,
+    plan: PhysicalPlan,
 ) -> crate::Result<ExecutionResult> {
     // FIXME receive functions from TX
     let executor: Executor<VS, US> = Executor {
@@ -271,28 +270,22 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn execute_rx(
         self,
         rx: &mut impl Rx,
-        plan: PlanRx,
+        plan: PhysicalQueryPlan,
     ) -> crate::Result<ExecutionResult> {
-        match plan {
-            PlanRx::Query(plan) => self.execute_query_plan(rx, plan),
-        }
+        self.execute_query_plan(rx, plan)
     }
 
     pub(crate) fn execute_tx(
         mut self,
         tx: &mut impl Tx<VS, US>,
-        plan: PlanTx,
+        plan: PhysicalPlan,
     ) -> crate::Result<ExecutionResult> {
         match plan {
-            PlanTx::AddColumnToTable(_) => unimplemented!(),
-            PlanTx::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
-            PlanTx::CreateSchema(plan) => self.create_schema(tx, plan),
-            PlanTx::CreateSequence(_) => unimplemented!(),
-            PlanTx::CreateSeries(plan) => self.create_series(tx, plan),
-            PlanTx::CreateTable(plan) => self.create_table(tx, plan),
-            PlanTx::InsertIntoSeries(plan) => self.insert_into_series(tx, plan),
-            PlanTx::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
-            PlanTx::Query(plan) => self.execute_query_plan(tx, plan),
+            PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
+            PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
+            PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
+            PhysicalPlan::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
+            PhysicalPlan::Query(plan) => self.execute_query_plan(tx, plan),
         }
     }
 }

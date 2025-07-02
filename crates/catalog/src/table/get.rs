@@ -12,8 +12,9 @@ impl Catalog {
     pub fn get_table_by_name(
         rx: &mut impl Rx,
         schema: SchemaId,
-        name: &str,
+        name: impl AsRef<str>,
     ) -> crate::Result<Option<Table>> {
+        let name = name.as_ref();
         let Some(table) =
             rx.scan_range(SchemaTableKey::full_scan(schema))?.find_map(|versioned: Versioned| {
                 let row = &versioned.row;

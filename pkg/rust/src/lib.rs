@@ -71,13 +71,13 @@ pub struct ReifyDB {}
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait DB<'a>: Sized {
-    fn tx_as(
+    fn execute_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<ExecutionResult>>> + Send;
 
-    fn rx_as(
+    fn query_as(
         &self,
         principal: &Principal,
         rql: &str,

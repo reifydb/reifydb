@@ -7,7 +7,7 @@ use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_diagnostic::catalog::schema_already_exists;
-use reifydb_rql::plan::CreateSchemaPlan;
+use reifydb_rql::plan::physical::CreateSchemaPlan;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn create_schema(
@@ -19,17 +19,23 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             if plan.if_not_exists {
                 return Ok(ExecutionResult::CreateSchema(CreateSchemaResult {
                     id: schema.id,
-                    schema: plan.schema,
+                    schema: plan.schema.to_string(),
                     created: false,
                 }));
             }
 
-            return Err(Error::execution(schema_already_exists(Some(plan.span), &schema.name)));
+            return Err(Error::execution(schema_already_exists(
+                Some(plan.schema.clone()),
+                &schema.name,
+            )));
         }
 
         let result = Catalog::create_schema(
             tx,
-            SchemaToCreate { schema_span: Some(plan.span), name: plan.schema },
+            SchemaToCreate {
+                schema_span: Some(plan.schema.clone()),
+                name: plan.schema.to_string(),
+            },
         )?;
 
         Ok(ExecutionResult::CreateSchema(CreateSchemaResult {
@@ -44,23 +50,20 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 mod tests {
     use crate::ExecutionResult;
     use crate::execute::SchemaId;
-    use crate::execute::{CreateSchemaResult, execute_tx};
+    use crate::execute::{CreateSchemaResult, execute};
     use reifydb_core::Span;
-    use reifydb_rql::plan::{CreateSchemaPlan, PlanTx};
+    use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
     fn test_create_schema() {
         let mut tx = TestTransaction::new();
 
-        let mut plan = CreateSchemaPlan {
-            schema: "my_schema".to_string(),
-            if_not_exists: false,
-            span: Span::testing_empty(),
-        };
+        let mut plan =
+            CreateSchemaPlan { schema: Span::testing("my_schema"), if_not_exists: false };
 
         // First creation should succeed
-        let result = execute_tx(&mut tx, PlanTx::CreateSchema(plan.clone())).unwrap();
+        let result = execute(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();
         assert_eq!(
             result,
             ExecutionResult::CreateSchema(CreateSchemaResult {
@@ -72,7 +75,7 @@ mod tests {
 
         // Creating the same schema again with `if_not_exists = true` should not error
         plan.if_not_exists = true;
-        let result = execute_tx(&mut tx, PlanTx::CreateSchema(plan.clone())).unwrap();
+        let result = execute(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();
         assert_eq!(
             result,
             ExecutionResult::CreateSchema(CreateSchemaResult {
@@ -84,7 +87,7 @@ mod tests {
 
         // Creating the same schema again with `if_not_exists = false` should return error
         plan.if_not_exists = false;
-        let err = execute_tx(&mut tx, PlanTx::CreateSchema(plan)).unwrap_err();
+        let err = execute(&mut tx, PhysicalPlan::CreateSchema(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_001");
     }
 }

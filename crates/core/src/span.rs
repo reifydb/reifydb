@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use std::cmp::Ordering;
+use std::fmt::{Display, Formatter};
 
 /// Trait to provide a `Span` either directly or lazily (via closure).
 pub trait IntoSpan {
@@ -39,6 +40,18 @@ pub struct Span {
     pub line: Line,
 
     pub fragment: String,
+}
+
+impl AsRef<str> for Span {
+    fn as_ref(&self) -> &str {
+        self.fragment.as_str()
+    }
+}
+
+impl Display for Span {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.fragment, f)
+    }
 }
 
 impl Span {

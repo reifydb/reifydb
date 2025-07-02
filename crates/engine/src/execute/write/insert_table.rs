@@ -11,7 +11,7 @@ use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{BitVec, Kind, Value};
 use reifydb_diagnostic::catalog::table_not_found;
-use reifydb_rql::plan::InsertIntoTablePlan;
+use reifydb_rql::plan::physical::InsertIntoTablePlan;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn insert_into_table(

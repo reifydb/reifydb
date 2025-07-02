@@ -3,5 +3,4 @@
 
 mod create_deferred_view;
 mod create_schema;
-mod create_series;
 mod create_table;

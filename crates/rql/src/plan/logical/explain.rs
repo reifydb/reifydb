@@ -4,7 +4,7 @@
 use crate::ast::parse;
 use crate::plan::logical::{
     AggregateNode, FilterNode, JoinLeftNode, LimitNode, LogicalQueryPlan, OrderNode, SelectNode,
-    TableScanNode, compile_logical,
+    TableScanNode, compile_logical_query,
 };
 use reifydb_core::Error;
 
@@ -13,7 +13,7 @@ pub(crate) fn explain_logical_plan(query: &str) -> Result<String, Error> {
 
     let mut plans = Vec::new();
     for statement in statements {
-        plans.extend(compile_logical(statement).unwrap()) // FIXME
+        plans.extend(compile_logical_query(statement).unwrap()) // FIXME
     }
 
     let mut result = String::new();

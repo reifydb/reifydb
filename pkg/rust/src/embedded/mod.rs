@@ -45,13 +45,13 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    async fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
+    async fn execute_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.tx_as(&principal, &rql).map_err(|err| {
+            engine.execute_as(&principal, &rql).map_err(|err| {
                 let diagnostic = err.diagnostic();
                 Error::ExecutionError { diagnostic, source: rql.to_string() }
             })
@@ -60,13 +60,13 @@ where
         .unwrap()
     }
 
-    async fn rx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
+    async fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.rx_as(&principal, &rql).map_err(|err| {
+            engine.query_as(&principal, &rql).map_err(|err| {
                 let diagnostic = err.diagnostic();
                 Error::ExecutionError { diagnostic, source: rql.to_string() }
             })

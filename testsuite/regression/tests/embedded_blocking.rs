@@ -49,7 +49,7 @@ where
 
                 println!("tx: {query}");
 
-                for line in self.engine.tx_as(&self.root, query.as_str())? {
+                for line in self.engine.execute_as(&self.root, query.as_str())? {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -59,7 +59,7 @@ where
 
                 println!("rx: {query}");
 
-                for line in self.engine.rx_as(&self.root, query.as_str()) {
+                for line in self.engine.query_as(&self.root, query.as_str()) {
                     writeln!(output, "{}", line)?;
                 }
             }

@@ -53,7 +53,7 @@ where
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.tx_as(&self.root, query.as_str()).await? {
+                    for line in engine.execute_as(&self.root, query.as_str()).await? {
                         writeln!(output, "{}", line).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
@@ -67,7 +67,7 @@ where
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.rx_as(&self.root, query.as_str()).await? {
+                    for line in engine.query_as(&self.root, query.as_str()).await? {
                         writeln!(output, "{}", line).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())

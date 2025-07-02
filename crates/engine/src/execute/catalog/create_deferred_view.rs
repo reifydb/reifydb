@@ -4,7 +4,7 @@
 use crate::ExecutionResult;
 use crate::execute::Executor;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_rql::plan::CreateDeferredViewPlan;
+use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn create_deferred_view(

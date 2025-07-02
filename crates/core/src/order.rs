@@ -5,13 +5,13 @@ use crate::Span;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OrderDirection {
     Asc,
     Desc,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OrderKey {
     pub column: Span,
     pub direction: OrderDirection,

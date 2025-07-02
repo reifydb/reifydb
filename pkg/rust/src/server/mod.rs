@@ -104,11 +104,11 @@ where
     T: Transaction<VS, US>,
 {
     pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
-        self.engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
+        self.engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
     }
 
     pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
-        self.engine.rx_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
+        self.engine.query_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
     }
 }
 
