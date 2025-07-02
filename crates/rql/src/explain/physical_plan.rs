@@ -4,18 +4,18 @@
 use crate::ast::parse;
 use crate::plan::logical::compile_logical;
 use crate::plan::physical;
-use crate::plan::physical::PhysicalPlan;
+use crate::plan::physical::{PhysicalPlan, compile_physical};
 use reifydb_core::Error;
+use reifydb_core::interface::Rx;
 use std::fmt::Write;
 
-pub(crate) fn explain_physical_plan(query: &str) -> Result<String, Error> {
+pub fn explain_physical_plan(rx: &mut impl Rx, query: &str) -> Result<String, Error> {
     let statements = parse(query).unwrap(); // FIXME
 
     let mut plans = Vec::new();
     for statement in statements {
         let logical = compile_logical(statement).unwrap(); // FIXME
-        // plans.extend(compile_physical_query(logical))
-        todo!()
+        plans.extend(compile_physical(rx, logical))
     }
 
     let mut result = String::new();

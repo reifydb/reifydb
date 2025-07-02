@@ -2,29 +2,30 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::Error;
-use reifydb::core::Explain;
-use reifydb::rql::{ExplainAst, ExplainLex, ExplainLogicalPlan, ExplainPhysicalPlan};
+use reifydb::rql::{explain_ast, explain_lex, explain_logical_plan, explain_physical_plan};
+use reifydb::transaction::test_utils::TestTransaction;
 
 pub fn lex(query: &str) -> Result<(), Error> {
-    let text = ExplainLex::explain(query)?;
+    let text = explain_lex(query)?;
     println!("{}", text);
     Ok(())
 }
 
 pub fn ast(query: &str) -> Result<(), Error> {
-    let text = ExplainAst::explain(query)?;
+    let text = explain_ast(query)?;
     println!("{}", text);
     Ok(())
 }
 
 pub fn logical_plan(query: &str) -> Result<(), Error> {
-    let text = ExplainLogicalPlan::explain(query)?;
+    let text = explain_logical_plan(query)?;
     println!("{}", text);
     Ok(())
 }
 
 pub fn physical_plan(query: &str) -> Result<(), Error> {
-    let text = ExplainPhysicalPlan::explain(query)?;
+    let mut dummy_tx = TestTransaction::new(); // FIXME physical plan needs soon access to catalog
+    let text = explain_physical_plan(&mut dummy_tx, query)?;
     println!("{}", text);
     Ok(())
 }

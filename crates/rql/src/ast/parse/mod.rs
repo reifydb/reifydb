@@ -8,7 +8,6 @@ mod create;
 mod describe;
 mod diagnostic;
 mod error;
-pub(crate) mod explain;
 mod filter;
 mod from;
 mod identifier;

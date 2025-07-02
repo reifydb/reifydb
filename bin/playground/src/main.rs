@@ -20,7 +20,7 @@ fn main() {
         .unwrap();
     let err = db.execute_as(&root, r#"insert (2),(3) into test.two (field)"#).unwrap();
     // println!("{}", err);
-    
+
     for l in db.execute_as(
         &root,
         r#"

@@ -8,7 +8,7 @@ use crate::plan::logical::{
 };
 use reifydb_core::Error;
 
-pub(crate) fn explain_logical_plan(query: &str) -> Result<String, Error> {
+pub fn explain_logical_plan(query: &str) -> Result<String, Error> {
     let statements = parse(query).unwrap(); // FIXME
 
     let mut plans = Vec::new();

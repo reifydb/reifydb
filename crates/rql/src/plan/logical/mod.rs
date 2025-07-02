@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 mod create;
-pub(crate) mod explain;
 mod expression;
 mod insert;
 mod query;

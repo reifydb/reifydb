@@ -6,7 +6,7 @@ use crate::ast::{Token, TokenKind};
 use reifydb_core::Error;
 use std::collections::BTreeMap;
 
-pub(crate) fn explain_lex(query: &str) -> Result<String, Error> {
+pub fn explain_lex(query: &str) -> Result<String, Error> {
     let tokens = lex(query).unwrap();
 
     let mut lines: BTreeMap<u32, Vec<(usize, &Token)>> = BTreeMap::new();

@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::Explain;
-use reifydb_rql::{ExplainAst, ExplainLex, ExplainLogicalPlan, ExplainPhysicalPlan};
+use reifydb_rql::{explain_ast, explain_lex, explain_logical_plan, explain_physical_plan};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
+use reifydb_transaction::test_utils::TestTransaction;
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
@@ -30,7 +30,7 @@ impl testscript::Runner for Runner {
                 let mut args = command.consume_args();
                 let query = args.next_pos().ok_or("args not given")?.value.as_str();
                 args.reject_rest()?;
-                let result = ExplainLex::explain(query).unwrap();
+                let result = explain_lex(query).unwrap();
                 writeln!(output, "{}", result).unwrap();
             }
             // ast QUERY
@@ -38,7 +38,7 @@ impl testscript::Runner for Runner {
                 let mut args = command.consume_args();
                 let query = args.next_pos().ok_or("args not given")?.value.as_str();
                 args.reject_rest()?;
-                let result = ExplainAst::explain(query).unwrap();
+                let result = explain_ast(query).unwrap();
                 writeln!(output, "{}", result).unwrap();
             }
             // logical QUERY
@@ -46,7 +46,7 @@ impl testscript::Runner for Runner {
                 let mut args = command.consume_args();
                 let query = args.next_pos().ok_or("args not given")?.value.as_str();
                 args.reject_rest()?;
-                let result = ExplainLogicalPlan::explain(query).unwrap();
+                let result = explain_logical_plan(query).unwrap();
                 writeln!(output, "{}", result).unwrap();
             }
             // physical QUERY
@@ -54,7 +54,9 @@ impl testscript::Runner for Runner {
                 let mut args = command.consume_args();
                 let query = args.next_pos().ok_or("args not given")?.value.as_str();
                 args.reject_rest()?;
-                let result = ExplainPhysicalPlan::explain(query).unwrap();
+
+                let mut dummy_tx = TestTransaction::new(); // FIXME needs access to catalog
+                let result = explain_physical_plan(&mut dummy_tx, query).unwrap();
                 writeln!(output, "{}", result).unwrap();
             }
             _ => unimplemented!(),

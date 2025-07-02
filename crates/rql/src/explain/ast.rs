@@ -6,7 +6,7 @@ use crate::ast::parse::parse;
 use crate::ast::{Ast, AstFrom, AstJoin};
 use reifydb_core::Error;
 
-pub(crate) fn explain_ast(query: &str) -> Result<String, Error> {
+pub fn explain_ast(query: &str) -> Result<String, Error> {
     let token = lex(query).unwrap();
     let statements = parse(token).unwrap();
 
