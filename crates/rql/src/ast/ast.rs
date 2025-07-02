@@ -424,6 +424,17 @@ pub enum AstLiteral {
     Undefined(AstLiteralUndefined),
 }
 
+impl AstLiteral {
+    pub fn span(self) -> Span {
+        match self {
+            AstLiteral::Boolean(literal) => literal.0.span,
+            AstLiteral::Number(literal) => literal.0.span,
+            AstLiteral::Text(literal) => literal.0.span,
+            AstLiteral::Undefined(literal) => literal.0.span,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstIdentifier(pub Token);
 

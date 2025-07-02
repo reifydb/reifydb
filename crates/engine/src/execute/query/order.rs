@@ -11,12 +11,12 @@ use std::cmp::Ordering::Equal;
 
 pub(crate) struct OrderNode {
     input: Box<dyn ExecutionPlan>,
-    order_by: Vec<OrderKey>,
+    by: Vec<OrderKey>,
 }
 
 impl OrderNode {
-    pub(crate) fn new(input: Box<dyn ExecutionPlan>, order_by: Vec<OrderKey>) -> Self {
-        Self { input, order_by }
+    pub(crate) fn new(input: Box<dyn ExecutionPlan>, by: Vec<OrderKey>) -> Self {
+        Self { input, by }
     }
 }
 
@@ -47,7 +47,7 @@ impl ExecutionPlan for OrderNode {
         };
 
         let key_refs = self
-            .order_by
+            .by
             .iter()
             .map(|key| {
                 let col = frame

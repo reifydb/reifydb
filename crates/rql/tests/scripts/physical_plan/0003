@@ -3,7 +3,7 @@
 
 physical 'from users left join orders on users.id == orders.user_id filter orders.id > 10'
 ---
-> └── Filter condition: (orders.id > Constant(10))
+> └── Filter [(orders.id > Constant(10))]
 >     └── Join(Left) on: [(users.id == orders.user_id)]
 >         ├── TableScan users
 >         └── TableScan orders

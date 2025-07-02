@@ -17,7 +17,7 @@ enum Projection {
 pub(crate) struct AggregateNode {
     input: Box<dyn ExecutionPlan>,
     by: Vec<Expression>,
-    project: Vec<Expression>,
+    select: Vec<Expression>,
     layout: Option<FrameLayout>,
     functions: Functions,
 }
@@ -26,10 +26,10 @@ impl AggregateNode {
     pub fn new(
         input: Box<dyn ExecutionPlan>,
         by: Vec<Expression>,
-        project: Vec<Expression>,
+        select: Vec<Expression>,
         functions: Functions,
     ) -> Self {
-        Self { input, by, project, layout: None, functions }
+        Self { input, by, select, layout: None, functions }
     }
 }
 
@@ -40,7 +40,7 @@ impl ExecutionPlan for AggregateNode {
         }
 
         let (keys, mut projections) =
-            parse_keys_and_aggregates(&self.by, &self.project, &self.functions)?;
+            parse_keys_and_aggregates(&self.by, &self.select, &self.functions)?;
 
         let mut seen_groups = HashSet::<Vec<Value>>::new();
         let mut group_key_order: Vec<Vec<Value>> = Vec::new();

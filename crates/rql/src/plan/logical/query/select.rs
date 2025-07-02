@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::ast::AstSelect;
-use crate::plan::expression;
 use crate::plan::logical::{Compiler, LogicalQueryPlan, SelectNode};
 
 impl Compiler {
@@ -11,7 +10,7 @@ impl Compiler {
             select: ast
                 .select
                 .into_iter()
-                .map(|expr| expression(expr))
+                .map(Self::compile_expression)
                 .collect::<Result<Vec<_>, _>>()?,
         }))
     }

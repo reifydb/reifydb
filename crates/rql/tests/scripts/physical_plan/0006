@@ -3,7 +3,7 @@
 
 physical 'from users select id, name filter id == 10'
 ---
-> └── Filter condition: (Column(id) == Constant(10))
+> └── Filter [(Column(id) == Constant(10))]
 >     └── Select [Column(id), Column(name)]
 >         └── TableScan users
 > 

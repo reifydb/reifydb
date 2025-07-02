@@ -1,0 +1,10 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+physical 'from users select id, name filter id == 10 order by id asc'
+---
+> └── Order by: [id ASC]
+>     └── Filter [(Column(id) == Constant(10))]
+>         └── Select [Column(id), Column(name)]
+>             └── TableScan users
+> 

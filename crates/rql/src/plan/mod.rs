@@ -3,9 +3,8 @@
 
 use crate::ast;
 use crate::ast::{
-    Ast, AstAggregate, AstCreate, AstDescribe, AstFilter, AstFrom, AstInfix, AstInsert, AstJoin,
-    AstLiteral, AstOrder, AstPolicy, AstPolicyKind, AstPrefix, AstSelect, AstStatement,
-    InfixOperator,
+    Ast, AstCreate, AstInfix, AstInsert, AstLiteral, AstPolicy, AstPolicyKind, AstPrefix,
+    AstStatement, InfixOperator,
 };
 use crate::expression::{
     AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
@@ -14,27 +13,29 @@ use crate::expression::{
     LessThanEqualExpression, LessThanExpression, ModuloExpression, MultiplyExpression,
     NotEqualExpression, PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
 };
+
+use crate::plan::logical::compile_logical;
+use crate::plan::physical::{PhysicalQueryPlan, compile_physical};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::column::Column;
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::{Rx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Error, Kind, OrderDirection, OrderKey, Span};
+use reifydb_core::{Error, Kind, Span};
 use reifydb_diagnostic::catalog::table_not_found;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::Deref;
 
-pub(crate) mod logical;
-pub(crate) mod physical;
-mod planner;
+pub mod logical;
+pub mod physical;
 
 pub type RowToInsert = Vec<Expression>;
 
 #[derive(Debug)]
 pub enum PlanRx {
     /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
-    Query(QueryPlan),
+    Query(PhysicalQueryPlan),
 }
 
 #[derive(Debug)]
@@ -56,7 +57,7 @@ pub enum PlanTx {
     /// A INSERT INTO SERIES plan. Inserts values into the table
     InsertIntoSeries(InsertIntoSeriesPlan),
     /// A Query plan. Recursively executes the query plan tree and returns the resulting rows.
-    Query(QueryPlan),
+    Query(PhysicalQueryPlan),
 }
 
 #[derive(Debug)]
@@ -118,45 +119,6 @@ pub enum InsertIntoSeriesPlan {
         series: String,
         columns: Vec<Column>,
         rows_to_insert: Vec<RowToInsert>,
-    },
-}
-
-#[derive(Debug)]
-pub enum QueryPlan {
-    Aggregate {
-        by: Vec<Expression>,
-        project: Vec<Expression>,
-        next: Option<Box<QueryPlan>>,
-    },
-    Describe {
-        plan: Box<QueryPlan>,
-    },
-    ScanTable {
-        schema: String,
-        table: String,
-        next: Option<Box<QueryPlan>>,
-    },
-    Filter {
-        expression: Expression,
-        next: Option<Box<QueryPlan>>,
-    },
-    Project {
-        expressions: Vec<Expression>,
-        next: Option<Box<QueryPlan>>,
-    },
-    Order {
-        order_by: Vec<OrderKey>,
-        next: Option<Box<QueryPlan>>,
-    },
-    Limit {
-        limit: usize,
-        next: Option<Box<QueryPlan>>,
-    },
-    JoinLeft {
-        left: Box<QueryPlan>,
-        right: Box<QueryPlan>,
-        on: Vec<Expression>,
-        next: Option<Box<QueryPlan>>,
     },
 }
 
@@ -457,8 +419,16 @@ pub fn plan_tx<VS: VersionedStorage, US: UnversionedStorage>(
                     }
                 };
             }
-            Ast::From(from) => return Ok(Some(PlanTx::Query(plan_from(from, None)?))),
-            Ast::Select(select) => return Ok(Some(PlanTx::Query(plan_select(select, None)?))),
+            Ast::From(from) => {
+                let logical = compile_logical(AstStatement(vec![Ast::From(from)]))?;
+                let physical = compile_physical(logical)?;
+                return Ok(physical.map(PlanTx::Query));
+            }
+            Ast::Select(select) => {
+                let logical = compile_logical(AstStatement(vec![Ast::Select(select)]))?;
+                let physical = compile_physical(logical)?;
+                return Ok(physical.map(PlanTx::Query));
+            }
             node => unimplemented!("{node:?}"),
         };
     }
@@ -489,201 +459,12 @@ pub fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 }
 
 pub fn plan_rx(ast: AstStatement) -> Result<Option<PlanRx>> {
-    let mut head: Option<Box<QueryPlan>> = None;
-
-    for ast in ast.into_iter().rev() {
-        let plan = plan_ast_node(ast, head)?;
-        head = Some(Box::new(plan));
-    }
-
-    Ok(head.map(|boxed| PlanRx::Query(*boxed)))
-
-    // let nodes = compile_logical(ast);
-    // dbg!(&nodes);
-    //
-    // Ok(None)
+    let logical = compile_logical(ast)?;
+    let physical = compile_physical(logical)?;
+    Ok(physical.map(PlanRx::Query))
 }
 
-fn plan_ast_node(ast: Ast, next: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
-    match ast {
-        Ast::Describe(describe) => match describe {
-            AstDescribe::Query { node, .. } => {
-                Ok(QueryPlan::Describe { plan: Box::new(plan_ast_node(*node, next)?) })
-            }
-        },
-
-        Ast::From(from) => plan_from(from, next),
-        Ast::Aggregate(group) => plan_aggregate(group, next),
-        Ast::Filter(filter) => plan_filter(filter, next),
-        Ast::Select(select) => plan_select(select, next),
-        Ast::Order(order) => plan_order_by(order, next),
-        Ast::Limit(limit) => Ok(QueryPlan::Limit { limit: limit.limit, next }),
-        Ast::Join(join) => plan_join(join, next),
-
-        _ => unimplemented!("Unsupported AST node"),
-    }
-}
-
-fn plan_order_by(order: AstOrder, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
-    let order_by: Vec<_> = order
-        .columns
-        .into_iter()
-        .zip(order.directions)
-        .map(|(column, direction)| {
-            let direction = direction
-                .map(|direction| match direction.value().to_lowercase().as_str() {
-                    "asc" => OrderDirection::Asc,
-                    "desc" => OrderDirection::Desc,
-                    _ => unimplemented!(),
-                })
-                .unwrap_or(OrderDirection::Desc);
-
-            OrderKey { column: column.0.span, direction }
-        })
-        .collect();
-
-    Ok(QueryPlan::Order { order_by, next: head })
-}
-
-fn plan_aggregate(aggregate: AstAggregate, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
-    let by = aggregate
-        .by
-        .into_iter()
-        .map(|ast| match ast {
-            Ast::Identifier(node) => Expression::Column(ColumnExpression(node.0.span)),
-            ast => unimplemented!("{ast:?}"),
-        })
-        .collect::<Vec<_>>();
-
-    // FIXME this is duplicated code from plan_select
-    let project = aggregate
-        .select
-        .into_iter()
-        .map(|ast| match ast {
-            // Ast::Block(_) => {}
-            // Ast::Create(_) => {}
-            // Ast::From(_) => {}
-            Ast::Identifier(node) => Expression::Column(ColumnExpression(node.0.span)),
-            Ast::Infix(node) => expression_infix(node).unwrap(),
-            ast => unimplemented!("{:?}", ast),
-        })
-        .collect();
-
-    Ok(QueryPlan::Aggregate { by, project, next: head })
-}
-
-fn plan_from(from: AstFrom, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
-    match from {
-        AstFrom::Table { schema, table, .. } => Ok(QueryPlan::ScanTable {
-            schema: schema.unwrap().value().to_string(),
-            next: head,
-            table: table.value().to_string(),
-        }),
-        AstFrom::Query { .. } => unimplemented!(),
-    }
-}
-
-fn plan_filter(filter: AstFilter, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
-    Ok(QueryPlan::Filter {
-        expression: match *filter.node {
-            Ast::Infix(node) => expression_infix(node)?,
-            node => unimplemented!("{node:?}"),
-        },
-        next: head,
-    })
-}
-
-fn plan_join(join: AstJoin, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
-    match join {
-        AstJoin::LeftJoin { with, on, .. } => {
-            // let left = head.ok_or_else(|| panic!("left side of join is missing"))?;
-            // let right = Box::new(plan_ast_node(*with, head)?);
-
-            let on = on.into_iter().map(expression).collect::<Result<Vec<_>>>()?;
-            // dbg!(&conditions);
-
-            dbg!(&with);
-
-            Ok(QueryPlan::JoinLeft {
-                left: Box::new(QueryPlan::ScanTable {
-                    schema: "test".to_string(),
-                    table: "one".to_string(),
-                    next: None,
-                }),
-                right: Box::new(QueryPlan::ScanTable {
-                    schema: "test".to_string(),
-                    table: "two".to_string(),
-                    next: None,
-                }),
-                on,
-                next: head,
-            })
-        }
-    }
-}
-
-fn plan_select(select: AstSelect, head: Option<Box<QueryPlan>>) -> Result<QueryPlan> {
-    Ok(QueryPlan::Project {
-        expressions: select
-            .select
-            .into_iter()
-            .map(|ast| match ast {
-                // Ast::Block(_) => {}
-                // Ast::Create(_) => {}
-                // Ast::From(_) => {}
-                Ast::Identifier(node) => Expression::Column(ColumnExpression(node.0.span)),
-                Ast::Infix(node) => expression_infix(node).unwrap(),
-                Ast::Cast(node) => {
-                    let mut tuple = node.tuple;
-                    let expr = tuple.nodes.remove(0);
-                    let ast_kind = tuple.nodes.pop().unwrap();
-                    let kind = ast_kind.as_kind().kind();
-                    let span = ast_kind.as_kind().token().span.clone();
-
-                    Expression::Cast(CastExpression {
-                        span: node.token.span,
-                        expression: Box::new(expression(expr).unwrap()),
-                        to: KindExpression { span, kind },
-                    })
-                }
-                Ast::Literal(node) => match node {
-                    AstLiteral::Boolean(node) => {
-                        Expression::Constant(ConstantExpression::Bool { span: node.0.span })
-                    }
-                    AstLiteral::Number(node) => {
-                        Expression::Constant(ConstantExpression::Number { span: node.0.span })
-                    }
-                    AstLiteral::Text(node) => {
-                        Expression::Constant(ConstantExpression::Text { span: node.0.span })
-                    }
-                    AstLiteral::Undefined(node) => {
-                        Expression::Constant(ConstantExpression::Undefined { span: node.0.span })
-                    }
-                },
-                Ast::Prefix(node) => {
-                    let (span, operator) = match node.operator {
-                        ast::AstPrefixOperator::Plus(token) => {
-                            (token.span.clone(), PrefixOperator::Plus(token.span))
-                        }
-                        ast::AstPrefixOperator::Negate(token) => {
-                            (token.span.clone(), PrefixOperator::Minus(token.span))
-                        }
-                        ast::AstPrefixOperator::Not(_token) => unimplemented!(),
-                    };
-
-                    Expression::Prefix(PrefixExpression {
-                        operator,
-                        expression: Box::new(expression(*node.node).unwrap()), //FIXME
-                        span,
-                    })
-                }
-                ast => unimplemented!("{:?}", ast),
-            })
-            .collect(),
-        next: head,
-    })
-}
-
+#[deprecated]
 fn expression(ast: Ast) -> Result<Expression> {
     match ast {
         Ast::Literal(literal) => match literal {
@@ -692,6 +473,9 @@ fn expression(ast: Ast) -> Result<Expression> {
             }
             AstLiteral::Number(literal) => {
                 Ok(Expression::Constant(ConstantExpression::Number { span: literal.0.span }))
+            }
+            AstLiteral::Text(literal) => {
+                Ok(Expression::Constant(ConstantExpression::Text { span: literal.0.span }))
             }
             _ => unimplemented!(),
         },
@@ -745,6 +529,7 @@ fn expression(ast: Ast) -> Result<Expression> {
     }
 }
 
+#[deprecated]
 fn expression_infix(infix: AstInfix) -> Result<Expression> {
     match infix.operator {
         InfixOperator::AccessTable(token) => {

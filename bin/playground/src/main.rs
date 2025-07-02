@@ -30,6 +30,18 @@ fn main() {
         println!("{}", l);
     }
 
+
+    // for l in db.rx_as(
+    //     &root,
+    //     r#"
+    //     from test.one left join test.two on one.field == two.field
+    //     "#,
+    // )
+    // // .unwrap()
+    // {
+    //     println!("{}", l);
+    // }
+
     // db.tx_as(&root, r#"create table test.users(age: int2, num: float8)"#).unwrap();
     // db.tx_as(
     //     &root,
