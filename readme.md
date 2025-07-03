@@ -89,8 +89,47 @@ ReifyDB is still in early development — feedback and contributions are welcome
 - Star ⭐️ the project to help more people find it!
 ---
 
-## License
-ReifyDB is licensed under the The AGPL-3.0 or later (Affero General Public License).
+<h2>🧾 License</h2>
+
+<p>
+ReifyDB is <strong>open-source under the <a href="https://github.com/reifydb/reifydb/blob/main/license.md">AGPL-3.0 license</a></strong>.
+</p>
+
+<p>This means you are free to use, modify, and self-host ReifyDB — even for commercial projects — as long as:</p>
+<ul>
+  <li>Your changes are also open-sourced under AGPL</li>
+  <li>You do not offer ReifyDB as a hosted service without sharing modifications</li>
+</ul>
+
+<h3>💼 Commercial License</h3>
+
+<p>If you want to use ReifyDB without the AGPL’s obligations — for example to:</p>
+
+<ul>
+  <li>Embed it into a proprietary application</li>
+  <li>Offer it as part of a hosted service or SaaS</li>
+  <li>Avoid open-sourcing your modifications</li>
+</ul>
+
+<p>
+There is a <strong>commercial license</strong> for ReifyDB.<br>
+This supports the development of ReifyDB and ensures fair use.
+</p>
+
+<p>
+👉 <strong>Contact:</strong> <a href="mailto:founder@reifydb.com">founder@reifydb.com</a>
+</p>
+
+<h3>⚖️ Dual Licensing Model</h3>
+
+<p>ReifyDB is built using a <strong>dual licensing</strong> model:</p>
+
+<ul>
+  <li><strong>AGPL-3.0</strong> for open-source users and contributors</li>
+  <li><strong>Commercial license</strong> for closed-source or hosted use</li>
+</ul>
+
+<p>This model helps to stay open, fair, and sustainable — while making it easy for serious teams to build with confidence.</p>
 
 ---
 ## Commercial Support
