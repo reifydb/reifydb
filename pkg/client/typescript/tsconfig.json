@@ -3,7 +3,7 @@
     "outDir": "dist",
     "declaration": true,
     "declarationDir": "dist",
-    "module": "ESNext",
+    "module": "CommonJS",
     "target": "ES2020",
     "moduleResolution": "node",
     "esModuleInterop": true,
@@ -11,7 +11,4 @@
     "skipLibCheck": true
   },
   "include": ["src"],
-  "ts-node": {
-    "esm": true
-  }
 }

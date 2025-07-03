@@ -10,6 +10,7 @@ members = [
     "crates/core",
     "crates/diagnostic",
     "crates/engine",
+    "crates/network",
     "crates/rql",
     "crates/storage",
     "crates/testing",
@@ -28,6 +29,7 @@ default-members = [
     "crates/core",
     "crates/diagnostic",
     "crates/engine",
+    "crates/network",
     "crates/rql",
     "crates/storage",
     "crates/testing",
@@ -73,6 +75,7 @@ reifydb-catalog = { path = "crates/catalog", version = "0.0.1" }
 reifydb-core = { path = "crates/core", version = "0.0.1" }
 reifydb-diagnostic = { path = "crates/diagnostic", version = "0.0.1" }
 reifydb-engine = { path = "crates/engine", version = "0.0.1" }
+reifydb-network = { path = "crates/network", version = "0.0.1" }
 reifydb-rql = { path = "crates/rql", version = "0.0.1" }
 reifydb-storage = { path = "crates/storage", version = "0.0.1" }
 reifydb-testing = { path = "crates/testing", version = "0.0.1" }
