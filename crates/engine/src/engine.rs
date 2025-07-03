@@ -4,9 +4,8 @@
 use crate::execute::{execute, execute_query};
 use crate::system::SystemBootHook;
 use crate::{ExecutionResult, view};
-use reifydb_auth::Principal;
 use reifydb_core::hook::{Hooks, OnAfterBootHookContext};
-use reifydb_core::interface::{Transaction, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Principal, Transaction, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
 use std::marker::PhantomData;

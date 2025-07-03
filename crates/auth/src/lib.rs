@@ -10,13 +10,4 @@ pub use error::Error;
 
 mod error;
 
-pub type PrincipalId = u64;
-
-#[derive(Debug, Clone)]
-pub enum Principal {
-    Anonymous {},
-    System { id: PrincipalId, name: String },
-    User { id: PrincipalId, name: String },
-}
-
 pub type Result<T> = std::result::Result<T, Error>;

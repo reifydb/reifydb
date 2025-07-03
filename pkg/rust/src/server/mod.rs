@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::server::grpc::db_service;
 pub use config::{DatabaseConfig, ServerConfig};
-use reifydb_auth::Principal;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::{Engine, ExecutionResult};
+use reifydb_network::grpc;
+use reifydb_network::grpc::server::db_service;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use tonic::service::InterceptorLayer;
 use tonic::transport::Error;
 
 mod config;
-mod grpc;
+// mod grpc;
 
 pub struct Server<VS, US, T>
 where
@@ -161,7 +161,7 @@ where
             self.config.database.socket_addr.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
 
         tonic::transport::Server::builder()
-            .layer(InterceptorLayer::new(grpc::auth::AuthInterceptor {}))
+            .layer(InterceptorLayer::new(grpc::server::auth::AuthInterceptor {}))
             .add_service(db_service(self.engine))
             .serve(address)
             .await
@@ -183,7 +183,7 @@ where
                 self.config.database.socket_addr.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
 
             tonic::transport::Server::builder()
-                .layer(InterceptorLayer::new(grpc::auth::AuthInterceptor {}))
+                .layer(InterceptorLayer::new(grpc::server::auth::AuthInterceptor {}))
                 .add_service(db_service(self.engine))
                 .serve(address)
                 .await

@@ -1,22 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::server::grpc::grpc_db::{
-    Int128, QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult, UInt128,
-};
-use crate::server::grpc::{AuthenticatedUser, grpc_db};
-use reifydb_core::{Diagnostic, Value};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::task::spawn_blocking;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 
-use crate::server::grpc::grpc_db::tx_result::Result::{
+use crate::grpc::server::grpc_db::tx_result::Result::{
     CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
 };
-use reifydb_auth::Principal;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use crate::grpc::server::grpc_db::{
+    Int128, QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult, UInt128,
+};
+use crate::grpc::server::{AuthenticatedUser, grpc_db};
+use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::{Diagnostic, Value};
 use reifydb_engine::{CreateSchemaResult, CreateTableResult, Engine, ExecutionResult};
 use tokio_stream::once;
 
@@ -66,7 +65,8 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
+            match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            {
                 Ok(results) => {
                     let mut responses: Vec<Result<TxResult, Status>> = vec![];
 

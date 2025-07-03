@@ -1550,11 +1550,18 @@ dependencies = [
 name = "reifydb-network"
 version = "0.0.1"
 dependencies = [
+ "prost",
+ "reifydb-catalog",
+ "reifydb-core",
  "reifydb-engine",
  "reifydb-testing",
  "serde",
  "serde_json",
  "test_each_file",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
 ]
 
 [[package]]

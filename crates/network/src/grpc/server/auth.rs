@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::server::grpc::AuthenticatedUser;
+use crate::grpc::server::AuthenticatedUser;
 use tonic::metadata::MetadataMap;
 use tonic::service::Interceptor;
 use tonic::{Request, Status};
@@ -35,5 +35,5 @@ fn extract_token(metadata: &MetadataMap) -> Result<String, Status> {
 // Dummy parser — replace with JWT decoding
 fn decode_token_to_principal(_token: &str) -> Result<AuthenticatedUser, ()> {
     // Ok(AuthenticatedUser { user_id: token.to_string(), roles: vec!["user".into()] })
-    Ok(AuthenticatedUser { })
+    Ok(AuthenticatedUser {})
 }

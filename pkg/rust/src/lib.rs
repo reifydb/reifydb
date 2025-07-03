@@ -40,7 +40,7 @@ use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::ExecutionResult;
 /// The underlying persistence responsible for data access.
 use reifydb_storage::lmdb::Lmdb;
@@ -50,7 +50,6 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 #[cfg(any(feature = "server", feature = "client"))]
 pub use tokio::*;
-use reifydb_auth::Principal;
 
 #[cfg(feature = "client")]
 pub mod client;

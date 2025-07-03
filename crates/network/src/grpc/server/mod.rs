@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::server::grpc::db::DbService;
-use crate::server::grpc::grpc_db::db_server::DbServer;
+use crate::grpc::server::db::DbService;
+use crate::grpc::server::grpc_db::db_server::DbServer;
 use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 

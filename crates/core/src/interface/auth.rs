@@ -1,0 +1,11 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later
+
+pub type PrincipalId = u64;
+
+#[derive(Debug, Clone)]
+pub enum Principal {
+    Anonymous {},
+    System { id: PrincipalId, name: String },
+    User { id: PrincipalId, name: String },
+}

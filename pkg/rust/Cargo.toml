@@ -11,6 +11,8 @@ default = []
 server = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network"]
 client = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network"]
 embedded = ["dep:tokio"]
+grpc = ["reifydb-network/grpc"]
+websocket = ["reifydb-network/websocket"]
 embedded_blocking = []
 
 [dependencies]
@@ -19,7 +21,7 @@ reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-diagnostic = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-network = { workspace = true, optional = true }
+reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
 reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
