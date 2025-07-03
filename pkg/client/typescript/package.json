@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "test": "node dist/client.js",
+    "test": "ts-node src/client.ts",
     "build": "tsc --project tsconfig.json"
   },
   "dependencies": {

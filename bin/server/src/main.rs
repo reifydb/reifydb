@@ -17,60 +17,118 @@
 //         .serve_blocking(rt);
 // }
 
-
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use futures::{SinkExt, StreamExt};
+use serde::Deserialize;
+use serde_json::Value;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
-use futures::{StreamExt, SinkExt};
-use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Message {
+#[derive(Debug, Deserialize)]
+struct IncomingMessage {
     id: String,
-    #[serde(rename = "type")]
-    msg_type: String,
-    payload: serde_json::Value,
+    #[serde(flatten)]
+    payload: Payload,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum Payload {
+    Auth { access_token: String },
+    Query { statement: String },
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ServerMessage {
+    id: String,
+    r#type: String,
+    payload: Value,
 }
 
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("127.0.0.1:9001").await.unwrap();
-    println!("WebSocket server running at ws://127.0.0.1:9001");
+    println!("🧠 ReifyDB WebSocket server listening on ws://127.0.0.1:9001");
 
-    while let Ok((stream, addr)) = listener.accept().await {
-        tokio::spawn(handle_connection(stream, addr));
+    while let Ok((stream, _)) = listener.accept().await {
+        tokio::spawn(async move {
+            let ws_stream = accept_async(stream).await.unwrap();
+            let (mut write, mut read) = ws_stream.split();
+
+            match read.next().await {
+                Some(Ok(WsMessage::Text(text))) => {
+                    match serde_json::from_str::<IncomingMessage>(&text) {
+                        Ok(msg) => match msg.payload {
+                            Payload::Auth { access_token } => {
+                                if validate_token(&access_token) {
+                                    println!("✅ Authenticated: {}", access_token);
+
+                                    // Ready to accept other messages
+                                    while let Some(Ok(msg)) = read.next().await {
+                                        if let WsMessage::Text(text) = msg {
+                                            match serde_json::from_str::<IncomingMessage>(&text) {
+                                                Ok(query_msg) => {
+                                                    match query_msg.payload {
+                                                        Payload::Query { statement } => {
+                                                            println!(
+                                                                "📥 Received query: {}",
+                                                                statement
+                                                            );
+
+                                                            // Respond with dummy result
+                                                            let response = ServerMessage {
+                                                                id: query_msg.id,
+                                                                r#type: "result".to_string(),
+                                                                payload: serde_json::json!({
+                                                                    "columns": [{ "name": "example", "type": "string" }],
+                                                                    "rows": [[{ "String": "hello" }]],
+                                                                }),
+                                                            };
+
+                                                            let msg =
+                                                                serde_json::to_string(&response)
+                                                                    .unwrap();
+                                                            write
+                                                                .send(WsMessage::Text(msg))
+                                                                .await
+                                                                .unwrap();
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                }
+                                                Err(err) => {
+                                                    eprintln!("❌ Invalid message: {err}");
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    eprintln!("❌ Invalid token: {access_token}");
+                                    let _ = write.send(WsMessage::Close(None)).await;
+                                }
+                            }
+                            _ => {
+                                eprintln!("❌ First message must be auth");
+                                let _ = write.send(WsMessage::Close(None)).await;
+                            }
+                        },
+                        Err(err) => {
+                            eprintln!("❌ Failed to parse auth message: {err}");
+                            let _ = write.send(WsMessage::Close(None)).await;
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!("❌ No valid first message");
+                }
+            }
+        });
     }
 }
 
-async fn handle_connection(stream: tokio::net::TcpStream, addr: SocketAddr) {
-    println!("Client connected: {}", addr);
-    let ws_stream = accept_async(stream).await.unwrap();
-    let (mut write, mut read) = ws_stream.split();
-
-    while let Some(Ok(msg)) = read.next().await {
-        if msg.is_text() {
-            let raw = msg.into_text().unwrap();
-            if let Ok(msg_data) = serde_json::from_str::<Message>(&raw) {
-                println!("Received: {:?}", msg_data);
-
-                // Echo with result
-                let response = Message {
-                    id: msg_data.id.clone(),
-                    msg_type: "result".to_string(),
-                    payload: serde_json::json!({
-                        "result": "Query processed",
-                        "original": msg_data.payload,
-                    }),
-                };
-
-                let response_str = serde_json::to_string(&response).unwrap();
-                write.send(response_str.into()).await.unwrap();
-            }
-        }
-    }
-
-    println!("Client disconnected: {}", addr);
+fn validate_token(token: &str) -> bool {
+    token == "mysecrettoken"
 }

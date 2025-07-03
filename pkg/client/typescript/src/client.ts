@@ -1,41 +1,45 @@
-import WebSocket from "ws"; // For Node.js; in browser, use native WebSocket
-import { v4 as uuidv4 } from "uuid";
+
+let createWebSocket: (url: string) => WebSocket;
+
+if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
+    // Browser environment
+    createWebSocket = (url: string) => new WebSocket(url);
+} else {
+    // Node.js
+    const ws = require("ws");
+    createWebSocket = (url: string) => new ws(url);
+}
+
+
 
 type Message = {
     id: string;
-    type: "query" | "result" | "error" | string;
+    type: string;
     payload: any;
 };
 
-const socket = new WebSocket("ws://127.0.0.1:9001");
+const socket = createWebSocket("ws://127.0.0.1:9001");
 
 socket.onopen = () => {
-    console.log("Connected to ReifyDB WebSocket server");
-
-    const query: Message = {
-        id: "req1",
-        type: "query",
-        payload: {
-            statement: "from trades",
-        },
+    const authMessage: Message = {
+        id: "auth-1",
+        type: "Auth",
+        payload: { access_token: "mysecrettoken" },
     };
 
-    socket.send(JSON.stringify(query));
+    socket.send(JSON.stringify(authMessage));
+
+    setTimeout(() => {
+        const query: Message = {
+            id: "req-1",
+            type: "Query",
+            payload: { statement: "from trades" },
+        };
+        socket.send(JSON.stringify(query));
+    }, 200);
 };
 
 socket.onmessage = (event) => {
-    try {
-        const message: Message = JSON.parse(event.data.toString());
-        console.log("Received:", message);
-    } catch (err) {
-        console.error("Invalid message format:", err);
-    }
-};
-
-socket.onerror = (err) => {
-    console.error("WebSocket error:", err);
-};
-
-socket.onclose = () => {
-    console.log("WebSocket connection closed.");
+    const data = JSON.parse(event.data as string);
+    console.log("Received:", data);
 };
