@@ -8,8 +8,8 @@ repository.workspace = true
 
 [features]
 default = []
-server = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network"]
-client = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network"]
+server = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network", "reifydb-network/server"]
+client = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network", "reifydb-network/client"]
 embedded = ["dep:tokio"]
 grpc = ["reifydb-network/grpc"]
 websocket = ["reifydb-network/websocket"]

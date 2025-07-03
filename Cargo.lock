@@ -1512,6 +1512,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-client"
+version = "0.0.1"
+dependencies = [
+ "prost",
+ "reifydb",
+ "reifydb-network",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+]
+
+[[package]]
 name = "reifydb-core"
 version = "0.0.1"
 dependencies = [

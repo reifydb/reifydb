@@ -6,7 +6,6 @@
 
 use reifydb_core::num::IsNumber;
 use reifydb_core::{CowVec, Kind, Value};
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {

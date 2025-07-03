@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
+// This file is licensed under the MIT
 
 use crate::grpc::client::grpc_db;
 use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};

@@ -10,6 +10,8 @@ repository.workspace = true
 default = []
 websocket = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic"]
 grpc = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic"]
+client = []
+server = []
 
 [dependencies]
 reifydb-catalog = { workspace = true }

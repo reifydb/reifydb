@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{DB, Error};
-use reifydb_auth::Principal;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::{Engine, ExecutionResult};
 use tokio::task::spawn_blocking;
 
@@ -45,7 +44,11 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    async fn execute_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
+    async fn execute_as(
+        &self,
+        principal: &Principal,
+        rql: &str,
+    ) -> crate::Result<Vec<ExecutionResult>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
@@ -60,7 +63,11 @@ where
         .unwrap()
     }
 
-    async fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<ExecutionResult>> {
+    async fn query_as(
+        &self,
+        principal: &Principal,
+        rql: &str,
+    ) -> crate::Result<Vec<ExecutionResult>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 

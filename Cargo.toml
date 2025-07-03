@@ -1,8 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = [
-    "bin/cli",
+members = ["bin/cli",
     "bin/playground",
     "bin/server",
     "crates/auth",
@@ -15,13 +14,13 @@ members = [
     "crates/storage",
     "crates/testing",
     "crates/transaction",
+    "pkg/client/rust",
     "pkg/python",
     "pkg/rust",
     "testsuite/regression",
 ]
 
-default-members = [
-    "bin/cli",
+default-members = ["bin/cli",
     "bin/playground",
     "bin/server",
     "crates/auth",
@@ -34,12 +33,13 @@ default-members = [
     "crates/storage",
     "crates/testing",
     "crates/transaction",
+    "pkg/client/rust",
     "pkg/rust",
     "testsuite/regression",
 ]
 
 [workspace.package]
-authors = ["Dev <dominique@reifydb.com>"]
+authors = ["Dominique Chuo <dominique@reifydb.com>"]
 homepage = "https://reifydb.com"
 repository = "https://github.com/reifydb/reifydb"
 readme = "readme.md"

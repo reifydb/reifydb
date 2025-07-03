@@ -1,0 +1,30 @@
+[package]
+name = "reifydb-client"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+
+[features]
+default = ["reifydb-network/client"]
+grpc = ["reifydb-network/client", "reifydb-network/grpc"]
+websocket = ["reifydb-network/client", "reifydb-network/websocket"]
+
+[dependencies]
+reifydb = { workspace = true }
+reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
+
+#reifydb-catalog = { workspace = true }
+#reifydb-core = { workspace = true }
+#reifydb-diagnostic = { workspace = true }
+#reifydb-engine = { workspace = true }
+#reifydb-storage = { workspace = true }
+#reifydb-rql = { workspace = true }
+#reifydb-transaction = { workspace = true }
+
+prost = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
+tokio-stream = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true }
+
