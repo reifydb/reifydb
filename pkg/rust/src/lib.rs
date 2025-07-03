@@ -28,6 +28,7 @@ pub use error::Error;
 pub use reifydb_auth as auth;
 pub use reifydb_core as core;
 pub use reifydb_engine as engine;
+pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_storage as storage;
 pub use reifydb_transaction as transaction;

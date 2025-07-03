@@ -16,7 +16,7 @@ mod engine;
 mod error;
 mod evaluate;
 pub(crate) mod execute;
-mod frame;
+pub mod frame;
 #[allow(dead_code)]
 mod function;
 mod get;

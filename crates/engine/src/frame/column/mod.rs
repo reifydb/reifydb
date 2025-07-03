@@ -4,6 +4,7 @@
 pub use layout::ColumnLayout;
 pub use push::Push;
 use reifydb_core::Kind;
+use serde::{Deserialize, Serialize};
 pub use values::ColumnValues;
 
 mod adjust;

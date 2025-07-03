@@ -1472,6 +1472,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-diagnostic",
  "reifydb-engine",
+ "reifydb-network",
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-transaction",
@@ -1542,6 +1543,7 @@ dependencies = [
  "reifydb-storage",
  "reifydb-testing",
  "reifydb-transaction",
+ "serde",
 ]
 
 [[package]]
@@ -1550,6 +1552,8 @@ version = "0.0.1"
 dependencies = [
  "reifydb-engine",
  "reifydb-testing",
+ "serde",
+ "serde_json",
  "test_each_file",
 ]
 

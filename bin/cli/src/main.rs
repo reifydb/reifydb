@@ -20,38 +20,33 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use futures::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use reifydb::network::websocket::{
+    AuthRequestPayload, QueryRequestPayload, Request as WebsocketRequest, RequestPayload,
+};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ClientMessage {
-    id: String,
-    #[serde(rename = "type")]
-    msg_type: String,
-    payload: serde_json::Value,
-}
 
 #[tokio::main]
 async fn main() {
     let url = url::Url::parse("ws://127.0.0.1:9001").unwrap();
     let (mut ws_stream, _) = connect_async(url).await.expect("Failed to connect");
 
-    let auth_msg = ClientMessage {
+    let auth_msg = WebsocketRequest {
         id: "auth-1".to_string(),
-        msg_type: "Auth".to_string(),
-        payload: json!({ "access_token": "mysecrettoken" }),
+        payload: RequestPayload::Auth(AuthRequestPayload {
+            token: Some("mysecrettoken".to_string()),
+        }),
     };
 
     ws_stream.send(Message::Text(serde_json::to_string(&auth_msg).unwrap())).await.unwrap();
 
     println!("✅ Sent auth message");
 
-    let query_msg = ClientMessage {
+    let query_msg = WebsocketRequest {
         id: "req-1".to_string(),
-        msg_type: "Query".to_string(),
-        payload: json!({ "statement": "from trades" }),
+        payload: RequestPayload::Query(QueryRequestPayload {
+            statements: vec!["from trades".to_string()],
+        }),
     };
 
     ws_stream.send(Message::Text(serde_json::to_string(&query_msg).unwrap())).await.unwrap();

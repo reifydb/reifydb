@@ -8,8 +8,8 @@ repository.workspace = true
 
 [features]
 default = []
-server = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic"]
-client = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic"]
+server = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network"]
+client = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network"]
 embedded = ["dep:tokio"]
 embedded_blocking = []
 
@@ -19,6 +19,7 @@ reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-diagnostic = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-network = { workspace = true, optional = true }
 reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }

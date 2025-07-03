@@ -21,32 +21,31 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use futures::{SinkExt, StreamExt};
-use serde::Deserialize;
-use serde_json::Value;
+use reifydb::network::websocket::RequestPayload::Auth;
+use reifydb::network::websocket::{AuthRequestPayload, Column, QueryRequestPayload, QueryResponsePayload, Request as WebsocketRequest, Request, RequestPayload, Response as WebsocketResponse, ResponsePayload};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
+// #[derive(Debug, Deserialize)]
+// struct IncomingMessage {
+//     id: String,
+//     #[serde(flatten)]
+//     payload: Payload,
+// }
+//
+// #[derive(Debug, Deserialize)]
+// #[serde(tag = "type", content = "payload")]
+// pub enum Payload {
+//     Auth { token: String },
+//     Query { statement: String },
+// }
 
-#[derive(Debug, Deserialize)]
-struct IncomingMessage {
-    id: String,
-    #[serde(flatten)]
-    payload: Payload,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", content = "payload")]
-pub enum Payload {
-    Auth { access_token: String },
-    Query { statement: String },
-}
-
-#[derive(Debug, serde::Serialize)]
-struct ServerMessage {
-    id: String,
-    r#type: String,
-    payload: Value,
-}
+// #[derive(Debug, serde::Serialize)]
+// struct ServerMessage {
+//     id: String,
+//     r#type: String,
+//     payload: Value,
+// }
 
 #[tokio::main]
 async fn main() {
@@ -60,45 +59,48 @@ async fn main() {
 
             match read.next().await {
                 Some(Ok(WsMessage::Text(text))) => {
-                    match serde_json::from_str::<IncomingMessage>(&text) {
-                        Ok(msg) => match msg.payload {
-                            Payload::Auth { access_token } => {
-                                if validate_token(&access_token) {
-                                    println!("✅ Authenticated: {}", access_token);
+                    match serde_json::from_str::<WebsocketRequest>(&text) {
+                        Ok(request) => match request.payload {
+                            Auth(AuthRequestPayload { token: Some(token) }) => {
+                                if validate_token(&token.as_str()) {
+                                    println!("✅ Authenticated: {}", token);
 
                                     // Ready to accept other messages
                                     while let Some(Ok(msg)) = read.next().await {
                                         if let WsMessage::Text(text) = msg {
-                                            match serde_json::from_str::<IncomingMessage>(&text) {
-                                                Ok(query_msg) => {
-                                                    match query_msg.payload {
-                                                        Payload::Query { statement } => {
-                                                            println!(
-                                                                "📥 Received query: {}",
-                                                                statement
-                                                            );
+                                            match serde_json::from_str::<Request>(&text) {
+                                                Ok(query_msg) => match query_msg.payload {
+                                                    RequestPayload::Query(
+                                                        QueryRequestPayload { statements },
+                                                    ) => {
+                                                        println!(
+                                                            "📥 Received query: {}",
+                                                            statements.join(",")
+                                                        );
 
-                                                            // Respond with dummy result
-                                                            let response = ServerMessage {
-                                                                id: query_msg.id,
-                                                                r#type: "result".to_string(),
-                                                                payload: serde_json::json!({
-                                                                    "columns": [{ "name": "example", "type": "string" }],
-                                                                    "rows": [[{ "String": "hello" }]],
-                                                                }),
-                                                            };
+                                                        let response = WebsocketResponse {
+                                                            id: query_msg.id,
+                                                            payload: ResponsePayload::Query(
+                                                                QueryResponsePayload {
+                                                                    columns: vec![Column {
+                                                                        name: "test".to_string(),
+                                                                        // data: ColumnValues::int2([
+                                                                        //     1, 2, 3, 4,
+                                                                        // ]),
+                                                                    }],
+                                                                },
+                                                            ),
+                                                        };
 
-                                                            let msg =
-                                                                serde_json::to_string(&response)
-                                                                    .unwrap();
-                                                            write
-                                                                .send(WsMessage::Text(msg))
-                                                                .await
-                                                                .unwrap();
-                                                        }
-                                                        _ => {}
+                                                        let msg = serde_json::to_string(&response)
+                                                            .unwrap();
+                                                        write
+                                                            .send(WsMessage::Text(msg))
+                                                            .await
+                                                            .unwrap();
                                                     }
-                                                }
+                                                    _ => {}
+                                                },
                                                 Err(err) => {
                                                     eprintln!("❌ Invalid message: {err}");
                                                 }
@@ -106,7 +108,7 @@ async fn main() {
                                         }
                                     }
                                 } else {
-                                    eprintln!("❌ Invalid token: {access_token}");
+                                    eprintln!("❌ Invalid token: {token}");
                                     let _ = write.send(WsMessage::Close(None)).await;
                                 }
                             }

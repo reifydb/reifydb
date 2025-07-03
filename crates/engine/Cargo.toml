@@ -16,6 +16,7 @@ reifydb-storage = { workspace = true }
 reifydb-transaction = { workspace = true }
 
 once_cell = { workspace = true }
+serde = { version = "1.0.219", features = ["derive"] }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }

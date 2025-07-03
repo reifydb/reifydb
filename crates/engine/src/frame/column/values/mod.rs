@@ -5,7 +5,8 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_core::num::IsNumber;
-use reifydb_core::{CowVec, Value, Kind};
+use reifydb_core::{CowVec, Kind, Value};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {

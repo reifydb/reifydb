@@ -22,7 +22,7 @@ socket.onopen = () => {
     const authMessage: Message = {
         id: "auth-1",
         type: "Auth",
-        payload: {access_token: "mysecrettoken"},
+        payload: {token: "mysecrettoken", id: "test"},
     };
 
     socket.send(JSON.stringify(authMessage));
@@ -31,7 +31,7 @@ socket.onopen = () => {
         const query: Message = {
             id: "req-1",
             type: "Query",
-            payload: {statement: "from trades"},
+            payload: {statements: ["from trades"] , id: "test"},
         };
         socket.send(JSON.stringify(query));
     }, 200);
