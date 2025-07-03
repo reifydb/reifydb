@@ -1,37 +1,12 @@
 {
-  "name": "@reifydb/reifydb-client-ts",
-  "type": "commonjs",
+  "name": "reifydb",
+  "private": true,
   "version": "0.0.1",
-  "description": "A TypeScript gRPC client for ReifyDB",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
-    "test": "ts-node src/client.ts",
-    "build": "tsc --project tsconfig.json"
-  },
-  "dependencies": {
-    "uuid": "^11.1.0",
-    "ws": "^8.18.3"
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "dev": "pnpm -r dev"
   },
   "devDependencies": {
-    "@types/ws": "^8.18.1",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
-  },
-  "engines": {
-    "node": ">=16.0.0"
-  },
-  "keywords": [
-    "reifydb"
-  ],
-  "files": [
-    "dist/",
-    "package.json",
-    "readme.md",
-    "license.md"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "license": "MIT"
+  }
 }

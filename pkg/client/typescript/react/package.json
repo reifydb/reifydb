@@ -1,0 +1,32 @@
+{
+  "name": "@reifydb/client-react",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm,cjs",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "reifydb"
+  ],
+  "files": [
+    "dist/",
+    "package.json",
+    "readme.md",
+    "license.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,37 @@
+{
+  "name": "@reifydb/client",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm,cjs",
+    "dev": "tsc --watch",
+    "test": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "uuid": "^11.1.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "ts-node": "^10.9.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "reifydb"
+  ],
+  "files": [
+    "dist/",
+    "package.json",
+    "readme.md",
+    "license.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

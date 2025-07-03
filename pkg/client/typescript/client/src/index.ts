@@ -1,4 +1,3 @@
-
 let createWebSocket: (url: string) => WebSocket;
 
 if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -9,7 +8,6 @@ if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
     const ws = require("ws");
     createWebSocket = (url: string) => new ws(url);
 }
-
 
 
 type Message = {
@@ -24,7 +22,7 @@ socket.onopen = () => {
     const authMessage: Message = {
         id: "auth-1",
         type: "Auth",
-        payload: { access_token: "mysecrettoken" },
+        payload: {access_token: "mysecrettoken"},
     };
 
     socket.send(JSON.stringify(authMessage));
@@ -33,7 +31,7 @@ socket.onopen = () => {
         const query: Message = {
             id: "req-1",
             type: "Query",
-            payload: { statement: "from trades" },
+            payload: {statement: "from trades"},
         };
         socket.send(JSON.stringify(query));
     }, 200);
