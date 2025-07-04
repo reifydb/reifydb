@@ -1,17 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
+use crate::error::NetworkError;
 use crate::grpc::client::convert::{convert_diagnostic, convert_value};
 use crate::grpc::client::grpc_db::rx_result;
 use crate::grpc::client::{Client, grpc_db, wait_for_socket};
-use reifydb_core::{Error, Kind};
+use reifydb_core::Kind;
 use reifydb_engine::{Column, ExecutionResult};
 use std::str::FromStr;
 use std::time::Duration;
 use tonic::metadata::MetadataValue;
 
 impl Client {
-    pub async fn rx(&self, query: &str) -> Result<Vec<ExecutionResult>, Error> {
+    pub async fn rx(&self, query: &str) -> Result<Vec<ExecutionResult>, NetworkError> {
         // FIXME this is quite expensive and should only used in tests
         // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
 
@@ -37,11 +38,10 @@ impl Client {
     }
 }
 
-fn convert_result(result: rx_result::Result, query: &str) -> Result<ExecutionResult, Error> {
+fn convert_result(result: rx_result::Result, query: &str) -> Result<ExecutionResult, NetworkError> {
     Ok(match result {
         rx_result::Result::Error(diagnostic) => {
-            // return Err(crate::Error::execution_error(query, convert_diagnostic(diagnostic)));
-            return Err(Error(convert_diagnostic(diagnostic)));
+            return Err(NetworkError::execution_error(query, convert_diagnostic(diagnostic)));
         }
         rx_result::Result::Query(query) => {
             let labels = query

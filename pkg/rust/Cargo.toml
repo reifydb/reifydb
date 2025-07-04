@@ -8,8 +8,8 @@ repository.workspace = true
 
 [features]
 default = []
-server = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network", "reifydb-network/server"]
-client = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic", "dep:reifydb-network", "reifydb-network/client"]
+server = ["dep:tokio", "dep:reifydb-network", "reifydb-network/server"]
+client = ["dep:tokio", "dep:reifydb-network", "reifydb-network/client"]
 embedded = ["dep:tokio"]
 grpc = ["reifydb-network/grpc"]
 websocket = ["reifydb-network/websocket"]
@@ -26,10 +26,5 @@ reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 
-prost = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
-tokio-stream = { workspace = true, optional = true }
-tonic = { workspace = true, optional = true }
-
-[build-dependencies]
-tonic-build = { workspace = true }
+tonic = { workspace = true }

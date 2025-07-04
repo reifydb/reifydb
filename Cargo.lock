@@ -1466,7 +1466,6 @@ dependencies = [
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
- "prost",
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
@@ -1477,9 +1476,7 @@ dependencies = [
  "reifydb-storage",
  "reifydb-transaction",
  "tokio",
- "tokio-stream",
  "tonic",
- "tonic-build",
 ]
 
 [[package]]
@@ -1565,6 +1562,7 @@ dependencies = [
  "prost",
  "reifydb-catalog",
  "reifydb-core",
+ "reifydb-diagnostic",
  "reifydb-engine",
  "reifydb-testing",
  "serde",

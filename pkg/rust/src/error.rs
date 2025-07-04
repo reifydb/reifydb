@@ -3,6 +3,7 @@
 
 use reifydb_core::Diagnostic;
 use reifydb_diagnostic::DefaultRenderer;
+use reifydb_network::NetworkError;
 use std::fmt::{Display, Formatter};
 use tonic::Status;
 
@@ -58,5 +59,17 @@ impl From<reifydb_engine::Error> for Error {
 impl From<reifydb_core::Error> for Error {
     fn from(err: reifydb_core::Error) -> Self {
         Self::ExecutionError { source: "".to_string(), diagnostic: err.diagnostic() }
+    }
+}
+
+impl From<reifydb_network::NetworkError> for Error {
+    fn from(value: NetworkError) -> Self {
+        match value {
+            NetworkError::ConnectionError { message } => Self::ConnectionError { message },
+            NetworkError::EngineError { message } => Self::EngineError { message },
+            NetworkError::ExecutionError { source, diagnostic } => {
+                Self::ExecutionError { source, diagnostic }
+            }
+        }
     }
 }

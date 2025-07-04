@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
+use crate::error::NetworkError;
 use crate::grpc::client::convert::{convert_diagnostic, convert_value};
 use crate::grpc::client::grpc_db::tx_result;
 use crate::grpc::client::grpc_db::tx_result::Result::{
@@ -16,7 +17,7 @@ use std::time::Duration;
 use tonic::metadata::MetadataValue;
 
 impl Client {
-    pub async fn tx(&self, query: &str) -> Result<Vec<ExecutionResult>, reifydb_core::Error> {
+    pub async fn tx(&self, query: &str) -> Result<Vec<ExecutionResult>, NetworkError> {
         // FIXME this is quite expensive and should only used in tests
         // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
 
@@ -41,14 +42,11 @@ impl Client {
     }
 }
 
-fn convert_result(
-    result: tx_result::Result,
-    query: &str,
-) -> Result<ExecutionResult, reifydb_core::Error> {
+fn convert_result(result: tx_result::Result, query: &str) -> Result<ExecutionResult, NetworkError> {
     Ok(match result {
         Error(diagnostic) => {
-            return Err(reifydb_core::Error(convert_diagnostic(diagnostic)));
-            // return Err(crate::Error::execution_error(query, convert_diagnostic(diagnostic)));
+            // return Err(reifydb_core::Error(convert_diagnostic(diagnostic)));
+            return Err(NetworkError::execution_error(query, convert_diagnostic(diagnostic)));
         }
         CreateSchema(cs) => ExecutionResult::CreateSchema(CreateSchemaResult {
             id: SchemaId(cs.id),
