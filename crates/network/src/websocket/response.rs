@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb_core::Kind;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,6 +27,8 @@ pub struct QueryResponsePayload {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Column{
+pub struct Column {
     pub name: String,
+    pub kind: Kind,
+    pub data: Vec<String>,
 }

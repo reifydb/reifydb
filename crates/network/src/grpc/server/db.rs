@@ -73,7 +73,7 @@ where
                     for res in results {
                         let tx_result =
                             match res {
-                                ExecutionResult::Query { columns: ls, rows: rs } => {
+                                ExecutionResult::OldQuery { columns: ls, rows: rs } => {
                                     let columns = ls
                                         .iter()
                                         .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
@@ -195,7 +195,7 @@ where
         .unwrap();
 
         let stream = tokio_stream::iter(results.into_iter().filter_map(|res| match res {
-            ExecutionResult::Query { columns: ls, rows: rs } => {
+            ExecutionResult::OldQuery { columns: ls, rows: rs } => {
                 let columns =
                     ls.iter().map(|c| grpc_db::Column { name: c.name.clone(), value: 0 }).collect();
 

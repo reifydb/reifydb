@@ -1,12 +1,13 @@
 {
   "name": "@reifydb/client",
+  "type": "module",
   "version": "0.0.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsup src/index.ts --dts --format esm,cjs",
-    "dev": "tsc --watch",
-    "test": "ts-node src/index.ts"
+    "build": "tsup src/index.ts --dts --format esm --sourcemap",
+    "dev": "pnpm build && node --enable-source-maps dist/index.js",
+    "test": "node --enable-source-maps dist/index.js"
   },
   "dependencies": {
     "uuid": "^11.1.0",
@@ -15,8 +16,7 @@
   "devDependencies": {
     "@types/node": "^24.0.10",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3",
-    "ts-node": "^10.9.2"
+    "typescript": "^5.8.3"
   },
   "engines": {
     "node": ">=16.0.0"

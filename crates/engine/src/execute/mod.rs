@@ -32,7 +32,7 @@ pub enum ExecutionResult {
     CreateTable(CreateTableResult),
     InsertIntoTable { schema: String, table: String, inserted: usize },
     InsertIntoSeries { schema: String, series: String, inserted: usize },
-    Query { columns: Vec<Column>, rows: Vec<Vec<Value>> },
+    OldQuery { columns: Vec<Column>, rows: Vec<Vec<Value>> },
     DescribeQuery { columns: Vec<Column> },
 }
 
@@ -173,7 +173,7 @@ impl From<Frame> for ExecutionResult {
             rows.push(row);
         }
 
-        ExecutionResult::Query { columns, rows }
+        ExecutionResult::OldQuery { columns, rows }
     }
 }
 
@@ -252,7 +252,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 if let Some(frame) = result {
                     Ok(frame.into())
                 } else {
-                    Ok(ExecutionResult::Query {
+                    Ok(ExecutionResult::OldQuery {
                         columns: node
                             .layout()
                             .unwrap_or(FrameLayout { columns: vec![] })

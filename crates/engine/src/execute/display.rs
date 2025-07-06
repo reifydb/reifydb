@@ -39,7 +39,7 @@ impl Display for ExecutionResult {
                     write!(f, "inserted 1 row into table {table} created in schema {schema}")
                 }
             }
-            ExecutionResult::Query { columns, rows } => print_query(columns, rows, f),
+            ExecutionResult::OldQuery { columns, rows } => print_query(columns, rows, f),
             ExecutionResult::DescribeQuery { columns } => print_describe_query(columns, f),
         }
     }

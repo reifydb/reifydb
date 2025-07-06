@@ -21,11 +21,18 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use futures::{SinkExt, StreamExt};
+use reifydb::core::Kind;
 use reifydb::network::websocket::RequestPayload::Auth;
-use reifydb::network::websocket::{AuthRequestPayload, Column, QueryRequestPayload, QueryResponsePayload, Request as WebsocketRequest, Request, RequestPayload, Response as WebsocketResponse, ResponsePayload};
+use reifydb::network::websocket::{
+    AuthRequestPayload, Column, QueryRequestPayload, QueryResponsePayload,
+    Request as WebsocketRequest, Request, RequestPayload, Response as WebsocketResponse,
+    ResponsePayload,
+};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
+use reifydb::{memory, serializable, ReifyDB, DB};
+use reifydb::engine::ExecutionResult;
 // #[derive(Debug, Deserialize)]
 // struct IncomingMessage {
 //     id: String,
@@ -52,13 +59,26 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:9001").await.unwrap();
     println!("🧠 ReifyDB WebSocket server listening on ws://127.0.0.1:9001");
 
+
     while let Ok((stream, _)) = listener.accept().await {
         tokio::spawn(async move {
+            let (db, root) = ReifyDB::embedded_with(serializable(memory()));
+            db.execute_as(&root, r#"create schema test"#).await.unwrap();
+            db.execute_as(&root, r#"create table test.one(field: int1, other: int1)"#).await.unwrap();
+            db.execute_as(&root, r#"create table test.two(field: int1)"#).await.unwrap();
+            let _err = db
+                .execute_as(&root, r#"insert (1,2),(2,2),(3,2),(4,2),(5,2) into test.one (field, other)"#)
+                .await
+                .unwrap();
+            let _err = db.execute_as(&root, r#"insert (2),(3) into test.two (field)"#).await.unwrap();
+
+
             let ws_stream = accept_async(stream).await.unwrap();
             let (mut write, mut read) = ws_stream.split();
 
             match read.next().await {
                 Some(Ok(WsMessage::Text(text))) => {
+                    dbg!(&text);
                     match serde_json::from_str::<WebsocketRequest>(&text) {
                         Ok(request) => match request.payload {
                             Auth(AuthRequestPayload { token: Some(token) }) => {
@@ -78,15 +98,31 @@ async fn main() {
                                                             statements.join(",")
                                                         );
 
+
+                                                        let statement = statements.first().unwrap();
+                                                        let result = db.query_as(&root,statement).await.unwrap();
+
+                                                        dbg!(&result);
+                                                        
+                                                        match result.first().unwrap() {
+                                                            ExecutionResult::OldQuery { columns, rows } => {
+                                                            
+                                                            }
+                                                            _ => unimplemented!()
+                                                        }
+
                                                         let response = WebsocketResponse {
                                                             id: query_msg.id,
                                                             payload: ResponsePayload::Query(
                                                                 QueryResponsePayload {
                                                                     columns: vec![Column {
                                                                         name: "test".to_string(),
-                                                                        // data: ColumnValues::int2([
-                                                                        //     1, 2, 3, 4,
-                                                                        // ]),
+                                                                        kind: Kind::Int2,
+                                                                        data: vec![
+                                                                            "1".to_string(),
+                                                                            "2".to_string(),
+                                                                            "3".to_string(),
+                                                                        ],
                                                                     }],
                                                                 },
                                                             ),

@@ -56,7 +56,7 @@ fn convert_result(result: rx_result::Result, query: &str) -> Result<ExecutionRes
                 .map(|r| r.values.into_iter().map(convert_value).collect())
                 .collect();
 
-            ExecutionResult::Query { columns: labels, rows }
+            ExecutionResult::OldQuery { columns: labels, rows }
         }
     })
 }
