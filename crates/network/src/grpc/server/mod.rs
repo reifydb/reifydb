@@ -2,15 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::grpc::server::db::DbService;
-use crate::grpc::server::grpc_db::db_server::DbServer;
+use crate::grpc::server::grpc::db_server::DbServer;
 use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 
 pub mod auth;
 mod db;
 
-pub(crate) mod grpc_db {
-    tonic::include_proto!("grpc_db");
+pub(crate) mod grpc {
+    tonic::include_proto!("reifydb");
 }
 
 // FIXME return result

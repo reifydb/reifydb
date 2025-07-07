@@ -4,14 +4,16 @@
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::task::spawn_blocking;
-use tokio_stream::Stream;
+use tokio_stream::{Stream, once};
 use tonic::{Request, Response, Status};
 
-use crate::grpc::server::grpc_db::{Int128, RxRequest, TxRequest, UInt128};
-use crate::grpc::server::{AuthenticatedUser, grpc_db};
+use crate::grpc::server::grpc::RxResult;
+use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
+use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Diagnostic, Value};
+use reifydb_core::{Diagnostic, Kind, Value};
 use reifydb_engine::Engine;
+use reifydb_engine::frame::Frame;
 
 pub struct DbService<VS, US, T>
 where
@@ -33,11 +35,11 @@ where
     }
 }
 
-pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::TxResult, Status>> + Send>>;
-pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc_db::RxResult, Status>> + Send>>;
+pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc::TxResult, Status>> + Send>>;
+pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc::RxResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<VS, US, T> grpc_db::db_server::Db for DbService<VS, US, T>
+impl<VS, US, T> grpc::db_server::Db for DbService<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
@@ -59,110 +61,28 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            // match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
-            // {
-            //     Ok(results) => {
-            //         let mut responses: Vec<Result<TxResult, Status>> = vec![];
-            //
-            //         for res in results {
-            //             let tx_result =
-            //                 match res {
-            //                     ExecutionResult::Query { columns: ls, rows: rs } => {
-            //                         let columns = ls
-            //                             .iter()
-            //                             .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
-            //                             .collect();
-            //
-            //                         let rows = rs
-            //                             .iter()
-            //                             .map(|r| Row {
-            //                                 values: r.iter().map(value_to_query_value).collect(),
-            //                             })
-            //                             .collect();
-            //
-            //                         TxResult {
-            //                             result: Some(grpc_db::tx_result::Result::Query(
-            //                                 QueryResult { columns, rows },
-            //                             )),
-            //                         }
-            //                     }
-            //                     ExecutionResult::DescribeQuery { columns: ls } => {
-            //                         let columns = ls
-            //                             .iter()
-            //                             .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
-            //                             .collect();
-            //
-            //                         TxResult {
-            //                             result: Some(grpc_db::tx_result::Result::Query(
-            //                                 QueryResult { columns, rows: vec![] },
-            //                             )),
-            //                         }
-            //                     }
-            //                     ExecutionResult::CreateSchema(CreateSchemaResult {
-            //                         id,
-            //                         schema,
-            //                         created,
-            //                     }) => TxResult {
-            //                         result: Some(CreateSchema(grpc_db::CreateSchema {
-            //                             id: id.0,
-            //                             schema,
-            //                             created,
-            //                         })),
-            //                     },
-            //                     ExecutionResult::CreateSeries { .. } => {
-            //                         unimplemented!()
-            //                     }
-            //                     ExecutionResult::CreateTable(CreateTableResult {
-            //                         id,
-            //                         schema,
-            //                         table,
-            //                         created,
-            //                     }) => TxResult {
-            //                         result: Some(CreateTable(grpc_db::CreateTable {
-            //                             id: id.0,
-            //                             schema,
-            //                             table,
-            //                             created,
-            //                         })),
-            //                     },
-            //                     ExecutionResult::InsertIntoSeries { schema, series, inserted } => {
-            //                         TxResult {
-            //                             result: Some(InsertIntoSeries(grpc_db::InsertIntoSeries {
-            //                                 schema,
-            //                                 series,
-            //                                 inserted: inserted as u32,
-            //                             })),
-            //                         }
-            //                     }
-            //                     ExecutionResult::InsertIntoTable { schema, table, inserted } => {
-            //                         TxResult {
-            //                             result: Some(InsertIntoTable(grpc_db::InsertIntoTable {
-            //                                 schema,
-            //                                 table,
-            //                                 inserted: inserted as u32,
-            //                             })),
-            //                         }
-            //                     }
-            //                     ExecutionResult::CreateDeferredView { .. } => {
-            //                         unimplemented!()
-            //                     }
-            //                 };
-            //
-            //             responses.push(Ok(tx_result));
-            //         }
-            //
-            //         Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as TxResultStream))
-            //     }
-            //     Err(err) => {
-            //         let diagnostic = err.diagnostic();
-            //         let result = TxResult {
-            //             result: Some(grpc_db::tx_result::Result::Error(map_diagnostic(diagnostic))),
-            //         };
-            //
-            //         Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream))
-            //     }
-            // }
-            todo!()
+            match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            {
+                Ok(frames) => {
+                    let mut responses: Vec<Result<TxResult, Status>> = vec![];
+
+                    for frame in frames {
+                        responses.push(Ok(TxResult {
+                            result: Some(grpc::tx_result::Result::Frame(map_frame(frame))),
+                        }))
+                    }
+
+                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as TxResultStream))
+                }
+                Err(err) => {
+                    let diagnostic = err.diagnostic();
+                    let result = TxResult {
+                        result: Some(grpc::tx_result::Result::Error(map_diagnostic(diagnostic))),
+                    };
+
+                    Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream))
+                }
+            }
         })
         .await
         .unwrap()
@@ -183,67 +103,40 @@ where
 
         let engine = self.engine.clone();
 
-        let results = spawn_blocking(move || {
-            engine.query_as(&Principal::System { id: 1, name: "root".to_string() }, &query).unwrap()
+        spawn_blocking(move || {
+            match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            {
+                Ok(frames) => {
+                    let mut responses: Vec<Result<RxResult, Status>> = vec![];
+
+                    for frame in frames {
+                        responses.push(Ok(RxResult {
+                            result: Some(grpc::rx_result::Result::Frame(map_frame(frame))),
+                        }))
+                    }
+
+                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as RxResultStream))
+                }
+                Err(err) => {
+                    let diagnostic = err.diagnostic();
+                    let result = RxResult {
+                        result: Some(grpc::rx_result::Result::Error(map_diagnostic(diagnostic))),
+                    };
+
+                    Ok(Response::new(Box::pin(once(Ok(result))) as RxResultStream))
+                }
+            }
         })
         .await
-        .unwrap();
-
-        // let stream = tokio_stream::iter(results.into_iter().filter_map(|res| match res {
-        //     ExecutionResult::Query { columns: ls, rows: rs } => {
-        //         let columns =
-        //             ls.iter().map(|c| grpc_db::Column { name: c.name.clone(), value: 0 }).collect();
-        //
-        //         let rows = rs
-        //             .iter()
-        //             .map(|r| grpc_db::Row { values: r.iter().map(value_to_query_value).collect() })
-        //             .collect();
-        //
-        //         Some(Ok(RxResult {
-        //             result: Some(grpc_db::rx_result::Result::Query(QueryResult { columns, rows })),
-        //         }))
-        //     }
-        //     _ => None,
-        // }));
-        //
-        // Ok(Response::new(Box::pin(stream) as RxResultStream))
-        todo!()
+        .unwrap()
     }
 }
 
-fn value_to_query_value(value: &Value) -> grpc_db::Value {
-    use grpc_db::value::Kind;
-
-    grpc_db::Value {
-        kind: Some(match value {
-            Value::Bool(v) => Kind::BoolValue(*v),
-            Value::Float4(v) => Kind::Float32Value(v.value()),
-            Value::Float8(v) => Kind::Float64Value(v.value()),
-            Value::Int1(v) => Kind::Int1Value(*v as i32),
-            Value::Int2(v) => Kind::Int2Value(*v as i32),
-            Value::Int4(v) => Kind::Int4Value(*v),
-            Value::Int8(v) => Kind::Int8Value(*v),
-            Value::Int16(v) => {
-                Kind::Int16Value(Int128 { high: ((*v) >> 64) as u64, low: *v as u64 })
-            }
-            Value::String(s) => Kind::StringValue(s.clone()),
-            Value::Uint1(v) => Kind::Uint1Value(*v as u32),
-            Value::Uint2(v) => Kind::Uint2Value(*v as u32),
-            Value::Uint4(v) => Kind::Uint4Value(*v),
-            Value::Uint8(v) => Kind::Uint8Value(*v),
-            Value::Uint16(v) => {
-                Kind::Uint16Value(UInt128 { high: (v >> 64) as u64, low: *v as u64 })
-            }
-            Value::Undefined => Kind::UndefinedValue(false),
-        }),
-    }
-}
-
-fn map_diagnostic(diagnostic: Diagnostic) -> grpc_db::Diagnostic {
-    grpc_db::Diagnostic {
+fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
+    grpc::Diagnostic {
         code: diagnostic.code.to_string(),
         message: diagnostic.message,
-        span: diagnostic.span.map(|s| grpc_db::Span {
+        span: diagnostic.span.map(|s| grpc::Span {
             offset: s.offset.0,
             line: s.line.0,
             fragment: s.fragment,
@@ -253,6 +146,54 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc_db::Diagnostic {
         notes: diagnostic.notes,
         column: diagnostic
             .column
-            .map(|c| grpc_db::DiagnosticColumn { name: c.name, value: c.value as i32 }),
+            .map(|c| grpc::DiagnosticColumn { name: c.name, kind: c.value as i32 }),
+    }
+}
+
+fn map_frame(frame: Frame) -> grpc::Frame {
+    use grpc::{Column, Frame, Int128, UInt128, Value as GrpcValue, value::Kind as GrpcKind};
+
+    Frame {
+        name: frame.name,
+        columns: frame
+            .columns
+            .into_iter()
+            .map(|col| {
+                let kind = col.values.kind();
+
+                let values = col
+                    .values
+                    .iter()
+                    .map(|v| {
+                        let kind = match v {
+                            Value::Bool(b) => GrpcKind::BoolValue(b),
+                            Value::Float4(f) => GrpcKind::Float32Value(f.value()),
+                            Value::Float8(f) => GrpcKind::Float64Value(f.value()),
+                            Value::Int1(i) => GrpcKind::Int1Value(i as i32),
+                            Value::Int2(i) => GrpcKind::Int2Value(i as i32),
+                            Value::Int4(i) => GrpcKind::Int4Value(i),
+                            Value::Int8(i) => GrpcKind::Int8Value(i),
+                            Value::Int16(i) => GrpcKind::Int16Value(Int128 {
+                                high: (i >> 64) as u64,
+                                low: i as u64,
+                            }),
+                            Value::Uint1(i) => GrpcKind::Uint1Value(i as u32),
+                            Value::Uint2(i) => GrpcKind::Uint2Value(i as u32),
+                            Value::Uint4(i) => GrpcKind::Uint4Value(i),
+                            Value::Uint8(i) => GrpcKind::Uint8Value(i),
+                            Value::Uint16(i) => GrpcKind::Uint16Value(UInt128 {
+                                high: (i >> 64) as u64,
+                                low: i as u64,
+                            }),
+                            Value::String(s) => GrpcKind::StringValue(s.clone()),
+                            Value::Undefined => GrpcKind::UndefinedValue(false),
+                        };
+                        GrpcValue { kind: Some(kind) }
+                    })
+                    .collect();
+
+                Column { name: col.name, kind: Kind::to_u8(&kind) as i32, values }
+            })
+            .collect(),
     }
 }

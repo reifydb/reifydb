@@ -11,8 +11,8 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep};
 
-pub(crate) mod grpc_db {
-    tonic::include_proto!("grpc_db");
+pub(crate) mod grpc {
+    tonic::include_proto!("reifydb");
 }
 
 // FIXME 1ms is a little bit little for production - only for testing for now

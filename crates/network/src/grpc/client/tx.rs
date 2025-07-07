@@ -2,8 +2,9 @@
 // This file is licensed under the MIT
 
 use crate::error::NetworkError;
-use crate::grpc::client::grpc_db::tx_result;
-use crate::grpc::client::{Client, grpc_db, wait_for_socket};
+use crate::grpc::client::convert::{convert_diagnostic, convert_frame};
+use crate::grpc::client::grpc::tx_result;
+use crate::grpc::client::{Client, grpc, wait_for_socket};
 use reifydb_engine::frame::Frame;
 use std::str::FromStr;
 use std::time::Duration;
@@ -16,14 +17,14 @@ impl Client {
 
         wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await?;
         let uri = format!("http://{}", self.socket_addr);
-        let mut client = grpc_db::db_client::DbClient::connect(uri).await.unwrap();
-        let mut request = tonic::Request::new(grpc_db::TxRequest { query: query.into() });
+        let mut client = grpc::db_client::DbClient::connect(uri).await?;
+        let mut request = tonic::Request::new(grpc::TxRequest { query: query.into() });
 
         request
             .metadata_mut()
             .insert("authorization", MetadataValue::from_str("Bearer mysecrettoken").unwrap());
 
-        let mut stream = client.tx(request).await.unwrap().into_inner();
+        let mut stream = client.tx(request).await?.into_inner();
 
         let mut results = Vec::new();
         while let Some(msg) = stream.message().await.unwrap() {
@@ -35,53 +36,12 @@ impl Client {
     }
 }
 
-fn convert_result(result: tx_result::Result, query: &str) -> Result<Frame, NetworkError> {
-    // Ok(match result {
-    //     Error(diagnostic) => {
-    //         // return Err(reifydb_core::Error(convert_diagnostic(diagnostic)));
-    //         return Err(NetworkError::execution_error(query, convert_diagnostic(diagnostic)));
-    //     }
-    //     CreateSchema(cs) => ExecutionResult::CreateSchema(CreateSchemaResult {
-    //         id: SchemaId(cs.id),
-    //         schema: cs.schema,
-    //         created: cs.created,
-    //     }),
-    //     CreateTable(ct) => ExecutionResult::CreateTable(CreateTableResult {
-    //         id: TableId(ct.id),
-    //         schema: ct.schema,
-    //         table: ct.table,
-    //         created: ct.created,
-    //     }),
-    //     InsertIntoTable(insert) => ExecutionResult::InsertIntoTable {
-    //         schema: insert.schema,
-    //         table: insert.table,
-    //         inserted: insert.inserted as usize,
-    //     },
-    //     InsertIntoSeries(_) => unimplemented!(),
-    //     Query(query) => {
-    //         let labels = query
-    //             .columns
-    //             .into_iter()
-    //             .map(|c| Column { name: c.name, kind: Kind::Bool })
-    //             .collect();
-    //
-    //         let rows = query
-    //             .rows
-    //             .into_iter()
-    //             .map(|r| r.values.into_iter().map(convert_value).collect())
-    //             .collect();
-    //
-    //         ExecutionResult::Query { columns: labels, rows }
-    //     }
-    //     DescribeQuery(query) => {
-    //         let labels = query
-    //             .columns
-    //             .into_iter()
-    //             .map(|c| Column { name: c.name, kind: Kind::Bool })
-    //             .collect();
-    //
-    //         ExecutionResult::DescribeQuery { columns: labels }
-    //     }
-    // })
-    unimplemented!()
+pub fn convert_result(result: tx_result::Result, query: &str) -> Result<Frame, NetworkError> {
+    match result {
+        tx_result::Result::Error(diagnostic) => {
+            let diag = convert_diagnostic(diagnostic);
+            Err(NetworkError::execution_error(query, diag))
+        }
+        tx_result::Result::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),
+    }
 }

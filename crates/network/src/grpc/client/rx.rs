@@ -2,8 +2,9 @@
 // This file is licensed under the MIT
 
 use crate::error::NetworkError;
-use crate::grpc::client::grpc_db::rx_result;
-use crate::grpc::client::{Client, grpc_db, wait_for_socket};
+use crate::grpc::client::convert::{convert_diagnostic, convert_frame};
+use crate::grpc::client::{Client, grpc, wait_for_socket};
+use grpc::rx_result::Result as RxResultEnum;
 use reifydb_engine::frame::Frame;
 use std::str::FromStr;
 use std::time::Duration;
@@ -16,9 +17,9 @@ impl Client {
 
         wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await?;
         let uri = format!("http://{}", self.socket_addr);
-        let mut client = grpc_db::db_client::DbClient::connect(uri).await.unwrap();
+        let mut client = grpc::db_client::DbClient::connect(uri).await?;
 
-        let mut request = tonic::Request::new(grpc_db::RxRequest { query: query.into() });
+        let mut request = tonic::Request::new(grpc::RxRequest { query: query.into() });
 
         request
             .metadata_mut()
@@ -26,7 +27,7 @@ impl Client {
 
         let mut results = Vec::new();
 
-        let mut stream = client.rx(request).await.unwrap().into_inner();
+        let mut stream = client.rx(request).await?.into_inner();
         while let Some(msg) = stream.message().await.unwrap() {
             if let Some(result) = msg.result {
                 results.push(convert_result(result, query)?);
@@ -36,28 +37,12 @@ impl Client {
     }
 }
 
-fn convert_result(result: rx_result::Result, query: &str) -> Result<Frame, NetworkError> {
-    // Ok(match result {
-    //     rx_result::Result::Error(diagnostic) => {
-    //         return Err(NetworkError::execution_error(query, convert_diagnostic(diagnostic)));
-    //     }
-    //     rx_result::Result::Query(query) => {
-    //         let labels = query
-    //             .columns
-    //             .into_iter()
-    //             .map(|c| Column { name: c.name, kind: Kind::Bool })
-    //             .collect();
-    //
-    //         let rows = query
-    //             .rows
-    //             .into_iter()
-    //             .map(|r| r.values.into_iter().map(convert_value).collect())
-    //             .collect();
-    //
-    //         ExecutionResult::Query { columns: labels, rows }
-    //
-    //
-    //     }
-    // })
-    unimplemented!()
+pub fn convert_result(result: RxResultEnum, query: &str) -> Result<Frame, NetworkError> {
+    match result {
+        RxResultEnum::Error(diagnostic) => {
+            let diag = convert_diagnostic(diagnostic);
+            Err(NetworkError::execution_error(query, diag))
+        }
+        RxResultEnum::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),
+    }
 }

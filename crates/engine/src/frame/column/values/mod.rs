@@ -187,7 +187,9 @@ impl ColumnValues {
                     .map(|(v, va)| if *va { Value::Uint16(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            _ => unimplemented!(),
+            ColumnValues::Undefined(size) => {
+                Box::new((0..*size).map(|_| Value::Undefined).collect::<Vec<Value>>().into_iter())
+            }
         }
     }
 }
@@ -547,14 +549,5 @@ impl ColumnValues {
             ColumnValues::Uint16(_, _) => Kind::Uint16,
             ColumnValues::Undefined(_) => Kind::Undefined,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore]
-    fn implement() {
-        todo!()
     }
 }

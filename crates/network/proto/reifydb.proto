@@ -1,0 +1,118 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the MIT
+
+syntax = "proto3";
+
+package reifydb;
+
+service DB {
+  rpc Tx(TxRequest) returns (stream TxResult);
+  rpc Rx(RxRequest) returns (stream RxResult);
+}
+
+message TxRequest {
+  string query = 1;
+}
+
+message RxRequest {
+  string query = 1;
+}
+
+message TxResult {
+  oneof result {
+    Frame frame = 1;
+    Diagnostic error = 2;
+  }
+}
+
+message RxResult {
+  oneof result {
+    Frame frame = 1;
+    Diagnostic error = 2;
+  }
+}
+
+message Frame {
+  string name = 1;
+  repeated Column columns = 2;
+}
+
+message Column {
+  string name = 1;
+  Kind kind = 2;
+  repeated Value values = 3;
+}
+
+message Value {
+  oneof kind {
+    bool bool_value = 1;
+
+    int32 int1_value = 2;
+    int32 int2_value = 3;
+    int32 int4_value = 4;
+    int64 int8_value = 5;
+    Int128 int16_value = 6;
+
+    uint32 uint1_value = 7;
+    uint32 uint2_value = 8;
+    uint32 uint4_value = 9;
+    uint64 uint8_value = 10;
+    UInt128 uint16_value = 11;
+
+    string string_value = 12;
+
+    float float32_value = 13;
+    double float64_value = 14;
+
+    bool undefined_value = 15;
+  }
+}
+
+message Int128 {
+  uint64 high = 1;
+  uint64 low = 2;
+}
+
+message UInt128 {
+  uint64 high = 1;
+  uint64 low = 2;
+}
+
+message Diagnostic {
+  string code = 1;
+  string message = 2;
+  Span span = 3;
+  string label = 4;
+  string help = 5;
+  repeated string notes = 6;
+  DiagnosticColumn column = 7;
+}
+
+message Span {
+  uint32 offset = 1;
+  uint32 line = 2;
+  string fragment = 3;
+}
+
+message DiagnosticColumn {
+  string name = 1;
+  Kind kind = 2;
+}
+
+enum Kind {
+  UNDEFINED = 0x00;
+  FLOAT4 = 0x01;
+  FLOAT8 = 0x02;
+  INT1 = 0x03;
+  INT2 = 0x04;
+  INT4 = 0x05;
+  INT8 = 0x06;
+  INT16 = 0x07;
+  TEXT = 0x08;
+  UINT1 = 0x09;
+  UINT2 = 0x0A;
+  UINT4 = 0x0B;
+  UINT8 = 0x0C;
+  UINT16 = 0x0D;
+  BOOL = 0x0E;
+}

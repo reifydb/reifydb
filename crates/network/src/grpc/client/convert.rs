@@ -1,11 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use crate::grpc::client::grpc_db;
-use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
-use reifydb_core::{Diagnostic, DiagnosticColumn, Kind, Line, Offset, Span, Value};
+use crate::grpc::client::grpc;
+use reifydb_core::{Diagnostic, DiagnosticColumn, Kind, Line, Offset, Span};
+use reifydb_engine::frame::{Column, ColumnValues, Frame};
+use std::collections::HashMap;
 
-pub(crate) fn convert_diagnostic(grpc: grpc_db::Diagnostic) -> Diagnostic {
+pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
     Diagnostic {
         code: grpc.code,
         message: grpc.message,
@@ -19,36 +20,281 @@ pub(crate) fn convert_diagnostic(grpc: grpc_db::Diagnostic) -> Diagnostic {
         notes: grpc.notes,
         column: grpc
             .column
-            .map(|c| DiagnosticColumn { name: c.name, value: Kind::from_u8(c.value as u8) }),
+            .map(|c| DiagnosticColumn { name: c.name, value: Kind::from_u8(c.kind as u8) }),
     }
 }
 
-pub(crate) fn convert_value(value: grpc_db::Value) -> Value {
-    match value.kind.unwrap_or_else(|| panic!("Missing value kind")) {
-        grpc_db::value::Kind::BoolValue(b) => Value::Bool(b),
-        grpc_db::value::Kind::Float32Value(f) => {
-            OrderedF32::try_from(f).ok().map(Value::Float4).unwrap_or(Value::Undefined)
-        }
-        grpc_db::value::Kind::Float64Value(f) => {
-            OrderedF64::try_from(f).ok().map(Value::Float8).unwrap_or(Value::Undefined)
-        }
-        grpc_db::value::Kind::Int1Value(i) => Value::Int1(i as i8),
-        grpc_db::value::Kind::Int2Value(i) => Value::Int2(i as i16),
-        grpc_db::value::Kind::Int4Value(i) => Value::Int4(i),
-        grpc_db::value::Kind::Int8Value(i) => Value::Int8(i),
-        grpc_db::value::Kind::Int16Value(i) => {
-            Value::Int16(((i.high as i128) << 64) | i.low as i128)
-        }
+pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
+    use grpc::value::Kind as GrpcValueKind;
 
-        grpc_db::value::Kind::Uint1Value(u) => Value::Uint1(u as u8),
-        grpc_db::value::Kind::Uint2Value(u) => Value::Uint2(u as u16),
-        grpc_db::value::Kind::Uint4Value(u) => Value::Uint4(u),
-        grpc_db::value::Kind::Uint8Value(u) => Value::Uint8(u),
-        grpc_db::value::Kind::Uint16Value(u) => {
-            Value::Uint16(((u.high as u128) << 64) | u.low as u128)
-        }
+    let mut columns = Vec::with_capacity(frame.columns.len());
+    let mut index = HashMap::with_capacity(frame.columns.len());
 
-        grpc_db::value::Kind::StringValue(s) => Value::String(s),
-        grpc_db::value::Kind::UndefinedValue(_) => Value::Undefined,
+    for (i, grpc_col) in frame.columns.into_iter().enumerate() {
+        let kind = Kind::from_u8(grpc_col.kind as u8);
+        let name = grpc_col.name;
+
+        let values = grpc_col.values;
+
+        let column_values = match kind {
+            Kind::Bool => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::BoolValue(b)) => {
+                            data.push(b);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(false);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::bool_with_validity(data, validity)
+            }
+
+            Kind::Float4 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Float32Value(f)) => {
+                            data.push(f);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0.0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::float4_with_validity(data, validity)
+            }
+
+            Kind::Float8 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Float64Value(f)) => {
+                            data.push(f);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0.0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::float8_with_validity(data, validity)
+            }
+
+            Kind::Int1 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Int1Value(i)) => {
+                            data.push(i as i8);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::int1_with_validity(data, validity)
+            }
+
+            Kind::Int2 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Int2Value(i)) => {
+                            data.push(i as i16);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::int2_with_validity(data, validity)
+            }
+
+            Kind::Int4 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Int4Value(i)) => {
+                            data.push(i);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::int4_with_validity(data, validity)
+            }
+
+            Kind::Int8 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Int8Value(i)) => {
+                            data.push(i);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::int8_with_validity(data, validity)
+            }
+
+            Kind::Int16 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Int16Value(grpc::Int128 { high, low })) => {
+                            data.push(((high as i128) << 64) | (low as i128));
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::int16_with_validity(data, validity)
+            }
+
+            Kind::Uint1 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Uint1Value(i)) => {
+                            data.push(i as u8);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::uint1_with_validity(data, validity)
+            }
+
+            Kind::Uint2 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Uint2Value(i)) => {
+                            data.push(i as u16);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::uint2_with_validity(data, validity)
+            }
+
+            Kind::Uint4 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Uint4Value(i)) => {
+                            data.push(i);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::uint4_with_validity(data, validity)
+            }
+
+            Kind::Uint8 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Uint8Value(i)) => {
+                            data.push(i);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::uint8_with_validity(data, validity)
+            }
+
+            Kind::Uint16 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::Uint16Value(grpc::UInt128 { high, low })) => {
+                            data.push(((high as u128) << 64) | (low as u128));
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(0);
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::uint16_with_validity(data, validity)
+            }
+
+            Kind::Text => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.kind {
+                        Some(GrpcValueKind::StringValue(s)) => {
+                            data.push(s);
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(String::new());
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::string_with_validity(data, validity)
+            }
+
+            Kind::Undefined => ColumnValues::undefined(values.len()),
+        };
+
+        columns.push(Column { name: name.clone(), values: column_values });
+        index.insert(name, i);
     }
+
+    Frame { name: frame.name, columns, index }
 }
