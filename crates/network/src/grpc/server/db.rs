@@ -7,17 +7,11 @@ use tokio::task::spawn_blocking;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 
-use crate::grpc::server::grpc_db::tx_result::Result::{
-    CreateSchema, CreateTable, InsertIntoSeries, InsertIntoTable,
-};
-use crate::grpc::server::grpc_db::{
-    Int128, QueryResult, Row, RxRequest, RxResult, TxRequest, TxResult, UInt128,
-};
+use crate::grpc::server::grpc_db::{Int128, RxRequest, TxRequest, UInt128};
 use crate::grpc::server::{AuthenticatedUser, grpc_db};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Diagnostic, Value};
-use reifydb_engine::{CreateSchemaResult, CreateTableResult, Engine, ExecutionResult};
-use tokio_stream::once;
+use reifydb_engine::Engine;
 
 pub struct DbService<VS, US, T>
 where
@@ -65,109 +59,110 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
-            {
-                Ok(results) => {
-                    let mut responses: Vec<Result<TxResult, Status>> = vec![];
-
-                    for res in results {
-                        let tx_result =
-                            match res {
-                                ExecutionResult::OldQuery { columns: ls, rows: rs } => {
-                                    let columns = ls
-                                        .iter()
-                                        .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
-                                        .collect();
-
-                                    let rows = rs
-                                        .iter()
-                                        .map(|r| Row {
-                                            values: r.iter().map(value_to_query_value).collect(),
-                                        })
-                                        .collect();
-
-                                    TxResult {
-                                        result: Some(grpc_db::tx_result::Result::Query(
-                                            QueryResult { columns, rows },
-                                        )),
-                                    }
-                                }
-                                ExecutionResult::DescribeQuery { columns: ls } => {
-                                    let columns = ls
-                                        .iter()
-                                        .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
-                                        .collect();
-
-                                    TxResult {
-                                        result: Some(grpc_db::tx_result::Result::Query(
-                                            QueryResult { columns, rows: vec![] },
-                                        )),
-                                    }
-                                }
-                                ExecutionResult::CreateSchema(CreateSchemaResult {
-                                    id,
-                                    schema,
-                                    created,
-                                }) => TxResult {
-                                    result: Some(CreateSchema(grpc_db::CreateSchema {
-                                        id: id.0,
-                                        schema,
-                                        created,
-                                    })),
-                                },
-                                ExecutionResult::CreateSeries { .. } => {
-                                    unimplemented!()
-                                }
-                                ExecutionResult::CreateTable(CreateTableResult {
-                                    id,
-                                    schema,
-                                    table,
-                                    created,
-                                }) => TxResult {
-                                    result: Some(CreateTable(grpc_db::CreateTable {
-                                        id: id.0,
-                                        schema,
-                                        table,
-                                        created,
-                                    })),
-                                },
-                                ExecutionResult::InsertIntoSeries { schema, series, inserted } => {
-                                    TxResult {
-                                        result: Some(InsertIntoSeries(grpc_db::InsertIntoSeries {
-                                            schema,
-                                            series,
-                                            inserted: inserted as u32,
-                                        })),
-                                    }
-                                }
-                                ExecutionResult::InsertIntoTable { schema, table, inserted } => {
-                                    TxResult {
-                                        result: Some(InsertIntoTable(grpc_db::InsertIntoTable {
-                                            schema,
-                                            table,
-                                            inserted: inserted as u32,
-                                        })),
-                                    }
-                                }
-                                ExecutionResult::CreateDeferredView { .. } => {
-                                    unimplemented!()
-                                }
-                            };
-
-                        responses.push(Ok(tx_result));
-                    }
-
-                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as TxResultStream))
-                }
-                Err(err) => {
-                    let diagnostic = err.diagnostic();
-                    let result = TxResult {
-                        result: Some(grpc_db::tx_result::Result::Error(map_diagnostic(diagnostic))),
-                    };
-
-                    Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream))
-                }
-            }
+            // match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            // {
+            //     Ok(results) => {
+            //         let mut responses: Vec<Result<TxResult, Status>> = vec![];
+            //
+            //         for res in results {
+            //             let tx_result =
+            //                 match res {
+            //                     ExecutionResult::Query { columns: ls, rows: rs } => {
+            //                         let columns = ls
+            //                             .iter()
+            //                             .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
+            //                             .collect();
+            //
+            //                         let rows = rs
+            //                             .iter()
+            //                             .map(|r| Row {
+            //                                 values: r.iter().map(value_to_query_value).collect(),
+            //                             })
+            //                             .collect();
+            //
+            //                         TxResult {
+            //                             result: Some(grpc_db::tx_result::Result::Query(
+            //                                 QueryResult { columns, rows },
+            //                             )),
+            //                         }
+            //                     }
+            //                     ExecutionResult::DescribeQuery { columns: ls } => {
+            //                         let columns = ls
+            //                             .iter()
+            //                             .map(|c| grpc_db::Column { name: c.name.clone(), value: 0 })
+            //                             .collect();
+            //
+            //                         TxResult {
+            //                             result: Some(grpc_db::tx_result::Result::Query(
+            //                                 QueryResult { columns, rows: vec![] },
+            //                             )),
+            //                         }
+            //                     }
+            //                     ExecutionResult::CreateSchema(CreateSchemaResult {
+            //                         id,
+            //                         schema,
+            //                         created,
+            //                     }) => TxResult {
+            //                         result: Some(CreateSchema(grpc_db::CreateSchema {
+            //                             id: id.0,
+            //                             schema,
+            //                             created,
+            //                         })),
+            //                     },
+            //                     ExecutionResult::CreateSeries { .. } => {
+            //                         unimplemented!()
+            //                     }
+            //                     ExecutionResult::CreateTable(CreateTableResult {
+            //                         id,
+            //                         schema,
+            //                         table,
+            //                         created,
+            //                     }) => TxResult {
+            //                         result: Some(CreateTable(grpc_db::CreateTable {
+            //                             id: id.0,
+            //                             schema,
+            //                             table,
+            //                             created,
+            //                         })),
+            //                     },
+            //                     ExecutionResult::InsertIntoSeries { schema, series, inserted } => {
+            //                         TxResult {
+            //                             result: Some(InsertIntoSeries(grpc_db::InsertIntoSeries {
+            //                                 schema,
+            //                                 series,
+            //                                 inserted: inserted as u32,
+            //                             })),
+            //                         }
+            //                     }
+            //                     ExecutionResult::InsertIntoTable { schema, table, inserted } => {
+            //                         TxResult {
+            //                             result: Some(InsertIntoTable(grpc_db::InsertIntoTable {
+            //                                 schema,
+            //                                 table,
+            //                                 inserted: inserted as u32,
+            //                             })),
+            //                         }
+            //                     }
+            //                     ExecutionResult::CreateDeferredView { .. } => {
+            //                         unimplemented!()
+            //                     }
+            //                 };
+            //
+            //             responses.push(Ok(tx_result));
+            //         }
+            //
+            //         Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as TxResultStream))
+            //     }
+            //     Err(err) => {
+            //         let diagnostic = err.diagnostic();
+            //         let result = TxResult {
+            //             result: Some(grpc_db::tx_result::Result::Error(map_diagnostic(diagnostic))),
+            //         };
+            //
+            //         Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream))
+            //     }
+            // }
+            todo!()
         })
         .await
         .unwrap()
@@ -194,24 +189,25 @@ where
         .await
         .unwrap();
 
-        let stream = tokio_stream::iter(results.into_iter().filter_map(|res| match res {
-            ExecutionResult::OldQuery { columns: ls, rows: rs } => {
-                let columns =
-                    ls.iter().map(|c| grpc_db::Column { name: c.name.clone(), value: 0 }).collect();
-
-                let rows = rs
-                    .iter()
-                    .map(|r| grpc_db::Row { values: r.iter().map(value_to_query_value).collect() })
-                    .collect();
-
-                Some(Ok(RxResult {
-                    result: Some(grpc_db::rx_result::Result::Query(QueryResult { columns, rows })),
-                }))
-            }
-            _ => None,
-        }));
-
-        Ok(Response::new(Box::pin(stream) as RxResultStream))
+        // let stream = tokio_stream::iter(results.into_iter().filter_map(|res| match res {
+        //     ExecutionResult::Query { columns: ls, rows: rs } => {
+        //         let columns =
+        //             ls.iter().map(|c| grpc_db::Column { name: c.name.clone(), value: 0 }).collect();
+        //
+        //         let rows = rs
+        //             .iter()
+        //             .map(|r| grpc_db::Row { values: r.iter().map(value_to_query_value).collect() })
+        //             .collect();
+        //
+        //         Some(Ok(RxResult {
+        //             result: Some(grpc_db::rx_result::Result::Query(QueryResult { columns, rows })),
+        //         }))
+        //     }
+        //     _ => None,
+        // }));
+        //
+        // Ok(Response::new(Box::pin(stream) as RxResultStream))
+        todo!()
     }
 }
 

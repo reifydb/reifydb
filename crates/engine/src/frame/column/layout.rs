@@ -14,7 +14,7 @@ impl ColumnLayout {
     pub fn from_column(column: &Column) -> Self {
         Self {
             name: column.name.clone(),
-            kind: match column.data {
+            kind: match column.values {
                 ColumnValues::Bool(_, _) => Kind::Bool,
                 ColumnValues::Float4(_, _) => Kind::Float4,
                 ColumnValues::Float8(_, _) => Kind::Float8,

@@ -7,7 +7,7 @@ use crate::view::flow::Orchestrator;
 use crate::view::deferred::work::work;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::PostCommitHook;
-use reifydb_core::{AsyncCowVec, Version};
+use reifydb_core::{CowVec, Version};
 use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, mpsc};
@@ -19,7 +19,7 @@ pub struct Engine<VS: VersionedStorage, US: UnversionedStorage> {
     _marker: std::marker::PhantomData<(VS, US)>,
 }
 
-pub(crate) type Work = (AsyncCowVec<Delta>, Version);
+pub(crate) type Work = (CowVec<Delta>, Version);
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Engine<VS, US> {
     pub fn new(storage: VS) -> Arc<Self> {
@@ -46,7 +46,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Engine<VS, US> {
 impl<VS: VersionedStorage, US: UnversionedStorage> PostCommitHook
     for Engine<VS, US>
 {
-    fn on_post_commit(&self, deltas: AsyncCowVec<Delta>, version: Version) {
+    fn on_post_commit(&self, deltas: CowVec<Delta>, version: Version) {
         let _ = self.tx.send((deltas, version));
     }
 }

@@ -16,7 +16,7 @@ impl Evaluator {
         ctx: &Context,
     ) -> evaluate::Result<Column> {
         let row_count = ctx.limit.unwrap_or(ctx.row_count);
-        Ok(Column { name: expr.span().fragment, data: Self::constant_value(&expr, row_count)? })
+        Ok(Column { name: expr.span().fragment, values: Self::constant_value(&expr, row_count)? })
     }
 
     pub(crate) fn constant_of(
@@ -28,7 +28,7 @@ impl Evaluator {
         let row_count = ctx.limit.unwrap_or(ctx.row_count);
         Ok(Column {
             name: expr.span().fragment,
-            data: Self::constant_value_of(&expr, kind, row_count)?,
+            values: Self::constant_value_of(&expr, kind, row_count)?,
         })
     }
 

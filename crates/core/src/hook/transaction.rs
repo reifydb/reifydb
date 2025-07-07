@@ -3,20 +3,20 @@
 
 use crate::delta::Delta;
 use crate::hook::registry::Registry;
-use crate::{AsyncCowVec, Version};
+use crate::{CowVec, Version};
 use std::error::Error;
 
 pub trait PreCommitHook: Send + Sync + 'static {
     // if this hook fails, it rolls back the transaction
     fn on_pre_commit(
         &self,
-        deltas: AsyncCowVec<Delta>,
+        deltas: CowVec<Delta>,
         version: Version,
     ) -> Result<(), Box<dyn Error>>;
 }
 
 pub trait PostCommitHook: Send + Sync + 'static {
-    fn on_post_commit(&self, deltas: AsyncCowVec<Delta>, version: Version);
+    fn on_post_commit(&self, deltas: CowVec<Delta>, version: Version);
 }
 
 #[derive(Default)]

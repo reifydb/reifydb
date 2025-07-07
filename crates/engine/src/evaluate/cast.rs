@@ -22,8 +22,8 @@ impl Evaluator {
                 let column = self.evaluate(expr, ctx)?;
                 Ok(Column {
                     name: column.name,
-                    data: column
-                        .data
+                    values: column
+                        .values
                         .adjust_column(cast.to.kind, ctx, cast.expression.lazy_span())
                         .unwrap(),
                 })
@@ -60,7 +60,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.data, ColumnValues::int4([42]));
+        assert_eq!(result.values, ColumnValues::int4([42]));
     }
 
     #[test]
@@ -80,7 +80,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.data, ColumnValues::int4([-42]));
+        assert_eq!(result.values, ColumnValues::int4([-42]));
     }
 
     #[test]
@@ -100,7 +100,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.data, ColumnValues::int1([-128]));
+        assert_eq!(result.values, ColumnValues::int1([-128]));
     }
 
     #[test]
@@ -116,7 +116,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.data, ColumnValues::float8([4.2]));
+        assert_eq!(result.values, ColumnValues::float8([4.2]));
     }
 
     #[test]
@@ -132,7 +132,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.data, ColumnValues::float4([4.2]));
+        assert_eq!(result.values, ColumnValues::float4([4.2]));
     }
 
     #[test]
@@ -148,7 +148,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.data, ColumnValues::float4([-1.1]));
+        assert_eq!(result.values, ColumnValues::float4([-1.1]));
     }
 
     #[test]
@@ -164,6 +164,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.data, ColumnValues::float8([-1.1]));
+        assert_eq!(result.values, ColumnValues::float8([-1.1]));
     }
 }

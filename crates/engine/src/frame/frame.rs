@@ -16,9 +16,41 @@ pub struct Frame {
 }
 
 impl Frame {
+    pub fn single_row<'a>(rows: impl IntoIterator<Item = (&'a str, Value)>) -> Frame {
+        let mut columns = Vec::new();
+        let mut index = HashMap::new();
+
+        for (idx, (name, value)) in rows.into_iter().enumerate() {
+            let values = match value {
+                Value::Undefined => ColumnValues::Undefined(1),
+                Value::Bool(v) => ColumnValues::bool([v]),
+                Value::Float4(v) => ColumnValues::float4([v.into()]),
+                Value::Float8(v) => ColumnValues::float8([v.into()]),
+                Value::Int1(v) => ColumnValues::int1([v]),
+                Value::Int2(v) => ColumnValues::int2([v]),
+                Value::Int4(v) => ColumnValues::int4([v]),
+                Value::Int8(v) => ColumnValues::int8([v]),
+                Value::Int16(v) => ColumnValues::int16([v]),
+                Value::String(ref v) => ColumnValues::string([v.clone()]),
+                Value::Uint1(v) => ColumnValues::uint1([v]),
+                Value::Uint2(v) => ColumnValues::uint2([v]),
+                Value::Uint4(v) => ColumnValues::uint4([v]),
+                Value::Uint8(v) => ColumnValues::uint8([v]),
+                Value::Uint16(v) => ColumnValues::uint16([v]),
+            };
+
+            columns.push(Column { name: name.to_string(), values });
+            index.insert(name.to_string(), idx);
+        }
+
+        Frame { name: "frame".to_string(), columns, index }
+    }
+}
+
+impl Frame {
     pub fn new(columns: Vec<Column>) -> Self {
-        let n = columns.first().map_or(0, |c| c.data.len());
-        assert!(columns.iter().all(|c| c.data.len() == n));
+        let n = columns.first().map_or(0, |c| c.values.len());
+        assert!(columns.iter().all(|c| c.values.len() == n));
 
         let index = columns.iter().enumerate().map(|(i, col)| (col.name.clone(), i)).collect();
 
@@ -26,8 +58,8 @@ impl Frame {
     }
 
     pub fn new_with_name(columns: Vec<Column>, name: impl Into<String>) -> Self {
-        let n = columns.first().map_or(0, |c| c.data.len());
-        assert!(columns.iter().all(|c| c.data.len() == n));
+        let n = columns.first().map_or(0, |c| c.values.len());
+        assert!(columns.iter().all(|c| c.values.len() == n));
 
         let index = columns.iter().enumerate().map(|(i, col)| (col.name.clone(), i)).collect();
 
@@ -39,7 +71,7 @@ impl Frame {
     }
 
     pub fn shape(&self) -> (usize, usize) {
-        (self.columns.get(0).map(|c| c.data.len()).unwrap_or(0), self.columns.len())
+        (self.columns.get(0).map(|c| c.values.len()).unwrap_or(0), self.columns.len())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -47,7 +79,7 @@ impl Frame {
     }
 
     pub fn row(&self, i: usize) -> Vec<Value> {
-        self.columns.iter().map(|c| c.data.get(i)).collect()
+        self.columns.iter().map(|c| c.values.get(i)).collect()
     }
 
     pub fn column(&self, name: &str) -> Option<&Column> {
@@ -55,7 +87,7 @@ impl Frame {
     }
 
     pub fn column_values(&self, name: &str) -> Option<&ColumnValues> {
-        self.index.get(name).map(|&i| &self.columns[i].data)
+        self.index.get(name).map(|&i| &self.columns[i].values)
     }
 
     pub fn iter(&self) -> FrameIter<'_> {
@@ -69,7 +101,7 @@ impl Frame {
     }
 
     pub fn row_count(&self) -> usize {
-        self.columns.first().map_or(0, |col| col.data.len())
+        self.columns.first().map_or(0, |col| col.values.len())
     }
 
     pub fn column_count(&self) -> usize {
@@ -77,7 +109,7 @@ impl Frame {
     }
 
     pub fn get_row(&self, index: usize) -> Vec<Value> {
-        self.columns.iter().map(|col| col.data.get(index)).collect()
+        self.columns.iter().map(|col| col.values.get(index)).collect()
     }
 }
 
@@ -97,14 +129,14 @@ impl Frame {
             .iter()
             .map(|name| Column {
                 name: name.to_string(),
-                data: ColumnValues::with_capacity(Undefined, 0),
+                values: ColumnValues::with_capacity(Undefined, 0),
             })
             .collect();
 
         for row in result_rows {
             assert_eq!(row.len(), column_count, "row length does not match column count");
             for (i, value) in row.iter().enumerate() {
-                columns[i].data.push_value(value.clone());
+                columns[i].values.push_value(value.clone());
             }
         }
 

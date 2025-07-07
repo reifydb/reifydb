@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::row::EncodedRow;
-use crate::{AsyncCowVec, Kind};
+use crate::{CowVec, Kind};
 
 #[derive(Debug)]
 pub struct Field {
@@ -57,7 +57,7 @@ impl Layout {
             }
             // Safe because alloc_zeroed + known size/capacity
             let vec = Vec::from_raw_parts(ptr, self.data_size, self.data_size);
-            EncodedRow(AsyncCowVec::new(vec))
+            EncodedRow(CowVec::new(vec))
         }
     }
 

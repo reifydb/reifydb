@@ -49,7 +49,7 @@ impl Frame {
         // if there is an undefined column and the new data contains defined data
         // convert this column into the new type and fill the undefined part
         for (index, column) in self.columns.iter_mut().enumerate() {
-            if let ColumnValues::Undefined(size) = column.data {
+            if let ColumnValues::Undefined(size) = column.values {
                 let new_data = match layout.value(index) {
                     Kind::Bool => ColumnValues::bool_with_validity(
                         CowVec::new(vec![false; size]),
@@ -107,10 +107,10 @@ impl Frame {
                         CowVec::new(vec![0u128; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    Kind::Undefined => column.data.clone(),
+                    Kind::Undefined => column.values.clone(),
                 };
 
-                column.data = new_data;
+                column.values = new_data;
             }
         }
 
@@ -129,7 +129,7 @@ impl Frame {
 
     fn append_all_defined(&mut self, layout: &Layout, row: &EncodedRow) -> crate::frame::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
-            match (&mut column.data, layout.value(index)) {
+            match (&mut column.values, layout.value(index)) {
                 (ColumnValues::Bool(vec, valid), Kind::Bool) => {
                     vec.push(layout.get_bool(&row, index));
                     valid.push(true);
@@ -190,7 +190,7 @@ impl Frame {
                     return Err(format!(
                         "type mismatch for column '{}'({}): incompatible with value {}",
                         column.name,
-                        column.data.kind(),
+                        column.values.kind(),
                         v
                     )
                     .into());
@@ -202,7 +202,7 @@ impl Frame {
 
     fn append_fallback(&mut self, layout: &Layout, row: &EncodedRow) -> crate::frame::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
-            match (&mut column.data, layout.value(index)) {
+            match (&mut column.values, layout.value(index)) {
                 (ColumnValues::Bool(vec, valid), Kind::Bool) => {
                     match layout.try_get_bool(row, index) {
                         Some(v) => {
@@ -685,7 +685,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::bool_with_validity([false, false, true], [false, false, true])
             );
         }
@@ -699,7 +699,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::float4_with_validity([0.0, 0.0, 1.5], [false, false, true])
             );
         }
@@ -713,7 +713,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::float8_with_validity([0.0, 0.0, 2.25], [false, false, true])
             );
         }
@@ -727,7 +727,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int1_with_validity([0, 0, 42], [false, false, true])
             );
         }
@@ -741,7 +741,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int2_with_validity([0, 0, -1234], [false, false, true])
             );
         }
@@ -755,7 +755,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int4_with_validity([0, 0, 56789], [false, false, true])
             );
         }
@@ -769,7 +769,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int8_with_validity([0, 0, -987654321], [false, false, true])
             );
         }
@@ -783,7 +783,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int16_with_validity(
                     [0, 0, 123456789012345678901234567890i128],
                     [false, false, true]
@@ -800,7 +800,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::string_with_validity(
                     ["".to_string(), "".to_string(), "reifydb".to_string()],
                     [false, false, true]
@@ -817,7 +817,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint1_with_validity([0, 0, 255], [false, false, true])
             );
         }
@@ -831,7 +831,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint2_with_validity([0, 0, 65535], [false, false, true])
             );
         }
@@ -845,7 +845,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint4_with_validity([0, 0, 4294967295], [false, false, true])
             );
         }
@@ -859,7 +859,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint8_with_validity(
                     [0, 0, 18446744073709551615],
                     [false, false, true]
@@ -879,7 +879,7 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint16_with_validity(
                     [0, 0, 340282366920938463463374607431768211455u128],
                     [false, false, true]
@@ -911,8 +911,8 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::int2([1, 2, 3]));
-            assert_eq!(test_instance.columns[1].data, ColumnValues::bool([true, true, false]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::int2([1, 2, 3]));
+            assert_eq!(test_instance.columns[1].values, ColumnValues::bool([true, true, false]));
         }
 
         #[test]
@@ -927,7 +927,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::bool([true, false]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::bool([true, false]));
         }
 
         #[test]
@@ -942,7 +942,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::float4([1.0, 2.0]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::float4([1.0, 2.0]));
         }
 
         #[test]
@@ -957,7 +957,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::float8([1.0, 2.0]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::float8([1.0, 2.0]));
         }
 
         #[test]
@@ -972,7 +972,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::int1([1, 2]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::int1([1, 2]));
         }
 
         #[test]
@@ -987,7 +987,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::int2([100, 200]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::int2([100, 200]));
         }
 
         #[test]
@@ -1002,7 +1002,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::int4([1000, 2000]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::int4([1000, 2000]));
         }
 
         #[test]
@@ -1017,7 +1017,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::int8([10000, 20000]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::int8([10000, 20000]));
         }
 
         #[test]
@@ -1032,7 +1032,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::int16([1000, 2000]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::int16([1000, 2000]));
         }
 
         #[test]
@@ -1048,7 +1048,7 @@ mod tests {
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::string(["a".to_string(), "b".to_string()])
             );
         }
@@ -1065,7 +1065,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::uint1([1, 2]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::uint1([1, 2]));
         }
 
         #[test]
@@ -1080,7 +1080,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::uint2([100, 200]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::uint2([100, 200]));
         }
 
         #[test]
@@ -1095,7 +1095,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::uint4([1000, 2000]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::uint4([1000, 2000]));
         }
 
         #[test]
@@ -1110,7 +1110,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::uint8([10000, 20000]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::uint8([10000, 20000]));
         }
 
         #[test]
@@ -1125,7 +1125,7 @@ mod tests {
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
-            assert_eq!(test_instance.columns[0].data, ColumnValues::uint16([1000, 2000]));
+            assert_eq!(test_instance.columns[0].values, ColumnValues::uint16([1000, 2000]));
         }
 
         #[test]
@@ -1139,11 +1139,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int2_with_validity(vec![1, 0], vec![true, false])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::bool_with_validity([true, false], [true, true])
             );
         }
@@ -1187,12 +1187,12 @@ mod tests {
             test_instance.append_rows(&layout, [row_one]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::bool_with_validity([true], [true])
             );
 
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::bool_with_validity([false], [false])
             );
         }
@@ -1210,11 +1210,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::float4_with_validity([1.5], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::float4_with_validity([0.0], [false])
             );
         }
@@ -1232,11 +1232,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::float8_with_validity([2.5], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::float8_with_validity([0.0], [false])
             );
         }
@@ -1254,11 +1254,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int1_with_validity([42], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::int1_with_validity([0], [false])
             );
         }
@@ -1276,11 +1276,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int2_with_validity([-1234], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::int2_with_validity([0], [false])
             );
         }
@@ -1298,11 +1298,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int4_with_validity([56789], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::int4_with_validity([0], [false])
             );
         }
@@ -1320,11 +1320,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int8_with_validity([-987654321], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::int8_with_validity([0], [false])
             );
         }
@@ -1342,11 +1342,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::int16_with_validity([123456789012345678901234567890i128], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::int16_with_validity([0], [false])
             );
         }
@@ -1364,11 +1364,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::string_with_validity(["reifydb".to_string()], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::string_with_validity(["".to_string()], [false])
             );
         }
@@ -1386,11 +1386,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint1_with_validity([255], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::uint1_with_validity([0], [false])
             );
         }
@@ -1408,11 +1408,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint2_with_validity([65535], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::uint2_with_validity([0], [false])
             );
         }
@@ -1430,11 +1430,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint4_with_validity([4294967295], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::uint4_with_validity([0], [false])
             );
         }
@@ -1452,11 +1452,11 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint8_with_validity([18446744073709551615], [true])
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::uint8_with_validity([0], [false])
             );
         }
@@ -1474,22 +1474,22 @@ mod tests {
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
-                test_instance.columns[0].data,
+                test_instance.columns[0].values,
                 ColumnValues::uint16_with_validity(
                     [340282366920938463463374607431768211455u128],
                     [true]
                 )
             );
             assert_eq!(
-                test_instance.columns[1].data,
+                test_instance.columns[1].values,
                 ColumnValues::uint16_with_validity([0], [false])
             );
         }
 
         fn test_instance_with_columns() -> Frame {
             Frame::new(vec![
-                Column { name: "int2".into(), data: ColumnValues::int2(vec![1]) },
-                Column { name: "bool".into(), data: ColumnValues::bool(vec![true]) },
+                Column { name: "int2".into(), values: ColumnValues::int2(vec![1]) },
+                Column { name: "bool".into(), values: ColumnValues::bool(vec![true]) },
             ])
         }
     }

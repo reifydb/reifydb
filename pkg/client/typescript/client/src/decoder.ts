@@ -1,6 +1,11 @@
 import {Kind, RawColumn} from "./types";
 
+const UNDEFINED_VALUE = "⟪undefined⟫";
+
 export function decodeValue(kind: Kind, value: string): unknown {
+    if (value == UNDEFINED_VALUE) {
+        return undefined
+    }
     switch (kind) {
         case "Bool":
             return value === "true";
@@ -19,7 +24,7 @@ export function decodeValue(kind: Kind, value: string): unknown {
         case "String":
             return value;
         case "Undefined":
-            return null;
+            return undefined;
         default:
             throw new Error(`Unknown kind: ${kind}`);
     }

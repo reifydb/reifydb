@@ -79,7 +79,7 @@ impl ExecutionPlan for LeftJoinNode {
                         .zip(names.iter().cloned())
                         .map(|(v, name)| Column {
                             name: name.to_string(),
-                            data: ColumnValues::from(v),
+                            values: ColumnValues::from(v),
                         })
                         .collect(),
                     row_count: 1,
@@ -88,7 +88,7 @@ impl ExecutionPlan for LeftJoinNode {
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {
                     let col = evaluate(cond, &ctx).unwrap();
-                    matches!(col.data.get(0), Value::Bool(true)) && acc
+                    matches!(col.values.get(0), Value::Bool(true)) && acc
                 });
 
                 if all_true {

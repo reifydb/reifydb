@@ -28,7 +28,7 @@ impl ExecutionPlan for OrderNode {
         while let Some(Batch { frame, mask }) = self.input.next()? {
             if let Some(existing_frame) = &mut frame_opt {
                 for (i, col) in frame.columns.into_iter().enumerate() {
-                    existing_frame.columns[i].data.extend(col.data)?;
+                    existing_frame.columns[i].values.extend(col.values)?;
                 }
             } else {
                 frame_opt = Some(frame);
@@ -55,7 +55,7 @@ impl ExecutionPlan for OrderNode {
                     .iter()
                     .find(|c| c.name == key.column.fragment)
                     .ok_or_else(|| Error(query::column_not_found(key.column.clone())))?;
-                Ok::<_, crate::Error>((&col.data, &key.direction))
+                Ok::<_, crate::Error>((&col.values, &key.direction))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -80,7 +80,7 @@ impl ExecutionPlan for OrderNode {
         });
 
         for col in &mut frame.columns {
-            col.data.reorder(&indices);
+            col.values.reorder(&indices);
         }
 
         Ok(Some(Batch { frame, mask: mask_opt.unwrap() }))

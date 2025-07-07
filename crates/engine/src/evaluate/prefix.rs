@@ -14,7 +14,7 @@ impl Evaluator {
     ) -> evaluate::Result<Column> {
         let column = evaluate(&prefix.expression, ctx)?;
 
-        match column.data {
+        match column.values {
             // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
             ColumnValues::Bool(_, _) => unimplemented!(),
 
@@ -32,7 +32,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::float4_with_validity(result, valid),
+                    values: ColumnValues::float4_with_validity(result, valid),
                 })
             }
 
@@ -50,7 +50,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::float8_with_validity(result, valid),
+                    values: ColumnValues::float8_with_validity(result, valid),
                 })
             }
 
@@ -68,7 +68,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int1_with_validity(result, valid),
+                    values: ColumnValues::int1_with_validity(result, valid),
                 })
             }
 
@@ -86,7 +86,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int2_with_validity(result, valid),
+                    values: ColumnValues::int2_with_validity(result, valid),
                 })
             }
 
@@ -104,7 +104,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int4_with_validity(result, valid),
+                    values: ColumnValues::int4_with_validity(result, valid),
                 })
             }
 
@@ -122,7 +122,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int8_with_validity(result, valid),
+                    values: ColumnValues::int8_with_validity(result, valid),
                 })
             }
 
@@ -140,7 +140,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int16_with_validity(result, valid),
+                    values: ColumnValues::int16_with_validity(result, valid),
                 })
             }
 
@@ -158,7 +158,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int1_with_validity(result, valid),
+                    values: ColumnValues::int1_with_validity(result, valid),
                 })
             }
 
@@ -173,7 +173,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int2_with_validity(result, valid),
+                    values: ColumnValues::int2_with_validity(result, valid),
                 })
             }
 
@@ -188,7 +188,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int4_with_validity(result, valid),
+                    values: ColumnValues::int4_with_validity(result, valid),
                 })
             }
 
@@ -203,7 +203,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int8_with_validity(result, valid),
+                    values: ColumnValues::int8_with_validity(result, valid),
                 })
             }
             ColumnValues::Uint16(values, valid) => {
@@ -217,7 +217,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: column.name,
-                    data: ColumnValues::int16_with_validity(result, valid),
+                    values: ColumnValues::int16_with_validity(result, valid),
                 })
             }
             // ColumnValues::Undefined(_) => {

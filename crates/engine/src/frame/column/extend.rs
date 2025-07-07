@@ -6,7 +6,7 @@ use reifydb_core::CowVec;
 
 impl Column {
     pub fn extend(&mut self, other: Column) -> crate::frame::Result<()> {
-        self.data.extend(other.data)
+        self.values.extend(other.values)
     }
 }
 

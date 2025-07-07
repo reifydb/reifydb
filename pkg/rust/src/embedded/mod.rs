@@ -3,7 +3,8 @@
 
 use crate::{DB, Error};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_engine::{Engine, ExecutionResult};
+use reifydb_engine::Engine;
+use reifydb_engine::frame::Frame;
 use tokio::task::spawn_blocking;
 
 pub struct Embedded<VS, US, T>
@@ -44,11 +45,7 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    async fn execute_as(
-        &self,
-        principal: &Principal,
-        rql: &str,
-    ) -> crate::Result<Vec<ExecutionResult>> {
+    async fn execute_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
@@ -63,11 +60,7 @@ where
         .unwrap()
     }
 
-    async fn query_as(
-        &self,
-        principal: &Principal,
-        rql: &str,
-    ) -> crate::Result<Vec<ExecutionResult>> {
+    async fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 

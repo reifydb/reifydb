@@ -2,180 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 mod catalog;
-mod display;
 mod error;
 mod query;
 mod write;
 
 use crate::execute::query::Batch;
-use crate::frame::{ColumnValues, Frame, FrameLayout};
+use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{Functions, math};
 pub use error::Error;
-use reifydb_catalog::schema::SchemaId;
-use reifydb_catalog::table::TableId;
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Kind, Value};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Column {
-    pub name: String,
-    pub kind: Kind,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum ExecutionResult {
-    CreateDeferredView { schema: String, view: String },
-    CreateSchema(CreateSchemaResult),
-    CreateSeries { schema: String, series: String },
-    CreateTable(CreateTableResult),
-    InsertIntoTable { schema: String, table: String, inserted: usize },
-    InsertIntoSeries { schema: String, series: String, inserted: usize },
-    OldQuery { columns: Vec<Column>, rows: Vec<Vec<Value>> },
-    DescribeQuery { columns: Vec<Column> },
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct CreateSchemaResult {
-    pub id: SchemaId,
-    pub schema: String,
-    pub created: bool,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct CreateTableResult {
-    pub id: TableId,
-    pub schema: String,
-    pub table: String,
-    pub created: bool,
-}
-
-impl From<Frame> for ExecutionResult {
-    fn from(value: Frame) -> Self {
-        let columns: Vec<Column> = value
-            .columns
-            .iter()
-            .map(|c| Column { name: c.name.clone(), kind: c.data.kind() })
-            .collect();
-
-        let row_count = value.columns.first().map_or(0, |col| col.data.len());
-        let mut rows = Vec::with_capacity(row_count);
-
-        for row_idx in 0..row_count {
-            let mut row = Vec::with_capacity(value.columns.len());
-
-            for col in &value.columns {
-                let value = match &col.data {
-                    ColumnValues::Bool(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Bool(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Float4(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::float4(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Float8(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::float8(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Int1(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Int1(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Int2(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Int2(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Int4(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Int4(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Int8(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Int8(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Int16(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Int16(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Uint1(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Uint1(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Uint2(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Uint2(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Uint4(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Uint4(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Uint8(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Uint8(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Uint16(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::Uint16(vals[row_idx])
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::String(vals, valid) => {
-                        if valid[row_idx] {
-                            Value::String(vals[row_idx].clone())
-                        } else {
-                            Value::Undefined
-                        }
-                    }
-                    ColumnValues::Undefined(_) => Value::Undefined,
-                };
-                row.push(value);
-            }
-
-            rows.push(row);
-        }
-
-        ExecutionResult::OldQuery { columns, rows }
-    }
-}
 
 pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     functions: Functions,
@@ -185,7 +22,7 @@ pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
 pub fn execute_query<VS: VersionedStorage, US: UnversionedStorage>(
     rx: &mut impl Rx,
     plan: PhysicalPlan,
-) -> crate::Result<ExecutionResult> {
+) -> crate::Result<Frame> {
     let executor: Executor<VS, US> = Executor {
         // FIXME receive functions from RX
         functions: Functions::builder()
@@ -205,7 +42,7 @@ pub fn execute_query<VS: VersionedStorage, US: UnversionedStorage>(
 pub fn execute<VS: VersionedStorage, US: UnversionedStorage>(
     tx: &mut impl Tx<VS, US>,
     plan: PhysicalPlan,
-) -> crate::Result<ExecutionResult> {
+) -> crate::Result<Frame> {
     // FIXME receive functions from TX
     let executor: Executor<VS, US> = Executor {
         functions: Functions::builder()
@@ -227,7 +64,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         self,
         rx: &mut impl Rx,
         plan: PhysicalPlan,
-    ) -> crate::Result<ExecutionResult> {
+    ) -> crate::Result<Frame> {
         match plan {
             // PhysicalPlan::Describe { plan } => {
             //     // FIXME evaluating the entire frame is quite wasteful but good enough to write some tests
@@ -252,26 +89,26 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 if let Some(frame) = result {
                     Ok(frame.into())
                 } else {
-                    Ok(ExecutionResult::OldQuery {
+                    Ok(Frame {
+                        name: "frame".to_string(),
                         columns: node
                             .layout()
                             .unwrap_or(FrameLayout { columns: vec![] })
                             .columns
                             .into_iter()
-                            .map(|cl| Column { name: cl.name, kind: cl.kind })
+                            .map(|cl| Column {
+                                name: cl.name,
+                                values: ColumnValues::with_capacity(cl.kind, 0),
+                            })
                             .collect(),
-                        rows: vec![],
+                        index: Default::default(),
                     })
                 }
             }
         }
     }
 
-    pub(crate) fn execute_rx(
-        self,
-        rx: &mut impl Rx,
-        plan: PhysicalPlan,
-    ) -> crate::Result<ExecutionResult> {
+    pub(crate) fn execute_rx(self, rx: &mut impl Rx, plan: PhysicalPlan) -> crate::Result<Frame> {
         match plan {
             // Query
             PhysicalPlan::Aggregate(_)
@@ -293,7 +130,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         mut self,
         tx: &mut impl Tx<VS, US>,
         plan: PhysicalPlan,
-    ) -> crate::Result<ExecutionResult> {
+    ) -> crate::Result<Frame> {
         match plan {
             PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
             PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),

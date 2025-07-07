@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use crate::Error;
 use crate::evaluate::{Context, EvaluationColumn, evaluate};
 use crate::execute::Executor;
-use crate::{Error, ExecutionResult};
+use crate::frame::Frame;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::{EncodableKey, TableRowKey};
 use reifydb_catalog::sequence::TableRowSequence;
@@ -18,7 +19,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         &mut self,
         tx: &mut impl Tx<VS, US>,
         plan: InsertIntoTablePlan,
-    ) -> crate::Result<ExecutionResult> {
+    ) -> crate::Result<Frame> {
         match plan {
             InsertIntoTablePlan::Values { schema, table, columns, rows_to_insert } => {
                 let mut rows = Vec::with_capacity(rows_to_insert.len());
@@ -52,7 +53,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         let lazy_span = expr.lazy_span();
                         match &expr {
                             expr => {
-                                let cvs = evaluate(expr, &context)?.data;
+                                let cvs = evaluate(expr, &context)?.values;
                                 match cvs.len() {
                                     1 => {
                                         // FIXME ensure its the right value
@@ -95,20 +96,17 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     )));
                 };
 
-                // let table = TableId(1);
-
                 let inserted = rows.len();
                 for row in rows {
                     let row_id = TableRowSequence::next_row_id(tx, table.id)?;
                     tx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
                 }
 
-                // let result = tx.insert_into_table(table, rows).unwrap();
-                Ok(ExecutionResult::InsertIntoTable {
-                    schema: schema.name,
-                    table: table.name,
-                    inserted,
-                })
+                Ok(Frame::single_row([
+                    ("schema", Value::String(schema.name)),
+                    ("table", Value::String(table.name)),
+                    ("inserted", Value::Uint8(inserted as u64)),
+                ]))
             }
         }
     }

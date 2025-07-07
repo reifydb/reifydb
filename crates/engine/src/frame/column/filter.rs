@@ -6,7 +6,7 @@ use reifydb_core::{BitVec, CowVec};
 
 impl Column {
     pub fn filter(&mut self, mask: &BitVec) -> crate::frame::Result<()> {
-        self.data.filter(mask)
+        self.values.filter(mask)
     }
 }
 

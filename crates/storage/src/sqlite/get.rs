@@ -4,7 +4,7 @@
 use crate::sqlite::Sqlite;
 use reifydb_core::interface::{Unversioned, UnversionedGet};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey, Error};
+use reifydb_core::{CowVec, EncodedKey, Error};
 use rusqlite::{OptionalExtension, params};
 
 impl UnversionedGet for Sqlite {
@@ -17,7 +17,7 @@ impl UnversionedGet for Sqlite {
                 |row| {
                     Ok(Unversioned {
                         key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                        row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
+                        row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
                     })
                 },
             )

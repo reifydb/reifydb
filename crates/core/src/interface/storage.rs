@@ -3,7 +3,7 @@
 
 use crate::delta::Delta;
 use crate::row::EncodedRow;
-use crate::{AsyncCowVec, EncodedKey, EncodedKeyRange, Error, Version};
+use crate::{CowVec, EncodedKey, EncodedKeyRange, Error, Version};
 
 #[derive(Debug)]
 pub struct Versioned {
@@ -34,7 +34,7 @@ pub trait VersionedStorage:
 }
 
 pub trait VersionedApply {
-    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version);
+    fn apply(&self, delta: CowVec<Delta>, version: Version);
 }
 
 pub trait VersionedGet {
@@ -110,7 +110,7 @@ pub trait UnversionedStorage:
 }
 
 pub trait UnversionedApply {
-    fn apply(&mut self, delta: AsyncCowVec<Delta>) -> Result<(), Error>;
+    fn apply(&mut self, delta: CowVec<Delta>) -> Result<(), Error>;
 }
 
 pub trait UnversionedGet {
@@ -123,13 +123,13 @@ pub trait UnversionedContains {
 
 pub trait UnversionedSet: UnversionedApply {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
-        Self::apply(self, AsyncCowVec::new(vec![Delta::Set { key: key.clone(), row: row.clone() }]))
+        Self::apply(self, CowVec::new(vec![Delta::Set { key: key.clone(), row: row.clone() }]))
     }
 }
 
 pub trait UnversionedRemove: UnversionedApply {
     fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
-        Self::apply(self, AsyncCowVec::new(vec![Delta::Remove { key: key.clone() }]))
+        Self::apply(self, CowVec::new(vec![Delta::Remove { key: key.clone() }]))
     }
 }
 

@@ -10,7 +10,7 @@ use reifydb_core::delta::Delta;
 use reifydb_core::delta::Delta::Set;
 use reifydb_core::encoding::keycode::serialize;
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey, Version};
+use reifydb_core::{CowVec, EncodedKey, Version};
 use reifydb_core::interface::VersionedStorage;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
@@ -20,7 +20,7 @@ mod error;
 pub type NodeId = usize;
 
 pub trait Node: Send + Sync {
-    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta>;
+    fn apply(&self, delta: CowVec<Delta>, version: Version) -> CowVec<Delta>;
 }
 
 pub struct Graph {
@@ -51,7 +51,7 @@ impl Graph {
         self.edges.entry(from).or_default().push(to);
     }
 
-    pub fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) {
+    pub fn apply(&self, delta: CowVec<Delta>, version: Version) {
         let mut queue = VecDeque::new();
         queue.push_back((Self::root_node(), delta));
 
@@ -86,7 +86,7 @@ impl Orchestrator {
         guard.dependencies.entry(parent.into()).or_default().push(child.into());
     }
 
-    pub fn apply(&self, root: &'static str, delta: AsyncCowVec<Delta>, version: Version) {
+    pub fn apply(&self, root: &'static str, delta: CowVec<Delta>, version: Version) {
         let guard = self.0.read().unwrap();
         guard.apply(root, delta, version);
     }
@@ -102,7 +102,7 @@ impl Default for Orchestrator {
 }
 
 impl OrchestratorInner {
-    pub fn apply(&self, root: &'static str, delta: AsyncCowVec<Delta>, version: Version) {
+    pub fn apply(&self, root: &'static str, delta: CowVec<Delta>, version: Version) {
         let mut queue = VecDeque::new();
         queue.push_back((root, delta));
 
@@ -136,8 +136,8 @@ impl<VS: VersionedStorage> CountNode<VS> {
 }
 
 impl<VS: VersionedStorage> Node for CountNode<VS> {
-    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
-        let mut updates = AsyncCowVec::default();
+    fn apply(&self, delta: CowVec<Delta>, version: Version) -> CowVec<Delta> {
+        let mut updates = CowVec::default();
         let mut counters: HashMap<EncodedKey, i8> = HashMap::new();
 
         for d in delta {
@@ -153,7 +153,7 @@ impl<VS: VersionedStorage> Node for CountNode<VS> {
         }
 
         for (key, count) in counters {
-            updates.push(Set { key, row: EncodedRow(AsyncCowVec::new(vec![count as u8])) });
+            updates.push(Set { key, row: EncodedRow(CowVec::new(vec![count as u8])) });
         }
 
         self.storage.apply(updates.clone(), version);
@@ -184,7 +184,7 @@ impl GroupNode {
 }
 
 impl Node for GroupNode {
-    fn apply(&self, _delta: AsyncCowVec<Delta>, _version: Version) -> AsyncCowVec<Delta> {
+    fn apply(&self, _delta: CowVec<Delta>, _version: Version) -> CowVec<Delta> {
         // let mut grouped: HashMap<EncodedKey, Vec<EncodedRow>> = HashMap::new();
 
         // for d in delta {
@@ -196,13 +196,13 @@ impl Node for GroupNode {
         //     }
         // }
 
-        // AsyncCowVec::new(
+        // CowVec::new(
         //     grouped
         //         .into_iter()
         //         .flat_map(|(key, rows)| {
         //             rows.into_iter().map(move |r| Delta::Set {
         //                 key: key.clone(),
-        //                 row: EncodedRow(AsyncCowVec::new(deprecated_serialize_row(&r).unwrap())),
+        //                 row: EncodedRow(CowVec::new(deprecated_serialize_row(&r).unwrap())),
         //             })
         //         })
         //         .collect(),
@@ -227,8 +227,8 @@ pub struct SumNode<VS: VersionedStorage> {
 // }
 
 impl<VS: VersionedStorage> Node for SumNode<VS> {
-    fn apply(&self, delta: AsyncCowVec<Delta>, version: Version) -> AsyncCowVec<Delta> {
-        let mut updates = AsyncCowVec::default();
+    fn apply(&self, delta: CowVec<Delta>, version: Version) -> CowVec<Delta> {
+        let mut updates = CowVec::default();
         let sums: HashMap<EncodedKey, i8> = HashMap::new();
 
         for d in delta {
@@ -252,7 +252,7 @@ impl<VS: VersionedStorage> Node for SumNode<VS> {
         }
 
         for (key, sum) in sums {
-            updates.push(Set { key, row: EncodedRow(AsyncCowVec::new(vec![sum as u8])) });
+            updates.push(Set { key, row: EncodedRow(CowVec::new(vec![sum as u8])) });
         }
 
         self.storage.apply(updates.clone(), version);
@@ -300,22 +300,22 @@ mod tests {
     //     orchestrator.register("view::count", create_count_graph(storage.clone()));
     //     orchestrator.register("view::sum", create_sum_graph(storage.clone()));
     //
-    //     // let delta = AsyncCowVec::new(vec![
+    //     // let delta = CowVec::new(vec![
     //     //     Delta::Set {
     //     //         key: EncodedKey::new(b"apple".to_vec()),
-    //     //         bytes: AsyncCowVec::new(
+    //     //         bytes: CowVec::new(
     //     //             serialize_row(&vec![Value::Int1(1), Value::Int1(1), Value::Int1(23)]).unwrap(),
     //     //         ),
     //     //     },
     //     //     Delta::Set {
     //     //         key: EncodedKey::new(b"apple".to_vec()),
-    //     //         bytes: AsyncCowVec::new(
+    //     //         bytes: CowVec::new(
     //     //             serialize_row(&vec![Value::Int1(1), Value::Int1(1), Value::Int1(1)]).unwrap(),
     //     //         ),
     //     //     },
     //     //     Delta::Set {
     //     //         key: EncodedKey::new(b"banana".to_vec()),
-    //     //         bytes: AsyncCowVec::new(
+    //     //         bytes: CowVec::new(
     //     //             serialize_row(&vec![Value::Int1(2), Value::Int1(1), Value::Int1(1)]).unwrap(),
     //     //         ),
     //     //     },
@@ -325,12 +325,12 @@ mod tests {
     //     // orchestrator.apply("view::count", delta.clone(), 1);
     //     // orchestrator.apply("view::sum", delta.clone(), 1);
     //     //
-    //     // for sv in storage.scan_prefix(&AsyncCowVec::new(b"view::count".to_vec()), 2).into_iter() {
+    //     // for sv in storage.scan_prefix(&CowVec::new(b"view::count".to_vec()), 2).into_iter() {
     //     //     println!("{:?}", String::from_utf8(sv.key.to_vec()));
     //     //     println!("{:?}", sv.bytes.to_vec().as_slice());
     //     // }
     //     //
-    //     // for sv in storage.scan_prefix(&AsyncCowVec::new(b"view::sum".to_vec()), 2).into_iter() {
+    //     // for sv in storage.scan_prefix(&CowVec::new(b"view::sum".to_vec()), 2).into_iter() {
     //     //     println!("{:?}", String::from_utf8(sv.key.to_vec()));
     //     //     println!("{:?}", sv.bytes.to_vec().as_slice());
     //     // }

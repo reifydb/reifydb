@@ -2,8 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::execute::{execute, execute_query};
+use crate::frame::Frame;
 use crate::system::SystemBootHook;
-use crate::{ExecutionResult, view};
+use crate::view;
 use reifydb_core::hook::{Hooks, OnAfterBootHookContext};
 use reifydb_core::interface::{Principal, Transaction, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::ast;
@@ -88,11 +89,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         Ok(self.transaction.begin_read_only().unwrap())
     }
 
-    pub fn execute_as(
-        &self,
-        _principal: &Principal,
-        rql: &str,
-    ) -> crate::Result<Vec<ExecutionResult>> {
+    pub fn execute_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
@@ -110,11 +107,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         Ok(result)
     }
 
-    pub fn query_as(
-        &self,
-        _principal: &Principal,
-        rql: &str,
-    ) -> crate::Result<Vec<ExecutionResult>> {
+    pub fn query_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 

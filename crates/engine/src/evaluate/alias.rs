@@ -12,6 +12,6 @@ impl Evaluator {
         ctx: &Context,
     ) -> crate::evaluate::Result<Column> {
         let evaluated = self.evaluate(&expr.expression, ctx)?;
-        Ok(Column { name: expr.alias.0.fragment.clone(), data: evaluated.data })
+        Ok(Column { name: expr.alias.0.fragment.clone(), values: evaluated.values })
     }
 }

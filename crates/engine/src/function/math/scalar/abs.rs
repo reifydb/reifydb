@@ -16,7 +16,7 @@ impl ScalarFunction for Abs {
     fn scalar(&self, columns: &[Column], row_count: usize) -> Result<ColumnValues, FunctionError> {
         let column = columns.get(0).unwrap();
 
-        match &column.data {
+        match &column.values {
             ColumnValues::Int1(vals, valid) => {
                 let mut values = Vec::with_capacity(vals.len());
 

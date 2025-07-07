@@ -26,7 +26,7 @@ impl<'df> Iterator for FrameIter<'df> {
             .df
             .columns
             .iter()
-            .map(|col| match &col.data {
+            .map(|col| match &col.values {
                 ColumnValues::Bool(data, bitmap) => {
                     if bitmap[i] {
                         ValueRef::Bool(&data[i])

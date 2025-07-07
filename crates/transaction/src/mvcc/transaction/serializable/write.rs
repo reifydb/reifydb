@@ -22,7 +22,7 @@ use reifydb_core::clock::LocalClock;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::UnversionedStorage;
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
+use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
 use std::collections::HashMap;
 use std::ops::RangeBounds;
 use std::sync::RwLockWriteGuard;
@@ -52,7 +52,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
     ///
     pub fn commit(&mut self) -> Result<(), MvccError> {
         self.tm.commit(|pending| {
-            let mut grouped: HashMap<Version, AsyncCowVec<Delta>> = HashMap::new();
+            let mut grouped: HashMap<Version, CowVec<Delta>> = HashMap::new();
 
             for p in pending {
                 grouped.entry(p.version).or_default().push(p.delta);

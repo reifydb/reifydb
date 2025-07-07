@@ -16,7 +16,7 @@ impl Evaluator {
         let left = self.evaluate(&lt.left, ctx)?;
         let right = self.evaluate(&lt.right, ctx)?;
 
-        match (&left.data, &right.data) {
+        match (&left.values, &right.values) {
             // Float4
             (ColumnValues::Float4(lv, lv_valid), ColumnValues::Float4(rv, rv_valid)) => {
                 Ok(compare_numeric::<f32, f32>(lv, rv, lv_valid, rv_valid, lt.span()))
@@ -491,5 +491,5 @@ where
         }
     }
 
-    Column { name: span.fragment, data: ColumnValues::bool_with_validity(values, valid) }
+    Column { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
 }

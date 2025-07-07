@@ -16,7 +16,7 @@ impl Evaluator {
 
         let row_count = ctx.row_count;
 
-        match (&left.data, &right.data) {
+        match (&left.values, &right.values) {
             (ColumnValues::Float4(l, lv), ColumnValues::Float4(r, rv)) => {
                 let mut values = Vec::with_capacity(row_count);
                 let mut valid = Vec::with_capacity(row_count);
@@ -31,7 +31,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::float4_with_validity(values, valid),
+                    values: ColumnValues::float4_with_validity(values, valid),
                 })
             }
 
@@ -49,7 +49,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::float8_with_validity(values, valid),
+                    values: ColumnValues::float8_with_validity(values, valid),
                 })
             }
 
@@ -67,7 +67,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::int2_with_validity(values, valid),
+                    values: ColumnValues::int2_with_validity(values, valid),
                 })
             }
 
@@ -85,7 +85,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::int2_with_validity(values, valid),
+                    values: ColumnValues::int2_with_validity(values, valid),
                 })
             }
 
@@ -103,7 +103,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::int1_with_validity(values, valid),
+                    values: ColumnValues::int1_with_validity(values, valid),
                 })
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int2(r, rv)) => {
@@ -120,7 +120,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::int2_with_validity(values, valid),
+                    values: ColumnValues::int2_with_validity(values, valid),
                 })
             }
 
@@ -138,7 +138,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::int4_with_validity(values, valid),
+                    values: ColumnValues::int4_with_validity(values, valid),
                 })
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int8(r, rv)) => {
@@ -155,7 +155,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::int8_with_validity(values, valid),
+                    values: ColumnValues::int8_with_validity(values, valid),
                 })
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int16(r, rv)) => {
@@ -172,7 +172,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::int16_with_validity(values, valid),
+                    values: ColumnValues::int16_with_validity(values, valid),
                 })
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint1(r, rv)) => {
@@ -189,7 +189,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::uint1_with_validity(values, valid),
+                    values: ColumnValues::uint1_with_validity(values, valid),
                 })
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint2(r, rv)) => {
@@ -206,7 +206,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::uint2_with_validity(values, valid),
+                    values: ColumnValues::uint2_with_validity(values, valid),
                 })
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint4(r, rv)) => {
@@ -223,7 +223,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::uint4_with_validity(values, valid),
+                    values: ColumnValues::uint4_with_validity(values, valid),
                 })
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint8(r, rv)) => {
@@ -240,7 +240,7 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::uint8_with_validity(values, valid),
+                    values: ColumnValues::uint8_with_validity(values, valid),
                 })
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint16(r, rv)) => {
@@ -257,10 +257,10 @@ impl Evaluator {
                 }
                 Ok(Column {
                     name: mul.span().fragment,
-                    data: ColumnValues::uint16_with_validity(values, valid),
+                    values: ColumnValues::uint16_with_validity(values, valid),
                 })
             }
-            _ => Ok(Column { name: mul.span().fragment, data: ColumnValues::Undefined(row_count) }),
+            _ => Ok(Column { name: mul.span().fragment, values: ColumnValues::Undefined(row_count) }),
         }
     }
 }

@@ -18,7 +18,7 @@ use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
-use reifydb_core::AsyncCowVec;
+use reifydb_core::CowVec;
 use reifydb_core::delta::Delta;
 use reifydb_core::row::EncodedRow;
 use std::collections::HashMap;
@@ -50,7 +50,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
     ///
     pub fn commit(&mut self) -> Result<(), MvccError> {
         self.tm.commit(|pending| {
-            let mut grouped: HashMap<Version, AsyncCowVec<Delta>> = HashMap::new();
+            let mut grouped: HashMap<Version, CowVec<Delta>> = HashMap::new();
 
             for p in pending {
                 grouped.entry(p.version).or_default().push(p.delta);

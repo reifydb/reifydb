@@ -8,9 +8,7 @@
 
 pub use engine::Engine;
 pub use error::Error;
-pub use execute::{
-	Column, CreateSchemaResult, CreateTableResult, ExecutionResult, execute_query, execute,
-};
+pub use execute::{execute, execute_query};
 
 mod engine;
 mod error;
@@ -20,8 +18,8 @@ pub mod frame;
 #[allow(dead_code)]
 mod function;
 mod get;
+mod system;
 #[allow(dead_code)]
 pub(crate) mod view;
-mod system;
 
 pub type Result<T> = std::result::Result<T, Error>;

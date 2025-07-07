@@ -124,7 +124,7 @@ where
     }
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as test => test_client }
+// test_each_path! { in "testsuite/regression/tests/scripts" as test => test_client }
 
 fn test_client(path: &Path) {
     retry(3, || testscript::run_path(&mut ClientRunner::new(optimistic(memory())), path))

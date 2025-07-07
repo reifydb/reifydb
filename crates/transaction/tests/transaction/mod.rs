@@ -6,7 +6,7 @@ mod serializable;
 
 use reifydb_core::encoding::{bincode, keycode};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey};
+use reifydb_core::{CowVec, EncodedKey};
 
 pub trait IntoRow {
     fn into_row(self) -> EncodedRow;
@@ -48,7 +48,7 @@ macro_rules! impl_kv_for {
     ($t:ty) => {
         impl IntoRow for $t {
             fn into_row(self) -> EncodedRow {
-                EncodedRow(AsyncCowVec::new(bincode::serialize(&self)))
+                EncodedRow(CowVec::new(bincode::serialize(&self)))
             }
         }
         impl FromKey for $t {

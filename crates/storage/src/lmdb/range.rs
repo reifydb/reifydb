@@ -6,7 +6,7 @@ use heed::types::Bytes;
 use heed::{Database, Env};
 use reifydb_core::interface::{Unversioned, UnversionedScanRange, Versioned, VersionedScanRange};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Error, Version};
+use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Error, Version};
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -80,13 +80,13 @@ impl Range {
                 Ok((k, v)) => {
                     self.last_key = Some(EncodedKey::new(k.to_vec()));
                     // self.buffer.push_back(Ok((
-                    //     AsyncCowVec::new(k.to_vec()),
-                    //     AsyncCowVec::new(v.to_vec()),
+                    //     CowVec::new(k.to_vec()),
+                    //     CowVec::new(v.to_vec()),
                     // )));
                     //
                     self.buffer.push_back(Versioned {
                         key: EncodedKey::new(k.to_vec()),
-                        row: EncodedRow(AsyncCowVec::new(v.to_vec())),
+                        row: EncodedRow(CowVec::new(v.to_vec())),
                         version: 0, // FIXME
                     })
                 }

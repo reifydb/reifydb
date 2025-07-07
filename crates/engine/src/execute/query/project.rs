@@ -37,7 +37,7 @@ impl ExecutionPlan for ProjectNode {
                 .iter()
                 .map(|expr| {
                     let column = evaluate(expr, &ctx).unwrap();
-                    crate::frame::Column { name: expr.span().fragment, data: column.data }
+                    crate::frame::Column { name: expr.span().fragment, values: column.values }
                 })
                 .collect();
 

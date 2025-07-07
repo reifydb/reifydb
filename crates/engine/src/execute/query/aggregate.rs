@@ -72,17 +72,17 @@ impl ExecutionPlan for AggregateNode {
                     let mut c = Column {
                         name: alias.fragment,
                         // FIXME this must be set based on the actual key
-                        data: ColumnValues::int2_with_capacity(group_key_order.len()),
+                        values: ColumnValues::int2_with_capacity(group_key_order.len()),
                     };
                     for key in &group_key_order {
-                        c.data.push_value(key[col_idx].clone());
+                        c.values.push_value(key[col_idx].clone());
                     }
                     result_columns.push(c);
                 }
                 Projection::Aggregate { alias, mut function, .. } => {
                     let (keys_out, mut values) = function.finalize().unwrap();
                     align_column_values(&group_key_order, &keys_out, &mut values).unwrap();
-                    result_columns.push(Column { name: alias.fragment, data: values });
+                    result_columns.push(Column { name: alias.fragment, values: values });
                 }
             }
         }

@@ -9,7 +9,7 @@ impl Frame {
         let mut columns = Vec::with_capacity(self.columns.len());
 
         for col in &self.columns {
-            let data = match &col.data {
+            let data = match &col.values {
                 ColumnValues::Bool(values, valid) => ColumnValues::Bool(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
                     CowVec::new(valid[..n.min(valid.len())].to_vec()),
@@ -69,7 +69,7 @@ impl Frame {
                 ColumnValues::Undefined(len) => ColumnValues::Undefined(n.min(*len)),
             };
 
-            columns.push(Column { name: col.name.clone(), data });
+            columns.push(Column { name: col.name.clone(), values: data });
         }
 
         self.columns = columns;
@@ -92,7 +92,7 @@ mod tests {
         test_instance.limit(1).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::bool_with_validity([true], [false])
         );
     }
@@ -108,7 +108,7 @@ mod tests {
         test_instance.limit(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::float4_with_validity([1.0, 2.0], [true, false])
         );
     }
@@ -124,7 +124,7 @@ mod tests {
         test_instance.limit(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::float8_with_validity([1.0, 2.0], [true, true])
         );
     }
@@ -140,7 +140,7 @@ mod tests {
         test_instance.limit(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::int1_with_validity([1, 2], [true, false])
         );
     }
@@ -156,7 +156,7 @@ mod tests {
         test_instance.limit(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::int2_with_validity([1, 2], [true, true])
         );
     }
@@ -172,7 +172,7 @@ mod tests {
         test_instance.limit(1).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::int4_with_validity([1], [true])
         );
     }
@@ -188,7 +188,7 @@ mod tests {
         test_instance.limit(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::int8_with_validity([1, 2], [false, true])
         );
     }
@@ -204,7 +204,7 @@ mod tests {
         test_instance.limit(1).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::int16_with_validity([1], [true])
         );
     }
@@ -220,7 +220,7 @@ mod tests {
         test_instance.limit(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::uint1_with_validity([1, 2], [false, false])
         );
     }
@@ -236,7 +236,7 @@ mod tests {
         test_instance.limit(1).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::uint2_with_validity([1], [true])
         );
     }
@@ -252,7 +252,7 @@ mod tests {
         test_instance.limit(1).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::uint4_with_validity([10], [false])
         );
     }
@@ -268,7 +268,7 @@ mod tests {
         test_instance.limit(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::uint8_with_validity([10, 20], [true, true])
         );
     }
@@ -284,7 +284,7 @@ mod tests {
         test_instance.limit(1).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::uint16_with_validity([100], [true])
         );
     }
@@ -297,7 +297,7 @@ mod tests {
         test_instance.limit(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::string_with_validity(["a".to_string(), "b".to_string()], [true, false])
         );
     }
@@ -308,7 +308,7 @@ mod tests {
 
         test_instance.limit(2).unwrap();
 
-        match &test_instance.columns[0].data {
+        match &test_instance.columns[0].values {
             ColumnValues::Undefined(size) => {
                 assert_eq!(*size, 2);
             }
@@ -322,7 +322,7 @@ mod tests {
 
         test_instance.limit(3).unwrap();
 
-        match &test_instance.columns[0].data {
+        match &test_instance.columns[0].values {
             ColumnValues::Undefined(len) => assert_eq!(*len, 3),
             _ => panic!("Expected Undefined column"),
         }
@@ -336,7 +336,7 @@ mod tests {
         test_instance.limit(10).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].data,
+            test_instance.columns[0].values,
             ColumnValues::int2_with_validity([10, 20], [true, false])
         );
     }

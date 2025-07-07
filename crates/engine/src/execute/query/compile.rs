@@ -93,7 +93,7 @@ pub(crate) fn compile(
                         Kind::Uint16 => ColumnValues::uint16(vec![]),
                         Kind::Undefined => ColumnValues::Undefined(0),
                     };
-                    Column { name, data }
+                    Column { name, values: data }
                 })
                 .collect();
 

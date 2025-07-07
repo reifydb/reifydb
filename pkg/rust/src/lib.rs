@@ -41,7 +41,9 @@ use crate::embedded::Embedded;
 use crate::server::Server;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_engine::ExecutionResult;
+use reifydb_engine::frame::Frame;
+#[cfg(feature = "client")]
+pub use reifydb_network::grpc::client;
 /// The underlying persistence responsible for data access.
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
@@ -50,9 +52,6 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 #[cfg(any(feature = "server", feature = "client", feature = "embedded"))]
 pub use tokio::*;
-
-#[cfg(feature = "client")]
-pub use reifydb_network::grpc::client as client;
 
 #[cfg(feature = "embedded")]
 pub mod embedded;
@@ -75,13 +74,13 @@ pub trait DB<'a>: Sized {
         &self,
         principal: &Principal,
         rql: &str,
-    ) -> impl Future<Output = Result<Vec<ExecutionResult>>> + Send;
+    ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
     fn query_as(
         &self,
         principal: &Principal,
         rql: &str,
-    ) -> impl Future<Output = Result<Vec<ExecutionResult>>> + Send;
+    ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 }
 
 impl ReifyDB {

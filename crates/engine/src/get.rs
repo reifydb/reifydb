@@ -5,7 +5,7 @@ use crate::frame::{ColumnValues, Frame};
 
 impl Frame {
     pub fn get_bool(&self, name: &str, idx: usize) -> Option<bool> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Bool(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -14,7 +14,7 @@ impl Frame {
     }
 
     pub fn get_float4(&self, name: &str, idx: usize) -> Option<f32> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Float4(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -23,7 +23,7 @@ impl Frame {
     }
 
     pub fn get_float8(&self, name: &str, idx: usize) -> Option<f64> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Float8(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -32,7 +32,7 @@ impl Frame {
     }
 
     pub fn get_int1(&self, name: &str, idx: usize) -> Option<i8> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Int1(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -41,7 +41,7 @@ impl Frame {
     }
 
     pub fn get_int2(&self, name: &str, idx: usize) -> Option<i16> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Int2(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -50,7 +50,7 @@ impl Frame {
     }
 
     pub fn get_int4(&self, name: &str, idx: usize) -> Option<i32> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Int4(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -59,7 +59,7 @@ impl Frame {
     }
 
     pub fn get_int8(&self, name: &str, idx: usize) -> Option<i64> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Int8(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -68,7 +68,7 @@ impl Frame {
     }
 
     pub fn get_int16(&self, name: &str, idx: usize) -> Option<i128> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Int16(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -77,7 +77,7 @@ impl Frame {
     }
 
     pub fn get_uint1(&self, name: &str, idx: usize) -> Option<u8> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Uint1(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -86,7 +86,7 @@ impl Frame {
     }
 
     pub fn get_uint2(&self, name: &str, idx: usize) -> Option<u16> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Uint2(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -95,7 +95,7 @@ impl Frame {
     }
 
     pub fn get_uint4(&self, name: &str, idx: usize) -> Option<u32> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Uint4(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -104,7 +104,7 @@ impl Frame {
     }
 
     pub fn get_uint8(&self, name: &str, idx: usize) -> Option<u64> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Uint8(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -113,7 +113,7 @@ impl Frame {
     }
 
     pub fn get_uint16(&self, name: &str, idx: usize) -> Option<u128> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Uint16(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
             }
@@ -122,7 +122,7 @@ impl Frame {
     }
 
     pub fn get_string(&self, name: &str, idx: usize) -> Option<&str> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::String(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx].as_str())
             }
@@ -131,7 +131,7 @@ impl Frame {
     }
 
     pub fn is_defined(&self, name: &str, idx: usize) -> Option<bool> {
-        match &self.columns[*self.index.get(name)?].data {
+        match &self.columns[*self.index.get(name)?].values {
             ColumnValues::Undefined(len) => Some(*len > idx),
             _ => None,
         }
@@ -152,7 +152,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::bool_with_validity([true], [true]),
+                    values: ColumnValues::bool_with_validity([true], [true]),
                 }],
                 index,
             };
@@ -173,7 +173,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::bool_with_validity([true], [false]),
+                    values: ColumnValues::bool_with_validity([true], [false]),
                 }],
                 index,
             };
@@ -188,7 +188,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -207,7 +207,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::float4_with_validity([3.14], [true]),
+                    values: ColumnValues::float4_with_validity([3.14], [true]),
                 }],
                 index,
             };
@@ -228,7 +228,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::float4_with_validity([3.14], [false]),
+                    values: ColumnValues::float4_with_validity([3.14], [false]),
                 }],
                 index,
             };
@@ -243,7 +243,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -262,7 +262,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::float8_with_validity([2.718], [true]),
+                    values: ColumnValues::float8_with_validity([2.718], [true]),
                 }],
                 index,
             };
@@ -283,7 +283,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::float8_with_validity([2.718], [false]),
+                    values: ColumnValues::float8_with_validity([2.718], [false]),
                 }],
                 index,
             };
@@ -298,7 +298,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -318,7 +318,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int1_with_validity([1], [true]),
+                    values: ColumnValues::int1_with_validity([1], [true]),
                 }],
                 index,
             };
@@ -339,7 +339,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int1_with_validity([1], [false]),
+                    values: ColumnValues::int1_with_validity([1], [false]),
                 }],
                 index,
             };
@@ -354,7 +354,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -373,7 +373,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int2_with_validity([2], [true]),
+                    values: ColumnValues::int2_with_validity([2], [true]),
                 }],
                 index,
             };
@@ -394,7 +394,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int2_with_validity([2], [false]),
+                    values: ColumnValues::int2_with_validity([2], [false]),
                 }],
                 index,
             };
@@ -409,7 +409,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -428,7 +428,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([42], [true]),
+                    values: ColumnValues::int4_with_validity([42], [true]),
                 }],
                 index,
             };
@@ -449,7 +449,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([42], [false]),
+                    values: ColumnValues::int4_with_validity([42], [false]),
                 }],
                 index,
             };
@@ -464,7 +464,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::float4_with_validity([3.14], [true]),
+                    values: ColumnValues::float4_with_validity([3.14], [true]),
                 }],
                 index,
             };
@@ -483,7 +483,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int8_with_validity([8], [true]),
+                    values: ColumnValues::int8_with_validity([8], [true]),
                 }],
                 index,
             };
@@ -504,7 +504,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int8_with_validity([8], [false]),
+                    values: ColumnValues::int8_with_validity([8], [false]),
                 }],
                 index,
             };
@@ -519,7 +519,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -538,7 +538,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int16_with_validity([16], [true]),
+                    values: ColumnValues::int16_with_validity([16], [true]),
                 }],
                 index,
             };
@@ -559,7 +559,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int16_with_validity([16], [false]),
+                    values: ColumnValues::int16_with_validity([16], [false]),
                 }],
                 index,
             };
@@ -574,7 +574,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -594,7 +594,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint1_with_validity([1], [true]),
+                    values: ColumnValues::uint1_with_validity([1], [true]),
                 }],
                 index,
             };
@@ -615,7 +615,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint1_with_validity([1], [false]),
+                    values: ColumnValues::uint1_with_validity([1], [false]),
                 }],
                 index,
             };
@@ -630,7 +630,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -649,7 +649,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint2_with_validity([2], [true]),
+                    values: ColumnValues::uint2_with_validity([2], [true]),
                 }],
                 index,
             };
@@ -670,7 +670,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint2_with_validity([2], [false]),
+                    values: ColumnValues::uint2_with_validity([2], [false]),
                 }],
                 index,
             };
@@ -685,7 +685,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -704,7 +704,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint4_with_validity([4], [true]),
+                    values: ColumnValues::uint4_with_validity([4], [true]),
                 }],
                 index,
             };
@@ -725,7 +725,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint4_with_validity([4], [false]),
+                    values: ColumnValues::uint4_with_validity([4], [false]),
                 }],
                 index,
             };
@@ -740,7 +740,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -759,7 +759,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint8_with_validity([8], [true]),
+                    values: ColumnValues::uint8_with_validity([8], [true]),
                 }],
                 index,
             };
@@ -780,7 +780,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint8_with_validity([8], [false]),
+                    values: ColumnValues::uint8_with_validity([8], [false]),
                 }],
                 index,
             };
@@ -795,7 +795,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -814,7 +814,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint16_with_validity([16], [true]),
+                    values: ColumnValues::uint16_with_validity([16], [true]),
                 }],
                 index,
             };
@@ -835,7 +835,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::uint16_with_validity([16], [false]),
+                    values: ColumnValues::uint16_with_validity([16], [false]),
                 }],
                 index,
             };
@@ -850,7 +850,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_validity([123], [true]),
                 }],
                 index,
             };
@@ -870,7 +870,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::string_with_validity(["hello".to_string()], [true]),
+                    values: ColumnValues::string_with_validity(["hello".to_string()], [true]),
                 }],
                 index,
             };
@@ -891,7 +891,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::string_with_validity(["hello".to_string()], [false]),
+                    values: ColumnValues::string_with_validity(["hello".to_string()], [false]),
                 }],
                 index,
             };
@@ -906,7 +906,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    data: ColumnValues::int4_with_validity([1], [true]),
+                    values: ColumnValues::int4_with_validity([1], [true]),
                 }],
                 index,
             };

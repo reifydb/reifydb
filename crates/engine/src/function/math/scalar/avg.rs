@@ -19,7 +19,7 @@ impl ScalarFunction for Avg {
         let mut count = vec![0u32; row_count];
 
         for col in columns {
-            match &col.data {
+            match &col.values {
                 ColumnValues::Int2(vals, valid) => {
                     for i in 0..row_count {
                         if valid.get(i).copied().unwrap_or(false) {

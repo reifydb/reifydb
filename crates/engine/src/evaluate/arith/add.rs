@@ -18,7 +18,7 @@ impl Evaluator {
         let right = self.evaluate(&add.right, ctx)?;
         let kind = Kind::promote(left.kind(), right.kind());
 
-        match (&left.data, &right.data) {
+        match (&left.values, &right.values) {
             // Float4
             (ColumnValues::Float4(l, lv), ColumnValues::Float4(r, rv)) => {
                 add_numeric(ctx, l, r, lv, rv, kind, add.span())
@@ -519,5 +519,5 @@ where
             data.push_undefined()
         }
     }
-    Ok(Column { name: span.fragment, data })
+    Ok(Column { name: span.fragment, values: data })
 }

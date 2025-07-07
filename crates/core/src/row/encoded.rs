@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::AsyncCowVec;
+use crate::CowVec;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -15,10 +15,10 @@ impl<I: Iterator<Item = EncodedRow>> EncodedRowIterator for I {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // validity:values
 #[derive(PartialEq, Eq)]
-pub struct EncodedRow(pub AsyncCowVec<u8>);
+pub struct EncodedRow(pub CowVec<u8>);
 
 impl Deref for EncodedRow {
-    type Target = AsyncCowVec<u8>;
+    type Target = CowVec<u8>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

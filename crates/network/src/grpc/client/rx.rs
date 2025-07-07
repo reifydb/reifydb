@@ -2,17 +2,15 @@
 // This file is licensed under the MIT
 
 use crate::error::NetworkError;
-use crate::grpc::client::convert::{convert_diagnostic, convert_value};
 use crate::grpc::client::grpc_db::rx_result;
 use crate::grpc::client::{Client, grpc_db, wait_for_socket};
-use reifydb_core::Kind;
-use reifydb_engine::{Column, ExecutionResult};
+use reifydb_engine::frame::Frame;
 use std::str::FromStr;
 use std::time::Duration;
 use tonic::metadata::MetadataValue;
 
 impl Client {
-    pub async fn rx(&self, query: &str) -> Result<Vec<ExecutionResult>, NetworkError> {
+    pub async fn rx(&self, query: &str) -> Result<Vec<Frame>, NetworkError> {
         // FIXME this is quite expensive and should only used in tests
         // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
 
@@ -38,25 +36,28 @@ impl Client {
     }
 }
 
-fn convert_result(result: rx_result::Result, query: &str) -> Result<ExecutionResult, NetworkError> {
-    Ok(match result {
-        rx_result::Result::Error(diagnostic) => {
-            return Err(NetworkError::execution_error(query, convert_diagnostic(diagnostic)));
-        }
-        rx_result::Result::Query(query) => {
-            let labels = query
-                .columns
-                .into_iter()
-                .map(|c| Column { name: c.name, kind: Kind::Bool })
-                .collect();
-
-            let rows = query
-                .rows
-                .into_iter()
-                .map(|r| r.values.into_iter().map(convert_value).collect())
-                .collect();
-
-            ExecutionResult::OldQuery { columns: labels, rows }
-        }
-    })
+fn convert_result(result: rx_result::Result, query: &str) -> Result<Frame, NetworkError> {
+    // Ok(match result {
+    //     rx_result::Result::Error(diagnostic) => {
+    //         return Err(NetworkError::execution_error(query, convert_diagnostic(diagnostic)));
+    //     }
+    //     rx_result::Result::Query(query) => {
+    //         let labels = query
+    //             .columns
+    //             .into_iter()
+    //             .map(|c| Column { name: c.name, kind: Kind::Bool })
+    //             .collect();
+    //
+    //         let rows = query
+    //             .rows
+    //             .into_iter()
+    //             .map(|r| r.values.into_iter().map(convert_value).collect())
+    //             .collect();
+    //
+    //         ExecutionResult::Query { columns: labels, rows }
+    //
+    //
+    //     }
+    // })
+    unimplemented!()
 }

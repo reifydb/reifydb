@@ -3,7 +3,8 @@
 
 use crate::Error;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_engine::{Engine, ExecutionResult};
+use reifydb_engine::Engine;
+use reifydb_engine::frame::Frame;
 
 pub struct Embedded<VS, US, T>
 where
@@ -43,18 +44,14 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn execute_as(
-        &self,
-        principal: &Principal,
-        rql: &str,
-    ) -> crate::Result<Vec<ExecutionResult>> {
+    pub fn execute_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         self.engine.execute_as(principal, rql).map_err(|err| {
             let diagnostic = err.diagnostic();
             Error::ExecutionError { diagnostic, source: rql.to_string() }
         })
     }
 
-    pub fn query_as(&self, principal: &Principal, rql: &str) -> Vec<ExecutionResult> {
+    pub fn query_as(&self, principal: &Principal, rql: &str) -> Vec<Frame> {
         self.engine.query_as(principal, rql).unwrap()
     }
 

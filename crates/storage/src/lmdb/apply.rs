@@ -4,10 +4,10 @@
 use crate::lmdb::Lmdb;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::{UnversionedApply, VersionedApply};
-use reifydb_core::{AsyncCowVec, Error, Version};
+use reifydb_core::{CowVec, Error, Version};
 
 impl VersionedApply for Lmdb {
-    fn apply(&self, delta: AsyncCowVec<Delta>, _version: Version) {
+    fn apply(&self, delta: CowVec<Delta>, _version: Version) {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {
             match delta {
@@ -24,7 +24,7 @@ impl VersionedApply for Lmdb {
 }
 
 impl UnversionedApply for Lmdb {
-    fn apply(&mut self, delta: AsyncCowVec<Delta>) -> Result<(), Error> {
+    fn apply(&mut self, delta: CowVec<Delta>) -> Result<(), Error> {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {
             match delta {

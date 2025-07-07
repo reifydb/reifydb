@@ -11,7 +11,7 @@ pub type GroupByView = HashMap<GroupByKey, Vec<usize>>;
 
 impl Frame {
     pub fn group_by_view(&self, keys: &[&str]) -> crate::frame::Result<GroupByView> {
-        let row_count = self.columns.first().map_or(0, |c| c.data.len());
+        let row_count = self.columns.first().map_or(0, |c| c.values.len());
 
         let mut key_columns: Vec<&ColumnValues> = Vec::with_capacity(keys.len());
 
@@ -21,7 +21,7 @@ impl Frame {
                 .iter()
                 .find(|c| c.name == key)
                 .ok_or_else(|| format!("Column '{}' not found", key))?;
-            key_columns.push(&column.data);
+            key_columns.push(&column.values);
         }
 
         let mut result = GroupByView::new();

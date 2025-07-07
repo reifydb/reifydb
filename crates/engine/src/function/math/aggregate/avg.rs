@@ -24,7 +24,7 @@ impl AggregateFunction for Avg {
         mask: &BitVec,
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> Result<(), FunctionError> {
-        match &column.data {
+        match &column.values {
             ColumnValues::Float8(values, validity) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;

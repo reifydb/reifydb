@@ -3,7 +3,8 @@
 
 pub use config::{DatabaseConfig, ServerConfig};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_engine::{Engine, ExecutionResult};
+use reifydb_engine::Engine;
+use reifydb_engine::frame::Frame;
 use reifydb_network::grpc;
 use reifydb_network::grpc::server::db_service;
 use std::ops::Deref;
@@ -103,11 +104,11 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn tx(&self, rql: &str) -> Vec<ExecutionResult> {
+    pub fn tx(&self, rql: &str) -> Vec<Frame> {
         self.engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
     }
 
-    pub fn rx(&self, rql: &str) -> Vec<ExecutionResult> {
+    pub fn rx(&self, rql: &str) -> Vec<Frame> {
         self.engine.query_as(&Principal::System { id: 1, name: "root".to_string() }, rql).unwrap()
     }
 }

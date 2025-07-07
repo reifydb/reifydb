@@ -6,7 +6,7 @@ use std::fmt::{self, Display, Formatter};
 
 impl Display for Frame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let row_count = self.columns.first().map_or(0, |c| c.data.len());
+        let row_count = self.columns.first().map_or(0, |c| c.values.len());
         let col_count = self.columns.len();
 
         let mut col_widths = vec![0; col_count];
@@ -17,7 +17,7 @@ impl Display for Frame {
 
         for row_idx in 0..row_count {
             for (i, col) in self.columns.iter().enumerate() {
-                let s = match &col.data {
+                let s = match &col.values {
                     ColumnValues::Bool(v, valid) => {
                         if valid[row_idx] {
                             v[row_idx].to_string()
@@ -157,7 +157,7 @@ impl Display for Frame {
                 .enumerate()
                 .map(|(i, col)| {
                     let w = col_widths[i];
-                    let s = match &col.data {
+                    let s = match &col.values {
                         ColumnValues::Bool(v, valid) => {
                             if valid[row_idx] {
                                 v[row_idx].to_string()

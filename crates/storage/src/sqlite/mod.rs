@@ -18,7 +18,7 @@ use reifydb_core::interface::{
     VersionedScanRev, VersionedStorage,
 };
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{AsyncCowVec, EncodedKey, EncodedKeyRange, Version};
+use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
 use rusqlite::{OptionalExtension, params};
 use std::ops::{Bound, Deref};
 use std::path::Path;
@@ -83,7 +83,7 @@ impl Sqlite {
 }
 
 impl VersionedApply for Sqlite {
-    fn apply(&self, delta: AsyncCowVec<Delta>, _version: Version) {
+    fn apply(&self, delta: CowVec<Delta>, _version: Version) {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 
@@ -123,7 +123,7 @@ impl VersionedGet for Sqlite {
 			|row| {
 				Ok(Versioned {
 					key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-					row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
+					row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					version: row.get(2)?,
 				})
 			},
@@ -157,7 +157,7 @@ impl VersionedScan for Sqlite {
             .query_map(params![version], |row| {
                 Ok(Versioned {
                     key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                    row: EncodedRow(AsyncCowVec::new(row.get::<_, Vec<u8>>(1)?)),
+                    row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -185,8 +185,8 @@ impl VersionedScanRev for Sqlite {
         let rows = stmt
             .query_map(params![version], |row| {
                 Ok(Versioned {
-                    key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
-                    row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
+                    key: EncodedKey(CowVec::new(row.get(0)?)),
+                    row: EncodedRow(CowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -216,8 +216,8 @@ impl VersionedScanRange for Sqlite {
             // .query_map(params![], |row| {
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Versioned {
-                    key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
-                    row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
+                    key: EncodedKey(CowVec::new(row.get(0)?)),
+                    row: EncodedRow(CowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })
@@ -250,8 +250,8 @@ impl VersionedScanRangeRev for Sqlite {
         let rows = stmt
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Versioned {
-                    key: EncodedKey(AsyncCowVec::new(row.get(0)?)),
-                    row: EncodedRow(AsyncCowVec::new(row.get(1)?)),
+                    key: EncodedKey(CowVec::new(row.get(0)?)),
+                    row: EncodedRow(CowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
             })

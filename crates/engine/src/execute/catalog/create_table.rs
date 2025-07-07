@@ -1,10 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::{ExecutionResult, Executor};
-use crate::{CreateTableResult, Error};
+use crate::Error;
+use crate::execute::Executor;
+use crate::frame::Frame;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::table::TableToCreate;
+use reifydb_core::Value;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_rql::plan::physical::CreateTablePlan;
@@ -14,7 +16,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         &mut self,
         tx: &mut impl Tx<VS, US>,
         plan: CreateTablePlan,
-    ) -> crate::Result<ExecutionResult> {
+    ) -> crate::Result<Frame> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? else {
             return Err(Error::execution(schema_not_found(
                 Some(plan.schema.clone()),
@@ -24,12 +26,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
         if let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table)? {
             if plan.if_not_exists {
-                return Ok(ExecutionResult::CreateTable(CreateTableResult {
-                    id: table.id,
-                    schema: plan.schema.to_string(),
-                    table: plan.table.to_string(),
-                    created: false,
-                }));
+                return Ok(Frame::single_row([
+                    ("schema", Value::String(plan.schema.to_string())),
+                    ("table", Value::String(plan.table.to_string())),
+                    ("created", Value::Bool(false)),
+                ]));
             }
 
             return Err(Error::execution(table_already_exists(
@@ -39,7 +40,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             )));
         }
 
-        let table = Catalog::create_table(
+        Catalog::create_table(
             tx,
             TableToCreate {
                 span: Some(plan.table.clone()),
@@ -49,23 +50,20 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             },
         )?;
 
-        Ok(ExecutionResult::CreateTable(CreateTableResult {
-            id: table.id,
-            schema: plan.schema.to_string(),
-            table: table.name,
-            created: true,
-        }))
+        Ok(Frame::single_row([
+            ("schema", Value::String(plan.schema.to_string())),
+            ("table", Value::String(plan.table.to_string())),
+            ("created", Value::Bool(true)),
+        ]))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::execute::CreateTableResult;
+    use crate::execute;
     use crate::execute::catalog::create_table::CreateTablePlan;
-    use crate::{ExecutionResult, execute};
-    use reifydb_catalog::table::TableId;
     use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
-    use reifydb_core::Span;
+    use reifydb_core::{Span, Value};
     use reifydb_rql::plan::physical::PhysicalPlan;
     use reifydb_transaction::test_utils::TestTransaction;
 
@@ -84,28 +82,16 @@ mod tests {
 
         // First creation should succeed
         let result = execute(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
-        assert_eq!(
-            result,
-            ExecutionResult::CreateTable(CreateTableResult {
-                id: TableId(1),
-                schema: "test_schema".into(),
-                table: "test_table".into(),
-                created: true
-            })
-        );
+        assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
+        assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
+        assert_eq!(result.row(0)[2], Value::Bool(true));
 
         // Creating the same table again with `if_not_exists = true` should not error
         plan.if_not_exists = true;
         let result = execute(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
-        assert_eq!(
-            result,
-            ExecutionResult::CreateTable(CreateTableResult {
-                id: TableId(1),
-                schema: "test_schema".into(),
-                table: "test_table".into(),
-                created: false
-            })
-        );
+        assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
+        assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
+        assert_eq!(result.row(0)[2], Value::Bool(false));
 
         // Creating the same table again with `if_not_exists = false` should return error
         plan.if_not_exists = false;
@@ -128,15 +114,9 @@ mod tests {
         };
 
         let result = execute(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
-        assert_eq!(
-            result,
-            ExecutionResult::CreateTable(CreateTableResult {
-                id: TableId(1),
-                schema: "test_schema".into(),
-                table: "test_table".into(),
-                created: true
-            })
-        );
+        assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
+        assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
+        assert_eq!(result.row(0)[2], Value::Bool(true));
 
         let plan = CreateTablePlan {
             schema: Span::testing("another_schema"),
@@ -146,15 +126,9 @@ mod tests {
         };
 
         let result = execute(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
-        assert_eq!(
-            result,
-            ExecutionResult::CreateTable(CreateTableResult {
-                id: TableId(2),
-                schema: "another_schema".into(),
-                table: "test_table".into(),
-                created: true
-            })
-        );
+        assert_eq!(result.row(0)[0], Value::String("another_schema".to_string()));
+        assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
+        assert_eq!(result.row(0)[2], Value::Bool(true));
     }
 
     #[test]

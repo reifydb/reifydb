@@ -26,7 +26,7 @@ impl Evaluator {
         let row_count = ctx.row_count;
         Ok(Column {
             name: call.span().fragment,
-            data: functor.scalar(&virtual_columns, row_count).unwrap(),
+            values: functor.scalar(&virtual_columns, row_count).unwrap(),
         })
     }
 

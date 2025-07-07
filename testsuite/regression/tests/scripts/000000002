@@ -6,8 +6,9 @@
 (tx 'insert (-1 -2) into test.item (field)')
 tx 'from test.item select field'
 ---
-+-------+
-| field |
-+-------+
-|  -3   |
-+-------+
+> +---------+
+> |  field  |
+> +---------+
+> |   -3    |
+> +---------+
+> 

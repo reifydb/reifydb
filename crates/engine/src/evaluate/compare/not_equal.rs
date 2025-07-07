@@ -16,7 +16,7 @@ impl Evaluator {
         let left = self.evaluate(&ne.left, ctx)?;
         let right = self.evaluate(&ne.right, ctx)?;
 
-        match (&left.data, &right.data) {
+        match (&left.values, &right.values) {
             (ColumnValues::Bool(lv, lv_valid), ColumnValues::Bool(rv, rv_valid)) => {
                 Ok(compare_bool(lv, rv, lv_valid, rv_valid, ne.span()))
             }
@@ -489,7 +489,7 @@ fn compare_bool(
         }
     }
 
-    Column { name: span.fragment, data: ColumnValues::bool_with_validity(values, valid) }
+    Column { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
 }
 
 fn compare_numeric<L, R>(
@@ -517,5 +517,5 @@ where
         }
     }
 
-    Column { name: span.fragment, data: ColumnValues::bool_with_validity(values, valid) }
+    Column { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
 }

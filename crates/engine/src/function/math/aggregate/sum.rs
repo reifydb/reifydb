@@ -23,7 +23,7 @@ impl AggregateFunction for Sum {
         mask: &BitVec,
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> Result<(), FunctionError> {
-        match &column.data {
+        match &column.values {
             ColumnValues::Float8(values, validity) => {
                 for (group, indices) in groups {
                     let sum: f64 = indices
