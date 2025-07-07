@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb::client::Client;
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::retry;
-use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{memory, optimistic, ReifyDB};
+use reifydb::network::websocket::client::WsClient;
+use reifydb::server::{DatabaseConfig, Server, ServerConfig, WebsocketConfig};
+use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -16,19 +16,19 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct GrpcRunner<VS, US, T>
+pub struct WebsocketRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
     server: Option<Server<VS, US, T>>,
-    client: Client,
+    client: Option<WsClient>,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<VS, US, T> GrpcRunner<VS, US, T>
+impl<VS, US, T> WebsocketRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
@@ -41,13 +41,11 @@ where
             database: DatabaseConfig { socket_addr: Some(socket_addr) },
         });
 
-        let client = Client { socket_addr };
-
-        Self { server: Some(server), client, runtime: None, shutdown: None }
+        Self { server: Some(server), client: None, runtime: None, shutdown: None }
     }
 }
 
-impl<VS, US, T> testscript::Runner for GrpcRunner<VS, US, T>
+impl<VS, US, T> testscript::Runner for WebsocketRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
@@ -65,8 +63,8 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.tx(&query).await? {
-                        writeln!(output, "{}", line).unwrap();
+                    for frame in self.client.as_ref().unwrap().tx(&query).await? {
+                        writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;
@@ -81,8 +79,8 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.rx(&query).await? {
-                        writeln!(output, "{}", line).unwrap();
+                    for frame in self.client.as_ref().unwrap().rx(&query).await? {
+                        writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;
@@ -96,12 +94,22 @@ where
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
         let (shutdown_tx, _) = oneshot::channel();
-        let server = self.server.take().unwrap();
+        let server = self.server.as_mut().unwrap();
 
-        runtime.spawn(async move {
-            let _ = server.serve().await;
+        let socket_addr = free_local_socket();
+
+        let _ =
+            server.serve_websocket(WebsocketConfig { socket_addr: socket_addr.clone() }, &runtime);
+
+        let client = runtime.block_on(async {
+            WsClient::connect(&format!("ws://127.0.0.1:{}", socket_addr.port())).await.unwrap()
         });
 
+        runtime.block_on(async {
+            client.auth(Some("mysecrettoken".into())).await.unwrap();
+        });
+
+        self.client = Some(client);
         self.runtime = Some(runtime);
         self.shutdown = Some(shutdown_tx);
 
@@ -109,6 +117,14 @@ where
     }
 
     fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
+        if let Some(server) = self.server.take() {
+            drop(server);
+        }
+
+        if let Some(client) = self.client.take() {
+            drop(client);
+        }
+
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
         }
@@ -121,9 +137,9 @@ where
     }
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as grpc => test_grpc }
+test_each_path! { in "testsuite/regression/tests/scripts" as websocket => test_websocket }
 
-fn test_grpc(path: &Path) {
-    retry(3, || testscript::run_path(&mut GrpcRunner::new(optimistic(memory())), path))
+fn test_websocket(path: &Path) {
+    retry(3, || testscript::run_path(&mut WebsocketRunner::new(optimistic(memory())), path))
         .expect("test failed")
 }

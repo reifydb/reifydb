@@ -28,3 +28,7 @@ reifydb-transaction = { workspace = true }
 
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
 tonic = { workspace = true }
+
+tokio-tungstenite = {workspace = true} #FIXME remove this
+futures-util = { workspace = true} #FIXME remove this
+serde_json = { workspace = true }

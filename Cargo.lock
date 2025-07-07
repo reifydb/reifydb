@@ -1466,6 +1466,7 @@ dependencies = [
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
+ "futures-util",
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
@@ -1475,7 +1476,9 @@ dependencies = [
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-transaction",
+ "serde_json",
  "tokio",
+ "tokio-tungstenite 0.27.0",
  "tonic",
 ]
 

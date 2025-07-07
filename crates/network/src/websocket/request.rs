@@ -14,12 +14,18 @@ pub struct Request {
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
     Auth(AuthRequestPayload),
+    Execute(ExecuteRequestPayload),
     Query(QueryRequestPayload),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthRequestPayload {
     pub token: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExecuteRequestPayload {
+    pub statements: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

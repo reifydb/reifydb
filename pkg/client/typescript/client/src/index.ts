@@ -46,13 +46,20 @@
 import {ReifyClient} from "./websocket";
 
 
-
 async function main() {
     const client = await ReifyClient.connect("ws://127.0.0.1:9001");
 
 
-    const rows = await client.query<{ test: number }>("from test.one");
-    console.log(rows);
+    const frames = await client.execute<[
+        { abc: number },
+        { dec: number }
+    ]>("SELECT 1 as abc; SELECT 2 as dec;");
+
+    const frame0 = frames[0];
+    const frame1 = frames[1];
+
+    console.log(frame0[0].abc);
+    console.log(frame1[0].dec);
 }
 
 

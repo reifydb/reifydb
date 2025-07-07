@@ -4,17 +4,29 @@ export type Kind =
     | "Uint1" | "Uint2" | "Uint4"
     | "String" | "Undefined";
 
-export interface RawColumn {
+export interface WebsocketFrame {
+    columns: WebsocketColumn[];
+}
+
+export interface WebsocketColumn {
     name: string;
     kind: Kind;
     data: string[];
+}
+
+export interface ExecuteResponse {
+    id: string;
+    type: "Execute";
+    payload: {
+        frames: WebsocketFrame[];
+    };
 }
 
 export interface QueryResponse {
     id: string;
     type: "Query";
     payload: {
-        columns: RawColumn[];
+        frames: WebsocketFrame[];
     };
 }
 

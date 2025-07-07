@@ -3,7 +3,7 @@ import {columnsToRows} from "./decoder";
 
 let nextId = 1;
 
-type ResponsePayload = { type: "Query"; payload: QueryResponse["payload"] };
+type ResponsePayload = { type: "Execute" | "Query"; payload: QueryResponse["payload"] };
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -29,7 +29,7 @@ export class ReifyClient {
 
             const handler = this.pending.get(id);
             if (!handler) {
-                console.warn(`No pending query for id: ${id}`);
+                console.debug(`No pending query for id: ${id}`);
                 return;
             }
 
@@ -74,13 +74,53 @@ export class ReifyClient {
         return this.socket.readyState === this.socket.OPEN;
     }
 
-    async query<T = Record<string, unknown>>(query: string): Promise<T[]> {
+
+    async execute<T extends readonly Record<string, unknown>[]>(execute: string): Promise<{
+        [K in keyof T]: T[K][];
+    }> {
+        const id = `req-${nextId++}`;
+
+
+        const message = {
+            id,
+            type: "Execute",
+            payload: {
+                statements: [execute]
+            },
+        };
+
+        const response = await new Promise<ResponsePayload>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                this.pending.delete(id);
+                reject(new Error("ReifyDB execute timeout"));
+            }, 5000);
+
+            this.pending.set(id, (res) => {
+                clearTimeout(timeout);
+                resolve(res);
+            });
+
+            this.socket.send(JSON.stringify(message));
+        });
+
+        if (response.type !== "Execute") {
+            throw new Error(`Unexpected response type: ${response.type}`);
+        }
+
+        return response.payload.frames.map((frame) =>
+            columnsToRows(frame.columns)
+        ) as { [K in keyof T]: T[K][] };
+    }
+
+    async query<T extends readonly Record<string, unknown>[]>(query: string): Promise<{
+        [K in keyof T]: T[K][];
+    }> {
         const id = `req-${nextId++}`;
 
         const message = {
             id,
             type: "Query",
-            payload:{
+            payload: {
                 statements: [query]
             },
         };
@@ -103,6 +143,9 @@ export class ReifyClient {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 
-        return columnsToRows(response.payload.columns) as T[];
+        return response.payload.frames.map((frame) =>
+            columnsToRows(frame.columns)
+        ) as { [K in keyof T]: T[K][] };
     }
+
 }

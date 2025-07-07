@@ -2,11 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 pub use config::{DatabaseConfig, ServerConfig};
+use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
 use reifydb_network::grpc;
 use reifydb_network::grpc::server::db_service;
+use reifydb_network::websocket::server::WsServer;
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -15,7 +18,10 @@ use tonic::service::InterceptorLayer;
 use tonic::transport::Error;
 
 mod config;
-// mod grpc;
+
+pub struct WebsocketConfig {
+    pub socket_addr: SocketAddr,
+}
 
 pub struct Server<VS, US, T>
 where
@@ -25,6 +31,7 @@ where
 {
     pub(crate) config: ServerConfig,
     pub(crate) _grpc: tonic::transport::Server,
+    pub(crate) ws: Option<WsServer<VS, US, T>>,
     pub(crate) callbacks: Callbacks<VS, US, T>,
     pub(crate) engine: Engine<VS, US, T>,
 }
@@ -123,6 +130,7 @@ where
         Self {
             config: ServerConfig::default(),
             _grpc: tonic::transport::Server::builder(),
+            ws: None,
             callbacks: Callbacks { before_bootstrap: vec![], on_create: vec![] },
             engine: Engine::new(transaction).unwrap(),
         }
@@ -190,5 +198,25 @@ where
                 .await
                 .unwrap();
         })
+    }
+
+    pub fn serve_websocket(&mut self, config: WebsocketConfig, rt: &Runtime) {
+        let socket_addr = config.socket_addr;
+        let engine = self.engine.clone();
+
+        let mut ws_server = WsServer::new(engine);
+        // let shutdown = ws_server.shutdown.clone();
+
+        rt.spawn(async move {
+            ws_server.serve(socket_addr).await.unwrap();
+        });
+
+        // self.ws_shutdown = Some(shutdown); // store shutdown handle if needed
+    }
+
+    pub fn close(&mut self) {
+        if let Some(ws) = self.ws.as_mut() {
+            ws.close();
+        }
     }
 }

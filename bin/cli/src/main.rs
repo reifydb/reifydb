@@ -27,8 +27,7 @@ async fn main() {
 
     client.auth(Some("mysecrettoken".into())).await.unwrap();
 
-    println!("query");
-    let result = client.query("from test.one".into()).await.unwrap();
+    let result = client.rx("SELECT 1; SELECT 2;".into()).await.unwrap();
 
-    println!("✅ Columns: {:?}", result.columns);
+    println!("✅ Frames: {:?}", result);
 }

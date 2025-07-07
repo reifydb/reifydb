@@ -1,4 +1,4 @@
-import {Kind, RawColumn} from "./types";
+import {Kind, WebsocketColumn} from "./types";
 
 const UNDEFINED_VALUE = "⟪undefined⟫";
 
@@ -30,7 +30,7 @@ export function decodeValue(kind: Kind, value: string): unknown {
     }
 }
 
-export function columnsToRows(columns: RawColumn[]): Record<string, unknown>[] {
+export function columnsToRows(columns: WebsocketColumn[]): Record<string, unknown>[] {
     const rowCount = columns[0]?.data.length ?? 0;
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, unknown> = {};

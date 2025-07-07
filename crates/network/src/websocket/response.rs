@@ -15,6 +15,7 @@ pub struct Response {
 #[serde(tag = "type", content = "payload")]
 pub enum ResponsePayload {
     Auth(AuthResponsePayload),
+    Execute(ExecuteResponsePayload),
     Query(QueryResponsePayload),
 }
 
@@ -22,12 +23,23 @@ pub enum ResponsePayload {
 pub struct AuthResponsePayload {}
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct QueryResponsePayload {
-    pub columns: Vec<Column>,
+pub struct ExecuteResponsePayload {
+    pub frames: Vec<WebsocketFrame>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Column {
+pub struct QueryResponsePayload {
+    pub frames: Vec<WebsocketFrame>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebsocketFrame {
+    pub name: String,
+    pub columns: Vec<WebsocketColumn>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebsocketColumn {
     pub name: String,
     pub kind: Kind,
     pub data: Vec<String>,
