@@ -23,35 +23,12 @@
 use futures::{SinkExt, StreamExt};
 use reifydb::core::{Kind, Value};
 use reifydb::network::websocket::RequestPayload::Auth;
-use reifydb::network::websocket::{
-    AuthRequestPayload, Column, QueryRequestPayload, QueryResponsePayload,
-    Request as WebsocketRequest, Request, RequestPayload, Response as WebsocketResponse,
-    ResponsePayload,
-};
+use reifydb::network::websocket::{AuthRequestPayload, AuthResponsePayload, Column, QueryRequestPayload, QueryResponsePayload, Request as WebsocketRequest, Request, RequestPayload, Response as WebsocketResponse, ResponsePayload};
 use reifydb::{DB, ReifyDB, memory, serializable};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-// #[derive(Debug, Deserialize)]
-// struct IncomingMessage {
-//     id: String,
-//     #[serde(flatten)]
-//     payload: Payload,
-// }
-//
-// #[derive(Debug, Deserialize)]
-// #[serde(tag = "type", content = "payload")]
-// pub enum Payload {
-//     Auth { token: String },
-//     Query { statement: String },
-// }
 
-// #[derive(Debug, serde::Serialize)]
-// struct ServerMessage {
-//     id: String,
-//     r#type: String,
-//     payload: Value,
-// }
 
 #[tokio::main]
 async fn main() {
@@ -91,11 +68,24 @@ async fn main() {
                                 if validate_token(&token.as_str()) {
                                     println!("✅ Authenticated: {}", token);
 
+                                    let response = WebsocketResponse {
+                                        id: request.id,
+                                        payload: ResponsePayload::Auth(AuthResponsePayload {}),
+                                    };
+
+                                    let msg = serde_json::to_string(&response)
+                                        .unwrap();
+                                    write
+                                        .send(WsMessage::Text(msg))
+                                        .await
+                                        .unwrap();
+
+
                                     // Ready to accept other messages
                                     while let Some(Ok(msg)) = read.next().await {
                                         if let WsMessage::Text(text) = msg {
                                             match serde_json::from_str::<Request>(&text) {
-                                                Ok(query_msg) => match query_msg.payload {
+                                                Ok(request) => match request.payload {
                                                     RequestPayload::Query(
                                                         QueryRequestPayload { statements },
                                                     ) => {
@@ -112,7 +102,7 @@ async fn main() {
 
                                                         let frame = result.pop().unwrap();
                                                         let response = WebsocketResponse {
-                                                            id: query_msg.id,
+                                                            id: request.id,
                                                             payload: ResponsePayload::Query(
                                                                 QueryResponsePayload {
                                                                     columns: frame
