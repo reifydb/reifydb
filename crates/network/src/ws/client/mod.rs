@@ -8,7 +8,7 @@ use crate::ws::{
     QueryResponsePayload, Request, RequestPayload, Response, ResponsePayload,
 };
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::{CowVec, Error, Kind};
+use reifydb_core::{CowVec, Diagnostic, Error, Kind};
 use reifydb_engine::frame::{Column, ColumnValues, Frame};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -40,8 +40,19 @@ impl Drop for WsClient {
 }
 
 impl WsClient {
-    pub async fn connect(url: &str) -> Result<Self, WsError> {
-        let (ws_stream, _) = connect_async(url).await?;
+    pub async fn connect(url: &str) -> Result<Self, Error> {
+        let (ws_stream, _) = connect_async(url).await.map_err(|_| {
+            Error(Diagnostic {
+                code: "TBD".to_string(),
+                statement: None,
+                message: "TBD".to_string(),
+                column: None,
+                span: None,
+                label: None,
+                help: None,
+                notes: vec![],
+            })
+        })?;
         let (tx, mut rx) = mpsc::unbounded_channel();
         let pending = Arc::new(Mutex::new(HashMap::<String, oneshot::Sender<Response>>::new()));
         let stream_pending = pending.clone();
@@ -114,7 +125,7 @@ impl WsClient {
         }
     }
 
-    pub async fn execute(&self, statement: &str) -> Result<ExecuteResponsePayload, WsError> {
+    pub async fn execute(&self, statement: &str) -> Result<ExecuteResponsePayload, Error> {
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
 
@@ -136,6 +147,7 @@ impl WsClient {
 
         match resp.payload {
             ResponsePayload::Execute(payload) => Ok(payload),
+            ResponsePayload::Error(payload) => Err(Error(payload.diagnostic)),
             other => {
                 eprintln!("Unexpected execute response: {:?}", other);
                 panic!("Unexpected execute response type")
@@ -143,7 +155,7 @@ impl WsClient {
         }
     }
 
-    pub async fn query(&self, statement: &str) -> Result<QueryResponsePayload, WsError> {
+    pub async fn query(&self, statement: &str) -> Result<QueryResponsePayload, Error> {
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
 
@@ -165,6 +177,7 @@ impl WsClient {
 
         match resp.payload {
             ResponsePayload::Query(payload) => Ok(payload),
+            ResponsePayload::Error(payload) => Err(Error(payload.diagnostic)),
             other => {
                 eprintln!("Unexpected query response: {:?}", other);
                 panic!("Unexpected query response type")
@@ -173,12 +186,12 @@ impl WsClient {
     }
 
     pub async fn tx(&self, statement: &str) -> Result<Vec<Frame>, Error> {
-        let response = self.execute(statement).await.unwrap();
+        let response = self.execute(statement).await?;
         Ok(convert_execute_response(response))
     }
 
     pub async fn rx(&self, statement: &str) -> Result<Vec<Frame>, Error> {
-        let response = self.query(statement).await.unwrap();
+        let response = self.query(statement).await?;
         Ok(convert_query_response(response))
     }
 }

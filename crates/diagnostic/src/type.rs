@@ -48,6 +48,7 @@ pub fn out_of_range(co: OutOfRange) -> Diagnostic {
 
     Diagnostic {
         code: "TYPE_001".to_string(),
+        statement: None,
         message,
         span: Some(co.span),
         label,

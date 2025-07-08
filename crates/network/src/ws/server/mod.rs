@@ -3,11 +3,10 @@
 
 use crate::ws::RequestPayload::Auth;
 use crate::ws::{
-    AuthRequestPayload, AuthResponsePayload, ExecuteRequestPayload, ExecuteResponsePayload,
-    QueryRequestPayload, QueryResponsePayload, Request, RequestPayload, ResponsePayload,
-    WebsocketColumn, WebsocketFrame,
+    AuthRequestPayload, AuthResponsePayload, ErrorResponsePayload, ExecuteRequestPayload,
+    ExecuteResponsePayload, QueryRequestPayload, QueryResponsePayload, Request, RequestPayload,
+    ResponsePayload, WebsocketColumn, WebsocketFrame,
 };
-use IpAddr::V4;
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Error, Value};
@@ -19,6 +18,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Notify;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
+use IpAddr::V4;
 
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
@@ -188,7 +188,20 @@ where
                                                                         let _ = write.send(WsMessage::Text(Utf8Bytes::from(msg))).await;
                                                                     }
                                                                     Err(e) => {
-                                                                        eprintln!("❌ Query error: {}", e);
+                                                                            let mut diagnostic = e.diagnostic();
+                                                                            diagnostic.statement = Some(statement.clone());
+
+                                                                            let response = crate::ws::response::Response {
+                                                                            id: request.id,
+                                                                            payload: ResponsePayload::Error(ErrorResponsePayload {
+                                                                                diagnostic
+                                                                            }),
+                                                                        };
+
+                                                                        let msg = serde_json::to_string(&response).unwrap();
+                                                                        let _ = write.send(WsMessage::Text(Utf8Bytes::from(msg))).await;
+
+                                                                        eprintln!("❌ Query error");
                                                                     }
                                                                 }
                                                             }
@@ -226,8 +239,21 @@ where
                                                                         let msg = serde_json::to_string(&response).unwrap();
                                                                         let _ = write.send(WsMessage::Text(Utf8Bytes::from(msg))).await;
                                                                     }
-                                                                    Err(e) => {
-                                                                        eprintln!("❌ Query error: {}", e);
+                                                                  Err(e) => {
+                                                                            let mut diagnostic = e.diagnostic();
+                                                                            diagnostic.statement = Some(statement.clone());
+
+                                                                            let response = crate::ws::response::Response {
+                                                                            id: request.id,
+                                                                            payload: ResponsePayload::Error(ErrorResponsePayload {
+                                                                                diagnostic
+                                                                            }),
+                                                                        };
+
+                                                                        let msg = serde_json::to_string(&response).unwrap();
+                                                                        let _ = write.send(WsMessage::Text(Utf8Bytes::from(msg))).await;
+
+                                                                        eprintln!("❌ Query error");
                                                                     }
                                                                 }
                                                             }

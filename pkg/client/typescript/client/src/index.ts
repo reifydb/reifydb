@@ -53,7 +53,7 @@ async function main() {
     const frames = await client.execute<[
         { abc: number },
         { dec: number }
-    ]>("SELECT 1 as abc; SELECT 2 as dec;");
+    ]>("SELECT cast(129, int1) as abc; SELECT 2 as dec;");
 
     const frame0 = frames[0];
     const frame1 = frames[1];

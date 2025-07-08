@@ -15,7 +15,7 @@ pub mod r#type;
 mod util;
 
 pub trait DiagnosticRenderer {
-    fn render(&self, diagnostic: &Diagnostic, source: &str) -> String;
+    fn render(&self, diagnostic: &Diagnostic) -> String;
 }
 
 pub struct DefaultRenderer;
@@ -27,15 +27,17 @@ pub fn get_line(source: &str, line: u32) -> &str {
 use std::fmt::Write;
 
 impl DiagnosticRenderer for DefaultRenderer {
-    fn render(&self, d: &Diagnostic, source: &str) -> String {
+    fn render(&self, diagnostic: &Diagnostic) -> String {
         let mut output = String::new();
 
-        let _ = writeln!(&mut output, "error[{}]: {}", d.code, d.message);
+        let _ = writeln!(&mut output, "error[{}]: {}", diagnostic.code, diagnostic.message);
 
-        if let Some(span) = &d.span {
+        if let Some(span) = &diagnostic.span {
             let line = span.line.0;
             let col = span.offset.0;
-            let line_content = get_line(source, line);
+            let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
+
+            let line_content = get_line(statement, line);
             let line_number_width = line.to_string().len().max(2);
 
             let _ = writeln!(
@@ -56,21 +58,21 @@ impl DiagnosticRenderer for DefaultRenderer {
                 &mut output,
                 " {0:>width$} = {1}",
                 "",
-                d.label.as_deref().unwrap_or("value exceeds type bounds"),
+                diagnostic.label.as_deref().unwrap_or("value exceeds type bounds"),
                 width = line_number_width
             );
         }
 
-        if let Some(col) = &d.column {
+        if let Some(col) = &diagnostic.column {
             let _ =
                 writeln!(&mut output, "\nnote: column `{}` is of type `{}`", col.name, col.value);
         }
 
-        if let Some(help) = &d.help {
+        if let Some(help) = &diagnostic.help {
             let _ = writeln!(&mut output, "\nhelp: {}", help);
         }
 
-        for note in &d.notes {
+        for note in &diagnostic.notes {
             let _ = writeln!(&mut output, "\nnote: {}", note);
         }
 
@@ -79,7 +81,7 @@ impl DiagnosticRenderer for DefaultRenderer {
 }
 
 impl DefaultRenderer {
-    pub fn render_string(diagnostic: &Diagnostic, source: &str) -> String {
-        DefaultRenderer.render(diagnostic, source)
+    pub fn render_string(diagnostic: &Diagnostic) -> String {
+        DefaultRenderer.render(diagnostic)
     }
 }

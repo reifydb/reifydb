@@ -7,6 +7,7 @@ use reifydb_core::Span;
 pub fn column_not_found(span: Span) -> Diagnostic {
     Diagnostic {
         code: "QUERY_001".to_string(),
+        statement: None,
         message: "column not found".to_string(),
         span: Some(span),
         label: Some("this column does not exist in the current context".to_string()),

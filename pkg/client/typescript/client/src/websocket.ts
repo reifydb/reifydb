@@ -1,9 +1,9 @@
-import {QueryResponse} from "./types";
+import {ErrorResponse, ExecuteResponse, QueryResponse, ReifyError} from "./types";
 import {columnsToRows} from "./decoder";
 
 let nextId = 1;
 
-type ResponsePayload = { type: "Execute" | "Query"; payload: QueryResponse["payload"] };
+type ResponsePayload = ErrorResponse | ExecuteResponse | QueryResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -34,7 +34,7 @@ export class ReifyClient {
             }
 
             this.pending.delete(id);
-            handler({type, payload});
+            handler({id, type, payload});
         };
 
         this.socket.onerror = (err) => {
@@ -103,6 +103,10 @@ export class ReifyClient {
             this.socket.send(JSON.stringify(message));
         });
 
+        if (response.type === "Error") {
+            throw new ReifyError(response);
+        }
+
         if (response.type !== "Execute") {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
@@ -138,6 +142,10 @@ export class ReifyClient {
 
             this.socket.send(JSON.stringify(message));
         });
+
+        if (response.type === "Error") {
+            throw new ReifyError(response);
+        }
 
         if (response.type !== "Query") {
             throw new Error(`Unexpected response type: ${response.type}`);

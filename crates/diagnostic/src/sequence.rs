@@ -8,6 +8,7 @@ use reifydb_core::Kind;
 pub fn sequence_exhausted(value: Kind) -> Diagnostic {
     Diagnostic {
         code: "SQ_001".to_string(),
+        statement: None,
         message: format!("sequence generator of type `{}` is exhausted", value),
         span: None,
         label: Some("no more values can be generated".to_string()),

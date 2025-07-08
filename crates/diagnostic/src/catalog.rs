@@ -6,6 +6,7 @@ use crate::{Diagnostic, Span};
 pub fn schema_already_exists(span: Option<Span>, schema: &str) -> Diagnostic {
     Diagnostic {
         code: "CA_001".to_string(),
+        statement: None,
         message: format!("schema `{}` already exists", schema),
         span,
         label: Some("duplicate schema definition".to_string()),
@@ -18,6 +19,7 @@ pub fn schema_already_exists(span: Option<Span>, schema: &str) -> Diagnostic {
 pub fn schema_not_found(span: Option<Span>, schema: &str) -> Diagnostic {
     Diagnostic {
         code: "CA_002".to_string(),
+        statement: None,
         message: format!("schema `{}` not found", schema),
         span,
         label: Some("undefined schema reference".to_string()),
@@ -30,6 +32,7 @@ pub fn schema_not_found(span: Option<Span>, schema: &str) -> Diagnostic {
 pub fn table_already_exists(span: Option<Span>, schema: &str, table: &str) -> Diagnostic {
     Diagnostic {
             code: "CA_003".to_string(),
+            statement: None,
             message: format!("table `{}.{}` already exists", schema, table),
             span,
             label: Some("duplicate table definition".to_string()),
@@ -42,6 +45,7 @@ pub fn table_already_exists(span: Option<Span>, schema: &str, table: &str) -> Di
 pub fn table_not_found(span: Span, schema: &str, table: &str) -> Diagnostic {
     Diagnostic {
         code: "CA_004".to_string(),
+        statement: None,
         message: format!("table `{}.{}` not found", schema, table),
         span: Some(span),
         label: Some("unknown table reference".to_string()),
@@ -59,6 +63,7 @@ pub fn column_already_exists(
 ) -> Diagnostic {
     Diagnostic {
         code: "CA_005".to_string(),
+        statement: None,
         message: format!("column `{}` already exists in table `{}`.`{}`", column, schema, table),
         span,
         label: Some("duplicate column definition".to_string()),
@@ -71,6 +76,7 @@ pub fn column_already_exists(
 pub fn column_policy_already_exists(policy: &str, column: &str) -> Diagnostic {
     Diagnostic {
         code: "CA_008".to_string(),
+        statement: None,
         message: format!("policy `{policy:?}` already exists for column `{}`", column),
         span: None,
         label: Some("duplicate column policy".to_string()),

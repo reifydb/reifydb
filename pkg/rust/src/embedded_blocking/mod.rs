@@ -46,8 +46,9 @@ where
 {
     pub fn execute_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         self.engine.execute_as(principal, rql).map_err(|err| {
-            let diagnostic = err.diagnostic();
-            Error::ExecutionError { diagnostic, source: rql.to_string() }
+            let mut diagnostic = err.diagnostic();
+            diagnostic.statement = Some(rql.to_string());
+            Error::ExecutionError { diagnostic }
         })
     }
 

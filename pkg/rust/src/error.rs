@@ -11,7 +11,7 @@ use tonic::Status;
 pub enum Error {
     ConnectionError { message: String },
     EngineError { message: String },
-    ExecutionError { source: String, diagnostic: Diagnostic },
+    ExecutionError { diagnostic: Diagnostic },
 }
 
 impl Display for Error {
@@ -19,8 +19,8 @@ impl Display for Error {
         match self {
             Error::ConnectionError { message } => write!(f, "connection error: {}", message),
             Error::EngineError { message } => write!(f, "engine error: {}", message),
-            Error::ExecutionError { diagnostic, source } => {
-                f.write_str(&DefaultRenderer::render_string(&diagnostic, source))
+            Error::ExecutionError { diagnostic } => {
+                f.write_str(&DefaultRenderer::render_string(&diagnostic))
             }
         }
     }
@@ -33,8 +33,8 @@ impl Error {
         Self::ConnectionError { message: message.into() }
     }
 
-    pub fn execution_error(source: &str, diagnostic: Diagnostic) -> Self {
-        Self::ExecutionError { source: source.to_string(), diagnostic }
+    pub fn execution_error(diagnostic: Diagnostic) -> Self {
+        Self::ExecutionError { diagnostic }
     }
 }
 
@@ -58,7 +58,7 @@ impl From<reifydb_engine::Error> for Error {
 
 impl From<reifydb_core::Error> for Error {
     fn from(err: reifydb_core::Error) -> Self {
-        Self::ExecutionError { source: "".to_string(), diagnostic: err.diagnostic() }
+        Self::ExecutionError { diagnostic: err.diagnostic() }
     }
 }
 
@@ -67,9 +67,7 @@ impl From<reifydb_network::NetworkError> for Error {
         match value {
             NetworkError::ConnectionError { message } => Self::ConnectionError { message },
             NetworkError::EngineError { message } => Self::EngineError { message },
-            NetworkError::ExecutionError { source, diagnostic } => {
-                Self::ExecutionError { source, diagnostic }
-            }
+            NetworkError::ExecutionError { diagnostic } => Self::ExecutionError { diagnostic },
         }
     }
 }

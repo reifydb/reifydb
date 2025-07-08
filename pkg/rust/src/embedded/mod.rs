@@ -52,8 +52,9 @@ where
         let engine = self.engine.clone();
         spawn_blocking(move || {
             engine.execute_as(&principal, &rql).map_err(|err| {
-                let diagnostic = err.diagnostic();
-                Error::ExecutionError { diagnostic, source: rql.to_string() }
+                let mut diagnostic = err.diagnostic();
+                diagnostic.statement = Some(rql.to_string());
+                Error::ExecutionError { diagnostic }
             })
         })
         .await
@@ -67,8 +68,9 @@ where
         let engine = self.engine.clone();
         spawn_blocking(move || {
             engine.query_as(&principal, &rql).map_err(|err| {
-                let diagnostic = err.diagnostic();
-                Error::ExecutionError { diagnostic, source: rql.to_string() }
+                let mut diagnostic = err.diagnostic();
+                diagnostic.statement = Some(rql.to_string());
+                Error::ExecutionError { diagnostic }
             })
         })
         .await

@@ -17,7 +17,7 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct WebsocketRunner<VS, US, T>
+pub struct WsRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
@@ -29,7 +29,7 @@ where
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<VS, US, T> WebsocketRunner<VS, US, T>
+impl<VS, US, T> WsRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
@@ -41,7 +41,7 @@ where
     }
 }
 
-impl<VS, US, T> testscript::Runner for WebsocketRunner<VS, US, T>
+impl<VS, US, T> testscript::Runner for WsRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
@@ -133,6 +133,6 @@ where
 test_each_path! { in "testsuite/regression/tests/scripts" as websocket => test_websocket }
 
 fn test_websocket(path: &Path) {
-    retry(3, || testscript::run_path(&mut WebsocketRunner::new(optimistic(memory())), path))
+    retry(3, || testscript::run_path(&mut WsRunner::new(optimistic(memory())), path))
         .expect("test failed")
 }

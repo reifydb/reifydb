@@ -39,8 +39,9 @@ impl Client {
 pub fn convert_result(result: tx_result::Result, query: &str) -> Result<Frame, NetworkError> {
     match result {
         tx_result::Result::Error(diagnostic) => {
-            let diag = convert_diagnostic(diagnostic);
-            Err(NetworkError::execution_error(query, diag))
+            let mut diag = convert_diagnostic(diagnostic);
+            diag.statement = Some(query.to_string());
+            Err(NetworkError::execution_error(diag))
         }
         tx_result::Result::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),
     }

@@ -2,10 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use crate::{Kind, Span};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
     pub code: String,
+    pub statement: Option<String>,
     pub message: String,
     pub column: Option<DiagnosticColumn>,
 
@@ -15,15 +18,14 @@ pub struct Diagnostic {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiagnosticColumn {
     pub name: String,
     pub value: Kind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagnosticTable {
-    pub schema: String,
-    pub name: String,
-    pub columns: Vec<DiagnosticColumn>,
+impl Display for Diagnostic {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.code))
+    }
 }

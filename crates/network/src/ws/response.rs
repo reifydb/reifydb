@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::Kind;
+use reifydb_core::{Diagnostic, Kind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,12 +15,18 @@ pub struct Response {
 #[serde(tag = "type", content = "payload")]
 pub enum ResponsePayload {
     Auth(AuthResponsePayload),
+    Error(ErrorResponsePayload),
     Execute(ExecuteResponsePayload),
     Query(QueryResponsePayload),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthResponsePayload {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorResponsePayload {
+    pub diagnostic: Diagnostic,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecuteResponsePayload {

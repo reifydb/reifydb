@@ -135,14 +135,15 @@ where
 fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
     grpc::Diagnostic {
         code: diagnostic.code.to_string(),
+        statement: diagnostic.statement,
         message: diagnostic.message,
         span: diagnostic.span.map(|s| grpc::Span {
             offset: s.offset.0,
             line: s.line.0,
             fragment: s.fragment,
         }),
-        label: diagnostic.label.unwrap_or_default(),
-        help: diagnostic.help.unwrap_or_default(),
+        label: diagnostic.label,
+        help: diagnostic.help,
         notes: diagnostic.notes,
         column: diagnostic
             .column

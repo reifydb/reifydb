@@ -11,6 +11,7 @@ impl Error {
         match self {
             UnexpectedToken { expected, got } => Diagnostic {
                 code: "PA_001".to_string(),
+                statement: None,
                 message: format!("unexpected token: expected `{}`", expected),
                 span: Some(got.span.clone()),
                 label: Some(format!("found `{}`", got.span.fragment)),
@@ -20,6 +21,7 @@ impl Error {
             },
             UnsupportedToken { got } => Diagnostic {
                 code: "PA_002".to_string(),
+                statement: None,
                 message: format!("unsupported token `{}`", got.span.fragment),
                 span: Some(got.span.clone()),
                 label: Some("this token is not allowed here".to_string()),
@@ -29,6 +31,7 @@ impl Error {
             },
             InvalidType { got } => Diagnostic {
                 code: "PA_003".to_string(),
+                statement: None,
                 message: format!("invalid type name: `{}`", got.span.fragment),
                 span: Some(got.span.clone()),
                 label: Some("not a recognized type".to_string()),
@@ -38,6 +41,7 @@ impl Error {
             },
             InvalidPolicy { got } => Diagnostic {
                 code: "PA_004".to_string(),
+                statement: None,
                 message: format!("invalid policy: `{}`", got.span.fragment),
                 span: Some(got.span.clone()),
                 label: Some("not a recognized policy".to_string()),
@@ -50,6 +54,7 @@ impl Error {
             },
             UnexpectedEndOfFile => Diagnostic {
                 code: "PA_999".to_string(),
+                statement: None,
                 message: "unexpected end of input".to_string(),
                 span: None,
                 label: None,

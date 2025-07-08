@@ -23,8 +23,15 @@ impl Error {
 }
 
 impl Display for Error {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::Ast(err) => Display::fmt(err, f),
+            Error::Catalog(err) => Display::fmt(err, f),
+            Error::Evaluation(err) => Display::fmt(err, f),
+            Error::Execution(err) => Display::fmt(err, f),
+            Error::Frame(err) => Display::fmt(err, f),
+            Error::Transaction(err) => Display::fmt(err, f),
+        }
     }
 }
 

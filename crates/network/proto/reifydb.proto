@@ -80,12 +80,13 @@ message UInt128 {
 
 message Diagnostic {
   string code = 1;
-  string message = 2;
-  Span span = 3;
-  string label = 4;
-  string help = 5;
-  repeated string notes = 6;
-  DiagnosticColumn column = 7;
+  optional string statement = 2;
+  string message = 3;
+  optional Span span = 4;
+  optional string label = 5;
+  optional string help = 6;
+  repeated string notes = 7;
+  DiagnosticColumn column = 8;
 }
 
 message Span {

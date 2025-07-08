@@ -9,14 +9,15 @@ use std::collections::HashMap;
 pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
     Diagnostic {
         code: grpc.code,
+        statement: grpc.statement,
         message: grpc.message,
         span: grpc.span.map(|s| Span {
             offset: Offset(s.offset),
             line: Line(s.line),
             fragment: s.fragment,
         }),
-        label: if grpc.label.is_empty() { None } else { Some(grpc.label) },
-        help: if grpc.help.is_empty() { None } else { Some(grpc.help) },
+        label: grpc.label,
+        help: grpc.help,
         notes: grpc.notes,
         column: grpc
             .column

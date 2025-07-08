@@ -7,8 +7,8 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use bitvec::BitVec;
-pub use cowvec::{CowVec};
-pub use diagnostic::{Diagnostic, DiagnosticColumn, DiagnosticTable};
+pub use cowvec::CowVec;
+pub use diagnostic::{Diagnostic, DiagnosticColumn};
 pub use error::Error;
 pub use key::{EncodedKey, EncodedKeyRange};
 pub use kind::{GetKind, Kind};

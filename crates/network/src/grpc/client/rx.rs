@@ -40,8 +40,9 @@ impl Client {
 pub fn convert_result(result: RxResultEnum, query: &str) -> Result<Frame, NetworkError> {
     match result {
         RxResultEnum::Error(diagnostic) => {
-            let diag = convert_diagnostic(diagnostic);
-            Err(NetworkError::execution_error(query, diag))
+            let mut diag = convert_diagnostic(diagnostic);
+            diag.statement = Some(query.to_string());
+            Err(NetworkError::execution_error(diag))
         }
         RxResultEnum::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),
     }
