@@ -3,9 +3,8 @@
 
 use crate::ws::RequestPayload::Auth;
 use crate::ws::{
-    AuthRequestPayload, AuthResponsePayload, ErrorResponsePayload, ExecuteRequestPayload,
-    ExecuteResponsePayload, QueryRequestPayload, QueryResponsePayload, Request, RequestPayload,
-    ResponsePayload, WebsocketColumn, WebsocketFrame,
+    AuthRequest, AuthResponse, ErrResponse, Request, RequestPayload, ResponsePayload, RxRequest,
+    RxResponse, TxRequest, TxResponse, WebsocketColumn, WebsocketFrame,
 };
 use IpAddr::V4;
 use futures_util::{SinkExt, StreamExt};
@@ -140,13 +139,13 @@ where
 
             match serde_json::from_str::<crate::ws::request::Request>(&text) {
                 Ok(request) => match request.payload {
-                    Auth(AuthRequestPayload { token: Some(token) }) => {
+                    Auth(AuthRequest { token: Some(token) }) => {
                         if Self::validate_token(&token) {
                             println!("✅ Authenticated: {}", token);
 
                             let response = crate::ws::response::Response {
                                 id: request.id,
-                                payload: ResponsePayload::Auth(AuthResponsePayload {}),
+                                payload: ResponsePayload::Auth(AuthResponse {}),
                             };
 
                             let msg = serde_json::to_string(&response).unwrap();
@@ -166,18 +165,18 @@ where
                                             Some(Ok(WsMessage::Text(text))) => {
                                                 match serde_json::from_str::<Request>(&text) {
                                                     Ok(request) => match request.payload {
-                                                          RequestPayload::Execute(ExecuteRequestPayload { statements }) => {
+                                                          RequestPayload::Tx(TxRequest { statements }) => {
                                                             println!("📥 Received query: {}", statements.join(","));
 
                                                             if let Some(statement) = statements.first() {
-                                                                match engine.execute_as(
+                                                                match engine.tx_as(
                                                                     &Principal::System { id: 1, name: "root".to_string() },
                                                                     statement,
                                                                 ) {
                                                                     Ok(result) => {
                                                                         let response = crate::ws::response::Response {
                                                                             id: request.id,
-                                                                            payload: ResponsePayload::Execute(ExecuteResponsePayload {
+                                                                            payload: ResponsePayload::Tx(TxResponse {
                                                                                 frames: result.into_iter().map(|frame| WebsocketFrame {
                                                                                     name: frame.name,
                                                                                     columns: frame.columns.into_iter().map(|c| WebsocketColumn {
@@ -204,7 +203,7 @@ where
 
                                                                             let response = crate::ws::response::Response {
                                                                             id: request.id,
-                                                                            payload: ResponsePayload::Error(ErrorResponsePayload {
+                                                                            payload: ResponsePayload::Err(ErrResponse {
                                                                                 diagnostic
                                                                             }),
                                                                         };
@@ -218,18 +217,18 @@ where
                                                             }
                                                         }
 
-                                                        RequestPayload::Query(QueryRequestPayload { statements }) => {
+                                                        RequestPayload::Rx(RxRequest { statements }) => {
                                                             println!("📥 Received query: {}", statements.join(","));
 
                                                             if let Some(statement) = statements.first() {
-                                                                match engine.query_as(
+                                                                match engine.rx_as(
                                                                     &Principal::System { id: 1, name: "root".to_string() },
                                                                     statement,
                                                                 ) {
                                                                     Ok(result) => {
                                                                         let response = crate::ws::response::Response {
                                                                             id: request.id,
-                                                                            payload: ResponsePayload::Query(QueryResponsePayload {
+                                                                            payload: ResponsePayload::Rx(RxResponse {
                                                                                 frames: result.into_iter().map(|frame| WebsocketFrame {
                                                                                     name: frame.name,
                                                                                     columns: frame.columns.into_iter().map(|c| WebsocketColumn {
@@ -256,7 +255,7 @@ where
 
                                                                             let response = crate::ws::response::Response {
                                                                             id: request.id,
-                                                                            payload: ResponsePayload::Error(ErrorResponsePayload {
+                                                                            payload: ResponsePayload::Err(ErrResponse {
                                                                                 diagnostic
                                                                             }),
                                                                         };

@@ -14,19 +14,19 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Seria
     type Rx = TransactionRx<VS, US>;
     type Tx = TransactionTx<VS, US>;
 
-    fn begin_read_only(&self) -> Result<Self::Rx, Error> {
-        Ok(self.begin_read_only())
+    fn begin_rx(&self) -> Result<Self::Rx, Error> {
+        Ok(self.begin_rx())
     }
 
-    fn begin(&self) -> Result<Self::Tx, Error> {
-        Ok(self.begin())
+    fn begin_tx(&self) -> Result<Self::Tx, Error> {
+        Ok(self.begin_tx())
     }
 
-    fn begin_unversioned_read_only(&self) -> RwLockReadGuard<US> {
+    fn begin_unversioned_rx(&self) -> RwLockReadGuard<US> {
         self.unversioned.read().unwrap()
     }
 
-    fn begin_unversioned(&self) -> RwLockWriteGuard<US> {
+    fn begin_unversioned_tx(&self) -> RwLockWriteGuard<US> {
         self.unversioned.write().unwrap()
     }
 

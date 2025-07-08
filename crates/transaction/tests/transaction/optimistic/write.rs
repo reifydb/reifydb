@@ -23,7 +23,7 @@ fn test_write() {
 
     let engine = Optimistic::testing();
     {
-        let mut tx = engine.begin();
+        let mut tx = engine.begin_tx();
         assert_eq!(tx.version(), 0);
 
         tx.set(&key, as_row!("foo1".to_string())).unwrap();
@@ -33,7 +33,7 @@ fn test_write() {
     }
 
     {
-        let rx = engine.begin_read_only();
+        let rx = engine.begin_rx();
         assert_eq!(rx.version(), 1);
         let value: String = from_row!(String, *rx.get(&key).unwrap().row());
         assert_eq!(value.as_str(), "foo1");
@@ -45,7 +45,7 @@ fn test_multiple_write() {
     let engine = Optimistic::testing();
 
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         for i in 0..10 {
             if let Err(e) = txn.set(&as_key!(i), as_row!(i)) {
                 panic!("{e}");
@@ -65,7 +65,7 @@ fn test_multiple_write() {
 
     let k = 8;
     let v = 8;
-    let txn = engine.begin_read_only();
+    let txn = engine.begin_rx();
     assert!(txn.contains_key(&as_key!(k)));
     let sv = txn.get(&as_key!(k)).unwrap();
     assert_eq!(from_row!(i32, *sv.row()), v);

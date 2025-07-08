@@ -13,22 +13,22 @@ pub struct Request {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
-    Auth(AuthRequestPayload),
-    Execute(ExecuteRequestPayload),
-    Query(QueryRequestPayload),
+    Auth(AuthRequest),
+    Tx(TxRequest),
+    Rx(RxRequest),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AuthRequestPayload {
+pub struct AuthRequest {
     pub token: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ExecuteRequestPayload {
+pub struct TxRequest {
     pub statements: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct QueryRequestPayload {
+pub struct RxRequest {
     pub statements: Vec<String>,
 }

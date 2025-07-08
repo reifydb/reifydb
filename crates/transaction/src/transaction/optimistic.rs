@@ -14,12 +14,12 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optim
     type Rx = TransactionRx<VS, US>;
     type Tx = TransactionTx<VS, US>;
 
-    fn begin_read_only(&self) -> Result<Self::Rx, Error> {
-        Ok(self.begin_read_only())
+    fn begin_rx(&self) -> Result<Self::Rx, Error> {
+        Ok(self.begin_rx())
     }
 
-    fn begin(&self) -> Result<Self::Tx, Error> {
-        Ok(self.begin())
+    fn begin_tx(&self) -> Result<Self::Tx, Error> {
+        Ok(self.begin_tx())
     }
 
     fn hooks(&self) -> Hooks<US> {
@@ -30,11 +30,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optim
         self.versioned.clone()
     }
 
-    fn begin_unversioned_read_only(&self) -> RwLockReadGuard<'_, US> {
+    fn begin_unversioned_rx(&self) -> RwLockReadGuard<'_, US> {
         self.unversioned.read().unwrap()
     }
 
-    fn begin_unversioned(&self) -> RwLockWriteGuard<'_, US> {
+    fn begin_unversioned_tx(&self) -> RwLockWriteGuard<'_, US> {
         self.unversioned.write().unwrap()
     }
 }

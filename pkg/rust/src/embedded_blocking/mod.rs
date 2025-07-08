@@ -44,16 +44,16 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn execute_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.execute_as(principal, rql).map_err(|err| {
+    pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+        self.engine.tx_as(principal, rql).map_err(|err| {
             let mut diagnostic = err.diagnostic();
             diagnostic.statement = Some(rql.to_string());
             Error::ExecutionError { diagnostic }
         })
     }
 
-    pub fn query_as(&self, principal: &Principal, rql: &str) -> Vec<Frame> {
-        self.engine.query_as(principal, rql).unwrap()
+    pub fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<Frame> {
+        self.engine.rx_as(principal, rql).unwrap()
     }
 
     // fn session_read_only(

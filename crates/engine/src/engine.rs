@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::execute::{execute, execute_query};
+use crate::execute::{execute_rx, execute_tx};
 use crate::frame::Frame;
 use crate::system::SystemBootHook;
 use crate::view;
@@ -65,7 +65,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
             .after_boot()
             .for_each(|hook| {
                 Ok(hook.on_after_boot(OnAfterBootHookContext::new(
-                    self.transaction.begin_unversioned(),
+                    self.transaction.begin_unversioned_tx(),
                 ))?)
             })
             .unwrap(); // FIXME
@@ -81,23 +81,23 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engine<VS, US, T> {
-    pub fn begin(&self) -> crate::Result<T::Tx> {
-        Ok(self.transaction.begin().unwrap())
+    pub fn begin_tx(&self) -> crate::Result<T::Tx> {
+        Ok(self.transaction.begin_tx()?)
     }
 
-    pub fn begin_read_only(&self) -> crate::Result<T::Rx> {
-        Ok(self.transaction.begin_read_only().unwrap())
+    pub fn begin_rx(&self) -> crate::Result<T::Rx> {
+        Ok(self.transaction.begin_rx()?)
     }
 
-    pub fn execute_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub fn tx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut tx = self.begin()?;
+        let mut tx = self.begin_tx()?;
 
         for statement in statements {
             if let Some(plan) = plan(&mut tx, statement)? {
-                let er = execute(&mut tx, plan)?;
+                let er = execute_tx(&mut tx, plan)?;
                 result.push(er);
             }
         }
@@ -107,14 +107,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> Engin
         Ok(result)
     }
 
-    pub fn query_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub fn rx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut rx = self.begin_read_only()?;
+        let mut rx = self.begin_rx()?;
         for statement in statements {
             if let Some(plan) = plan(&mut rx, statement)? {
-                let er = execute_query::<VS, US>(&mut rx, plan)?;
+                let er = execute_rx::<VS, US>(&mut rx, plan)?;
                 result.push(er);
             }
         }

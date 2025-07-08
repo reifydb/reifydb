@@ -20,11 +20,11 @@ fn test_read_after_write() {
                 let k = as_key!(i);
                 let v = as_row!(i);
 
-                let mut txn = db.begin();
+                let mut txn = db.begin_tx();
                 txn.set(&k, v.clone()).unwrap();
                 txn.commit().unwrap();
 
-                let txn = db.begin_read_only();
+                let txn = db.begin_rx();
                 let sv = txn.get(&k).unwrap();
                 assert_eq!(*sv.row(), v);
             })

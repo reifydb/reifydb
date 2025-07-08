@@ -19,7 +19,7 @@ pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     _marker: PhantomData<(VS, US)>,
 }
 
-pub fn execute_query<VS: VersionedStorage, US: UnversionedStorage>(
+pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     rx: &mut impl Rx,
     plan: PhysicalPlan,
 ) -> crate::Result<Frame> {
@@ -39,7 +39,7 @@ pub fn execute_query<VS: VersionedStorage, US: UnversionedStorage>(
     executor.execute_rx(rx, plan)
 }
 
-pub fn execute<VS: VersionedStorage, US: UnversionedStorage>(
+pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
     tx: &mut impl Tx<VS, US>,
     plan: PhysicalPlan,
 ) -> crate::Result<Frame> {
@@ -60,11 +60,46 @@ pub fn execute<VS: VersionedStorage, US: UnversionedStorage>(
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
-    pub(crate) fn execute_query_plan(
-        self,
-        rx: &mut impl Rx,
+    pub(crate) fn execute_rx(self, rx: &mut impl Rx, plan: PhysicalPlan) -> crate::Result<Frame> {
+        match plan {
+            // Query
+            PhysicalPlan::Aggregate(_)
+            | PhysicalPlan::Filter(_)
+            | PhysicalPlan::JoinLeft(_)
+            | PhysicalPlan::Limit(_)
+            | PhysicalPlan::Order(_)
+            | PhysicalPlan::Select(_)
+            | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
+
+            PhysicalPlan::CreateDeferredView(_)
+            | PhysicalPlan::CreateSchema(_)
+            | PhysicalPlan::CreateTable(_)
+            | PhysicalPlan::InsertIntoTable(_) => unreachable!(), // FIXME return explanatory diagnostic
+        }
+    }
+
+    pub(crate) fn execute_tx(
+        mut self,
+        tx: &mut impl Tx<VS, US>,
         plan: PhysicalPlan,
     ) -> crate::Result<Frame> {
+        match plan {
+            PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
+            PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
+            PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
+            PhysicalPlan::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
+            // Query
+            PhysicalPlan::Aggregate(_)
+            | PhysicalPlan::Filter(_)
+            | PhysicalPlan::JoinLeft(_)
+            | PhysicalPlan::Limit(_)
+            | PhysicalPlan::Order(_)
+            | PhysicalPlan::Select(_)
+            | PhysicalPlan::TableScan(_) => self.execute_query_plan(tx, plan),
+        }
+    }
+
+    fn execute_query_plan(self, rx: &mut impl Rx, plan: PhysicalPlan) -> crate::Result<Frame> {
         match plan {
             // PhysicalPlan::Describe { plan } => {
             //     // FIXME evaluating the entire frame is quite wasteful but good enough to write some tests
@@ -105,45 +140,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     })
                 }
             }
-        }
-    }
-
-    pub(crate) fn execute_rx(self, rx: &mut impl Rx, plan: PhysicalPlan) -> crate::Result<Frame> {
-        match plan {
-            // Query
-            PhysicalPlan::Aggregate(_)
-            | PhysicalPlan::Filter(_)
-            | PhysicalPlan::JoinLeft(_)
-            | PhysicalPlan::Limit(_)
-            | PhysicalPlan::Order(_)
-            | PhysicalPlan::Select(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
-
-            PhysicalPlan::CreateDeferredView(_)
-            | PhysicalPlan::CreateSchema(_)
-            | PhysicalPlan::CreateTable(_)
-            | PhysicalPlan::InsertIntoTable(_) => unreachable!(), // FIXME return explanatory diagnostic
-        }
-    }
-
-    pub(crate) fn execute_tx(
-        mut self,
-        tx: &mut impl Tx<VS, US>,
-        plan: PhysicalPlan,
-    ) -> crate::Result<Frame> {
-        match plan {
-            PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
-            PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
-            PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
-            PhysicalPlan::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
-            // Query
-            PhysicalPlan::Aggregate(_)
-            | PhysicalPlan::Filter(_)
-            | PhysicalPlan::JoinLeft(_)
-            | PhysicalPlan::Limit(_)
-            | PhysicalPlan::Order(_)
-            | PhysicalPlan::Select(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(tx, plan),
         }
     }
 }

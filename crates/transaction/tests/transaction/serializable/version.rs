@@ -27,7 +27,7 @@ fn test_versions() {
     let k0 = as_key!(0);
 
     for i in 1..10 {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.set(&k0, as_row!(i)).unwrap();
         txn.commit().unwrap();
         assert_eq!(i, engine.version());
@@ -55,7 +55,7 @@ fn test_versions() {
     };
 
     for idx in 1..10 {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.as_of_version(idx); // Read version at idx.
 
         let v = idx;
@@ -72,7 +72,7 @@ fn test_versions() {
         check_rev_iter(itr, idx);
     }
 
-    let mut txn = engine.begin();
+    let mut txn = engine.begin_tx();
     let sv = txn.get(&k0).unwrap().unwrap();
     let val = from_row!(u64, *sv.row());
     assert_eq!(9, val)

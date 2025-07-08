@@ -25,7 +25,7 @@ impl TestTransaction {
     pub fn new() -> Self {
         let unversioned = Memory::default();
         let engine = Optimistic::new(Memory::new(), unversioned.clone(), Hooks::default());
-        let tx = engine.begin();
+        let tx = engine.begin_tx();
         Self { engine, tx, unversioned }
     }
 

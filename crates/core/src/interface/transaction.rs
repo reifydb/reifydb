@@ -13,13 +13,13 @@ pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
     type Rx: Rx;
     type Tx: Tx<VS, US>;
 
-    fn begin_read_only(&self) -> Result<Self::Rx, Error>;
+    fn begin_rx(&self) -> Result<Self::Rx, Error>;
 
-    fn begin(&self) -> Result<Self::Tx, Error>;
+    fn begin_tx(&self) -> Result<Self::Tx, Error>;
 
-    fn begin_unversioned_read_only(&self) -> RwLockReadGuard<US>;
+    fn begin_unversioned_rx(&self) -> RwLockReadGuard<US>;
 
-    fn begin_unversioned(&self) -> RwLockWriteGuard<US>;
+    fn begin_unversioned_tx(&self) -> RwLockWriteGuard<US>;
 
     fn hooks(&self) -> Hooks<US>;
 

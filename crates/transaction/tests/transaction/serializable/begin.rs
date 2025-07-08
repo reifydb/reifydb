@@ -12,15 +12,15 @@
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
-fn test_begin_read_only() {
+fn test_begin_rx() {
     let engine = Serializable::testing();
-    let tx = engine.begin_read_only();
+    let tx = engine.begin_rx();
     assert_eq!(tx.version(), 0);
 }
 
 #[test]
-fn test_begin() {
+fn test_begin_tx() {
     let engine = Serializable::testing();
-    let tx = engine.begin();
+    let tx = engine.begin_tx();
     assert_eq!(tx.version(), 0);
 }

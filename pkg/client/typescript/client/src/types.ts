@@ -21,11 +21,12 @@ export interface Span {
 
 export interface Diagnostic {
     code: string,
+    statement?: string;
     message: string,
-    column: DiagnosticColumn,
-    span: Span,
-    label: string,
-    help: string,
+    column?: DiagnosticColumn,
+    span?: Span,
+    label?: string,
+    help?: string,
     notes: Array<string>,
 }
 
@@ -37,24 +38,24 @@ export interface WebsocketColumn {
 
 export interface ErrorResponse {
     id: string;
-    type: "Error";
+    type: "Err";
     payload: {
         diagnostic: Diagnostic;
     };
 }
 
 
-export interface ExecuteResponse {
+export interface TxResponse {
     id: string;
-    type: "Execute";
+    type: "Tx";
     payload: {
         frames: WebsocketFrame[];
     };
 }
 
-export interface QueryResponse {
+export interface RxResponse {
     id: string;
-    type: "Query";
+    type: "Rx";
     payload: {
         frames: WebsocketFrame[];
     };
@@ -63,33 +64,46 @@ export interface QueryResponse {
 
 export class ReifyError extends Error {
     public readonly code: string;
-    public readonly column: DiagnosticColumn;
-    public readonly span: Span;
-    public readonly label: string;
-    public readonly help: string;
+    public readonly statement?: string;
+    public readonly column?: DiagnosticColumn;
+    public readonly span?: Span;
+    public readonly label?: string;
+    public readonly help?: string;
     public readonly notes: string[];
 
     constructor(response: ErrorResponse) {
-        const {payload: {diagnostic}} = response;
-        const message = `[${diagnostic.code}] ${diagnostic.message} — ${diagnostic.label}`;
+        const diagnostic = response.payload.diagnostic;
+        const message = `[${diagnostic.code}] ${diagnostic.message}` +
+            (diagnostic.label ? ` — ${diagnostic.label}` : "");
 
         super(message);
 
         this.name = "ReifyError";
         this.code = diagnostic.code;
+        this.statement = diagnostic.statement;
         this.column = diagnostic.column;
         this.span = diagnostic.span;
         this.label = diagnostic.label;
         this.help = diagnostic.help;
-        this.notes = diagnostic.notes;
+        this.notes = diagnostic.notes ?? [];
 
-        Object.setPrototypeOf(this, ReifyError.prototype);
+        // Required for instanceof checks to work properly
+        Object.setPrototypeOf(this, new.target.prototype);
     }
 
     toString(): string {
-        const position = `line ${this.span.line}, offset ${this.span.offset}`;
-        const notes = this.notes.length ? `\nNotes:\n- ${this.notes.join("\n- ")}` : "";
-        const help = this.help ? `\nHelp: ${this.help}` : "";
+        const position = this.span
+            ? `line ${this.span.line}, offset ${this.span.offset}`
+            : "unknown position";
+
+        const notes = this.notes.length
+            ? `\nNotes:\n- ${this.notes.join("\n- ")}`
+            : "";
+
+        const help = this.help
+            ? `\nHelp: ${this.help}`
+            : "";
+
         return `${this.name}: ${this.message}\nAt ${position}${help}${notes}`;
     }
 }

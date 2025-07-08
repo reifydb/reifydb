@@ -4,8 +4,8 @@
 mod rx;
 
 use crate::ws::{
-    AuthRequestPayload, ExecuteRequestPayload, ExecuteResponsePayload, QueryRequestPayload,
-    QueryResponsePayload, Request, RequestPayload, Response, ResponsePayload,
+    AuthRequest, TxRequest, TxResponse, RxRequest,
+    RxResponse, Request, RequestPayload, Response, ResponsePayload,
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{CowVec, Diagnostic, Error, Kind};
@@ -108,7 +108,7 @@ impl WsClient {
 
         self.pending.lock().await.insert(id.clone(), tx);
         self.tx
-            .send(Request { id, payload: RequestPayload::Auth(AuthRequestPayload { token }) })
+            .send(Request { id, payload: RequestPayload::Auth(AuthRequest { token }) })
             .unwrap();
 
         let resp = timeout(Duration::from_secs(3), rx)
@@ -125,7 +125,7 @@ impl WsClient {
         }
     }
 
-    pub async fn execute(&self, statement: &str) -> Result<ExecuteResponsePayload, Error> {
+    pub async fn execute(&self, statement: &str) -> Result<TxResponse, Error> {
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
 
@@ -134,7 +134,7 @@ impl WsClient {
         self.tx
             .send(Request {
                 id,
-                payload: RequestPayload::Execute(ExecuteRequestPayload {
+                payload: RequestPayload::Tx(TxRequest {
                     statements: vec![statement.to_string()],
                 }),
             })
@@ -146,8 +146,8 @@ impl WsClient {
             .expect("Execute response channel dropped");
 
         match resp.payload {
-            ResponsePayload::Execute(payload) => Ok(payload),
-            ResponsePayload::Error(payload) => Err(Error(payload.diagnostic)),
+            ResponsePayload::Tx(payload) => Ok(payload),
+            ResponsePayload::Err(payload) => Err(Error(payload.diagnostic)),
             other => {
                 eprintln!("Unexpected execute response: {:?}", other);
                 panic!("Unexpected execute response type")
@@ -155,7 +155,7 @@ impl WsClient {
         }
     }
 
-    pub async fn query(&self, statement: &str) -> Result<QueryResponsePayload, Error> {
+    pub async fn query(&self, statement: &str) -> Result<RxResponse, Error> {
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
 
@@ -164,7 +164,7 @@ impl WsClient {
         self.tx
             .send(Request {
                 id,
-                payload: RequestPayload::Query(QueryRequestPayload {
+                payload: RequestPayload::Rx(RxRequest {
                     statements: vec![statement.to_string()],
                 }),
             })
@@ -176,8 +176,8 @@ impl WsClient {
             .expect("Query response channel dropped");
 
         match resp.payload {
-            ResponsePayload::Query(payload) => Ok(payload),
-            ResponsePayload::Error(payload) => Err(Error(payload.diagnostic)),
+            ResponsePayload::Rx(payload) => Ok(payload),
+            ResponsePayload::Err(payload) => Err(Error(payload.diagnostic)),
             other => {
                 eprintln!("Unexpected query response: {:?}", other);
                 panic!("Unexpected query response type")
@@ -196,7 +196,7 @@ impl WsClient {
     }
 }
 
-fn convert_execute_response(payload: ExecuteResponsePayload) -> Vec<Frame> {
+fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
     let mut result = Vec::new();
 
     for frame in payload.frames {
@@ -217,7 +217,7 @@ fn convert_execute_response(payload: ExecuteResponsePayload) -> Vec<Frame> {
     result
 }
 
-fn convert_query_response(payload: QueryResponsePayload) -> Vec<Frame> {
+fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
     let mut result = Vec::new();
 
     for frame in payload.frames {

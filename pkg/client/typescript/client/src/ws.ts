@@ -1,9 +1,9 @@
-import {ErrorResponse, ExecuteResponse, QueryResponse, ReifyError} from "./types";
+import {ErrorResponse, ReifyError, RxResponse, TxResponse} from "./types";
 import {columnsToRows} from "./decoder";
 
 let nextId = 1;
 
-type ResponsePayload = ErrorResponse | ExecuteResponse | QueryResponse;
+type ResponsePayload = ErrorResponse | TxResponse | RxResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -16,7 +16,7 @@ async function createWebSocket(url: string): Promise<WebSocket> {
 }
 
 
-export class ReifyClient {
+export class WsClient {
     private socket: WebSocket;
     private pending = new Map<string, (response: ResponsePayload) => void>();
 
@@ -42,7 +42,7 @@ export class ReifyClient {
         };
     }
 
-    static async connect(url: string): Promise<ReifyClient> {
+    static async connect(url: string): Promise<WsClient> {
         const socket = await createWebSocket(url);
 
         // Wait for connection to open if not already open
@@ -67,7 +67,7 @@ export class ReifyClient {
 
         socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
 
-        return new ReifyClient(socket);
+        return new WsClient(socket);
     }
 
     isConnected(): boolean {
@@ -75,7 +75,7 @@ export class ReifyClient {
     }
 
 
-    async execute<T extends readonly Record<string, unknown>[]>(execute: string): Promise<{
+    async tx<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = `req-${nextId++}`;
@@ -83,9 +83,9 @@ export class ReifyClient {
 
         const message = {
             id,
-            type: "Execute",
+            type: "Tx",
             payload: {
-                statements: [execute]
+                statements: [statement]
             },
         };
 
@@ -103,11 +103,11 @@ export class ReifyClient {
             this.socket.send(JSON.stringify(message));
         });
 
-        if (response.type === "Error") {
+        if (response.type === "Err") {
             throw new ReifyError(response);
         }
 
-        if (response.type !== "Execute") {
+        if (response.type !== "Tx") {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 
@@ -116,16 +116,16 @@ export class ReifyClient {
         ) as { [K in keyof T]: T[K][] };
     }
 
-    async query<T extends readonly Record<string, unknown>[]>(query: string): Promise<{
+    async rx<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = `req-${nextId++}`;
 
         const message = {
             id,
-            type: "Query",
+            type: "Rx",
             payload: {
-                statements: [query]
+                statements: [statement]
             },
         };
 
@@ -143,11 +143,11 @@ export class ReifyClient {
             this.socket.send(JSON.stringify(message));
         });
 
-        if (response.type === "Error") {
+        if (response.type === "Err") {
             throw new ReifyError(response);
         }
 
-        if (response.type !== "Query") {
+        if (response.type !== "Rx") {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 

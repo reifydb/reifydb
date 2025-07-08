@@ -22,13 +22,13 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 #[test]
 fn test_iter() {
     let engine = Optimistic::testing();
-    let mut txn = engine.begin();
+    let mut txn = engine.begin_tx();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
     txn.commit().unwrap();
 
-    let txn = engine.begin_read_only();
+    let txn = engine.begin_rx();
     let iter = txn.scan();
 
     for (expected, tv) in (1..=3).rev().zip(iter) {
@@ -46,7 +46,7 @@ fn test_iter() {
 #[test]
 fn test_iter2() {
     let engine = Optimistic::testing();
-    let mut txn = engine.begin();
+    let mut txn = engine.begin_tx();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
@@ -66,7 +66,7 @@ fn test_iter2() {
     }
     txn.commit().unwrap();
 
-    let mut txn = engine.begin();
+    let mut txn = engine.begin_tx();
     txn.set(&as_key!(4), as_row!(4)).unwrap();
     txn.set(&as_key!(5), as_row!(5)).unwrap();
     txn.set(&as_key!(6), as_row!(6)).unwrap();
@@ -89,7 +89,7 @@ fn test_iter2() {
 #[test]
 fn test_iter3() {
     let engine = Optimistic::testing();
-    let mut txn = engine.begin();
+    let mut txn = engine.begin_tx();
     txn.set(&as_key!(4), as_row!(4)).unwrap();
     txn.set(&as_key!(5), as_row!(5)).unwrap();
     txn.set(&as_key!(6), as_row!(6)).unwrap();
@@ -110,7 +110,7 @@ fn test_iter3() {
 
     txn.commit().unwrap();
 
-    let mut txn = engine.begin();
+    let mut txn = engine.begin_tx();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
@@ -142,7 +142,7 @@ fn test_iter_edge_case() {
 
     // c1
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.set(&as_key!(3), as_row!(31u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(1, engine.version());
@@ -150,7 +150,7 @@ fn test_iter_edge_case() {
 
     // a2, c2
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.set(&as_key!(1), as_row!(12u64)).unwrap();
         txn.set(&as_key!(3), as_row!(32u64)).unwrap();
         txn.commit().unwrap();
@@ -159,7 +159,7 @@ fn test_iter_edge_case() {
 
     // b3
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.set(&as_key!(1), as_row!(13u64)).unwrap();
         txn.set(&as_key!(2), as_row!(23u64)).unwrap();
         txn.commit().unwrap();
@@ -167,14 +167,14 @@ fn test_iter_edge_case() {
     }
 
     // b4, c4(remove) (uncommitted)
-    let mut txn4 = engine.begin();
+    let mut txn4 = engine.begin_tx();
     txn4.set(&as_key!(2), as_row!(24u64)).unwrap();
     txn4.remove(&as_key!(3)).unwrap();
     assert_eq!(3, engine.version());
 
     // b4 (remove)
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.remove(&as_key!(2)).unwrap();
         txn.commit().unwrap();
         assert_eq!(4, engine.version());
@@ -198,7 +198,7 @@ fn test_iter_edge_case() {
         assert_eq!(expected.len(), i);
     };
 
-    let mut txn = engine.begin();
+    let mut txn = engine.begin_tx();
     let itr = txn.scan().unwrap();
     let itr5 = txn4.scan().unwrap();
     check_iter(itr, &[32, 13]);
@@ -239,7 +239,7 @@ fn test_iter_edge_case2() {
 
     // c1
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.set(&as_key!(3), as_row!(31u64)).unwrap();
         txn.commit().unwrap();
         assert_eq!(1, engine.version());
@@ -247,7 +247,7 @@ fn test_iter_edge_case2() {
 
     // a2, c2
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.set(&as_key!(1), as_row!(12u64)).unwrap();
         txn.set(&as_key!(3), as_row!(32u64)).unwrap();
         txn.commit().unwrap();
@@ -256,7 +256,7 @@ fn test_iter_edge_case2() {
 
     // b3
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.set(&as_key!(1), as_row!(13u64)).unwrap();
         txn.set(&as_key!(2), as_row!(23u64)).unwrap();
         txn.commit().unwrap();
@@ -265,7 +265,7 @@ fn test_iter_edge_case2() {
 
     // b4 (remove)
     {
-        let mut txn = engine.begin();
+        let mut txn = engine.begin_tx();
         txn.remove(&as_key!(2)).unwrap();
         txn.commit().unwrap();
         assert_eq!(4, engine.version());
@@ -289,7 +289,7 @@ fn test_iter_edge_case2() {
         assert_eq!(expected.len(), i);
     };
 
-    let mut txn = engine.begin();
+    let mut txn = engine.begin_tx();
     let itr = txn.scan().unwrap();
     check_iter(itr, &[32, 13]);
     let itr = txn.scan_rev().unwrap();

@@ -8,7 +8,7 @@
 
 pub use engine::Engine;
 pub use error::Error;
-pub use execute::{execute, execute_query};
+pub use execute::{execute_tx, execute_rx};
 
 mod engine;
 mod error;

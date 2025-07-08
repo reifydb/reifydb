@@ -78,13 +78,13 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Optimistic<VS, US> {
     pub fn version(&self) -> Version {
         self.0.version()
     }
-    pub fn begin_read_only(&self) -> TransactionRx<VS, US> {
+    pub fn begin_rx(&self) -> TransactionRx<VS, US> {
         TransactionRx::new(self.clone(), None)
     }
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Optimistic<VS, US> {
-    pub fn begin(&self) -> TransactionTx<VS, US> {
+    pub fn begin_tx(&self) -> TransactionTx<VS, US> {
         TransactionTx::new(self.clone())
     }
 }

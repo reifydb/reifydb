@@ -14,27 +14,27 @@ pub struct Response {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ResponsePayload {
-    Auth(AuthResponsePayload),
-    Error(ErrorResponsePayload),
-    Execute(ExecuteResponsePayload),
-    Query(QueryResponsePayload),
+    Auth(AuthResponse),
+    Err(ErrResponse),
+    Tx(TxResponse),
+    Rx(RxResponse),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AuthResponsePayload {}
+pub struct AuthResponse {}
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ErrorResponsePayload {
+pub struct ErrResponse {
     pub diagnostic: Diagnostic,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ExecuteResponsePayload {
+pub struct TxResponse {
     pub frames: Vec<WebsocketFrame>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct QueryResponsePayload {
+pub struct RxResponse {
     pub frames: Vec<WebsocketFrame>,
 }
 

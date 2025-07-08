@@ -48,7 +48,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute::execute;
+    use crate::execute::execute_tx;
     use reifydb_core::{Span, Value};
     use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
     use reifydb_transaction::test_utils::TestTransaction;
@@ -61,19 +61,19 @@ mod tests {
             CreateSchemaPlan { schema: Span::testing("my_schema"), if_not_exists: false };
 
         // First creation should succeed
-        let result = execute(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();
+        let result = execute_tx(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();
         assert_eq!(result.row(0)[0], Value::String("my_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Bool(true));
 
         // Creating the same schema again with `if_not_exists = true` should not error
         plan.if_not_exists = true;
-        let result = execute(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();
+        let result = execute_tx(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();
         assert_eq!(result.row(0)[0], Value::String("my_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Bool(false));
 
         // Creating the same schema again with `if_not_exists = false` should return error
         plan.if_not_exists = false;
-        let err = execute(&mut tx, PhysicalPlan::CreateSchema(plan)).unwrap_err();
+        let err = execute_tx(&mut tx, PhysicalPlan::CreateSchema(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_001");
     }
 }

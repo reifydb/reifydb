@@ -61,7 +61,7 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
             {
                 Ok(frames) => {
                     let mut responses: Vec<Result<TxResult, Status>> = vec![];
@@ -104,7 +104,7 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.execute_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
             {
                 Ok(frames) => {
                     let mut responses: Vec<Result<RxResult, Status>> = vec![];

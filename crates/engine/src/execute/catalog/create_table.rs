@@ -60,7 +60,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute;
+    use crate::execute_tx;
     use crate::execute::catalog::create_table::CreateTablePlan;
     use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
     use reifydb_core::{Span, Value};
@@ -81,21 +81,21 @@ mod tests {
         };
 
         // First creation should succeed
-        let result = execute(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
+        let result = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
         assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
 
         // Creating the same table again with `if_not_exists = true` should not error
         plan.if_not_exists = true;
-        let result = execute(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
+        let result = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
         assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(false));
 
         // Creating the same table again with `if_not_exists = false` should return error
         plan.if_not_exists = false;
-        let err = execute(&mut tx, PhysicalPlan::CreateTable(plan)).unwrap_err();
+        let err = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_003");
     }
 
@@ -113,7 +113,7 @@ mod tests {
             columns: vec![],
         };
 
-        let result = execute(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
+        let result = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
         assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
@@ -125,7 +125,7 @@ mod tests {
             columns: vec![],
         };
 
-        let result = execute(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
+        let result = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
         assert_eq!(result.row(0)[0], Value::String("another_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
@@ -142,7 +142,7 @@ mod tests {
             columns: vec![],
         };
 
-        let err = execute(&mut tx, PhysicalPlan::CreateTable(plan)).unwrap_err();
+        let err = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_002");
     }
 }
