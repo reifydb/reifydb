@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb::client::Client;
+use reifydb::client::GrpcClient;
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::retry;
 use reifydb::network::grpc::server::GrpcConfig;
 use reifydb::server::Server;
 use reifydb::{ReifyDB, memory, optimistic};
-use reifydb_testing::network::free_local_socket;
+use reifydb_testing::network::busy_wait;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -23,7 +23,7 @@ where
     T: Transaction<VS, US>,
 {
     server: Option<Server<VS, US, T>>,
-    client: Client,
+    client: Option<GrpcClient>,
     runtime: Option<Runtime>,
 }
 
@@ -34,14 +34,10 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(transaction: T) -> Self {
-        let socket_addr = free_local_socket();
+        let server = ReifyDB::server_with(transaction)
+            .with_grpc(GrpcConfig { socket: Some("[::1]:0".parse().unwrap()) });
 
-        let server =
-            ReifyDB::server_with(transaction).with_grpc(GrpcConfig { socket: Some(socket_addr) });
-
-        let client = Client { socket_addr };
-
-        Self { server: Some(server), client, runtime: None }
+        Self { server: Some(server), client: None, runtime: None }
     }
 }
 
@@ -63,7 +59,7 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.tx(&query).await? {
+                    for line in self.client.as_ref().unwrap().tx(&query).await? {
                         writeln!(output, "{}", line).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
@@ -79,7 +75,7 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.rx(&query).await? {
+                    for line in self.client.as_ref().unwrap().rx(&query).await? {
                         writeln!(output, "{}", line).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
@@ -95,8 +91,10 @@ where
         let runtime = Runtime::new()?;
         let mut server = self.server.take().unwrap();
         let _ = server.serve(&runtime);
+        let socket_addr = busy_wait(|| server.grpc_socket_addr());
 
         self.server = Some(server);
+        self.client = Some(GrpcClient { socket_addr });
         self.runtime = Some(runtime);
 
         Ok(())

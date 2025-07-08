@@ -3,19 +3,14 @@
 
 use crate::error::NetworkError;
 use crate::grpc::client::convert::{convert_diagnostic, convert_frame};
-use crate::grpc::client::{Client, grpc, wait_for_socket};
+use crate::grpc::client::{GrpcClient, grpc};
 use grpc::rx_result::Result as RxResultEnum;
 use reifydb_engine::frame::Frame;
 use std::str::FromStr;
-use std::time::Duration;
 use tonic::metadata::MetadataValue;
 
-impl Client {
+impl GrpcClient {
     pub async fn rx(&self, query: &str) -> Result<Vec<Frame>, NetworkError> {
-        // FIXME this is quite expensive and should only used in tests
-        // add a server.on_ready(||{ signal_server_read() } and use it for tests instead
-
-        wait_for_socket(&self.socket_addr, Duration::from_millis(500)).await?;
         let uri = format!("http://{}", self.socket_addr);
         let mut client = grpc::db_client::DbClient::connect(uri).await?;
 

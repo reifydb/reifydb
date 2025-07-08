@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
-use reifydb::core::retry;
+use reifydb::core::{Error as ReifyDBError, retry};
 use reifydb::network::ws::client::WsClient;
 use reifydb::network::ws::server::WsConfig;
 use reifydb::server::Server;
 use reifydb::{ReifyDB, memory, optimistic};
-use reifydb_testing::network::free_local_socket;
+use reifydb_testing::network::busy_wait;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -91,18 +91,18 @@ where
         let runtime = Runtime::new()?;
         let (shutdown_tx, _) = oneshot::channel();
         let server = self.server.take().unwrap();
-        let socket_addr = free_local_socket();
 
-        let mut server = server.with_websocket(WsConfig { socket: Some(socket_addr) });
+        let mut server =
+            server.with_websocket(WsConfig { socket: Some("[::1]:0".parse().unwrap()) });
         let _ = server.serve(&runtime);
+        let socket_addr = busy_wait(|| server.ws_socket_addr());
 
         self.server = Some(server);
         self.client = Some(runtime.block_on(async {
-            let client =
-                WsClient::connect(&format!("ws://[::1]:{}", socket_addr.port())).await.unwrap();
+            let client = WsClient::connect(&format!("ws://[::1]:{}", socket_addr.port())).await?;
             client.auth(Some("mysecrettoken".into())).await.unwrap();
-            client
-        }));
+            Ok::<WsClient, ReifyDBError>(client)
+        })?);
         self.runtime = Some(runtime);
         self.shutdown = Some(shutdown_tx);
 

@@ -6,6 +6,7 @@ use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use reifydb_network::ws::server::{WsConfig, WsServer};
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -132,6 +133,14 @@ where
             ws_config: None,
             ws: None,
         }
+    }
+
+    pub fn ws_socket_addr(&self) -> Option<SocketAddr> {
+        self.ws.as_ref().and_then(|ws| ws.socket_addr())
+    }
+
+    pub fn grpc_socket_addr(&self) -> Option<SocketAddr> {
+        self.grpc.as_ref().and_then(|grpc| grpc.socket_addr())
     }
 
     pub fn before_bootstrap<F, Fut>(mut self, func: F) -> Self

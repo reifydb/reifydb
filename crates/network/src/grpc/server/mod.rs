@@ -3,13 +3,15 @@
 
 use crate::grpc::server::db::DbService;
 use crate::grpc::server::grpc::db_server::DbServer;
-use reifydb_core::Error;
 use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::Error;
 use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
 use std::sync::Arc;
+use tokio::net::TcpListener;
+use tokio::sync::OnceCell;
 use tonic::service::InterceptorLayer;
 
 pub mod auth;
@@ -47,6 +49,7 @@ where
 {
     config: GrpcConfig,
     engine: Engine<VS, US, T>,
+    socket_addr: OnceCell<SocketAddr>,
 }
 
 impl<VS, US, T> Deref for GrpcServer<VS, US, T>
@@ -69,18 +72,27 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(config: GrpcConfig, engine: Engine<VS, US, T>) -> Self {
-        Self(Arc::new(Inner { config, engine }))
+        Self(Arc::new(Inner { config, engine, socket_addr: OnceCell::new() }))
     }
 
     pub async fn serve(self) -> Result<(), Error> {
+        let listener = TcpListener::bind(self.config.socket.unwrap_or(DEFAULT_SOCKET)).await.unwrap();
+        
+        self.socket_addr.set(listener.local_addr().unwrap()).unwrap();
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+
         tonic::transport::Server::builder()
-            .layer(InterceptorLayer::new(crate::grpc::server::auth::AuthInterceptor {}))
+            .layer(InterceptorLayer::new(auth::AuthInterceptor {}))
             .add_service(db_service(self.engine.clone()))
-            .serve(self.config.socket.unwrap_or(DEFAULT_SOCKET))
+            .serve_with_incoming(incoming)
             .await
             .unwrap();
 
         Ok(())
+    }
+
+    pub fn socket_addr(&self) -> Option<SocketAddr> {
+        self.socket_addr.get().cloned()
     }
 }
 

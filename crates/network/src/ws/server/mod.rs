@@ -7,6 +7,7 @@ use crate::ws::{
     ExecuteResponsePayload, QueryRequestPayload, QueryResponsePayload, Request, RequestPayload,
     ResponsePayload, WebsocketColumn, WebsocketFrame,
 };
+use IpAddr::V4;
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Error, Value};
@@ -15,10 +16,9 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Notify;
+use tokio::sync::{Notify, OnceCell};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Utf8Bytes;
-use IpAddr::V4;
 
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
@@ -51,6 +51,7 @@ where
     config: WsConfig,
     engine: Engine<VS, US, T>,
     shutdown: Arc<Notify>,
+    socket_addr: OnceCell<SocketAddr>,
 }
 
 impl<VS, US, T> Deref for WsServer<VS, US, T>
@@ -84,12 +85,18 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(config: WsConfig, engine: Engine<VS, US, T>) -> Self {
-        Self(Arc::new(Inner { config, engine, shutdown: Arc::new(Notify::new()) }))
+        Self(Arc::new(Inner {
+            config,
+            engine,
+            shutdown: Arc::new(Notify::new()),
+            socket_addr: OnceCell::new(),
+        }))
     }
 
     pub async fn serve(self) -> Result<(), Error> {
         let listener =
             TcpListener::bind(self.config.socket.unwrap_or(DEFAULT_SOCKET)).await.unwrap();
+        self.socket_addr.set(listener.local_addr().unwrap()).unwrap();
 
         loop {
             tokio::select! {
@@ -111,6 +118,10 @@ where
                 }
             }
         }
+    }
+
+    pub fn socket_addr(&self) -> Option<SocketAddr> {
+        self.socket_addr.get().cloned()
     }
 
     fn validate_token(token: &str) -> bool {

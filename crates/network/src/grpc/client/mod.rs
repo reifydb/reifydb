@@ -5,30 +5,12 @@ mod convert;
 mod rx;
 mod tx;
 
-use reifydb_core::Error;
 use std::net::SocketAddr;
-use std::time::Duration;
-use tokio::net::TcpStream;
-use tokio::time::{Instant, sleep};
 
 pub(crate) mod grpc {
     tonic::include_proto!("reifydb");
 }
 
-// FIXME 1ms is a little bit little for production - only for testing for now
-async fn wait_for_socket(addr: &SocketAddr, timeout: Duration) -> Result<(), Error> {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        match TcpStream::connect(addr).await {
-            Ok(_) => return Ok(()),
-            Err(_) => sleep(Duration::from_millis(1)).await,
-        }
-    }
-
-    // Err(Error::connection_error(format!("Timed out waiting for server to start at {}", addr)))
-    panic!()
-}
-
-pub struct Client {
+pub struct GrpcClient {
     pub socket_addr: SocketAddr,
 }
