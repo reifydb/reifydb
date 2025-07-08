@@ -7,11 +7,13 @@ use crate::ws::{
     QueryRequestPayload, QueryResponsePayload, Request, RequestPayload, ResponsePayload,
     WebsocketColumn, WebsocketFrame,
 };
+use IpAddr::V4;
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::Value;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::{Error, Value};
 use reifydb_engine::Engine;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::ops::Deref;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Notify;
@@ -20,6 +22,8 @@ use tokio_tungstenite::tungstenite::Utf8Bytes;
 
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
+const DEFAULT_SOCKET: SocketAddr = SocketAddr::new(V4(Ipv4Addr::new(127, 0, 0, 1)), 9001);
+
 #[derive(Debug)]
 pub struct WsConfig {
     pub socket: Option<SocketAddr>,
@@ -27,11 +31,18 @@ pub struct WsConfig {
 
 impl Default for WsConfig {
     fn default() -> Self {
-        Self { socket: Some("[::1]:9001".parse().unwrap()) }
+        Self { socket: Some(DEFAULT_SOCKET) }
     }
 }
 
-pub struct WsServer<VS, US, T>
+#[derive(Clone)]
+pub struct WsServer<VS, US, T>(Arc<Inner<VS, US, T>>)
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>;
+
+pub struct Inner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
@@ -40,6 +51,19 @@ where
     config: WsConfig,
     engine: Engine<VS, US, T>,
     shutdown: Arc<Notify>,
+}
+
+impl<VS, US, T> Deref for WsServer<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
+    type Target = Inner<VS, US, T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl<VS, US, T> WsServer<VS, US, T>
@@ -60,14 +84,12 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(config: WsConfig, engine: Engine<VS, US, T>) -> Self {
-        Self { config, engine, shutdown: Arc::new(Notify::new()) }
+        Self(Arc::new(Inner { config, engine, shutdown: Arc::new(Notify::new()) }))
     }
 
-    pub async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn serve(self) -> Result<(), Error> {
         let listener =
-            TcpListener::bind(self.config.socket.unwrap_or("[::1]:9001".parse().unwrap()))
-                .await
-                .unwrap();
+            TcpListener::bind(self.config.socket.unwrap_or(DEFAULT_SOCKET)).await.unwrap();
 
         loop {
             tokio::select! {

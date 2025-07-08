@@ -15,7 +15,6 @@ use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
-use tokio::sync::oneshot;
 
 pub struct GrpcRunner<VS, US, T>
 where
@@ -26,7 +25,6 @@ where
     server: Option<Server<VS, US, T>>,
     client: Client,
     runtime: Option<Runtime>,
-    shutdown: Option<oneshot::Sender<()>>,
 }
 
 impl<VS, US, T> GrpcRunner<VS, US, T>
@@ -43,7 +41,7 @@ where
 
         let client = Client { socket_addr };
 
-        Self { server: Some(server), client, runtime: None, shutdown: None }
+        Self { server: Some(server), client, runtime: None }
     }
 }
 
@@ -95,22 +93,18 @@ where
 
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
-        let (shutdown_tx, _) = oneshot::channel();
-        let server = self.server.take().unwrap();
+        let mut server = self.server.take().unwrap();
+        let _ = server.serve(&runtime);
 
-        runtime.spawn(async move {
-            let _ = server.serve().await;
-        });
-
+        self.server = Some(server);
         self.runtime = Some(runtime);
-        self.shutdown = Some(shutdown_tx);
 
         Ok(())
     }
 
     fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(shutdown) = self.shutdown.take() {
-            let _ = shutdown.send(());
+        if let Some(server) = self.server.take() {
+            drop(server);
         }
 
         if let Some(runtime) = self.runtime.take() {

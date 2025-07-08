@@ -94,18 +94,15 @@ where
         let socket_addr = free_local_socket();
 
         let mut server = server.with_websocket(WsConfig { socket: Some(socket_addr) });
-        let _ = server.serve_websocket(&runtime);
-
-        let client = runtime.block_on(async {
-            WsClient::connect(&format!("ws://[::1]:{}", socket_addr.port())).await.unwrap()
-        });
-
-        runtime.block_on(async {
-            client.auth(Some("mysecrettoken".into())).await.unwrap();
-        });
+        let _ = server.serve(&runtime);
 
         self.server = Some(server);
-        self.client = Some(client);
+        self.client = Some(runtime.block_on(async {
+            let client =
+                WsClient::connect(&format!("ws://[::1]:{}", socket_addr.port())).await.unwrap();
+            client.auth(Some("mysecrettoken".into())).await.unwrap();
+            client
+        }));
         self.runtime = Some(runtime);
         self.shutdown = Some(shutdown_tx);
 

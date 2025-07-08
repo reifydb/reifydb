@@ -4,14 +4,12 @@
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
-use reifydb_network::grpc;
-use reifydb_network::grpc::server::{GrpcConfig, db_service};
+use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use reifydb_network::ws::server::{WsConfig, WsServer};
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use tonic::service::InterceptorLayer;
 use tonic::transport::Error;
 
 pub struct Server<VS, US, T>
@@ -21,9 +19,8 @@ where
     T: Transaction<VS, US>,
 {
     pub(crate) engine: Engine<VS, US, T>,
-    pub(crate) _grpc: tonic::transport::Server,
     pub(crate) grpc_config: Option<GrpcConfig>,
-    // pub(crate) grpc: Option<GrpcServer<VS, US,T>>,
+    pub(crate) grpc: Option<GrpcServer<VS, US, T>>,
     pub(crate) ws_config: Option<WsConfig>,
     pub(crate) ws: Option<WsServer<VS, US, T>>,
     pub(crate) callbacks: Callbacks<VS, US, T>,
@@ -129,11 +126,11 @@ where
             callbacks: Callbacks { before_bootstrap: vec![], on_create: vec![] },
             engine: Engine::new(transaction).unwrap(),
 
-            _grpc: tonic::transport::Server::builder(),
             grpc_config: None,
+            grpc: None,
 
-            ws: None,
             ws_config: None,
+            ws: None,
         }
     }
 
@@ -156,62 +153,51 @@ where
         self
     }
 
-    pub async fn serve(self) -> Result<(), Error> {
-        let ctx = Context(Arc::new(ContextInner {}));
+    pub fn serve(&mut self, rt: &Runtime) -> Result<(), Error> {
+        if let Some(config) = self.ws_config.take() {
+            let engine = self.engine.clone();
+            let ws = WsServer::new(config, engine);
+            self.ws = Some(ws.clone());
+            rt.spawn(async move { ws.serve().await.unwrap() });
+        };
 
-        for f in self.callbacks.before_bootstrap {
-            f(BeforeBootstrap { ctx: ctx.clone() }).await;
+        if let Some(config) = self.grpc_config.take() {
+            let engine = self.engine.clone();
+            let grpc = GrpcServer::new(config, engine);
+            self.grpc = Some(grpc.clone());
+            rt.spawn(async move { grpc.serve().await });
         }
 
-        for f in self.callbacks.on_create {
-            f(OnCreate { engine: self.engine.clone() }).await;
-        }
-
-        let address =
-            self.grpc_config.unwrap().socket.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
-
-        tonic::transport::Server::builder()
-            .layer(InterceptorLayer::new(grpc::server::auth::AuthInterceptor {}))
-            .add_service(db_service(self.engine))
-            .serve(address)
-            .await
+        Ok(())
     }
 
-    pub fn serve_blocking(self, rt: Runtime) {
+    pub fn serve_blocking(&mut self, rt: &Runtime) -> Result<(), reifydb_core::Error> {
         rt.block_on(async {
-            let ctx = Context(Arc::new(ContextInner {}));
+            let mut handles = Vec::with_capacity(2);
 
-            for f in self.callbacks.before_bootstrap {
-                f(BeforeBootstrap { ctx: ctx.clone() }).await;
+            if let Some(config) = self.ws_config.take() {
+                let engine = self.engine.clone();
+                let ws = WsServer::new(config, engine);
+                self.ws = Some(ws.clone());
+                handles.push(rt.spawn(async move { ws.serve().await.unwrap() }));
+            };
+
+            if let Some(config) = self.grpc_config.take() {
+                let engine = self.engine.clone();
+                let grpc = GrpcServer::new(config, engine);
+                self.grpc = Some(grpc.clone());
+                handles.push(rt.spawn(async move { grpc.serve().await.unwrap() }));
             }
 
-            for f in self.callbacks.on_create {
-                f(OnCreate { engine: self.engine.clone() }).await;
+            for handle in handles {
+                if let Err(err) = handle.await {
+                    // FIXME
+                    panic!("server exited with error: {}", err);
+                }
             }
-
-            let address =
-                self.grpc_config.unwrap().socket.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
-
-            tonic::transport::Server::builder()
-                .layer(InterceptorLayer::new(grpc::server::auth::AuthInterceptor {}))
-                .add_service(db_service(self.engine))
-                .serve(address)
-                .await
-                .unwrap();
-        })
-    }
-
-    pub fn serve_websocket(&mut self, rt: &Runtime) {
-        let engine = self.engine.clone();
-        let config = self.ws_config.take().unwrap();
-        let mut ws_server = WsServer::new(config, engine);
-        // let shutdown = ws_server.shutdown.clone();
-
-        rt.spawn(async move {
-            ws_server.serve().await.unwrap();
         });
 
-        // self.ws_shutdown = Some(shutdown); // store shutdown handle if needed
+        Ok(())
     }
 
     pub fn close(&mut self) {

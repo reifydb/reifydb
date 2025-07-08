@@ -7,7 +7,9 @@ use crate::row::EncodedRow;
 use crate::{EncodedKey, EncodedKeyRange, Error};
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
-pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>: Send + Sync + 'static {
+pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
+    Send + Sync + Clone + 'static
+{
     type Rx: Rx;
     type Tx: Tx<VS, US>;
 
