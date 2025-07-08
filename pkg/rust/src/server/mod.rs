@@ -1,15 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-pub use config::{DatabaseConfig, ServerConfig};
-use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
 use reifydb_network::grpc;
-use reifydb_network::grpc::server::db_service;
-use reifydb_network::websocket::server::WsServer;
-use std::net::SocketAddr;
+use reifydb_network::grpc::server::{GrpcConfig, db_service};
+use reifydb_network::ws::server::{WsConfig, WsServer};
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -17,23 +14,19 @@ use tokio::runtime::Runtime;
 use tonic::service::InterceptorLayer;
 use tonic::transport::Error;
 
-mod config;
-
-pub struct WebsocketConfig {
-    pub socket_addr: SocketAddr,
-}
-
 pub struct Server<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub(crate) config: ServerConfig,
+    pub(crate) engine: Engine<VS, US, T>,
     pub(crate) _grpc: tonic::transport::Server,
+    pub(crate) grpc_config: Option<GrpcConfig>,
+    // pub(crate) grpc: Option<GrpcServer<VS, US,T>>,
+    pub(crate) ws_config: Option<WsConfig>,
     pub(crate) ws: Option<WsServer<VS, US, T>>,
     pub(crate) callbacks: Callbacks<VS, US, T>,
-    pub(crate) engine: Engine<VS, US, T>,
 }
 
 impl<VS, US, T> Server<VS, US, T>
@@ -42,13 +35,18 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn with_config(mut self, config: ServerConfig) -> Self {
-        self.config = config;
+    pub fn with_engine(mut self, engine: Engine<VS, US, T>) -> Self {
+        self.engine = engine;
         self
     }
 
-    pub fn with_engine(mut self, engine: Engine<VS, US, T>) -> Self {
-        self.engine = engine;
+    pub fn with_grpc(mut self, config: GrpcConfig) -> Self {
+        self.grpc_config = Some(config);
+        self
+    }
+
+    pub fn with_websocket(mut self, config: WsConfig) -> Self {
+        self.ws_config = Some(config);
         self
     }
 }
@@ -128,11 +126,14 @@ where
 {
     pub fn new(transaction: T) -> Self {
         Self {
-            config: ServerConfig::default(),
-            _grpc: tonic::transport::Server::builder(),
-            ws: None,
             callbacks: Callbacks { before_bootstrap: vec![], on_create: vec![] },
             engine: Engine::new(transaction).unwrap(),
+
+            _grpc: tonic::transport::Server::builder(),
+            grpc_config: None,
+
+            ws: None,
+            ws_config: None,
         }
     }
 
@@ -167,7 +168,7 @@ where
         }
 
         let address =
-            self.config.database.socket_addr.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
+            self.grpc_config.unwrap().socket.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
 
         tonic::transport::Server::builder()
             .layer(InterceptorLayer::new(grpc::server::auth::AuthInterceptor {}))
@@ -189,7 +190,7 @@ where
             }
 
             let address =
-                self.config.database.socket_addr.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
+                self.grpc_config.unwrap().socket.unwrap_or_else(|| "[::1]:54321".parse().unwrap());
 
             tonic::transport::Server::builder()
                 .layer(InterceptorLayer::new(grpc::server::auth::AuthInterceptor {}))
@@ -200,15 +201,14 @@ where
         })
     }
 
-    pub fn serve_websocket(&mut self, config: WebsocketConfig, rt: &Runtime) {
-        let socket_addr = config.socket_addr;
+    pub fn serve_websocket(&mut self, rt: &Runtime) {
         let engine = self.engine.clone();
-
-        let mut ws_server = WsServer::new(engine);
+        let config = self.ws_config.take().unwrap();
+        let mut ws_server = WsServer::new(config, engine);
         // let shutdown = ws_server.shutdown.clone();
 
         rt.spawn(async move {
-            ws_server.serve(socket_addr).await.unwrap();
+            ws_server.serve().await.unwrap();
         });
 
         // self.ws_shutdown = Some(shutdown); // store shutdown handle if needed

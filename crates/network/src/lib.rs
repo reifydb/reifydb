@@ -13,4 +13,4 @@ pub mod grpc;
 
 mod error;
 #[cfg(feature = "websocket")]
-pub mod websocket;
+pub mod ws;

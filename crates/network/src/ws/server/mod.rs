@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::websocket::RequestPayload::Auth;
-use crate::websocket::{
+use crate::ws::RequestPayload::Auth;
+use crate::ws::{
     AuthRequestPayload, AuthResponsePayload, ExecuteRequestPayload, ExecuteResponsePayload,
     QueryRequestPayload, QueryResponsePayload, Request, RequestPayload, ResponsePayload,
     WebsocketColumn, WebsocketFrame,
@@ -20,14 +20,26 @@ use tokio_tungstenite::tungstenite::Utf8Bytes;
 
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
+#[derive(Debug)]
+pub struct WsConfig {
+    pub socket: Option<SocketAddr>,
+}
+
+impl Default for WsConfig {
+    fn default() -> Self {
+        Self { socket: Some("[::1]:9001".parse().unwrap()) }
+    }
+}
+
 pub struct WsServer<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
+    config: WsConfig,
     engine: Engine<VS, US, T>,
-    pub shutdown: Arc<Notify>,
+    shutdown: Arc<Notify>,
 }
 
 impl<VS, US, T> WsServer<VS, US, T>
@@ -47,12 +59,15 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(engine: Engine<VS, US, T>) -> Self {
-        Self { engine, shutdown: Arc::new(Notify::new()) }
+    pub fn new(config: WsConfig, engine: Engine<VS, US, T>) -> Self {
+        Self { config, engine, shutdown: Arc::new(Notify::new()) }
     }
 
-    pub async fn serve(&mut self, addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
-        let listener = TcpListener::bind(addr).await.unwrap();
+    pub async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let listener =
+            TcpListener::bind(self.config.socket.unwrap_or("[::1]:9001".parse().unwrap()))
+                .await
+                .unwrap();
 
         loop {
             tokio::select! {
@@ -90,13 +105,13 @@ where
                 return;
             };
 
-            match serde_json::from_str::<crate::websocket::request::Request>(&text) {
+            match serde_json::from_str::<crate::ws::request::Request>(&text) {
                 Ok(request) => match request.payload {
                     Auth(AuthRequestPayload { token: Some(token) }) => {
                         if Self::validate_token(&token) {
                             println!("✅ Authenticated: {}", token);
 
-                            let response = crate::websocket::response::Response {
+                            let response = crate::ws::response::Response {
                                 id: request.id,
                                 payload: ResponsePayload::Auth(AuthResponsePayload {}),
                             };
@@ -127,7 +142,7 @@ where
                                                                     statement,
                                                                 ) {
                                                                     Ok(result) => {
-                                                                        let response = crate::websocket::response::Response {
+                                                                        let response = crate::ws::response::Response {
                                                                             id: request.id,
                                                                             payload: ResponsePayload::Execute(ExecuteResponsePayload {
                                                                                 frames: result.into_iter().map(|frame| WebsocketFrame {
@@ -166,7 +181,7 @@ where
                                                                     statement,
                                                                 ) {
                                                                     Ok(result) => {
-                                                                        let response = crate::websocket::response::Response {
+                                                                        let response = crate::ws::response::Response {
                                                                             id: request.id,
                                                                             payload: ResponsePayload::Query(QueryResponsePayload {
                                                                                 frames: result.into_iter().map(|frame| WebsocketFrame {

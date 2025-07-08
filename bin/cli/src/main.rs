@@ -19,11 +19,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb::network::websocket::client::WsClient;
+use reifydb::network::ws::client::WsClient;
 
 #[tokio::main]
 async fn main() {
-    let client = WsClient::connect("ws://127.0.0.1:9001").await.unwrap();
+    let client = WsClient::connect("ws://[::1]:9001").await.unwrap();
 
     client.auth(Some("mysecrettoken".into())).await.unwrap();
 

@@ -3,8 +3,9 @@
 
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::retry;
-use reifydb::network::websocket::client::WsClient;
-use reifydb::server::{DatabaseConfig, Server, ServerConfig, WebsocketConfig};
+use reifydb::network::ws::client::WsClient;
+use reifydb::network::ws::server::WsConfig;
+use reifydb::server::Server;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::testscript;
@@ -35,12 +36,7 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(transaction: T) -> Self {
-        let socket_addr = free_local_socket();
-
-        let server = ReifyDB::server_with(transaction).with_config(ServerConfig {
-            database: DatabaseConfig { socket_addr: Some(socket_addr) },
-        });
-
+        let server = ReifyDB::server_with(transaction);
         Self { server: Some(server), client: None, runtime: None, shutdown: None }
     }
 }
@@ -94,21 +90,21 @@ where
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
         let (shutdown_tx, _) = oneshot::channel();
-        let server = self.server.as_mut().unwrap();
-
+        let server = self.server.take().unwrap();
         let socket_addr = free_local_socket();
 
-        let _ =
-            server.serve_websocket(WebsocketConfig { socket_addr: socket_addr.clone() }, &runtime);
+        let mut server = server.with_websocket(WsConfig { socket: Some(socket_addr) });
+        let _ = server.serve_websocket(&runtime);
 
         let client = runtime.block_on(async {
-            WsClient::connect(&format!("ws://127.0.0.1:{}", socket_addr.port())).await.unwrap()
+            WsClient::connect(&format!("ws://[::1]:{}", socket_addr.port())).await.unwrap()
         });
 
         runtime.block_on(async {
             client.auth(Some("mysecrettoken".into())).await.unwrap();
         });
 
+        self.server = Some(server);
         self.client = Some(client);
         self.runtime = Some(runtime);
         self.shutdown = Some(shutdown_tx);

@@ -3,7 +3,7 @@
 
 mod rx;
 
-use crate::websocket::{
+use crate::ws::{
     AuthRequestPayload, ExecuteRequestPayload, ExecuteResponsePayload, QueryRequestPayload,
     QueryResponsePayload, Request, RequestPayload, Response, ResponsePayload,
 };

@@ -4,8 +4,9 @@
 use reifydb::client::Client;
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::retry;
-use reifydb::server::{DatabaseConfig, Server, ServerConfig};
-use reifydb::{memory, optimistic, ReifyDB};
+use reifydb::network::grpc::server::GrpcConfig;
+use reifydb::server::Server;
+use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::free_local_socket;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -37,9 +38,8 @@ where
     pub fn new(transaction: T) -> Self {
         let socket_addr = free_local_socket();
 
-        let server = ReifyDB::server_with(transaction).with_config(ServerConfig {
-            database: DatabaseConfig { socket_addr: Some(socket_addr) },
-        });
+        let server =
+            ReifyDB::server_with(transaction).with_grpc(GrpcConfig { socket: Some(socket_addr) });
 
         let client = Client { socket_addr };
 
