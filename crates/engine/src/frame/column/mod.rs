@@ -3,7 +3,7 @@
 
 pub use layout::ColumnLayout;
 pub use push::Push;
-use reifydb_core::Kind;
+use reifydb_core::DataType;
 pub use values::ColumnValues;
 
 mod adjust;
@@ -24,8 +24,8 @@ pub struct Column {
 }
 
 impl Column {
-    pub fn kind(&self) -> Kind {
-        self.values.kind()
+    pub fn data_type(&self) -> DataType {
+        self.values.data_type()
     }
 
     pub fn is_numeric(&self) -> bool {

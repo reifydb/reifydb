@@ -17,7 +17,7 @@ pub trait Formatter {
     /// Formats a key.
     fn key(key: &[u8]) -> String;
 
-    /// Formats a value. Also takes the key to determine the kind of value.
+    /// Formats a value. Also takes the key to determine the data_type of value.
     fn value(key: &[u8], value: &[u8]) -> String;
 
     /// Formats a key/row pair.

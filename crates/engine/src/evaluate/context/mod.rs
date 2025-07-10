@@ -14,12 +14,12 @@ mod demote;
 mod promote;
 
 use crate::frame::Column;
-use reifydb_core::{BitVec, Kind};
+use reifydb_core::{BitVec, DataType};
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvaluationColumn {
     pub(crate) name: Option<String>,
-    pub(crate) kind: Option<Kind>,
+    pub(crate) data_type: Option<DataType>,
     pub(crate) policies: Vec<ColumnPolicyKind>,
 }
 

@@ -52,7 +52,7 @@ macro_rules! impl_push {
                     other => panic!(
                         "called `push::<{}>()` on ColumnValues::{:?}",
                         stringify!($t),
-                        other.kind()
+                        other.data_type()
                     ),
                 }
             }
@@ -79,7 +79,7 @@ impl Push<String> for ColumnValues {
 
                 *self = ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity));
             }
-            other => panic!("called `push::<String>()` on ColumnValues::{:?}", other.kind()),
+            other => panic!("called `push::<String>()` on ColumnValues::{:?}", other.data_type()),
         }
     }
 }

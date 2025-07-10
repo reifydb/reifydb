@@ -3,20 +3,20 @@
 
 use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
-use reifydb_core::Kind;
+use reifydb_core::DataType;
 use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
 use reifydb_core::Span;
 
 impl ColumnValues {
     pub fn adjust_column(
-        &self,
-        target: Kind,
-        ctx: impl Promote + Demote + Convert,
-        span: impl Fn() -> Span,
+		&self,
+		target: DataType,
+		ctx: impl Promote + Demote + Convert,
+		span: impl Fn() -> Span,
     ) -> crate::Result<ColumnValues> {
-        use Kind::*;
+        use DataType::*;
 
-        if target == self.kind() {
+        if target == self.data_type() {
             return Ok(self.clone());
         }
         
@@ -137,17 +137,17 @@ impl ColumnValues {
             convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
         );
 
-        unimplemented!("{:?} -> {:?}", self.kind(), target)
+        unimplemented!("{:?} -> {:?}", self.data_type(), target)
     }
 }
 
 fn demote_vec<From, To>(
-    values: &[From],
-    validity: &[bool],
-    demote: impl Demote,
-    span: impl Fn() -> Span,
-    target_kind: Kind,
-    mut push: impl FnMut(&mut ColumnValues, To),
+	values: &[From],
+	validity: &[bool],
+	demote: impl Demote,
+	span: impl Fn() -> Span,
+	target_kind: DataType,
+	mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
     From: Copy + SafeDemote<To>,
@@ -167,12 +167,12 @@ where
 }
 
 fn promote_vec<From, To>(
-    values: &[From],
-    validity: &[bool],
-    ctx: impl Promote,
-    span: impl Fn() -> Span,
-    target_kind: Kind,
-    mut push: impl FnMut(&mut ColumnValues, To),
+	values: &[From],
+	validity: &[bool],
+	ctx: impl Promote,
+	span: impl Fn() -> Span,
+	target_kind: DataType,
+	mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
     From: Copy + SafePromote<To>,
@@ -192,12 +192,12 @@ where
 }
 
 fn convert_vec<From, To>(
-    values: &[From],
-    validity: &[bool],
-    ctx: impl Convert,
-    span: impl Fn() -> Span,
-    target_kind: Kind,
-    mut push: impl FnMut(&mut ColumnValues, To),
+	values: &[From],
+	validity: &[bool],
+	ctx: impl Convert,
+	span: impl Fn() -> Span,
+	target_kind: DataType,
+	mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
     From: Copy + SafeConvert<To>,
@@ -221,7 +221,7 @@ mod tests {
     mod promote {
         use crate::evaluate::Promote;
         use crate::frame::column::adjust::promote_vec;
-        use reifydb_core::Kind;
+        use reifydb_core::DataType;
         use reifydb_core::num::SafePromote;
         use reifydb_core::{IntoSpan, Span};
 
@@ -232,12 +232,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
-                &values,
-                &validity,
-                &ctx,
-                || Span::testing_empty(),
-                Kind::Int2,
-                |col, v| col.push::<i16>(v),
+				&values,
+				&validity,
+				&ctx,
+				|| Span::testing_empty(),
+				DataType::Int2,
+				|col, v| col.push::<i16>(v),
             )
             .unwrap();
 
@@ -253,12 +253,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
-                &values,
-                &validity,
-                &ctx,
-                || Span::testing_empty(),
-                Kind::Int2,
-                |col, v| col.push::<i16>(v),
+				&values,
+				&validity,
+				&ctx,
+				|| Span::testing_empty(),
+				DataType::Int2,
+				|col, v| col.push::<i16>(v),
             )
             .unwrap();
 
@@ -272,12 +272,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
-                &values,
-                &validity,
-                &ctx,
-                || Span::testing_empty(),
-                Kind::Int2,
-                |col, v| col.push::<i16>(v),
+				&values,
+				&validity,
+				&ctx,
+				|| Span::testing_empty(),
+				DataType::Int2,
+				|col, v| col.push::<i16>(v),
             )
             .unwrap();
 
@@ -291,12 +291,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
-                &values,
-                &validity,
-                &ctx,
-                || Span::testing_empty(),
-                Kind::Int2,
-                |col, v| col.push::<i16>(v),
+				&values,
+				&validity,
+				&ctx,
+				|| Span::testing_empty(),
+				DataType::Int2,
+				|col, v| col.push::<i16>(v),
             )
             .unwrap();
 
@@ -336,7 +336,7 @@ mod tests {
     mod demote {
         use crate::evaluate::Demote;
         use crate::frame::column::adjust::demote_vec;
-        use reifydb_core::Kind;
+        use reifydb_core::DataType;
         use reifydb_core::num::SafeDemote;
         use reifydb_core::{IntoSpan, Span};
 
@@ -347,12 +347,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
-                &values,
-                &validity,
-                &ctx,
-                || Span::testing_empty(),
-                Kind::Int1,
-                |col, v| col.push::<i8>(v),
+				&values,
+				&validity,
+				&ctx,
+				|| Span::testing_empty(),
+				DataType::Int1,
+				|col, v| col.push::<i8>(v),
             )
             .unwrap();
 
@@ -368,12 +368,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
-                &values,
-                &validity,
-                &ctx,
-                || Span::testing_empty(),
-                Kind::Int1,
-                |col, v| col.push::<i8>(v),
+				&values,
+				&validity,
+				&ctx,
+				|| Span::testing_empty(),
+				DataType::Int1,
+				|col, v| col.push::<i8>(v),
             )
             .unwrap();
 
@@ -387,12 +387,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
-                &values,
-                &validity,
-                &ctx,
-                || Span::testing_empty(),
-                Kind::Int1,
-                |col, v| col.push::<i8>(v),
+				&values,
+				&validity,
+				&ctx,
+				|| Span::testing_empty(),
+				DataType::Int1,
+				|col, v| col.push::<i8>(v),
             )
             .unwrap();
 
@@ -406,12 +406,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
-                &values,
-                &validity,
-                &ctx,
-                || Span::testing_empty(),
-                Kind::Int1,
-                |col, v| col.push::<i8>(v),
+				&values,
+				&validity,
+				&ctx,
+				|| Span::testing_empty(),
+				DataType::Int1,
+				|col, v| col.push::<i8>(v),
             )
             .unwrap();
 

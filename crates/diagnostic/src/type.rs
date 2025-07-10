@@ -3,16 +3,16 @@
 
 use crate::util::value_range;
 use crate::{Diagnostic, Span};
-use reifydb_core::{DiagnosticColumn, Kind};
+use reifydb_core::{DiagnosticColumn, DataType};
 
 pub struct OutOfRange {
     pub span: Span,
     pub column: Option<String>,
-    pub kind: Option<Kind>,
+    pub data_type: Option<DataType>,
 }
 
 pub fn out_of_range(co: OutOfRange) -> Diagnostic {
-    let label = match (&co.kind, &co.column) {
+    let label = match (&co.data_type, &co.column) {
         (Some(ty), Some(column)) => Some(format!(
             "value `{}` does not fit into column `{}` of type `{}` (range: {})",
             co.span.fragment,
@@ -32,7 +32,7 @@ pub fn out_of_range(co: OutOfRange) -> Diagnostic {
         (None, None) => Some(format!("value `{}` does not fit into column type", co.span.fragment)),
     };
 
-    let message = match (&co.column, &co.kind) {
+    let message = match (&co.column, &co.data_type) {
         (Some(column), Some(value)) => {
             format!("value out of range in column `{}` type `{}`", column, value)
         }
@@ -54,8 +54,8 @@ pub fn out_of_range(co: OutOfRange) -> Diagnostic {
         label,
         help,
         notes: vec![],
-        column: match (&co.column, co.kind) {
-            (Some(name), Some(value)) => Some(DiagnosticColumn { name: name.clone(), value }),
+        column: match (&co.column, co.data_type) {
+            (Some(name), Some(value)) => Some(DiagnosticColumn { name: name.clone(), data_type: value }),
             _ => None,
         },
     }

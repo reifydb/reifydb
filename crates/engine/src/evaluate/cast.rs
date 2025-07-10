@@ -15,16 +15,16 @@ impl Evaluator {
     ) -> evaluate::Result<Column> {
         // FIXME optimization does not apply for prefix expressions, like cast(-2 as int1) at the moment
         match cast.expression.deref() {
-            // Optimization: it is a constant value and we now the target kind, therefore it is possible to create the values directly
+            // Optimization: it is a constant value and we now the target data_type, therefore it is possible to create the values directly
             // which means there is no reason to further adjust the column
-            Expression::Constant(expr) => self.constant_of(expr, cast.to.kind, ctx),
+            Expression::Constant(expr) => self.constant_of(expr, cast.to.data_type, ctx),
             expr => {
                 let column = self.evaluate(expr, ctx)?;
                 Ok(Column {
                     name: column.name,
                     values: column
                         .values
-                        .adjust_column(cast.to.kind, ctx, cast.expression.lazy_span())
+                        .adjust_column(cast.to.data_type, ctx, cast.expression.lazy_span())
                         .unwrap(),
                 })
             } // FIXME
@@ -38,7 +38,7 @@ mod tests {
     use crate::evaluate::Context;
     use crate::evaluate::Expression;
     use crate::frame::ColumnValues;
-    use reifydb_core::Kind;
+    use reifydb_core::DataType;
     use reifydb_core::Span;
     use reifydb_rql::expression::Expression::Prefix;
     use reifydb_rql::expression::{
@@ -54,7 +54,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("42") })),
-                to: KindExpression { span: Span::testing_empty(), kind: Kind::Int4 },
+                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Int4 },
             }),
             &ctx,
         )
@@ -74,7 +74,7 @@ mod tests {
                     expression: Box::new(Constant(Number { span: Span::testing("42") })),
                     span: Span::testing_empty(),
                 })),
-                to: KindExpression { span: Span::testing_empty(), kind: Kind::Int4 },
+                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Int4 },
             }),
             &ctx,
         )
@@ -94,7 +94,7 @@ mod tests {
                     expression: Box::new(Constant(Number { span: Span::testing("128") })),
                     span: Span::testing_empty(),
                 })),
-                to: KindExpression { span: Span::testing_empty(), kind: Kind::Int1 },
+                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Int1 },
             }),
             &ctx,
         )
@@ -110,7 +110,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("4.2") })),
-                to: KindExpression { span: Span::testing_empty(), kind: Kind::Float8 },
+                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Float8 },
             }),
             &ctx,
         )
@@ -126,7 +126,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("4.2") })),
-                to: KindExpression { span: Span::testing_empty(), kind: Kind::Float4 },
+                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Float4 },
             }),
             &ctx,
         )
@@ -142,7 +142,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("-1.1") })),
-                to: KindExpression { span: Span::testing_empty(), kind: Kind::Float4 },
+                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Float4 },
             }),
             &ctx,
         )
@@ -158,7 +158,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("-1.1") })),
-                to: KindExpression { span: Span::testing_empty(), kind: Kind::Float8 },
+                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Float8 },
             }),
             &ctx,
         )

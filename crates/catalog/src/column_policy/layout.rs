@@ -3,7 +3,7 @@
 
 pub(crate) mod column_policy {
     use once_cell::sync::Lazy;
-    use reifydb_core::Kind;
+    use reifydb_core::DataType;
     use reifydb_core::row::Layout;
 
     pub(crate) const ID: usize = 0;
@@ -13,10 +13,10 @@ pub(crate) mod column_policy {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            Kind::Uint8, // id
-            Kind::Uint8, // column
-            Kind::Uint1, // policy
-            Kind::Uint1, // value
+            DataType::Uint8, // id
+            DataType::Uint8, // column
+            DataType::Uint1, // policy
+            DataType::Uint1, // value
         ])
     });
 }

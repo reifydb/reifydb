@@ -39,7 +39,7 @@ impl Expression {
                 // Span::merge_all(spans).unwrap()
                 unimplemented!()
             }
-            Expression::Kind(expr) => expr.span.clone(),
+            Expression::DataType(expr) => expr.span.clone(),
 
             Expression::Prefix(expr) => expr.span(),
 

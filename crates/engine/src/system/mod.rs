@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_catalog::key::{EncodableKey, SystemVersion, SystemVersionKey};
-use reifydb_core::Kind;
+use reifydb_core::DataType;
 use reifydb_core::hook::{OnAfterBootHook, OnAfterBootHookContext};
 use reifydb_core::interface::UnversionedStorage;
 use reifydb_core::row::Layout;
@@ -26,7 +26,7 @@ fn ensure_storage_version<US>(ctx: &mut OnAfterBootHookContext<US>)
 where
     US: UnversionedStorage,
 {
-    let layout = Layout::new(&[Kind::Uint1]);
+    let layout = Layout::new(&[DataType::Uint1]);
     let key = SystemVersionKey { version: SystemVersion::Storage }.encode();
 
     if let None = ctx.unversioned.get(&key).unwrap() {
@@ -36,7 +36,7 @@ where
     }
 
     if let Some(unversioned) = ctx.unversioned.get(&key).unwrap() {
-        let layout = Layout::new(&[Kind::Uint1]);
+        let layout = Layout::new(&[DataType::Uint1]);
         let version = layout.get_u8(&unversioned.row, 0);
         assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
     }

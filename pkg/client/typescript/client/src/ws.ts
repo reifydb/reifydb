@@ -4,8 +4,8 @@
  * See license.md file for full license text
  */
 
-import {ErrorResponse, ReifyError, RxRequest, RxResponse, TxRequest, TxResponse} from "./types";
-import {columnsToRows} from "./decoder";
+import {ErrorResponse, ReifyError, RxRequest, RxResponse, TxRequest, TxResponse, WebsocketColumn} from "./types";
+import {decodeValue} from "./decoder";
 
 type ResponsePayload = ErrorResponse | TxResponse | RxResponse;
 
@@ -141,7 +141,19 @@ export class WsClient {
         ) as { [K in keyof T]: T[K][] };
     }
 
-    async disconnect(): Promise<void> {
-        // FIXME
+    disconnect() {
+        this.socket.close();
     }
+}
+
+
+function columnsToRows(columns: WebsocketColumn[]): Record<string, unknown>[] {
+    const rowCount = columns[0]?.data.length ?? 0;
+    return Array.from({length: rowCount}, (_, i) => {
+        const row: Record<string, unknown> = {};
+        for (const col of columns) {
+            row[col.name] = decodeValue(col.kind, col.data[i]);
+        }
+        return row;
+    });
 }

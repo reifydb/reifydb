@@ -26,7 +26,7 @@ impl Context {
                     return Err(crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        kind: None,
+                        data_type: None,
                     })));
                 };
 
@@ -36,13 +36,13 @@ impl Context {
                             return crate::evaluate::Error(out_of_range(OutOfRange {
                                 span: span.into_span(),
                                 column: column.name.clone(),
-                                kind: column.kind,
+                                data_type: column.data_type,
                             }));
                         }
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: None,
-                            kind: None,
+                            data_type: None,
                         }));
                     })
                     .map(Some)
@@ -80,7 +80,7 @@ impl Context {
                     return Err(crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        kind: None,
+                        data_type: None,
                     })));
                 };
 
@@ -90,13 +90,13 @@ impl Context {
                             return crate::evaluate::Error(out_of_range(OutOfRange {
                                 span: span.into_span(),
                                 column: column.name.clone(),
-                                kind: column.kind,
+                                data_type: column.data_type,
                             }));
                         }
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: None,
-                            kind: None,
+                            data_type: None,
                         }));
                     })
                     .map(Some)

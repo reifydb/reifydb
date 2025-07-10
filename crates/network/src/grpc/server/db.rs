@@ -11,7 +11,7 @@ use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Diagnostic, Kind, Value};
+use reifydb_core::{Diagnostic, DataType, Value};
 use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
 
@@ -147,12 +147,12 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
         notes: diagnostic.notes,
         column: diagnostic
             .column
-            .map(|c| grpc::DiagnosticColumn { name: c.name, kind: c.value as i32 }),
+            .map(|c| grpc::DiagnosticColumn { name: c.name, data_type: c.data_type as i32 }),
     }
 }
 
 fn map_frame(frame: Frame) -> grpc::Frame {
-    use grpc::{Column, Frame, Int128, UInt128, Value as GrpcValue, value::Kind as GrpcKind};
+    use grpc::{Column, Frame, Int128, UInt128, Value as GrpcValue, value::DataType as GrpcKind};
 
     Frame {
         name: frame.name,
@@ -160,13 +160,13 @@ fn map_frame(frame: Frame) -> grpc::Frame {
             .columns
             .into_iter()
             .map(|col| {
-                let kind = col.values.kind();
+                let data_type = col.values.data_type();
 
                 let values = col
                     .values
                     .iter()
                     .map(|v| {
-                        let kind = match v {
+                        let data_type = match v {
                             Value::Bool(b) => GrpcKind::BoolValue(b),
                             Value::Float4(f) => GrpcKind::Float32Value(f.value()),
                             Value::Float8(f) => GrpcKind::Float64Value(f.value()),
@@ -189,11 +189,11 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                             Value::Utf8(s) => GrpcKind::StringValue(s.clone()),
                             Value::Undefined => GrpcKind::UndefinedValue(false),
                         };
-                        GrpcValue { kind: Some(kind) }
+                        GrpcValue { data_type: Some(data_type) }
                     })
                     .collect();
 
-                Column { name: col.name, kind: Kind::to_u8(&kind) as i32, values }
+                Column { name: col.name, data_type: DataType::to_u8(&data_type) as i32, values }
             })
             .collect(),
     }

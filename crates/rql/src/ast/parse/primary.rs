@@ -53,7 +53,7 @@ impl Parser {
                     Ok(Ast::Literal(self.parse_literal_undefined()?))
                 }
                 _ if current.is_identifier() => match self.parse_kind() {
-                    Ok(node) => Ok(Ast::Kind(node)),
+                    Ok(node) => Ok(Ast::DataType(node)),
                     Err(_) => Ok(Ast::Identifier(self.parse_identifier()?)),
                 },
                 _ => Err(Error::unsupported(self.advance()?)),

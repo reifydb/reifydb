@@ -47,13 +47,13 @@ impl Demote for &Context {
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: column.name.clone(),
-                            kind: column.kind,
+                            data_type: column.data_type,
                         }));
                     }
                     return crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        kind: None,
+                        data_type: None,
                     }));
                 })
                 .map(Some),
@@ -70,7 +70,7 @@ mod tests {
     use crate::evaluate::{Context, Demote, EvaluationColumn};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
-    use reifydb_core::Kind;
+    use reifydb_core::DataType;
     use reifydb_core::Span;
     use reifydb_core::num::SafeDemote;
 
@@ -79,7 +79,7 @@ mod tests {
         let mut ctx = Context::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            kind: Some(Kind::Int1),
+            data_type: Some(DataType::Int1),
             policies: vec![Saturation(Error)],
         });
 
@@ -92,7 +92,7 @@ mod tests {
         let mut ctx = Context::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            kind: Some(Kind::Int1),
+            data_type: Some(DataType::Int1),
             policies: vec![Saturation(Error)],
         });
 
@@ -108,7 +108,7 @@ mod tests {
         let mut ctx = Context::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            kind: Some(Kind::Int1),
+            data_type: Some(DataType::Int1),
             policies: vec![Saturation(Undefined)],
         });
 

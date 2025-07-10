@@ -3,7 +3,7 @@
 
 use crate::frame::iterator::FrameIter;
 use crate::frame::{Column, ColumnValues};
-use reifydb_core::Kind::Undefined;
+use reifydb_core::DataType::Undefined;
 use reifydb_core::Value;
 use std::collections::HashMap;
 use std::sync::Arc;

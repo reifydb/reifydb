@@ -138,7 +138,7 @@ mod tests {
         let result = parse_operator(input).unwrap();
         let (remaining, token) = result;
 
-        assert_eq!(TokenKind::Operator(op), token.kind, "kind mismatch for symbol: {}", symbol);
+        assert_eq!(TokenKind::Operator(op), token.kind, "data_type mismatch for symbol: {}", symbol);
         assert_eq!(token.span.fragment, symbol);
         assert_eq!(token.span.offset, 0);
         assert_eq!(token.span.line, 1);

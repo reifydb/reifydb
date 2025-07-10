@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Kind;
+use crate::DataType;
 use crate::num::ordered_float::{OrderedF32, OrderedF64};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -145,23 +145,23 @@ impl Display for Value {
 }
 
 impl Value {
-    pub fn kind(&self) -> Kind {
+    pub fn data_type(&self) -> DataType {
         match self {
-            Value::Undefined => Kind::Undefined,
-            Value::Bool(_) => Kind::Bool,
-            Value::Float4(_) => Kind::Float4,
-            Value::Float8(_) => Kind::Float8,
-            Value::Int1(_) => Kind::Int1,
-            Value::Int2(_) => Kind::Int2,
-            Value::Int4(_) => Kind::Int4,
-            Value::Int8(_) => Kind::Int8,
-            Value::Int16(_) => Kind::Int16,
-            Value::Utf8(_) => Kind::Utf8,
-            Value::Uint1(_) => Kind::Uint1,
-            Value::Uint2(_) => Kind::Uint2,
-            Value::Uint4(_) => Kind::Uint4,
-            Value::Uint8(_) => Kind::Uint8,
-            Value::Uint16(_) => Kind::Uint16,
+            Value::Undefined => DataType::Undefined,
+            Value::Bool(_) => DataType::Bool,
+            Value::Float4(_) => DataType::Float4,
+            Value::Float8(_) => DataType::Float8,
+            Value::Int1(_) => DataType::Int1,
+            Value::Int2(_) => DataType::Int2,
+            Value::Int4(_) => DataType::Int4,
+            Value::Int8(_) => DataType::Int8,
+            Value::Int16(_) => DataType::Int16,
+            Value::Utf8(_) => DataType::Utf8,
+            Value::Uint1(_) => DataType::Uint1,
+            Value::Uint2(_) => DataType::Uint2,
+            Value::Uint4(_) => DataType::Uint4,
+            Value::Uint8(_) => DataType::Uint8,
+            Value::Uint16(_) => DataType::Uint16,
         }
     }
 }

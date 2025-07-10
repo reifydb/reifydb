@@ -8,7 +8,7 @@ use crate::sequence::SystemSequence;
 use crate::table::TableId;
 use crate::{Catalog, Error};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Kind, Span};
+use reifydb_core::{DataType, Span};
 use reifydb_diagnostic::catalog::column_already_exists;
 
 pub struct ColumnToCreate<'a> {
@@ -17,7 +17,7 @@ pub struct ColumnToCreate<'a> {
     pub table: TableId,
     pub table_name: &'a str,
     pub column: String,
-    pub value: Kind,
+    pub value: DataType,
     pub if_not_exists: bool,
     pub policies: Vec<ColumnPolicyKind>,
     pub index: ColumnIndex,
@@ -76,7 +76,7 @@ mod test {
     use crate::column::{ColumnId, ColumnIndex, ColumnToCreate};
     use crate::table::TableId;
     use crate::test_utils::ensure_test_table;
-    use reifydb_core::Kind;
+    use reifydb_core::DataType;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
@@ -93,7 +93,7 @@ mod test {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "col_1".to_string(),
-                value: Kind::Bool,
+                value: DataType::Bool,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),
@@ -110,7 +110,7 @@ mod test {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "col_2".to_string(),
-                value: Kind::Int2,
+                value: DataType::Int2,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(1),
@@ -121,12 +121,12 @@ mod test {
         let column_1 = Catalog::get_column(&mut tx, ColumnId(1)).unwrap().unwrap();
         assert_eq!(column_1.id, 1);
         assert_eq!(column_1.name, "col_1");
-        assert_eq!(column_1.value, Kind::Bool);
+        assert_eq!(column_1.value, DataType::Bool);
 
         let column_2 = Catalog::get_column(&mut tx, ColumnId(2)).unwrap().unwrap();
         assert_eq!(column_2.id, 2);
         assert_eq!(column_2.name, "col_2");
-        assert_eq!(column_2.value, Kind::Int2);
+        assert_eq!(column_2.value, DataType::Int2);
     }
 
     #[test]
@@ -143,7 +143,7 @@ mod test {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "col_1".to_string(),
-                value: Kind::Bool,
+                value: DataType::Bool,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),
@@ -161,7 +161,7 @@ mod test {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "col_1".to_string(),
-                value: Kind::Bool,
+                value: DataType::Bool,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(1),

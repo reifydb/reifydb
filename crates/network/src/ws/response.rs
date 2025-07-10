@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use reifydb_core::{Diagnostic, Kind};
+use reifydb_core::{Diagnostic, DataType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -47,6 +47,6 @@ pub struct WebsocketFrame {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebsocketColumn {
     pub name: String,
-    pub kind: Kind,
+    pub data_type: DataType,
     pub data: Vec<String>,
 }

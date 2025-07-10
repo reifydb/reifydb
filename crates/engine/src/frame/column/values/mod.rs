@@ -5,7 +5,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 use reifydb_core::num::IsNumber;
-use reifydb_core::{CowVec, Kind, Value};
+use reifydb_core::{CowVec, DataType, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
@@ -66,23 +66,23 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn with_capacity(value: Kind, capacity: usize) -> Self {
+    pub fn with_capacity(value: DataType, capacity: usize) -> Self {
         match value {
-            Kind::Bool => Self::bool_with_capacity(capacity),
-            Kind::Float4 => Self::float4_with_capacity(capacity),
-            Kind::Float8 => Self::float8_with_capacity(capacity),
-            Kind::Int1 => Self::int1_with_capacity(capacity),
-            Kind::Int2 => Self::int2_with_capacity(capacity),
-            Kind::Int4 => Self::int4_with_capacity(capacity),
-            Kind::Int8 => Self::int8_with_capacity(capacity),
-            Kind::Int16 => Self::int16_with_capacity(capacity),
-            Kind::Uint1 => Self::uint1_with_capacity(capacity),
-            Kind::Uint2 => Self::uint2_with_capacity(capacity),
-            Kind::Uint4 => Self::uint4_with_capacity(capacity),
-            Kind::Uint8 => Self::uint8_with_capacity(capacity),
-            Kind::Uint16 => Self::uint16_with_capacity(capacity),
-            Kind::Utf8 => Self::utf8_with_capacity(capacity),
-            Kind::Undefined => Self::undefined(capacity),
+            DataType::Bool => Self::bool_with_capacity(capacity),
+            DataType::Float4 => Self::float4_with_capacity(capacity),
+            DataType::Float8 => Self::float8_with_capacity(capacity),
+            DataType::Int1 => Self::int1_with_capacity(capacity),
+            DataType::Int2 => Self::int2_with_capacity(capacity),
+            DataType::Int4 => Self::int4_with_capacity(capacity),
+            DataType::Int8 => Self::int8_with_capacity(capacity),
+            DataType::Int16 => Self::int16_with_capacity(capacity),
+            DataType::Uint1 => Self::uint1_with_capacity(capacity),
+            DataType::Uint2 => Self::uint2_with_capacity(capacity),
+            DataType::Uint4 => Self::uint4_with_capacity(capacity),
+            DataType::Uint8 => Self::uint8_with_capacity(capacity),
+            DataType::Uint16 => Self::uint16_with_capacity(capacity),
+            DataType::Utf8 => Self::utf8_with_capacity(capacity),
+            DataType::Undefined => Self::undefined(capacity),
         }
     }
 
@@ -531,23 +531,23 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn kind(&self) -> Kind {
+    pub fn data_type(&self) -> DataType {
         match self {
-            ColumnValues::Bool(_, _) => Kind::Bool,
-            ColumnValues::Float4(_, _) => Kind::Float4,
-            ColumnValues::Float8(_, _) => Kind::Float8,
-            ColumnValues::Int1(_, _) => Kind::Int1,
-            ColumnValues::Int2(_, _) => Kind::Int2,
-            ColumnValues::Int4(_, _) => Kind::Int4,
-            ColumnValues::Int8(_, _) => Kind::Int8,
-            ColumnValues::Int16(_, _) => Kind::Int16,
-            ColumnValues::Utf8(_, _) => Kind::Utf8,
-            ColumnValues::Uint1(_, _) => Kind::Uint1,
-            ColumnValues::Uint2(_, _) => Kind::Uint2,
-            ColumnValues::Uint4(_, _) => Kind::Uint4,
-            ColumnValues::Uint8(_, _) => Kind::Uint8,
-            ColumnValues::Uint16(_, _) => Kind::Uint16,
-            ColumnValues::Undefined(_) => Kind::Undefined,
+            ColumnValues::Bool(_, _) => DataType::Bool,
+            ColumnValues::Float4(_, _) => DataType::Float4,
+            ColumnValues::Float8(_, _) => DataType::Float8,
+            ColumnValues::Int1(_, _) => DataType::Int1,
+            ColumnValues::Int2(_, _) => DataType::Int2,
+            ColumnValues::Int4(_, _) => DataType::Int4,
+            ColumnValues::Int8(_, _) => DataType::Int8,
+            ColumnValues::Int16(_, _) => DataType::Int16,
+            ColumnValues::Utf8(_, _) => DataType::Utf8,
+            ColumnValues::Uint1(_, _) => DataType::Uint1,
+            ColumnValues::Uint2(_, _) => DataType::Uint2,
+            ColumnValues::Uint4(_, _) => DataType::Uint4,
+            ColumnValues::Uint8(_, _) => DataType::Uint8,
+            ColumnValues::Uint16(_, _) => DataType::Uint16,
+            ColumnValues::Undefined(_) => DataType::Undefined,
         }
     }
 }

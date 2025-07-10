@@ -4,42 +4,42 @@
 use crate::ast::lex::Operator::OpenParen;
 use crate::ast::parse::Error::InvalidType;
 use crate::ast::parse::Parser;
-use crate::ast::{AstKind, parse};
+use crate::ast::{AstDataType, parse};
 
 impl Parser {
-    pub(crate) fn parse_kind(&mut self) -> parse::Result<AstKind> {
+    pub(crate) fn parse_kind(&mut self) -> parse::Result<AstDataType> {
         let value = self.current()?.span.fragment.as_str();
 
         let constructor = if value.eq_ignore_ascii_case("BOOL") {
-            AstKind::Boolean
+            AstDataType::Boolean
         } else if value.eq_ignore_ascii_case("FLOAT4") {
-            AstKind::Float4
+            AstDataType::Float4
         } else if value.eq_ignore_ascii_case("FLOAT8") {
-            AstKind::Float8
+            AstDataType::Float8
         } else if value.eq_ignore_ascii_case("INT1") {
-            AstKind::Int1
+            AstDataType::Int1
         } else if value.eq_ignore_ascii_case("INT2") {
-            AstKind::Int2
+            AstDataType::Int2
         } else if value.eq_ignore_ascii_case("INT4") {
-            AstKind::Int4
+            AstDataType::Int4
         } else if value.eq_ignore_ascii_case("INT8") {
-            AstKind::Int8
+            AstDataType::Int8
         } else if value.eq_ignore_ascii_case("INT16") {
-            AstKind::Int16
+            AstDataType::Int16
         } else if value.eq_ignore_ascii_case("NUMBER") {
-            AstKind::Number
+            AstDataType::Number
         } else if value.eq_ignore_ascii_case("TEXT") {
-            AstKind::Text
+            AstDataType::Text
         } else if value.eq_ignore_ascii_case("UINT1") {
-            AstKind::Uint1
+            AstDataType::Uint1
         } else if value.eq_ignore_ascii_case("UINT2") {
-            AstKind::Uint2
+            AstDataType::Uint2
         } else if value.eq_ignore_ascii_case("UINT4") {
-            AstKind::Uint4
+            AstDataType::Uint4
         } else if value.eq_ignore_ascii_case("UINT8") {
-            AstKind::Uint8
+            AstDataType::Uint8
         } else if value.eq_ignore_ascii_case("UINT16") {
-            AstKind::Uint16
+            AstDataType::Uint16
         } else {
             let token = self.current()?;
             return Err(InvalidType { got: token.clone() });
@@ -59,7 +59,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::AstKind;
+    use crate::ast::AstDataType;
     use crate::ast::lex::lex;
     use crate::ast::parse::Error::InvalidType;
     use crate::ast::parse::Parser;
@@ -77,7 +77,7 @@ mod tests {
         let tokens = lex("Bool").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Boolean(_) = result else { panic!() };
+        let AstDataType::Boolean(_) = result else { panic!() };
     }
 
     #[test]
@@ -85,7 +85,7 @@ mod tests {
         let tokens = lex("Float4").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Float4(_) = result else { panic!() };
+        let AstDataType::Float4(_) = result else { panic!() };
     }
 
     #[test]
@@ -93,7 +93,7 @@ mod tests {
         let tokens = lex("Float8").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Float8(_) = result else { panic!() };
+        let AstDataType::Float8(_) = result else { panic!() };
     }
 
     #[test]
@@ -101,7 +101,7 @@ mod tests {
         let tokens = lex("Int1").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Int1(_) = result else { panic!() };
+        let AstDataType::Int1(_) = result else { panic!() };
     }
 
     #[test]
@@ -109,7 +109,7 @@ mod tests {
         let tokens = lex("Int2").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Int2(_) = result else { panic!() };
+        let AstDataType::Int2(_) = result else { panic!() };
     }
 
     #[test]
@@ -117,7 +117,7 @@ mod tests {
         let tokens = lex("Int4").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Int4(_) = result else { panic!() };
+        let AstDataType::Int4(_) = result else { panic!() };
     }
 
     #[test]
@@ -125,7 +125,7 @@ mod tests {
         let tokens = lex("Int8").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Int8(_) = result else { panic!() };
+        let AstDataType::Int8(_) = result else { panic!() };
     }
 
     #[test]
@@ -133,7 +133,7 @@ mod tests {
         let tokens = lex("Uint1").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Uint1(_) = result else { panic!() };
+        let AstDataType::Uint1(_) = result else { panic!() };
     }
 
     #[test]
@@ -141,7 +141,7 @@ mod tests {
         let tokens = lex("Uint2").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Uint2(_) = result else { panic!() };
+        let AstDataType::Uint2(_) = result else { panic!() };
     }
 
     #[test]
@@ -149,7 +149,7 @@ mod tests {
         let tokens = lex("Uint4").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Uint4(_) = result else { panic!() };
+        let AstDataType::Uint4(_) = result else { panic!() };
     }
 
     #[test]
@@ -157,7 +157,7 @@ mod tests {
         let tokens = lex("Uint8").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Uint8(_) = result else { panic!() };
+        let AstDataType::Uint8(_) = result else { panic!() };
     }
 
     #[test]
@@ -165,7 +165,7 @@ mod tests {
         let tokens = lex("Number").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Number(_) = result else { panic!() };
+        let AstDataType::Number(_) = result else { panic!() };
     }
 
     #[test]
@@ -173,7 +173,7 @@ mod tests {
         let tokens = lex("Text").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Text(_) = result else { panic!() };
+        let AstDataType::Text(_) = result else { panic!() };
     }
 
     #[test]
@@ -181,7 +181,7 @@ mod tests {
         let tokens = lex("Text(255)").unwrap();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_kind().unwrap();
-        let AstKind::Text(_) = result else { panic!() };
+        let AstDataType::Text(_) = result else { panic!() };
         assert!(parser.is_eof())
     }
 }

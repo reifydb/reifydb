@@ -54,7 +54,7 @@ impl Display for Error {
 
         if let Some(col) = &diagnostic.column {
             let _ =
-                writeln!(&mut output, "\nnote: column `{}` is of type `{}`", col.name, col.value);
+                writeln!(&mut output, "\nnote: column `{}` is of type `{}`", col.name, col.data_type);
         }
 
         if let Some(help) = &diagnostic.help {

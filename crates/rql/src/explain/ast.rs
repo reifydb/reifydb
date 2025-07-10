@@ -24,7 +24,7 @@ pub fn explain_ast(query: &str) -> Result<String, Error> {
 fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut String) {
     let token = ast.token();
     let span = &token.span;
-    let kind = match ast {
+    let data_type = match ast {
         Ast::Aggregate(_) => "Aggregate",
         Ast::Block(_) => "Block",
         Ast::Cast(_) => "Cast",
@@ -45,14 +45,14 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::Prefix(_) => "Prefix",
         Ast::Select(_) => "Select",
         Ast::Tuple(_) => "Tuple",
-        Ast::Kind(_) => "Kind",
+        Ast::DataType(_) => "DataType",
         Ast::Wildcard(_) => "Wildcard",
     };
 
     let branch = if is_last { "└──" } else { "├──" };
     output.push_str(&format!(
         "{}{} {} @ line {}, offset {} — \"{}\"\n",
-        prefix, branch, kind, span.line.0, span.offset.0, span.fragment
+        prefix, branch, data_type, span.line.0, span.offset.0, span.fragment
     ));
 
     let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
@@ -99,7 +99,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
             children.extend(pb.policies.iter().map(|p| *p.value.clone()).collect::<Vec<_>>())
         }
         Ast::Policy(p) => children.push(*p.value),
-        Ast::Kind(_) => {}
+        Ast::DataType(_) => {}
         Ast::Infix(i) => {
             children.push(*i.left);
             children.push(*i.right);

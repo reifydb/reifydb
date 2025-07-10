@@ -8,7 +8,7 @@ use crate::ws::{
     RxResponse, Request, RequestPayload, Response, ResponsePayload,
 };
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::{CowVec, Diagnostic, Error, Kind};
+use reifydb_core::{CowVec, Diagnostic, Error, DataType};
 use reifydb_engine::frame::{Column, ColumnValues, Frame};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -207,7 +207,7 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                Column { name: col.name, values: convert_column_values(col.kind, col.data) }
+                Column { name: col.name, values: convert_column_values(col.data_type, col.data) }
             })
             .collect();
 
@@ -228,7 +228,7 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                Column { name: col.name, values: convert_column_values(col.kind, col.data) }
+                Column { name: col.name, values: convert_column_values(col.data_type, col.data) }
             })
             .collect();
 
@@ -238,7 +238,7 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
     result
 }
 
-fn convert_column_values(kind: Kind, data: Vec<String>) -> ColumnValues {
+fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues {
     let validity: Vec<bool> = data.iter().map(|s| s != "⟪undefined⟫").collect();
 
     macro_rules! parse {
@@ -257,8 +257,8 @@ fn convert_column_values(kind: Kind, data: Vec<String>) -> ColumnValues {
         }};
     }
 
-    match kind {
-        Kind::Bool => {
+    match data_type {
+        DataType::Bool => {
             let values: Vec<bool> = data
                 .iter()
                 .map(|s| match s.as_str() {
@@ -269,25 +269,25 @@ fn convert_column_values(kind: Kind, data: Vec<String>) -> ColumnValues {
                 .collect();
             ColumnValues::Bool(CowVec::new(values), CowVec::new(validity))
         }
-        Kind::Float4 => parse!(f32, Float4),
-        Kind::Float8 => parse!(f64, Float8),
-        Kind::Int1 => parse!(i8, Int1),
-        Kind::Int2 => parse!(i16, Int2),
-        Kind::Int4 => parse!(i32, Int4),
-        Kind::Int8 => parse!(i64, Int8),
-        Kind::Int16 => parse!(i128, Int16),
-        Kind::Uint1 => parse!(u8, Uint1),
-        Kind::Uint2 => parse!(u16, Uint2),
-        Kind::Uint4 => parse!(u32, Uint4),
-        Kind::Uint8 => parse!(u64, Uint8),
-        Kind::Uint16 => parse!(u128, Uint16),
-        Kind::Utf8 => {
+        DataType::Float4 => parse!(f32, Float4),
+        DataType::Float8 => parse!(f64, Float8),
+        DataType::Int1 => parse!(i8, Int1),
+        DataType::Int2 => parse!(i16, Int2),
+        DataType::Int4 => parse!(i32, Int4),
+        DataType::Int8 => parse!(i64, Int8),
+        DataType::Int16 => parse!(i128, Int16),
+        DataType::Uint1 => parse!(u8, Uint1),
+        DataType::Uint2 => parse!(u16, Uint2),
+        DataType::Uint4 => parse!(u32, Uint4),
+        DataType::Uint8 => parse!(u64, Uint8),
+        DataType::Uint16 => parse!(u128, Uint16),
+        DataType::Utf8 => {
             let values: Vec<String> = data
                 .iter()
                 .map(|s| if s == "⟪undefined⟫" { "".to_string() } else { s.clone() })
                 .collect();
             ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity))
         }
-        Kind::Undefined => ColumnValues::Undefined(data.len()),
+        DataType::Undefined => ColumnValues::Undefined(data.len()),
     }
 }

@@ -6,11 +6,11 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --sourcemap",
+    "test": "pnpm test:unit && pnpm test:integration",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:unit:watch": "vitest --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:watch": "vitest --config vitest.integration.config.ts",
-    "test:all": "pnpm test:unit && pnpm test:integration",
     "test:coverage": "vitest run --coverage --config vitest.config.ts",
     "pretest:integration": "pnpm build"
   },

@@ -110,7 +110,7 @@ impl Push<u32> for ColumnValues {
 				*self = ColumnValues::Uint4(CowVec::new(values), CowVec::new(validity));
 			}
 			other => {
-				panic!("called `push::<u32>()` on incompatible ColumnValues::{:?}", other.kind());
+				panic!("called `push::<u32>()` on incompatible ColumnValues::{:?}", other.data_type());
 			}
 		}
 	}

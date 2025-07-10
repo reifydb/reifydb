@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Kind;
+use crate::DataType;
 use std::cmp::min;
 
-impl Kind {
+impl DataType {
     /// Promote two ValueKinds to a common supertype, similar to PostgreSQL expression evaluation.
-    pub fn promote(left: Kind, right: Kind) -> Kind {
-        use Kind::*;
+    pub fn promote(left: DataType, right: DataType) -> DataType {
+        use DataType::*;
 
         if left == Undefined || right == Undefined {
             return Undefined;
@@ -32,10 +32,10 @@ impl Kind {
         let signed_order = [Int1, Int2, Int4, Int8, Int16];
         let unsigned_order = [Uint1, Uint2, Uint4, Uint8, Uint16];
 
-        let is_signed = |k: Kind| signed_order.contains(&k);
-        let is_unsigned = |k: Kind| unsigned_order.contains(&k);
+        let is_signed = |k: DataType| signed_order.contains(&k);
+        let is_unsigned = |k: DataType| unsigned_order.contains(&k);
 
-        let rank = |k: Kind| match k {
+        let rank = |k: DataType| match k {
             Int1 | Uint1 => 0,
             Int2 | Uint2 => 1,
             Int4 | Uint4 => 2,
@@ -69,11 +69,11 @@ impl Kind {
 
 #[cfg(test)]
 mod tests {
-    use crate::Kind;
+    use crate::DataType;
 
     #[test]
     fn test_promote_bool() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Bool, Bool, Bool),
             (Bool, Float4, Bool),
@@ -92,13 +92,13 @@ mod tests {
             (Bool, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_float4() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Float4, Bool, Bool),
             (Float4, Float4, Float8),
@@ -117,13 +117,13 @@ mod tests {
             (Float4, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_float8() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Float8, Bool, Bool),
             (Float8, Float4, Float8),
@@ -142,13 +142,13 @@ mod tests {
             (Float8, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_int1() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Int1, Bool, Bool),
             (Int1, Float4, Float8),
@@ -167,13 +167,13 @@ mod tests {
             (Int1, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_int2() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Int2, Bool, Bool),
             (Int2, Float4, Float8),
@@ -192,13 +192,13 @@ mod tests {
             (Int2, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_int4() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Int4, Bool, Bool),
             (Int4, Float4, Float8),
@@ -217,13 +217,13 @@ mod tests {
             (Int4, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_int8() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Int8, Bool, Bool),
             (Int8, Float4, Float8),
@@ -242,13 +242,13 @@ mod tests {
             (Int8, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_int16() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Int16, Bool, Bool),
             (Int16, Float4, Float8),
@@ -267,27 +267,27 @@ mod tests {
             (Int16, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_string() {
-        use Kind::*;
+        use DataType::*;
         let kinds = [
             Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Utf8, Uint1, Uint2, Uint4, Uint8,
             Uint16,
         ];
-        for kind in kinds {
-            assert_eq!(Kind::promote(Utf8, kind), Utf8);
+        for data_type in kinds {
+            assert_eq!(DataType::promote(Utf8, data_type), Utf8);
         }
 
-        assert_eq!(Kind::promote(Utf8, Undefined), Undefined);
+        assert_eq!(DataType::promote(Utf8, Undefined), Undefined);
     }
 
     #[test]
     fn test_promote_uint1() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Uint1, Bool, Bool),
             (Uint1, Float4, Float8),
@@ -306,13 +306,13 @@ mod tests {
             (Uint1, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_uint2() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Uint2, Bool, Bool),
             (Uint2, Float4, Float8),
@@ -331,13 +331,13 @@ mod tests {
             (Uint2, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_uint4() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Uint4, Bool, Bool),
             (Uint4, Float4, Float8),
@@ -356,13 +356,13 @@ mod tests {
             (Uint4, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_uint8() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Uint8, Bool, Bool),
             (Uint8, Float4, Float8),
@@ -381,13 +381,13 @@ mod tests {
             (Uint8, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_uint16() {
-        use Kind::*;
+        use DataType::*;
         let cases = [
             (Uint16, Bool, Bool),
             (Uint16, Float4, Float8),
@@ -406,19 +406,19 @@ mod tests {
             (Uint16, Undefined, Undefined),
         ];
         for (left, right, expected) in cases {
-            assert_eq!(Kind::promote(left, right), expected);
+            assert_eq!(DataType::promote(left, right), expected);
         }
     }
 
     #[test]
     fn test_promote_undefined() {
-        use Kind::*;
+        use DataType::*;
         let kinds = [
             Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Utf8, Uint1, Uint2, Uint4, Uint8,
             Uint16, Undefined,
         ];
-        for kind in kinds {
-            assert_eq!(Kind::promote(Undefined, kind), Undefined);
+        for data_type in kinds {
+            assert_eq!(DataType::promote(Undefined, data_type), Undefined);
         }
     }
 }

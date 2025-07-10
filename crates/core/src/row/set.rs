@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::Kind;
+use crate::DataType;
 use crate::row::{EncodedRow, Layout};
 use std::ptr;
 
@@ -9,7 +9,7 @@ impl Layout {
     pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Bool);
+        debug_assert_eq!(field.value, DataType::Bool);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -22,7 +22,7 @@ impl Layout {
     pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Float4);
+        debug_assert_eq!(field.value, DataType::Float4);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -35,7 +35,7 @@ impl Layout {
     pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: impl Into<f64>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Float8);
+        debug_assert_eq!(field.value, DataType::Float8);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -48,7 +48,7 @@ impl Layout {
     pub fn set_i8(&self, row: &mut EncodedRow, index: usize, value: impl Into<i8>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Int1);
+        debug_assert_eq!(field.value, DataType::Int1);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -61,7 +61,7 @@ impl Layout {
     pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: impl Into<i16>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Int2);
+        debug_assert_eq!(field.value, DataType::Int2);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -74,7 +74,7 @@ impl Layout {
     pub fn set_i32(&self, row: &mut EncodedRow, index: usize, value: impl Into<i32>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Int4);
+        debug_assert_eq!(field.value, DataType::Int4);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -87,7 +87,7 @@ impl Layout {
     pub fn set_i64(&self, row: &mut EncodedRow, index: usize, value: impl Into<i64>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Int8);
+        debug_assert_eq!(field.value, DataType::Int8);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -100,7 +100,7 @@ impl Layout {
     pub fn set_i128(&self, row: &mut EncodedRow, index: usize, value: impl Into<i128>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Int16);
+        debug_assert_eq!(field.value, DataType::Int16);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -113,7 +113,7 @@ impl Layout {
     pub fn set_str(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Utf8);
+        debug_assert_eq!(field.value, DataType::Utf8);
 
         let bytes = value.as_ref().as_bytes();
         let len = bytes.len().min(254); // One byte for length
@@ -129,7 +129,7 @@ impl Layout {
     pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Uint1);
+        debug_assert_eq!(field.value, DataType::Uint1);
         row.set_valid(index, true);
         unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset), value.into()) }
     }
@@ -137,7 +137,7 @@ impl Layout {
     pub fn set_u16(&self, row: &mut EncodedRow, index: usize, value: impl Into<u16>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Uint2);
+        debug_assert_eq!(field.value, DataType::Uint2);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -150,7 +150,7 @@ impl Layout {
     pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Uint4);
+        debug_assert_eq!(field.value, DataType::Uint4);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -163,7 +163,7 @@ impl Layout {
     pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: impl Into<u64>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Uint8);
+        debug_assert_eq!(field.value, DataType::Uint8);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -176,7 +176,7 @@ impl Layout {
     pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: impl Into<u128>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Uint16);
+        debug_assert_eq!(field.value, DataType::Uint16);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -201,12 +201,12 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    use crate::Kind;
+    use crate::DataType;
     use crate::row::Layout;
 
     #[test]
     fn test_bool_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Bool]);
+        let layout = Layout::new(&[DataType::Bool]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_f32_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Float4]);
+        let layout = Layout::new(&[DataType::Float4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_f64_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Float8]);
+        let layout = Layout::new(&[DataType::Float8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_i8_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Int1]);
+        let layout = Layout::new(&[DataType::Int1]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_i16_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Int2]);
+        let layout = Layout::new(&[DataType::Int2]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_i32_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Int4]);
+        let layout = Layout::new(&[DataType::Int4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_i64_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Int8]);
+        let layout = Layout::new(&[DataType::Int8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn test_i128_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Int16]);
+        let layout = Layout::new(&[DataType::Int16]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_str_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Utf8]);
+        let layout = Layout::new(&[DataType::Utf8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_u8_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Uint1]);
+        let layout = Layout::new(&[DataType::Uint1]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_u16_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Uint2]);
+        let layout = Layout::new(&[DataType::Uint2]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn test_u32_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Uint4]);
+        let layout = Layout::new(&[DataType::Uint4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     fn test_u64_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Uint8]);
+        let layout = Layout::new(&[DataType::Uint8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn test_u128_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Uint16]);
+        let layout = Layout::new(&[DataType::Uint16]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_set_undefined_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Int4]);
+        let layout = Layout::new(&[DataType::Int4]);
         let mut row1 = layout.allocate_row();
 
         layout.set_i32(&mut row1, 0, 12345);

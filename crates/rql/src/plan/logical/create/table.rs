@@ -13,7 +13,7 @@ impl Compiler {
 
         for col in ast.columns.iter() {
             let column_name = col.name.value().to_string();
-            let column_type = col.ty.kind();
+            let column_type = col.ty.data_type();
 
             let policies = if let Some(policy_block) = &col.policies {
                 policy_block.policies.iter().map(convert_policy).collect::<Vec<ColumnPolicyKind>>()

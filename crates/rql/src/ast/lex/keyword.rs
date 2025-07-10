@@ -238,10 +238,10 @@ mod tests {
             let (remaining, token) = result;
 
             assert_eq!(
-                TokenKind::Keyword(keyword),
-                token.kind,
-                "kind mismatch for keyword: {}",
-                repr
+				TokenKind::Keyword(keyword),
+				token.kind,
+				"data_type mismatch for keyword: {}",
+				repr
             );
             assert_eq!(token.span.fragment.to_lowercase(), repr.to_lowercase());
             assert_eq!(token.span.offset, 0);

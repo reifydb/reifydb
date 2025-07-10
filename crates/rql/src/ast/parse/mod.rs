@@ -14,7 +14,7 @@ mod identifier;
 mod infix;
 mod insert;
 mod join;
-mod kind;
+mod data_type;
 mod limit;
 mod literal;
 mod order;

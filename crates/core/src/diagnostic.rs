@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::{Kind, Span};
+use crate::{DataType, Span};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -21,7 +21,7 @@ pub struct Diagnostic {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiagnosticColumn {
     pub name: String,
-    pub value: Kind,
+    pub data_type: DataType,
 }
 
 impl Display for Diagnostic {

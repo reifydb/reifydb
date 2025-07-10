@@ -61,18 +61,18 @@ impl Compiler {
                 let mut tuple = node.tuple;
                 let ast_kind = tuple.nodes.pop().unwrap();
                 let expr = tuple.nodes.pop().unwrap();
-                let kind = ast_kind.as_kind().kind();
+                let data_type = ast_kind.as_kind().data_type();
                 let span = ast_kind.as_kind().token().span.clone();
 
                 Ok(Expression::Cast(CastExpression {
                     span: node.token.span,
                     expression: Box::new(Self::compile_expression(expr)?),
-                    to: KindExpression { span, kind },
+                    to: KindExpression { span, data_type },
                 }))
             }
-            Ast::Kind(node) => Ok(Expression::Kind(KindExpression {
+            Ast::DataType(node) => Ok(Expression::DataType(KindExpression {
                 span: node.token().span.clone(),
-                kind: node.kind(),
+                data_type: node.data_type(),
             })),
             ast => unimplemented!("{:?}", ast),
         }

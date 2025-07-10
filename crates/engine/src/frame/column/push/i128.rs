@@ -93,7 +93,7 @@ impl Push<i128> for ColumnValues {
                 *self = ColumnValues::Int16(CowVec::new(values), CowVec::new(validity));
             }
             other => {
-                panic!("called `push::<i128>()` on incompatible ColumnValues::{:?}", other.kind());
+                panic!("called `push::<i128>()` on incompatible ColumnValues::{:?}", other.data_type());
             }
         }
     }

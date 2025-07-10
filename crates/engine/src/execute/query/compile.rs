@@ -10,7 +10,7 @@ use crate::frame::{Column, ColumnValues, Frame};
 use crate::function::Functions;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
-use reifydb_core::Kind;
+use reifydb_core::DataType;
 use reifydb_core::interface::Rx;
 use reifydb_core::row::Layout;
 use reifydb_rql::plan::physical;
@@ -77,21 +77,21 @@ pub(crate) fn compile(
                 .map(|col| {
                     let name = col.name.clone();
                     let data = match col.value {
-                        Kind::Bool => ColumnValues::bool(vec![]),
-                        Kind::Float4 => ColumnValues::float4(vec![]),
-                        Kind::Float8 => ColumnValues::float8(vec![]),
-                        Kind::Int1 => ColumnValues::int1(vec![]),
-                        Kind::Int2 => ColumnValues::int2(vec![]),
-                        Kind::Int4 => ColumnValues::int4(vec![]),
-                        Kind::Int8 => ColumnValues::int8(vec![]),
-                        Kind::Int16 => ColumnValues::int16(vec![]),
-                        Kind::Utf8 => ColumnValues::utf8(vec![]),
-                        Kind::Uint1 => ColumnValues::uint1(vec![]),
-                        Kind::Uint2 => ColumnValues::uint2(vec![]),
-                        Kind::Uint4 => ColumnValues::uint4(vec![]),
-                        Kind::Uint8 => ColumnValues::uint8(vec![]),
-                        Kind::Uint16 => ColumnValues::uint16(vec![]),
-                        Kind::Undefined => ColumnValues::Undefined(0),
+                        DataType::Bool => ColumnValues::bool(vec![]),
+                        DataType::Float4 => ColumnValues::float4(vec![]),
+                        DataType::Float8 => ColumnValues::float8(vec![]),
+                        DataType::Int1 => ColumnValues::int1(vec![]),
+                        DataType::Int2 => ColumnValues::int2(vec![]),
+                        DataType::Int4 => ColumnValues::int4(vec![]),
+                        DataType::Int8 => ColumnValues::int8(vec![]),
+                        DataType::Int16 => ColumnValues::int16(vec![]),
+                        DataType::Utf8 => ColumnValues::utf8(vec![]),
+                        DataType::Uint1 => ColumnValues::uint1(vec![]),
+                        DataType::Uint2 => ColumnValues::uint2(vec![]),
+                        DataType::Uint4 => ColumnValues::uint4(vec![]),
+                        DataType::Uint8 => ColumnValues::uint8(vec![]),
+                        DataType::Uint16 => ColumnValues::uint16(vec![]),
+                        DataType::Undefined => ColumnValues::Undefined(0),
                     };
                     Column { name, values: data }
                 })

@@ -5,7 +5,7 @@ use crate::evaluate::{Context, Evaluator};
 use crate::frame::{Column, ColumnValues, Push};
 use reifydb_core::Span;
 use reifydb_core::num::{IsNumber, Promote, SafeSubtract};
-use reifydb_core::{CowVec, GetKind, Kind};
+use reifydb_core::{CowVec, GetKind, DataType};
 use reifydb_rql::expression::SubtractExpression;
 
 impl Evaluator {
@@ -16,471 +16,471 @@ impl Evaluator {
     ) -> crate::evaluate::Result<Column> {
         let left = self.evaluate(&sub.left, ctx)?;
         let right = self.evaluate(&sub.right, ctx)?;
-        let kind = Kind::promote(left.kind(), right.kind());
+        let data_type = DataType::promote(left.data_type(), right.data_type());
 
         match (&left.values, &right.values) {
             // Float4
             (ColumnValues::Float4(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int1(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint1(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             // Float8
             (ColumnValues::Float8(l, lv), ColumnValues::Float4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int1(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint1(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Float8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             // Signed × Signed
             (ColumnValues::Int1(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int2(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int4(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int8(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int16(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             // Signed × Unsigned
             (ColumnValues::Int1(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int2(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int4(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int8(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Int16(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             // Unsigned × Signed
             (ColumnValues::Uint1(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint2(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint4(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint8(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint16(l, lv), ColumnValues::Int1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Int2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Int4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Int8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Int16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             // Unsigned × Unsigned
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint1(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint2(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint4(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint8(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint16(r, rv)) => {
-                sub_numeric(ctx, l, r, lv, rv, kind, sub.span())
+                sub_numeric(ctx, l, r, lv, rv, data_type, sub.span())
             }
 
             _ => unimplemented!(),
@@ -489,13 +489,13 @@ impl Evaluator {
 }
 
 fn sub_numeric<L, R>(
-    ctx: &Context,
-    l: &CowVec<L>,
-    r: &CowVec<R>,
-    lv: &CowVec<bool>,
-    rv: &CowVec<bool>,
-    kind: Kind,
-    span: Span,
+	ctx: &Context,
+	l: &CowVec<L>,
+	r: &CowVec<R>,
+	lv: &CowVec<bool>,
+	rv: &CowVec<bool>,
+	data_type: DataType,
+	span: Span,
 ) -> crate::evaluate::Result<Column>
 where
     L: GetKind + Promote<R> + Copy,
@@ -507,7 +507,7 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(l.len(), r.len());
 
-    let mut data = ColumnValues::with_capacity(kind, lv.len());
+    let mut data = ColumnValues::with_capacity(data_type, lv.len());
     for i in 0..l.len() {
         if lv[i] && rv[i] {
             if let Some(value) = ctx.sub(l[i], r[i], &span)? {

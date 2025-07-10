@@ -15,7 +15,7 @@ impl Error {
                 message: format!("unexpected token: expected `{}`", expected),
                 span: Some(got.span.clone()),
                 label: Some(format!("found `{}`", got.span.fragment)),
-                help: Some(format!("expected token of kind `{}`", expected)),
+                help: Some(format!("expected token of data_type `{}`", expected)),
                 column: None,
                 notes: vec![],
             },
