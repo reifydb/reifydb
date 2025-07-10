@@ -17,9 +17,14 @@ clean:
 .PHONY: test
 test: testlocal testsuite
 
-.PHONY: test
+.PHONY: build
 build:
 	cargo build --release
+
+# create the test container
+.PHONY: testcontainer
+testcontainer:
+	docker build . -f bin/test/Dockerfile -t reifydb/test
 
 .PHONY: coverage
 coverage:
@@ -28,6 +33,7 @@ coverage:
 .PHONY: push
 push: check
 	git push
+	docker push reifydb/testcontainer
 
 
 # Path to the test suites directory

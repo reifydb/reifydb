@@ -64,9 +64,6 @@ export default defineConfig({
         // Environment variables
         env: {
             NODE_ENV: 'test',
-            REIFYDB_WS_URL: 'ws://127.0.0.1:9001',
-            REIFYDB_HTTP_URL: 'http://127.0.0.1:9001',
-            REIFYDB_TOKEN: 'test-token'
         }
     },
 

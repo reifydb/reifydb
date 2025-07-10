@@ -5,9 +5,9 @@ export default defineConfig({
     test: {
         globals: true,
         environment: 'node',
-        testTimeout: 60000,
-        hookTimeout: 30000,
-        teardownTimeout: 10000,
+        testTimeout: 1000,
+        hookTimeout: 3000,
+        teardownTimeout: 5000,
 
         // Only integration tests
         include: [
@@ -42,10 +42,8 @@ export default defineConfig({
         // Environment variables for integration tests
         env: {
             NODE_ENV: 'test',
-            REIFYDB_WS_URL: process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:9001',
-            REIFYDB_HTTP_URL: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:9001',
+            REIFYDB_WS_URL: process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:9090',
             REIFYDB_TOKEN: process.env.REIFYDB_TOKEN || 'test-token',
-            REIFYDB_TEST_DB_PATH: './test-data',
             REIFYDB_LOG_LEVEL: 'info'
         }
     },

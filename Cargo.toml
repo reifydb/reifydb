@@ -1,9 +1,11 @@
 [workspace]
 resolver = "2"
 
-members = ["bin/cli",
+members = [
+    "bin/cli",
     "bin/playground",
     "bin/server",
+    "bin/test",
     "crates/auth",
     "crates/catalog",
     "crates/core",
@@ -20,9 +22,11 @@ members = ["bin/cli",
     "testsuite/regression",
 ]
 
-default-members = ["bin/cli",
+default-members = [
+    "bin/cli",
     "bin/playground",
     "bin/server",
+    "bin/test",
     "crates/auth",
     "crates/catalog",
     "crates/core",
@@ -82,7 +86,7 @@ reifydb-testing = { path = "crates/testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/transaction", version = "0.0.1" }
 
 # util
-futures-util = {version = "0.3.31"}
+futures-util = { version = "0.3.31" }
 once_cell = { version = "1.21.3" }
 rand = { version = "0.9.1" }
 regex = { version = "1.11.1" }

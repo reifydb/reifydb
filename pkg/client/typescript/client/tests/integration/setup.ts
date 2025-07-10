@@ -74,7 +74,7 @@ export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<vo
     for (let i = 0; i < maxRetries; i++) {
         try {
             const client = await Client.connect_ws(
-                process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:9001',
+                process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:9090',
                 {timeoutMs: 2000}
             );
 

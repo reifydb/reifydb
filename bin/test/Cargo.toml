@@ -1,0 +1,10 @@
+[package]
+name = "reifydb-test"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reifydb = { workspace = true, features = ["server"] }

@@ -1639,6 +1639,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-test"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
+]
+
+[[package]]
 name = "reifydb-testing"
 version = "0.0.1"
 dependencies = [
