@@ -118,7 +118,7 @@ impl<'df> Iterator for FrameIter<'df> {
                         ValueRef::Undefined
                     }
                 }
-                ColumnValues::String(data, bitmap) => {
+                ColumnValues::Utf8(data, bitmap) => {
                     if bitmap[i] {
                         ValueRef::String(&data[i])
                     } else {

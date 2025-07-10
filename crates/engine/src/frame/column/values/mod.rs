@@ -18,12 +18,12 @@ pub enum ColumnValues {
     Int4(CowVec<i32>, CowVec<bool>),
     Int8(CowVec<i64>, CowVec<bool>),
     Int16(CowVec<i128>, CowVec<bool>),
-    String(CowVec<String>, CowVec<bool>),
     Uint1(CowVec<u8>, CowVec<bool>),
     Uint2(CowVec<u16>, CowVec<bool>),
     Uint4(CowVec<u32>, CowVec<bool>),
     Uint8(CowVec<u64>, CowVec<bool>),
     Uint16(CowVec<u128>, CowVec<bool>),
+    Utf8(CowVec<String>, CowVec<bool>),
     // special case: all undefined
     Undefined(usize),
 }
@@ -43,7 +43,7 @@ impl ColumnValues {
             | ColumnValues::Uint4(_, _)
             | ColumnValues::Uint8(_, _)
             | ColumnValues::Uint16(_, _) => true,
-            ColumnValues::String(_, _) | ColumnValues::Bool(_, _) | ColumnValues::Undefined(_) => {
+            ColumnValues::Utf8(_, _) | ColumnValues::Bool(_, _) | ColumnValues::Undefined(_) => {
                 false
             }
         }
@@ -76,7 +76,7 @@ impl ColumnValues {
             Kind::Int4 => Self::int4_with_capacity(capacity),
             Kind::Int8 => Self::int8_with_capacity(capacity),
             Kind::Int16 => Self::int16_with_capacity(capacity),
-            Kind::Text => Self::string_with_capacity(capacity),
+            Kind::Utf8 => Self::utf8_with_capacity(capacity),
             Kind::Uint1 => Self::uint1_with_capacity(capacity),
             Kind::Uint2 => Self::uint2_with_capacity(capacity),
             Kind::Uint4 => Self::uint4_with_capacity(capacity),
@@ -145,11 +145,11 @@ impl ColumnValues {
                     .map(|(v, va)| if *va { Value::Int16(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::String(values, validity) => Box::new(
+            ColumnValues::Utf8(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::String(v.clone()) } else { Value::Undefined })
+                    .map(|(v, va)| if *va { Value::Utf8(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Uint1(values, validity) => Box::new(
@@ -355,24 +355,24 @@ impl ColumnValues {
         ColumnValues::Int16(CowVec::new(values), CowVec::new(validity))
     }
 
-    pub fn string<'a>(values: impl IntoIterator<Item = String>) -> Self {
+    pub fn utf8<'a>(values: impl IntoIterator<Item = String>) -> Self {
         let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::String(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Utf8(CowVec::new(values), CowVec::new(vec![true; len]))
     }
 
-    pub fn string_with_capacity(capacity: usize) -> Self {
-        ColumnValues::String(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    pub fn utf8_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Utf8(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
     }
 
-    pub fn string_with_validity<'a>(
+    pub fn utf8_with_validity<'a>(
         values: impl IntoIterator<Item = String>,
         validity: impl IntoIterator<Item = bool>,
     ) -> Self {
         let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let validity = validity.into_iter().collect::<Vec<_>>();
         assert_eq!(validity.len(), values.len());
-        ColumnValues::String(CowVec::new(values), CowVec::new(validity))
+        ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity))
     }
 
     pub fn uint1(values: impl IntoIterator<Item = u8>) -> Self {
@@ -491,7 +491,7 @@ impl ColumnValues {
             Value::Int4(v) => ColumnValues::int4(vec![v; row_count]),
             Value::Int8(v) => ColumnValues::int8(vec![v; row_count]),
             Value::Int16(v) => ColumnValues::int16(vec![v; row_count]),
-            Value::String(v) => ColumnValues::string(vec![v; row_count]),
+            Value::Utf8(v) => ColumnValues::utf8(vec![v; row_count]),
             Value::Uint1(v) => ColumnValues::uint1(vec![v; row_count]),
             Value::Uint2(v) => ColumnValues::uint2(vec![v; row_count]),
             Value::Uint4(v) => ColumnValues::uint4(vec![v; row_count]),
@@ -519,7 +519,7 @@ impl ColumnValues {
             ColumnValues::Int4(_, b) => b.len(),
             ColumnValues::Int8(_, b) => b.len(),
             ColumnValues::Int16(_, b) => b.len(),
-            ColumnValues::String(_, b) => b.len(),
+            ColumnValues::Utf8(_, b) => b.len(),
             ColumnValues::Uint1(_, b) => b.len(),
             ColumnValues::Uint2(_, b) => b.len(),
             ColumnValues::Uint4(_, b) => b.len(),
@@ -541,7 +541,7 @@ impl ColumnValues {
             ColumnValues::Int4(_, _) => Kind::Int4,
             ColumnValues::Int8(_, _) => Kind::Int8,
             ColumnValues::Int16(_, _) => Kind::Int16,
-            ColumnValues::String(_, _) => Kind::Text,
+            ColumnValues::Utf8(_, _) => Kind::Utf8,
             ColumnValues::Uint1(_, _) => Kind::Uint1,
             ColumnValues::Uint2(_, _) => Kind::Uint2,
             ColumnValues::Uint4(_, _) => Kind::Uint4,

@@ -38,7 +38,7 @@ impl ColumnValues {
                 v.reorder(indices);
                 valid.reorder(indices);
             }
-            ColumnValues::String(v, valid) => {
+            ColumnValues::Utf8(v, valid) => {
                 v.reorder(indices);
                 valid.reorder(indices);
             }
@@ -179,14 +179,14 @@ mod tests {
 
     #[test]
     fn test_reorder_string() {
-        let mut col = ColumnValues::String(
+        let mut col = ColumnValues::Utf8(
             CowVec::new(vec!["a".into(), "b".into(), "c".into()]),
             CowVec::new(vec![true, false, true]),
         );
         col.reorder(&[2, 0, 1]);
         assert_eq!(
             col,
-            ColumnValues::String(
+            ColumnValues::Utf8(
                 CowVec::new(vec!["c".into(), "a".into(), "b".into()]),
                 CowVec::new(vec![true, true, false])
             )

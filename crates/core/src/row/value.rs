@@ -42,8 +42,8 @@ impl Layout {
             (Kind::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
             (Kind::Int16, Value::Undefined) => self.set_undefined(row, index),
 
-            (Kind::Text, Value::String(v)) => self.set_str(row, index, v),
-            (Kind::Text, Value::Undefined) => self.set_undefined(row, index),
+            (Kind::Utf8, Value::Utf8(v)) => self.set_str(row, index, v),
+            (Kind::Utf8, Value::Undefined) => self.set_undefined(row, index),
 
             (Kind::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
             (Kind::Uint1, Value::Undefined) => self.set_undefined(row, index),
@@ -80,7 +80,7 @@ impl Layout {
             Kind::Int4 => Value::Int4(self.get_i32(row, index)),
             Kind::Int8 => Value::Int8(self.get_i64(row, index)),
             Kind::Int16 => Value::Int16(self.get_i128(row, index)),
-            Kind::Text => Value::String(self.get_str(row, index).to_string()),
+            Kind::Utf8 => Value::Utf8(self.get_str(row, index).to_string()),
             Kind::Uint1 => Value::Uint1(self.get_u8(row, index)),
             Kind::Uint2 => Value::Uint2(self.get_u16(row, index)),
             Kind::Uint4 => Value::Uint4(self.get_u32(row, index)),

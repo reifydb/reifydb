@@ -67,7 +67,7 @@ impl_push!(f64, Float8);
 impl Push<String> for ColumnValues {
     fn push(&mut self, value: String) {
         match self {
-            ColumnValues::String(values, validity) => {
+            ColumnValues::Utf8(values, validity) => {
                 values.push(value);
                 validity.push(true);
             }
@@ -77,7 +77,7 @@ impl Push<String> for ColumnValues {
                 values.push(value);
                 validity.push(true);
 
-                *self = ColumnValues::String(CowVec::new(values), CowVec::new(validity));
+                *self = ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity));
             }
             other => panic!("called `push::<String>()` on ColumnValues::{:?}", other.kind()),
         }

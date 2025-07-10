@@ -42,7 +42,7 @@ impl Frame {
                     CowVec::new(values[..n.min(values.len())].to_vec()),
                     CowVec::new(valid[..n.min(valid.len())].to_vec()),
                 ),
-                ColumnValues::String(values, valid) => ColumnValues::String(
+                ColumnValues::Utf8(values, valid) => ColumnValues::Utf8(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
                     CowVec::new(valid[..n.min(valid.len())].to_vec()),
                 ),
@@ -298,7 +298,7 @@ mod tests {
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::string_with_validity(["a".to_string(), "b".to_string()], [true, false])
+            ColumnValues::utf8_with_validity(["a".to_string(), "b".to_string()], [true, false])
         );
     }
 

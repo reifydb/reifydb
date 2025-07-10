@@ -64,9 +64,9 @@ impl ColumnValues {
                     Value::Undefined
                 }
             }
-            ColumnValues::String(v, b) => {
+            ColumnValues::Utf8(v, b) => {
                 if b[index] {
-                    Value::String(v[index].clone())
+                    Value::Utf8(v[index].clone())
                 } else {
                     Value::Undefined
                 }

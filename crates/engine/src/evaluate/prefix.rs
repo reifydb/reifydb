@@ -145,7 +145,7 @@ impl Evaluator {
             }
 
             // ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
-            ColumnValues::String(_, _) => unimplemented!(),
+            ColumnValues::Utf8(_, _) => unimplemented!(),
 
             ColumnValues::Uint1(values, valid) => {
                 let mut result = Vec::with_capacity(values.len());

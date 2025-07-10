@@ -136,7 +136,7 @@ impl AsSlice<u128> for ColumnValues {
 impl AsSlice<String> for ColumnValues {
     fn as_slice(&self) -> &[String] {
         match self {
-            ColumnValues::String(values, _) => values.as_slice(),
+            ColumnValues::Utf8(values, _) => values.as_slice(),
             other => panic!("called `as_slice::<String>()` on ColumnValues::{:?}", other.kind()),
         }
     }

@@ -122,9 +122,9 @@ impl Frame {
                             Value::Undefined
                         }
                     }
-                    ColumnValues::String(data, valid) => {
+                    ColumnValues::Utf8(data, valid) => {
                         if valid[row_idx] {
-                            Value::String(data[row_idx].clone())
+                            Value::Utf8(data[row_idx].clone())
                         } else {
                             Value::Undefined
                         }

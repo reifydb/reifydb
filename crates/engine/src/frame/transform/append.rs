@@ -83,7 +83,7 @@ impl Frame {
                         CowVec::new(vec![0i128; size]),
                         CowVec::new(vec![false; size]),
                     ),
-                    Kind::Text => ColumnValues::string_with_validity(
+                    Kind::Utf8 => ColumnValues::utf8_with_validity(
                         CowVec::new(vec![String::new(); size]),
                         CowVec::new(vec![false; size]),
                     ),
@@ -162,7 +162,7 @@ impl Frame {
                     vec.push(layout.get_i128(&row, index));
                     valid.push(true);
                 }
-                (ColumnValues::String(vec, valid), Kind::Text) => {
+                (ColumnValues::Utf8(vec, valid), Kind::Utf8) => {
                     vec.push(layout.get_str(&row, index).to_string());
                     valid.push(true);
                 }
@@ -299,7 +299,7 @@ impl Frame {
                         }
                     }
                 }
-                (ColumnValues::String(vec, valid), Kind::Text) => {
+                (ColumnValues::Utf8(vec, valid), Kind::Utf8) => {
                     match layout.try_get_str(row, index) {
                         Some(v) => {
                             vec.push(v.to_string());
@@ -794,14 +794,14 @@ mod tests {
         #[test]
         fn test_before_undefined_string() {
             let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
-            let layout = Layout::new(&[Kind::Text]);
+            let layout = Layout::new(&[Kind::Utf8]);
             let mut row = layout.allocate_row();
-            layout.set_values(&mut row, &[Value::String("reifydb".into())]);
+            layout.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
             test_instance.append_rows(&layout, [row]).unwrap();
 
             assert_eq!(
                 test_instance.columns[0].values,
-                ColumnValues::string_with_validity(
+                ColumnValues::utf8_with_validity(
                     ["".to_string(), "".to_string(), "reifydb".to_string()],
                     [false, false, true]
                 )
@@ -1039,17 +1039,17 @@ mod tests {
         fn test_all_defined_string() {
             let mut test_instance = Frame::new(vec![Column::string("test", [])]);
 
-            let layout = Layout::new(&[Kind::Text]);
+            let layout = Layout::new(&[Kind::Utf8]);
             let mut row_one = layout.allocate_row();
-            layout.set_values(&mut row_one, &[Value::String("a".into())]);
+            layout.set_values(&mut row_one, &[Value::Utf8("a".into())]);
             let mut row_two = layout.allocate_row();
-            layout.set_values(&mut row_two, &[Value::String("b".into())]);
+            layout.set_values(&mut row_two, &[Value::Utf8("b".into())]);
 
             test_instance.append_rows(&layout, [row_one, row_two]).unwrap();
 
             assert_eq!(
                 test_instance.columns[0].values,
-                ColumnValues::string(["a".to_string(), "b".to_string()])
+                ColumnValues::utf8(["a".to_string(), "b".to_string()])
             );
         }
 
@@ -1356,7 +1356,7 @@ mod tests {
             let mut test_instance =
                 Frame::new(vec![Column::string("test", []), Column::string("undefined", [])]);
 
-            let layout = Layout::new(&[Kind::Text, Kind::Text]);
+            let layout = Layout::new(&[Kind::Utf8, Kind::Utf8]);
             let mut row = layout.allocate_row();
             layout.set_str(&mut row, 0, "reifydb");
             layout.set_undefined(&mut row, 1);
@@ -1365,11 +1365,11 @@ mod tests {
 
             assert_eq!(
                 test_instance.columns[0].values,
-                ColumnValues::string_with_validity(["reifydb".to_string()], [true])
+                ColumnValues::utf8_with_validity(["reifydb".to_string()], [true])
             );
             assert_eq!(
                 test_instance.columns[1].values,
-                ColumnValues::string_with_validity(["".to_string()], [false])
+                ColumnValues::utf8_with_validity(["".to_string()], [false])
             );
         }
 

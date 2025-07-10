@@ -109,7 +109,7 @@ impl Display for Frame {
                             "Undefined".into()
                         }
                     }
-                    ColumnValues::String(v, valid) => {
+                    ColumnValues::Utf8(v, valid) => {
                         if valid[row_idx] {
                             v[row_idx].clone()
                         } else {
@@ -249,7 +249,7 @@ impl Display for Frame {
                                 "Undefined".into()
                             }
                         }
-                        ColumnValues::String(v, valid) => {
+                        ColumnValues::Utf8(v, valid) => {
                             if valid[row_idx] {
                                 v[row_idx].clone()
                             } else {

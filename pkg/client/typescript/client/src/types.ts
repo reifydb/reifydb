@@ -1,8 +1,10 @@
 export type Kind =
-    | "Bool" | "Float4" | "Float8"
+    | "Bool"
+    | "Float4" | "Float8"
     | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
-    | "Uint1" | "Uint2" | "Uint4"
-    | "String" | "Undefined";
+    | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"
+    | "Utf8"
+    | "Undefined";
 
 export interface WebsocketFrame {
     columns: WebsocketColumn[];
@@ -44,6 +46,13 @@ export interface ErrorResponse {
     };
 }
 
+export interface TxRequest {
+    id: string;
+    type: "Tx";
+    payload: {
+        statements: string[];
+    }
+}
 
 export interface TxResponse {
     id: string;
@@ -51,6 +60,14 @@ export interface TxResponse {
     payload: {
         frames: WebsocketFrame[];
     };
+}
+
+export interface RxRequest {
+    id: string;
+    type: "Rx";
+    payload: {
+        statements: string[];
+    }
 }
 
 export interface RxResponse {

@@ -13,7 +13,7 @@ pub(crate) fn value_max<'a>(value: Kind) -> &'a str {
         Kind::Int4 => "2_147_483_647",
         Kind::Int8 => "9_223_372_036_854_775_807",
         Kind::Int16 => "170_141_183_460_469_231_731_687_303_715_884_105_727",
-        Kind::Text => unreachable!(),
+        Kind::Utf8 => unreachable!(),
         Kind::Uint1 => "255",
         Kind::Uint2 => "65_535",
         Kind::Uint4 => "4_294_967_295",
@@ -35,7 +35,7 @@ pub(crate) fn value_range<'a>(value: Kind) -> &'a str {
         Kind::Int16 => {
             "-170_141_183_460_469_231_731_687_303_715_884_105_728 to 170_141_183_460_469_231_731_687_303_715_884_105_727"
         }
-        Kind::Text => unreachable!(),
+        Kind::Utf8 => unreachable!(),
         Kind::Uint1 => "0 to 255",
         Kind::Uint2 => "0 to 65_535",
         Kind::Uint4 => "0 to 4_294_967_295",

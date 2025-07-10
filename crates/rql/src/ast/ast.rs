@@ -695,7 +695,7 @@ impl AstKind {
             AstKind::Int8(_) => Kind::Int8,
             AstKind::Int16(_) => Kind::Int16,
             AstKind::Number(_) => unimplemented!(),
-            AstKind::Text(_) => Kind::Text,
+            AstKind::Text(_) => Kind::Utf8,
             AstKind::Uint1(_) => Kind::Uint1,
             AstKind::Uint2(_) => Kind::Uint2,
             AstKind::Uint4(_) => Kind::Uint4,

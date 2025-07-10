@@ -103,14 +103,14 @@ impl ColumnValues {
                 _ => unimplemented!(),
             },
 
-            Value::String(v) => match self {
-                ColumnValues::String(_, _) => self.push(v),
+            Value::Utf8(v) => match self {
+                ColumnValues::Utf8(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec!["".to_string(); *len];
                     let mut validity = vec![false; *len];
                     values.push(v);
                     validity.push(true);
-                    *self = ColumnValues::string_with_validity(values, validity);
+                    *self = ColumnValues::utf8_with_validity(values, validity);
                 }
                 _ => unimplemented!(),
             },
@@ -578,9 +578,9 @@ mod tests {
 
     #[test]
     fn test_string() {
-        let mut col = ColumnValues::string(vec!["hello".to_string()]);
-        col.push_value(Value::String("world".to_string()));
-        if let ColumnValues::String(v, valid) = col {
+        let mut col = ColumnValues::utf8(vec!["hello".to_string()]);
+        col.push_value(Value::Utf8("world".to_string()));
+        if let ColumnValues::Utf8(v, valid) = col {
             assert_eq!(v.as_slice(), &["hello", "world"]);
             assert_eq!(valid.as_slice(), &[true, true]);
         }
@@ -588,9 +588,9 @@ mod tests {
 
     #[test]
     fn test_undefined_string() {
-        let mut col = ColumnValues::string(vec!["hello".to_string()]);
+        let mut col = ColumnValues::utf8(vec!["hello".to_string()]);
         col.push_value(Value::Undefined);
-        if let ColumnValues::String(v, valid) = col {
+        if let ColumnValues::Utf8(v, valid) = col {
             assert_eq!(v.as_slice(), &["hello", ""]);
             assert_eq!(valid.as_slice(), &[true, false]);
         }
@@ -599,8 +599,8 @@ mod tests {
     #[test]
     fn test_push_value_to_undefined_string() {
         let mut col = ColumnValues::Undefined(1);
-        col.push_value(Value::String("ok".to_string()));
-        if let ColumnValues::String(v, valid) = col {
+        col.push_value(Value::Utf8("ok".to_string()));
+        if let ColumnValues::Utf8(v, valid) = col {
             assert_eq!(v.as_slice(), &["", "ok"]);
             assert_eq!(valid.as_slice(), &[false, true]);
         }

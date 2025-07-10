@@ -29,7 +29,7 @@ pub enum Value {
     /// A 16-byte signed integer
     Int16(i128),
     /// A UTF-8 encoded text. Maximum 255 bytes
-    String(String),
+    Utf8(String),
     /// A 1-byte unsigned integer
     Uint1(u8),
     /// A 2-byte unsigned integer
@@ -67,7 +67,7 @@ impl Value {
             Value::Int16(v) => Value::Int16(-v),
             Value::Undefined => Value::Undefined,
             Value::Bool(_) => Value::Undefined,
-            Value::String(_) => Value::Undefined,
+            Value::Utf8(_) => Value::Undefined,
             Value::Uint1(_)
             | Value::Uint2(_)
             | Value::Uint4(_)
@@ -88,7 +88,7 @@ impl PartialOrd for Value {
             (Value::Int4(l), Value::Int4(r)) => l.partial_cmp(r),
             (Value::Int8(l), Value::Int8(r)) => l.partial_cmp(r),
             (Value::Int16(l), Value::Int16(r)) => l.partial_cmp(r),
-            (Value::String(l), Value::String(r)) => l.partial_cmp(r),
+            (Value::Utf8(l), Value::Utf8(r)) => l.partial_cmp(r),
             (Value::Uint1(l), Value::Uint1(r)) => l.partial_cmp(r),
             (Value::Uint2(l), Value::Uint2(r)) => l.partial_cmp(r),
             (Value::Uint4(l), Value::Uint4(r)) => l.partial_cmp(r),
@@ -110,7 +110,7 @@ impl Ord for Value {
             (Value::Int4(l), Value::Int4(r)) => l.cmp(r),
             (Value::Int8(l), Value::Int8(r)) => l.cmp(r),
             (Value::Int16(l), Value::Int16(r)) => l.cmp(r),
-            (Value::String(l), Value::String(r)) => l.cmp(r),
+            (Value::Utf8(l), Value::Utf8(r)) => l.cmp(r),
             (Value::Uint1(l), Value::Uint1(r)) => l.cmp(r),
             (Value::Uint2(l), Value::Uint2(r)) => l.cmp(r),
             (Value::Uint4(l), Value::Uint4(r)) => l.cmp(r),
@@ -133,7 +133,7 @@ impl Display for Value {
             Value::Int4(value) => Display::fmt(value, f),
             Value::Int8(value) => Display::fmt(value, f),
             Value::Int16(value) => Display::fmt(value, f),
-            Value::String(value) => Display::fmt(value, f),
+            Value::Utf8(value) => Display::fmt(value, f),
             Value::Uint1(value) => Display::fmt(value, f),
             Value::Uint2(value) => Display::fmt(value, f),
             Value::Uint4(value) => Display::fmt(value, f),
@@ -156,7 +156,7 @@ impl Value {
             Value::Int4(_) => Kind::Int4,
             Value::Int8(_) => Kind::Int8,
             Value::Int16(_) => Kind::Int16,
-            Value::String(_) => Kind::Text,
+            Value::Utf8(_) => Kind::Utf8,
             Value::Uint1(_) => Kind::Uint1,
             Value::Uint2(_) => Kind::Uint2,
             Value::Uint4(_) => Kind::Uint4,

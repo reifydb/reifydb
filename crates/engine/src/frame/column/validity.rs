@@ -14,7 +14,7 @@ impl ColumnValues {
             ColumnValues::Int4(_, validity) => validity.as_slice(),
             ColumnValues::Int8(_, validity) => validity.as_slice(),
             ColumnValues::Int16(_, validity) => validity.as_slice(),
-            ColumnValues::String(_, validity) => validity.as_slice(),
+            ColumnValues::Utf8(_, validity) => validity.as_slice(),
             ColumnValues::Uint1(_, validity) => validity.as_slice(),
             ColumnValues::Uint2(_, validity) => validity.as_slice(),
             ColumnValues::Uint4(_, validity) => validity.as_slice(),

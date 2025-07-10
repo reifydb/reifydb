@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_try_get_str() {
-        let layout = Layout::new(&[Kind::Text]);
+        let layout = Layout::new(&[Kind::Utf8]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_str(&row, 0), None);

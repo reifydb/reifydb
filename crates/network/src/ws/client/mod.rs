@@ -281,12 +281,12 @@ fn convert_column_values(kind: Kind, data: Vec<String>) -> ColumnValues {
         Kind::Uint4 => parse!(u32, Uint4),
         Kind::Uint8 => parse!(u64, Uint8),
         Kind::Uint16 => parse!(u128, Uint16),
-        Kind::Text => {
+        Kind::Utf8 => {
             let values: Vec<String> = data
                 .iter()
                 .map(|s| if s == "⟪undefined⟫" { "".to_string() } else { s.clone() })
                 .collect();
-            ColumnValues::String(CowVec::new(values), CowVec::new(validity))
+            ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity))
         }
         Kind::Undefined => ColumnValues::Undefined(data.len()),
     }

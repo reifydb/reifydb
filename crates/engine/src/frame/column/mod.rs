@@ -193,7 +193,7 @@ impl Column {
     pub fn string<'a>(name: &str, values: impl IntoIterator<Item = &'a str>) -> Self {
         Self {
             name: name.to_string(),
-            values: ColumnValues::string(values.into_iter().map(|s| s.to_string())),
+            values: ColumnValues::utf8(values.into_iter().map(|s| s.to_string())),
         }
     }
 
@@ -204,7 +204,7 @@ impl Column {
     ) -> Self {
         Self {
             name: name.to_string(),
-            values: ColumnValues::string_with_validity(
+            values: ColumnValues::utf8_with_validity(
                 values.into_iter().map(|s| s.to_string()),
                 validity,
             ),

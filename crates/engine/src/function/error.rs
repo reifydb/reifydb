@@ -147,7 +147,7 @@ mod tests {
             function: "sqrt".to_string(),
             index: 4,
             expected_one_of: vec![Kind::Int2],
-            actual: Kind::Text,
+            actual: Kind::Utf8,
         };
         assert_eq!(
             err.to_string(),
@@ -161,7 +161,7 @@ mod tests {
             function: "if".to_string(),
             index: 1,
             expected_one_of: vec![Kind::Bool, Kind::Int2],
-            actual: Kind::Text,
+            actual: Kind::Utf8,
         };
         assert_eq!(
             err.to_string(),

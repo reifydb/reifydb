@@ -23,7 +23,7 @@ impl ColumnLayout {
                 ColumnValues::Int4(_, _) => Kind::Int4,
                 ColumnValues::Int8(_, _) => Kind::Int8,
                 ColumnValues::Int16(_, _) => Kind::Int16,
-                ColumnValues::String(_, _) => Kind::Text,
+                ColumnValues::Utf8(_, _) => Kind::Utf8,
                 ColumnValues::Uint1(_, _) => Kind::Uint1,
                 ColumnValues::Uint2(_, _) => Kind::Uint2,
                 ColumnValues::Uint4(_, _) => Kind::Uint4,

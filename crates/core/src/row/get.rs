@@ -64,7 +64,7 @@ impl Layout {
     pub fn get_str(&self, row: &EncodedRow, index: usize) -> &str {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Text);
+        debug_assert_eq!(field.value, Kind::Utf8);
 
         unsafe {
             let base = row.as_ptr().add(field.offset);
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_get_str() {
-        let layout = Layout::new(&[Kind::Text]);
+        let layout = Layout::new(&[Kind::Utf8]);
         let mut row = layout.allocate_row();
         layout.set_str(&mut row, 0, "reifydb");
         assert_eq!(layout.get_str(&row, 0), "reifydb");

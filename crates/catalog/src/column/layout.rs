@@ -16,7 +16,7 @@ pub(crate) mod column {
         Layout::new(&[
             Kind::Uint8,  // id
             Kind::Uint8,  // table
-            Kind::Text, // name
+            Kind::Utf8, // name
             Kind::Uint1,  // value
             Kind::Uint2,  // index
         ])
@@ -35,7 +35,7 @@ pub(crate) mod table_column {
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
             Kind::Uint8,  // column id
-            Kind::Text, // column name
+            Kind::Utf8, // column name
             Kind::Uint2,  // column index - position in the table
         ])
     });

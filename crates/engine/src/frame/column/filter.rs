@@ -208,7 +208,7 @@ impl ColumnValues {
                 *valid = CowVec::new(new_valid);
             }
 
-            ColumnValues::String(values, valid) => {
+            ColumnValues::Utf8(values, valid) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 

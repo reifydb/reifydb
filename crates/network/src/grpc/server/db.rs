@@ -186,7 +186,7 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                                 high: (i >> 64) as u64,
                                 low: i as u64,
                             }),
-                            Value::String(s) => GrpcKind::StringValue(s.clone()),
+                            Value::Utf8(s) => GrpcKind::StringValue(s.clone()),
                             Value::Undefined => GrpcKind::UndefinedValue(false),
                         };
                         GrpcValue { kind: Some(kind) }

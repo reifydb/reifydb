@@ -123,7 +123,7 @@ impl Frame {
 
     pub fn get_string(&self, name: &str, idx: usize) -> Option<&str> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::String(values, valid) => {
+            ColumnValues::Utf8(values, valid) => {
                 valid.get(idx).copied().unwrap_or(false).then(|| values[idx].as_str())
             }
             _ => None,
@@ -870,7 +870,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    values: ColumnValues::string_with_validity(["hello".to_string()], [true]),
+                    values: ColumnValues::utf8_with_validity(["hello".to_string()], [true]),
                 }],
                 index,
             };
@@ -891,7 +891,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![Column {
                     name: "col".into(),
-                    values: ColumnValues::string_with_validity(["hello".to_string()], [false]),
+                    values: ColumnValues::utf8_with_validity(["hello".to_string()], [false]),
                 }],
                 index,
             };

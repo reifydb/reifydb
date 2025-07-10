@@ -20,7 +20,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         if let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? {
             if plan.if_not_exists {
                 return Ok(Frame::single_row([
-                    ("schema", Value::String(plan.schema.to_string())),
+                    ("schema", Value::Utf8(plan.schema.to_string())),
                     ("created", Value::Bool(false)),
                 ]));
             }
@@ -40,7 +40,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         )?;
 
         Ok(Frame::single_row([
-            ("schema", Value::String(plan.schema.to_string())),
+            ("schema", Value::Utf8(plan.schema.to_string())),
             ("created", Value::Bool(true)),
         ]))
     }
@@ -62,13 +62,13 @@ mod tests {
 
         // First creation should succeed
         let result = execute_tx(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();
-        assert_eq!(result.row(0)[0], Value::String("my_schema".to_string()));
+        assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Bool(true));
 
         // Creating the same schema again with `if_not_exists = true` should not error
         plan.if_not_exists = true;
         let result = execute_tx(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();
-        assert_eq!(result.row(0)[0], Value::String("my_schema".to_string()));
+        assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Bool(false));
 
         // Creating the same schema again with `if_not_exists = false` should return error

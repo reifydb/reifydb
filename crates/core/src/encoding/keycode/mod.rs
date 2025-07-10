@@ -196,7 +196,7 @@ mod tests {
         value_int4: Value::Int4(123456) => "067ffe1dbf",
         value_int8: Value::Int8(31415926) => "077ffffffffe20a189",
         value_int16: Value::Int16(-123456789012345678901234567890i128) => "08800000018ee90ff6c373e0ee4e3f0ad1",
-        value_string: Value::String("foo".to_string()) => "09666f6fffff",
+        value_string: Value::Utf8("foo".to_string()) => "09666f6fffff",
         value_uint1: Value::Uint1(255) => "0a00",
         value_uint2: Value::Uint2(65535) => "0b0000",
         value_uint4: Value::Uint4(4294967295) => "0c00000000",

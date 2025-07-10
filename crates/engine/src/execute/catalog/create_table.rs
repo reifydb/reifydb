@@ -27,8 +27,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         if let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table)? {
             if plan.if_not_exists {
                 return Ok(Frame::single_row([
-                    ("schema", Value::String(plan.schema.to_string())),
-                    ("table", Value::String(plan.table.to_string())),
+                    ("schema", Value::Utf8(plan.schema.to_string())),
+                    ("table", Value::Utf8(plan.table.to_string())),
                     ("created", Value::Bool(false)),
                 ]));
             }
@@ -51,8 +51,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         )?;
 
         Ok(Frame::single_row([
-            ("schema", Value::String(plan.schema.to_string())),
-            ("table", Value::String(plan.table.to_string())),
+            ("schema", Value::Utf8(plan.schema.to_string())),
+            ("table", Value::Utf8(plan.table.to_string())),
             ("created", Value::Bool(true)),
         ]))
     }
@@ -82,15 +82,15 @@ mod tests {
 
         // First creation should succeed
         let result = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
-        assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
-        assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
+        assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
+        assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
 
         // Creating the same table again with `if_not_exists = true` should not error
         plan.if_not_exists = true;
         let result = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
-        assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
-        assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
+        assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
+        assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(false));
 
         // Creating the same table again with `if_not_exists = false` should return error
@@ -114,8 +114,8 @@ mod tests {
         };
 
         let result = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
-        assert_eq!(result.row(0)[0], Value::String("test_schema".to_string()));
-        assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
+        assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
+        assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
 
         let plan = CreateTablePlan {
@@ -126,8 +126,8 @@ mod tests {
         };
 
         let result = execute_tx(&mut tx, PhysicalPlan::CreateTable(plan.clone())).unwrap();
-        assert_eq!(result.row(0)[0], Value::String("another_schema".to_string()));
-        assert_eq!(result.row(0)[1], Value::String("test_table".to_string()));
+        assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
+        assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
     }
 

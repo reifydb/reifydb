@@ -113,7 +113,7 @@ impl Layout {
     pub fn set_str(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
         let field = &self.fields[index];
         debug_assert_eq!(row.len(), self.data_size);
-        debug_assert_eq!(field.value, Kind::Text);
+        debug_assert_eq!(field.value, Kind::Utf8);
 
         let bytes = value.as_ref().as_bytes();
         let len = bytes.len().min(254); // One byte for length
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_str_and_clone_on_write() {
-        let layout = Layout::new(&[Kind::Text]);
+        let layout = Layout::new(&[Kind::Utf8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 

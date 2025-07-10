@@ -38,7 +38,7 @@ impl ColumnValues {
                 values.push(0);
                 validity.push(false);
             }
-            ColumnValues::String(values, validity) => {
+            ColumnValues::Utf8(values, validity) => {
                 values.push(String::new());
                 validity.push(false);
             }
@@ -155,9 +155,9 @@ mod tests {
 
 	#[test]
 	fn test_string() {
-		let mut col = ColumnValues::string(vec!["a".to_string()]);
+		let mut col = ColumnValues::utf8(vec!["a".to_string()]);
 		col.push_undefined();
-		if let ColumnValues::String(v, valid) = col {
+		if let ColumnValues::Utf8(v, valid) = col {
 			assert_eq!(v.as_slice(), &["a", ""]);
 			assert_eq!(valid.as_slice(), &[true, false]);
 		}

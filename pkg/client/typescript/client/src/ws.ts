@@ -1,7 +1,5 @@
-import {ErrorResponse, ReifyError, RxResponse, TxResponse} from "./types";
+import {ErrorResponse, ReifyError, RxRequest, RxResponse, TxRequest, TxResponse} from "./types";
 import {columnsToRows} from "./decoder";
-
-let nextId = 1;
 
 type ResponsePayload = ErrorResponse | TxResponse | RxResponse;
 
@@ -15,12 +13,21 @@ async function createWebSocket(url: string): Promise<WebSocket> {
     }
 }
 
+export interface WsClientOptions {
+    url: string;
+    timeoutMs?: number;
+    token?: string;
+}
 
 export class WsClient {
+    private options: WsClientOptions;
+    private nextId: number;
     private socket: WebSocket;
     private pending = new Map<string, (response: ResponsePayload) => void>();
 
-    private constructor(socket: WebSocket) {
+    private constructor(socket: WebSocket, options: WsClientOptions) {
+        this.options = options;
+        this.nextId = 1;
         this.socket = socket;
 
         this.socket.onmessage = (event) => {
@@ -42,8 +49,8 @@ export class WsClient {
         };
     }
 
-    static async connect(url: string): Promise<WsClient> {
-        const socket = await createWebSocket(url);
+    static async connect(options: WsClientOptions): Promise<WsClient> {
+        const socket = await createWebSocket(options.url);
 
         // Wait for connection to open if not already open
         if (socket.readyState !== socket.OPEN) {
@@ -67,67 +74,40 @@ export class WsClient {
 
         socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
 
-        return new WsClient(socket);
+        return new WsClient(socket, options);
     }
-
-    isConnected(): boolean {
-        return this.socket.readyState === this.socket.OPEN;
-    }
-
 
     async tx<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
         [K in keyof T]: T[K][];
     }> {
-        const id = `req-${nextId++}`;
-
-
-        const message = {
+        const id = `req-${this.nextId++}`;
+        return await this.send({
             id,
             type: "Tx",
             payload: {
                 statements: [statement]
             },
-        };
-
-        const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                this.pending.delete(id);
-                reject(new Error("ReifyDB execute timeout"));
-            }, 5000);
-
-            this.pending.set(id, (res) => {
-                clearTimeout(timeout);
-                resolve(res);
-            });
-
-            this.socket.send(JSON.stringify(message));
-        });
-
-        if (response.type === "Err") {
-            throw new ReifyError(response);
-        }
-
-        if (response.type !== "Tx") {
-            throw new Error(`Unexpected response type: ${response.type}`);
-        }
-
-        return response.payload.frames.map((frame) =>
-            columnsToRows(frame.columns)
-        ) as { [K in keyof T]: T[K][] };
+        })
     }
 
     async rx<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
         [K in keyof T]: T[K][];
     }> {
-        const id = `req-${nextId++}`;
-
-        const message = {
+        const id = `req-${this.nextId++}`;
+        return await this.send({
             id,
             type: "Rx",
             payload: {
                 statements: [statement]
             },
-        };
+        })
+    }
+
+
+    async send<T extends readonly Record<string, unknown>[]>(req: TxRequest | RxRequest): Promise<{
+        [K in keyof T]: T[K][];
+    }> {
+        const id = req.id;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
             const timeout = setTimeout(() => {
@@ -140,14 +120,14 @@ export class WsClient {
                 resolve(res);
             });
 
-            this.socket.send(JSON.stringify(message));
+            this.socket.send(JSON.stringify(req));
         });
 
         if (response.type === "Err") {
             throw new ReifyError(response);
         }
 
-        if (response.type !== "Rx") {
+        if (response.type !== req.type) {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 
@@ -155,5 +135,4 @@ export class WsClient {
             columnsToRows(frame.columns)
         ) as { [K in keyof T]: T[K][] };
     }
-
 }

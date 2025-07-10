@@ -224,7 +224,7 @@ impl Evaluator {
                 Ok(Column { name, values: ColumnValues::int16_with_validity(values, valid) })
             }
 
-            Value::String(_) => {
+            Value::Utf8(_) => {
                 let mut values = Vec::new();
                 let mut valid = Vec::new();
                 let mut count = 0;
@@ -234,7 +234,7 @@ impl Evaluator {
                             break;
                         }
                         match v {
-                            Value::String(s) => {
+                            Value::Utf8(s) => {
                                 values.push(s.clone());
                                 valid.push(true);
                             }
@@ -246,7 +246,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::string_with_validity(values, valid) })
+                Ok(Column { name, values: ColumnValues::utf8_with_validity(values, valid) })
             }
 
             Value::Uint1(_) => {

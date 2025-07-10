@@ -52,7 +52,7 @@ impl<'a> ValueRef<'a> {
             ValueRef::Uint4(v) => Value::Uint4(**v),
             ValueRef::Uint8(v) => Value::Uint8(**v),
             ValueRef::Uint16(v) => Value::Uint16(**v),
-            ValueRef::String(s) => Value::String(s.to_string()),
+            ValueRef::String(s) => Value::Utf8(s.to_string()),
             ValueRef::Undefined => Value::Undefined,
         }
     }

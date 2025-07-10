@@ -57,7 +57,7 @@ impl GetKind for i128 {
 
 impl GetKind for String {
     fn kind(&self) -> Kind {
-        Kind::Text
+        Kind::Utf8
     }
 }
 

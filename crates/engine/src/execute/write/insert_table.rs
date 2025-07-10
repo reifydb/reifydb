@@ -69,7 +69,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                                             Value::Int4(v) => layout.set_i32(&mut row, idx, v),
                                             Value::Int8(v) => layout.set_i64(&mut row, idx, v),
                                             Value::Int16(v) => layout.set_i128(&mut row, idx, v),
-                                            Value::String(v) => layout.set_str(&mut row, idx, v),
+                                            Value::Utf8(v) => layout.set_str(&mut row, idx, v),
                                             Value::Uint1(v) => layout.set_u8(&mut row, idx, v),
                                             Value::Uint2(v) => layout.set_u16(&mut row, idx, v),
                                             Value::Uint4(v) => layout.set_u32(&mut row, idx, v),
@@ -103,8 +103,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 }
 
                 Ok(Frame::single_row([
-                    ("schema", Value::String(schema.name)),
-                    ("table", Value::String(table.name)),
+                    ("schema", Value::Utf8(schema.name)),
+                    ("table", Value::Utf8(table.name)),
                     ("inserted", Value::Uint8(inserted as u64)),
                 ]))
             }

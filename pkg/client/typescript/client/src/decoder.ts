@@ -20,8 +20,10 @@ export function decodeValue(kind: Kind, value: string): unknown {
             return Number(value);
         case "Int8":
         case "Int16":
+        case "Uint8":
+        case "Uint16":
             return BigInt(value);
-        case "String":
+        case "Utf8":
             return value;
         case "Undefined":
             return undefined;

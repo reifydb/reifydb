@@ -1,8 +1,21 @@
-import {WsClient} from "./ws";
+import {WsClient, WsClientOptions} from "./ws";
+
+export class Client {
+    /**
+     * Connect to ReifyDB via WebSocket
+     * @param url WebSocket URL
+     * @param options Optional configuration
+     * @returns Connected WebSocket client
+     */
+    static async connect_ws(url: string, options: Omit<WsClientOptions, 'url'> = {}): Promise<WsClient> {
+        return WsClient.connect({ url, ...options });
+    }
+
+}
+
 
 async function main() {
-    const client = await WsClient.connect("ws://127.0.0.1:9001");
-
+    const client = await Client.connect_ws("ws://127.0.0.1:9001");
 
     const frames = await client.tx<[
         { abc: number },

@@ -272,7 +272,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::uint16_with_validity(data, validity)
             }
 
-            Kind::Text => {
+            Kind::Utf8 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
@@ -287,7 +287,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::string_with_validity(data, validity)
+                ColumnValues::utf8_with_validity(data, validity)
             }
 
             Kind::Undefined => ColumnValues::undefined(values.len()),

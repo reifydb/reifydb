@@ -53,7 +53,7 @@ impl ColumnValues {
                 lv.extend(rv);
             }
 
-            (ColumnValues::String(l, lv), ColumnValues::String(r, rv)) => {
+            (ColumnValues::Utf8(l, lv), ColumnValues::Utf8(r, rv)) => {
                 l.extend(r);
                 lv.extend(rv);
             }
@@ -161,14 +161,14 @@ impl ColumnValues {
 
                     *self = ColumnValues::int16_with_validity(values, validity);
                 }
-                ColumnValues::String(r, rv) => {
+                ColumnValues::Utf8(r, rv) => {
                     let mut values = CowVec::new(vec!["".to_string(); *l_len]);
                     values.extend(r);
 
                     let mut validity = CowVec::new(vec![false; *l_len]);
                     validity.extend(rv);
 
-                    *self = ColumnValues::string_with_validity(values, validity);
+                    *self = ColumnValues::utf8_with_validity(values, validity);
                 }
                 ColumnValues::Uint1(r, rv) => {
                     let mut values = CowVec::new(vec![0u8; *l_len]);
@@ -252,7 +252,7 @@ impl ColumnValues {
                     l.extend(std::iter::repeat(0).take(r_len));
                     lv.extend(std::iter::repeat(false).take(r_len));
                 }
-                ColumnValues::String(l, lv) => {
+                ColumnValues::Utf8(l, lv) => {
                     l.extend(std::iter::repeat(String::new()).take(r_len));
                     lv.extend(std::iter::repeat(false).take(r_len));
                 }

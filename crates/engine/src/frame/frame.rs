@@ -31,7 +31,7 @@ impl Frame {
                 Value::Int4(v) => ColumnValues::int4([v]),
                 Value::Int8(v) => ColumnValues::int8([v]),
                 Value::Int16(v) => ColumnValues::int16([v]),
-                Value::String(ref v) => ColumnValues::string([v.clone()]),
+                Value::Utf8(ref v) => ColumnValues::utf8([v.clone()]),
                 Value::Uint1(v) => ColumnValues::uint1([v]),
                 Value::Uint2(v) => ColumnValues::uint2([v]),
                 Value::Uint4(v) => ColumnValues::uint4([v]),
