@@ -4,71 +4,38 @@
  * See license.md file for full license text
  */
 
-import {ChildProcess, spawn} from 'child_process';
-import {join} from 'path';
+import {execSync} from 'child_process';
 import {Client} from "../../src";
 
-let testServer: TestDatabaseServer;
+const COMPOSE_FILE = 'tests/docker-compose.yml';
+const SERVICE_NAME = 'reifydb-test';
+
+function isContainerRunning(): boolean {
+    try {
+        const result = execSync(
+            `docker compose -f ${COMPOSE_FILE} ps -q ${SERVICE_NAME}`,
+            {encoding: 'utf8', stdio: 'inherit'}
+        );
+        return result.trim().length > 0;
+    } catch {
+        return false;
+    }
+}
+
+async function startContainer(): Promise<void> {
+    execSync(`docker compose -f ${COMPOSE_FILE} restart`, {stdio: 'inherit'});
+    await new Promise(resolve => setTimeout(resolve, 2000));
+}
+
 
 export default async function setup() {
-    console.info('Starting test database server...');
-
-    // testServer = new TestDatabaseServer({
-    //     port: parseInt(process.env.REIFYDB_TEST_PORT || '9001'),
-    //     dbPath: process.env.REIFYDB_TEST_DB_PATH || './test-data'
-    // });
-    //
-    // await testServer.start();
-    //
-    // // Wait for server to be ready
-    // // await testServer.waitForReady();
-    //
-    // // Store server reference for teardown
-    // (global as any).__TEST_SERVER__ = testServer;
-
-    console.info('Test database server started successfully');
-}
-
-
-export class TestDatabaseServer {
-    private process: ChildProcess | null = null;
-    private readonly port: number;
-    private readonly dbPath: string;
-
-    constructor(port = 9001) {
-        this.port = port;
-        this.dbPath = join(__dirname, 'test-db');
-    }
-
-    async start(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            // Start your ReifyDB server for testing
-            this.process = spawn('reifydb-server', [
-                '--port', this.port.toString(),
-                '--db-path', this.dbPath,
-                '--test-mode'
-            ]);
-
-            this.process.on('error', reject);
-
-            // Wait for server to be ready
-            setTimeout(() => {
-                if (this.process && !this.process.killed) {
-                    resolve();
-                } else {
-                    reject(new Error('Failed to start test database server'));
-                }
-            }, 2000);
-        });
-    }
-
-    async stop(): Promise<void> {
-        if (this.process) {
-            this.process.kill();
-            this.process = null;
-        }
+    if (isContainerRunning()) {
+        console.info('Starting test database server...');
+        await startContainer();
+        console.info('Test database server started successfully');
     }
 }
+
 
 export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<void> {
     for (let i = 0; i < maxRetries; i++) {
