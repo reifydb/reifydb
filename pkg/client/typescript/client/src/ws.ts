@@ -1,3 +1,9 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {ErrorResponse, ReifyError, RxRequest, RxResponse, TxRequest, TxResponse} from "./types";
 import {columnsToRows} from "./decoder";
 

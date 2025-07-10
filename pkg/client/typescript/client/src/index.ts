@@ -1,3 +1,9 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {WsClient, WsClientOptions} from "./ws";
 
 export class Client {
@@ -8,7 +14,7 @@ export class Client {
      * @returns Connected WebSocket client
      */
     static async connect_ws(url: string, options: Omit<WsClientOptions, 'url'> = {}): Promise<WsClient> {
-        return WsClient.connect({ url, ...options });
+        return WsClient.connect({url, ...options});
     }
 
 }

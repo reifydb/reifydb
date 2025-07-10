@@ -76,12 +76,12 @@ impl ColumnValues {
             Kind::Int4 => Self::int4_with_capacity(capacity),
             Kind::Int8 => Self::int8_with_capacity(capacity),
             Kind::Int16 => Self::int16_with_capacity(capacity),
-            Kind::Utf8 => Self::utf8_with_capacity(capacity),
             Kind::Uint1 => Self::uint1_with_capacity(capacity),
             Kind::Uint2 => Self::uint2_with_capacity(capacity),
             Kind::Uint4 => Self::uint4_with_capacity(capacity),
             Kind::Uint8 => Self::uint8_with_capacity(capacity),
             Kind::Uint16 => Self::uint16_with_capacity(capacity),
+            Kind::Utf8 => Self::utf8_with_capacity(capacity),
             Kind::Undefined => Self::undefined(capacity),
         }
     }

@@ -1,3 +1,9 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Kind, WebsocketColumn} from "./types";
 
 const UNDEFINED_VALUE = "⟪undefined⟫";
