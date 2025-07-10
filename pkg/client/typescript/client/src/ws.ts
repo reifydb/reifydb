@@ -42,7 +42,6 @@ export class WsClient {
 
             const handler = this.pending.get(id);
             if (!handler) {
-                console.debug(`No pending query for id: ${id}`);
                 return;
             }
 
@@ -119,7 +118,7 @@ export class WsClient {
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("ReifyDB query timeout"));
-            }, 5000);
+            }, this.options.timeoutMs);
 
             this.pending.set(id, (res) => {
                 clearTimeout(timeout);
@@ -140,5 +139,9 @@ export class WsClient {
         return response.payload.frames.map((frame) =>
             columnsToRows(frame.columns)
         ) as { [K in keyof T]: T[K][] };
+    }
+
+    async disconnect(): Promise<void> {
+        // FIXME
     }
 }

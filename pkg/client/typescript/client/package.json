@@ -1,13 +1,19 @@
 {
-  "name": "@reifydb/client",
+  "name": "@db/client",
   "type": "module",
   "version": "0.0.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --sourcemap",
-    "dev": "pnpm build && node --enable-source-maps dist/index.js",
-    "test": "node --enable-source-maps dist/index.js"
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:unit:watch": "vitest --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:watch": "vitest --config vitest.integration.config.ts",
+    "test:all": "pnpm test:unit && pnpm test:integration",
+    "test:coverage": "vitest run --coverage --config vitest.config.ts",
+    "pretest:integration": "pnpm build",
+    "docker:test": "docker-compose -f docker-compose.test.yml up -d && pnpm test:integration && docker-compose -f docker-compose.test.yml down"
   },
   "dependencies": {
     "uuid": "^11.1.0",
@@ -15,14 +21,20 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.10",
+    "@vitest/coverage-v8": "^2.1.8",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.8"
   },
   "engines": {
     "node": ">=16.0.0"
   },
   "keywords": [
-    "reifydb"
+    "reifydb",
+    "database",
+    "websocket",
+    "client",
+    "typescript"
   ],
   "files": [
     "dist/",

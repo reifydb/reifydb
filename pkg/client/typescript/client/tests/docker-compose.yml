@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  reifydb-test:
+    image: reifydb:latest  # Replace with your actual image
+    container_name: reifydb-test
+    ports:
+      - "9001:9001"
+    environment:
+      - REIFYDB_PORT=9001
+      - REIFYDB_LOG_LEVEL=error
+      - REIFYDB_TEST_MODE=true
+      - REIFYDB_AUTH_TOKEN=test-token
+    networks:
+      - reifydb-test
+
+networks:
+  reifydb-test:
+    driver: bridge
