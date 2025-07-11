@@ -13,22 +13,18 @@ describe('ReifyDB Client Integration Tests', () => {
     const AUTH_TOKEN = process.env.REIFYDB_TOKEN;
 
     beforeAll(async () => {
-        console.log('🔄 Waiting for database...');
         await waitForDatabase();
-        console.log('✅ Database ready');
     }, 30000);
 
     describe('WebSocket Client', () => {
         let wsClient: WsClient;
 
         beforeEach(async () => {
-            console.log('🔌 Connecting to WebSocket...');
             try {
                 wsClient = await Client.connect_ws(WS_URL, {
                     timeoutMs: 10000,
                     token: AUTH_TOKEN
                 });
-                console.log('✅ WebSocket connected');
             } catch (error) {
                 console.error('❌ WebSocket connection failed:', error);
                 throw error;
@@ -37,10 +33,8 @@ describe('ReifyDB Client Integration Tests', () => {
 
         afterEach(async () => {
             if (wsClient) {
-                console.log('🔌 Disconnecting WebSocket...');
                 try {
                     wsClient.disconnect();
-                    console.log('✅ WebSocket disconnected');
                 } catch (error) {
                     console.error('⚠️ Error during disconnect:', error);
                 }
@@ -49,7 +43,6 @@ describe('ReifyDB Client Integration Tests', () => {
         });
 
         it('should execute simple tx', async () => {
-            console.log('🧪 Running tx test...');
             const frames = await wsClient.tx<[{ result: number }]>(
                 'SELECT 42 as result;'
             );
@@ -57,11 +50,9 @@ describe('ReifyDB Client Integration Tests', () => {
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].result).toBe(42);
-            console.log('✅ tx test passed');
         }, 10000);
 
         it('should execute simple rx', async () => {
-            console.log('🧪 Running rx test...');
             const frames = await wsClient.rx<[{ result: number }]>(
                 'SELECT 42 as result;'
             );
@@ -69,7 +60,6 @@ describe('ReifyDB Client Integration Tests', () => {
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].result).toBe(42);
-            console.log('✅ rx test passed');
         }, 10000);
     });
 });

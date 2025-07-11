@@ -15,8 +15,10 @@
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/reifydb/reifydb)](https://github.com/reifydb/reifydb/stargazers)
 [![License](https://img.shields.io/github/license/reifydb/reifydb)](https://github.com/reifydb/reifydb/blob/main/license.md)
+
 [![CI](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/ci.yml?label=CI)](https://github.com/reifydb/reifydb/actions/workflows/ci.yml)
 [![TestSuite](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/testsuite.yml?label=TestSuite)](https://github.com/reifydb/reifydb/actions/workflows/testsuite.yml)
+[![Client TS](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/client-typescript.yml?label=Client%20Ts)](https://github.com/reifydb/reifydb/actions/workflows/client-typescript.yml)
 
 <p align="center">
   <strong>⚠️ IN DEVELOPMENT</strong><br>

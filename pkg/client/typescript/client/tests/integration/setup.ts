@@ -44,9 +44,7 @@ export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<vo
         let client = null;
         try {
             client = await Client.connect_ws(url, {timeoutMs: 5000});
-
-            // await client.tx('SELECT 1;');
-            console.log(`✅ Database connection successful on attempt ${i + 1}`);
+            await client.tx('SELECT 1;');
             return;
         } catch (error) {
             console.log(`❌ Database connection failed on attempt ${i + 1}: ${error.message}`);

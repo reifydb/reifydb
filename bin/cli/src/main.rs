@@ -27,7 +27,7 @@ async fn main() {
 
     client.auth(Some("mysecrettoken".into())).await.unwrap();
 
-    let result = client.rx("SELECT cast(127, int1); SELECT 2;".into()).await.unwrap();
+    let result = client.rx("SELECT cast('test', text); SELECT 2;".into()).await.unwrap();
 
     println!("✅ Frames: {:?}", result);
 }
