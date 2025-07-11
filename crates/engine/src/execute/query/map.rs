@@ -7,19 +7,19 @@ use crate::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
 use reifydb_rql::expression::Expression;
 
-pub(crate) struct ProjectNode {
+pub(crate) struct MapNode {
     input: Box<dyn ExecutionPlan>,
     expressions: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
-impl ProjectNode {
+impl MapNode {
     pub fn new(input: Box<dyn ExecutionPlan>, expressions: Vec<Expression>) -> Self {
         Self { input, expressions, layout: None }
     }
 }
 
-impl ExecutionPlan for ProjectNode {
+impl ExecutionPlan for MapNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mask }) = self.input.next()? {
             let row_count = frame.row_count();
@@ -37,7 +37,7 @@ impl ExecutionPlan for ProjectNode {
                 .iter()
                 .map(|expr| {
                     let column = evaluate(expr, &ctx).unwrap();
-                    crate::frame::Column { name: expr.span().fragment, values: column.values }
+                    crate::frame::Column { name: column.name, values: column.values }
                 })
                 .collect();
 
@@ -53,18 +53,18 @@ impl ExecutionPlan for ProjectNode {
     }
 }
 
-pub(crate) struct ProjectWithoutInputNode {
+pub(crate) struct MapWithoutInputNode {
     expressions: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
-impl ProjectWithoutInputNode {
+impl MapWithoutInputNode {
     pub fn new(expressions: Vec<Expression>) -> Self {
         Self { expressions, layout: None }
     }
 }
 
-impl ExecutionPlan for ProjectWithoutInputNode {
+impl ExecutionPlan for MapWithoutInputNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);

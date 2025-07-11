@@ -9,18 +9,18 @@ use reifydb_core::{BitVec, SortKey};
 use reifydb_diagnostic::query;
 use std::cmp::Ordering::Equal;
 
-pub(crate) struct OrderNode {
+pub(crate) struct SortNode {
     input: Box<dyn ExecutionPlan>,
     by: Vec<SortKey>,
 }
 
-impl OrderNode {
+impl SortNode {
     pub(crate) fn new(input: Box<dyn ExecutionPlan>, by: Vec<SortKey>) -> Self {
         Self { input, by }
     }
 }
 
-impl ExecutionPlan for OrderNode {
+impl ExecutionPlan for SortNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         let mut frame_opt: Option<Frame> = None;
         let mut mask_opt: Option<BitVec> = None;

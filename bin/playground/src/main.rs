@@ -24,7 +24,8 @@ fn main() {
     for l in db.tx_as(
         &root,
         r#"
-        from test.one left join test.two on one.field == two.field
+    from test.one
+        map 1 + 2, 3 + 4, 4 + 5 as X
         "#,
     )
     .unwrap()

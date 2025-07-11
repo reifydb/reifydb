@@ -6,7 +6,7 @@ use reifydb_core::BitVec;
 
 pub(crate) use compile::compile;
 pub(crate) use filter::FilterNode;
-pub(crate) use project::ProjectNode;
+pub(crate) use map::MapNode;
 pub(crate) use scan::ScanFrameNode;
 pub(crate) use take::TakeNode;
 
@@ -14,8 +14,8 @@ mod aggregate;
 mod compile;
 mod filter;
 mod join;
-mod order;
-mod project;
+mod sort;
+mod map;
 mod scan;
 mod take;
 

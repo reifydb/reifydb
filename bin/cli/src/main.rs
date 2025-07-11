@@ -27,9 +27,9 @@ async fn main() {
 
     client.auth(Some("mysecrettoken".into())).await.unwrap();
 
-    let result = client.rx(r#"
+    let result = client.tx(r#"
     from test.arith
-        map id, cast(id, float8)
+        map 1 + 2, 3 + 4, 4 + 5 as X
     "#.into()).await.unwrap();
 
     println!("✅ Frames: {:?}", result);

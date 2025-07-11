@@ -3,9 +3,9 @@
 
 use crate::execute::query::aggregate::AggregateNode;
 use crate::execute::query::join::LeftJoinNode;
-use crate::execute::query::order::OrderNode;
-use crate::execute::query::project::ProjectWithoutInputNode;
-use crate::execute::query::{ExecutionPlan, FilterNode, TakeNode, ProjectNode, ScanFrameNode};
+use crate::execute::query::sort::SortNode;
+use crate::execute::query::map::MapWithoutInputNode;
+use crate::execute::query::{ExecutionPlan, FilterNode, TakeNode, MapNode, ScanFrameNode};
 use crate::frame::{Column, ColumnValues, Frame};
 use crate::function::Functions;
 use reifydb_catalog::Catalog;
@@ -39,15 +39,15 @@ pub(crate) fn compile(
 
         PhysicalPlan::Sort(physical::SortNode { by, input }) => {
             let input_node = compile(*input, rx, functions);
-            Box::new(OrderNode::new(input_node, by))
+            Box::new(SortNode::new(input_node, by))
         }
 
         PhysicalPlan::Map(physical::MapNode { map, input }) => {
             if let Some(input) = input {
                 let input_node = compile(*input, rx, functions);
-                Box::new(ProjectNode::new(input_node, map))
+                Box::new(MapNode::new(input_node, map))
             } else {
-                Box::new(ProjectWithoutInputNode::new(map))
+                Box::new(MapWithoutInputNode::new(map))
             }
         }
 

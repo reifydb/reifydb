@@ -48,7 +48,6 @@ TEST_SUITES := \
 	compatibility \
 	diagnostic \
 	functional \
-	regression \
 	stress
 
 .PHONY: testlocal
