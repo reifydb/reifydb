@@ -4,7 +4,7 @@ TEST_SUITE_DIR := ../testsuite
 TEST_CLIENT_DIR := ./pkg/client
 
 .PHONY: all
-all: check clean test testsuite build push
+all: check clean build-testcontainer test-full build push push-testcontainer
 
 .PHONY: check
 check:
@@ -40,6 +40,10 @@ coverage:
 .PHONY: push
 push: check
 	git push
+
+.PHONY: push-testcontainer
+push-testcontainer: check
+	docker push reifydb/testcontainer
 
 
 # List of test suites
