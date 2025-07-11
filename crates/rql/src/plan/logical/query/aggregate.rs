@@ -8,8 +8,8 @@ impl Compiler {
     pub(crate) fn compile_aggregate(ast: AstAggregate) -> crate::Result<LogicalPlan> {
         Ok(LogicalPlan::Aggregate(AggregateNode {
             by: ast.by.into_iter().map(Self::compile_expression).collect::<Result<Vec<_>, _>>()?,
-            select: ast
-                .select
+            map: ast
+                .map
                 .into_iter()
                 .map(Self::compile_expression)
                 .collect::<Result<Vec<_>, _>>()?,

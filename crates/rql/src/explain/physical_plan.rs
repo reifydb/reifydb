@@ -53,11 +53,11 @@ fn render_physical_plan_inner(
         PhysicalPlan::CreateSchema(_) => unimplemented!(),
         PhysicalPlan::CreateTable(_) => unimplemented!(),
         PhysicalPlan::InsertIntoTable(_) => unimplemented!(),
-        PhysicalPlan::Aggregate(physical::AggregateNode { by, select, input }) => {
+        PhysicalPlan::Aggregate(physical::AggregateNode { by, map, input }) => {
             let label = format!(
-                "Aggregate by: [{}], select: [{}]",
+                "Aggregate by: [{}], map: [{}]",
                 by.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "),
-                select.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+                map.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
             );
             write_node_header(output, prefix, is_last, &label);
             with_child_prefix(prefix, is_last, |child_prefix| {
@@ -95,10 +95,10 @@ fn render_physical_plan_inner(
             });
         }
 
-        PhysicalPlan::Select(physical::SelectNode { select, input }) => {
+        PhysicalPlan::Map(physical::MapNode { map, input }) => {
             let label = format!(
-                "Select [{}]",
-                select.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+                "Map [{}]",
+                map.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
             );
             write_node_header(output, prefix, is_last, &label);
             with_child_prefix(prefix, is_last, |child_prefix| {

@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn test_from_block() {
-        let tokens = lex("FROM ( FROM reifydb.users SELECT name )").unwrap();
+        let tokens = lex("FROM ( FROM reifydb.users MAP name )").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -98,9 +98,9 @@ mod tests {
                     AstFrom::Query { .. } => unreachable!(),
                 }
 
-                let select = block[1].as_select();
-                assert_eq!(select.select.len(), 1);
-                let column = select.select[0].as_identifier();
+                let map = block[1].as_map();
+                assert_eq!(map.map.len(), 1);
+                let column = map.map[0].as_identifier();
                 assert_eq!(column.value(), "name");
             }
         }

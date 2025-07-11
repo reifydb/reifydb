@@ -122,9 +122,9 @@ mod tests {
 
     #[test]
     fn test_keyword() {
-        let (_rest, token) = token(span("SELECT")).unwrap();
-        assert_eq!(token.kind, TokenKind::Keyword(Keyword::Select));
-        assert_eq!(token.span.fragment.as_str(), "SELECT");
+        let (_rest, token) = token(span("MAP")).unwrap();
+        assert_eq!(token.kind, TokenKind::Keyword(Keyword::Map));
+        assert_eq!(token.span.fragment.as_str(), "MAP");
     }
 
     #[test]
@@ -172,9 +172,9 @@ mod tests {
 
     #[test]
     fn test_skips_whitespace() {
-        let (_rest, token) = token(span("   SELECT")).unwrap();
-        assert_eq!(token.kind, TokenKind::Keyword(Keyword::Select));
-        assert_eq!(token.span.fragment.as_str(), "SELECT");
+        let (_rest, token) = token(span("   MAP")).unwrap();
+        assert_eq!(token.kind, TokenKind::Keyword(Keyword::Map));
+        assert_eq!(token.span.fragment.as_str(), "MAP");
     }
 
     #[test]

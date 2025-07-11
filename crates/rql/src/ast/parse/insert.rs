@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn test_sub_query() {
         let tokens = lex(r#"
-        insert (select 1, 'Eve', false)
+        insert (map 1, 'Eve', false)
         into test.users (id, name, is_premium)
     "#)
         .unwrap();
@@ -213,19 +213,19 @@ mod tests {
                 let row = &rows[0];
                 assert_eq!(row.len(), 1);
 
-                let select = row[0].as_select();
-                assert_eq!(select.len(), 3);
+                let map = row[0].as_map();
+                assert_eq!(map.len(), 3);
 
                 {
-                    let id = select[0].as_literal_number();
+                    let id = map[0].as_literal_number();
                     assert_eq!(id.value(), "1");
                 }
                 {
-                    let name = select[1].as_literal_text();
+                    let name = map[1].as_literal_text();
                     assert_eq!(name.value(), "Eve");
                 }
                 {
-                    let is_premium = select[2].as_literal_boolean();
+                    let is_premium = map[2].as_literal_boolean();
                     assert!(!is_premium.value());
                 }
             }

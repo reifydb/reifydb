@@ -43,7 +43,7 @@ impl Compiler {
                     let input = stack.pop().unwrap(); // FIXME
                     stack.push(PhysicalPlan::Aggregate(AggregateNode {
                         by: aggregate.by,
-                        select: aggregate.select,
+                        map: aggregate.map,
                         input: Box::new(input),
                     }));
                 }
@@ -82,9 +82,9 @@ impl Compiler {
                     }));
                 }
 
-                LogicalPlan::Select(select) => {
+                LogicalPlan::Map(map) => {
                     let input = stack.pop().map(Box::new);
-                    stack.push(PhysicalPlan::Select(SelectNode { select: select.select, input }));
+                    stack.push(PhysicalPlan::Map(MapNode { map: map.map, input }));
                 }
                 LogicalPlan::TableScan(scan) => {
                     stack.push(TableScan(TableScanNode { schema: scan.schema, table: scan.table }));
@@ -116,7 +116,7 @@ pub enum PhysicalPlan {
     JoinLeft(JoinLeftNode),
     Limit(LimitNode),
     Order(OrderNode),
-    Select(SelectNode),
+    Map(MapNode),
     TableScan(TableScanNode),
 }
 
@@ -151,7 +151,7 @@ pub enum InsertIntoTablePlan {
 pub struct AggregateNode {
     pub input: Box<PhysicalPlan>,
     pub by: Vec<Expression>,
-    pub select: Vec<Expression>,
+    pub map: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
@@ -180,9 +180,9 @@ pub struct OrderNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct SelectNode {
+pub struct MapNode {
     pub input: Option<Box<PhysicalPlan>>,
-    pub select: Vec<Expression>,
+    pub map: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]

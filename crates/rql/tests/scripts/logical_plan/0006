@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later
 
-logical 'select 1+1 as sum'
+logical 'map 1+1 as sum'
 ---
-> └── Select
+> └── Map
 >     └── (Constant(1) + Constant(1)) as sum
 > 

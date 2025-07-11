@@ -43,7 +43,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::Policy(_) => "Policy",
         Ast::PolicyBlock(_) => "PolicyBlock",
         Ast::Prefix(_) => "Prefix",
-        Ast::Select(_) => "Select",
+        Ast::Map(_) => "Map",
         Ast::Tuple(_) => "Tuple",
         Ast::DataType(_) => "DataType",
         Ast::Wildcard(_) => "Wildcard",
@@ -77,7 +77,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         },
         Ast::Aggregate(a) => {
             children.extend(a.by);
-            children.extend(a.select);
+            children.extend(a.map);
         }
         Ast::InsertIntoTable(i) => {
             children.extend(i.columns.nodes);
@@ -89,7 +89,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
             children.push(*with);
             children.extend(on);
         }
-        Ast::Select(s) => children.extend(s.select),
+        Ast::Map(s) => children.extend(s.map),
         Ast::Order(o) => {
             for col in &o.columns {
                 children.push(Ast::Identifier(col.clone()));

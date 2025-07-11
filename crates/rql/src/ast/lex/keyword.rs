@@ -44,7 +44,7 @@ macro_rules! keyword {
 }
 
 keyword! {
-    Select     => "SELECT",
+    Map     => "MAP",
     By         => "BY",
     From       => "FROM",
     Where      => "WHERE",
@@ -140,7 +140,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
 
     let parser = alt((
         alt((
-            keyword_tag(Keyword::Select, "SELECT"),
+            keyword_tag(Keyword::Map, "MAP"),
             keyword_tag(Keyword::By, "BY"),
             keyword_tag(Keyword::From, "FROM"),
             keyword_tag(Keyword::Where, "WHERE"),
@@ -262,7 +262,7 @@ mod tests {
     }
 
     generate_keyword_tests! {
-        test_keyword_select => (Select, "SELECT"),
+        test_keyword_map => (Map, "MAP"),
         test_keyword_by => (By, "BY"),
         test_keyword_from => (From, "FROM"),
         test_keyword_where => (Where, "WHERE"),
@@ -343,7 +343,7 @@ mod tests {
     }
 
     generate_not_keyword_tests! {
-        test_not_keyword_select => ( "select"),
+        test_not_keyword_map => ( "map"),
         test_not_keyword_by => ( "by"),
         test_not_keyword_from => ( "from"),
         test_not_keyword_where => ( "where"),

@@ -135,4 +135,4 @@ This supports the development of ReifyDB and ensures fair use.
 
 ---
 ## Commercial Support
-ReifyDB is available as a managed service for selected users, if you're interested or need support, [contact](mailto:founder@reifydb.com) me for more information and deployment options.
+ReifyDB is available as a managed service for maped users, if you're interested or need support, [contact](mailto:founder@reifydb.com) me for more information and deployment options.

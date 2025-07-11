@@ -66,7 +66,7 @@ fn main() {
     //         &root,
     //         r#"
     //         from test.users
-    //         select age, num
+    //         map age, num
     //         aggregate sum(num) as a, min(num) as b, max(num) as c by age
     //
     //         "#,
@@ -79,7 +79,7 @@ fn main() {
     // for l in db.rx_as(
     //     &root,
     //     r#"
-    //         select 1 + 1,2 + 2,3 * 12
+    //         map 1 + 1,2 + 2,3 * 12
     //     "#,
     // ) {
     //     println!("{}", l);

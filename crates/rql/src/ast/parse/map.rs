@@ -4,11 +4,11 @@
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstSelect, parse};
+use crate::ast::{AstMap, parse};
 
 impl Parser {
-    pub(crate) fn parse_select(&mut self) -> parse::Result<AstSelect> {
-        let token = self.consume_keyword(Keyword::Select)?;
+    pub(crate) fn parse_map(&mut self) -> parse::Result<AstMap> {
+        let token = self.consume_keyword(Keyword::Map)?;
 
         let mut columns = Vec::new();
         loop {
@@ -26,7 +26,7 @@ impl Parser {
             }
         }
 
-        Ok(AstSelect { token, select: columns })
+        Ok(AstMap { token, map: columns })
     }
 }
 
@@ -37,81 +37,81 @@ mod tests {
     use crate::ast::{Ast, InfixOperator};
 
     #[test]
-    fn test_select_constant_number() {
-        let tokens = lex("SELECT 1").unwrap();
+    fn test_map_constant_number() {
+        let tokens = lex("MAP 1").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let select = result.first_unchecked().as_select();
-        assert_eq!(select.select.len(), 1);
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.map.len(), 1);
 
-        let number = select.select[0].as_literal_number();
+        let number = map.map[0].as_literal_number();
         assert_eq!(number.value(), "1");
     }
 
     #[test]
-    fn test_select_multiple_expressions() {
-        let tokens = lex("SELECT 1 + 2, 4 * 3").unwrap();
+    fn test_map_multiple_expressions() {
+        let tokens = lex("MAP 1 + 2, 4 * 3").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let select = result.first_unchecked().as_select();
-        assert_eq!(select.select.len(), 2);
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.map.len(), 2);
 
-        let first = select.select[0].as_infix();
+        let first = map.map[0].as_infix();
         assert_eq!(first.left.as_literal_number().value(), "1");
         assert!(matches!(first.operator, InfixOperator::Add(_)));
         assert_eq!(first.right.as_literal_number().value(), "2");
 
-        let second = select.select[1].as_infix();
+        let second = map.map[1].as_infix();
         assert_eq!(second.left.as_literal_number().value(), "4");
         assert!(matches!(second.operator, InfixOperator::Multiply(_)));
         assert_eq!(second.right.as_literal_number().value(), "3");
     }
 
     #[test]
-    fn test_select_star() {
-        let tokens = lex("SELECT *").unwrap();
+    fn test_map_star() {
+        let tokens = lex("MAP *").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let select = result.first_unchecked().as_select();
-        assert_eq!(select.select.len(), 1);
-        assert!(matches!(select.select[0], Ast::Wildcard(_)));
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.map.len(), 1);
+        assert!(matches!(map.map[0], Ast::Wildcard(_)));
     }
 
     #[test]
-    fn test_select_single_column() {
-        let tokens = lex("SELECT name").unwrap();
+    fn test_map_single_column() {
+        let tokens = lex("MAP name").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let select = result.first_unchecked().as_select();
-        assert_eq!(select.select.len(), 1);
-        assert!(matches!(select.select[0], Ast::Identifier(_)));
-        assert_eq!(select.select[0].value(), "name");
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.map.len(), 1);
+        assert!(matches!(map.map[0], Ast::Identifier(_)));
+        assert_eq!(map.map[0].value(), "name");
     }
 
     #[test]
-    fn test_select_multiple_columns() {
-        let tokens = lex("SELECT name,age").unwrap();
+    fn test_map_multiple_columns() {
+        let tokens = lex("MAP name,age").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let select = result.first_unchecked().as_select();
-        assert_eq!(select.select.len(), 2);
-        assert!(matches!(select.select[0], Ast::Identifier(_)));
-        assert_eq!(select.select[0].value(), "name");
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.map.len(), 2);
+        assert!(matches!(map.map[0], Ast::Identifier(_)));
+        assert_eq!(map.map[0].value(), "name");
 
-        assert!(matches!(select.select[1], Ast::Identifier(_)));
-        assert_eq!(select.select[1].value(), "age");
+        assert!(matches!(map.map[1], Ast::Identifier(_)));
+        assert_eq!(map.map[1].value(), "age");
     }
 }

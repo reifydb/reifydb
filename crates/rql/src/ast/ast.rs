@@ -59,7 +59,7 @@ pub enum Ast {
     Policy(AstPolicy),
     PolicyBlock(AstPolicyBlock),
     Prefix(AstPrefix),
-    Select(AstSelect),
+    Map(AstMap),
     Tuple(AstTuple),
     DataType(AstDataType),
     Wildcard(AstWildcard),
@@ -101,7 +101,7 @@ impl Ast {
             Ast::Policy(node) => &node.token,
             Ast::PolicyBlock(node) => &node.token,
             Ast::Prefix(node) => node.node.token(),
-            Ast::Select(node) => &node.token,
+            Ast::Map(node) => &node.token,
             Ast::Tuple(node) => &node.token,
             Ast::DataType(node) => node.token(),
             Ast::Wildcard(node) => &node.0,
@@ -281,12 +281,12 @@ impl Ast {
         if let Ast::Prefix(result) = self { result } else { panic!("not prefix") }
     }
 
-    pub fn is_select(&self) -> bool {
-        matches!(self, Ast::Select(_))
+    pub fn is_map(&self) -> bool {
+        matches!(self, Ast::Map(_))
     }
 
-    pub fn as_select(&self) -> &AstSelect {
-        if let Ast::Select(result) = self { result } else { panic!("not select") }
+    pub fn as_map(&self) -> &AstMap {
+        if let Ast::Map(result) = self { result } else { panic!("not map") }
     }
 
     pub fn is_tuple(&self) -> bool {
@@ -410,7 +410,7 @@ pub enum AstFrom {
 pub struct AstAggregate {
     pub token: Token,
     pub by: Vec<Ast>,
-    pub select: Vec<Ast>,
+    pub map: Vec<Ast>,
 }
 
 impl AstFrom {
@@ -595,22 +595,22 @@ impl AstPrefixOperator {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstSelect {
+pub struct AstMap {
     pub token: Token,
-    pub select: Vec<Ast>,
+    pub map: Vec<Ast>,
 }
 
-impl Index<usize> for AstSelect {
+impl Index<usize> for AstMap {
     type Output = Ast;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.select[index]
+        &self.map[index]
     }
 }
 
-impl AstSelect {
+impl AstMap {
     pub fn len(&self) -> usize {
-        self.select.len()
+        self.map.len()
     }
 }
 

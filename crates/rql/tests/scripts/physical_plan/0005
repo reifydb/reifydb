@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later
 
-physical 'from users select id, name'
+physical 'from users map id, name'
 ---
-> └── Select [Column(id), Column(name)]
+> └── Map [Column(id), Column(name)]
 >     └── TableScan users
 > 

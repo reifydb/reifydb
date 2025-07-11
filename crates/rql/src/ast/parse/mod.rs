@@ -21,7 +21,7 @@ mod order;
 mod policy;
 mod prefix;
 mod primary;
-mod select;
+mod map;
 mod tuple;
 
 pub use error::*;

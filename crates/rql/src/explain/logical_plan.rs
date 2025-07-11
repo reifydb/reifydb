@@ -3,7 +3,7 @@
 
 use crate::ast::parse;
 use crate::plan::logical::{
-    AggregateNode, FilterNode, JoinLeftNode, LimitNode, LogicalPlan, OrderNode, SelectNode,
+    AggregateNode, FilterNode, JoinLeftNode, LimitNode, LogicalPlan, OrderNode, MapNode,
     TableScanNode, compile_logical,
 };
 use reifydb_core::Error;
@@ -49,10 +49,10 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
                 condition.to_string()
             ));
         }
-        LogicalPlan::Select(SelectNode { select }) => {
-            output.push_str(&format!("{}{} Select\n", prefix, branch));
-            for (i, expr) in select.iter().enumerate() {
-                let last = i == select.len() - 1;
+        LogicalPlan::Map(MapNode { map }) => {
+            output.push_str(&format!("{}{} Map\n", prefix, branch));
+            for (i, expr) in map.iter().enumerate() {
+                let last = i == map.len() - 1;
                 output.push_str(&format!(
                     "{}{} {}\n",
                     child_prefix,
@@ -61,7 +61,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
                 ));
             }
         }
-        LogicalPlan::Aggregate(AggregateNode { by, select }) => {
+        LogicalPlan::Aggregate(AggregateNode { by, map }) => {
             output.push_str(&format!("{}{} Aggregate\n", prefix, branch));
             if !by.is_empty() {
                 output.push_str(&format!(
@@ -70,11 +70,11 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
                     by.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
                 ));
             }
-            if !select.is_empty() {
+            if !map.is_empty() {
                 output.push_str(&format!(
-                    "{}└── select: {}\n",
+                    "{}└── map: {}\n",
                     child_prefix,
-                    select.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+                    map.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
                 ));
             }
         }

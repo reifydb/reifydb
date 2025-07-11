@@ -68,7 +68,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::JoinLeft(_)
             | PhysicalPlan::Limit(_)
             | PhysicalPlan::Order(_)
-            | PhysicalPlan::Select(_)
+            | PhysicalPlan::Map(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
 
             PhysicalPlan::CreateDeferredView(_)
@@ -94,7 +94,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::JoinLeft(_)
             | PhysicalPlan::Limit(_)
             | PhysicalPlan::Order(_)
-            | PhysicalPlan::Select(_)
+            | PhysicalPlan::Map(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(tx, plan),
         }
     }

@@ -22,9 +22,9 @@ pub(crate) fn compile(
     functions: Functions,
 ) -> Box<dyn ExecutionPlan> {
     match plan {
-        PhysicalPlan::Aggregate(physical::AggregateNode { by, select, input }) => {
+        PhysicalPlan::Aggregate(physical::AggregateNode { by, map, input }) => {
             let input_node = compile(*input, rx, functions.clone());
-            Box::new(AggregateNode::new(input_node, by, select, functions))
+            Box::new(AggregateNode::new(input_node, by, map, functions))
         }
 
         PhysicalPlan::Filter(physical::FilterNode { conditions, input }) => {
@@ -42,12 +42,12 @@ pub(crate) fn compile(
             Box::new(OrderNode::new(input_node, by))
         }
 
-        PhysicalPlan::Select(physical::SelectNode { select, input }) => {
+        PhysicalPlan::Map(physical::MapNode { map, input }) => {
             if let Some(input) = input {
                 let input_node = compile(*input, rx, functions);
-                Box::new(ProjectNode::new(input_node, select))
+                Box::new(ProjectNode::new(input_node, map))
             } else {
-                Box::new(ProjectWithoutInputNode::new(select))
+                Box::new(ProjectWithoutInputNode::new(map))
             }
         }
 

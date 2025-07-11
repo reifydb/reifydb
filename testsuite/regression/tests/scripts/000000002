@@ -4,7 +4,7 @@
 (tx 'create schema test')
 (tx 'create table test.item(field: int1)')
 (tx 'insert (-1 -2) into test.item (field)')
-tx 'from test.item select field'
+tx 'from test.item map field'
 ---
 > +---------+
 > |  field  |

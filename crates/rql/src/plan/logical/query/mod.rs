@@ -6,5 +6,5 @@ mod filter;
 mod from;
 mod join;
 mod order;
-mod select;
+mod map;
 mod limit;

@@ -35,7 +35,7 @@ impl Compiler {
                 Ast::Join(node) => result.push(Self::compile_join(node)?),
                 Ast::Limit(node) => result.push(Self::compile_limit(node)?),
                 Ast::Order(node) => result.push(Self::compile_order(node)?),
-                Ast::Select(node) => result.push(Self::compile_select(node)?),
+                Ast::Map(node) => result.push(Self::compile_map(node)?),
                 node => unimplemented!("{:?}", node),
             }
         }
@@ -56,7 +56,7 @@ pub enum LogicalPlan {
     JoinLeft(JoinLeftNode),
     Limit(LimitNode),
     Order(OrderNode),
-    Select(SelectNode),
+    Map(MapNode),
     TableScan(TableScanNode),
 }
 
@@ -96,7 +96,7 @@ pub enum InsertIntoTableNode {
 #[derive(Debug)]
 pub struct AggregateNode {
     pub by: Vec<Expression>,
-    pub select: Vec<Expression>,
+    pub map: Vec<Expression>,
 }
 
 #[derive(Debug)]
@@ -120,8 +120,8 @@ pub struct OrderNode {
 }
 
 #[derive(Debug)]
-pub struct SelectNode {
-    pub select: Vec<Expression>,
+pub struct MapNode {
+    pub map: Vec<Expression>,
 }
 
 #[derive(Debug)]

@@ -6,5 +6,5 @@ logical 'from users aggregate count(age) by name, age'
 > └── TableScan users
 > └── Aggregate
 >     ├── by: Column(name), Column(age)
->     └── select: count(Column(age))
+>     └── map: count(Column(age))
 > 

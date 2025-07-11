@@ -1,11 +1,11 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later
 
-ast 'from users select id, name'
+ast 'from users map id, name'
 ---
 > └── From @ line 1, offset 0 — "from"
 >     └── Identifier @ line 1, offset 5 — "users"
-> └── Select @ line 1, offset 11 — "select"
->     ├── Identifier @ line 1, offset 18 — "id"
->     └── Identifier @ line 1, offset 22 — "name"
+> └── Map @ line 1, offset 11 — "map"
+>     ├── Identifier @ line 1, offset 15 — "id"
+>     └── Identifier @ line 1, offset 19 — "name"
 > 

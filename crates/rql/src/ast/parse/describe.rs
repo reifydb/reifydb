@@ -24,16 +24,16 @@ mod tests {
 
 	#[test]
 	fn describe_query() {
-		let tokens = lex("describe ( select cast(9924, int8) )").unwrap();
+		let tokens = lex("describe ( map cast(9924, int8) )").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		match result.first().unwrap().first_unchecked().as_describe() {
 			AstDescribe::Query { node, .. } => {
-				let select = node.as_select();
-				assert_eq!(select.select.len(), 1);
+				let map = node.as_map();
+				assert_eq!(map.map.len(), 1);
 
-				let AstCast { tuple, .. } = select.select[0].as_cast();
+				let AstCast { tuple, .. } = map.map[0].as_cast();
 				assert_eq!(tuple.len(), 2);
 
 				assert_eq!(tuple.nodes[0].as_literal_number().value(), "9924");

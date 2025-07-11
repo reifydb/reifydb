@@ -29,7 +29,7 @@ async fn main() {
 
     let result = client.rx(r#"
     from test.arith
-        select id, cast(id, float8)
+        map id, cast(id, float8)
     "#.into()).await.unwrap();
 
     println!("✅ Frames: {:?}", result);

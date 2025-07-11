@@ -1,10 +1,10 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later
 
-logical 'from users select id, name'
+logical 'from users map id, name'
 ---
 > └── TableScan users
-> └── Select
+> └── Map
 >     ├── Column(id)
 >     └── Column(name)
 > 
