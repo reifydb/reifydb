@@ -21,7 +21,7 @@ impl Evaluator {
             .find(|c| &c.name == name.as_str())
             .ok_or(Error(column_not_found(column.0.clone())))?;
 
-        let limit = ctx.limit.unwrap_or(usize::MAX);
+        let take = ctx.take.unwrap_or(usize::MAX);
 
         match col.values.get(0) {
             Value::Bool(_) => {
@@ -30,7 +30,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -55,7 +55,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -80,7 +80,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -105,7 +105,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -130,7 +130,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -155,7 +155,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -180,7 +180,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -205,7 +205,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -230,7 +230,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -255,7 +255,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -280,7 +280,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -305,7 +305,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -330,7 +330,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {
@@ -355,7 +355,7 @@ impl Evaluator {
                 let mut count = 0;
                 for (i, v) in col.values.iter().enumerate() {
                     if ctx.mask.get(i) {
-                        if count >= limit {
+                        if count >= take {
                             break;
                         }
                         match v {

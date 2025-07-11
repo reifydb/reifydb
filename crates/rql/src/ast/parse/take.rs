@@ -3,16 +3,16 @@
 
 use crate::ast::lex::Keyword;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{Ast, AstLimit, AstLiteral, parse};
+use crate::ast::{Ast, AstTake, AstLiteral, parse};
 
 impl Parser {
-    pub(crate) fn parse_limit(&mut self) -> parse::Result<AstLimit> {
-        let token = self.consume_keyword(Keyword::Limit)?;
-        let limit = self.parse_node(Precedence::None)?;
-        match limit {
+    pub(crate) fn parse_take(&mut self) -> parse::Result<AstTake> {
+        let token = self.consume_keyword(Keyword::Take)?;
+        let take = self.parse_node(Precedence::None)?;
+        match take {
             Ast::Literal(literal) => match literal {
                 AstLiteral::Number(number) => {
-                    Ok(AstLimit { token, limit: number.value().parse().unwrap() })
+                    Ok(AstTake { token, take: number.value().parse().unwrap() })
                 }
                 _ => unimplemented!(),
             },
@@ -27,14 +27,14 @@ mod tests {
     use crate::ast::lex::lex;
 
     #[test]
-    fn test_limit_number() {
-        let tokens = lex("LIMIT 10").unwrap();
+    fn test_take_number() {
+        let tokens = lex("TAKE 10").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
 
         let result = result.pop().unwrap();
-        let limit = result.first_unchecked().as_limit();
-        assert_eq!(limit.limit, 10);
+        let take = result.first_unchecked().as_take();
+        assert_eq!(take.take, 10);
     }
 }

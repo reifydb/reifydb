@@ -5,7 +5,7 @@ use crate::execute::query::aggregate::AggregateNode;
 use crate::execute::query::join::LeftJoinNode;
 use crate::execute::query::order::OrderNode;
 use crate::execute::query::project::ProjectWithoutInputNode;
-use crate::execute::query::{ExecutionPlan, FilterNode, LimitNode, ProjectNode, ScanFrameNode};
+use crate::execute::query::{ExecutionPlan, FilterNode, TakeNode, ProjectNode, ScanFrameNode};
 use crate::frame::{Column, ColumnValues, Frame};
 use crate::function::Functions;
 use reifydb_catalog::Catalog;
@@ -32,9 +32,9 @@ pub(crate) fn compile(
             Box::new(FilterNode::new(input_node, conditions))
         }
 
-        PhysicalPlan::Limit(physical::LimitNode { limit, input }) => {
+        PhysicalPlan::Take(physical::TakeNode { take, input }) => {
             let input_node = compile(*input, rx, functions);
-            Box::new(LimitNode::new(input_node, limit))
+            Box::new(TakeNode::new(input_node, take))
         }
 
         PhysicalPlan::Order(physical::OrderNode { by, input }) => {

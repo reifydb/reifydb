@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later
 
-physical 'from users limit 42'
+physical 'from users take 42'
 ---
-> └── Limit 42
+> └── Take 42
 >     └── TableScan users
 > 

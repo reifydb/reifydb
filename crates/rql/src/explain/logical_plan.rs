@@ -3,7 +3,7 @@
 
 use crate::ast::parse;
 use crate::plan::logical::{
-    AggregateNode, FilterNode, JoinLeftNode, LimitNode, LogicalPlan, OrderNode, MapNode,
+    AggregateNode, FilterNode, JoinLeftNode, TakeNode, LogicalPlan, OrderNode, MapNode,
     TableScanNode, compile_logical,
 };
 use reifydb_core::Error;
@@ -37,8 +37,8 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
         LogicalPlan::CreateTable(_) => unimplemented!(),
         LogicalPlan::InsertIntoTable(_) => unimplemented!(),
 
-        LogicalPlan::Limit(LimitNode { limit }) => {
-            output.push_str(&format!("{}{} Limit {}\n", prefix, branch, limit));
+        LogicalPlan::Take(TakeNode { take }) => {
+            output.push_str(&format!("{}{} Take {}\n", prefix, branch, take));
         }
         LogicalPlan::Filter(FilterNode { condition }) => {
             output.push_str(&format!("{}{} Filter\n", prefix, branch));

@@ -5,6 +5,6 @@ mod aggregate;
 mod filter;
 mod from;
 mod join;
-mod order;
 mod map;
-mod limit;
+mod order;
+mod take;

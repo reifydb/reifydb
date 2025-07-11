@@ -40,7 +40,7 @@ pub(crate) struct Context {
     pub(crate) mask: BitVec,
     pub(crate) columns: Vec<Column>,
     pub(crate) row_count: usize,
-    pub(crate) limit: Option<usize>,
+    pub(crate) take: Option<usize>,
 }
 
 impl Context {
@@ -51,7 +51,7 @@ impl Context {
             mask: BitVec::new(0, false),
             columns: vec![],
             row_count: 1,
-            limit: None,
+            take: None,
         }
     }
 }

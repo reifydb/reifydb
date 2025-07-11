@@ -28,7 +28,7 @@ impl ExecutionPlan for FilterNode {
                 mask,
                 columns: frame.columns.clone(),
                 row_count,
-                limit: None,
+                take: None,
             };
 
             for filter_expr in &self.expressions {

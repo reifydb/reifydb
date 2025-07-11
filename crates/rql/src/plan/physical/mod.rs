@@ -56,10 +56,10 @@ impl Compiler {
                     }));
                 }
 
-                LogicalPlan::Limit(limit) => {
+                LogicalPlan::Take(take) => {
                     let input = stack.pop().unwrap(); // FIXME
-                    stack.push(PhysicalPlan::Limit(LimitNode {
-                        limit: limit.limit,
+                    stack.push(PhysicalPlan::Take(TakeNode {
+                        take: take.take,
                         input: Box::new(input),
                     }));
                 }
@@ -114,7 +114,7 @@ pub enum PhysicalPlan {
     Aggregate(AggregateNode),
     Filter(FilterNode),
     JoinLeft(JoinLeftNode),
-    Limit(LimitNode),
+    Take(TakeNode),
     Order(OrderNode),
     Map(MapNode),
     TableScan(TableScanNode),
@@ -168,9 +168,9 @@ pub struct JoinLeftNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct LimitNode {
+pub struct TakeNode {
     pub input: Box<PhysicalPlan>,
-    pub limit: usize,
+    pub take: usize,
 }
 
 #[derive(Debug, Clone)]

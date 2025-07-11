@@ -83,7 +83,7 @@ impl ExecutionPlan for LeftJoinNode {
                         })
                         .collect(),
                     row_count: 1,
-                    limit: Some(1),
+                    take: Some(1),
                 };
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {

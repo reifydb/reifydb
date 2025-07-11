@@ -5,7 +5,7 @@ use crate::frame::{Column, ColumnValues, Frame};
 use reifydb_core::CowVec;
 
 impl Frame {
-    pub fn limit(&mut self, n: usize) -> crate::frame::Result<()> {
+    pub fn take(&mut self, n: usize) -> crate::frame::Result<()> {
         let mut columns = Vec::with_capacity(self.columns.len());
 
         for col in &self.columns {
@@ -89,7 +89,7 @@ mod tests {
             [false, true, true],
         )]);
 
-        test_instance.limit(1).unwrap();
+        test_instance.take(1).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -105,7 +105,7 @@ mod tests {
             [true, false, true],
         )]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -121,7 +121,7 @@ mod tests {
             [true, true, false, true],
         )]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -137,7 +137,7 @@ mod tests {
             [true, false, true],
         )]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -153,7 +153,7 @@ mod tests {
             [true, true, false, true],
         )]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -169,7 +169,7 @@ mod tests {
             [true, false],
         )]);
 
-        test_instance.limit(1).unwrap();
+        test_instance.take(1).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -185,7 +185,7 @@ mod tests {
             [false, true, true],
         )]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -201,7 +201,7 @@ mod tests {
             [true, true],
         )]);
 
-        test_instance.limit(1).unwrap();
+        test_instance.take(1).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -217,7 +217,7 @@ mod tests {
             [false, false, true],
         )]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -233,7 +233,7 @@ mod tests {
             [true, false],
         )]);
 
-        test_instance.limit(1).unwrap();
+        test_instance.take(1).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -249,7 +249,7 @@ mod tests {
             [false, true],
         )]);
 
-        test_instance.limit(1).unwrap();
+        test_instance.take(1).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -265,7 +265,7 @@ mod tests {
             [true, true, false],
         )]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -281,7 +281,7 @@ mod tests {
             [true, false, true],
         )]);
 
-        test_instance.limit(1).unwrap();
+        test_instance.take(1).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -294,7 +294,7 @@ mod tests {
         let mut test_instance =
             Frame::new(vec![Column::string_with_validity("t", ["a", "b", "c"], [true, false, true])]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
@@ -306,7 +306,7 @@ mod tests {
     fn test_undefined_column() {
         let mut test_instance = Frame::new(vec![Column::undefined("u", 3)]);
 
-        test_instance.limit(2).unwrap();
+        test_instance.take(2).unwrap();
 
         match &test_instance.columns[0].values {
             ColumnValues::Undefined(size) => {
@@ -320,7 +320,7 @@ mod tests {
     fn test_handles_undefined() {
         let mut test_instance = Frame::new(vec![Column::undefined("u", 5)]);
 
-        test_instance.limit(3).unwrap();
+        test_instance.take(3).unwrap();
 
         match &test_instance.columns[0].values {
             ColumnValues::Undefined(len) => assert_eq!(*len, 3),
@@ -333,7 +333,7 @@ mod tests {
         let mut test_instance =
             Frame::new(vec![Column::int2_with_validity("a", [10, 20], [true, false])]);
 
-        test_instance.limit(10).unwrap();
+        test_instance.take(10).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,

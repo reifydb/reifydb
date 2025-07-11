@@ -76,8 +76,8 @@ fn render_physical_plan_inner(
             });
         }
 
-        PhysicalPlan::Limit(physical::LimitNode { limit, input }) => {
-            let label = format!("Limit {}", limit);
+        PhysicalPlan::Take(physical::TakeNode { take, input }) => {
+            let label = format!("Take {}", take);
             write_node_header(output, prefix, is_last, &label);
             with_child_prefix(prefix, is_last, |child_prefix| {
                 render_physical_plan_inner(input, child_prefix, true, output);

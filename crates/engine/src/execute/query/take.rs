@@ -4,19 +4,19 @@
 use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::FrameLayout;
 
-pub(crate) struct LimitNode {
+pub(crate) struct TakeNode {
     input: Box<dyn ExecutionPlan>,
     remaining: usize,
     layout: Option<FrameLayout>,
 }
 
-impl LimitNode {
-    pub(crate) fn new(input: Box<dyn ExecutionPlan>, limit: usize) -> Self {
-        Self { input, remaining: limit, layout: None }
+impl TakeNode {
+    pub(crate) fn new(input: Box<dyn ExecutionPlan>, take: usize) -> Self {
+        Self { input, remaining: take, layout: None }
     }
 }
 
-impl ExecutionPlan for LimitNode {
+impl ExecutionPlan for TakeNode {
     fn next(&mut self) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mut mask }) = self.input.next()? {
             let visible: usize = mask.count_ones();

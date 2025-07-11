@@ -38,7 +38,7 @@ impl Parser {
                 Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
                 Keyword::Insert => Ok(Ast::InsertIntoTable(self.parse_insert()?)),
                 Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
-                Keyword::Limit => Ok(Ast::Limit(self.parse_limit()?)),
+                Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
                 Keyword::Order => Ok(Ast::Order(self.parse_order_by()?)),
                 Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
                 Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),

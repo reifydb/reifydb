@@ -15,7 +15,7 @@ mod infix;
 mod insert;
 mod join;
 mod data_type;
-mod limit;
+mod take;
 mod literal;
 mod order;
 mod policy;

@@ -36,7 +36,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::Infix(_) => "Infix",
         Ast::InsertIntoTable(_) => "Insert",
         Ast::Join(_) => "Join",
-        Ast::Limit(_) => "Limit",
+        Ast::Take(_) => "Take",
         Ast::Literal(_) => "Literal",
         Ast::Nop => "Nop",
         Ast::Order(_) => "Order",

@@ -29,7 +29,7 @@ impl ExecutionPlan for ProjectNode {
                 mask: mask.clone(),
                 columns: frame.columns.clone(),
                 row_count,
-                limit: None,
+                take: None,
             };
 
             let columns = self
@@ -80,7 +80,7 @@ impl ExecutionPlan for ProjectWithoutInputNode {
                     mask: BitVec::new(1, true),
                     columns: Vec::new(),
                     row_count: 1,
-                    limit: None,
+                    take: None,
                 },
             )?;
 

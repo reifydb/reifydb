@@ -66,7 +66,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
             | PhysicalPlan::JoinLeft(_)
-            | PhysicalPlan::Limit(_)
+            | PhysicalPlan::Take(_)
             | PhysicalPlan::Order(_)
             | PhysicalPlan::Map(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
@@ -92,7 +92,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
             | PhysicalPlan::JoinLeft(_)
-            | PhysicalPlan::Limit(_)
+            | PhysicalPlan::Take(_)
             | PhysicalPlan::Order(_)
             | PhysicalPlan::Map(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(tx, plan),

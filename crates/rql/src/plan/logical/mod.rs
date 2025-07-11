@@ -33,7 +33,7 @@ impl Compiler {
                 Ast::Filter(node) => result.push(Self::compile_filter(node)?),
                 Ast::From(node) => result.push(Self::compile_from(node)?),
                 Ast::Join(node) => result.push(Self::compile_join(node)?),
-                Ast::Limit(node) => result.push(Self::compile_limit(node)?),
+                Ast::Take(node) => result.push(Self::compile_take(node)?),
                 Ast::Order(node) => result.push(Self::compile_order(node)?),
                 Ast::Map(node) => result.push(Self::compile_map(node)?),
                 node => unimplemented!("{:?}", node),
@@ -54,7 +54,7 @@ pub enum LogicalPlan {
     Aggregate(AggregateNode),
     Filter(FilterNode),
     JoinLeft(JoinLeftNode),
-    Limit(LimitNode),
+    Take(TakeNode),
     Order(OrderNode),
     Map(MapNode),
     TableScan(TableScanNode),
@@ -110,8 +110,8 @@ pub struct JoinLeftNode {
     pub on: Vec<Expression>,
 }
 #[derive(Debug)]
-pub struct LimitNode {
-    pub limit: usize,
+pub struct TakeNode {
+    pub take: usize,
 }
 
 #[derive(Debug)]

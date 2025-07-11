@@ -15,7 +15,7 @@ impl Evaluator {
         expr: &ConstantExpression,
         ctx: &Context,
     ) -> evaluate::Result<Column> {
-        let row_count = ctx.limit.unwrap_or(ctx.row_count);
+        let row_count = ctx.take.unwrap_or(ctx.row_count);
         Ok(Column { name: expr.span().fragment, values: Self::constant_value(&expr, row_count)? })
     }
 
@@ -25,7 +25,7 @@ impl Evaluator {
         data_type: DataType,
         ctx: &Context,
     ) -> evaluate::Result<Column> {
-        let row_count = ctx.limit.unwrap_or(ctx.row_count);
+        let row_count = ctx.take.unwrap_or(ctx.row_count);
         Ok(Column {
             name: expr.span().fragment,
             values: Self::constant_value_of(&expr, data_type, row_count)?,

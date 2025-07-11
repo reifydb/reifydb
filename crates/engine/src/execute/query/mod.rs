@@ -6,18 +6,18 @@ use reifydb_core::BitVec;
 
 pub(crate) use compile::compile;
 pub(crate) use filter::FilterNode;
-pub(crate) use limit::LimitNode;
 pub(crate) use project::ProjectNode;
 pub(crate) use scan::ScanFrameNode;
+pub(crate) use take::TakeNode;
 
 mod aggregate;
 mod compile;
 mod filter;
-mod limit;
+mod join;
+mod order;
 mod project;
 mod scan;
-mod order;
-mod join;
+mod take;
 
 #[derive(Debug)]
 pub(crate) struct Batch {

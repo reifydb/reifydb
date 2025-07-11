@@ -52,7 +52,7 @@ pub enum Ast {
     Infix(AstInfix),
     InsertIntoTable(AstInsertIntoTable),
     Join(AstJoin),
-    Limit(AstLimit),
+    Take(AstTake),
     Literal(AstLiteral),
     Nop,
     Order(AstOrder),
@@ -86,7 +86,7 @@ impl Ast {
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
             Ast::InsertIntoTable(node) => &node.token,
-            Ast::Limit(node) => &node.token,
+            Ast::Take(node) => &node.token,
             Ast::Literal(node) => match node {
                 AstLiteral::Boolean(node) => &node.0,
                 AstLiteral::Number(node) => &node.0,
@@ -191,11 +191,11 @@ impl Ast {
         if let Ast::Join(result) = self { result } else { panic!("not join") }
     }
 
-    pub fn is_limit(&self) -> bool {
-        matches!(self, Ast::Limit(_))
+    pub fn is_take(&self) -> bool {
+        matches!(self, Ast::Take(_))
     }
-    pub fn as_limit(&self) -> &AstLimit {
-        if let Ast::Limit(result) = self { result } else { panic!("not limit") }
+    pub fn as_take(&self) -> &AstTake {
+        if let Ast::Take(result) = self { result } else { panic!("not take") }
     }
 
     pub fn is_literal(&self) -> bool {
@@ -423,9 +423,9 @@ impl AstFrom {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstLimit {
+pub struct AstTake {
     pub token: Token,
-    pub limit: usize,
+    pub take: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
