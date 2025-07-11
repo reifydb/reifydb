@@ -1,10 +1,8 @@
-
-# Path to the test suites directory
 TEST_SUITE_DIR := ../testsuite
 TEST_CLIENT_DIR := ./pkg/client
 
 .PHONY: all
-all: check clean build-testcontainer test-full build push push-testcontainer
+all: check clean build-testcontainer test-full build push-testcontainer push
 
 .PHONY: check
 check:
@@ -31,7 +29,7 @@ build:
 
 .PHONY: build-testcontainer
 build-testcontainer:
-	docker build . -f bin/testcontainer/Dockerfile -t reifydb/testcontainer
+	docker build --no-cache -f bin/testcontainer/Dockerfile -t reifydb/testcontainer .
 
 .PHONY: coverage
 coverage:
@@ -77,7 +75,6 @@ TEST_CLIENTS := \
 	
 .PHONY: testclient $(TEST_CLIENTS)
 testclient:
-	$(MAKE) build-testcontainer
 	$(MAKE) -j$(shell nproc) $(TEST_CLIENTS)
 
 $(TEST_CLIENTS):

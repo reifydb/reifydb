@@ -44,13 +44,13 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.tx<[{ result: number }]>(
-                    'SELECT 1 as result;'
+                    'MAP 1 as result;'
                 ),
                 wsClient.tx<[{ a: number, b: number }]>(
-                    'SELECT 2 as a, 3 as b;'
+                    'MAP 2 as a, 3 as b;'
                 ),
                 wsClient.tx<[{ result: string }]>(
-                    "SELECT 'ReifyDB' as result;"
+                    "MAP 'ReifyDB' as result;"
                 )
             ]);
 
@@ -66,13 +66,13 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.rx<[{ result: number }]>(
-                    'SELECT 1 as result;'
+                    'MAP 1 as result;'
                 ),
                 wsClient.rx<[{ a: number, b: number }]>(
-                    'SELECT 2 as a, 3 as b;'
+                    'MAP 2 as a, 3 as b;'
                 ),
                 wsClient.rx<[{ result: string }]>(
-                    "SELECT 'ReifyDB' as result;"
+                    "MAP 'ReifyDB' as result;"
                 )
             ]);
 
@@ -87,13 +87,13 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.tx<[{ result: number }]>(
-                    'SELECT 1 as result;'
+                    'MAP 1 as result;'
                 ),
                 wsClient.rx<[{ a: number, b: number }]>(
-                    'SELECT 2 as a, 3 as b;'
+                    'MAP 2 as a, 3 as b;'
                 ),
                 wsClient.tx<[{ result: string }]>(
-                    "SELECT 'ReifyDB' as result;"
+                    "MAP 'ReifyDB' as result;"
                 )
             ]);
 

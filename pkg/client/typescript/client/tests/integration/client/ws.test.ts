@@ -44,7 +44,7 @@ describe('ReifyDB Client Integration Tests', () => {
 
         it('should execute simple tx', async () => {
             const frames = await wsClient.tx<[{ result: number }]>(
-                'SELECT 42 as result;'
+                'MAP 42 as result;'
             );
 
             expect(frames).toHaveLength(1);
@@ -54,7 +54,7 @@ describe('ReifyDB Client Integration Tests', () => {
 
         it('should execute simple rx', async () => {
             const frames = await wsClient.rx<[{ result: number }]>(
-                'SELECT 42 as result;'
+                'MAP 42 as result;'
             );
 
             expect(frames).toHaveLength(1);

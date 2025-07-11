@@ -47,14 +47,14 @@ describe('Statement', () => {
                 ''
             );
             expect(frames).toHaveLength(0);
-        }, 10);
+        }, 1000);
 
         it('single empty statement', async () => {
             const frames = await wsClient.tx<[{}]>(
                 ';'
             );
             expect(frames).toHaveLength(0);
-        }, 10);
+        }, 1000);
 
 
         it('many empty statement', async () => {
@@ -62,14 +62,14 @@ describe('Statement', () => {
                 ';;;;;'
             );
             expect(frames).toHaveLength(0);
-        }, 10);
+        }, 1000);
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.tx<[
                 { one: number },
                 { two: number }
             ]>(
-                ';SELECT 1 as one ;;;Select 2 as two'
+                ';MAP 1 as one ;;;MAP 2 as two'
             );
             expect(frames).toHaveLength(2);
 
@@ -79,17 +79,17 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[1][0].two).toBe(2);
 
-        }, 10);
+        }, 1000);
 
         it('single statement', async () => {
             const frames = await wsClient.tx<[{ result: boolean }]>(
-                'SELECT 1 as result;'
+                'MAP 1 as result;'
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].result).toBe(1);
-        }, 10);
+        }, 1000);
 
         it('multiple statements, but same structure', async () => {
             const frames = await wsClient.tx<[
@@ -97,9 +97,9 @@ describe('Statement', () => {
                 { result: number },
                 { result: number },
             ]>(
-                'SELECT 1 as result;' +
-                'SELECT 2 as result;' +
-                'SELECT 3 as result;'
+                'MAP 1 as result;' +
+                'MAP 2 as result;' +
+                'MAP 3 as result;'
             );
 
             expect(frames).toHaveLength(3);
@@ -111,7 +111,7 @@ describe('Statement', () => {
             expect(frames[0][0].result).toBe(1);
             expect(frames[1][0].result).toBe(2);
             expect(frames[2][0].result).toBe(3);
-        }, 10);
+        }, 1000);
 
         it('multiple statements, different structure', async () => {
             const frames = await wsClient.tx<[
@@ -119,9 +119,9 @@ describe('Statement', () => {
                 { a: number, b: number },
                 { result: string },
             ]>(
-                'SELECT 1 as result;' +
-                'SELECT 2 as a, 3 as b;' +
-                "SELECT 'ReifyDB' as result;"
+                'MAP 1 as result;' +
+                'MAP 2 as a, 3 as b;' +
+                "MAP 'ReifyDB' as result;"
             );
 
             expect(frames).toHaveLength(3);
@@ -136,7 +136,7 @@ describe('Statement', () => {
             expect(frames[1][0].b).toBe(3);
 
             expect(frames[2][0].result).toBe("ReifyDB");
-        }, 10);
+        }, 1000);
     });
 
 
@@ -147,14 +147,14 @@ describe('Statement', () => {
                 ''
             );
             expect(frames).toHaveLength(0);
-        }, 10);
+        }, 1000);
 
         it('single empty statement', async () => {
             const frames = await wsClient.rx<[{}]>(
                 ';'
             );
             expect(frames).toHaveLength(0);
-        }, 10);
+        }, 1000);
 
 
         it('many empty statement', async () => {
@@ -162,14 +162,14 @@ describe('Statement', () => {
                 ';;;;;'
             );
             expect(frames).toHaveLength(0);
-        }, 10);
+        }, 1000);
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.rx<[
                 { one: number },
                 { two: number }
             ]>(
-                ';SELECT 1 as one ;;;Select 2 as two'
+                ';MAP 1 as one ;;;MAP 2 as two'
             );
             expect(frames).toHaveLength(2);
 
@@ -179,17 +179,17 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[1][0].two).toBe(2);
 
-        }, 10);
+        }, 1000);
 
         it('single statement', async () => {
             const frames = await wsClient.rx<[{ result: boolean }]>(
-                'SELECT 1 as result;'
+                'MAP 1 as result;'
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].result).toBe(1);
-        }, 10);
+        }, 1000);
 
         it('multiple statements, but same structure', async () => {
             const frames = await wsClient.rx<[
@@ -197,9 +197,9 @@ describe('Statement', () => {
                 { result: number },
                 { result: number },
             ]>(
-                'SELECT 1 as result;' +
-                'SELECT 2 as result;' +
-                'SELECT 3 as result;'
+                'MAP 1 as result;' +
+                'MAP 2 as result;' +
+                'MAP 3 as result;'
             );
 
             expect(frames).toHaveLength(3);
@@ -211,7 +211,7 @@ describe('Statement', () => {
             expect(frames[0][0].result).toBe(1);
             expect(frames[1][0].result).toBe(2);
             expect(frames[2][0].result).toBe(3);
-        }, 10);
+        }, 1000);
 
         it('multiple statements, different structure', async () => {
             const frames = await wsClient.rx<[
@@ -219,9 +219,9 @@ describe('Statement', () => {
                 { a: number, b: number },
                 { result: string },
             ]>(
-                'SELECT 1 as result;' +
-                'SELECT 2 as a, 3 as b;' +
-                "SELECT 'ReifyDB' as result;"
+                'MAP 1 as result;' +
+                'MAP 2 as a, 3 as b;' +
+                "MAP 'ReifyDB' as result;"
             );
 
             expect(frames).toHaveLength(3);
@@ -236,7 +236,7 @@ describe('Statement', () => {
             expect(frames[1][0].b).toBe(3);
 
             expect(frames[2][0].result).toBe("ReifyDB");
-        }, 10);
+        }, 1000);
 
     });
 

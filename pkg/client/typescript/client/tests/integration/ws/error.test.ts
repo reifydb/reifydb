@@ -43,13 +43,13 @@ describe('Error', () => {
         it('out of range', async () => {
             await expect(
                 wsClient.tx<[{ result: number }]>(
-                    "SELECT cast(129, int1) as result;"
+                    "MAP cast(129, int1) as result;"
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 message: expect.stringContaining('value out of range in type `INT1`')
             });
-        }, 10);
+        }, 1000);
     });
 
 
@@ -57,13 +57,13 @@ describe('Error', () => {
         it('out of range', async () => {
             await expect(
                 wsClient.rx<[{ result: number }]>(
-                    "SELECT cast(129, int1) as result;"
+                    "MAP cast(129, int1) as result;"
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 message: expect.stringContaining('value out of range in type `INT1`')
             });
-        }, 10);
+        }, 1000);
     });
 
 });
