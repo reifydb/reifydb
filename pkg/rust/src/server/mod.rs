@@ -49,7 +49,7 @@ where
     }
 }
 
-pub type Callback<T> = Box<dyn FnOnce(T) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
+pub type Callback<T> = Box<dyn Fn(T) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 pub struct Callbacks<VS, US, T>
 where
@@ -145,7 +145,7 @@ where
 
     pub fn before_bootstrap<F, Fut>(mut self, func: F) -> Self
     where
-        F: FnOnce(BeforeBootstrap) -> Fut + Send + 'static,
+        F: Fn(BeforeBootstrap) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.callbacks.before_bootstrap.push(Box::new(move |ctx| Box::pin(func(ctx))));
@@ -155,7 +155,7 @@ where
     /// will only be invoked when a new database gets created
     pub fn on_create<F, Fut>(mut self, func: F) -> Self
     where
-        F: FnOnce(OnCreate<VS, US, T>) -> Fut + Send + 'static,
+        F: Fn(OnCreate<VS, US, T>) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.callbacks.on_create.push(Box::new(move |ctx| Box::pin(func(ctx))));
@@ -163,6 +163,16 @@ where
     }
 
     pub fn serve(&mut self, rt: &Runtime) -> Result<(), Error> {
+        let ctx = Context(Arc::new(ContextInner {}));
+
+        for f in &self.callbacks.before_bootstrap {
+            rt.block_on(async { f(BeforeBootstrap { ctx: ctx.clone() }).await });
+        }
+
+        for f in &self.callbacks.on_create {
+            rt.block_on(async { f(OnCreate { engine: self.engine.clone() }).await });
+        }
+
         if let Some(config) = self.ws_config.take() {
             let engine = self.engine.clone();
             let ws = WsServer::new(config, engine);
@@ -182,6 +192,16 @@ where
 
     pub fn serve_blocking(&mut self, rt: &Runtime) -> Result<(), reifydb_core::Error> {
         rt.block_on(async {
+            let ctx = Context(Arc::new(ContextInner {}));
+
+            for f in &self.callbacks.before_bootstrap {
+                f(BeforeBootstrap { ctx: ctx.clone() }).await;
+            }
+
+            for f in &self.callbacks.on_create {
+                f(OnCreate { engine: self.engine.clone() }).await;
+            }
+
             let mut handles = Vec::with_capacity(2);
 
             if let Some(config) = self.ws_config.take() {
