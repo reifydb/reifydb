@@ -29,7 +29,7 @@ async fn main() {
 
     let result = client.tx(r#"
     from test.arith
-        map 1 + 2, 3 + 4, 4 + 5 as X
+        map 1 + 2, 3 + 4, cast(129, int1) as X
     "#.into()).await.unwrap();
 
     println!("✅ Frames: {:?}", result);

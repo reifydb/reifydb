@@ -16,8 +16,6 @@ COPY bin ./bin
 COPY testsuite ./testsuite
 
 RUN cd bin/testcontainer && cargo build --release
-
-RUN pwd
 RUN cp target/release/reifydb-testcontainer /usr/local/bin/reifydb-testcontainer
 
 FROM debian:bookworm-slim

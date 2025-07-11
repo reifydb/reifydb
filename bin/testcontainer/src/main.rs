@@ -1,20 +1,48 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
+use reifydb::ReifyDB;
 use reifydb::network::ws::server::WsConfig;
-use reifydb::runtime::Runtime;
-use reifydb::{ReifyDB, memory, optimistic};
+use std::thread;
+use tokio::runtime::Runtime;
+use tokio::signal::unix::{SignalKind, signal};
+use tokio::sync::oneshot;
+use tokio::{select, signal};
 
 fn main() {
-    ReifyDB::server_with(optimistic(memory()))
-        .with_websocket(WsConfig{
-            socket: Some("0.0.0.0:8090".parse().unwrap()),
-        })
+    let (tx, rx) = oneshot::channel();
+
+    thread::spawn(move || {
+        let rt = Runtime::new().unwrap();
+        let _ = rt.block_on(async move {
+            let mut sigterm = signal(SignalKind::terminate()).unwrap();
+
+            let tokio_signal = async {
+                signal::ctrl_c().await.expect("Failed to listen for shutdown signal");
+                println!("Shutdown signal received");
+            };
+
+            select! {
+                _ = tokio_signal => {
+                    println!("Shutting down...");
+                    tx.send(()).unwrap();
+                }
+                _ = sigterm.recv() => {
+                    println!("Received SIGTERM. Cleaning up resources...");
+                    tx.send(()).unwrap();
+                }
+            }
+        });
+    });
+
+    let rt = Runtime::new().unwrap();
+    ReifyDB::server()
+        .with_websocket(WsConfig::default())
         .on_create(|ctx| async move {
             ctx.tx("create schema test");
             ctx.tx("create table test.arith(id: int2, value: int2, num: int2)");
             ctx.tx("insert (1,1,5), (1,1,10), (1,2,15), (2,1,10), (2,1,30) into test.arith(id,value,num)");
         })
-        .serve_blocking( &Runtime::new().unwrap())
+        .serve_blocking(&rt, rx)
         .unwrap();
 }

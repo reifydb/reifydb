@@ -8,3 +8,4 @@ repository.workspace = true
 
 [dependencies]
 reifydb = { workspace = true, features = ["server", "embedded"] }
+tokio = {workspace = true}

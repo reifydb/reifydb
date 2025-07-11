@@ -3,8 +3,8 @@
 
 use crate::grpc::server::db::DbService;
 use crate::grpc::server::grpc::db_server::DbServer;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::Error;
+use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -21,7 +21,7 @@ pub(crate) mod grpc {
     tonic::include_proto!("reifydb");
 }
 
-const DEFAULT_SOCKET: SocketAddr = SocketAddr::new(V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
+const DEFAULT_SOCKET: SocketAddr = SocketAddr::new(V4(Ipv4Addr::new(0, 0, 0, 0)), 54321);
 
 #[derive(Debug)]
 pub struct GrpcConfig {
@@ -76,8 +76,9 @@ where
     }
 
     pub async fn serve(self) -> Result<(), Error> {
-        let listener = TcpListener::bind(self.config.socket.unwrap_or(DEFAULT_SOCKET)).await.unwrap();
-        
+        let listener =
+            TcpListener::bind(self.config.socket.unwrap_or(DEFAULT_SOCKET)).await.unwrap();
+
         self.socket_addr.set(listener.local_addr().unwrap()).unwrap();
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 

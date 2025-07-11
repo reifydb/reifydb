@@ -1550,6 +1550,7 @@ name = "reifydb-server"
 version = "0.0.1"
 dependencies = [
  "reifydb",
+ "tokio",
 ]
 
 [[package]]
@@ -1571,6 +1572,7 @@ name = "reifydb-testcontainer"
 version = "0.0.1"
 dependencies = [
  "reifydb",
+ "tokio",
 ]
 
 [[package]]

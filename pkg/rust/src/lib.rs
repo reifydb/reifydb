@@ -50,8 +50,6 @@ use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::Sqlite;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
-#[cfg(any(feature = "server", feature = "client", feature = "embedded"))]
-pub use tokio::*;
 
 #[cfg(feature = "embedded")]
 pub mod embedded;

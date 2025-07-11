@@ -11,6 +11,9 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::select;
+use tokio::sync::oneshot::Receiver;
+use tokio::task::JoinSet;
 use tonic::transport::Error;
 
 pub struct Server<VS, US, T>
@@ -190,7 +193,11 @@ where
         Ok(())
     }
 
-    pub fn serve_blocking(&mut self, rt: &Runtime) -> Result<(), reifydb_core::Error> {
+    pub fn serve_blocking(
+        &mut self,
+        rt: &Runtime,
+        signal: Receiver<()>,
+    ) -> Result<(), reifydb_core::Error> {
         rt.block_on(async {
             let ctx = Context(Arc::new(ContextInner {}));
 
@@ -202,26 +209,53 @@ where
                 f(OnCreate { engine: self.engine.clone() }).await;
             }
 
-            let mut handles = Vec::with_capacity(2);
+            let mut handles = JoinSet::new();
 
             if let Some(config) = self.ws_config.take() {
                 let engine = self.engine.clone();
                 let ws = WsServer::new(config, engine);
                 self.ws = Some(ws.clone());
-                handles.push(rt.spawn(async move { ws.serve().await.unwrap() }));
+                handles.spawn(
+                    async move { ws.serve().await.map_err(|e| format!("WebSocket: {}", e)) },
+                );
             };
 
             if let Some(config) = self.grpc_config.take() {
                 let engine = self.engine.clone();
                 let grpc = GrpcServer::new(config, engine);
                 self.grpc = Some(grpc.clone());
-                handles.push(rt.spawn(async move { grpc.serve().await.unwrap() }));
+                handles
+                    .spawn(async move { grpc.serve().await.map_err(|e| format!("gRPC: {}", e)) });
             }
 
-            for handle in handles {
-                if let Err(err) = handle.await {
-                    // FIXME
-                    panic!("server exited with error: {}", err);
+            loop {
+                select! {
+                    _ = signal => {
+                        println!("shutting down");
+                        self.close().await;
+                        break;
+                    }
+                    result = handles.join_next(), if !handles.is_empty() => {
+                        match result {
+                            Some(Ok(Ok(()))) => {
+                                println!("A server completed successfully");
+                                break;
+                            }
+                            Some(Ok(Err(e))) => {
+                                eprintln!("Server error: {}", e);
+                                break;
+                            }
+                            Some(Err(e)) => {
+                                eprintln!("Server panicked: {}", e);
+                                self.close().await;
+                                break;
+                            }
+                            None => {
+                                println!("All servers have stopped");
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -229,9 +263,13 @@ where
         Ok(())
     }
 
-    pub fn close(&mut self) {
+    pub async fn close(&mut self) {
         if let Some(ws) = self.ws.as_mut() {
-            ws.close();
+            ws.close().await.unwrap();
+        }
+
+        if let Some(_grpc) = self.grpc.as_mut() {
+            // grpc.close();
         }
     }
 }

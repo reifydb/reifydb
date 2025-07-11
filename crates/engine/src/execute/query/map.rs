@@ -32,14 +32,12 @@ impl ExecutionPlan for MapNode {
                 take: None,
             };
 
-            let columns = self
-                .expressions
-                .iter()
-                .map(|expr| {
-                    let column = evaluate(expr, &ctx).unwrap();
-                    crate::frame::Column { name: column.name, values: column.values }
-                })
-                .collect();
+            let mut columns = Vec::with_capacity(self.expressions.len());
+
+            for expr in &self.expressions {
+                let column = evaluate(expr, &ctx)?;
+                columns.push(crate::frame::Column { name: column.name, values: column.values });
+            }
 
             self.layout = Some(FrameLayout::from_frame(&frame));
 
