@@ -183,4 +183,11 @@ mod tests {
         assert_eq!(token.kind, TokenKind::Identifier);
         assert_eq!(token.span.fragment.as_str(), "DESC");
     }
+
+    #[test]
+    fn test_a() {
+        let (_rest, token) = token(span("a")).unwrap();
+        assert_eq!(token.kind, TokenKind::Identifier);
+        assert_eq!(token.span.fragment.as_str(), "a");
+    }
 }

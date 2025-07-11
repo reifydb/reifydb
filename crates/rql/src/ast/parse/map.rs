@@ -34,7 +34,7 @@ impl Parser {
 mod tests {
     use super::*;
     use crate::ast::lex::lex;
-    use crate::ast::{Ast, InfixOperator};
+    use crate::ast::{Ast, AstInfix, InfixOperator};
 
     #[test]
     fn test_map_constant_number() {
@@ -113,5 +113,25 @@ mod tests {
 
         assert!(matches!(map.map[1], Ast::Identifier(_)));
         assert_eq!(map.map[1].value(), "age");
+    }
+
+    #[test]
+    fn test_map_as() {
+        let tokens = lex("map 1 as a").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.map.len(), 1);
+
+        let AstInfix { left, operator, right, .. } = map.map[0].as_infix();
+        let left = left.as_literal_number();
+        assert_eq!(left.value(), "1");
+
+        assert!(matches!(operator, InfixOperator::As(_)));
+
+        let right = right.as_identifier();
+        assert_eq!(right.value(), "a");
     }
 }

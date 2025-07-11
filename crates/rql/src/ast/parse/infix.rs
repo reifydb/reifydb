@@ -3,7 +3,7 @@
 
 use crate::ast::lex::{Operator, TokenKind};
 use crate::ast::parse::{Error, Parser, Precedence};
-use crate::ast::{parse, Ast, AstInfix, InfixOperator};
+use crate::ast::{Ast, AstInfix, InfixOperator, parse};
 
 impl Parser {
     pub(crate) fn parse_infix(&mut self, left: Ast) -> parse::Result<AstInfix> {
@@ -58,16 +58,16 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use std::ops::Deref;
+    use std::ops::Deref;
 
-	use crate::ast::lex::lex;
-	use crate::ast::parse::infix::{AstInfix, InfixOperator};
-	use crate::ast::parse::parse;
-	use crate::ast::Ast::{Infix, Literal};
-	use crate::ast::{AstLiteral, AstTuple};
+    use crate::ast::Ast::{Infix, Literal};
+    use crate::ast::lex::lex;
+    use crate::ast::parse::infix::{AstInfix, InfixOperator};
+    use crate::ast::parse::parse;
+    use crate::ast::{AstLiteral, AstTuple};
 
-	#[test]
-    fn test_as() {
+    #[test]
+    fn test_as_one() {
         let tokens = lex("1 as one").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -76,6 +76,18 @@ mod tests {
         assert_eq!(infix.left.as_literal_number().value(), "1");
         assert!(matches!(infix.operator, InfixOperator::As(_)));
         assert_eq!(infix.right.as_identifier().value(), "one");
+    }
+
+    #[test]
+    fn test_as_a() {
+        let tokens = lex("1 as a").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let infix = result[0].first_unchecked().as_infix();
+        assert_eq!(infix.left.as_literal_number().value(), "1");
+        assert!(matches!(infix.operator, InfixOperator::As(_)));
+        assert_eq!(infix.right.as_identifier().value(), "a");
     }
 
     #[test]

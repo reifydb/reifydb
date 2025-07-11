@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-use crate::ast::lex::{as_span, Token, TokenKind};
+use crate::ast::lex::{Token, TokenKind, as_span};
 use nom::branch::alt;
 use nom::bytes::{tag, tag_no_case};
 use nom::character::satisfy;
-use nom::combinator::{not, peek, value};
+use nom::combinator::{map, not, peek, value};
 use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
@@ -65,6 +65,27 @@ fn is_ident_continue(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+fn parse_as(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> {
+    let original = input;
+
+    let res = map(
+        terminated(
+            tag_no_case::<&str, LocatedSpan<&str>, nom::error::Error<LocatedSpan<&str>>>("as"),
+            not(peek(satisfy(is_ident_continue))),
+        ),
+        move |_| Operator::As,
+    )
+    .parse(input);
+
+    match res {
+        Ok(ok) => Ok(ok),
+        Err(_) => Err(nom::Err::Error(nom::error::Error {
+            input: original,
+            code: nom::error::ErrorKind::Tag,
+        })),
+    }
+}
+
 pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     let start = input;
 
@@ -83,10 +104,7 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
             value(Operator::BangEqual, tag("!=")),
             value(Operator::OpenParen, tag("(")),
             value(Operator::CloseParen, tag(")")),
-            value(
-                Operator::As,
-                terminated(tag_no_case("as"), not(peek(satisfy(is_ident_continue)))),
-            ),
+            value(Operator::As, map(parse_as, |op| op)),
         )),
         alt((
             value(Operator::OpenBracket, tag("[")),
@@ -119,8 +137,8 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::operator::{parse_operator, Operator};
     use crate::ast::lex::TokenKind;
+    use crate::ast::lex::operator::{Operator, parse_operator};
     use nom_locate::LocatedSpan;
 
     #[test]
@@ -138,7 +156,12 @@ mod tests {
         let result = parse_operator(input).unwrap();
         let (remaining, token) = result;
 
-        assert_eq!(TokenKind::Operator(op), token.kind, "data_type mismatch for symbol: {}", symbol);
+        assert_eq!(
+            TokenKind::Operator(op),
+            token.kind,
+            "data_type mismatch for symbol: {}",
+            symbol
+        );
         assert_eq!(token.span.fragment, symbol);
         assert_eq!(token.span.offset, 0);
         assert_eq!(token.span.line, 1);
