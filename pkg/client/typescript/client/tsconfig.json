@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2020",
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
     "module": "ES2020",
     "moduleResolution": "Node",
     "strict": true,
@@ -13,7 +17,7 @@
     "outDir": "dist"
   },
   "include": [
-    "src/**/*.ts",
+    "src/**/*.ts"
   ],
   "exclude": [
     "dist",

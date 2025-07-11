@@ -11,14 +11,12 @@ export default defineConfig({
     test: {
         globals: true,
         environment: 'node',
-        testTimeout: 30000,
-        hookTimeout: 10000,
-        teardownTimeout: 10000,
+        testTimeout: 100,
+        hookTimeout: 100,
+        teardownTimeout: 100,
 
-        // Test file patterns
         include: [
             'tests/unit/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
-            'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'
         ],
         exclude: [
             'tests/integration/**/*',
@@ -28,7 +26,6 @@ export default defineConfig({
             '.vscode/**'
         ],
 
-        // Coverage configuration
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html', 'lcov'],
@@ -58,16 +55,11 @@ export default defineConfig({
             junit: './test-results/junit.xml'
         },
 
-        // Setup files
-        setupFiles: ['./tests/setup.ts'],
-
-        // Environment variables
         env: {
             NODE_ENV: 'test',
         }
     },
 
-    // Path resolution
     resolve: {
         alias: {
             '@': resolve(__dirname, './src'),
@@ -75,7 +67,6 @@ export default defineConfig({
         }
     },
 
-    // ESM configuration
     esbuild: {
         target: 'node16'
     }

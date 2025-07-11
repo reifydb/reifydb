@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-export type Kind =
+export type DataType =
     | "Bool"
     | "Float4" | "Float8"
     | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
@@ -18,7 +18,7 @@ export interface WebsocketFrame {
 
 export interface DiagnosticColumn {
     name: string,
-    value: Kind,
+    data_type: DataType,
 }
 
 export interface Span {
@@ -40,7 +40,7 @@ export interface Diagnostic {
 
 export interface WebsocketColumn {
     name: string;
-    kind: Kind;
+    kind: DataType;
     data: string[];
 }
 

@@ -4,15 +4,15 @@
  * See license.md file for full license text
  */
 
-import {Kind} from "./types";
+import {DataType} from "./types";
 
 const UNDEFINED_VALUE = "⟪undefined⟫";
 
-export function decodeValue(kind: Kind, value: string): unknown {
+export function decodeValue(data_type: DataType, value: string): unknown {
     if (value == UNDEFINED_VALUE) {
         return undefined
     }
-    switch (kind) {
+    switch (data_type) {
         case "Bool":
             return value === "true";
         case "Float4":
@@ -34,7 +34,7 @@ export function decodeValue(kind: Kind, value: string): unknown {
         case "Undefined":
             return undefined;
         default:
-            throw new Error(`Unknown kind: ${kind}`);
+            throw new Error(`Unknown data type: ${data_type}`);
     }
 }
 
