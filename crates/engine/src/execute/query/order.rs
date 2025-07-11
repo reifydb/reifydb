@@ -4,18 +4,18 @@
 use crate::execute::Error;
 use crate::execute::query::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
-use reifydb_core::OrderDirection::{Asc, Desc};
-use reifydb_core::{BitVec, OrderKey};
+use reifydb_core::SortDirection::{Asc, Desc};
+use reifydb_core::{BitVec, SortKey};
 use reifydb_diagnostic::query;
 use std::cmp::Ordering::Equal;
 
 pub(crate) struct OrderNode {
     input: Box<dyn ExecutionPlan>,
-    by: Vec<OrderKey>,
+    by: Vec<SortKey>,
 }
 
 impl OrderNode {
-    pub(crate) fn new(input: Box<dyn ExecutionPlan>, by: Vec<OrderKey>) -> Self {
+    pub(crate) fn new(input: Box<dyn ExecutionPlan>, by: Vec<SortKey>) -> Self {
         Self { input, by }
     }
 }

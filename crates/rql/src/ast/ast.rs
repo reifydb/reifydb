@@ -55,7 +55,7 @@ pub enum Ast {
     Take(AstTake),
     Literal(AstLiteral),
     Nop,
-    Order(AstOrder),
+    Sort(AstSort),
     Policy(AstPolicy),
     PolicyBlock(AstPolicyBlock),
     Prefix(AstPrefix),
@@ -97,7 +97,7 @@ impl Ast {
                 AstJoin::LeftJoin { token, .. } => token,
             },
             Ast::Nop => unreachable!(),
-            Ast::Order(node) => &node.token,
+            Ast::Sort(node) => &node.token,
             Ast::Policy(node) => &node.token,
             Ast::PolicyBlock(node) => &node.token,
             Ast::Prefix(node) => node.node.token(),
@@ -254,11 +254,11 @@ impl Ast {
         }
     }
 
-    pub fn is_order_by(&self) -> bool {
-        matches!(self, Ast::Order(_))
+    pub fn is_sort(&self) -> bool {
+        matches!(self, Ast::Sort(_))
     }
-    pub fn as_order_by(&self) -> &AstOrder {
-        if let Ast::Order(result) = self { result } else { panic!("not order by") }
+    pub fn as_sort(&self) -> &AstSort {
+        if let Ast::Sort(result) = self { result } else { panic!("not sort") }
     }
     pub fn is_policy(&self) -> bool {
         matches!(self, Ast::Policy(_))
@@ -545,7 +545,7 @@ impl AstLiteralUndefined {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstOrder {
+pub struct AstSort {
     pub token: Token,
     pub columns: Vec<AstIdentifier>,
     pub directions: Vec<Option<AstIdentifier>>,

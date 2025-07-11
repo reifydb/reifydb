@@ -39,7 +39,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::Take(_) => "Take",
         Ast::Literal(_) => "Literal",
         Ast::Nop => "Nop",
-        Ast::Order(_) => "Order",
+        Ast::Sort(_) => "Order",
         Ast::Policy(_) => "Policy",
         Ast::PolicyBlock(_) => "PolicyBlock",
         Ast::Prefix(_) => "Prefix",
@@ -90,7 +90,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
             children.extend(on);
         }
         Ast::Map(s) => children.extend(s.map),
-        Ast::Order(o) => {
+        Ast::Sort(o) => {
             for col in &o.columns {
                 children.push(Ast::Identifier(col.clone()));
             }

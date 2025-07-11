@@ -17,7 +17,7 @@ mod join;
 mod data_type;
 mod take;
 mod literal;
-mod order;
+mod sort;
 mod policy;
 mod prefix;
 mod primary;

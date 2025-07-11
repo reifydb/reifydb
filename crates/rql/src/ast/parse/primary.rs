@@ -39,7 +39,7 @@ impl Parser {
                 Keyword::Insert => Ok(Ast::InsertIntoTable(self.parse_insert()?)),
                 Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
                 Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
-                Keyword::Order => Ok(Ast::Order(self.parse_order_by()?)),
+                Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
                 Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
                 Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
                 _ => Err(Error::unsupported(self.advance()?)),

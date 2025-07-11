@@ -37,7 +37,7 @@ pub(crate) fn compile(
             Box::new(TakeNode::new(input_node, take))
         }
 
-        PhysicalPlan::Order(physical::OrderNode { by, input }) => {
+        PhysicalPlan::Sort(physical::SortNode { by, input }) => {
             let input_node = compile(*input, rx, functions);
             Box::new(OrderNode::new(input_node, by))
         }

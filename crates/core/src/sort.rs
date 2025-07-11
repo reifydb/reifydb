@@ -6,27 +6,27 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]
-pub enum OrderDirection {
+pub enum SortDirection {
     Asc,
     Desc,
 }
 
 #[derive(Debug, Clone)]
-pub struct OrderKey {
+pub struct SortKey {
     pub column: Span,
-    pub direction: OrderDirection,
+    pub direction: SortDirection,
 }
 
-impl Display for OrderDirection {
+impl Display for SortDirection {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            OrderDirection::Asc => write!(f, "ASC"),
-            OrderDirection::Desc => write!(f, "DESC"),
+            SortDirection::Asc => write!(f, "ASC"),
+            SortDirection::Desc => write!(f, "DESC"),
         }
     }
 }
 
-impl Display for OrderKey {
+impl Display for SortKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.column.fragment, self.direction)
     }

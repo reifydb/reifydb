@@ -9,7 +9,7 @@ mod query;
 use crate::ast::{Ast, AstStatement};
 use crate::expression::Expression;
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::{OrderKey, Span};
+use reifydb_core::{SortKey, Span};
 
 struct Compiler {}
 
@@ -34,7 +34,7 @@ impl Compiler {
                 Ast::From(node) => result.push(Self::compile_from(node)?),
                 Ast::Join(node) => result.push(Self::compile_join(node)?),
                 Ast::Take(node) => result.push(Self::compile_take(node)?),
-                Ast::Order(node) => result.push(Self::compile_order(node)?),
+                Ast::Sort(node) => result.push(Self::compile_sort(node)?),
                 Ast::Map(node) => result.push(Self::compile_map(node)?),
                 node => unimplemented!("{:?}", node),
             }
@@ -116,7 +116,7 @@ pub struct TakeNode {
 
 #[derive(Debug)]
 pub struct OrderNode {
-    pub by: Vec<OrderKey>,
+    pub by: Vec<SortKey>,
 }
 
 #[derive(Debug)]

@@ -10,7 +10,7 @@ use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::column::Column;
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::Rx;
-use reifydb_core::{OrderKey, Span};
+use reifydb_core::{SortKey, Span};
 
 struct Compiler {}
 
@@ -76,7 +76,7 @@ impl Compiler {
 
                 LogicalPlan::Order(order) => {
                     let input = stack.pop().unwrap(); // FIXME
-                    stack.push(PhysicalPlan::Order(OrderNode {
+                    stack.push(PhysicalPlan::Sort(SortNode {
                         by: order.by,
                         input: Box::new(input),
                     }));
@@ -115,7 +115,7 @@ pub enum PhysicalPlan {
     Filter(FilterNode),
     JoinLeft(JoinLeftNode),
     Take(TakeNode),
-    Order(OrderNode),
+    Sort(SortNode),
     Map(MapNode),
     TableScan(TableScanNode),
 }
@@ -174,9 +174,9 @@ pub struct TakeNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct OrderNode {
+pub struct SortNode {
     pub input: Box<PhysicalPlan>,
-    pub by: Vec<OrderKey>,
+    pub by: Vec<SortKey>,
 }
 
 #[derive(Debug, Clone)]

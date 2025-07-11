@@ -1,9 +1,9 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later
 
-physical 'from users map id, name filter id == 10 order by id asc'
+physical 'from users map id, name filter id == 10 sort id asc'
 ---
-> └── Order by: [id ASC]
+> └── Sort: [id ASC]
 >     └── Filter [(Column(id) == Constant(10))]
 >         └── Map [Column(id), Column(name)]
 >             └── TableScan users

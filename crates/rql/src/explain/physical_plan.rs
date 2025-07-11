@@ -84,9 +84,9 @@ fn render_physical_plan_inner(
             });
         }
 
-        PhysicalPlan::Order(physical::OrderNode { by, input }) => {
+        PhysicalPlan::Sort(physical::SortNode { by, input }) => {
             let label = format!(
-                "Order by: [{}]",
+                "Sort: [{}]",
                 by.iter().map(|o| o.to_string()).collect::<Vec<_>>().join(", ")
             );
             write_node_header(output, prefix, is_last, &label);
