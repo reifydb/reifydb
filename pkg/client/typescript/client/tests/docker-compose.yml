@@ -1,12 +1,6 @@
 services:
   reifydb-test:
-    image: reifydb/test
+    image: reifydb/testcontainer
     container_name: reifydb-test
     ports:
-      - "9090:9090"
-    networks:
-      - reifydb-test
-
-networks:
-  reifydb-test:
-    driver: bridge
+      - "8090:8090"

@@ -40,7 +40,7 @@ export interface Diagnostic {
 
 export interface WebsocketColumn {
     name: string;
-    kind: DataType;
+    data_type: DataType;
     data: string[];
 }
 

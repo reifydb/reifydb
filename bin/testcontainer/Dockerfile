@@ -23,11 +23,11 @@ COPY testsuite ./testsuite
 #COPY bin/test ./bin/test
 
 # Try to build only the specific package (might not work with workspace structure)
-RUN cd bin/test && cargo build --release
+RUN cd bin/testcontainer && cargo build --release
 
-# Or copy the binary from the bin/test target directory
-RUN cp bin/test/target/release/reifydb-test /usr/local/bin/reifydb-test || \
-    find . -name "reifydb-test" -type f -executable -exec cp {} /usr/local/bin/reifydb-test \;
+# Or copy the binary from the bin/testcontainer target directory
+RUN cp bin/testcontainer/target/release/reifydb-testcontainer /usr/local/bin/reifydb-testcontainer || \
+    find . -name "reifydb-testcontainer" -type f -executable -exec cp {} /usr/local/bin/reifydb-testcontainer \;
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -39,12 +39,12 @@ RUN apt-get update && apt-get install -y \
 
 RUN useradd -m -u 1001 appuser
 
-COPY --from=builder /usr/local/bin/reifydb-test /usr/local/bin/reifydb-test
+COPY --from=builder /usr/local/bin/reifydb-testcontainer /usr/local/bin/reifydb-testcontainer
 
-RUN chown appuser:appuser /usr/local/bin/reifydb-test
+RUN chown appuser:appuser /usr/local/bin/reifydb-testcontainer
 
 USER appuser
 
-EXPOSE 9090
+EXPOSE 8090
 
-CMD ["reifydb-test"]
+CMD ["reifydb-testcontainer"]

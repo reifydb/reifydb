@@ -8,7 +8,7 @@ use reifydb::{ReifyDB, memory, optimistic};
 fn main() {
     ReifyDB::server_with(optimistic(memory()))
         .with_websocket(WsConfig{
-            socket: Some("0.0.0.0:9090".parse().unwrap()),
+            socket: Some("0.0.0.0:8090".parse().unwrap()),
         })
         .on_create(|ctx| async move {
             ctx.tx("create schema test");

@@ -1,3 +1,8 @@
+
+# Path to the test suites directory
+TEST_SUITE_DIR := ../testsuite
+TEST_CLIENT_DIR := ./pkg/client
+
 .PHONY: all
 all: check clean test testsuite build push
 
@@ -17,14 +22,16 @@ clean:
 .PHONY: test
 test: testlocal testsuite
 
+.PHONY: test-full
+test-full: testlocal testsuite testclient
+
 .PHONY: build
 build:
 	cargo build --release
 
-# create the test container
-.PHONY: testcontainer
-testcontainer:
-	docker build . -f bin/test/Dockerfile -t reifydb/test
+.PHONY: build-testcontainer
+build-testcontainer:
+	docker build . -f bin/testcontainer/Dockerfile -t reifydb/testcontainer
 
 .PHONY: coverage
 coverage:
@@ -33,11 +40,7 @@ coverage:
 .PHONY: push
 push: check
 	git push
-	docker push reifydb/testcontainer
 
-
-# Path to the test suites directory
-TEST_SUITE_DIR := ../testsuite
 
 # List of test suites
 TEST_SUITES := \
@@ -54,7 +57,6 @@ testlocal:
 
 
 .PHONY: testsuite $(TEST_SUITES)
-
 testsuite:
 	$(MAKE) -j$(shell nproc) $(TEST_SUITES)
 
@@ -64,4 +66,21 @@ $(TEST_SUITES):
 		cd $(TEST_SUITE_DIR)/$@ && cargo nextest run --no-fail-fast; \
 	else \
 		echo "⚠️ Skipping $@ – directory $(TEST_SUITE_DIR)/$@ not found"; \
+	fi
+
+
+TEST_CLIENTS := \
+	typescript
+	
+.PHONY: testclient $(TEST_CLIENTS)
+testclient:
+	$(MAKE) build-testcontainer
+	$(MAKE) -j$(shell nproc) $(TEST_CLIENTS)
+
+$(TEST_CLIENTS):
+	@if [ -d "$(TEST_CLIENT_DIR)/$@" ]; then \
+		echo "🔍 Running $@ tests in $(TEST_CLIENT_DIR)/$@ ..."; \
+		cd $(TEST_CLIENT_DIR)/$@ && $(MAKE) test; \
+	else \
+		echo "⚠️ Skipping $@ – directory $(TEST_CLIENT_DIR)/$@ not found"; \
 	fi

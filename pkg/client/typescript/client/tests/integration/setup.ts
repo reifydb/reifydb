@@ -6,6 +6,7 @@
 
 import {execSync} from 'child_process';
 import {Client} from "../../src";
+import * as url from "node:url";
 
 const COMPOSE_FILE = 'tests/docker-compose.yml';
 const SERVICE_NAME = 'reifydb-test';
@@ -14,7 +15,7 @@ function isContainerRunning(): boolean {
     try {
         const result = execSync(
             `docker compose -f ${COMPOSE_FILE} ps -q ${SERVICE_NAME}`,
-            {encoding: 'utf8', stdio: 'inherit'}
+            {encoding: 'utf8'}
         );
         return result.trim().length > 0;
     } catch {
@@ -29,30 +30,38 @@ async function startContainer(): Promise<void> {
 
 
 export default async function setup() {
-    if (isContainerRunning()) {
-        console.info('Starting test database server...');
+    if (!process.env.CI && !isContainerRunning()) {
+        console.info('Starting test container...');
         await startContainer();
-        console.info('Test database server started successfully');
+        console.info('Test container started successfully');
     }
 }
 
 
 export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<void> {
     for (let i = 0; i < maxRetries; i++) {
+        let url = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
+        let client = null;
         try {
-            const client = await Client.connect_ws(
-                process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:9090',
-                {timeoutMs: 2000}
-            );
+            client = await Client.connect_ws(url, {timeoutMs: 5000});
 
-            await client.tx('SELECT 1;');
-            await client.disconnect();
+            // await client.tx('SELECT 1;');
+            console.log(`✅ Database connection successful on attempt ${i + 1}`);
             return;
         } catch (error) {
+            console.log(`❌ Database connection failed on attempt ${i + 1}: ${error.message}`);
             if (i === maxRetries - 1) {
-                throw new Error(`Database not ready after ${maxRetries} attempts`);
+                throw new Error(`${url} not ready after ${maxRetries} attempts`);
             }
             await new Promise(resolve => setTimeout(resolve, delay));
+        } finally {
+            if (client) {
+                try {
+                    client.disconnect();
+                } catch (e) {
+                    // Ignore disconnect errors
+                }
+            }
         }
     }
 }

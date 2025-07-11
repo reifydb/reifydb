@@ -23,7 +23,7 @@ use reifydb::network::ws::client::WsClient;
 
 #[tokio::main]
 async fn main() {
-    let client = WsClient::connect("ws://127.0.0.1:9090").await.unwrap();
+    let client = WsClient::connect("ws://127.0.0.1:8090").await.unwrap();
 
     client.auth(Some("mysecrettoken".into())).await.unwrap();
 
