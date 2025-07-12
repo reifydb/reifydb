@@ -6,8 +6,8 @@ pub use is::{IsFloat, IsInt, IsNumber, IsUint};
 pub use parse::{parse_float, parse_int, parse_uint, ParseError};
 pub use promote::Promote;
 pub use safe::{
-    add::SafeAdd, convert::SafeConvert, demote::SafeDemote, promote::SafePromote,
-    subtract::SafeSubtract,
+	add::SafeAdd, convert::SafeConvert, demote::SafeDemote, promote::SafePromote,
+	sub::SafeSub,
 };
 
 mod bound;

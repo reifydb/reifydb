@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later.
 
-pub trait SafeSubtract: Sized {
+pub trait SafeSub: Sized {
     fn checked_sub(self, r: Self) -> Option<Self>;
     fn saturating_sub(self, r: Self) -> Self;
     fn wrapping_sub(self, r: Self) -> Self;
@@ -10,7 +10,7 @@ pub trait SafeSubtract: Sized {
 macro_rules! impl_safe_sub {
     ($($t:ty),*) => {
         $(
-            impl SafeSubtract for $t {
+            impl SafeSub for $t {
                 fn checked_sub(self, r: Self) -> Option<Self> {
                     <$t>::checked_sub(self,r)
                 }
@@ -27,7 +27,7 @@ macro_rules! impl_safe_sub {
 
 impl_safe_sub!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
-impl SafeSubtract for f32 {
+impl SafeSub for f32 {
     fn checked_sub(self, r: Self) -> Option<Self> {
         let result = self - r;
         if result.is_finite() { Some(result) } else { None }
@@ -47,7 +47,7 @@ impl SafeSubtract for f32 {
     }
 }
 
-impl SafeSubtract for f64 {
+impl SafeSub for f64 {
     fn checked_sub(self, r: Self) -> Option<Self> {
         let result = self - r;
         if result.is_finite() { Some(result) } else { None }
@@ -73,47 +73,48 @@ mod tests {
         ($($t:ty => $mod:ident),*) => {
             $(
                 mod $mod {
+                    use super::super::SafeSub;
 
                     #[test]
                     fn checked_sub_happy() {
                         let x: $t = 20;
                         let y: $t = 10;
-                        assert_eq!(x.checked_sub(y), Some(10));
+                        assert_eq!(SafeSub::checked_sub(x, y), Some(10));
                     }
 
                     #[test]
                     fn checked_sub_unhappy() {
                         let x: $t = <$t>::MIN;
                         let y: $t = 1;
-                        assert_eq!(x.checked_sub(y), None);
+                        assert_eq!(SafeSub::checked_sub(x, y), None);
                     }
 
                     #[test]
                     fn saturating_sub_happy() {
                         let x: $t = 20;
                         let y: $t = 10;
-                        assert_eq!(x.saturating_sub(y), 10);
+                        assert_eq!(SafeSub::saturating_sub(x, y), 10);
                     }
 
                     #[test]
                     fn saturating_sub_unhappy() {
                         let x: $t = <$t>::MIN;
                         let y: $t = 1;
-                        assert_eq!(x.saturating_sub(y), <$t>::MIN);
+                        assert_eq!(SafeSub::saturating_sub(x, y), <$t>::MIN);
                     }
 
                     #[test]
                     fn wrapping_sub_happy() {
                         let x: $t = 20;
                         let y: $t = 10;
-                        assert_eq!(x.wrapping_sub(y), 10);
+                        assert_eq!(SafeSub::wrapping_sub(x, y), 10);
                     }
 
                     #[test]
                     fn wrapping_sub_unhappy() {
                         let x: $t = <$t>::MIN;
                         let y: $t = 1;
-                        assert_eq!(x.wrapping_sub(y), <$t>::MAX);
+                        assert_eq!(SafeSub::wrapping_sub(x, y), <$t>::MAX);
                     }
                 }
             )*

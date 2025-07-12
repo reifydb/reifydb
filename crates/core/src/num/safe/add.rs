@@ -91,46 +91,48 @@ mod tests {
         ($($t:ty => $mod:ident),*) => {
             $(
                 mod $mod {
+                    use super::super::SafeAdd;
+
                     #[test]
                     fn checked_add_happy() {
                         let x: $t = 10;
                         let y: $t = 20;
-                        assert_eq!(x.checked_add(y), Some(30));
+                        assert_eq!(SafeAdd::checked_add(x, y), Some(30));
                     }
 
                     #[test]
                     fn checked_add_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 1;
-                        assert_eq!(x.checked_add(y), None);
+                        assert_eq!(SafeAdd::checked_add(x, y), None);
                     }
 
                     #[test]
                     fn saturating_add_happy() {
                         let x: $t = 10;
                         let y: $t = 20;
-                        assert_eq!(x.saturating_add(y), 30);
+                        assert_eq!(SafeAdd::saturating_add(x, y), 30);
                     }
 
                     #[test]
                     fn saturating_add_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 1;
-                        assert_eq!(x.saturating_add(y), <$t>::MAX);
+                        assert_eq!(SafeAdd::saturating_add(x, y), <$t>::MAX);
                     }
 
                     #[test]
                     fn wrapping_add_happy() {
                         let x: $t = 10;
                         let y: $t = 20;
-                        assert_eq!(x.wrapping_add(y), 30);
+                        assert_eq!(SafeAdd::wrapping_add(x, y), 30);
                     }
 
                     #[test]
                     fn wrapping_add_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 1;
-                        assert_eq!(x.wrapping_add(y), <$t>::MIN);
+                        assert_eq!(SafeAdd::wrapping_add(x, y), <$t>::MIN);
                     }
                 }
             )*

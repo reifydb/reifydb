@@ -4,7 +4,7 @@
 use crate::evaluate::Context;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
-use reifydb_core::num::{IsNumber, Promote, SafeAdd, SafeSubtract};
+use reifydb_core::num::{IsNumber, Promote, SafeAdd, SafeSub};
 use reifydb_diagnostic::r#type::{OutOfRange, out_of_range};
 
 impl Context {
@@ -72,7 +72,7 @@ impl Context {
         L: Promote<R>,
         R: IsNumber,
         <L as Promote<R>>::Output: IsNumber,
-        <L as Promote<R>>::Output: SafeSubtract,
+        <L as Promote<R>>::Output: SafeSub,
     {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {

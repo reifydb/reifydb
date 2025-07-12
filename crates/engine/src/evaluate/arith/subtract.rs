@@ -4,7 +4,7 @@
 use crate::evaluate::{Context, Evaluator};
 use crate::frame::{Column, ColumnValues, Push};
 use reifydb_core::Span;
-use reifydb_core::num::{IsNumber, Promote, SafeSubtract};
+use reifydb_core::num::{IsNumber, Promote, SafeSub};
 use reifydb_core::{CowVec, GetKind, DataType};
 use reifydb_rql::expression::SubtractExpression;
 
@@ -501,7 +501,7 @@ where
     L: GetKind + Promote<R> + Copy,
     R: GetKind + IsNumber + Copy,
     <L as Promote<R>>::Output: IsNumber,
-    <L as Promote<R>>::Output: SafeSubtract,
+    <L as Promote<R>>::Output: SafeSub,
     ColumnValues: Push<<L as Promote<R>>::Output>,
 {
     assert_eq!(l.len(), r.len());

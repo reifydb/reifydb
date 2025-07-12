@@ -100,67 +100,69 @@ impl SafeMul for f64 {
 #[cfg(test)]
 mod tests {
 
-    macro_rules! define_tests {
+    macro_rules! signed_unsigned {
         ($($t:ty => $mod:ident),*) => {
             $(
                 mod $mod {
+                    use super::super::SafeMul;
+
                     #[test]
                     fn checked_mul_happy() {
                         let x: $t = 10;
                         let y: $t = 2;
-                        assert_eq!(x.checked_mul(y), Some(20));
+                        assert_eq!(SafeMul::checked_mul(x, y), Some(20));
                     }
 
                     #[test]
                     fn checked_mul_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 2;
-                        assert_eq!(x.checked_mul(y), None);
+                        assert_eq!(SafeMul::checked_mul(x, y), None);
                     }
 
                     #[test]
                     fn saturating_mul_happy() {
                         let x: $t = 10;
                         let y: $t = 2;
-                        assert_eq!(x.saturating_mul(y), 20);
+                        assert_eq!(SafeMul::saturating_mul(x, y), 20);
                     }
 
                     #[test]
                     fn saturating_mul_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 2;
-                        assert_eq!(x.saturating_mul(y), <$t>::MAX);
+                        assert_eq!(SafeMul::saturating_mul(x, y), <$t>::MAX);
                     }
 
                     #[test]
                     fn wrapping_mul_happy() {
                         let x: $t = 10;
                         let y: $t = 2;
-                        assert_eq!(x.wrapping_mul(y), 20);
+                        assert_eq!(SafeMul::wrapping_mul(x, y), 20);
                     }
 
                     #[test]
                     fn wrapping_mul_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 2;
-                        assert_eq!(x.wrapping_mul(y), <$t>::wrapping_mul(<$t>::MAX, 2));
+                        assert_eq!(SafeMul::wrapping_mul(x, y), <$t>::wrapping_mul(<$t>::MAX, 2));
                     }
                 }
             )*
         };
     }
 
-    define_tests!(
-        i8 => i8_tests,
-        i16 => i16_tests,
-        i32 => i32_tests,
-        i64 => i64_tests,
-        i128 => i128_tests,
-        u8 => u8_tests,
-        u16 => u16_tests,
-        u32 => u32_tests,
-        u64 => u64_tests,
-        u128 => u128_tests
+    signed_unsigned!(
+        i8 => i8,
+        i16 => i16,
+        i32 => i32,
+        i64 => i64,
+        i128 => i128,
+        u8 => u8,
+        u16 => u16,
+        u32 => u32,
+        u64 => u64,
+        u128 => u128
     );
 
     use super::SafeMul;
@@ -172,42 +174,42 @@ mod tests {
         fn checked_mul_happy() {
             let x: f32 = 10.0;
             let y: f32 = 2.0;
-            assert_eq!(x.checked_mul(y), Some(20.0));
+            assert_eq!(SafeMul::checked_mul(x, y), Some(20.0));
         }
 
         #[test]
         fn checked_mul_unhappy() {
             let x: f32 = f32::MAX;
             let y: f32 = 2.0;
-            assert_eq!(x.checked_mul(y), None);
+            assert_eq!(SafeMul::checked_mul(x, y), None);
         }
 
         #[test]
         fn saturating_mul_happy() {
             let x: f32 = 10.0;
             let y: f32 = 2.0;
-            assert_eq!(x.saturating_mul(y), 20.0);
+            assert_eq!(SafeMul::saturating_mul(x, y), 20.0);
         }
 
         #[test]
         fn saturating_mul_unhappy() {
             let x: f32 = f32::MAX;
             let y: f32 = 2.0;
-            assert_eq!(x.saturating_mul(y), f32::MAX);
+            assert_eq!(SafeMul::saturating_mul(x, y), f32::MAX);
         }
 
         #[test]
         fn wrapping_mul_happy() {
             let x: f32 = 10.0;
             let y: f32 = 2.0;
-            assert_eq!(x.wrapping_mul(y), 20.0);
+            assert_eq!(SafeMul::wrapping_mul(x, y), 20.0);
         }
 
         #[test]
         fn wrapping_mul_unhappy() {
             let x: f32 = f32::MAX;
             let y: f32 = 2.0;
-            let result = x.wrapping_mul(y);
+            let result = SafeMul::wrapping_mul(x, y);
             // Should wrap around instead of being infinite
             assert!(result.is_finite());
             // Should be positive since f32::MAX * 2.0 is positive
@@ -220,7 +222,7 @@ mod tests {
         fn wrapping_mul_negative() {
             let x: f32 = f32::MAX;
             let y: f32 = -2.0;
-            let result = x.wrapping_mul(y);
+            let result = SafeMul::wrapping_mul(x, y);
             // Should wrap around instead of being infinite
             assert!(result.is_finite());
             // Should be negative since f32::MAX * -2.0 is negative
@@ -237,42 +239,42 @@ mod tests {
         fn checked_mul_happy() {
             let x: f64 = 10.0;
             let y: f64 = 2.0;
-            assert_eq!(x.checked_mul(y), Some(20.0));
+            assert_eq!(SafeMul::checked_mul(x, y), Some(20.0));
         }
 
         #[test]
         fn checked_mul_unhappy() {
             let x: f64 = f64::MAX;
             let y: f64 = 2.0;
-            assert_eq!(x.checked_mul(y), None);
+            assert_eq!(SafeMul::checked_mul(x, y), None);
         }
 
         #[test]
         fn saturating_mul_happy() {
             let x: f64 = 10.0;
             let y: f64 = 2.0;
-            assert_eq!(x.saturating_mul(y), 20.0);
+            assert_eq!(SafeMul::saturating_mul(x, y), 20.0);
         }
 
         #[test]
         fn saturating_mul_unhappy() {
             let x: f64 = f64::MAX;
             let y: f64 = 2.0;
-            assert_eq!(x.saturating_mul(y), f64::MAX);
+            assert_eq!(SafeMul::saturating_mul(x, y), f64::MAX);
         }
 
         #[test]
         fn wrapping_mul_happy() {
             let x: f64 = 10.0;
             let y: f64 = 2.0;
-            assert_eq!(x.wrapping_mul(y), 20.0);
+            assert_eq!(SafeMul::wrapping_mul(x, y), 20.0);
         }
 
         #[test]
         fn wrapping_mul_unhappy() {
             let x: f64 = f64::MAX;
             let y: f64 = 2.0;
-            let result = x.wrapping_mul(y);
+            let result = SafeMul::wrapping_mul(x, y);
             // Should wrap around instead of being infinite
             assert!(result.is_finite());
             // Should be positive since f64::MAX * 2.0 is positive
@@ -285,7 +287,7 @@ mod tests {
         fn wrapping_mul_negative() {
             let x: f64 = f64::MAX;
             let y: f64 = -2.0;
-            let result = x.wrapping_mul(y);
+            let result = SafeMul::wrapping_mul(x, y);
             // Should wrap around instead of being infinite
             assert!(result.is_finite());
             // Should be negative since f64::MAX * -2.0 is negative
