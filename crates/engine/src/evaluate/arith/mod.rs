@@ -5,4 +5,4 @@ mod add;
 mod divide;
 mod modulo;
 mod multiply;
-mod subtract;
+mod sub;

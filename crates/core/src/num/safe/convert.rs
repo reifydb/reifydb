@@ -165,21 +165,21 @@ mod tests {
         #[test]
         fn test_checked_convert_happy() {
             let x: i8 = 42;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, Some(42u8));
         }
 
         #[test]
         fn test_checked_convert_unhappy() {
             let x: i8 = -1;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, None);
         }
 
         #[test]
         fn test_saturating_convert() {
             let x: i8 = -1;
-            let y: u8 = x.saturating_convert();
+            let y: u8 = SafeConvert::saturating_convert(x);
             assert_eq!(y, 0u8);
         }
 
@@ -369,21 +369,21 @@ mod tests {
         #[test]
         fn test_checked_convert_happy() {
             let x: i16 = 42;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, Some(42u8));
         }
 
         #[test]
         fn test_checked_convert_unhappy() {
             let x: i16 = -1;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, None);
         }
 
         #[test]
         fn test_saturating_convert() {
             let x: i16 = -1;
-            let y: u8 = x.saturating_convert();
+            let y: u8 = SafeConvert::saturating_convert(x);
             assert_eq!(y, 0u8);
         }
 
@@ -573,21 +573,21 @@ mod tests {
         #[test]
         fn test_checked_convert_happy() {
             let x: i32 = 42;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, Some(42u8));
         }
 
         #[test]
         fn test_checked_convert_unhappy() {
             let x: i32 = -1;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, None);
         }
 
         #[test]
         fn test_saturating_convert() {
             let x: i32 = -1;
-            let y: u8 = x.saturating_convert();
+            let y: u8 = SafeConvert::saturating_convert(x);
             assert_eq!(y, 0u8);
         }
 
@@ -777,21 +777,21 @@ mod tests {
         #[test]
         fn test_checked_convert_happy() {
             let x: i64 = 42;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, Some(42u8));
         }
 
         #[test]
         fn test_checked_convert_unhappy() {
             let x: i64 = -1;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, None);
         }
 
         #[test]
         fn test_saturating_convert() {
             let x: i64 = -1;
-            let y: u8 = x.saturating_convert();
+            let y: u8 = SafeConvert::saturating_convert(x);
             assert_eq!(y, 0u8);
         }
 
@@ -1051,21 +1051,21 @@ mod tests {
         #[test]
         fn test_checked_convert_happy() {
             let x: i128 = 42;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, Some(42u8));
         }
 
         #[test]
         fn test_checked_convert_unhappy() {
             let x: i128 = -1;
-            let y: Option<u8> = x.checked_convert();
+            let y: Option<u8> = SafeConvert::checked_convert(x);
             assert_eq!(y, None);
         }
 
         #[test]
         fn test_saturating_convert() {
             let x: i128 = -1;
-            let y: u8 = x.saturating_convert();
+            let y: u8 = SafeConvert::saturating_convert(x);
             assert_eq!(y, 0u8);
         }
 
