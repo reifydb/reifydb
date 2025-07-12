@@ -476,7 +476,7 @@ pub enum InfixOperator {
     Subtract(Token),
     Multiply(Token),
     Divide(Token),
-    Modulo(Token),
+    Rem(Token),
     Equal(Token),
     NotEqual(Token),
     LessThan(Token),

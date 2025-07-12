@@ -4,7 +4,7 @@
 use crate::evaluate::Context;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
-use reifydb_core::num::{IsNumber, Promote, SafeAdd, SafeDiv, SafeModulo, SafeMul, SafeSub};
+use reifydb_core::num::{IsNumber, Promote, SafeAdd, SafeDiv, SafeRemainder, SafeMul, SafeSub};
 use reifydb_diagnostic::r#type::{OutOfRange, out_of_range};
 
 impl Context {
@@ -224,7 +224,7 @@ impl Context {
 }
 
 impl Context {
-    pub(crate) fn modulo<L, R>(
+    pub(crate) fn remainder<L, R>(
         &self,
         l: L,
         r: R,
@@ -234,7 +234,7 @@ impl Context {
         L: Promote<R>,
         R: IsNumber,
         <L as Promote<R>>::Output: IsNumber,
-        <L as Promote<R>>::Output: SafeModulo,
+        <L as Promote<R>>::Output: SafeRemainder,
     {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
@@ -246,7 +246,7 @@ impl Context {
                     })));
                 };
 
-                lp.checked_mod(rp)
+                lp.checked_rem(rp)
                     .ok_or_else(|| {
                         if let Some(column) = &self.column {
                             return crate::evaluate::Error(out_of_range(OutOfRange {
@@ -268,7 +268,7 @@ impl Context {
                     return Ok(None);
                 };
 
-                match lp.checked_mod(rp) {
+                match lp.checked_rem(rp) {
                     None => Ok(None),
                     Some(value) => Ok(Some(value)),
                 }
@@ -311,9 +311,9 @@ mod tests {
     }
 
     #[test]
-    fn test_modulo() {
+    fn test_remainder() {
         let test_instance = Context::testing();
-        let result = test_instance.modulo(120i8, 21i16, Span::testing_empty());
+        let result = test_instance.remainder(120i8, 21i16, Span::testing_empty());
         assert_eq!(result, Ok(Some(15i128)));
     }
 }

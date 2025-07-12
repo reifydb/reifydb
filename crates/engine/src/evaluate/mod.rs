@@ -50,7 +50,7 @@ impl Evaluator {
             Expression::LessThanEqual(expr) => self.less_than_equal(expr, ctx),
             Expression::Equal(expr) => self.equal(expr, ctx),
             Expression::NotEqual(expr) => self.not_equal(expr, ctx),
-            Expression::Modulo(expr) => self.modulo(expr, ctx),
+            Expression::Rem(expr) => self.rem(expr, ctx),
             Expression::Mul(expr) => self.mul(expr, ctx),
             Expression::Prefix(expr) => self.prefix(expr, ctx),
             Expression::Sub(expr) => self.sub(expr, ctx),

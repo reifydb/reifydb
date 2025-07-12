@@ -36,7 +36,7 @@ impl Parser {
                 Operator::Minus => Ok(InfixOperator::Subtract(token)),
                 Operator::Asterisk => Ok(InfixOperator::Multiply(token)),
                 Operator::Slash => Ok(InfixOperator::Divide(token)),
-                Operator::Percent => Ok(InfixOperator::Modulo(token)),
+                Operator::Percent => Ok(InfixOperator::Rem(token)),
                 Operator::Equal => Ok(InfixOperator::Assign(token)),
                 Operator::DoubleEqual => Ok(InfixOperator::Equal(token)),
                 Operator::BangEqual => Ok(InfixOperator::NotEqual(token)),
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn test_modulo() {
+    fn test_remainder() {
         let tokens = lex("1 % 2").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
@@ -209,7 +209,7 @@ mod tests {
         let Literal(AstLiteral::Number(node)) = left.deref() else { panic!() };
         assert_eq!(node.value(), "1");
 
-        assert!(matches!(operator, InfixOperator::Modulo(_)));
+        assert!(matches!(operator, InfixOperator::Rem(_)));
 
         let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");

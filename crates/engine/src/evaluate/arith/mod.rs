@@ -3,6 +3,6 @@
 
 mod add;
 mod div;
-mod modulo;
+mod remainder;
 mod mul;
 mod sub;

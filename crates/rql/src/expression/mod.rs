@@ -39,7 +39,7 @@ pub enum Expression {
 
     Call(CallExpression),
 
-    Modulo(ModuloExpression),
+    Rem(RemExpression),
 
     Mul(MulExpression),
 
@@ -132,7 +132,7 @@ pub struct SubExpression {
 }
 
 #[derive(Debug, Clone)]
-pub struct ModuloExpression {
+pub struct RemExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
@@ -251,7 +251,7 @@ impl Display for Expression {
                 write!(f, "({} / {})", left, right)
             }
             Expression::Call(call) => write!(f, "{}", call),
-            Expression::Modulo(ModuloExpression { left, right, .. }) => {
+            Expression::Rem(RemExpression { left, right, .. }) => {
                 write!(f, "({} % {})", left, right)
             }
             Expression::Mul(MulExpression { left, right, .. }) => {

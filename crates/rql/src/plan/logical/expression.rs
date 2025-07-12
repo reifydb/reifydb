@@ -7,7 +7,7 @@ use crate::expression::{
     AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
     ColumnExpression, ConstantExpression, DivExpression, EqualExpression, Expression,
     GreaterThanEqualExpression, GreaterThanExpression, IdentExpression, KindExpression,
-    LessThanEqualExpression, LessThanExpression, ModuloExpression, MulExpression,
+    LessThanEqualExpression, LessThanExpression, RemExpression, MulExpression,
     NotEqualExpression, PrefixExpression, PrefixOperator, SubExpression, TupleExpression,
 };
 use crate::plan::logical::Compiler;
@@ -117,10 +117,10 @@ impl Compiler {
                     span: token.span,
                 }))
             }
-            InfixOperator::Modulo(token) => {
+            InfixOperator::Rem(token) => {
                 let left = Self::compile_expression(*ast.left)?;
                 let right = Self::compile_expression(*ast.right)?;
-                Ok(Expression::Modulo(ModuloExpression {
+                Ok(Expression::Rem(RemExpression {
                     left: Box::new(left),
                     right: Box::new(right),
                     span: token.span,
@@ -226,7 +226,7 @@ impl Compiler {
             // InfixOperator::Subtract(_) => {}
             // InfixOperator::Multiply(_) => {}
             // InfixOperator::Divide(_) => {}
-            // InfixOperator::Modulo(_) => {}
+            // InfixOperator::Rem(_) => {}
             // InfixOperator::TypeAscription(_) => {}
         }
     }

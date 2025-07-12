@@ -3,7 +3,7 @@
 
 use crate::expression::{
     AddExpression, CastExpression, ConstantExpression, DivExpression, Expression,
-    ModuloExpression, MulExpression, PrefixExpression, SubExpression,
+    RemExpression, MulExpression, PrefixExpression, SubExpression,
 };
 use reifydb_core::Span;
 
@@ -32,7 +32,7 @@ impl Expression {
 
             Expression::Mul(expr) => expr.span(),
             Expression::Div(expr) => expr.span(),
-            Expression::Modulo(expr) => expr.span(),
+            Expression::Rem(expr) => expr.span(),
 
             Expression::Tuple(_expr) => {
                 // let spans = expr.elements.iter().map(|e| e.span()).collect::<Vec<_>>();
@@ -89,7 +89,7 @@ impl DivExpression {
     }
 }
 
-impl ModuloExpression {
+impl RemExpression {
     pub fn span(&self) -> Span {
         Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
