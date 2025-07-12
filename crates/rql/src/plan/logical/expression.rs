@@ -5,10 +5,10 @@ use crate::ast;
 use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator};
 use crate::expression::{
     AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
-    ColumnExpression, ConstantExpression, DivideExpression, EqualExpression, Expression,
+    ColumnExpression, ConstantExpression, DivExpression, EqualExpression, Expression,
     GreaterThanEqualExpression, GreaterThanExpression, IdentExpression, KindExpression,
-    LessThanEqualExpression, LessThanExpression, ModuloExpression, MultiplyExpression,
-    NotEqualExpression, PrefixExpression, PrefixOperator, SubtractExpression, TupleExpression,
+    LessThanEqualExpression, LessThanExpression, ModuloExpression, MulExpression,
+    NotEqualExpression, PrefixExpression, PrefixOperator, SubExpression, TupleExpression,
 };
 use crate::plan::logical::Compiler;
 
@@ -102,7 +102,7 @@ impl Compiler {
             InfixOperator::Divide(token) => {
                 let left = Self::compile_expression(*ast.left)?;
                 let right = Self::compile_expression(*ast.right)?;
-                Ok(Expression::Divide(DivideExpression {
+                Ok(Expression::Div(DivExpression {
                     left: Box::new(left),
                     right: Box::new(right),
                     span: token.span,
@@ -111,7 +111,7 @@ impl Compiler {
             InfixOperator::Subtract(token) => {
                 let left = Self::compile_expression(*ast.left)?;
                 let right = Self::compile_expression(*ast.right)?;
-                Ok(Expression::Subtract(SubtractExpression {
+                Ok(Expression::Sub(SubExpression {
                     left: Box::new(left),
                     right: Box::new(right),
                     span: token.span,
@@ -129,7 +129,7 @@ impl Compiler {
             InfixOperator::Multiply(token) => {
                 let left = Self::compile_expression(*ast.left)?;
                 let right = Self::compile_expression(*ast.right)?;
-                Ok(Expression::Multiply(MultiplyExpression {
+                Ok(Expression::Mul(MulExpression {
                     left: Box::new(left),
                     right: Box::new(right),
                     span: token.span,

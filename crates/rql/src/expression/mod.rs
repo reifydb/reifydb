@@ -35,15 +35,15 @@ pub enum Expression {
 
     Add(AddExpression),
 
-    Divide(DivideExpression),
+    Div(DivExpression),
 
     Call(CallExpression),
 
     Modulo(ModuloExpression),
 
-    Multiply(MultiplyExpression),
+    Mul(MulExpression),
 
-    Subtract(SubtractExpression),
+    Sub(SubExpression),
 
     Tuple(TupleExpression),
 
@@ -118,14 +118,14 @@ pub struct AddExpression {
 }
 
 #[derive(Debug, Clone)]
-pub struct DivideExpression {
+pub struct DivExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct SubtractExpression {
+pub struct SubExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
@@ -139,7 +139,7 @@ pub struct ModuloExpression {
 }
 
 #[derive(Debug, Clone)]
-pub struct MultiplyExpression {
+pub struct MulExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
@@ -247,17 +247,17 @@ impl Display for Expression {
             Expression::Add(AddExpression { left, right, .. }) => {
                 write!(f, "({} + {})", left, right)
             }
-            Expression::Divide(DivideExpression { left, right, .. }) => {
+            Expression::Div(DivExpression { left, right, .. }) => {
                 write!(f, "({} / {})", left, right)
             }
             Expression::Call(call) => write!(f, "{}", call),
             Expression::Modulo(ModuloExpression { left, right, .. }) => {
                 write!(f, "({} % {})", left, right)
             }
-            Expression::Multiply(MultiplyExpression { left, right, .. }) => {
+            Expression::Mul(MulExpression { left, right, .. }) => {
                 write!(f, "({} * {})", left, right)
             }
-            Expression::Subtract(SubtractExpression { left, right, .. }) => {
+            Expression::Sub(SubExpression { left, right, .. }) => {
                 write!(f, "({} - {})", left, right)
             }
             Expression::Tuple(tuple) => write!(f, "({})", tuple),

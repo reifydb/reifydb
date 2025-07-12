@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later
 
 mod add;
-mod divide;
+mod div;
 mod modulo;
-mod multiply;
+mod mul;
 mod sub;

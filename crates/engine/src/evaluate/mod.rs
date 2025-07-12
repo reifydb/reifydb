@@ -39,7 +39,7 @@ impl Evaluator {
             Expression::AccessTable(expr) => self.access(expr, ctx),
             Expression::Alias(expr) => self.alias(expr, ctx),
             Expression::Add(expr) => self.add(expr, ctx),
-            Expression::Divide(expr) => self.divide(expr, ctx),
+            Expression::Div(expr) => self.div(expr, ctx),
             Expression::Call(expr) => self.call(expr, ctx),
             Expression::Cast(expr) => self.cast(expr, ctx),
             Expression::Column(expr) => self.column(expr, ctx),
@@ -51,9 +51,9 @@ impl Evaluator {
             Expression::Equal(expr) => self.equal(expr, ctx),
             Expression::NotEqual(expr) => self.not_equal(expr, ctx),
             Expression::Modulo(expr) => self.modulo(expr, ctx),
-            Expression::Multiply(expr) => self.multiply(expr, ctx),
+            Expression::Mul(expr) => self.mul(expr, ctx),
             Expression::Prefix(expr) => self.prefix(expr, ctx),
-            Expression::Subtract(expr) => self.sub(expr, ctx),
+            Expression::Sub(expr) => self.sub(expr, ctx),
             expr => unimplemented!("{expr:?}"),
         }
     }

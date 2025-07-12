@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later.
 
 use crate::expression::{
-    AddExpression, CastExpression, ConstantExpression, DivideExpression, Expression,
-    ModuloExpression, MultiplyExpression, PrefixExpression, SubtractExpression,
+    AddExpression, CastExpression, ConstantExpression, DivExpression, Expression,
+    ModuloExpression, MulExpression, PrefixExpression, SubExpression,
 };
 use reifydb_core::Span;
 
@@ -22,7 +22,7 @@ impl Expression {
             Expression::Column(expr) => expr.0.clone(),
 
             Expression::Add(expr) => expr.span(),
-            Expression::Subtract(expr) => expr.span(),
+            Expression::Sub(expr) => expr.span(),
             Expression::GreaterThan(expr) => expr.span.clone(),
             Expression::GreaterThanEqual(expr) => expr.span.clone(),
             Expression::LessThan(expr) => expr.span.clone(),
@@ -30,8 +30,8 @@ impl Expression {
             Expression::Equal(expr) => expr.span.clone(),
             Expression::NotEqual(expr) => expr.span.clone(),
 
-            Expression::Multiply(expr) => expr.span(),
-            Expression::Divide(expr) => expr.span(),
+            Expression::Mul(expr) => expr.span(),
+            Expression::Div(expr) => expr.span(),
             Expression::Modulo(expr) => expr.span(),
 
             Expression::Tuple(_expr) => {
@@ -71,19 +71,19 @@ impl PrefixExpression {
     }
 }
 
-impl SubtractExpression {
+impl SubExpression {
     pub fn span(&self) -> Span {
         Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
-impl MultiplyExpression {
+impl MulExpression {
     pub fn span(&self) -> Span {
         Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
-impl DivideExpression {
+impl DivExpression {
     pub fn span(&self) -> Span {
         Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
