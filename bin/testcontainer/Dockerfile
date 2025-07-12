@@ -1,33 +1,42 @@
-FROM rust:1.85 AS builder
+FROM rust:1.85-slim AS builder
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     protobuf-compiler \
-    && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
 COPY Cargo.toml Cargo.lock ./
-
 COPY crates ./crates
 COPY pkg ./pkg
 COPY bin ./bin
 COPY testsuite ./testsuite
 
-RUN cd bin/testcontainer && cargo build --release
-RUN cp target/release/reifydb-testcontainer /usr/local/bin/reifydb-testcontainer
+WORKDIR /build/bin/testcontainer
+RUN cargo build --release
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y \
+
+ENV PATH="/usr/local/bin:$PATH"
+ENV RUST_BACKTRACE=1
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
-    && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -u 1001 appuser
+# Add unprivileged user with no login shell
+RUN useradd --system --uid 1001 --no-create-home --shell /usr/sbin/nologin reifydb
 
-COPY --from=builder /usr/local/bin/reifydb-testcontainer /usr/local/bin/reifydb-testcontainer
-RUN chown appuser:appuser /usr/local/bin/reifydb-testcontainer
-USER appuser
+COPY --from=builder /build/target/release/reifydb-testcontainer /usr/local/bin/
+
+RUN chown root:root /usr/local/bin/reifydb-testcontainer && \
+    chmod 0755 /usr/local/bin/reifydb-testcontainer
+
+USER reifydb
+
 EXPOSE 8090
 CMD ["reifydb-testcontainer"]
