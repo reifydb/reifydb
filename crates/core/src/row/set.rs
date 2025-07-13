@@ -8,7 +8,7 @@ use std::ptr;
 impl Layout {
     pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Bool);
         row.set_valid(index, true);
         unsafe {
@@ -21,7 +21,7 @@ impl Layout {
 
     pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Float4);
         row.set_valid(index, true);
         unsafe {
@@ -34,7 +34,7 @@ impl Layout {
 
     pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: impl Into<f64>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Float8);
         row.set_valid(index, true);
         unsafe {
@@ -47,7 +47,7 @@ impl Layout {
 
     pub fn set_i8(&self, row: &mut EncodedRow, index: usize, value: impl Into<i8>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int1);
         row.set_valid(index, true);
         unsafe {
@@ -60,7 +60,7 @@ impl Layout {
 
     pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: impl Into<i16>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int2);
         row.set_valid(index, true);
         unsafe {
@@ -73,7 +73,7 @@ impl Layout {
 
     pub fn set_i32(&self, row: &mut EncodedRow, index: usize, value: impl Into<i32>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int4);
         row.set_valid(index, true);
         unsafe {
@@ -86,7 +86,7 @@ impl Layout {
 
     pub fn set_i64(&self, row: &mut EncodedRow, index: usize, value: impl Into<i64>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int8);
         row.set_valid(index, true);
         unsafe {
@@ -99,7 +99,7 @@ impl Layout {
 
     pub fn set_i128(&self, row: &mut EncodedRow, index: usize, value: impl Into<i128>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int16);
         row.set_valid(index, true);
         unsafe {
@@ -110,25 +110,30 @@ impl Layout {
         }
     }
 
-    pub fn set_str(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
+    pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, DataType::Utf8);
+        debug_assert!(!row.is_defined(index), "UTF8 field {} already set", index);
 
         let bytes = value.as_ref().as_bytes();
-        let len = bytes.len().min(254); // One byte for length
-        row.set_valid(index, true);
 
-        unsafe {
-            let dst = row.make_mut().as_mut_ptr().add(field.offset);
-            *dst = len as u8;
-            ptr::copy_nonoverlapping(bytes.as_ptr(), dst.add(1), len);
-        }
+        // Calculate offset in dynamic section (relative to start of dynamic section)
+        let dynamic_offset = self.dynamic_section_size(row);
+
+        // Append string to dynamic section
+        row.0.extend_from_slice(bytes);
+
+        // Update reference in static section: [offset: u32][length: u32]
+        let ref_slice = &mut row.0.make_mut()[field.offset..field.offset + 8];
+        ref_slice[0..4].copy_from_slice(&(dynamic_offset as u32).to_le_bytes());
+        ref_slice[4..8].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
+
+        row.set_valid(index, true);
     }
 
     pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint1);
         row.set_valid(index, true);
         unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset), value.into()) }
@@ -136,7 +141,7 @@ impl Layout {
 
     pub fn set_u16(&self, row: &mut EncodedRow, index: usize, value: impl Into<u16>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint2);
         row.set_valid(index, true);
         unsafe {
@@ -149,7 +154,7 @@ impl Layout {
 
     pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint4);
         row.set_valid(index, true);
         unsafe {
@@ -162,7 +167,7 @@ impl Layout {
 
     pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: impl Into<u64>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint8);
         row.set_valid(index, true);
         unsafe {
@@ -175,7 +180,7 @@ impl Layout {
 
     pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: impl Into<u128>) {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint16);
         row.set_valid(index, true);
         unsafe {
@@ -187,7 +192,7 @@ impl Layout {
     }
 
     pub fn set_undefined(&self, row: &mut EncodedRow, index: usize) {
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         let field = &self.fields[index];
 
         row.set_valid(index, false);
@@ -385,17 +390,14 @@ mod tests {
         assert!(!row1.is_defined(0));
         assert!(!row2.is_defined(0));
 
-        layout.set_str(&mut row2, 0, "reifydb");
+        layout.set_utf8(&mut row2, 0, "reifydb");
 
         assert!(row2.is_defined(0));
-        let raw = &row2.0;
-        let offset = layout.fields[0].offset;
-        let len = raw[offset] as usize;
-        let string_slice = std::str::from_utf8(&raw[offset + 1..offset + 1 + len]).unwrap();
-        assert_eq!(string_slice, "reifydb");
+
+        // Test using the get_str method which understands the new format
+        assert_eq!(layout.get_utf8(&row2, 0), "reifydb");
 
         assert!(!row1.is_defined(0));
-        assert_eq!(row1.0[offset], 0u8);
         assert_ne!(row1.as_ptr(), row2.as_ptr());
     }
 
@@ -527,5 +529,182 @@ mod tests {
         assert!(row1.is_defined(0));
         assert_ne!(row1.as_ptr(), row2.as_ptr());
         assert_eq!(layout.get_i32(&row1, 0), 12345);
+    }
+
+    #[test]
+    fn test_utf8_setting_order_variations() {
+        // Test forward order
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        layout.set_utf8(&mut row, 0, "first");
+        layout.set_utf8(&mut row, 1, "second");
+        layout.set_utf8(&mut row, 2, "third");
+
+        assert_eq!(layout.get_utf8(&row, 0), "first");
+        assert_eq!(layout.get_utf8(&row, 1), "second");
+        assert_eq!(layout.get_utf8(&row, 2), "third");
+
+        // Test reverse order
+        let mut row2 = layout.allocate_row();
+        layout.set_utf8(&mut row2, 2, "third");
+        layout.set_utf8(&mut row2, 1, "second");
+        layout.set_utf8(&mut row2, 0, "first");
+
+        assert_eq!(layout.get_utf8(&row2, 0), "first");
+        assert_eq!(layout.get_utf8(&row2, 1), "second");
+        assert_eq!(layout.get_utf8(&row2, 2), "third");
+
+        // Test random order
+        let mut row3 = layout.allocate_row();
+        layout.set_utf8(&mut row3, 1, "second");
+        layout.set_utf8(&mut row3, 0, "first");
+        layout.set_utf8(&mut row3, 2, "third");
+
+        assert_eq!(layout.get_utf8(&row3, 0), "first");
+        assert_eq!(layout.get_utf8(&row3, 1), "second");
+        assert_eq!(layout.get_utf8(&row3, 2), "third");
+    }
+
+    #[test]
+    fn test_utf8_with_clone_on_write_dynamic() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Int4, DataType::Utf8]);
+        let mut row1 = layout.allocate_row();
+
+        layout.set_utf8(&mut row1, 0, "original_string");
+        layout.set_i32(&mut row1, 1, 42);
+
+        let mut row2 = row1.clone();
+        assert_eq!(layout.get_utf8(&row2, 0), "original_string");
+        assert_eq!(layout.get_i32(&row2, 1), 42);
+
+        // Setting UTF8 on cloned row should trigger COW
+        layout.set_utf8(&mut row2, 2, "new_string");
+
+        assert_ne!(row1.as_ptr(), row2.as_ptr());
+        assert_eq!(layout.get_utf8(&row1, 0), "original_string");
+        assert_eq!(layout.get_utf8(&row2, 0), "original_string");
+        assert_eq!(layout.get_utf8(&row2, 2), "new_string");
+
+        // row1 should not have the second string set
+        assert!(!row1.is_defined(2));
+        assert!(row2.is_defined(2));
+    }
+
+    #[test]
+    fn test_large_utf8_string_allocation() {
+        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Uint4]);
+        let mut row = layout.allocate_row();
+
+        let initial_size = row.len();
+        let large_string = "X".repeat(5000);
+
+        layout.set_bool(&mut row, 0, false);
+        layout.set_utf8(&mut row, 1, &large_string);
+        layout.set_u32(&mut row, 2, 999u32);
+
+        assert_eq!(row.len(), initial_size + 5000);
+        assert_eq!(layout.dynamic_section_size(&row), 5000);
+        assert_eq!(layout.get_bool(&row, 0), false);
+        assert_eq!(layout.get_utf8(&row, 1), large_string);
+        assert_eq!(layout.get_u32(&row, 2), 999);
+    }
+
+    #[test]
+    fn test_mixed_field_types_arbitrary_order() {
+        let layout = Layout::new(&[
+            DataType::Float8,
+            DataType::Utf8,
+            DataType::Bool,
+            DataType::Utf8,
+            DataType::Int2,
+            DataType::Utf8,
+        ]);
+        let mut row = layout.allocate_row();
+
+        // Set in completely arbitrary order
+        layout.set_utf8(&mut row, 3, "middle");
+        layout.set_bool(&mut row, 2, true);
+        layout.set_utf8(&mut row, 5, "end");
+        layout.set_f64(&mut row, 0, 3.14159);
+        layout.set_i16(&mut row, 4, -500i16);
+        layout.set_utf8(&mut row, 1, "beginning");
+
+        assert_eq!(layout.get_f64(&row, 0), 3.14159);
+        assert_eq!(layout.get_utf8(&row, 1), "beginning");
+        assert_eq!(layout.get_bool(&row, 2), true);
+        assert_eq!(layout.get_utf8(&row, 3), "middle");
+        assert_eq!(layout.get_i16(&row, 4), -500);
+        assert_eq!(layout.get_utf8(&row, 5), "end");
+    }
+
+    #[test]
+    fn test_sparse_utf8_field_setting() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        // Only set some UTF8 fields, leave others undefined
+        layout.set_utf8(&mut row, 0, "first");
+        layout.set_utf8(&mut row, 2, "third");
+        // Skip fields 1 and 3
+
+        assert!(row.is_defined(0));
+        assert!(!row.is_defined(1));
+        assert!(row.is_defined(2));
+        assert!(!row.is_defined(3));
+
+        assert_eq!(layout.get_utf8(&row, 0), "first");
+        assert_eq!(layout.get_utf8(&row, 2), "third");
+    }
+
+    #[test]
+    fn test_empty_utf8_strings() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        layout.set_utf8(&mut row, 0, "");
+        layout.set_utf8(&mut row, 1, "");
+        layout.set_utf8(&mut row, 2, "");
+
+        assert_eq!(layout.get_utf8(&row, 0), "");
+        assert_eq!(layout.get_utf8(&row, 1), "");
+        assert_eq!(layout.get_utf8(&row, 2), "");
+
+        // Dynamic section should exist but be empty
+        assert_eq!(layout.dynamic_section_size(&row), 0);
+    }
+
+    #[test]
+    fn test_utf8_memory_layout_verification() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        let initial_size = layout.total_static_size();
+        assert_eq!(row.len(), initial_size);
+
+        layout.set_utf8(&mut row, 0, "hello"); // 5 bytes
+        assert_eq!(row.len(), initial_size + 5);
+        assert_eq!(layout.dynamic_section_size(&row), 5);
+
+        layout.set_utf8(&mut row, 1, "world"); // 5 more bytes
+        assert_eq!(row.len(), initial_size + 10);
+        assert_eq!(layout.dynamic_section_size(&row), 10);
+
+        assert_eq!(layout.get_utf8(&row, 0), "hello");
+        assert_eq!(layout.get_utf8(&row, 1), "world");
+    }
+
+    #[test]
+    fn test_utf8_with_various_unicode() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        layout.set_utf8(&mut row, 0, "🎉"); // Emoji
+        layout.set_utf8(&mut row, 1, "Ω"); // Greek
+        layout.set_utf8(&mut row, 2, "日本語"); // Japanese
+
+        assert_eq!(layout.get_utf8(&row, 0), "🎉");
+        assert_eq!(layout.get_utf8(&row, 1), "Ω");
+        assert_eq!(layout.get_utf8(&row, 2), "日本語");
     }
 }

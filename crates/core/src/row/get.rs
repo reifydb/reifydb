@@ -2,110 +2,115 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::DataType;
-use crate::row::{Layout, EncodedRow};
+use crate::row::{EncodedRow, Layout};
 
 impl Layout {
     pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Bool);
         unsafe { (row.as_ptr().add(field.offset) as *const bool).read_unaligned() }
     }
 
     pub fn get_f32(&self, row: &EncodedRow, index: usize) -> f32 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Float4);
         unsafe { (row.as_ptr().add(field.offset) as *const f32).read_unaligned() }
     }
 
     pub fn get_f64(&self, row: &EncodedRow, index: usize) -> f64 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Float8);
         unsafe { (row.as_ptr().add(field.offset) as *const f64).read_unaligned() }
     }
 
     pub fn get_i8(&self, row: &EncodedRow, index: usize) -> i8 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int1);
         unsafe { (row.as_ptr().add(field.offset) as *const i8).read_unaligned() }
     }
 
     pub fn get_i16(&self, row: &EncodedRow, index: usize) -> i16 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int2);
         unsafe { (row.as_ptr().add(field.offset) as *const i16).read_unaligned() }
     }
 
     pub fn get_i32(&self, row: &EncodedRow, index: usize) -> i32 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int4);
         unsafe { (row.as_ptr().add(field.offset) as *const i32).read_unaligned() }
     }
 
     pub fn get_i64(&self, row: &EncodedRow, index: usize) -> i64 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int8);
         unsafe { (row.as_ptr().add(field.offset) as *const i64).read_unaligned() }
     }
 
     pub fn get_i128(&self, row: &EncodedRow, index: usize) -> i128 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Int16);
         unsafe { (row.as_ptr().add(field.offset) as *const i128).read_unaligned() }
     }
 
-    pub fn get_str(&self, row: &EncodedRow, index: usize) -> &str {
+    pub fn get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> &'a str {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
         debug_assert_eq!(field.value, DataType::Utf8);
 
-        unsafe {
-            let base = row.as_ptr().add(field.offset);
-            let len = *base as usize;
-            let data = base.add(1);
-            let slice = std::slice::from_raw_parts(data, len);
-            std::str::from_utf8_unchecked(slice)
-        }
+        // Read offset and length from static section
+        let ref_slice = &row.as_slice()[field.offset..field.offset + 8];
+        let offset =
+            u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
+        let length =
+            u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
+
+        // Get string from dynamic section
+        let dynamic_start = self.dynamic_section_start();
+        let string_start = dynamic_start + offset;
+        let string_slice = &row.as_slice()[string_start..string_start + length];
+
+        unsafe { std::str::from_utf8_unchecked(string_slice) }
     }
 
     pub fn get_u8(&self, row: &EncodedRow, index: usize) -> u8 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint1);
         unsafe { row.as_ptr().add(field.offset).read_unaligned() }
     }
 
     pub fn get_u16(&self, row: &EncodedRow, index: usize) -> u16 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint2);
         unsafe { (row.as_ptr().add(field.offset) as *const u16).read_unaligned() }
     }
 
     pub fn get_u32(&self, row: &EncodedRow, index: usize) -> u32 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint4);
         unsafe { (row.as_ptr().add(field.offset) as *const u32).read_unaligned() }
     }
 
     pub fn get_u64(&self, row: &EncodedRow, index: usize) -> u64 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint8);
         unsafe { (row.as_ptr().add(field.offset) as *const u64).read_unaligned() }
     }
 
     pub fn get_u128(&self, row: &EncodedRow, index: usize) -> u128 {
         let field = &self.fields[index];
-        debug_assert_eq!(row.len(), self.data_size);
+        debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Uint16);
         unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() }
     }
@@ -113,8 +118,8 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    use crate::row::Layout;
     use crate::DataType;
+    use crate::row::Layout;
 
     #[test]
     fn test_get_bool() {
@@ -184,8 +189,8 @@ mod tests {
     fn test_get_str() {
         let layout = Layout::new(&[DataType::Utf8]);
         let mut row = layout.allocate_row();
-        layout.set_str(&mut row, 0, "reifydb");
-        assert_eq!(layout.get_str(&row, 0), "reifydb");
+        layout.set_utf8(&mut row, 0, "reifydb");
+        assert_eq!(layout.get_utf8(&row, 0), "reifydb");
     }
 
     #[test]
@@ -226,5 +231,119 @@ mod tests {
         let mut row = layout.allocate_row();
         layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
         assert_eq!(layout.get_u128(&row, 0), 340282366920938463463374607431768211455u128);
+    }
+
+    #[test]
+    fn test_mixed_utf8_and_static_fields() {
+        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4]);
+        let mut row = layout.allocate_row();
+        
+        layout.set_bool(&mut row, 0, true);
+        layout.set_utf8(&mut row, 1, "hello");
+        layout.set_i32(&mut row, 2, 42);
+        
+        assert_eq!(layout.get_bool(&row, 0), true);
+        assert_eq!(layout.get_utf8(&row, 1), "hello");
+        assert_eq!(layout.get_i32(&row, 2), 42);
+    }
+
+    #[test]
+    fn test_multiple_utf8_different_sizes() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Int2, DataType::Utf8, DataType::Bool, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+        
+        layout.set_utf8(&mut row, 0, "");  // Empty string
+        layout.set_i16(&mut row, 1, -100i16);
+        layout.set_utf8(&mut row, 2, "medium length string");
+        layout.set_bool(&mut row, 3, false);
+        layout.set_utf8(&mut row, 4, "x");  // Single char
+        
+        assert_eq!(layout.get_utf8(&row, 0), "");
+        assert_eq!(layout.get_i16(&row, 1), -100);
+        assert_eq!(layout.get_utf8(&row, 2), "medium length string");
+        assert_eq!(layout.get_bool(&row, 3), false);
+        assert_eq!(layout.get_utf8(&row, 4), "x");
+    }
+
+    #[test]
+    fn test_empty_and_large_utf8_strings() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+        
+        let large_string = "A".repeat(1000);
+        
+        layout.set_utf8(&mut row, 0, "");
+        layout.set_utf8(&mut row, 1, &large_string);
+        layout.set_utf8(&mut row, 2, "small");
+        
+        assert_eq!(layout.get_utf8(&row, 0), "");
+        assert_eq!(layout.get_utf8(&row, 1), large_string);
+        assert_eq!(layout.get_utf8(&row, 2), "small");
+    }
+
+    #[test]
+    fn test_unicode_multibyte_strings() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Float8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+        
+        layout.set_utf8(&mut row, 0, "🚀✨🌟");
+        layout.set_f64(&mut row, 1, 3.14159);
+        layout.set_utf8(&mut row, 2, "Hello 世界 🎉");
+        
+        assert_eq!(layout.get_utf8(&row, 0), "🚀✨🌟");
+        assert_eq!(layout.get_f64(&row, 1), 3.14159);
+        assert_eq!(layout.get_utf8(&row, 2), "Hello 世界 🎉");
+    }
+
+    #[test]
+    fn test_utf8_arbitrary_setting_order() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+        
+        // Set in reverse order
+        layout.set_utf8(&mut row, 3, "fourth");
+        layout.set_utf8(&mut row, 1, "second");
+        layout.set_utf8(&mut row, 0, "first");
+        layout.set_utf8(&mut row, 2, "third");
+        
+        assert_eq!(layout.get_utf8(&row, 0), "first");
+        assert_eq!(layout.get_utf8(&row, 1), "second");
+        assert_eq!(layout.get_utf8(&row, 2), "third");
+        assert_eq!(layout.get_utf8(&row, 3), "fourth");
+    }
+
+    #[test]
+    fn test_static_only_fields_no_dynamic() {
+        let layout = Layout::new(&[DataType::Bool, DataType::Int4, DataType::Float8]);
+        let mut row = layout.allocate_row();
+        
+        layout.set_bool(&mut row, 0, true);
+        layout.set_i32(&mut row, 1, -12345);
+        layout.set_f64(&mut row, 2, 2.71828);
+        
+        // Verify no dynamic section
+        assert_eq!(layout.dynamic_section_size(&row), 0);
+        assert_eq!(row.len(), layout.total_static_size());
+        
+        assert_eq!(layout.get_bool(&row, 0), true);
+        assert_eq!(layout.get_i32(&row, 1), -12345);
+        assert_eq!(layout.get_f64(&row, 2), 2.71828);
+    }
+
+    #[test]
+    fn test_interleaved_static_and_dynamic_setting() {
+        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+        
+        // Interleave static and dynamic field setting
+        layout.set_bool(&mut row, 0, true);
+        layout.set_utf8(&mut row, 1, "first_string");
+        layout.set_i32(&mut row, 2, 999);
+        layout.set_utf8(&mut row, 3, "second_string");
+        
+        assert_eq!(layout.get_bool(&row, 0), true);
+        assert_eq!(layout.get_utf8(&row, 1), "first_string");
+        assert_eq!(layout.get_i32(&row, 2), 999);
+        assert_eq!(layout.get_utf8(&row, 3), "second_string");
     }
 }

@@ -163,7 +163,7 @@ impl Frame {
                     valid.push(true);
                 }
                 (ColumnValues::Utf8(vec, valid), DataType::Utf8) => {
-                    vec.push(layout.get_str(&row, index).to_string());
+                    vec.push(layout.get_utf8(&row, index).to_string());
                     valid.push(true);
                 }
                 (ColumnValues::Uint1(vec, valid), DataType::Uint1) => {
@@ -300,7 +300,7 @@ impl Frame {
                     }
                 }
                 (ColumnValues::Utf8(vec, valid), DataType::Utf8) => {
-                    match layout.try_get_str(row, index) {
+                    match layout.try_get_utf8(row, index) {
                         Some(v) => {
                             vec.push(v.to_string());
                             valid.push(true);
@@ -1358,7 +1358,7 @@ mod tests {
 
             let layout = Layout::new(&[DataType::Utf8, DataType::Utf8]);
             let mut row = layout.allocate_row();
-            layout.set_str(&mut row, 0, "reifydb");
+            layout.set_utf8(&mut row, 0, "reifydb");
             layout.set_undefined(&mut row, 1);
 
             test_instance.append_rows(&layout, [row]).unwrap();

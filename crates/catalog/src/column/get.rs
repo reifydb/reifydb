@@ -17,7 +17,7 @@ impl Catalog {
                 let row = versioned.row;
 
                 let id = ColumnId(column::LAYOUT.get_u64(&row, column::ID));
-                let name = column::LAYOUT.get_str(&row, column::NAME).to_string();
+                let name = column::LAYOUT.get_utf8(&row, column::NAME).to_string();
                 let value = DataType::from_u8(column::LAYOUT.get_u8(&row, column::VALUE));
                 let index = ColumnIndex(column::LAYOUT.get_u16(&row, column::INDEX));
 
@@ -36,7 +36,7 @@ impl Catalog {
         let maybe_id = rx.scan_range(TableColumnKey::full_scan(table))?.find_map(|versioned| {
             let row = versioned.row;
             let column = ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID));
-            let name = table_column::LAYOUT.get_str(&row, table_column::NAME);
+            let name = table_column::LAYOUT.get_utf8(&row, table_column::NAME);
 
             if name == column_name { Some(column) } else { None }
         });

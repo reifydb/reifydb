@@ -16,7 +16,7 @@ pub struct Field {
 pub struct Layout {
     pub fields: Vec<Field>,
     /// size of data in bytes
-    pub data_size: usize,
+    pub static_section_size: usize,
     /// size of validity part in bytes
     pub validity_size: usize,
     pub alignment: usize,
@@ -45,18 +45,19 @@ impl Layout {
         }
 
         let size = align_up(offset, max_align);
-        Layout { fields, data_size: size, alignment: max_align, validity_size: validity_bytes }
+        Layout { fields, static_section_size: size, alignment: max_align, validity_size: validity_bytes }
     }
 
     pub fn allocate_row(&self) -> EncodedRow {
-        let layout = std::alloc::Layout::from_size_align(self.data_size, self.alignment).unwrap();
+        let total_size = self.total_static_size();
+        let layout = std::alloc::Layout::from_size_align(total_size, self.alignment).unwrap();
         unsafe {
             let ptr = std::alloc::alloc_zeroed(layout);
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
             // Safe because alloc_zeroed + known size/capacity
-            let vec = Vec::from_raw_parts(ptr, self.data_size, self.data_size);
+            let vec = Vec::from_raw_parts(ptr, total_size, total_size);
             EncodedRow(CowVec::new(vec))
         }
     }
@@ -65,8 +66,20 @@ impl Layout {
         self.validity_size
     }
 
-    pub const fn total_size(&self) -> usize {
-        self.data_size + self.validity_size
+    pub const fn static_section_size(&self) -> usize {
+        self.static_section_size
+    }
+
+    pub const fn total_static_size(&self) -> usize {
+        self.validity_size + self.static_section_size
+    }
+
+    pub fn dynamic_section_start(&self) -> usize {
+        self.total_static_size()
+    }
+
+    pub fn dynamic_section_size(&self, row: &EncodedRow) -> usize {
+        row.len().saturating_sub(self.total_static_size())
     }
 
     pub fn data_slice<'a>(&'a self, row: &'a EncodedRow) -> &'a [u8] {
@@ -119,7 +132,7 @@ mod tests {
             assert_eq!(layout.fields.len(), 1);
             assert_eq!(layout.fields[0].offset, 1);
             assert_eq!(layout.alignment, 1);
-            assert_eq!(layout.data_size, layout.fields[0].offset + layout.fields[0].size);
+            assert_eq!(layout.static_section_size, layout.fields[0].offset + layout.fields[0].size);
         }
 
         #[test]
@@ -138,7 +151,7 @@ mod tests {
 
             assert_eq!(layout.alignment, 4);
 
-            assert_eq!(layout.data_size, 8); // 1 + 2 + 4 + 1(alignment)
+            assert_eq!(layout.static_section_size, 8); // 1 + 2 + 4 + 1(alignment)
         }
 
         #[test]
@@ -162,21 +175,21 @@ mod tests {
 
             assert_eq!(layout.alignment, 16);
 
-            assert_eq!(layout.data_size, 32); // 1 + 2 + 4 + 8 + 16 + 1 (alignment)
+            assert_eq!(layout.static_section_size, 32); // 1 + 2 + 4 + 8 + 16 + 1 (alignment)
         }
 
         #[test]
         fn test_nine_fields_validity_size_two() {
             let kinds = vec![
-				DataType::Bool,
-				DataType::Int1,
-				DataType::Int2,
-				DataType::Int4,
-				DataType::Int8,
-				DataType::Uint1,
-				DataType::Uint2,
-				DataType::Uint4,
-				DataType::Uint8,
+                DataType::Bool,
+                DataType::Int1,
+                DataType::Int2,
+                DataType::Int4,
+                DataType::Int8,
+                DataType::Uint1,
+                DataType::Uint2,
+                DataType::Uint4,
+                DataType::Uint8,
             ];
 
             let layout = Layout::new(&kinds);
@@ -193,7 +206,7 @@ mod tests {
                 assert_eq!(field.offset % field.align, 0);
             }
 
-            assert_eq!(layout.data_size % layout.alignment, 0);
+            assert_eq!(layout.static_section_size % layout.alignment, 0);
         }
     }
 
@@ -211,7 +224,7 @@ mod tests {
                 assert_eq!(*byte, 0);
             }
 
-            assert_eq!(row.len(), layout.data_size);
+            assert_eq!(row.len(), layout.total_static_size());
         }
 
         #[test]

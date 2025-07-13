@@ -106,6 +106,10 @@ impl<T: Clone + PartialEq> CowVec<T> {
         self.make_mut().extend(iter);
     }
 
+    pub fn extend_from_slice(&mut self, slice: &[T]) {
+        self.make_mut().extend_from_slice(slice);
+    }
+
     pub fn reorder(&mut self, indices: &[usize]) {
         let vec = self.make_mut();
         let len = vec.len();

@@ -18,7 +18,7 @@ impl Catalog {
         let Some(table) =
             rx.scan_range(SchemaTableKey::full_scan(schema))?.find_map(|versioned: Versioned| {
                 let row = &versioned.row;
-                let table_name = table_schema::LAYOUT.get_str(row, table_schema::NAME);
+                let table_name = table_schema::LAYOUT.get_utf8(row, table_schema::NAME);
                 if name == table_name {
                     Some(TableId(table_schema::LAYOUT.get_u64(row, table_schema::ID)))
                 } else {
@@ -38,7 +38,7 @@ impl Catalog {
                 let row = versioned.row;
                 let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
                 let schema = SchemaId(table::LAYOUT.get_u64(&row, table::SCHEMA));
-                let name = table::LAYOUT.get_str(&row, table::NAME).to_string();
+                let name = table::LAYOUT.get_utf8(&row, table::NAME).to_string();
                 Ok(Some(Table { id, name, schema, columns: Catalog::list_columns(rx, id)? }))
             }
             None => Ok(None),

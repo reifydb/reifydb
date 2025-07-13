@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::row::{Layout, EncodedRow};
+use crate::row::{EncodedRow, Layout};
 
 impl Layout {
     pub fn try_get_bool(&self, row: &EncodedRow, index: usize) -> Option<bool> {
@@ -36,8 +36,8 @@ impl Layout {
         if row.is_defined(index) { Some(self.get_i128(row, index)) } else { None }
     }
 
-    pub fn try_get_str(&self, row: &EncodedRow, index: usize) -> Option<&str> {
-        if row.is_defined(index) { Some(self.get_str(row, index)) } else { None }
+    pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> Option<&'a str> {
+        if row.is_defined(index) { Some(self.get_utf8(row, index)) } else { None }
     }
 
     pub fn try_get_u8(&self, row: &EncodedRow, index: usize) -> Option<u8> {
@@ -159,10 +159,10 @@ mod tests {
         let layout = Layout::new(&[DataType::Utf8]);
         let mut row = layout.allocate_row();
 
-        assert_eq!(layout.try_get_str(&row, 0), None);
+        assert_eq!(layout.try_get_utf8(&row, 0), None);
 
-        layout.set_str(&mut row, 0, "reifydb");
-        assert_eq!(layout.try_get_str(&row, 0), Some("reifydb"));
+        layout.set_utf8(&mut row, 0, "reifydb");
+        assert_eq!(layout.try_get_utf8(&row, 0), Some("reifydb"));
     }
 
     #[test]
@@ -218,5 +218,179 @@ mod tests {
 
         layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
         assert_eq!(layout.try_get_u128(&row, 0), Some(340282366920938463463374607431768211455u128));
+    }
+
+    #[test]
+    fn test_try_get_mixed_utf8_and_static_fields() {
+        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4]);
+        let mut row = layout.allocate_row();
+
+        // Initially all fields undefined
+        assert_eq!(layout.try_get_bool(&row, 0), None);
+        assert_eq!(layout.try_get_utf8(&row, 1), None);
+        assert_eq!(layout.try_get_i32(&row, 2), None);
+
+        // Set only some fields
+        layout.set_bool(&mut row, 0, true);
+        layout.set_utf8(&mut row, 1, "hello");
+
+        assert_eq!(layout.try_get_bool(&row, 0), Some(true));
+        assert_eq!(layout.try_get_utf8(&row, 1), Some("hello"));
+        assert_eq!(layout.try_get_i32(&row, 2), None); // Still undefined
+
+        // Set remaining field
+        layout.set_i32(&mut row, 2, 42);
+        assert_eq!(layout.try_get_i32(&row, 2), Some(42));
+    }
+
+    #[test]
+    fn test_try_get_multiple_utf8_different_sizes() {
+        let layout = Layout::new(&[
+            DataType::Utf8,
+            DataType::Int2,
+            DataType::Utf8,
+            DataType::Bool,
+            DataType::Utf8,
+        ]);
+        let mut row = layout.allocate_row();
+
+        // All initially undefined
+        assert_eq!(layout.try_get_utf8(&row, 0), None);
+        assert_eq!(layout.try_get_utf8(&row, 2), None);
+        assert_eq!(layout.try_get_utf8(&row, 4), None);
+
+        layout.set_utf8(&mut row, 0, ""); // Empty string
+        layout.set_i16(&mut row, 1, -100i16);
+        layout.set_utf8(&mut row, 2, "medium length string");
+        layout.set_bool(&mut row, 3, false);
+        // Skip field 4 (UTF8)
+
+        assert_eq!(layout.try_get_utf8(&row, 0), Some(""));
+        assert_eq!(layout.try_get_i16(&row, 1), Some(-100));
+        assert_eq!(layout.try_get_utf8(&row, 2), Some("medium length string"));
+        assert_eq!(layout.try_get_bool(&row, 3), Some(false));
+        assert_eq!(layout.try_get_utf8(&row, 4), None); // Still undefined
+
+        // Set the last field
+        layout.set_utf8(&mut row, 4, "x");
+        assert_eq!(layout.try_get_utf8(&row, 4), Some("x"));
+    }
+
+    #[test]
+    fn test_try_get_sparse_field_setting() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        // Only set some UTF8 fields, leave others undefined
+        layout.set_utf8(&mut row, 0, "first");
+        layout.set_utf8(&mut row, 2, "third");
+        // Skip fields 1 and 3
+
+        assert_eq!(layout.try_get_utf8(&row, 0), Some("first"));
+        assert_eq!(layout.try_get_utf8(&row, 1), None);
+        assert_eq!(layout.try_get_utf8(&row, 2), Some("third"));
+        assert_eq!(layout.try_get_utf8(&row, 3), None);
+    }
+
+    #[test]
+    fn test_try_get_unicode_multibyte_strings() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Float8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        // Initially undefined
+        assert_eq!(layout.try_get_utf8(&row, 0), None);
+        assert_eq!(layout.try_get_utf8(&row, 2), None);
+
+        layout.set_utf8(&mut row, 0, "🚀✨🌟");
+        layout.set_f64(&mut row, 1, 3.14159);
+        // Skip field 2
+
+        assert_eq!(layout.try_get_utf8(&row, 0), Some("🚀✨🌟"));
+        assert_eq!(layout.try_get_f64(&row, 1), Some(3.14159));
+        assert_eq!(layout.try_get_utf8(&row, 2), None);
+
+        // Set the remaining field
+        layout.set_utf8(&mut row, 2, "Hello 世界 🎉");
+        assert_eq!(layout.try_get_utf8(&row, 2), Some("Hello 世界 🎉"));
+    }
+
+    #[test]
+    fn test_try_get_after_set_undefined() {
+        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4]);
+        let mut row = layout.allocate_row();
+
+        // Set all fields
+        layout.set_bool(&mut row, 0, true);
+        layout.set_utf8(&mut row, 1, "test_string");
+        layout.set_i32(&mut row, 2, 999);
+
+        assert_eq!(layout.try_get_bool(&row, 0), Some(true));
+        assert_eq!(layout.try_get_utf8(&row, 1), Some("test_string"));
+        assert_eq!(layout.try_get_i32(&row, 2), Some(999));
+
+        // Set some fields as undefined
+        layout.set_undefined(&mut row, 0);
+        layout.set_undefined(&mut row, 1);
+
+        assert_eq!(layout.try_get_bool(&row, 0), None);
+        assert_eq!(layout.try_get_utf8(&row, 1), None);
+        assert_eq!(layout.try_get_i32(&row, 2), Some(999)); // Still defined
+    }
+
+    #[test]
+    fn test_try_get_empty_and_large_utf8_strings() {
+        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        let large_string = "A".repeat(1000);
+
+        // Set in arbitrary order
+        layout.set_utf8(&mut row, 1, &large_string);
+        layout.set_utf8(&mut row, 2, "small");
+        // Skip field 0
+
+        assert_eq!(layout.try_get_utf8(&row, 0), None);
+        assert_eq!(layout.try_get_utf8(&row, 1), Some(large_string.as_str()));
+        assert_eq!(layout.try_get_utf8(&row, 2), Some("small"));
+
+        // Set the empty string
+        layout.set_utf8(&mut row, 0, "");
+        assert_eq!(layout.try_get_utf8(&row, 0), Some(""));
+    }
+
+    #[test]
+    fn test_try_get_static_only_fields_no_dynamic() {
+        let layout = Layout::new(&[DataType::Bool, DataType::Int4, DataType::Float8]);
+        let mut row = layout.allocate_row();
+
+        // Set only some static fields
+        layout.set_bool(&mut row, 0, true);
+        layout.set_f64(&mut row, 2, 2.71828);
+        // Skip field 1
+
+        // Verify no dynamic section
+        assert_eq!(layout.dynamic_section_size(&row), 0);
+        assert_eq!(row.len(), layout.total_static_size());
+
+        assert_eq!(layout.try_get_bool(&row, 0), Some(true));
+        assert_eq!(layout.try_get_i32(&row, 1), None);
+        assert_eq!(layout.try_get_f64(&row, 2), Some(2.71828));
+    }
+
+    #[test]
+    fn test_try_get_interleaved_static_and_dynamic_setting() {
+        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4, DataType::Utf8]);
+        let mut row = layout.allocate_row();
+
+        // Interleave static and dynamic field setting, with some undefined
+        layout.set_bool(&mut row, 0, true);
+        layout.set_utf8(&mut row, 1, "first_string");
+        layout.set_i32(&mut row, 2, 999);
+        // Skip field 3 (UTF8)
+
+        assert_eq!(layout.try_get_bool(&row, 0), Some(true));
+        assert_eq!(layout.try_get_utf8(&row, 1), Some("first_string"));
+        assert_eq!(layout.try_get_i32(&row, 2), Some(999));
+        assert_eq!(layout.try_get_utf8(&row, 3), None);
     }
 }

@@ -101,7 +101,7 @@ impl DataType {
             DataType::Int4 => 4,
             DataType::Int8 => 8,
             DataType::Int16 => 16,
-            DataType::Utf8 => 255,
+            DataType::Utf8 => 8, // offset: u32 + length: u32
             DataType::Uint1 => 1,
             DataType::Uint2 => 2,
             DataType::Uint4 => 4,
@@ -121,7 +121,7 @@ impl DataType {
             DataType::Int4 => 4,
             DataType::Int8 => 8,
             DataType::Int16 => 16,
-            DataType::Utf8 => 1,
+            DataType::Utf8 => 4, // u32 alignment
             DataType::Uint1 => 1,
             DataType::Uint2 => 2,
             DataType::Uint4 => 4,

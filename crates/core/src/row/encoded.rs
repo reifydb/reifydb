@@ -13,7 +13,8 @@ pub trait EncodedRowIterator: Iterator<Item = EncodedRow> {}
 impl<I: Iterator<Item = EncodedRow>> EncodedRowIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// validity:values
+
+// validity:values:dynamic_encoded_values
 #[derive(PartialEq, Eq)]
 pub struct EncodedRow(pub CowVec<u8>);
 

@@ -16,7 +16,7 @@ impl Catalog {
         let name = name.as_ref();
         Ok(rx.scan_range(SchemaKey::full_scan())?.find_map(|versioned| {
             let row: &EncodedRow = &versioned.row;
-            let schema_name = schema::LAYOUT.get_str(row, schema::NAME);
+            let schema_name = schema::LAYOUT.get_utf8(row, schema::NAME);
             if name == schema_name { Some(Self::convert_schema(versioned)) } else { None }
         }))
     }
@@ -28,7 +28,7 @@ impl Catalog {
     fn convert_schema(versioned: Versioned) -> Schema {
         let row = versioned.row;
         let id = SchemaId(schema::LAYOUT.get_u64(&row, schema::ID));
-        let name = schema::LAYOUT.get_str(&row, schema::NAME).to_string();
+        let name = schema::LAYOUT.get_utf8(&row, schema::NAME).to_string();
 
         Schema { id, name }
     }

@@ -29,7 +29,7 @@ impl Catalog {
 
         let mut row = schema::LAYOUT.allocate_row();
         schema::LAYOUT.set_u64(&mut row, schema::ID, schema_id);
-        schema::LAYOUT.set_str(&mut row, schema::NAME, &to_create.name);
+        schema::LAYOUT.set_utf8(&mut row, schema::NAME, &to_create.name);
 
         tx.set(&SchemaKey { schema: schema_id }.encode(), row)?;
 
