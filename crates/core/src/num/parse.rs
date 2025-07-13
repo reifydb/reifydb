@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::num::bound::{max_float, max_int, max_uint, min_float, min_int};
 use crate::num::is::{IsFloat, IsInt, IsUint};

@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 // This file includes and modifies code from the wg project (https://github.com/al8n/wg),
 // originally licensed under the Apache License, Version 2.0.

@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2025
-# This file is licensed under the AGPL-3.0-or-later
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 # Non-Repeatable Read Prevention
 # Ensure that reading the same key in the same transaction yields the same value.

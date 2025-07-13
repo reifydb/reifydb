@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub fn retry<R, E>(retries: usize, f: impl Fn() -> Result<R, E>) -> Result<R, E> {
     let mut retries_left = retries;

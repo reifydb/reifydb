@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::Literal::{False, Number, Text, True, Undefined};
 use crate::ast::lex::{Token, TokenKind, as_span};
