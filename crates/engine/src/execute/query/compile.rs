@@ -114,6 +114,6 @@ pub(crate) fn compile(
         PhysicalPlan::CreateDeferredView(_)
         | PhysicalPlan::CreateSchema(_)
         | PhysicalPlan::CreateTable(_)
-        | PhysicalPlan::InsertIntoTable(_) => unreachable!(),
+        | PhysicalPlan::Insert(_) => unreachable!(),
     }
 }

@@ -4,7 +4,7 @@
 mod catalog;
 mod error;
 mod query;
-mod write;
+mod mutate;
 
 use crate::execute::query::Batch;
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
@@ -74,7 +74,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::CreateDeferredView(_)
             | PhysicalPlan::CreateSchema(_)
             | PhysicalPlan::CreateTable(_)
-            | PhysicalPlan::InsertIntoTable(_) => unreachable!(), // FIXME return explanatory diagnostic
+            | PhysicalPlan::Insert(_) => unreachable!(), // FIXME return explanatory diagnostic
         }
     }
 
@@ -87,7 +87,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
             PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
-            PhysicalPlan::InsertIntoTable(plan) => self.insert_into_table(tx, plan),
+            PhysicalPlan::Insert(plan) => self.insert_into_table(tx, plan),
             // Query
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)

@@ -2,12 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod create;
-mod insert;
+mod mutate;
 
 use crate::expression::Expression;
 use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
-use reifydb_catalog::column::Column;
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::Rx;
 use reifydb_core::{SortKey, Span};
@@ -36,9 +35,7 @@ impl Compiler {
                 LogicalPlan::CreateTable(create) => {
                     stack.push(Self::compile_create_table(rx, create)?);
                 }
-                LogicalPlan::InsertIntoTable(insert) => {
-                    stack.push(Self::compile_insert_into_table(rx, insert)?)
-                }
+                LogicalPlan::Insert(insert) => stack.push(Self::compile_insert(rx, insert)?),
                 LogicalPlan::Aggregate(aggregate) => {
                     let input = stack.pop().unwrap(); // FIXME
                     stack.push(PhysicalPlan::Aggregate(AggregateNode {
@@ -108,7 +105,8 @@ pub enum PhysicalPlan {
     CreateDeferredView(CreateDeferredViewPlan),
     CreateSchema(CreateSchemaPlan),
     CreateTable(CreateTablePlan),
-    InsertIntoTable(InsertIntoTablePlan),
+    // Mutate
+    Insert(InsertPlan),
 
     // Query
     Aggregate(AggregateNode),
@@ -143,8 +141,9 @@ pub struct CreateTablePlan {
 }
 
 #[derive(Debug, Clone)]
-pub enum InsertIntoTablePlan {
-    Values { schema: Span, table: Span, columns: Vec<Column>, rows_to_insert: Vec<Vec<Expression>> },
+pub struct InsertPlan {
+    pub schema: Option<Span>,
+    pub table: Span,
 }
 
 #[derive(Debug, Clone)]

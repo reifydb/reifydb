@@ -3,7 +3,7 @@
 
 mod create;
 mod expression;
-mod insert;
+mod mutate;
 mod query;
 
 use crate::ast::{Ast, AstStatement};
@@ -27,7 +27,7 @@ impl Compiler {
         for node in ast {
             match node {
                 Ast::Create(node) => result.push(Self::compile_create(node)?),
-                Ast::InsertIntoTable(node) => result.push(Self::compile_insert_into_table(node)?),
+                Ast::AstInsert(node) => result.push(Self::compile_insert(node)?),
 
                 Ast::Aggregate(node) => result.push(Self::compile_aggregate(node)?),
                 Ast::Filter(node) => result.push(Self::compile_filter(node)?),
@@ -49,7 +49,8 @@ pub enum LogicalPlan {
     CreateSchema(CreateSchemaNode),
     CreateSequence(CreateSequenceNode),
     CreateTable(CreateTableNode),
-    InsertIntoTable(InsertIntoTableNode),
+    // Mutate
+    Insert(InsertNode),
     // Query
     Aggregate(AggregateNode),
     Filter(FilterNode),
@@ -89,8 +90,8 @@ pub struct CreateTableNode {
 }
 
 #[derive(Debug)]
-pub enum InsertIntoTableNode {
-    Values { schema: Span, table: Span, columns: Vec<Span>, rows_to_insert: Vec<Vec<Expression>> },
+pub enum InsertNode {
+    Values { schema: Option<Span>, table: Span },
 }
 
 #[derive(Debug)]

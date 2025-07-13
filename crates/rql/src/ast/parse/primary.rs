@@ -36,7 +36,7 @@ impl Parser {
                 Keyword::Aggregate => Ok(Ast::Aggregate(self.parse_group_by()?)),
                 Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
                 Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
-                Keyword::Insert => Ok(Ast::InsertIntoTable(self.parse_insert()?)),
+                Keyword::Insert => Ok(Ast::AstInsert(self.parse_insert()?)),
                 Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
                 Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
                 Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),

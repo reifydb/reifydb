@@ -14,11 +14,15 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
     db.tx_as(&root, r#"create schema test"#).unwrap();
     db.tx_as(&root, r#"create table test.one(field: int1, other: int1)"#).unwrap();
-    db.tx_as(&root, r#"create table test.two(field: int1)"#).unwrap();
     let _err = db
-        .tx_as(&root, r#"insert (1,2),(2,2),(3,2),(4,2),(5,2) into test.one (field, other)"#)
+        .tx_as(&root, r#"
+            from [
+                { field = 1, other = 2},
+                { field = 2, other = 3},
+                { field = 4, other = 5},
+            ] insert test.one
+        "#)
         .unwrap();
-    let _err = db.tx_as(&root, r#"insert (2),(3) into test.two (field)"#).unwrap();
     // println!("{}", err);
 
     for l in db.tx_as(

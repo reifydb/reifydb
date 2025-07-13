@@ -50,7 +50,7 @@ pub enum Ast {
     From(AstFrom),
     Identifier(AstIdentifier),
     Infix(AstInfix),
-    InsertIntoTable(AstInsertIntoTable),
+    AstInsert(AstInsert),
     Join(AstJoin),
     Take(AstTake),
     Literal(AstLiteral),
@@ -85,7 +85,7 @@ impl Ast {
             Ast::Aggregate(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
-            Ast::InsertIntoTable(node) => &node.token,
+            Ast::AstInsert(node) => &node.token,
             Ast::Take(node) => &node.token,
             Ast::Literal(node) => match node {
                 AstLiteral::Boolean(node) => &node.0,
@@ -178,10 +178,10 @@ impl Ast {
     }
 
     pub fn is_insert(&self) -> bool {
-        matches!(self, Ast::InsertIntoTable(_))
+        matches!(self, Ast::AstInsert(_))
     }
-    pub fn as_insert(&self) -> &AstInsertIntoTable {
-        if let Ast::InsertIntoTable(result) = self { result } else { panic!("not insert") }
+    pub fn as_insert(&self) -> &AstInsert {
+        if let Ast::AstInsert(result) = self { result } else { panic!("not insert") }
     }
 
     pub fn is_join(&self) -> bool {
@@ -495,12 +495,10 @@ pub struct AstInfix {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstInsertIntoTable {
+pub struct AstInsert {
     pub token: Token,
-    pub schema: AstIdentifier,
+    pub schema: Option<AstIdentifier>,
     pub table: AstIdentifier,
-    pub columns: AstTuple,
-    pub rows: Vec<AstTuple>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
