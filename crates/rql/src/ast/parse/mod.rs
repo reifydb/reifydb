@@ -20,7 +20,7 @@ mod map;
 mod policy;
 mod prefix;
 mod primary;
-mod row;
+mod inline;
 mod sort;
 mod take;
 mod tuple;

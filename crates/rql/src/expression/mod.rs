@@ -75,7 +75,7 @@ pub enum Expression {
 
     NotEqual(NotEqualExpression),
 
-    DataType(KindExpression),
+    DataType(DataTypeExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -115,11 +115,11 @@ impl Display for ConstantExpression {
 pub struct CastExpression {
     pub span: Span,
     pub expression: Box<Expression>,
-    pub to: KindExpression,
+    pub to: DataTypeExpression,
 }
 
 #[derive(Debug, Clone)]
-pub struct KindExpression {
+pub struct DataTypeExpression {
     pub span: Span,
     pub data_type: DataType,
 }
@@ -297,7 +297,7 @@ impl Display for Expression {
             Expression::NotEqual(NotEqualExpression { left, right, .. }) => {
                 write!(f, "({} != {})", left, right)
             }
-            Expression::DataType(KindExpression { span, .. }) => write!(f, "{}", span.fragment),
+            Expression::DataType(DataTypeExpression { span, .. }) => write!(f, "{}", span.fragment),
         }
     }
 }

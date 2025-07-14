@@ -42,7 +42,6 @@ impl IntoIterator for AstStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ast {
     Aggregate(AstAggregate),
-    Row(AstRow),
     Cast(AstCast),
     Create(AstCreate),
     Describe(AstDescribe),
@@ -50,6 +49,7 @@ pub enum Ast {
     From(AstFrom),
     Identifier(AstIdentifier),
     Infix(AstInfix),
+    Inline(AstInline),
     AstInsert(AstInsert),
     Join(AstJoin),
     Take(AstTake),
@@ -75,7 +75,7 @@ impl Default for Ast {
 impl Ast {
     pub fn token(&self) -> &Token {
         match self {
-            Ast::Row(node) => &node.token,
+            Ast::Inline(node) => &node.token,
             Ast::Cast(node) => &node.token,
             Ast::Create(node) => node.token(),
             Ast::Describe(node) => match node {
@@ -116,18 +116,18 @@ impl Ast {
 }
 
 impl Ast {
-    pub fn is_aggregate_by(&self) -> bool {
+    pub fn is_aggregate(&self) -> bool {
         matches!(self, Ast::Aggregate(_))
     }
-    pub fn as_aggregate_by(&self) -> &AstAggregate {
-        if let Ast::Aggregate(result) = self { result } else { panic!("not aggregate by") }
+    pub fn as_aggregate(&self) -> &AstAggregate {
+        if let Ast::Aggregate(result) = self { result } else { panic!("not aggregate") }
     }
 
     pub fn is_block(&self) -> bool {
-        matches!(self, Ast::Row(_))
+        matches!(self, Ast::Inline(_))
     }
-    pub fn as_block(&self) -> &AstRow {
-        if let Ast::Row(result) = self { result } else { panic!("not block") }
+    pub fn as_block(&self) -> &AstInline {
+        if let Ast::Inline(result) = self { result } else { panic!("not block") }
     }
 
     pub fn is_cast(&self) -> bool {
@@ -283,11 +283,11 @@ impl Ast {
         if let Ast::PolicyBlock(result) = self { result } else { panic!("not policy block") }
     }
 
-    pub fn is_row(&self) -> bool {
-        matches!(self, Ast::Row(_))
+    pub fn is_inline(&self) -> bool {
+        matches!(self, Ast::Inline(_))
     }
-    pub fn as_row(&self) -> &AstRow {
-        if let Ast::Row(result) = self { result } else { panic!("not row") }
+    pub fn as_inline(&self) -> &AstInline {
+        if let Ast::Inline(result) = self { result } else { panic!("not inline") }
     }
 
     pub fn is_prefix(&self) -> bool {
@@ -329,28 +329,28 @@ pub struct AstCast {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstRowField {
+pub struct AstInlineKeyedValue {
     pub key: AstIdentifier,
     pub value: Box<Ast>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstRow {
+pub struct AstInline {
     pub token: Token,
-    pub fields: Vec<AstRowField>,
+    pub keyed_values: Vec<AstInlineKeyedValue>,
 }
 
-impl AstRow {
+impl AstInline {
     pub fn len(&self) -> usize {
-        self.fields.len()
+        self.keyed_values.len()
     }
 }
 
-impl Index<usize> for AstRow {
-    type Output = AstRowField;
+impl Index<usize> for AstInline {
+    type Output = AstInlineKeyedValue;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.fields[index]
+        &self.keyed_values[index]
     }
 }
 

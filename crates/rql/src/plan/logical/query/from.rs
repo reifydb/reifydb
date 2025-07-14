@@ -18,9 +18,9 @@ impl Compiler {
 
                 for row in list.nodes {
                     match row {
-                        Ast::Row(row) => {
+                        Ast::Inline(row) => {
                             let mut keyed_fields = Vec::new();
-                            for field in row.fields {
+                            for field in row.keyed_values {
                                 let key = IdentExpression(field.key.span());
                                 let expr = Self::compile_expression(field.value.as_ref().clone())?;
 

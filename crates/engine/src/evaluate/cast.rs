@@ -42,7 +42,7 @@ mod tests {
     use reifydb_core::Span;
     use reifydb_rql::expression::Expression::Prefix;
     use reifydb_rql::expression::{
-        CastExpression, ConstantExpression, KindExpression, PrefixExpression, PrefixOperator,
+		CastExpression, ConstantExpression, DataTypeExpression, PrefixExpression, PrefixOperator,
     };
     use ConstantExpression::Number;
     use Expression::{Cast, Constant};
@@ -54,7 +54,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("42") })),
-                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Int4 },
+                to: DataTypeExpression { span: Span::testing_empty(), data_type: DataType::Int4 },
             }),
             &ctx,
         )
@@ -74,7 +74,7 @@ mod tests {
                     expression: Box::new(Constant(Number { span: Span::testing("42") })),
                     span: Span::testing_empty(),
                 })),
-                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Int4 },
+                to: DataTypeExpression { span: Span::testing_empty(), data_type: DataType::Int4 },
             }),
             &ctx,
         )
@@ -94,7 +94,7 @@ mod tests {
                     expression: Box::new(Constant(Number { span: Span::testing("128") })),
                     span: Span::testing_empty(),
                 })),
-                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Int1 },
+                to: DataTypeExpression { span: Span::testing_empty(), data_type: DataType::Int1 },
             }),
             &ctx,
         )
@@ -110,7 +110,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("4.2") })),
-                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Float8 },
+                to: DataTypeExpression { span: Span::testing_empty(), data_type: DataType::Float8 },
             }),
             &ctx,
         )
@@ -126,7 +126,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("4.2") })),
-                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Float4 },
+                to: DataTypeExpression { span: Span::testing_empty(), data_type: DataType::Float4 },
             }),
             &ctx,
         )
@@ -142,7 +142,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("-1.1") })),
-                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Float4 },
+                to: DataTypeExpression { span: Span::testing_empty(), data_type: DataType::Float4 },
             }),
             &ctx,
         )
@@ -158,7 +158,7 @@ mod tests {
             &Cast(CastExpression {
                 span: Span::testing_empty(),
                 expression: Box::new(Constant(Number { span: Span::testing("-1.1") })),
-                to: KindExpression { span: Span::testing_empty(), data_type: DataType::Float8 },
+                to: DataTypeExpression { span: Span::testing_empty(), data_type: DataType::Float8 },
             }),
             &ctx,
         )

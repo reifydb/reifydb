@@ -92,10 +92,10 @@ mod tests {
         let list = result.first_unchecked().as_list();
         assert_eq!(list.len(), 1);
 
-        let row = list[0].as_row();
-        assert_eq!(row.fields.len(), 1);
+        let row = list[0].as_inline();
+        assert_eq!(row.keyed_values.len(), 1);
 
-        assert_eq!(row.fields[0].key.value(), "key");
-        assert_eq!(row.fields[0].value.as_literal_text().value(), "value");
+        assert_eq!(row.keyed_values[0].key.value(), "key");
+        assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
     }
 }

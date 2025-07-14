@@ -19,31 +19,35 @@ fn main() {
     db.tx_as(&root, r#"create schema test"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(value: uint8)"#).unwrap();
+    db.tx_as(&root, r#"create table test.international(id: int4, text: text, emoji: text)"#).unwrap();
 
-
-
-
-    let err = db
+    
+    let l = db
         .tx_as(
             &root,
             r#"
-          from [{value: 0}, {value: 1}, {value: 9999999999}, {value: 999999999999}, {value: 18446744073709551615}] insert test.item
+  from [
+    { id: 1, text: "Hello 世界",     emoji: "🌍" },
+    { id: 2, text: "Привет мир",    emoji: "🚀" },
+    { id: 3, text: "こんにちは世界", emoji: "🎌" },
+    { id: 4, text: "مرحبا بالعالم",  emoji: "🕌" }
+  ] insert test.international
         "#,
         )
-        .unwrap_err();
-    println!("{}", err);
+        .unwrap();
 
-    // let l = db
-    //     .tx_as(
-    //         &root,
-    //         r#"
-    //         from[{ field_one: 1.7e308 + 1e308}] insert test.item
-    //     "#,
-    //     )
-    //     .unwrap();
-    // println!("{}", l.first().unwrap());
-    //
+
+    println!("{}", l.first().unwrap());
+        let l = db
+        .tx_as(
+            &root,
+            r#"
+            from test.international map { id, text, emoji }
+        "#,
+        )
+        .unwrap();
+    println!("{}", l.first().unwrap());
+
 
     // let l = db
     //     .tx_as(

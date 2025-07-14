@@ -105,7 +105,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let aggregate = result.first_unchecked().as_aggregate_by();
+        let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 1);
 
         let projection = &aggregate.map[0].as_infix();
@@ -129,7 +129,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let aggregate = result.first_unchecked().as_aggregate_by();
+        let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 1);
 
         let projection = &aggregate.map[0].as_infix();
@@ -159,7 +159,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let aggregate = result.first_unchecked().as_aggregate_by();
+        let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 0);
 
         assert_eq!(aggregate.by.len(), 1);
@@ -174,7 +174,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let aggregate = result.first_unchecked().as_aggregate_by();
+        let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 0);
         assert_eq!(aggregate.by.len(), 2);
 
@@ -192,7 +192,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let aggregate = result.first_unchecked().as_aggregate_by();
+        let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 2);
 
         let projection = &aggregate.map[0].as_infix();
@@ -228,7 +228,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let aggregate = result.first_unchecked().as_aggregate_by();
+        let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 1);
 
         let projection = &aggregate.map[0].as_infix();
@@ -246,7 +246,7 @@ mod tests {
         let mut result = parser.parse().unwrap();
 
         let result = result.pop().unwrap();
-        let aggregate = result.first_unchecked().as_aggregate_by();
+        let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 0);
         assert_eq!(aggregate.by.len(), 1);
         assert_eq!(aggregate.by[0].value(), "name");

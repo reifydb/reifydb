@@ -4,11 +4,11 @@
 use crate::ast;
 use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator};
 use crate::expression::{
-    AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
-    ColumnExpression, ConstantExpression, DivExpression, EqualExpression, Expression,
-    GreaterThanEqualExpression, GreaterThanExpression, IdentExpression, KindExpression,
-    LessThanEqualExpression, LessThanExpression, RemExpression, MulExpression,
-    NotEqualExpression, PrefixExpression, PrefixOperator, SubExpression, TupleExpression,
+	AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
+	ColumnExpression, ConstantExpression, DivExpression, EqualExpression, Expression,
+	GreaterThanEqualExpression, GreaterThanExpression, IdentExpression, DataTypeExpression,
+	LessThanEqualExpression, LessThanExpression, RemExpression, MulExpression,
+	NotEqualExpression, PrefixExpression, PrefixOperator, SubExpression, TupleExpression,
 };
 use crate::plan::logical::Compiler;
 
@@ -67,10 +67,10 @@ impl Compiler {
                 Ok(Expression::Cast(CastExpression {
                     span: node.token.span,
                     expression: Box::new(Self::compile_expression(expr)?),
-                    to: KindExpression { span, data_type },
+                    to: DataTypeExpression { span, data_type },
                 }))
             }
-            Ast::DataType(node) => Ok(Expression::DataType(KindExpression {
+            Ast::DataType(node) => Ok(Expression::DataType(DataTypeExpression {
                 span: node.token().span.clone(),
                 data_type: node.data_type(),
             })),

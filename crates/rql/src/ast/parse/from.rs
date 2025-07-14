@@ -38,7 +38,7 @@ impl Parser {
             if self.current()?.is_operator(CloseBracket) {
                 break;
             }
-            nodes.push(Ast::Row(self.parse_row()?));
+            nodes.push(Ast::Inline(self.parse_inline()?));
 
             self.consume_if(TokenKind::Separator(Separator::Comma))?;
         }
@@ -126,11 +126,11 @@ mod tests {
             AstFrom::Static { list, .. } => {
                 assert_eq!(list.len(), 1);
 
-                let row = list[0].as_row();
-                assert_eq!(row.fields.len(), 1);
+                let row = list[0].as_inline();
+                assert_eq!(row.keyed_values.len(), 1);
 
-                assert_eq!(row.fields[0].key.value(), "key");
-                assert_eq!(row.fields[0].value.as_literal_text().value(), "value");
+                assert_eq!(row.keyed_values[0].key.value(), "key");
+                assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
             }
         }
     }
@@ -139,7 +139,8 @@ mod tests {
     fn test_from_static_multiple() {
         let tokens = lex("FROM [ { key: 'value' },\
         { key: 'value2' }\
-        ]").unwrap();
+        ]")
+        .unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -152,17 +153,17 @@ mod tests {
             AstFrom::Static { list, .. } => {
                 assert_eq!(list.len(), 2);
 
-                let row = list[0].as_row();
-                assert_eq!(row.fields.len(), 1);
+                let row = list[0].as_inline();
+                assert_eq!(row.keyed_values.len(), 1);
 
-                assert_eq!(row.fields[0].key.value(), "key");
-                assert_eq!(row.fields[0].value.as_literal_text().value(), "value");
+                assert_eq!(row.keyed_values[0].key.value(), "key");
+                assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 
-                let row = list[1].as_row();
-                assert_eq!(row.fields.len(), 1);
+                let row = list[1].as_inline();
+                assert_eq!(row.keyed_values.len(), 1);
 
-                assert_eq!(row.fields[0].key.value(), "key");
-                assert_eq!(row.fields[0].value.as_literal_text().value(), "value2");
+                assert_eq!(row.keyed_values[0].key.value(), "key");
+                assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value2");
             }
         }
     }
@@ -182,12 +183,11 @@ mod tests {
             AstFrom::Static { list, .. } => {
                 assert_eq!(list.len(), 1);
 
-                let row = list[0].as_row();
-                assert_eq!(row.fields.len(), 1);
+                let row = list[0].as_inline();
+                assert_eq!(row.keyed_values.len(), 1);
 
-                assert_eq!(row.fields[0].key.value(), "key");
-                assert_eq!(row.fields[0].value.as_literal_text().value(), "value");
-
+                assert_eq!(row.keyed_values[0].key.value(), "key");
+                assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
             }
         }
     }

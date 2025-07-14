@@ -28,7 +28,7 @@ impl Parser {
                 Operator::Asterisk => Ok(Ast::Wildcard(AstWildcard(self.advance()?))),
                 Operator::OpenBracket => Ok(Ast::List(self.parse_list()?)),
                 Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
-                Operator::OpenCurly => Ok(Ast::Row(self.parse_row()?)),
+                Operator::OpenCurly => Ok(Ast::Inline(self.parse_inline()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
             },
             TokenKind::Keyword(keyword) => match keyword {
@@ -54,7 +54,7 @@ impl Parser {
                 _ if current.is_literal(Undefined) => {
                     Ok(Ast::Literal(self.parse_literal_undefined()?))
                 }
-                _ if current.is_identifier() => match self.parse_kind() {
+                _ if current.is_identifier() => match self.parse_data_type() {
                     Ok(node) => Ok(Ast::DataType(node)),
                     Err(_) => Ok(Ast::Identifier(self.parse_identifier()?)),
                 },

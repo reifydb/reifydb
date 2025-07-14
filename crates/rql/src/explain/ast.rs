@@ -26,7 +26,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
     let span = &token.span;
     let data_type = match ast {
         Ast::Aggregate(_) => "Aggregate",
-        Ast::Row(_) => "Row",
+        Ast::Inline(_) => "Row",
         Ast::Cast(_) => "Cast",
         Ast::Create(_) => "Create",
         Ast::Describe(_) => "Describe",
@@ -54,9 +54,9 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
     
     // Special handling for Row to show field summary
     let description = match &ast {
-        Ast::Row(r) => {
-            let field_names: Vec<&str> = r.fields.iter().map(|f| f.key.value()).collect();
-            format!("{} ({} fields: {})", data_type, r.fields.len(), field_names.join(", "))
+        Ast::Inline(r) => {
+            let field_names: Vec<&str> = r.keyed_values.iter().map(|f| f.key.value()).collect();
+            format!("{} ({} fields: {})", data_type, r.keyed_values.len(), field_names.join(", "))
         }
         _ => data_type.to_string()
     };
@@ -107,9 +107,9 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         }
         Ast::Policy(p) => children.push(*p.value),
         Ast::DataType(_) => {}
-        Ast::Row(r) => {
+        Ast::Inline(r) => {
             // Add each field as a child - they will be displayed as key: value pairs
-            for field in &r.fields {
+            for field in &r.keyed_values {
                 // Create an infix node to represent "key: value" 
                 let key_ast = Ast::Identifier(field.key.clone());
                 let value_ast = *field.value.clone();
