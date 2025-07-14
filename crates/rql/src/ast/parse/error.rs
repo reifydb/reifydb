@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::Diagnostic;
 use crate::ast::lex::{Token, TokenKind};
 
 #[derive(Debug, PartialEq)]
@@ -10,6 +11,7 @@ pub enum Error {
     InvalidPolicy { got: Token },
     UnexpectedToken { expected: TokenKind, got: Token },
     UnsupportedToken { got: Token },
+    Passthrough{diagnostic: Diagnostic} // FIXME only temporary because everything will eventually be core::Error
 }
 
 impl Error {

@@ -637,20 +637,20 @@ impl AstPrefixOperator {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstMap {
     pub token: Token,
-    pub map: Vec<Ast>,
+    pub nodes: Vec<Ast>,
 }
 
 impl Index<usize> for AstMap {
     type Output = Ast;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.map[index]
+        &self.nodes[index]
     }
 }
 
 impl AstMap {
     pub fn len(&self) -> usize {
-        self.map.len()
+        self.nodes.len()
     }
 }
 

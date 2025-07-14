@@ -8,7 +8,7 @@ impl Compiler {
     pub(crate) fn compile_map(ast: AstMap) -> crate::Result<LogicalPlan> {
         Ok(LogicalPlan::Map(MapNode {
             map: ast
-                .map
+                .nodes
                 .into_iter()
                 .map(Self::compile_expression)
                 .collect::<Result<Vec<_>, _>>()?,

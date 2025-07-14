@@ -96,7 +96,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
             children.push(*with);
             children.extend(on);
         }
-        Ast::Map(s) => children.extend(s.map),
+        Ast::Map(s) => children.extend(s.nodes),
         Ast::Sort(o) => {
             for col in &o.columns {
                 children.push(Ast::Identifier(col.clone()));

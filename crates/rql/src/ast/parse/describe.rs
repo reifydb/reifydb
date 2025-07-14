@@ -31,9 +31,9 @@ mod tests {
 		match result.first().unwrap().first_unchecked().as_describe() {
 			AstDescribe::Query { node, .. } => {
 				let map = node.as_map();
-				assert_eq!(map.map.len(), 1);
+				assert_eq!(map.nodes.len(), 1);
 
-				let AstCast { tuple, .. } = map.map[0].as_cast();
+				let AstCast { tuple, .. } = map.nodes[0].as_cast();
 				assert_eq!(tuple.len(), 2);
 
 				assert_eq!(tuple.nodes[0].as_literal_number().value(), "9924");

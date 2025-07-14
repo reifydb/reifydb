@@ -62,6 +62,7 @@ impl Error {
                 column: None,
                 notes: vec![],
             },
+            Error::Passthrough { diagnostic } => diagnostic,
         }
     }
 }

@@ -9,6 +9,7 @@
 use reifydb_core::{Diagnostic, Span};
 
 pub mod catalog;
+pub mod parse;
 pub mod query;
 pub mod sequence;
 pub mod r#type;
@@ -64,8 +65,11 @@ impl DiagnosticRenderer for DefaultRenderer {
         }
 
         if let Some(col) = &diagnostic.column {
-            let _ =
-                writeln!(&mut output, "\nnote: column `{}` is of type `{}`", col.name, col.data_type);
+            let _ = writeln!(
+                &mut output,
+                "\nnote: column `{}` is of type `{}`",
+                col.name, col.data_type
+            );
         }
 
         if let Some(help) = &diagnostic.help {
