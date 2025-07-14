@@ -128,9 +128,9 @@ fn render_physical_plan_inner(
             write_node_header(output, prefix, is_last, &label);
         }
 
-        PhysicalPlan::InlineData(physical::InlineDataNode { names, columns }) => {
-            let row_count = if columns.is_empty() { 0 } else { columns[0].len() };
-            let label = format!("InlineData columns: [{}], rows: {}", names.join(", "), row_count);
+        PhysicalPlan::InlineData(physical::InlineDataNode { rows }) => {
+            let total_fields: usize = rows.iter().map(|row| row.len()).sum();
+            let label = format!("InlineData rows: {}, fields: {}", rows.len(), total_fields);
             write_node_header(output, prefix, is_last, &label);
         }
     }

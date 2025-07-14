@@ -4,19 +4,19 @@
 use crate::evaluate::{Context, evaluate};
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
-use reifydb_core::BitVec;
-use reifydb_rql::expression::Expression;
+use reifydb_core::{BitVec, Value};
+use reifydb_rql::expression::KeyedExpression;
+use std::collections::HashMap;
 
 pub(crate) struct InlineDataNode {
-    names: Vec<String>,
-    columns: Vec<Vec<Expression>>,
+    rows: Vec<Vec<KeyedExpression>>,
     layout: Option<FrameLayout>,
     executed: bool,
 }
 
 impl InlineDataNode {
-    pub fn new(names: Vec<String>, columns: Vec<Vec<Expression>>) -> Result<Self, String> {
-        Ok(Self { names, columns, layout: None, executed: false })
+    pub fn new(rows: Vec<Vec<KeyedExpression>>) -> Self {
+        Self { rows, layout: None, executed: false }
     }
 }
 
@@ -28,48 +28,66 @@ impl ExecutionPlan for InlineDataNode {
 
         self.executed = true;
 
-        if self.columns.is_empty() {
+        if self.rows.is_empty() {
             let frame = Frame::new_with_name(vec![], "inline");
             self.layout = Some(FrameLayout::from_frame(&frame));
             return Ok(Some(Batch { frame, mask: BitVec::new(0, true) }));
         }
 
-        // Evaluate each column
-        let mut frame_columns = Vec::with_capacity(self.names.len());
-
-        for (column_name, expressions) in self.names.iter().zip(self.columns.iter()) {
-            if expressions.is_empty() {
-                // Empty column
-                frame_columns.push(crate::frame::Column {
-                    name: column_name.clone(),
-                    values: crate::frame::ColumnValues::undefined(0),
-                });
-                continue;
+        // Collect all unique column names across all rows
+        let mut all_columns: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        
+        for row in &self.rows {
+            for keyed_expr in row {
+                let column_name = keyed_expr.key.0.fragment.clone();
+                all_columns.insert(column_name);
             }
-
-            // Build column incrementally using push_value
+        }
+        
+        // Convert each row to a HashMap for easier lookup
+        let mut rows_data: Vec<HashMap<String, &KeyedExpression>> = Vec::new();
+        
+        for row in &self.rows {
+            let mut row_map: HashMap<String, &KeyedExpression> = HashMap::new();
+            for keyed_expr in row {
+                let column_name = keyed_expr.key.0.fragment.clone();
+                row_map.insert(column_name, keyed_expr);
+            }
+            rows_data.push(row_map);
+        }
+        
+        // Create frame columns with equal length
+        let mut frame_columns = Vec::new();
+        
+        for column_name in all_columns {
             let mut column_values = crate::frame::ColumnValues::undefined(0);
+            
+            for row_data in &rows_data {
+                if let Some(keyed_expr) = row_data.get(&column_name) {
+                    let ctx = Context {
+                        column: None,
+                        mask: BitVec::new(1, true),
+                        columns: Vec::new(),
+                        row_count: 1,
+                        take: None,
+                    };
 
-            for expr in expressions {
+                    let evaluated = evaluate(&keyed_expr.expression, &ctx)?;
 
-                let ctx = Context {
-                    column: None,
-                    mask: BitVec::new(1, true),
-                    columns: Vec::new(),
-                    row_count: 1,
-                    take: None,
-                };
-
-                let evaluated = evaluate(expr, &ctx)?;
-
-                let mut iter = evaluated.values.iter();
-                if let Some(value) = iter.next() {
-                    column_values.push_value(value);
+                    // Take the first value from the evaluated result
+                    let mut iter = evaluated.values.iter();
+                    if let Some(value) = iter.next() {
+                        column_values.push_value(value);
+                    } else {
+                        column_values.push_value(Value::Undefined);
+                    }
+                } else {
+                    // Missing column for this row, use Undefined
+                    column_values.push_value(Value::Undefined);
                 }
             }
 
-            frame_columns
-                .push(crate::frame::Column { name: column_name.clone(), values: column_values });
+            frame_columns.push(crate::frame::Column { name: column_name, values: column_values });
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");

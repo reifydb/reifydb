@@ -61,8 +61,8 @@ pub(crate) fn compile(
             Box::new(LeftJoinNode::new(left_node, right_node, on))
         }
 
-        PhysicalPlan::InlineData(physical::InlineDataNode { names, columns }) => {
-            Box::new(InlineDataNode::new(names, columns).expect("Failed to create InlineDataNode"))
+        PhysicalPlan::InlineData(physical::InlineDataNode { rows }) => {
+            Box::new(InlineDataNode::new(rows))
         }
 
         PhysicalPlan::TableScan(physical::TableScanNode { schema, table }) => {

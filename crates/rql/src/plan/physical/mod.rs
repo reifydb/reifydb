@@ -3,7 +3,7 @@
 
 mod create;
 
-use crate::expression::Expression;
+use crate::expression::{Expression, KeyedExpression};
 use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;
@@ -54,10 +54,7 @@ impl Compiler {
                 }
 
                 LogicalPlan::InlineData(inline) => {
-                    stack.push(PhysicalPlan::InlineData(InlineDataNode {
-                        names: inline.names,
-                        columns: inline.columns,
-                    }));
+                    stack.push(PhysicalPlan::InlineData(InlineDataNode { rows: inline.rows }));
                 }
 
                 LogicalPlan::Insert(insert) => {
@@ -200,8 +197,7 @@ pub struct MapNode {
 
 #[derive(Debug, Clone)]
 pub struct InlineDataNode {
-    pub names: Vec<String>,
-    pub columns: Vec<Vec<Expression>>,
+    pub rows: Vec<Vec<KeyedExpression>>,
 }
 
 #[derive(Debug, Clone)]

@@ -18,14 +18,25 @@ fn main() {
 
     db.tx_as(&root, r#"create schema test"#).unwrap();
     db.tx_as(&root, r#"create table test.item(field_one: int1, field_two: int1, field_three: int1)"#).unwrap();
+    // let l = db
+    //     .tx_as(
+    //         &root,
+    //         r#"
+    //         from [{field_one: 127, field_two: 128, field_three: -128}] insert test.item
+    //     "#,
+    //     )
+    //     .unwrap_err();
+
+
     let l = db
         .tx_as(
             &root,
             r#"
-            from [{field_one: 127, field_two: 128, field_three: -128}] insert test.item
+            from [{x: 1}, {x: 2, y: 3}, {x: 4, y: 5, z: 6}]
         "#,
         )
-        .unwrap_err();
-    println!("{}", l);
+        .unwrap();
+
+    println!("{}", l.first().unwrap());
 
 }

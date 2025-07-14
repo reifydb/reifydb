@@ -106,19 +106,15 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
             };
             output.push_str(&format!("{}{} TableScan {}\n", prefix, branch, name));
         }
-        LogicalPlan::InlineData(InlineDataNode { names, columns }) => {
+        LogicalPlan::InlineData(InlineDataNode { rows }) => {
             output.push_str(&format!("{}{} InlineData\n", prefix, branch));
+            let total_fields: usize = rows.iter().map(|row| row.len()).sum();
             output.push_str(&format!(
-                "{}{} columns: [{}]\n",
-                child_prefix,
-                "├──",
-                names.join(", ")
-            ));
-            output.push_str(&format!(
-                "{}{} rows: {}\n",
+                "{}{} rows: {}, fields: {}\n",
                 child_prefix,
                 "└──",
-                if columns.is_empty() { 0 } else { columns[0].len() }
+                rows.len(),
+                total_fields
             ));
         }
     }

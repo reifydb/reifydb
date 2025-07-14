@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::expression::{
-    AddExpression, CastExpression, ConstantExpression, DivExpression, Expression,
-    RemExpression, MulExpression, PrefixExpression, SubExpression,
+    AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
+    PrefixExpression, RemExpression, SubExpression,
 };
 use reifydb_core::Span;
 
@@ -12,6 +12,7 @@ impl Expression {
         move || match self {
             Expression::AccessTable(expr) => expr.span(),
             Expression::Alias(expr) => expr.expression.span(),
+            Expression::Keyed(expr) => expr.expression.span(),
             Expression::Cast(CastExpression { expression: expr, .. }) => expr.span(),
             Expression::Constant(expr) => match expr {
                 ConstantExpression::Undefined { span }
