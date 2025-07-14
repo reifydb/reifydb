@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{Column, ColumnValues, Frame};
+use crate::frame::{FrameColumn, ColumnValues, Frame};
 use reifydb_core::CowVec;
 
 impl Frame {
@@ -69,7 +69,7 @@ impl Frame {
                 ColumnValues::Undefined(len) => ColumnValues::Undefined(n.min(*len)),
             };
 
-            columns.push(Column { name: col.name.clone(), values: data });
+            columns.push(FrameColumn { name: col.name.clone(), values: data });
         }
 
         self.columns = columns;
@@ -83,7 +83,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_bool_column() {
-        let mut test_instance = Frame::new(vec![Column::bool_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::bool_with_validity(
             "flag",
             [true, true, false],
             [false, true, true],
@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_float4_column() {
-        let mut test_instance = Frame::new(vec![Column::float4_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::float4_with_validity(
             "a",
             [1.0, 2.0, 3.0],
             [true, false, true],
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_float8_column() {
-        let mut test_instance = Frame::new(vec![Column::float8_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::float8_with_validity(
             "a",
             [1f64, 2.0, 3.0, 4.0],
             [true, true, false, true],
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_int1_column() {
-        let mut test_instance = Frame::new(vec![Column::int1_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::int1_with_validity(
             "a",
             [1, 2, 3],
             [true, false, true],
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn test_int2_column() {
-        let mut test_instance = Frame::new(vec![Column::int2_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::int2_with_validity(
             "a",
             [1, 2, 3, 4],
             [true, true, false, true],
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn test_int4_column() {
-        let mut test_instance = Frame::new(vec![Column::int4_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::int4_with_validity(
             "a",
             [1, 2],
             [true, false],
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_int8_column() {
-        let mut test_instance = Frame::new(vec![Column::int8_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::int8_with_validity(
             "a",
             [1, 2, 3],
             [false, true, true],
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_int16_column() {
-        let mut test_instance = Frame::new(vec![Column::int16_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::int16_with_validity(
             "a",
             [1, 2],
             [true, true],
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_uint1_column() {
-        let mut test_instance = Frame::new(vec![Column::uint1_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::uint1_with_validity(
             "a",
             [1, 2, 3],
             [false, false, true],
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_uint2_column() {
-        let mut test_instance = Frame::new(vec![Column::uint2_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::uint2_with_validity(
             "a",
             [1, 2],
             [true, false],
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_uint4_column() {
-        let mut test_instance = Frame::new(vec![Column::uint4_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::uint4_with_validity(
             "a",
             [10, 20],
             [false, true],
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_uint8_column() {
-        let mut test_instance = Frame::new(vec![Column::uint8_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::uint8_with_validity(
             "a",
             [10, 20, 30],
             [true, true, false],
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_uint16_column() {
-        let mut test_instance = Frame::new(vec![Column::uint16_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::uint16_with_validity(
             "a",
             [100, 200, 300],
             [true, false, true],
@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn test_text_column() {
         let mut test_instance =
-            Frame::new(vec![Column::string_with_validity("t", ["a", "b", "c"], [true, false, true])]);
+            Frame::new(vec![FrameColumn::string_with_validity("t", ["a", "b", "c"], [true, false, true])]);
 
         test_instance.take(2).unwrap();
 
@@ -304,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_undefined_column() {
-        let mut test_instance = Frame::new(vec![Column::undefined("u", 3)]);
+        let mut test_instance = Frame::new(vec![FrameColumn::undefined("u", 3)]);
 
         test_instance.take(2).unwrap();
 
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_handles_undefined() {
-        let mut test_instance = Frame::new(vec![Column::undefined("u", 5)]);
+        let mut test_instance = Frame::new(vec![FrameColumn::undefined("u", 5)]);
 
         test_instance.take(3).unwrap();
 
@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn test_n_larger_than_len_is_safe() {
         let mut test_instance =
-            Frame::new(vec![Column::int2_with_validity("a", [10, 20], [true, false])]);
+            Frame::new(vec![FrameColumn::int2_with_validity("a", [10, 20], [true, false])]);
 
         test_instance.take(10).unwrap();
 

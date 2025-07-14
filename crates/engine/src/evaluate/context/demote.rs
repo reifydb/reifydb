@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::evaluate::EvalutationContext;
+use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
 use reifydb_core::num::SafeDemote;
@@ -17,7 +17,7 @@ pub trait Demote {
         From: SafeDemote<To>;
 }
 
-impl Demote for EvalutationContext {
+impl Demote for EvaluationContext {
     fn demote<From, To>(
         &self,
         from: From,
@@ -30,7 +30,7 @@ impl Demote for EvalutationContext {
     }
 }
 
-impl Demote for &EvalutationContext {
+impl Demote for &EvaluationContext {
     fn demote<From, To>(
         &self,
         from: From,
@@ -68,7 +68,7 @@ impl Demote for &EvalutationContext {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::context::EvaluationColumn;
-    use crate::evaluate::{EvalutationContext, Demote};
+    use crate::evaluate::{EvaluationContext, Demote};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
     use reifydb_core::DataType;
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_demote_ok() {
-        let mut ctx = EvalutationContext::testing();
+        let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
             data_type: Some(DataType::Int1),
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_demote_fail_with_error_policy() {
-        let mut ctx = EvalutationContext::testing();
+        let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
             data_type: Some(DataType::Int1),
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn test_demote_fail_with_undefined_policy() {
-        let mut ctx = EvalutationContext::testing();
+        let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
             data_type: Some(DataType::Int1),

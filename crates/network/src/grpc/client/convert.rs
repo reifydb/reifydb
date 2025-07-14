@@ -3,7 +3,7 @@
 
 use crate::grpc::client::grpc;
 use reifydb_core::{DataType, Diagnostic, DiagnosticColumn, Span, SpanColumn, SpanLine};
-use reifydb_engine::frame::{Column, ColumnValues, Frame};
+use reifydb_engine::frame::{FrameColumn, ColumnValues, Frame};
 use std::collections::HashMap;
 
 pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
@@ -294,7 +294,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
             DataType::Undefined => ColumnValues::undefined(values.len()),
         };
 
-        columns.push(Column { name: name.clone(), values: column_values });
+        columns.push(FrameColumn { name: name.clone(), values: column_values });
         index.insert(name, i);
     }
 

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvalutationContext, evaluate};
+use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{ColumnValues, FrameLayout};
 use reifydb_rql::expression::Expression;
@@ -23,7 +23,7 @@ impl ExecutionPlan for FilterNode {
         while let Some(Batch { frame, mut mask }) = self.input.next()? {
             let row_count = frame.row_count(); // FIXME add a delegate - batch.row_count()
 
-            let mut ctx = EvalutationContext {
+            let mut ctx = EvaluationContext {
                 column: None,
                 mask,
                 columns: frame.columns.clone(),

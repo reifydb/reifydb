@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
+use crate::frame::{FrameColumn, ColumnValues, Frame, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
 use reifydb_core::Span;
 use reifydb_core::{BitVec, Value};
@@ -70,7 +70,7 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Group { alias, column, .. } => {
                     let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-                    let mut c = Column {
+                    let mut c = FrameColumn {
                         name: alias.fragment,
                         // FIXME this must be set based on the actual key
                         values: ColumnValues::int2_with_capacity(group_key_order.len()),
@@ -83,7 +83,7 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Aggregate { alias, mut function, .. } => {
                     let (keys_out, mut values) = function.finalize().unwrap();
                     align_column_values(&group_key_order, &keys_out, &mut values).unwrap();
-                    result_columns.push(Column { name: alias.fragment, values: values });
+                    result_columns.push(FrameColumn { name: alias.fragment, values: values });
                 }
             }
         }

@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvalutationContext, Evaluator};
-use crate::frame::{Column, ColumnValues};
+use crate::evaluate::{EvaluationContext, Evaluator};
+use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_core::num::{IsNumber, Promote, is_greater_than_equal};
 use reifydb_core::{CowVec, Span};
 use reifydb_rql::expression::GreaterThanEqualExpression;
@@ -11,8 +11,8 @@ impl Evaluator {
     pub(crate) fn greater_than_equal(
 		&mut self,
 		gte: &GreaterThanEqualExpression,
-		ctx: &EvalutationContext,
-    ) -> crate::evaluate::Result<Column> {
+		ctx: &EvaluationContext,
+    ) -> crate::evaluate::Result<FrameColumn> {
         let left = self.evaluate(&gte.left, ctx)?;
         let right = self.evaluate(&gte.right, ctx)?;
 
@@ -472,7 +472,7 @@ pub fn compare_numeric<L, R>(
     lv: &CowVec<bool>,
     rv: &CowVec<bool>,
     span: Span,
-) -> Column
+) -> FrameColumn
 where
     L: Promote<R> + Copy,
     R: IsNumber + Copy,
@@ -491,5 +491,5 @@ where
         }
     }
 
-    Column { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
+    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
 }

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvalutationContext, evaluate};
+use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
@@ -24,7 +24,7 @@ impl ExecutionPlan for MapNode {
         while let Some(Batch { frame, mask }) = self.input.next()? {
             let row_count = frame.row_count();
 
-            let ctx = EvalutationContext {
+            let ctx = EvaluationContext {
                 column: None,
                 mask: mask.clone(),
                 columns: frame.columns.clone(),
@@ -36,7 +36,7 @@ impl ExecutionPlan for MapNode {
 
             for expr in &self.expressions {
                 let column = evaluate(expr, &ctx)?;
-                columns.push(crate::frame::Column { name: column.name, values: column.values });
+                columns.push(crate::frame::FrameColumn { name: column.name, values: column.values });
             }
 
             self.layout = Some(FrameLayout::from_frame(&frame));
@@ -73,7 +73,7 @@ impl ExecutionPlan for MapWithoutInputNode {
         for expr in self.expressions.iter() {
             let column = evaluate(
                 &expr,
-                &EvalutationContext {
+                &EvaluationContext {
                     column: None,
                     mask: BitVec::new(1, true),
                     columns: Vec::new(),

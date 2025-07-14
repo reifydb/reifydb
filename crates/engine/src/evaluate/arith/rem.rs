@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvalutationContext, Evaluator};
-use crate::frame::{Column, ColumnValues, Push};
+use crate::evaluate::{EvaluationContext, Evaluator};
+use crate::frame::{FrameColumn, ColumnValues, Push};
 use reifydb_core::Span;
 use reifydb_core::num::{IsNumber, Promote, SafeRemainder};
 use reifydb_core::{CowVec, DataType, GetKind};
@@ -10,10 +10,10 @@ use reifydb_rql::expression::RemExpression;
 
 impl Evaluator {
     pub(crate) fn rem(
-		&mut self,
-		rem: &RemExpression,
-		ctx: &EvalutationContext,
-    ) -> crate::evaluate::Result<Column> {
+        &mut self,
+        rem: &RemExpression,
+        ctx: &EvaluationContext,
+    ) -> crate::evaluate::Result<FrameColumn> {
         let left = self.evaluate(&rem.left, ctx)?;
         let right = self.evaluate(&rem.right, ctx)?;
         let data_type = DataType::promote(left.data_type(), right.data_type());
@@ -489,14 +489,14 @@ impl Evaluator {
 }
 
 fn rem_numeric<L, R>(
-	ctx: &EvalutationContext,
-	l: &CowVec<L>,
-	r: &CowVec<R>,
-	lv: &CowVec<bool>,
-	rv: &CowVec<bool>,
-	data_type: DataType,
-	span: Span,
-) -> crate::evaluate::Result<Column>
+    ctx: &EvaluationContext,
+    l: &CowVec<L>,
+    r: &CowVec<R>,
+    lv: &CowVec<bool>,
+    rv: &CowVec<bool>,
+    data_type: DataType,
+    span: Span,
+) -> crate::evaluate::Result<FrameColumn>
 where
     L: GetKind + Promote<R> + Copy,
     R: GetKind + IsNumber + Copy,
@@ -519,5 +519,5 @@ where
             data.push_undefined()
         }
     }
-    Ok(Column { name: span.fragment, values: data })
+    Ok(FrameColumn { name: span.fragment, values: data })
 }

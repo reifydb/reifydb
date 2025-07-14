@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::evaluate::EvalutationContext;
+use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
 use reifydb_core::num::SafePromote;
@@ -17,7 +17,7 @@ pub trait Promote {
         From: SafePromote<To>;
 }
 
-impl Promote for EvalutationContext {
+impl Promote for EvaluationContext {
     fn promote<From, To>(
         &self,
         from: From,
@@ -30,7 +30,7 @@ impl Promote for EvalutationContext {
     }
 }
 
-impl Promote for &EvalutationContext {
+impl Promote for &EvaluationContext {
     fn promote<From, To>(
         &self,
         from: From,
@@ -68,7 +68,7 @@ impl Promote for &EvalutationContext {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::context::EvaluationColumn;
-    use crate::evaluate::{EvalutationContext, Promote};
+    use crate::evaluate::{EvaluationContext, Promote};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
     use reifydb_core::DataType;
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_promote_ok() {
-        let mut ctx = EvalutationContext::testing();
+        let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
             data_type: Some(DataType::Int2),
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_promote_fail_with_error_policy() {
-        let mut ctx = EvalutationContext::testing();
+        let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
             data_type: Some(DataType::Int2),
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn test_promote_fail_with_undefined_policy() {
-        let mut ctx = EvalutationContext::testing();
+        let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
             data_type: Some(DataType::Int2),

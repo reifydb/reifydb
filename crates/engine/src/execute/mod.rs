@@ -18,7 +18,7 @@ pub(crate) trait ExecutionPlan {
     fn layout(&self) -> Option<FrameLayout>;
 }
 
-use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
+use crate::frame::{FrameColumn, ColumnValues, Frame, FrameLayout};
 use crate::function::{Functions, math};
 pub use context::ExecutionContext;
 pub use error::Error;
@@ -149,7 +149,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                             .unwrap_or(FrameLayout { columns: vec![] })
                             .columns
                             .into_iter()
-                            .map(|cl| Column {
+                            .map(|cl| FrameColumn {
                                 name: cl.name,
                                 values: ColumnValues::with_capacity(cl.data_type, 0),
                             })

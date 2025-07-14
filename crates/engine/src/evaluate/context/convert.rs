@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::EvalutationContext;
+use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
 use reifydb_core::num::SafeConvert;
@@ -17,7 +17,7 @@ pub trait Convert {
         From: SafeConvert<To>;
 }
 
-impl Convert for EvalutationContext {
+impl Convert for EvaluationContext {
     fn convert<From, To>(
         &self,
         from: From,
@@ -30,7 +30,7 @@ impl Convert for EvalutationContext {
     }
 }
 
-impl Convert for &EvalutationContext {
+impl Convert for &EvaluationContext {
     fn convert<From, To>(
         &self,
         from: From,

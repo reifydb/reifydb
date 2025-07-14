@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{Column, ColumnValues};
+use crate::frame::{FrameColumn, ColumnValues};
 use crate::function::{AggregateFunction, FunctionError};
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
@@ -18,10 +18,10 @@ impl Min {
 
 impl AggregateFunction for Min {
     fn aggregate(
-        &mut self,
-        column: &Column,
-        mask: &BitVec,
-        groups: &HashMap<Vec<Value>, Vec<usize>>,
+		&mut self,
+		column: &FrameColumn,
+		mask: &BitVec,
+		groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> Result<(), FunctionError> {
         match &column.values {
             ColumnValues::Float8(values, validity) => {

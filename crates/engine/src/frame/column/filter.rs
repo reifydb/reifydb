@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{Column, ColumnValues};
+use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_core::{BitVec, CowVec};
 
-impl Column {
+impl FrameColumn {
     pub fn filter(&mut self, mask: &BitVec) -> crate::frame::Result<()> {
         self.values.filter(mask)
     }

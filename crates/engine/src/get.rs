@@ -141,7 +141,7 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     mod bool {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -150,7 +150,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::bool_with_validity([true], [true]),
                 }],
@@ -171,7 +171,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::bool_with_validity([true], [false]),
                 }],
@@ -186,7 +186,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -196,7 +196,7 @@ mod tests {
         }
     }
     mod float4 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -205,7 +205,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::float4_with_validity([3.14], [true]),
                 }],
@@ -226,7 +226,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::float4_with_validity([3.14], [false]),
                 }],
@@ -241,7 +241,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -251,7 +251,7 @@ mod tests {
         }
     }
     mod float8 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -260,7 +260,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::float8_with_validity([2.718], [true]),
                 }],
@@ -281,7 +281,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::float8_with_validity([2.718], [false]),
                 }],
@@ -296,7 +296,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -307,7 +307,7 @@ mod tests {
     }
 
     mod int1 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -316,7 +316,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int1_with_validity([1], [true]),
                 }],
@@ -337,7 +337,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int1_with_validity([1], [false]),
                 }],
@@ -352,7 +352,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -362,7 +362,7 @@ mod tests {
         }
     }
     mod int2 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -371,7 +371,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int2_with_validity([2], [true]),
                 }],
@@ -392,7 +392,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int2_with_validity([2], [false]),
                 }],
@@ -407,7 +407,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -417,7 +417,7 @@ mod tests {
         }
     }
     mod int4 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -426,7 +426,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([42], [true]),
                 }],
@@ -447,7 +447,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([42], [false]),
                 }],
@@ -462,7 +462,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::float4_with_validity([3.14], [true]),
                 }],
@@ -472,7 +472,7 @@ mod tests {
         }
     }
     mod int8 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -481,7 +481,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int8_with_validity([8], [true]),
                 }],
@@ -502,7 +502,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int8_with_validity([8], [false]),
                 }],
@@ -517,7 +517,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -527,7 +527,7 @@ mod tests {
         }
     }
     mod int16 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -536,7 +536,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int16_with_validity([16], [true]),
                 }],
@@ -557,7 +557,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int16_with_validity([16], [false]),
                 }],
@@ -572,7 +572,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -583,7 +583,7 @@ mod tests {
     }
 
     mod uint1 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -592,7 +592,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint1_with_validity([1], [true]),
                 }],
@@ -613,7 +613,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint1_with_validity([1], [false]),
                 }],
@@ -628,7 +628,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -638,7 +638,7 @@ mod tests {
         }
     }
     mod uint2 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -647,7 +647,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint2_with_validity([2], [true]),
                 }],
@@ -668,7 +668,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint2_with_validity([2], [false]),
                 }],
@@ -683,7 +683,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -693,7 +693,7 @@ mod tests {
         }
     }
     mod uint4 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -702,7 +702,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint4_with_validity([4], [true]),
                 }],
@@ -723,7 +723,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint4_with_validity([4], [false]),
                 }],
@@ -738,7 +738,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -748,7 +748,7 @@ mod tests {
         }
     }
     mod uint8 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -757,7 +757,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint8_with_validity([8], [true]),
                 }],
@@ -778,7 +778,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint8_with_validity([8], [false]),
                 }],
@@ -793,7 +793,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -803,7 +803,7 @@ mod tests {
         }
     }
     mod uint16 {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -812,7 +812,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint16_with_validity([16], [true]),
                 }],
@@ -833,7 +833,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::uint16_with_validity([16], [false]),
                 }],
@@ -848,7 +848,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([123], [true]),
                 }],
@@ -859,7 +859,7 @@ mod tests {
     }
 
     mod string {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use std::collections::HashMap;
 
         #[test]
@@ -868,7 +868,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::utf8_with_validity(["hello".to_string()], [true]),
                 }],
@@ -889,7 +889,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::utf8_with_validity(["hello".to_string()], [false]),
                 }],
@@ -904,7 +904,7 @@ mod tests {
             index.insert("col".into(), 0);
             let frame = Frame {
                 name: "frame".to_string(),
-                columns: vec![Column {
+                columns: vec![FrameColumn {
                     name: "col".into(),
                     values: ColumnValues::int4_with_validity([1], [true]),
                 }],

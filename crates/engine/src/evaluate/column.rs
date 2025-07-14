@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{EvalutationContext, Error, Evaluator};
-use crate::frame::{Column, ColumnValues};
+use crate::evaluate::{EvaluationContext, Error, Evaluator};
+use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_core::Value;
 use reifydb_diagnostic::query::column_not_found;
 use reifydb_rql::expression::ColumnExpression;
@@ -12,8 +12,8 @@ impl Evaluator {
     pub(crate) fn column(
 		&mut self,
 		column: &ColumnExpression,
-		ctx: &EvalutationContext,
-    ) -> evaluate::Result<Column> {
+		ctx: &EvaluationContext,
+    ) -> evaluate::Result<FrameColumn> {
         let name = column.0.fragment.to_string();
         let col = ctx
             .columns
@@ -46,7 +46,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::bool_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::bool_with_validity(values, valid) })
             }
 
             Value::Float4(_) => {
@@ -71,7 +71,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::float4_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::float4_with_validity(values, valid) })
             }
 
             Value::Float8(_) => {
@@ -96,7 +96,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::float8_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::float8_with_validity(values, valid) })
             }
 
             Value::Int1(_) => {
@@ -121,7 +121,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::int1_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::int1_with_validity(values, valid) })
             }
 
             Value::Int2(_) => {
@@ -146,7 +146,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::int2_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::int2_with_validity(values, valid) })
             }
 
             Value::Int4(_) => {
@@ -171,7 +171,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::int4_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::int4_with_validity(values, valid) })
             }
 
             Value::Int8(_) => {
@@ -196,7 +196,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::int8_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::int8_with_validity(values, valid) })
             }
 
             Value::Int16(_) => {
@@ -221,7 +221,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::int16_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::int16_with_validity(values, valid) })
             }
 
             Value::Utf8(_) => {
@@ -246,7 +246,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::utf8_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::utf8_with_validity(values, valid) })
             }
 
             Value::Uint1(_) => {
@@ -271,7 +271,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::uint1_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::uint1_with_validity(values, valid) })
             }
 
             Value::Uint2(_) => {
@@ -296,7 +296,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::uint2_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::uint2_with_validity(values, valid) })
             }
 
             Value::Uint4(_) => {
@@ -321,7 +321,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::uint4_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::uint4_with_validity(values, valid) })
             }
 
             Value::Uint8(_) => {
@@ -346,7 +346,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::uint8_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::uint8_with_validity(values, valid) })
             }
 
             Value::Uint16(_) => {
@@ -371,7 +371,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(Column { name, values: ColumnValues::uint16_with_validity(values, valid) })
+                Ok(FrameColumn { name, values: ColumnValues::uint16_with_validity(values, valid) })
             }
 
             _ => unimplemented!(),

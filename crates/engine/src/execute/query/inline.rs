@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvaluationColumn, EvalutationContext, evaluate, evaluate_typed};
+use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{ColumnLayout, ColumnValues, Frame, FrameLayout};
+use crate::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout};
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::KeyedExpression;
 use std::collections::HashMap;
@@ -28,7 +28,7 @@ impl InlineDataNode {
         let columns = table
             .columns
             .iter()
-            .map(|col| ColumnLayout { name: col.name.clone(), data_type: col.data_type })
+            .map(|col| FrameColumnLayout { name: col.name.clone(), data_type: col.data_type })
             .collect();
 
         FrameLayout { columns }
@@ -92,7 +92,7 @@ impl InlineDataNode {
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_name) {
-                    let ctx = EvalutationContext {
+                    let ctx = EvaluationContext {
                         column: None,
                         mask: BitVec::new(1, true),
                         columns: Vec::new(),
@@ -115,7 +115,8 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(crate::frame::Column { name: column_name, values: column_values });
+            frame_columns
+                .push(crate::frame::FrameColumn { name: column_name, values: column_values });
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");
@@ -145,76 +146,32 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_layout in &layout.columns {
-            let mut column_values = ColumnValues::with_capacity(column_layout.data_type, self.rows.len());
+            let mut column_values =
+                ColumnValues::with_capacity(column_layout.data_type, self.rows.len());
 
             // Find the corresponding table column for policies
-            let table_column = table.columns.iter()
-                .find(|col| col.name == column_layout.name)
-                .unwrap(); // Safe because layout came from table
+            let table_column =
+                table.columns.iter().find(|col| col.name == column_layout.name).unwrap(); // Safe because layout came from table
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_layout.name) {
-
-                    let ctx = EvalutationContext {
-                        column: Some(EvaluationColumn {
-                            name: Some(table_column.name.clone()),
-                            data_type: Some(table_column.data_type),
-                            policies: table_column.policies.iter()
-                                .map(|cp| cp.policy.clone())
-                                .collect(),
-                        }),
+                    let ctx = EvaluationContext {
+                        column: Some(table_column.clone().into()),
                         mask: BitVec::new(1, true),
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
                     };
 
-                    let evaluated = evaluate_typed(&keyed_expr.expression, &ctx)?;
-
-                    // dbg!(&column_values);
-                    // dbg!(&evaluated.values);
-                    column_values.extend(evaluated.values).unwrap();
-
-                    // Take the first value and adjust to target type
-                    // let mut iter = evaluated.values.iter();
-                    // if let Some(value) = iter.next() {
-                    //     // Create adjustment context with column information
-                    //     let adjust_context = EvalutationContext {
-                    //         column: Some(EvaluationColumn {
-                    //             name: Some(table_column.name.clone()),
-                    //             data_type: Some(table_column.data_type),
-                    //             policies: table_column.policies.iter()
-                    //                 .map(|cp| cp.policy.clone())
-                    //                 .collect(),
-                    //         }),
-                    //         mask: BitVec::empty(),
-                    //         columns: Vec::new(),
-                    //         row_count: 1,
-                    //         take: None,
-                    //     };
-                    //
-                    //     // Adjust type with proper span information from KeyedExpression
-                    //     let adjusted_values = ColumnValues::from(value)
-                    //         .adjust(column_layout.data_type, adjust_context, || keyed_expr.key.0.clone())?;
-                    //
-                    //     // Extract the adjusted value
-                    //     if let Some(adjusted_value) = adjusted_values.iter().next() {
-                    //         column_values.push_value(adjusted_value);
-                    //     } else {
-                    //         column_values.push_value(Value::Undefined);
-                    //     }
-                    // } else {
-                    //     column_values.push_value(Value::Undefined);
-                    // }
+                    column_values.extend(evaluate(&keyed_expr.expression, &ctx)?.values)?;
                 } else {
-                    // Missing column for this row, use Undefined
                     column_values.push_value(Value::Undefined);
                 }
             }
 
-            frame_columns.push(crate::frame::Column {
+            frame_columns.push(crate::frame::FrameColumn {
                 name: column_layout.name.clone(),
-                values: column_values
+                values: column_values,
             });
         }
 

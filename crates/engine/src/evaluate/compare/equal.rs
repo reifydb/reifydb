@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvalutationContext, Evaluator};
-use crate::frame::{Column, ColumnValues};
+use crate::evaluate::{EvaluationContext, Evaluator};
+use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_core::num::{IsNumber, Promote, is_equal};
 use reifydb_core::{CowVec, Span};
 use reifydb_rql::expression::EqualExpression;
@@ -11,8 +11,8 @@ impl Evaluator {
     pub(crate) fn equal(
 		&mut self,
 		eq: &EqualExpression,
-		ctx: &EvalutationContext,
-    ) -> crate::evaluate::Result<Column> {
+		ctx: &EvaluationContext,
+    ) -> crate::evaluate::Result<FrameColumn> {
         let left = self.evaluate(&eq.left, ctx)?;
         let right = self.evaluate(&eq.right, ctx)?;
 
@@ -475,7 +475,7 @@ fn compare_bool(
     lv: &CowVec<bool>,
     rv: &CowVec<bool>,
     span: Span,
-) -> Column {
+) -> FrameColumn {
     let mut values = Vec::with_capacity(l.len());
     let mut valid = Vec::with_capacity(l.len());
 
@@ -489,7 +489,7 @@ fn compare_bool(
         }
     }
 
-    Column { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
+    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
 }
 
 fn compare_numeric<L, R>(
@@ -498,7 +498,7 @@ fn compare_numeric<L, R>(
     lv: &CowVec<bool>,
     rv: &CowVec<bool>,
     span: Span,
-) -> Column
+) -> FrameColumn
 where
     L: Promote<R> + Copy,
     R: IsNumber + Copy,
@@ -517,5 +517,5 @@ where
         }
     }
 
-    Column { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
+    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
 }

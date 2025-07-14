@@ -275,12 +275,12 @@ impl Display for Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::Column;
+    use crate::frame::FrameColumn;
 
     #[test]
     fn test_bool() {
         let frame =
-            Frame::new(vec![Column::bool_with_validity("bool", [true, false], [true, false])]);
+            Frame::new(vec![FrameColumn::bool_with_validity("bool", [true, false], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn test_float4() {
         let frame =
-            Frame::new(vec![Column::float4_with_validity("float4", [1.2, 2.5], [true, false])]);
+            Frame::new(vec![FrameColumn::float4_with_validity("float4", [1.2, 2.5], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn test_float8() {
         let frame =
-            Frame::new(vec![Column::float8_with_validity("float8", [3.14, 6.28], [true, false])]);
+            Frame::new(vec![FrameColumn::float8_with_validity("float8", [3.14, 6.28], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_int1() {
-        let frame = Frame::new(vec![Column::int1_with_validity("int1", [1, -1], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::int1_with_validity("int1", [1, -1], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -342,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_int2() {
-        let frame = Frame::new(vec![Column::int2_with_validity("int2", [100, 200], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::int2_with_validity("int2", [100, 200], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn test_int4() {
         let frame =
-            Frame::new(vec![Column::int4_with_validity("int4", [1000, 2000], [true, false])]);
+            Frame::new(vec![FrameColumn::int4_with_validity("int4", [1000, 2000], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn test_int8() {
         let frame =
-            Frame::new(vec![Column::int8_with_validity("int8", [10000, 20000], [true, false])]);
+            Frame::new(vec![FrameColumn::int8_with_validity("int8", [10000, 20000], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn test_int16() {
         let frame =
-            Frame::new(vec![Column::int16_with_validity("int16", [100000, 200000], [true, false])]);
+            Frame::new(vec![FrameColumn::int16_with_validity("int16", [100000, 200000], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_uint1() {
-        let frame = Frame::new(vec![Column::uint1_with_validity("uint1", [1, 2], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::uint1_with_validity("uint1", [1, 2], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn test_uint2() {
         let frame =
-            Frame::new(vec![Column::uint2_with_validity("uint2", [100, 200], [true, false])]);
+            Frame::new(vec![FrameColumn::uint2_with_validity("uint2", [100, 200], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn test_uint4() {
         let frame =
-            Frame::new(vec![Column::uint4_with_validity("uint4", [1000, 2000], [true, false])]);
+            Frame::new(vec![FrameColumn::uint4_with_validity("uint4", [1000, 2000], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn test_uint8() {
         let frame =
-            Frame::new(vec![Column::uint8_with_validity("uint8", [10000, 20000], [true, false])]);
+            Frame::new(vec![FrameColumn::uint8_with_validity("uint8", [10000, 20000], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn test_uint16() {
-        let frame = Frame::new(vec![Column::uint16_with_validity(
+        let frame = Frame::new(vec![FrameColumn::uint16_with_validity(
             "uint16",
             [100000, 200000],
             [true, false],
@@ -488,7 +488,7 @@ mod tests {
     #[test]
     fn test_string() {
         let frame =
-            Frame::new(vec![Column::string_with_validity("string", ["foo", "bar"], [true, false])]);
+            Frame::new(vec![FrameColumn::string_with_validity("string", ["foo", "bar"], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -503,7 +503,7 @@ mod tests {
 
     #[test]
     fn test_undefined() {
-        let frame = Frame::new(vec![Column::undefined("undefined", 2)]);
+        let frame = Frame::new(vec![FrameColumn::undefined("undefined", 2)]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+

@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvalutationContext, Evaluator};
-use crate::frame::{Column, ColumnValues, Push};
+use crate::evaluate::{EvaluationContext, Evaluator};
+use crate::frame::{FrameColumn, ColumnValues, Push};
 use reifydb_core::Span;
 use reifydb_core::num::{IsNumber, Promote, SafeMul};
 use reifydb_core::{CowVec, DataType, GetKind};
@@ -12,8 +12,8 @@ impl Evaluator {
     pub(crate) fn mul(
 		&mut self,
 		mul: &MulExpression,
-		ctx: &EvalutationContext,
-    ) -> crate::evaluate::Result<Column> {
+		ctx: &EvaluationContext,
+    ) -> crate::evaluate::Result<FrameColumn> {
         let left = self.evaluate(&mul.left, ctx)?;
         let right = self.evaluate(&mul.right, ctx)?;
         let data_type = DataType::promote(left.data_type(), right.data_type());
@@ -489,14 +489,14 @@ impl Evaluator {
 }
 
 fn mul_numeric<L, R>(
-	ctx: &EvalutationContext,
+	ctx: &EvaluationContext,
 	l: &CowVec<L>,
 	r: &CowVec<R>,
 	lv: &CowVec<bool>,
 	rv: &CowVec<bool>,
 	data_type: DataType,
 	span: Span,
-) -> crate::evaluate::Result<Column>
+) -> crate::evaluate::Result<FrameColumn>
 where
     L: GetKind + Promote<R> + Copy,
     R: GetKind + IsNumber + Copy,
@@ -519,5 +519,5 @@ where
             data.push_undefined()
         }
     }
-    Ok(Column { name: span.fragment, values: data })
+    Ok(FrameColumn { name: span.fragment, values: data })
 }

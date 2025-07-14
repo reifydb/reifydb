@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{Column, ColumnValues};
+use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_core::CowVec;
 
-impl Column {
-    pub fn extend(&mut self, other: Column) -> crate::frame::Result<()> {
+impl FrameColumn {
+    pub fn extend(&mut self, other: FrameColumn) -> crate::frame::Result<()> {
         self.values.extend(other.values)
     }
 }

@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{Column, ColumnValues};
+use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::DataType;
 
 #[derive(Debug, Clone)]
-pub struct ColumnLayout {
+pub struct FrameColumnLayout {
     pub name: String,
     pub data_type: DataType,
 }
 
-impl ColumnLayout {
-    pub fn from_column(column: &Column) -> Self {
+impl FrameColumnLayout {
+    pub fn from_column(column: &FrameColumn) -> Self {
         Self {
             name: column.name.clone(),
             data_type: match column.values {

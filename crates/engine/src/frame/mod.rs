@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use column::{Column, ColumnLayout, ColumnValues, Push};
+pub use column::{FrameColumn, FrameColumnLayout, ColumnValues, Push};
 pub use error::Error;
 pub use frame::Frame;
 pub use layout::FrameLayout;

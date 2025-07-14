@@ -11,7 +11,7 @@ use crate::execute::query::map::{MapNode, MapWithoutInputNode};
 use crate::execute::query::scan::ScanFrameNode;
 use crate::execute::query::sort::SortNode;
 use crate::execute::query::take::TakeNode;
-use crate::frame::{Column, ColumnValues, Frame};
+use crate::frame::{FrameColumn, ColumnValues, Frame};
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
 use reifydb_core::DataType;
@@ -80,7 +80,7 @@ pub(crate) fn compile(
             let values = columns.iter().map(|c| c.data_type).collect::<Vec<_>>();
             let layout = Layout::new(&values);
 
-            let columns: Vec<Column> = columns
+            let columns: Vec<FrameColumn> = columns
                 .iter()
                 .map(|col| {
                     let name = col.name.clone();
@@ -101,7 +101,7 @@ pub(crate) fn compile(
                         DataType::Uint16 => ColumnValues::uint16(vec![]),
                         DataType::Undefined => ColumnValues::Undefined(0),
                     };
-                    Column { name, values: data }
+                    FrameColumn { name, values: data }
                 })
                 .collect();
 

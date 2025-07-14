@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{EvalutationContext, Evaluator, evaluate};
-use crate::frame::{Column, ColumnValues};
+use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
+use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
     pub(crate) fn prefix(
 		&mut self,
 		prefix: &PrefixExpression,
-		ctx: &EvalutationContext,
-    ) -> evaluate::Result<Column> {
+		ctx: &EvaluationContext,
+    ) -> evaluate::Result<FrameColumn> {
         let column = evaluate(&prefix.expression, ctx)?;
 
         match column.values {
@@ -30,7 +30,7 @@ impl Evaluator {
                         result.push(0.0f32);
                     }
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::float4_with_validity(result, valid),
                 })
@@ -48,7 +48,7 @@ impl Evaluator {
                         result.push(0.0f64);
                     }
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::float8_with_validity(result, valid),
                 })
@@ -66,7 +66,7 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int1_with_validity(result, valid),
                 })
@@ -84,7 +84,7 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int2_with_validity(result, valid),
                 })
@@ -102,7 +102,7 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int4_with_validity(result, valid),
                 })
@@ -120,7 +120,7 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int8_with_validity(result, valid),
                 })
@@ -138,7 +138,7 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int16_with_validity(result, valid),
                 })
@@ -156,7 +156,7 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int1_with_validity(result, valid),
                 })
@@ -171,7 +171,7 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int2_with_validity(result, valid),
                 })
@@ -186,7 +186,7 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int4_with_validity(result, valid),
                 })
@@ -201,7 +201,7 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int8_with_validity(result, valid),
                 })
@@ -215,7 +215,7 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(Column {
+                Ok(FrameColumn {
                     name: column.name,
                     values: ColumnValues::int16_with_validity(result, valid),
                 })

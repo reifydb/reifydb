@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{EvalutationContext, Error, Evaluator};
-use crate::frame::{Column, ColumnValues};
+use crate::evaluate::{EvaluationContext, Error, Evaluator};
+use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_core::DataType;
 use reifydb_core::num::parse_float;
 use reifydb_diagnostic::r#type::{OutOfRange, out_of_range};
@@ -11,22 +11,22 @@ use reifydb_rql::expression::ConstantExpression;
 
 impl Evaluator {
     pub(crate) fn constant(
-		&mut self,
-		expr: &ConstantExpression,
-		ctx: &EvalutationContext,
-    ) -> evaluate::Result<Column> {
+        &mut self,
+        expr: &ConstantExpression,
+        ctx: &EvaluationContext,
+    ) -> evaluate::Result<FrameColumn> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
-        Ok(Column { name: expr.span().fragment, values: Self::constant_value(&expr, row_count)? })
+        Ok(FrameColumn { name: expr.span().fragment, values: Self::constant_value(&expr, row_count)? })
     }
 
     pub(crate) fn constant_of(
-		&mut self,
-		expr: &ConstantExpression,
-		data_type: DataType,
-		ctx: &EvalutationContext,
-    ) -> evaluate::Result<Column> {
+        &mut self,
+        expr: &ConstantExpression,
+        data_type: DataType,
+        ctx: &EvaluationContext,
+    ) -> evaluate::Result<FrameColumn> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
-        Ok(Column {
+        Ok(FrameColumn {
             name: expr.span().fragment,
             values: Self::constant_value_of(&expr, data_type, row_count)?,
         })

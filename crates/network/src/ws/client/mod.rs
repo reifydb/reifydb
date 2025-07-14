@@ -9,7 +9,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{CowVec, Diagnostic, Error, DataType};
-use reifydb_engine::frame::{Column, ColumnValues, Frame};
+use reifydb_engine::frame::{FrameColumn, ColumnValues, Frame};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
@@ -207,7 +207,7 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                Column { name: col.name, values: convert_column_values(col.data_type, col.data) }
+                FrameColumn { name: col.name, values: convert_column_values(col.data_type, col.data) }
             })
             .collect();
 
@@ -228,7 +228,7 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                Column { name: col.name, values: convert_column_values(col.data_type, col.data) }
+                FrameColumn { name: col.name, values: convert_column_values(col.data_type, col.data) }
             })
             .collect();
 

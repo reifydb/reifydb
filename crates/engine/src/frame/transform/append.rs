@@ -384,36 +384,36 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     mod frame {
-        use crate::frame::{Column, Frame};
+        use crate::frame::{FrameColumn, Frame};
 
         #[test]
         fn test_boolean() {
             let mut test_instance1 =
-                Frame::new(vec![Column::bool_with_validity("id", [true], [false])]);
+                Frame::new(vec![FrameColumn::bool_with_validity("id", [true], [false])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::bool_with_validity("id", [false], [true])]);
+                Frame::new(vec![FrameColumn::bool_with_validity("id", [false], [true])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::bool_with_validity("id", [true, false], [false, true])
+				test_instance1.columns[0],
+				FrameColumn::bool_with_validity("id", [true, false], [false, true])
             );
         }
 
         #[test]
         fn test_float4() {
-            let mut test_instance1 = Frame::new(vec![Column::float4("id", [1.0f32, 2.0])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::float4("id", [1.0f32, 2.0])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::float4_with_validity("id", [3.0f32, 4.0], [true, false])]);
+                Frame::new(vec![FrameColumn::float4_with_validity("id", [3.0f32, 4.0], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::float4_with_validity(
+				test_instance1.columns[0],
+				FrameColumn::float4_with_validity(
                     "id",
                     [1.0f32, 2.0, 3.0, 4.0],
                     [true, true, true, false]
@@ -423,16 +423,16 @@ mod tests {
 
         #[test]
         fn test_float8() {
-            let mut test_instance1 = Frame::new(vec![Column::float8("id", [1.0f64, 2.0])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::float8("id", [1.0f64, 2.0])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::float8_with_validity("id", [3.0f64, 4.0], [true, false])]);
+                Frame::new(vec![FrameColumn::float8_with_validity("id", [3.0f64, 4.0], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::float8_with_validity(
+				test_instance1.columns[0],
+				FrameColumn::float8_with_validity(
                     "id",
                     [1.0f64, 2.0, 3.0, 4.0],
                     [true, true, true, false]
@@ -442,206 +442,206 @@ mod tests {
 
         #[test]
         fn test_int1() {
-            let mut test_instance1 = Frame::new(vec![Column::int1("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::int1("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::int1_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::int1_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::int1_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::int1_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_int2() {
-            let mut test_instance1 = Frame::new(vec![Column::int2("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::int2("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::int2_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::int2_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::int2_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::int2_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_int4() {
-            let mut test_instance1 = Frame::new(vec![Column::int4("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::int4("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::int4_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::int4_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::int4_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::int4_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_int8() {
-            let mut test_instance1 = Frame::new(vec![Column::int8("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::int8("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::int8_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::int8_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::int8_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::int8_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_int16() {
-            let mut test_instance1 = Frame::new(vec![Column::int16("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::int16("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::int16_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::int16_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::int16_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::int16_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_string() {
             let mut test_instance1 =
-                Frame::new(vec![Column::string_with_validity("id", ["a", "b"], [true, true])]);
+                Frame::new(vec![FrameColumn::string_with_validity("id", ["a", "b"], [true, true])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::string_with_validity("id", ["c", "d"], [true, false])]);
+                Frame::new(vec![FrameColumn::string_with_validity("id", ["c", "d"], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::string_with_validity("id", ["a", "b", "c", "d"], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::string_with_validity("id", ["a", "b", "c", "d"], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_uint1() {
-            let mut test_instance1 = Frame::new(vec![Column::uint1("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::uint1("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::uint1_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::uint1_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::uint1_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::uint1_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_uint2() {
-            let mut test_instance1 = Frame::new(vec![Column::uint2("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::uint2("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::uint2_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::uint2_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::uint2_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::uint2_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_uint4() {
-            let mut test_instance1 = Frame::new(vec![Column::uint4("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::uint4("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::uint4_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::uint4_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::uint4_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::uint4_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_uint8() {
-            let mut test_instance1 = Frame::new(vec![Column::uint8("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::uint8("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::uint8_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::uint8_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::uint8_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::uint8_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_uint16() {
-            let mut test_instance1 = Frame::new(vec![Column::uint16("id", [1, 2])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::uint16("id", [1, 2])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::uint16_with_validity("id", [3, 4], [true, false])]);
+                Frame::new(vec![FrameColumn::uint16_with_validity("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::uint16_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
+				test_instance1.columns[0],
+				FrameColumn::uint16_with_validity("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
         #[test]
         fn test_with_undefined_lr_promotes_correctly() {
             let mut test_instance1 =
-                Frame::new(vec![Column::int2_with_validity("id", [1, 2], [true, false])]);
+                Frame::new(vec![FrameColumn::int2_with_validity("id", [1, 2], [true, false])]);
 
-            let test_instance2 = Frame::new(vec![Column::undefined("id", 2)]);
+            let test_instance2 = Frame::new(vec![FrameColumn::undefined("id", 2)]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::int2_with_validity("id", [1, 2, 0, 0], [true, false, false, false])
+				test_instance1.columns[0],
+				FrameColumn::int2_with_validity("id", [1, 2, 0, 0], [true, false, false, false])
             );
         }
 
         #[test]
         fn test_with_undefined_l_promotes_correctly() {
-            let mut test_instance1 = Frame::new(vec![Column::undefined("score", 2)]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::undefined("score", 2)]);
 
             let test_instance2 =
-                Frame::new(vec![Column::int2_with_validity("score", [10, 20], [true, false])]);
+                Frame::new(vec![FrameColumn::int2_with_validity("score", [10, 20], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
-                test_instance1.columns[0],
-                Column::int2_with_validity("score", [0, 0, 10, 20], [false, false, true, false])
+				test_instance1.columns[0],
+				FrameColumn::int2_with_validity("score", [0, 0, 10, 20], [false, false, true, false])
             );
         }
 
         #[test]
         fn test_fails_on_column_count_mismatch() {
-            let mut test_instance1 = Frame::new(vec![Column::int2("id", [1])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::int2("id", [1])]);
 
             let test_instance2 =
-                Frame::new(vec![Column::int2("id", [2]), Column::string("name", ["Bob"])]);
+                Frame::new(vec![FrameColumn::int2("id", [2]), FrameColumn::string("name", ["Bob"])]);
 
             let result = test_instance1.append_frame(test_instance2);
             assert!(result.is_err());
@@ -649,9 +649,9 @@ mod tests {
 
         #[test]
         fn test_fails_on_column_name_mismatch() {
-            let mut test_instance1 = Frame::new(vec![Column::int2("id", [1])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::int2("id", [1])]);
 
-            let test_instance2 = Frame::new(vec![Column::int2("wrong", [2])]);
+            let test_instance2 = Frame::new(vec![FrameColumn::int2("wrong", [2])]);
 
             let result = test_instance1.append_frame(test_instance2);
             assert!(result.is_err());
@@ -659,9 +659,9 @@ mod tests {
 
         #[test]
         fn test_fails_on_type_mismatch() {
-            let mut test_instance1 = Frame::new(vec![Column::int2("id", [1])]);
+            let mut test_instance1 = Frame::new(vec![FrameColumn::int2("id", [1])]);
 
-            let test_instance2 = Frame::new(vec![Column::string("id", ["A"])]);
+            let test_instance2 = Frame::new(vec![FrameColumn::string("id", ["A"])]);
 
             let result = test_instance1.append_frame(test_instance2);
             assert!(result.is_err());
@@ -669,14 +669,14 @@ mod tests {
     }
 
     mod row {
-        use crate::frame::{Column, ColumnValues, Frame};
+        use crate::frame::{FrameColumn, ColumnValues, Frame};
         use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
         use reifydb_core::row::Layout;
         use reifydb_core::{Value, DataType};
 
         #[test]
         fn test_before_undefined_bool() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
 
             let layout = Layout::new(&[DataType::Bool]);
             let mut row = layout.allocate_row();
@@ -692,7 +692,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_float4() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Float4]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
@@ -706,7 +706,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_float8() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Float8]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
@@ -720,7 +720,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_int1() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Int1]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int1(42)]);
@@ -734,7 +734,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_int2() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Int2]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int2(-1234)]);
@@ -748,7 +748,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_int4() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Int4]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int4(56789)]);
@@ -762,7 +762,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_int8() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Int8]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int8(-987654321)]);
@@ -776,7 +776,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_int16() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Int16]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
@@ -793,7 +793,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_string() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Utf8]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
@@ -810,7 +810,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_uint1() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Uint1]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Uint1(255)]);
@@ -824,7 +824,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_uint2() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Uint2]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Uint2(65535)]);
@@ -838,7 +838,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_uint4() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Uint4]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Uint4(4294967295)]);
@@ -852,7 +852,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_uint8() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Uint8]);
             let mut row = layout.allocate_row();
             layout.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
@@ -869,7 +869,7 @@ mod tests {
 
         #[test]
         fn test_before_undefined_uint16() {
-            let mut test_instance = Frame::new(vec![Column::undefined("test", 2)]);
+            let mut test_instance = Frame::new(vec![FrameColumn::undefined("test", 2)]);
             let layout = Layout::new(&[DataType::Uint16]);
             let mut row = layout.allocate_row();
             layout.set_values(
@@ -917,7 +917,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_bool() {
-            let mut test_instance = Frame::new(vec![Column::bool("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::bool("test", [])]);
 
             let layout = Layout::new(&[DataType::Bool]);
             let mut row_one = layout.allocate_row();
@@ -932,7 +932,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_float4() {
-            let mut test_instance = Frame::new(vec![Column::float4("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::float4("test", [])]);
 
             let layout = Layout::new(&[DataType::Float4]);
             let mut row_one = layout.allocate_row();
@@ -947,7 +947,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_float8() {
-            let mut test_instance = Frame::new(vec![Column::float8("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::float8("test", [])]);
 
             let layout = Layout::new(&[DataType::Float8]);
             let mut row_one = layout.allocate_row();
@@ -962,7 +962,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_int1() {
-            let mut test_instance = Frame::new(vec![Column::int1("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::int1("test", [])]);
 
             let layout = Layout::new(&[DataType::Int1]);
             let mut row_one = layout.allocate_row();
@@ -977,7 +977,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_int2() {
-            let mut test_instance = Frame::new(vec![Column::int2("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::int2("test", [])]);
 
             let layout = Layout::new(&[DataType::Int2]);
             let mut row_one = layout.allocate_row();
@@ -992,7 +992,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_int4() {
-            let mut test_instance = Frame::new(vec![Column::int4("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::int4("test", [])]);
 
             let layout = Layout::new(&[DataType::Int4]);
             let mut row_one = layout.allocate_row();
@@ -1007,7 +1007,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_int8() {
-            let mut test_instance = Frame::new(vec![Column::int8("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::int8("test", [])]);
 
             let layout = Layout::new(&[DataType::Int8]);
             let mut row_one = layout.allocate_row();
@@ -1022,7 +1022,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_int16() {
-            let mut test_instance = Frame::new(vec![Column::int16("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::int16("test", [])]);
 
             let layout = Layout::new(&[DataType::Int16]);
             let mut row_one = layout.allocate_row();
@@ -1037,7 +1037,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_string() {
-            let mut test_instance = Frame::new(vec![Column::string("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::string("test", [])]);
 
             let layout = Layout::new(&[DataType::Utf8]);
             let mut row_one = layout.allocate_row();
@@ -1055,7 +1055,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_uint1() {
-            let mut test_instance = Frame::new(vec![Column::uint1("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::uint1("test", [])]);
 
             let layout = Layout::new(&[DataType::Uint1]);
             let mut row_one = layout.allocate_row();
@@ -1070,7 +1070,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_uint2() {
-            let mut test_instance = Frame::new(vec![Column::uint2("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::uint2("test", [])]);
 
             let layout = Layout::new(&[DataType::Uint2]);
             let mut row_one = layout.allocate_row();
@@ -1085,7 +1085,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_uint4() {
-            let mut test_instance = Frame::new(vec![Column::uint4("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::uint4("test", [])]);
 
             let layout = Layout::new(&[DataType::Uint4]);
             let mut row_one = layout.allocate_row();
@@ -1100,7 +1100,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_uint8() {
-            let mut test_instance = Frame::new(vec![Column::uint8("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::uint8("test", [])]);
 
             let layout = Layout::new(&[DataType::Uint8]);
             let mut row_one = layout.allocate_row();
@@ -1115,7 +1115,7 @@ mod tests {
 
         #[test]
         fn test_all_defined_uint16() {
-            let mut test_instance = Frame::new(vec![Column::uint16("test", [])]);
+            let mut test_instance = Frame::new(vec![FrameColumn::uint16("test", [])]);
 
             let layout = Layout::new(&[DataType::Uint16]);
             let mut row_one = layout.allocate_row();
@@ -1177,7 +1177,7 @@ mod tests {
         #[test]
         fn test_fallback_bool() {
             let mut test_instance =
-                Frame::new(vec![Column::bool("test", []), Column::bool("undefined", [])]);
+                Frame::new(vec![FrameColumn::bool("test", []), FrameColumn::bool("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Bool, DataType::Bool]);
             let mut row_one = layout.allocate_row();
@@ -1200,7 +1200,7 @@ mod tests {
         #[test]
         fn test_fallback_float4() {
             let mut test_instance =
-                Frame::new(vec![Column::float4("test", []), Column::float4("undefined", [])]);
+                Frame::new(vec![FrameColumn::float4("test", []), FrameColumn::float4("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Float4, DataType::Float4]);
             let mut row = layout.allocate_row();
@@ -1222,7 +1222,7 @@ mod tests {
         #[test]
         fn test_fallback_float8() {
             let mut test_instance =
-                Frame::new(vec![Column::float8("test", []), Column::float8("undefined", [])]);
+                Frame::new(vec![FrameColumn::float8("test", []), FrameColumn::float8("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Float8, DataType::Float8]);
             let mut row = layout.allocate_row();
@@ -1244,7 +1244,7 @@ mod tests {
         #[test]
         fn test_fallback_int1() {
             let mut test_instance =
-                Frame::new(vec![Column::int1("test", []), Column::int1("undefined", [])]);
+                Frame::new(vec![FrameColumn::int1("test", []), FrameColumn::int1("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Int1, DataType::Int1]);
             let mut row = layout.allocate_row();
@@ -1266,7 +1266,7 @@ mod tests {
         #[test]
         fn test_fallback_int2() {
             let mut test_instance =
-                Frame::new(vec![Column::int2("test", []), Column::int2("undefined", [])]);
+                Frame::new(vec![FrameColumn::int2("test", []), FrameColumn::int2("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Int2, DataType::Int2]);
             let mut row = layout.allocate_row();
@@ -1288,7 +1288,7 @@ mod tests {
         #[test]
         fn test_fallback_int4() {
             let mut test_instance =
-                Frame::new(vec![Column::int4("test", []), Column::int4("undefined", [])]);
+                Frame::new(vec![FrameColumn::int4("test", []), FrameColumn::int4("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Int4, DataType::Int4]);
             let mut row = layout.allocate_row();
@@ -1310,7 +1310,7 @@ mod tests {
         #[test]
         fn test_fallback_int8() {
             let mut test_instance =
-                Frame::new(vec![Column::int8("test", []), Column::int8("undefined", [])]);
+                Frame::new(vec![FrameColumn::int8("test", []), FrameColumn::int8("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Int8, DataType::Int8]);
             let mut row = layout.allocate_row();
@@ -1332,7 +1332,7 @@ mod tests {
         #[test]
         fn test_fallback_int16() {
             let mut test_instance =
-                Frame::new(vec![Column::int16("test", []), Column::int16("undefined", [])]);
+                Frame::new(vec![FrameColumn::int16("test", []), FrameColumn::int16("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Int16, DataType::Int16]);
             let mut row = layout.allocate_row();
@@ -1354,7 +1354,7 @@ mod tests {
         #[test]
         fn test_fallback_string() {
             let mut test_instance =
-                Frame::new(vec![Column::string("test", []), Column::string("undefined", [])]);
+                Frame::new(vec![FrameColumn::string("test", []), FrameColumn::string("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Utf8, DataType::Utf8]);
             let mut row = layout.allocate_row();
@@ -1376,7 +1376,7 @@ mod tests {
         #[test]
         fn test_fallback_uint1() {
             let mut test_instance =
-                Frame::new(vec![Column::uint1("test", []), Column::uint1("undefined", [])]);
+                Frame::new(vec![FrameColumn::uint1("test", []), FrameColumn::uint1("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Uint1, DataType::Uint1]);
             let mut row = layout.allocate_row();
@@ -1398,7 +1398,7 @@ mod tests {
         #[test]
         fn test_fallback_uint2() {
             let mut test_instance =
-                Frame::new(vec![Column::uint2("test", []), Column::uint2("undefined", [])]);
+                Frame::new(vec![FrameColumn::uint2("test", []), FrameColumn::uint2("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Uint2, DataType::Uint2]);
             let mut row = layout.allocate_row();
@@ -1420,7 +1420,7 @@ mod tests {
         #[test]
         fn test_fallback_uint4() {
             let mut test_instance =
-                Frame::new(vec![Column::uint4("test", []), Column::uint4("undefined", [])]);
+                Frame::new(vec![FrameColumn::uint4("test", []), FrameColumn::uint4("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Uint4, DataType::Uint4]);
             let mut row = layout.allocate_row();
@@ -1442,7 +1442,7 @@ mod tests {
         #[test]
         fn test_fallback_uint8() {
             let mut test_instance =
-                Frame::new(vec![Column::uint8("test", []), Column::uint8("undefined", [])]);
+                Frame::new(vec![FrameColumn::uint8("test", []), FrameColumn::uint8("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Uint8, DataType::Uint8]);
             let mut row = layout.allocate_row();
@@ -1464,7 +1464,7 @@ mod tests {
         #[test]
         fn test_fallback_uint16() {
             let mut test_instance =
-                Frame::new(vec![Column::uint16("test", []), Column::uint16("undefined", [])]);
+                Frame::new(vec![FrameColumn::uint16("test", []), FrameColumn::uint16("undefined", [])]);
 
             let layout = Layout::new(&[DataType::Uint16, DataType::Uint16]);
             let mut row = layout.allocate_row();
@@ -1488,8 +1488,8 @@ mod tests {
 
         fn test_instance_with_columns() -> Frame {
             Frame::new(vec![
-                Column { name: "int2".into(), values: ColumnValues::int2(vec![1]) },
-                Column { name: "bool".into(), values: ColumnValues::bool(vec![true]) },
+				FrameColumn { name: "int2".into(), values: ColumnValues::int2(vec![1]) },
+				FrameColumn { name: "bool".into(), values: ColumnValues::bool(vec![true]) },
             ])
         }
     }

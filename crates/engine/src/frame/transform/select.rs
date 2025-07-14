@@ -30,7 +30,7 @@ impl Frame {
 
 #[cfg(test)]
 mod tests {
-    use crate::frame::{Column, Frame};
+    use crate::frame::{FrameColumn, Frame};
 
     #[test]
     fn test_select_subset_of_columns() {
@@ -90,9 +90,9 @@ mod tests {
 
     fn make_test_instance() -> Frame {
         Frame::new(vec![
-            Column::int2("id", [1, 2]),
-            Column::string("name", ["Alice", "Bob"]),
-            Column::int2("score", [23, 32]),
+			FrameColumn::int2("id", [1, 2]),
+			FrameColumn::string("name", ["Alice", "Bob"]),
+			FrameColumn::int2("score", [23, 32]),
         ])
     }
 }

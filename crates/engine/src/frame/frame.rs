@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::iterator::FrameIter;
-use crate::frame::{Column, ColumnValues};
+use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_core::DataType::Undefined;
 use reifydb_core::Value;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct Frame {
     pub name: String,
-    pub columns: Vec<Column>,
+    pub columns: Vec<FrameColumn>,
     pub index: HashMap<String, usize>,
 }
 
@@ -39,7 +39,7 @@ impl Frame {
                 Value::Uint16(v) => ColumnValues::uint16([v]),
             };
 
-            columns.push(Column { name: name.to_string(), values });
+            columns.push(FrameColumn { name: name.to_string(), values });
             index.insert(name.to_string(), idx);
         }
 
@@ -48,7 +48,7 @@ impl Frame {
 }
 
 impl Frame {
-    pub fn new(columns: Vec<Column>) -> Self {
+    pub fn new(columns: Vec<FrameColumn>) -> Self {
         let n = columns.first().map_or(0, |c| c.values.len());
         assert!(columns.iter().all(|c| c.values.len() == n));
 
@@ -57,7 +57,7 @@ impl Frame {
         Self { name: "frame".to_string(), columns, index }
     }
 
-    pub fn new_with_name(columns: Vec<Column>, name: impl Into<String>) -> Self {
+    pub fn new_with_name(columns: Vec<FrameColumn>, name: impl Into<String>) -> Self {
         let n = columns.first().map_or(0, |c| c.values.len());
         assert!(columns.iter().all(|c| c.values.len() == n));
 
@@ -82,7 +82,7 @@ impl Frame {
         self.columns.iter().map(|c| c.values.get(i)).collect()
     }
 
-    pub fn column(&self, name: &str) -> Option<&Column> {
+    pub fn column(&self, name: &str) -> Option<&FrameColumn> {
         self.index.get(name).map(|&i| &self.columns[i])
     }
 
@@ -129,9 +129,9 @@ impl Frame {
     pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
         let column_count = names.len();
 
-        let mut columns: Vec<Column> = names
+        let mut columns: Vec<FrameColumn> = names
             .iter()
-            .map(|name| Column {
+            .map(|name| FrameColumn {
                 name: name.to_string(),
                 values: ColumnValues::with_capacity(Undefined, 0),
             })

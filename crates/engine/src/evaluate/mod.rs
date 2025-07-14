@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::Column;
+use crate::frame::FrameColumn;
 use reifydb_rql::expression::Expression;
 
 use crate::function::{Functions, math};
 pub use error::Error;
 
-pub(crate) use context::{Convert, Demote, EvaluationColumn, EvalutationContext, Promote};
+pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
 
 mod access;
 mod alias;
@@ -37,8 +37,8 @@ impl Evaluator {
     pub(crate) fn evaluate(
         &mut self,
         expr: &Expression,
-        ctx: &EvalutationContext,
-    ) -> Result<Column> {
+        ctx: &EvaluationContext,
+    ) -> Result<FrameColumn> {
         match expr {
             Expression::AccessTable(expr) => self.access(expr, ctx),
             Expression::Alias(expr) => self.alias(expr, ctx),
@@ -63,7 +63,7 @@ impl Evaluator {
     }
 }
 
-pub fn evaluate(expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
+pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> Result<FrameColumn> {
     let mut evaluator = Evaluator {
         functions: Functions::builder()
             .register_scalar("abs", math::scalar::Abs::new)
@@ -71,15 +71,15 @@ pub fn evaluate(expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
             .build(),
     };
 
-    evaluator.evaluate(expr, ctx)
-}
-
-pub fn evaluate_typed(expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
-    let mut column = evaluate(expr, ctx)?;
-    let values = column
-        .values
-        .adjust(ctx.column.as_ref().unwrap().data_type.unwrap(), ctx, expr.lazy_span())
-        .map_err(|e| Error(e.diagnostic()))?;
-    column.values = values;
-    Ok(column)
+    // Ensures that result column data type matches the expected target column type
+    if let Some(data_type) = ctx.column.as_ref().and_then(|c| c.data_type) {
+        let mut column = evaluator.evaluate(expr, ctx)?;
+        column.values = column
+            .values
+            .adjust(data_type, ctx, expr.lazy_span())
+            .map_err(|e| Error(e.diagnostic()))?;
+        Ok(column)
+    } else {
+        evaluator.evaluate(expr, ctx)
+    }
 }

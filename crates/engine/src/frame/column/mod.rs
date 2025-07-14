@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use layout::ColumnLayout;
+pub use layout::FrameColumnLayout;
 pub use push::Push;
 use reifydb_core::DataType;
 pub use values::ColumnValues;
@@ -18,12 +18,12 @@ mod validity;
 mod values;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Column {
+pub struct FrameColumn {
     pub name: String,
     pub values: ColumnValues,
 }
 
-impl Column {
+impl FrameColumn {
     pub fn data_type(&self) -> DataType {
         self.values.data_type()
     }
@@ -33,7 +33,7 @@ impl Column {
     }
 }
 
-impl Column {
+impl FrameColumn {
     pub fn bool(name: &str, values: impl IntoIterator<Item = bool>) -> Self {
         Self { name: name.to_string(), values: ColumnValues::bool(values) }
     }
@@ -55,7 +55,10 @@ impl Column {
         values: impl IntoIterator<Item = f32>,
         validity: impl IntoIterator<Item = bool>,
     ) -> Self {
-        Self { name: name.to_string(), values: ColumnValues::float4_with_validity(values, validity) }
+        Self {
+            name: name.to_string(),
+            values: ColumnValues::float4_with_validity(values, validity),
+        }
     }
 
     pub fn float8(name: &str, values: impl IntoIterator<Item = f64>) -> Self {
@@ -67,7 +70,10 @@ impl Column {
         values: impl IntoIterator<Item = f64>,
         validity: impl IntoIterator<Item = bool>,
     ) -> Self {
-        Self { name: name.to_string(), values: ColumnValues::float8_with_validity(values, validity) }
+        Self {
+            name: name.to_string(),
+            values: ColumnValues::float8_with_validity(values, validity),
+        }
     }
 
     pub fn int1(name: &str, values: impl IntoIterator<Item = i8>) -> Self {
@@ -187,7 +193,10 @@ impl Column {
         values: impl IntoIterator<Item = u128>,
         validity: impl IntoIterator<Item = bool>,
     ) -> Self {
-        Self { name: name.to_string(), values: ColumnValues::uint16_with_validity(values, validity) }
+        Self {
+            name: name.to_string(),
+            values: ColumnValues::uint16_with_validity(values, validity),
+        }
     }
 
     pub fn string<'a>(name: &str, values: impl IntoIterator<Item = &'a str>) -> Self {
