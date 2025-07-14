@@ -505,7 +505,7 @@ where
     ColumnValues: Push<<L as Promote<R>>::Output>,
 {
     assert_eq!(l.len(), r.len());
-    assert_eq!(l.len(), r.len());
+    assert_eq!(lv.len(), rv.len());
 
     let mut data = ColumnValues::with_capacity(data_type, lv.len());
     for i in 0..l.len() {

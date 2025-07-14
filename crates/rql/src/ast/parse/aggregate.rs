@@ -7,7 +7,7 @@ use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{AstAggregate, parse};
 
 impl Parser {
-    pub(crate) fn parse_group_by(&mut self) -> parse::Result<AstAggregate> {
+    pub(crate) fn parse_aggregate_by(&mut self) -> parse::Result<AstAggregate> {
         let token = self.consume_keyword(Keyword::Aggregate)?;
 
         let mut projections = Vec::new();

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::{Ast, AstFrom};
-use crate::expression::{ConstantExpression, Expression, IdentExpression, KeyedExpression};
+use crate::expression::{IdentExpression, KeyedExpression};
 use crate::plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode};
 use reifydb_core::{Diagnostic, Error};
 
@@ -56,6 +56,7 @@ mod tests {
     use super::*;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
+    use crate::expression::{ConstantExpression, Expression};
 
     #[test]
     fn test_compile_static_single_row() {
@@ -92,21 +93,21 @@ mod tests {
             LogicalPlan::InlineData(node) => {
                 // Should have 3 rows
                 assert_eq!(node.rows.len(), 3);
-                
+
                 // First row: id: 1, name: 'Alice'
                 assert_eq!(node.rows[0].len(), 2);
                 assert_eq!(node.rows[0][0].key.0.fragment, "id");
                 assert_eq!(node.rows[0][1].key.0.fragment, "name");
-                
+
                 // Second row: id: 2, email: 'bob@test.com'
                 assert_eq!(node.rows[1].len(), 2);
                 assert_eq!(node.rows[1][0].key.0.fragment, "id");
                 assert_eq!(node.rows[1][1].key.0.fragment, "email");
-                
+
                 // Third row: name: 'Charlie'
                 assert_eq!(node.rows[2].len(), 1);
                 assert_eq!(node.rows[2][0].key.0.fragment, "name");
-                
+
                 // Check some expression values
                 match &*node.rows[0][0].expression {
                     Expression::Constant(ConstantExpression::Number { span }) => {
@@ -114,7 +115,7 @@ mod tests {
                     }
                     _ => panic!("Expected Number for id in first row"),
                 }
-                
+
                 match &*node.rows[0][1].expression {
                     Expression::Constant(ConstantExpression::Text { span }) => {
                         assert_eq!(span.fragment, "Alice");

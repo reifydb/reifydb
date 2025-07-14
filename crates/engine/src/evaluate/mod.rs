@@ -8,6 +8,7 @@ use crate::function::{Functions, math};
 pub use error::Error;
 
 pub(crate) use context::{EvalutationContext, Convert, Demote, EvaluationColumn, Promote};
+use reifydb_core::DataType;
 
 mod access;
 mod alias;
@@ -68,4 +69,12 @@ pub fn evaluate(expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
     };
 
     evaluator.evaluate(expr, ctx)
+}
+
+pub fn evaluate_typed(expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
+    let mut column = evaluate(expr, ctx)?;
+    let values = column.values.adjust(ctx.column.as_ref().unwrap().data_type.unwrap(), ctx, expr.lazy_span())
+        .map_err(|e| Error(e.diagnostic()))?;
+    column.values = values;
+    Ok(column)
 }
