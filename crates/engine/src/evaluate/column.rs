@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{Context, Error, Evaluator};
+use crate::evaluate::{EvalutationContext, Error, Evaluator};
 use crate::frame::{Column, ColumnValues};
 use reifydb_core::Value;
 use reifydb_diagnostic::query::column_not_found;
@@ -10,9 +10,9 @@ use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
     pub(crate) fn column(
-        &mut self,
-        column: &ColumnExpression,
-        ctx: &Context,
+		&mut self,
+		column: &ColumnExpression,
+		ctx: &EvalutationContext,
     ) -> evaluate::Result<Column> {
         let name = column.0.fragment.to_string();
         let col = ctx

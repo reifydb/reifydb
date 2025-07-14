@@ -36,7 +36,7 @@ impl EvaluationColumn {
 }
 
 #[derive(Debug)]
-pub(crate) struct Context {
+pub(crate) struct EvalutationContext {
     pub(crate) column: Option<EvaluationColumn>,
     pub(crate) mask: BitVec,
     pub(crate) columns: Vec<Column>,
@@ -44,7 +44,7 @@ pub(crate) struct Context {
     pub(crate) take: Option<usize>,
 }
 
-impl Context {
+impl EvalutationContext {
     #[cfg(test)]
     pub fn testing() -> Self {
         Self {
@@ -57,7 +57,7 @@ impl Context {
     }
 }
 
-impl Context {
+impl EvalutationContext {
     pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
         self.column
             .as_ref()

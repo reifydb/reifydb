@@ -13,7 +13,7 @@ mod create;
 mod get;
 mod layout;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Table {
     pub id: TableId,
     pub schema: SchemaId,

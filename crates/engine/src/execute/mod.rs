@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod catalog;
+mod context;
 mod error;
 mod mutate;
 mod query;
@@ -19,12 +20,14 @@ pub(crate) trait ExecutionPlan {
 
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{Functions, math};
+pub use context::ExecutionContext;
 pub use error::Error;
 use query::compile::compile;
 use reifydb_core::BitVec;
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     functions: Functions,
@@ -122,7 +125,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             //     Ok(ExecutionResult::DescribeQuery { columns })
             // }
             _ => {
-                let mut node = compile(plan, rx, self.functions);
+                let context = ExecutionContext::new(self.functions);
+                let mut node = compile(plan, rx, Arc::new(context));
                 let mut result: Option<Frame> = None;
 
                 while let Some(Batch { mut frame, mask }) = node.next()? {

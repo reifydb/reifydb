@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{Context, evaluate};
+use crate::evaluate::{EvalutationContext, evaluate};
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use reifydb_core::{BitVec, Value};
@@ -70,7 +70,7 @@ impl ExecutionPlan for LeftJoinNode {
                 let all_values =
                     left_row.iter().cloned().chain(right_row.iter().cloned()).collect::<Vec<_>>();
 
-                let ctx = Context {
+                let ctx = EvalutationContext {
                     column: None,
                     mask: BitVec::new(1, true),
                     columns: all_values

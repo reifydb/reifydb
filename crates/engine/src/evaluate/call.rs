@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{Context, Evaluator};
+use crate::evaluate::{EvalutationContext, Evaluator};
 use crate::frame::Column;
 use crate::function::FunctionError;
 use reifydb_rql::expression::{CallExpression, Expression};
 
 impl Evaluator {
     pub(crate) fn call(
-        &mut self,
-        call: &CallExpression,
-        ctx: &Context,
+		&mut self,
+		call: &CallExpression,
+		ctx: &EvalutationContext,
     ) -> evaluate::Result<Column> {
         let virtual_columns = self.evaluate_virtual_column(&call.args, ctx).unwrap();
 
@@ -31,9 +31,9 @@ impl Evaluator {
     }
 
     fn evaluate_virtual_column<'a>(
-        &mut self,
-        expressions: &Vec<Expression>,
-        ctx: &Context,
+		&mut self,
+		expressions: &Vec<Expression>,
+		ctx: &EvalutationContext,
     ) -> crate::Result<Vec<Column>> {
         let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 

@@ -2,15 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{Context, Evaluator, evaluate};
+use crate::evaluate::{EvalutationContext, Evaluator, evaluate};
 use crate::frame::{Column, ColumnValues};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
     pub(crate) fn prefix(
-        &mut self,
-        prefix: &PrefixExpression,
-        ctx: &Context,
+		&mut self,
+		prefix: &PrefixExpression,
+		ctx: &EvalutationContext,
     ) -> evaluate::Result<Column> {
         let column = evaluate(&prefix.expression, ctx)?;
 

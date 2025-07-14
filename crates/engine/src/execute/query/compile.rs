@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::ExecutionPlan;
+use std::sync::Arc;
+use crate::execute::{ExecutionPlan, ExecutionContext};
 use crate::execute::query::aggregate::AggregateNode;
 use crate::execute::query::filter::FilterNode;
 use crate::execute::query::inline::InlineDataNode;
@@ -11,7 +12,6 @@ use crate::execute::query::scan::ScanFrameNode;
 use crate::execute::query::sort::SortNode;
 use crate::execute::query::take::TakeNode;
 use crate::frame::{Column, ColumnValues, Frame};
-use crate::function::Functions;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::key::TableRowKey;
 use reifydb_core::DataType;
@@ -23,32 +23,32 @@ use reifydb_rql::plan::physical::PhysicalPlan;
 pub(crate) fn compile(
     plan: PhysicalPlan,
     rx: &mut impl Rx,
-    functions: Functions,
+    context: Arc<ExecutionContext>,
 ) -> Box<dyn ExecutionPlan> {
     match plan {
         PhysicalPlan::Aggregate(physical::AggregateNode { by, map, input }) => {
-            let input_node = compile(*input, rx, functions.clone());
-            Box::new(AggregateNode::new(input_node, by, map, functions))
+            let input_node = compile(*input, rx, context.clone());
+            Box::new(AggregateNode::new(input_node, by, map, context))
         }
 
         PhysicalPlan::Filter(physical::FilterNode { conditions, input }) => {
-            let input_node = compile(*input, rx, functions);
+            let input_node = compile(*input, rx, context);
             Box::new(FilterNode::new(input_node, conditions))
         }
 
         PhysicalPlan::Take(physical::TakeNode { take, input }) => {
-            let input_node = compile(*input, rx, functions);
+            let input_node = compile(*input, rx, context);
             Box::new(TakeNode::new(input_node, take))
         }
 
         PhysicalPlan::Sort(physical::SortNode { by, input }) => {
-            let input_node = compile(*input, rx, functions);
+            let input_node = compile(*input, rx, context);
             Box::new(SortNode::new(input_node, by))
         }
 
         PhysicalPlan::Map(physical::MapNode { map, input }) => {
             if let Some(input) = input {
-                let input_node = compile(*input, rx, functions);
+                let input_node = compile(*input, rx, context);
                 Box::new(MapNode::new(input_node, map))
             } else {
                 Box::new(MapWithoutInputNode::new(map))
@@ -56,13 +56,13 @@ pub(crate) fn compile(
         }
 
         PhysicalPlan::JoinLeft(physical::JoinLeftNode { left, right, on }) => {
-            let left_node = compile(*left, rx, functions.clone());
-            let right_node = compile(*right, rx, functions);
+            let left_node = compile(*left, rx, context.clone());
+            let right_node = compile(*right, rx, context.clone());
             Box::new(LeftJoinNode::new(left_node, right_node, on))
         }
 
         PhysicalPlan::InlineData(physical::InlineDataNode { rows }) => {
-            Box::new(InlineDataNode::new(rows))
+            Box::new(InlineDataNode::new(rows, context))
         }
 
         PhysicalPlan::TableScan(physical::TableScanNode { schema, table }) => {

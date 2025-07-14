@@ -1,13 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::{Batch, ExecutionPlan};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
 use reifydb_core::Span;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 enum Projection {
     Aggregate { column: String, alias: Span, function: Box<dyn AggregateFunction> },
@@ -19,7 +20,7 @@ pub(crate) struct AggregateNode {
     by: Vec<Expression>,
     map: Vec<Expression>,
     layout: Option<FrameLayout>,
-    functions: Functions,
+    context: Arc<ExecutionContext>,
 }
 
 impl AggregateNode {
@@ -27,9 +28,9 @@ impl AggregateNode {
         input: Box<dyn ExecutionPlan>,
         by: Vec<Expression>,
         map: Vec<Expression>,
-        functions: Functions,
+        context: Arc<ExecutionContext>,
     ) -> Self {
-        Self { input, by, map, layout: None, functions }
+        Self { input, by, map, layout: None, context }
     }
 }
 
@@ -40,7 +41,7 @@ impl ExecutionPlan for AggregateNode {
         }
 
         let (keys, mut projections) =
-            parse_keys_and_aggregates(&self.by, &self.map, &self.functions)?;
+            parse_keys_and_aggregates(&self.by, &self.map, &self.context.functions)?;
 
         let mut seen_groups = HashSet::<Vec<Value>>::new();
         let mut group_key_order: Vec<Vec<Value>> = Vec::new();

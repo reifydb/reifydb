@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{Context, Evaluator};
+use crate::evaluate::{EvalutationContext, Evaluator};
 use crate::frame::{Column, ColumnValues};
 use reifydb_core::num::{IsNumber, Promote, is_less_than};
 use reifydb_core::{CowVec, Span};
@@ -9,9 +9,9 @@ use reifydb_rql::expression::LessThanExpression;
 
 impl Evaluator {
     pub(crate) fn less_than(
-        &mut self,
-        lt: &LessThanExpression,
-        ctx: &Context,
+		&mut self,
+		lt: &LessThanExpression,
+		ctx: &EvalutationContext,
     ) -> crate::evaluate::Result<Column> {
         let left = self.evaluate(&lt.left, ctx)?;
         let right = self.evaluate(&lt.right, ctx)?;

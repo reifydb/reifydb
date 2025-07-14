@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{Context, Evaluator};
+use crate::evaluate::{EvalutationContext, Evaluator};
 use crate::frame::{Column, ColumnValues, Push};
 use reifydb_core::Span;
 use reifydb_core::num::{IsNumber, Promote, SafeDiv};
@@ -10,9 +10,9 @@ use reifydb_rql::expression::{ DivExpression};
 
 impl Evaluator {
     pub(crate) fn div(
-        &mut self,
-        div: &DivExpression,
-        ctx: &Context,
+		&mut self,
+		div: &DivExpression,
+		ctx: &EvalutationContext,
     ) -> crate::evaluate::Result<Column> {
         let left = self.evaluate(&div.left, ctx)?;
         let right = self.evaluate(&div.right, ctx)?;
@@ -489,13 +489,13 @@ impl Evaluator {
 }
 
 fn div_numeric<L, R>(
-    ctx: &Context,
-    l: &CowVec<L>,
-    r: &CowVec<R>,
-    lv: &CowVec<bool>,
-    rv: &CowVec<bool>,
-    data_type: DataType,
-    span: Span,
+	ctx: &EvalutationContext,
+	l: &CowVec<L>,
+	r: &CowVec<R>,
+	lv: &CowVec<bool>,
+	rv: &CowVec<bool>,
+	data_type: DataType,
+	span: Span,
 ) -> crate::evaluate::Result<Column>
 where
     L: GetKind + Promote<R> + Copy,

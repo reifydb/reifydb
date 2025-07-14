@@ -7,7 +7,7 @@ use reifydb_rql::expression::Expression;
 use crate::function::{Functions, math};
 pub use error::Error;
 
-pub(crate) use context::{Context, Convert, Demote,EvaluationColumn, Promote};
+pub(crate) use context::{EvalutationContext, Convert, Demote, EvaluationColumn, Promote};
 
 mod access;
 mod alias;
@@ -34,7 +34,7 @@ impl Default for Evaluator {
 }
 
 impl Evaluator {
-    pub(crate) fn evaluate(&mut self, expr: &Expression, ctx: &Context) -> Result<Column> {
+    pub(crate) fn evaluate(&mut self, expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
         match expr {
             Expression::AccessTable(expr) => self.access(expr, ctx),
             Expression::Alias(expr) => self.alias(expr, ctx),
@@ -59,7 +59,7 @@ impl Evaluator {
     }
 }
 
-pub fn evaluate(expr: &Expression, ctx: &Context) -> Result<Column> {
+pub fn evaluate(expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
     let mut evaluator = Evaluator {
         functions: Functions::builder()
             .register_scalar("abs", math::scalar::Abs::new)

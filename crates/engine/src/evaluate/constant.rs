@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{Context, Error, Evaluator};
+use crate::evaluate::{EvalutationContext, Error, Evaluator};
 use crate::frame::{Column, ColumnValues};
 use reifydb_core::DataType;
 use reifydb_core::num::parse_float;
@@ -11,19 +11,19 @@ use reifydb_rql::expression::ConstantExpression;
 
 impl Evaluator {
     pub(crate) fn constant(
-        &mut self,
-        expr: &ConstantExpression,
-        ctx: &Context,
+		&mut self,
+		expr: &ConstantExpression,
+		ctx: &EvalutationContext,
     ) -> evaluate::Result<Column> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
         Ok(Column { name: expr.span().fragment, values: Self::constant_value(&expr, row_count)? })
     }
 
     pub(crate) fn constant_of(
-        &mut self,
-        expr: &ConstantExpression,
-        data_type: DataType,
-        ctx: &Context,
+		&mut self,
+		expr: &ConstantExpression,
+		data_type: DataType,
+		ctx: &EvalutationContext,
     ) -> evaluate::Result<Column> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
         Ok(Column {

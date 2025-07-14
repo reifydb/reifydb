@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{Context, Evaluator};
+use crate::evaluate::{EvalutationContext, Evaluator};
 use crate::frame::Column;
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
@@ -11,7 +11,7 @@ impl Evaluator {
     pub(crate) fn cast(
         &mut self,
         cast: &CastExpression,
-        ctx: &Context,
+        ctx: &EvalutationContext,
     ) -> evaluate::Result<Column> {
         // FIXME optimization does not apply for prefix expressions, like cast(-2 as int1) at the moment
         match cast.expression.deref() {
@@ -35,7 +35,7 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::evaluate::evaluate;
-    use crate::evaluate::Context;
+    use crate::evaluate::EvalutationContext;
     use crate::evaluate::Expression;
     use crate::frame::ColumnValues;
     use reifydb_core::DataType;
@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_cast_integer() {
-        let ctx = Context::testing();
+        let ctx = EvalutationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_cast_negative_integer() {
-        let ctx = Context::testing();
+        let ctx = EvalutationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn test_cast_negative_min() {
-        let ctx = Context::testing();
+        let ctx = EvalutationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn test_cast_float_8() {
-        let ctx = Context::testing();
+        let ctx = EvalutationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn test_cast_float_4() {
-        let ctx = Context::testing();
+        let ctx = EvalutationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_cast_negative_float_4() {
-        let ctx = Context::testing();
+        let ctx = EvalutationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn test_cast_negative_float_8() {
-        let ctx = Context::testing();
+        let ctx = EvalutationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
                 span: Span::testing_empty(),

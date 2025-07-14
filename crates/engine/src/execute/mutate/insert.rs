@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{Context, EvaluationColumn};
-use crate::execute::{Batch, Executor, compile};
+use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use crate::frame::Frame;
 use reifydb_catalog::{
     Catalog,
@@ -10,11 +9,12 @@ use reifydb_catalog::{
     sequence::TableRowSequence,
 };
 use reifydb_core::{
-    BitVec, DataType, Line, Offset, Span, Value,
+    DataType, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},
     row::Layout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
+use std::sync::Arc;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn insert(
@@ -32,42 +32,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let table_types: Vec<DataType> = table.columns.iter().map(|c| c.data_type).collect();
         let layout = Layout::new(&table_types);
 
-        // Compile the input plan into an execution node
-        let mut input_node = compile(*plan.input, tx, self.functions.clone());
+        // Compile the input plan into an execution node with table context
+        let context = ExecutionContext::with_table(self.functions.clone(), table.clone());
+        let mut input_node = compile(*plan.input, tx, Arc::new(context));
 
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { mut frame, mask }) = input_node.next()? {
+        while let Some(Batch { frame, mask }) = input_node.next()? {
             let row_count = frame.row_count();
-
-            // adjust all columns to the appropriate type
-            for table_column in table.columns.iter() {
-                let context = Context {
-                    column: Some(EvaluationColumn {
-                        name: Some(table_column.name.clone()),
-                        data_type: Some(table_column.data_type),
-                        policies: table_column
-                            .policies
-                            .iter()
-                            .map(|cp| cp.policy.clone())
-                            .collect(),
-                    }),
-                    mask: BitVec::empty(),
-                    columns: Vec::new(),
-                    row_count: 1,
-                    take: None,
-                };
-
-                let frame_column_values = frame.column_values(table_column.name.as_str()).unwrap();
-                frame_column_values
-                    // FIXME
-                    .adjust(table_column.data_type, context, || Span {
-                        offset: Offset(0),
-                        line: Line(2),
-                        fragment: table_column.name.clone(),
-                    })?;
-            }
 
             for row_idx in 0..row_count {
                 if !mask.get(row_idx) {
