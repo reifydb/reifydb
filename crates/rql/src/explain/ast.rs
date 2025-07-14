@@ -46,24 +46,23 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::Map(_) => "Map",
         Ast::Take(_) => "Take",
         Ast::Tuple(_) => "Tuple",
-        Ast::DataType(_) => "DataType",
         Ast::Wildcard(_) => "Wildcard",
     };
 
     let branch = if is_last { "└──" } else { "├──" };
-    
+
     // Special handling for Row to show field summary
     let description = match &ast {
         Ast::Inline(r) => {
             let field_names: Vec<&str> = r.keyed_values.iter().map(|f| f.key.value()).collect();
             format!("{} ({} fields: {})", data_type, r.keyed_values.len(), field_names.join(", "))
         }
-        _ => data_type.to_string()
+        _ => data_type.to_string(),
     };
-    
+
     output.push_str(&format!(
-		"{}{} {} @ line {}, column {} — \"{}\"\n",
-		prefix, branch, description, span.line.0, span.column.0, span.fragment
+        "{}{} {} @ line {}, column {} — \"{}\"\n",
+        prefix, branch, description, span.line.0, span.column.0, span.fragment
     ));
 
     let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
@@ -106,11 +105,10 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
             children.extend(pb.policies.iter().map(|p| *p.value.clone()).collect::<Vec<_>>())
         }
         Ast::Policy(p) => children.push(*p.value),
-        Ast::DataType(_) => {}
         Ast::Inline(r) => {
             // Add each field as a child - they will be displayed as key: value pairs
             for field in &r.keyed_values {
-                // Create an infix node to represent "key: value" 
+                // Create an infix node to represent "key: value"
                 let key_ast = Ast::Identifier(field.key.clone());
                 let value_ast = *field.value.clone();
                 children.push(key_ast);

@@ -112,7 +112,7 @@ mod tests {
 
                 let col = &columns[0];
                 assert_eq!(col.name.value(), "field");
-                assert_eq!(col.ty.value(), "int2");
+                assert_eq!(col.data_type.value(), "int2");
 
                 let policies = col.policies.as_ref().unwrap();
                 assert_eq!(policies.policies.len(), 2);

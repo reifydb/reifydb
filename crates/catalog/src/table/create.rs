@@ -16,7 +16,7 @@ use reifydb_diagnostic::catalog::{schema_not_found, table_already_exists};
 #[derive(Debug, Clone)]
 pub struct ColumnToCreate {
     pub name: String,
-    pub value: DataType,
+    pub data_type: DataType,
     pub policies: Vec<ColumnPolicyKind>,
 }
 
@@ -94,7 +94,7 @@ impl Catalog {
                     table,
                     table_name: &to_create.table,
                     column: column_to_create.name,
-                    value: column_to_create.value,
+                    value: column_to_create.data_type,
                     if_not_exists: false,
                     policies: column_to_create.policies.clone(),
                     index: ColumnIndex(idx as u16),

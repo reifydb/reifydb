@@ -2,10 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::Value;
+pub use get::GetKind;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-
-pub use get::GetKind;
 
 mod get;
 mod promote;

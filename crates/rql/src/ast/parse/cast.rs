@@ -15,9 +15,9 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::AstCast;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
-    use crate::ast::{AstCast, AstDataType};
 
     #[test]
     fn test_cast() {
@@ -29,6 +29,6 @@ mod tests {
         assert_eq!(tuple.len(), 2);
 
         assert_eq!(tuple.nodes[0].as_literal_number().value(), "9924");
-        assert!(matches!(tuple.nodes[1].as_kind(), AstDataType::Int8(_)));
+        assert!(matches!(tuple.nodes[1].as_identifier().value(), "int8"));
     }
 }

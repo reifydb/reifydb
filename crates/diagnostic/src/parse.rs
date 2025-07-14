@@ -19,3 +19,17 @@ pub fn multiple_expressions_without_braces(span: Span) -> Diagnostic {
         notes: vec![],
     }
 }
+
+pub fn unrecognized_type(span: Span) -> Diagnostic {
+    let type_name = span.fragment.clone();
+    Diagnostic {
+        code: "PA_006".to_string(),
+        statement: None,
+        message: format!("cannot find type `{}`", &type_name),
+        span: Some(span),
+        label: Some("type not found".to_string()),
+        help: None,
+        column: None,
+        notes: vec![],
+    }
+}

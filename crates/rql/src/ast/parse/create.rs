@@ -92,7 +92,7 @@ impl Parser {
     fn parse_column(&mut self) -> parse::Result<AstColumnToCreate> {
         let name = self.parse_identifier()?;
         self.consume_operator(Colon)?;
-        let ty = self.parse_data_type()?;
+        let data_type = self.parse_identifier()?;
 
         let policies = if self.current()?.is_keyword(Keyword::Policy) {
             Some(self.parse_policy_block()?)
@@ -100,7 +100,7 @@ impl Parser {
             None
         };
 
-        Ok(AstColumnToCreate { name, ty, policies })
+        Ok(AstColumnToCreate { name, data_type, policies })
     }
 }
 
@@ -152,7 +152,7 @@ mod tests {
                 assert_eq!(columns.len(), 1);
 
                 assert_eq!(columns[0].name.value(), "value");
-                assert_eq!(columns[0].ty.value(), "Int2");
+                assert_eq!(columns[0].data_type.value(), "Int2");
             }
             _ => unreachable!(),
         }
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn test_create_table() {
         let tokens = lex(r#"
-        create table test.users(id: int2, name: text(255), is_premium: bool)
+        create table test.users(id: int2, name: text, is_premium: bool)
     "#)
         .unwrap();
         let mut parser = Parser::new(tokens);
@@ -180,20 +180,20 @@ mod tests {
                 {
                     let col = &columns[0];
                     assert_eq!(col.name.value(), "id");
-                    assert_eq!(col.ty.value(), "int2");
+                    assert_eq!(col.data_type.value(), "int2");
                     assert!(col.policies.is_none());
                 }
 
                 {
                     let col = &columns[1];
                     assert_eq!(col.name.value(), "name");
-                    assert_eq!(col.ty.value(), "text");
+                    assert_eq!(col.data_type.value(), "text");
                 }
 
                 {
                     let col = &columns[2];
                     assert_eq!(col.name.value(), "is_premium");
-                    assert_eq!(col.ty.value(), "bool");
+                    assert_eq!(col.data_type.value(), "bool");
                     assert!(col.policies.is_none());
                 }
             }
@@ -223,7 +223,7 @@ mod tests {
 
                 let col = &columns[0];
                 assert_eq!(col.name.value(), "field");
-                assert_eq!(col.ty.value(), "int2");
+                assert_eq!(col.data_type.value(), "int2");
 
                 let policies = &col.policies.as_ref().unwrap().policies;
                 assert_eq!(policies.len(), 1);
@@ -248,7 +248,9 @@ mod tests {
         let result = result.pop().unwrap();
         let create = result.first_unchecked().as_create();
         match create {
-            AstCreate::DeferredView(AstCreateDeferredView { view: name, schema, columns, .. }) => {
+            AstCreate::DeferredView(AstCreateDeferredView {
+                view: name, schema, columns, ..
+            }) => {
                 assert_eq!(schema.value(), "test");
                 assert_eq!(name.value(), "views");
 
@@ -256,7 +258,7 @@ mod tests {
 
                 let col = &columns[0];
                 assert_eq!(col.name.value(), "field");
-                assert_eq!(col.ty.value(), "int2");
+                assert_eq!(col.data_type.value(), "int2");
 
                 let policies = &col.policies.as_ref().unwrap().policies;
                 assert_eq!(policies.len(), 1);

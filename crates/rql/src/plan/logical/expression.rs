@@ -4,13 +4,13 @@
 use crate::ast;
 use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator};
 use crate::expression::{
-	AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
-	ColumnExpression, ConstantExpression, DivExpression, EqualExpression, Expression,
-	GreaterThanEqualExpression, GreaterThanExpression, IdentExpression, DataTypeExpression,
-	LessThanEqualExpression, LessThanExpression, RemExpression, MulExpression,
-	NotEqualExpression, PrefixExpression, PrefixOperator, SubExpression, TupleExpression,
+    AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
+    ColumnExpression, ConstantExpression, DataTypeExpression, DivExpression, EqualExpression,
+    Expression, GreaterThanEqualExpression, GreaterThanExpression, IdentExpression,
+    LessThanEqualExpression, LessThanExpression, MulExpression, NotEqualExpression,
+    PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
 };
-use crate::plan::logical::Compiler;
+use crate::plan::logical::{Compiler, convert_data_type};
 
 impl Compiler {
     pub(crate) fn compile_expression(ast: Ast) -> crate::Result<Expression> {
@@ -59,21 +59,19 @@ impl Compiler {
             }
             Ast::Cast(node) => {
                 let mut tuple = node.tuple;
-                let ast_kind = tuple.nodes.pop().unwrap();
+                let node = tuple.nodes.pop().unwrap();
+                let node = node.as_identifier();
+                let span = node.span.clone();
+                let data_type = convert_data_type(node)?;
+
                 let expr = tuple.nodes.pop().unwrap();
-                let data_type = ast_kind.as_kind().data_type();
-                let span = ast_kind.as_kind().token().span.clone();
 
                 Ok(Expression::Cast(CastExpression {
-                    span: node.token.span,
+                    span: tuple.token.span,
                     expression: Box::new(Self::compile_expression(expr)?),
                     to: DataTypeExpression { span, data_type },
                 }))
             }
-            Ast::DataType(node) => Ok(Expression::DataType(DataTypeExpression {
-                span: node.token().span.clone(),
-                data_type: node.data_type(),
-            })),
             ast => unimplemented!("{:?}", ast),
         }
     }

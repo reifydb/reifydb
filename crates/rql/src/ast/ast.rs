@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use reifydb_core::{DataType, Span};
-use std::ops::Index;
+use reifydb_core::Span;
+use std::ops::{Deref, Index};
 
 #[derive(Debug)]
 pub struct AstStatement(pub Vec<Ast>);
@@ -62,7 +62,6 @@ pub enum Ast {
     Prefix(AstPrefix),
     Map(AstMap),
     Tuple(AstTuple),
-    DataType(AstDataType),
     Wildcard(AstWildcard),
 }
 
@@ -105,7 +104,6 @@ impl Ast {
             Ast::Prefix(node) => node.node.token(),
             Ast::Map(node) => &node.token,
             Ast::Tuple(node) => &node.token,
-            Ast::DataType(node) => node.token(),
             Ast::Wildcard(node) => &node.0,
         }
     }
@@ -312,14 +310,6 @@ impl Ast {
     pub fn as_tuple(&self) -> &AstTuple {
         if let Ast::Tuple(result) = self { result } else { panic!("not tuple") }
     }
-
-    pub fn is_kind(&self) -> bool {
-        matches!(self, Ast::DataType(_))
-    }
-
-    pub fn as_kind(&self) -> &AstDataType {
-        if let Ast::DataType(result) = self { result } else { panic!("not data_type") }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -401,7 +391,7 @@ pub enum AstDescribe {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstColumnToCreate {
     pub name: AstIdentifier,
-    pub ty: AstDataType,
+    pub data_type: AstIdentifier,
     pub policies: Option<AstPolicyBlock>,
 }
 
@@ -503,6 +493,14 @@ impl AstIdentifier {
 
     pub fn span(self) -> Span {
         self.0.span
+    }
+}
+
+impl Deref for AstIdentifier {
+    type Target = Token;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -671,77 +669,6 @@ impl Index<usize> for AstTuple {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.nodes[index]
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AstDataType {
-    Boolean(Token),
-
-    Float4(Token),
-    Float8(Token),
-
-    Int1(Token),
-    Int2(Token),
-    Int4(Token),
-    Int8(Token),
-    Int16(Token),
-
-    Number(Token),
-    Text(Token),
-
-    Uint1(Token),
-    Uint2(Token),
-    Uint4(Token),
-    Uint8(Token),
-    Uint16(Token),
-}
-
-impl AstDataType {
-    pub fn token(&self) -> &Token {
-        match self {
-            AstDataType::Boolean(token) => token,
-            AstDataType::Float4(token) => token,
-            AstDataType::Float8(token) => token,
-            AstDataType::Int1(token) => token,
-            AstDataType::Int2(token) => token,
-            AstDataType::Int4(token) => token,
-            AstDataType::Int8(token) => token,
-            AstDataType::Int16(token) => token,
-            AstDataType::Number(token) => token,
-            AstDataType::Text(token) => token,
-            AstDataType::Uint1(token) => token,
-            AstDataType::Uint2(token) => token,
-            AstDataType::Uint4(token) => token,
-            AstDataType::Uint8(token) => token,
-            AstDataType::Uint16(token) => token,
-        }
-    }
-}
-
-impl AstDataType {
-    pub fn value(&self) -> &str {
-        self.token().value()
-    }
-
-    pub fn data_type(&self) -> DataType {
-        match self {
-            AstDataType::Boolean(_) => DataType::Bool,
-            AstDataType::Float4(_) => DataType::Float4,
-            AstDataType::Float8(_) => DataType::Float8,
-            AstDataType::Int1(_) => DataType::Int1,
-            AstDataType::Int2(_) => DataType::Int2,
-            AstDataType::Int4(_) => DataType::Int4,
-            AstDataType::Int8(_) => DataType::Int8,
-            AstDataType::Int16(_) => DataType::Int16,
-            AstDataType::Number(_) => unimplemented!(),
-            AstDataType::Text(_) => DataType::Utf8,
-            AstDataType::Uint1(_) => DataType::Uint1,
-            AstDataType::Uint2(_) => DataType::Uint2,
-            AstDataType::Uint4(_) => DataType::Uint4,
-            AstDataType::Uint8(_) => DataType::Uint8,
-            AstDataType::Uint16(_) => DataType::Uint16,
-        }
     }
 }
 

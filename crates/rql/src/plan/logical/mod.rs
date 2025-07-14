@@ -6,10 +6,12 @@ mod expression;
 mod mutate;
 mod query;
 
-use crate::ast::{Ast, AstStatement};
+use crate::ast::{Ast, AstIdentifier, AstPolicy, AstPolicyKind, AstStatement};
 use crate::expression::{Expression, KeyedExpression};
+use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::{SortKey, Span};
+use reifydb_core::{DataType, Error, SortKey, Span};
+use reifydb_diagnostic::parse::unrecognized_type;
 
 struct Compiler {}
 
@@ -136,4 +138,47 @@ pub struct InlineDataNode {
 pub struct TableScanNode {
     pub schema: Option<Span>,
     pub table: Span,
+}
+
+pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<DataType> {
+    Ok(match ast.value().to_ascii_lowercase().as_str() {
+        "bool" => DataType::Bool,
+        "float4" => DataType::Float4,
+        "float8" => DataType::Float8,
+        "int1" => DataType::Int1,
+        "int2" => DataType::Int2,
+        "int4" => DataType::Int4,
+        "int8" => DataType::Int8,
+        "int16" => DataType::Int16,
+        "uint1" => DataType::Uint1,
+        "uint2" => DataType::Uint2,
+        "uint4" => DataType::Uint4,
+        "uint8" => DataType::Uint8,
+        "uint16" => DataType::Uint16,
+        "utf8" => DataType::Utf8,
+        "text" => DataType::Utf8,
+        _ => return Err(Error(unrecognized_type(ast.span.clone()))),
+    })
+}
+
+pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
+    use ColumnPolicyKind::*;
+
+    match ast.policy {
+        AstPolicyKind::Saturation => {
+            if ast.value.is_literal_undefined() {
+                return Saturation(ColumnSaturationPolicy::Undefined);
+            }
+            let ident = ast.value.as_identifier().value();
+            match ident {
+                "error" => Saturation(ColumnSaturationPolicy::Error),
+                // "saturate" => Some(Saturation(Saturate)),
+                // "wrap" => Some(Saturation(Wrap)),
+                // "zero" => Some(Saturation(Zero)),
+                _ => unimplemented!(),
+            }
+        }
+        AstPolicyKind::Default => unimplemented!(),
+        AstPolicyKind::NotUndefined => unimplemented!(),
+    }
 }

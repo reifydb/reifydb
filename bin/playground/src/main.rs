@@ -19,7 +19,7 @@ fn main() {
     db.tx_as(&root, r#"create schema test"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
-    db.tx_as(&root, r#"create table test.international(id: int4, text: text, emoji: text)"#).unwrap();
+    db.tx_as(&root, r#"create table test.edge_cases(id: int4, content: text)"#).unwrap();
 
     
     let l = db
@@ -27,11 +27,13 @@ fn main() {
             &root,
             r#"
   from [
-    { id: 1, text: "Hello 世界",     emoji: "🌍" },
-    { id: 2, text: "Привет мир",    emoji: "🚀" },
-    { id: 3, text: "こんにちは世界", emoji: "🎌" },
-    { id: 4, text: "مرحبا بالعالم",  emoji: "🕌" }
-  ] insert test.international
+    { id: 1, content: "" },
+    { id: 2, content: "a" },
+    { id: 3, content: "This is a very long string that contains multiple words and should test the storage and retrieval of longer UTF8 content in the database system to ensure it handles variable-length strings correctly." },
+    { id: 4, content: "Line1\nLine2\nLine3" },
+    { id: 5, content: "Tab\tSeparated\tValues" },
+    { id: 6, content: "Mixed: English 中文 العربية ελληνικά 日本語 русский" }
+  ] insert test.edge_cases
         "#,
         )
         .unwrap();
@@ -42,7 +44,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            from test.international map { id, text, emoji }
+            from test.edge_cases filter content == "This is a very long string that contains multiple words and should test the storage and retrieval of longer UTF8 content in the database system to ensure it handles variable-length strings correctly." map id
         "#,
         )
         .unwrap();

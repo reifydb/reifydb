@@ -54,10 +54,7 @@ impl Parser {
                 _ if current.is_literal(Undefined) => {
                     Ok(Ast::Literal(self.parse_literal_undefined()?))
                 }
-                _ if current.is_identifier() => match self.parse_data_type() {
-                    Ok(node) => Ok(Ast::DataType(node)),
-                    Err(_) => Ok(Ast::Identifier(self.parse_identifier()?)),
-                },
+                _ if current.is_identifier() => Ok(Ast::Identifier(self.parse_identifier()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
             },
         }
