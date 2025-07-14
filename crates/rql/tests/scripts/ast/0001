@@ -3,9 +3,9 @@
 
 ast 'from users map id, name'
 ---
-> └── From @ line 1, offset 0 — "from"
->     └── Identifier @ line 1, offset 5 — "users"
-> └── Map @ line 1, offset 11 — "map"
->     ├── Identifier @ line 1, offset 15 — "id"
->     └── Identifier @ line 1, offset 19 — "name"
+> └── From @ line 1, column 1 — "from"
+>     └── Identifier @ line 1, column 6 — "users"
+> └── Map @ line 1, column 12 — "map"
+>     ├── Identifier @ line 1, column 16 — "id"
+>     └── Identifier @ line 1, column 20 — "name"
 > 

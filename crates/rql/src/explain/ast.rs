@@ -62,8 +62,8 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
     };
     
     output.push_str(&format!(
-        "{}{} {} @ line {}, offset {} — \"{}\"\n",
-        prefix, branch, description, span.line.0, span.offset.0, span.fragment
+		"{}{} {} @ line {}, column {} — \"{}\"\n",
+		prefix, branch, description, span.line.0, span.column.0, span.fragment
     ));
 
     let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });

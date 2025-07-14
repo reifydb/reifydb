@@ -312,7 +312,7 @@ pub struct CallExpression {
 impl CallExpression {
     pub fn span(&self) -> Span {
         Span {
-            offset: self.func.0.offset,
+            column: self.func.0.column,
             line: self.func.0.line,
             fragment: format!(
                 "{}({})",

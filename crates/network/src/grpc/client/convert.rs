@@ -2,7 +2,7 @@
 // This file is licensed under the MIT
 
 use crate::grpc::client::grpc;
-use reifydb_core::{Diagnostic, DiagnosticColumn, DataType, Line, Offset, Span};
+use reifydb_core::{DataType, Diagnostic, DiagnosticColumn, Span, SpanColumn, SpanLine};
 use reifydb_engine::frame::{Column, ColumnValues, Frame};
 use std::collections::HashMap;
 
@@ -12,16 +12,17 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
         statement: grpc.statement,
         message: grpc.message,
         span: grpc.span.map(|s| Span {
-            offset: Offset(s.offset),
-            line: Line(s.line),
+            column: SpanColumn(s.offset),
+            line: SpanLine(s.line),
             fragment: s.fragment,
         }),
         label: grpc.label,
         help: grpc.help,
         notes: grpc.notes,
-        column: grpc
-            .column
-            .map(|c| DiagnosticColumn { name: c.name, data_type: DataType::from_u8(c.data_type as u8) }),
+        column: grpc.column.map(|c| DiagnosticColumn {
+            name: c.name,
+            data_type: DataType::from_u8(c.data_type as u8),
+        }),
     }
 }
 

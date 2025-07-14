@@ -244,7 +244,7 @@ mod tests {
 				repr
             );
             assert_eq!(token.span.fragment.to_lowercase(), repr.to_lowercase());
-            assert_eq!(token.span.offset, 0);
+            assert_eq!(token.span.column, 1);
             assert_eq!(token.span.line, 1);
             assert_eq!(*remaining.fragment(), " rest");
         }

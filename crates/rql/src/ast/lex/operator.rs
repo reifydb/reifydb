@@ -167,7 +167,7 @@ mod tests {
             symbol
         );
         assert_eq!(token.span.fragment, symbol);
-        assert_eq!(token.span.offset, 0);
+        assert_eq!(token.span.column, 1);
         assert_eq!(token.span.line, 1);
         assert_eq!(remaining.fragment(), &" rest".to_string());
     }

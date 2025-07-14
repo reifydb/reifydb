@@ -34,7 +34,7 @@ impl DiagnosticRenderer for DefaultRenderer {
 
         if let Some(span) = &diagnostic.span {
             let line = span.line.0;
-            let col = span.offset.0;
+            let col = span.column.0;
             let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
 
             let line_content = get_line(statement, line);

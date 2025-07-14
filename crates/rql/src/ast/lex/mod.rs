@@ -20,7 +20,7 @@ use nom::combinator::complete;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
-use reifydb_core::{Line, Offset, Span};
+use reifydb_core::{SpanLine, SpanColumn, Span};
 
 mod display;
 mod error;
@@ -104,8 +104,8 @@ fn token(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 
 pub(crate) fn as_span(value: LocatedSpan<&str>) -> Span {
     Span {
-        offset: Offset(value.location_offset() as u32),
-        line: Line(value.location_line()),
+        column: SpanColumn(value.get_column() as u32),
+        line: SpanLine(value.location_line()),
         fragment: value.fragment().to_string(),
     }
 }

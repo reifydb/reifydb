@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::Error;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use crate::frame::Frame;
 use reifydb_catalog::{
@@ -9,10 +10,11 @@ use reifydb_catalog::{
     sequence::TableRowSequence,
 };
 use reifydb_core::{
-    DataType, Value,
+    DataType, IntoSpan, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},
     row::Layout,
 };
+use reifydb_diagnostic::catalog::table_not_found;
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
 
@@ -26,7 +28,12 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
         let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
         let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
-            panic!("Table not found: {}", plan.table.fragment);
+            let span = plan.table.into_span();
+            return Err(Error::execution(table_not_found(
+                span.clone(),
+                schema_name,
+                &span.fragment,
+            )));
         };
 
         let table_types: Vec<DataType> = table.columns.iter().map(|c| c.data_type).collect();

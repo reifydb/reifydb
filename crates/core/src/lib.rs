@@ -14,7 +14,7 @@ pub use key::{EncodedKey, EncodedKeyRange};
 pub use data_type::{GetKind, DataType};
 pub use sort::{SortDirection, SortKey};
 pub use retry::retry;
-pub use span::{IntoSpan, Line, Offset, Span};
+pub use span::{IntoSpan, SpanLine, SpanColumn, Span};
 pub use value::Value;
 pub use version::Version;
 

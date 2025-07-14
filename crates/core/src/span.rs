@@ -35,10 +35,10 @@ where
 pub struct Span {
     /// The offset represents the position of the fragment relatively to
     /// the input of the parser. It starts at offset 0.
-    pub offset: Offset,
+    pub column: SpanColumn,
     /// The line number of the fragment relatively to the input of the
     /// parser. It starts at line 1.
-    pub line: Line,
+    pub line: SpanLine,
 
     pub fragment: String,
 }
@@ -57,11 +57,11 @@ impl Display for Span {
 
 impl Span {
     pub fn testing_empty() -> Self {
-        Self { offset: Offset(0), line: Line(1), fragment: "".to_string() }
+        Self { column: SpanColumn(0), line: SpanLine(1), fragment: "".to_string() }
     }
 
     pub fn testing(s: impl Into<String>) -> Self {
-        Self { offset: Offset(0), line: Line(1), fragment: s.into() }
+        Self { column: SpanColumn(0), line: SpanLine(1), fragment: s.into() }
     }
 }
 
@@ -73,15 +73,15 @@ impl PartialOrd for Span {
 
 impl Ord for Span {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.offset.cmp(&other.offset).then(self.line.cmp(&other.line))
+        self.column.cmp(&other.column).then(self.line.cmp(&other.line))
     }
 }
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Offset(pub u32);
+pub struct SpanColumn(pub u32);
 
-impl PartialEq<i32> for Offset {
+impl PartialEq<i32> for SpanColumn {
     fn eq(&self, other: &i32) -> bool {
         self.0 == *other as u32
     }
@@ -89,9 +89,9 @@ impl PartialEq<i32> for Offset {
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Line(pub u32);
+pub struct SpanLine(pub u32);
 
-impl PartialEq<i32> for Line {
+impl PartialEq<i32> for SpanLine {
     fn eq(&self, other: &i32) -> bool {
         self.0 == *other as u32
     }
@@ -112,45 +112,45 @@ impl Span {
             fragment.push_str(&span.fragment);
         }
 
-        Span { offset: first.offset, line: first.line, fragment }
+        Span { column: first.column, line: first.line, fragment }
     }
 }
 
 #[cfg(test)]
 mod tests {
     mod merge_all {
-        use crate::{Line, Offset, Span};
+        use crate::{SpanLine, SpanColumn, Span};
 
         #[test]
         fn test_multiple_spans_in_order() {
             let spans = vec![
-                Span { offset: Offset(0), line: Line(1), fragment: "hello ".into() },
-                Span { offset: Offset(6), line: Line(1), fragment: "world".into() },
+                Span { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() },
+                Span { column: SpanColumn(6), line: SpanLine(1), fragment: "world".into() },
             ];
 
             let merged = Span::merge_all(spans);
 
-            assert_eq!(merged.offset, Offset(0));
-            assert_eq!(merged.line, Line(1));
+            assert_eq!(merged.column, SpanColumn(0));
+            assert_eq!(merged.line, SpanLine(1));
             assert_eq!(merged.fragment, "hello world");
         }
 
         #[test]
         fn test_multiple_spans_out_of_order() {
             let spans = vec![
-                Span { offset: Offset(10), line: Line(1), fragment: "world".into() },
-                Span { offset: Offset(0), line: Line(1), fragment: "hello ".into() },
+                Span { column: SpanColumn(10), line: SpanLine(1), fragment: "world".into() },
+                Span { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() },
             ];
 
             let merged = Span::merge_all(spans);
 
-            assert_eq!(merged.offset, Offset(0));
+            assert_eq!(merged.column, SpanColumn(0));
             assert_eq!(merged.fragment, "hello world");
         }
 
         #[test]
         fn test_single_span_returns_same() {
-            let span = Span { offset: Offset(5), line: Line(3), fragment: "solo".into() };
+            let span = Span { column: SpanColumn(5), line: SpanLine(3), fragment: "solo".into() };
 
             let merged = Span::merge_all([span.clone()]);
 
@@ -159,27 +159,27 @@ mod tests {
 
         #[test]
         fn test_merge_three_spans_out_of_order() {
-            let span1 = Span { offset: Offset(10), line: Line(1), fragment: "world".into() };
-            let span2 = Span { offset: Offset(0), line: Line(1), fragment: "hello ".into() };
-            let span3 = Span { offset: Offset(6), line: Line(1), fragment: "beautiful ".into() };
+            let span1 = Span { column: SpanColumn(10), line: SpanLine(1), fragment: "world".into() };
+            let span2 = Span { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() };
+            let span3 = Span { column: SpanColumn(6), line: SpanLine(1), fragment: "beautiful ".into() };
 
             let merged = Span::merge_all([span1, span2, span3]);
 
-            assert_eq!(merged.offset, Offset(0));
-            assert_eq!(merged.line, Line(1));
+            assert_eq!(merged.column, SpanColumn(0));
+            assert_eq!(merged.line, SpanLine(1));
             assert_eq!(merged.fragment, "hello beautiful world");
         }
 
         #[test]
         fn test_overlapping_spans() {
             let spans = vec![
-                Span { offset: Offset(0), line: Line(1), fragment: "abc".into() },
-                Span { offset: Offset(2), line: Line(1), fragment: "cde".into() },
+                Span { column: SpanColumn(0), line: SpanLine(1), fragment: "abc".into() },
+                Span { column: SpanColumn(2), line: SpanLine(1), fragment: "cde".into() },
             ];
 
             let merged = Span::merge_all(spans);
 
-            assert_eq!(merged.offset, Offset(0));
+            assert_eq!(merged.column, SpanColumn(0));
             assert_eq!(merged.fragment, "abccde");
         }
     }

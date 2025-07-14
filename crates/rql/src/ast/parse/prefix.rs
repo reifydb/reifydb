@@ -19,7 +19,7 @@ impl Parser {
                 return Ok(Ast::Literal(AstLiteral::Number(AstLiteralNumber(Token {
                     kind: TokenKind::Literal(Number),
                     span: Span {
-                        offset: operator.token().span.offset,
+                        column: operator.token().span.column,
                         line: operator.token().span.line,
                         fragment: format!("-{}", literal.0.span.fragment),
                     },

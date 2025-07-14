@@ -14,7 +14,7 @@ impl Evaluator {
     ) -> crate::evaluate::Result<Column> {
         self.evaluate(
             &Expression::Column(ColumnExpression(Span {
-                offset: expr.table.offset,
+                column: expr.table.column,
                 line: expr.table.line,
                 fragment: format!("{}_{}", expr.table.fragment, expr.column.fragment),
             })),

@@ -245,7 +245,7 @@ impl Evaluator {
 
 #[cfg(test)]
 mod tests {
-    use reifydb_core::{Line, Offset, Span};
+    use reifydb_core::{SpanLine, SpanColumn, Span};
 
     mod constant_value {
         use crate::evaluate::Evaluator;
@@ -532,6 +532,6 @@ mod tests {
     }
 
     fn make_span(value: &str) -> Span {
-        Span { offset: Offset(0), line: Line(1), fragment: value.to_string() }
+        Span { column: SpanColumn(0), line: SpanLine(1), fragment: value.to_string() }
     }
 }

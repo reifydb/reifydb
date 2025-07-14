@@ -7,8 +7,7 @@ use reifydb_rql::expression::Expression;
 use crate::function::{Functions, math};
 pub use error::Error;
 
-pub(crate) use context::{EvalutationContext, Convert, Demote, EvaluationColumn, Promote};
-use reifydb_core::DataType;
+pub(crate) use context::{Convert, Demote, EvaluationColumn, EvalutationContext, Promote};
 
 mod access;
 mod alias;
@@ -35,7 +34,11 @@ impl Default for Evaluator {
 }
 
 impl Evaluator {
-    pub(crate) fn evaluate(&mut self, expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
+    pub(crate) fn evaluate(
+        &mut self,
+        expr: &Expression,
+        ctx: &EvalutationContext,
+    ) -> Result<Column> {
         match expr {
             Expression::AccessTable(expr) => self.access(expr, ctx),
             Expression::Alias(expr) => self.alias(expr, ctx),
@@ -73,7 +76,9 @@ pub fn evaluate(expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
 
 pub fn evaluate_typed(expr: &Expression, ctx: &EvalutationContext) -> Result<Column> {
     let mut column = evaluate(expr, ctx)?;
-    let values = column.values.adjust(ctx.column.as_ref().unwrap().data_type.unwrap(), ctx, expr.lazy_span())
+    let values = column
+        .values
+        .adjust(ctx.column.as_ref().unwrap().data_type.unwrap(), ctx, expr.lazy_span())
         .map_err(|e| Error(e.diagnostic()))?;
     column.values = values;
     Ok(column)

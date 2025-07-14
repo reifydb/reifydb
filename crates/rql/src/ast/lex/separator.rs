@@ -72,7 +72,7 @@ mod tests {
 
         assert_eq!(TokenKind::Separator(op), token.kind, "data_type mismatch for symbol: {}", symbol);
         assert_eq!(token.span.fragment, symbol);
-        assert_eq!(token.span.offset, 0);
+        assert_eq!(token.span.column, 1);
         assert_eq!(token.span.line, 1);
         assert_eq!(*remaining.fragment(), " rest");
     }

@@ -3,7 +3,15 @@
 
 (tx 'create schema test')
 (tx 'create table test.arith(id: int2, num: int2)')
-(tx 'insert (1,6), (2,8), (3,4), (4,2), (5,3) into test.arith(id,num)')
+(tx '
+  from [
+    { id: 1, num: 6 },
+    { id: 2, num: 8 },
+    { id: 3, num: 4 },
+    { id: 4, num: 2 },
+    { id: 5, num: 3 }
+  ] insert test.arith
+')
 tx 'from test.arith map id + 42, id + id + id'
 ---
 > +---------+------------+

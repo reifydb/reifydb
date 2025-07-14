@@ -41,7 +41,14 @@ fn main() {
         .on_create(|ctx| async move {
             ctx.tx("create schema test");
             ctx.tx("create table test.arith(id: int2, value: int2, num: int2)");
-            ctx.tx("insert (1,1,5), (1,1,10), (1,2,15), (2,1,10), (2,1,30) into test.arith(id,value,num)");
+            ctx.tx("from [
+    { id: 1, value: 1, num: 5  },
+    { id: 1, value: 1, num: 10 },
+    { id: 1, value: 2, num: 15 },
+    { id: 2, value: 1, num: 10 },
+    { id: 2, value: 1, num: 30 }
+  ] insert test.arith
+");
         })
         .serve_blocking(&rt, rx)
         .unwrap();

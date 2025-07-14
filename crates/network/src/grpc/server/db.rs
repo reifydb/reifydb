@@ -138,7 +138,7 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
         statement: diagnostic.statement,
         message: diagnostic.message,
         span: diagnostic.span.map(|s| grpc::Span {
-            offset: s.offset.0,
+            offset: s.column.0,
             line: s.line.0,
             fragment: s.fragment,
         }),
