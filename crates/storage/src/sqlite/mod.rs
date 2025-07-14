@@ -141,7 +141,7 @@ impl VersionedContains for Sqlite {
 }
 
 impl VersionedScan for Sqlite {
-    type ScanIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
+    type ScanIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
     fn scan(&self, _version: Version) -> Self::ScanIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -170,7 +170,7 @@ impl VersionedScan for Sqlite {
 }
 
 impl VersionedScanRev for Sqlite {
-    type ScanIterRev<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
+    type ScanIterRev<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
     fn scan_rev(&self, _version: Version) -> Self::ScanIterRev<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -199,7 +199,7 @@ impl VersionedScanRev for Sqlite {
 }
 
 impl VersionedScanRange for Sqlite {
-    type ScanRangeIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
+    type ScanRangeIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
     fn scan_range(&self, range: EncodedKeyRange, _version: Version) -> Self::ScanRangeIter<'_> {
         let version = 1; // FIXME remove this - transaction version needs to be persisted
@@ -230,7 +230,7 @@ impl VersionedScanRange for Sqlite {
 }
 
 impl VersionedScanRangeRev for Sqlite {
-    type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
+    type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
     fn scan_range_rev(
         &self,

@@ -11,12 +11,8 @@ use crate::execute::query::map::{MapNode, MapWithoutInputNode};
 use crate::execute::query::scan::ScanFrameNode;
 use crate::execute::query::sort::SortNode;
 use crate::execute::query::take::TakeNode;
-use crate::frame::{FrameColumn, ColumnValues, Frame};
 use reifydb_catalog::Catalog;
-use reifydb_catalog::key::TableRowKey;
-use reifydb_core::DataType;
 use reifydb_core::interface::Rx;
-use reifydb_core::row::Layout;
 use reifydb_rql::plan::physical;
 use reifydb_rql::plan::physical::PhysicalPlan;
 
@@ -76,48 +72,7 @@ pub(crate) fn compile(
                 .unwrap()
                 .unwrap();
 
-            let columns = table.columns;
-            let values = columns.iter().map(|c| c.data_type).collect::<Vec<_>>();
-            let layout = Layout::new(&values);
-
-            let columns: Vec<FrameColumn> = columns
-                .iter()
-                .map(|col| {
-                    let name = col.name.clone();
-                    let data = match col.data_type {
-                        DataType::Bool => ColumnValues::bool(vec![]),
-                        DataType::Float4 => ColumnValues::float4(vec![]),
-                        DataType::Float8 => ColumnValues::float8(vec![]),
-                        DataType::Int1 => ColumnValues::int1(vec![]),
-                        DataType::Int2 => ColumnValues::int2(vec![]),
-                        DataType::Int4 => ColumnValues::int4(vec![]),
-                        DataType::Int8 => ColumnValues::int8(vec![]),
-                        DataType::Int16 => ColumnValues::int16(vec![]),
-                        DataType::Utf8 => ColumnValues::utf8(vec![]),
-                        DataType::Uint1 => ColumnValues::uint1(vec![]),
-                        DataType::Uint2 => ColumnValues::uint2(vec![]),
-                        DataType::Uint4 => ColumnValues::uint4(vec![]),
-                        DataType::Uint8 => ColumnValues::uint8(vec![]),
-                        DataType::Uint16 => ColumnValues::uint16(vec![]),
-                        DataType::Undefined => ColumnValues::Undefined(0),
-                    };
-                    FrameColumn { name, values: data }
-                })
-                .collect();
-
-            let mut frame = Frame::new_with_name(columns, table.name);
-
-            frame
-                .append_rows(
-                    &layout,
-                    rx.scan_range(TableRowKey::full_scan(table.id))
-                        .unwrap()
-                        .into_iter()
-                        .map(|versioned| versioned.row),
-                )
-                .unwrap();
-
-            Box::new(ScanFrameNode::new(frame))
+            Box::new(ScanFrameNode::new(table, context, rx).unwrap())
         }
         PhysicalPlan::CreateDeferredView(_)
         | PhysicalPlan::CreateSchema(_)

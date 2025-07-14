@@ -14,7 +14,7 @@ pub(crate) struct Batch {
 }
 
 pub(crate) trait ExecutionPlan {
-    fn next(&mut self) -> crate::Result<Option<Batch>>;
+    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>>;
     fn layout(&self) -> Option<FrameLayout>;
 }
 
@@ -129,7 +129,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 let mut node = compile(plan, rx, Arc::new(context));
                 let mut result: Option<Frame> = None;
 
-                while let Some(Batch { mut frame, mask }) = node.next()? {
+                while let Some(Batch { mut frame, mask }) = node.next(rx)? {
                     frame.filter(&mask)?;
                     if let Some(mut result_frame) = result.take() {
                         result_frame.append_frame(frame)?;

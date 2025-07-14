@@ -45,8 +45,8 @@ pub trait VersionedContains {
     fn contains(&self, key: &EncodedKey, version: Version) -> bool;
 }
 
-pub trait VersionedIter: Iterator<Item = Versioned> {}
-impl<T> VersionedIter for T where T: Iterator<Item = Versioned> {}
+pub trait VersionedIter: Iterator<Item = Versioned> + Send{}
+impl<T: Send> VersionedIter for T where T: Iterator<Item = Versioned> {}
 
 pub trait VersionedScan {
     type ScanIter<'a>: VersionedIter

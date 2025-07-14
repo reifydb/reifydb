@@ -3,6 +3,7 @@
 
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::FrameLayout;
+use reifydb_core::interface::Rx;
 
 pub(crate) struct TakeNode {
     input: Box<dyn ExecutionPlan>,
@@ -17,8 +18,8 @@ impl TakeNode {
 }
 
 impl ExecutionPlan for TakeNode {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame, mut mask }) = self.input.next()? {
+    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mut mask }) = self.input.next(rx)? {
             let visible: usize = mask.count_ones();
             if visible == 0 {
                 continue;

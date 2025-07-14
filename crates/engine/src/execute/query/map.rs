@@ -5,6 +5,7 @@ use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
+use reifydb_core::interface::Rx;
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct MapNode {
@@ -20,8 +21,8 @@ impl MapNode {
 }
 
 impl ExecutionPlan for MapNode {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame, mask }) = self.input.next()? {
+    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mask }) = self.input.next(rx)? {
             let row_count = frame.row_count();
 
             let ctx = EvaluationContext {
@@ -36,7 +37,8 @@ impl ExecutionPlan for MapNode {
 
             for expr in &self.expressions {
                 let column = evaluate(expr, &ctx)?;
-                columns.push(crate::frame::FrameColumn { name: column.name, values: column.values });
+                columns
+                    .push(crate::frame::FrameColumn { name: column.name, values: column.values });
             }
 
             self.layout = Some(FrameLayout::from_frame(&frame));
@@ -65,7 +67,7 @@ impl MapWithoutInputNode {
 }
 
 impl ExecutionPlan for MapWithoutInputNode {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }

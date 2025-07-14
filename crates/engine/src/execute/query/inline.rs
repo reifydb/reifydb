@@ -4,6 +4,7 @@
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout};
+use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::KeyedExpression;
 use std::collections::HashMap;
@@ -36,7 +37,7 @@ impl InlineDataNode {
 }
 
 impl ExecutionPlan for InlineDataNode {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.executed {
             return Ok(None);
         }

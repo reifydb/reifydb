@@ -4,6 +4,7 @@
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{ColumnValues, FrameLayout};
+use reifydb_core::interface::Rx;
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct FilterNode {
@@ -19,8 +20,8 @@ impl FilterNode {
 }
 
 impl ExecutionPlan for FilterNode {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame, mut mask }) = self.input.next()? {
+    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mut mask }) = self.input.next(rx)? {
             let row_count = frame.row_count(); // FIXME add a delegate - batch.row_count()
 
             let mut ctx = EvaluationContext {

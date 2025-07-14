@@ -3,7 +3,8 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionPlan};
-use crate::frame::{FrameColumn, ColumnValues, Frame, FrameLayout};
+use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
+use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
 
@@ -15,14 +16,21 @@ pub(crate) struct LeftJoinNode {
 }
 
 impl LeftJoinNode {
-    pub fn new(left: Box<dyn ExecutionPlan>, right: Box<dyn ExecutionPlan>, on: Vec<Expression>) -> Self {
+    pub fn new(
+        left: Box<dyn ExecutionPlan>,
+        right: Box<dyn ExecutionPlan>,
+        on: Vec<Expression>,
+    ) -> Self {
         Self { left, right, on, layout: None }
     }
 
-    fn load_and_merge_all(node: &mut Box<dyn ExecutionPlan>) -> crate::Result<Frame> {
+    fn load_and_merge_all(
+        node: &mut Box<dyn ExecutionPlan>,
+        rx: &mut dyn Rx,
+    ) -> crate::Result<Frame> {
         let mut result: Option<Frame> = None;
 
-        while let Some(Batch { frame, mask: _ }) = node.next()? {
+        while let Some(Batch { frame, mask: _ }) = node.next(rx)? {
             if let Some(mut acc) = result.take() {
                 acc.append_frame(frame)?;
                 result = Some(acc);
@@ -37,13 +45,13 @@ impl LeftJoinNode {
 }
 
 impl ExecutionPlan for LeftJoinNode {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }
 
-        let left_frame = Self::load_and_merge_all(&mut self.left)?;
-        let right_frame = Self::load_and_merge_all(&mut self.right)?;
+        let left_frame = Self::load_and_merge_all(&mut self.left, rx)?;
+        let right_frame = Self::load_and_merge_all(&mut self.right, rx)?;
 
         let left_rows = left_frame.row_count();
         let right_rows = right_frame.row_count();

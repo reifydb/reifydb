@@ -2,8 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{FrameColumn, ColumnValues, Frame, FrameLayout};
+use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
+use reifydb_core::interface::Rx;
 use reifydb_core::Span;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
@@ -35,7 +36,7 @@ impl AggregateNode {
 }
 
 impl ExecutionPlan for AggregateNode {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.layout().is_some() {
             return Ok(None);
         }
@@ -46,7 +47,7 @@ impl ExecutionPlan for AggregateNode {
         let mut seen_groups = HashSet::<Vec<Value>>::new();
         let mut group_key_order: Vec<Vec<Value>> = Vec::new();
 
-        while let Some(Batch { frame, mask }) = self.input.next()? {
+        while let Some(Batch { frame, mask }) = self.input.next(rx)? {
             let groups = frame.group_by_view(&keys)?;
 
             for (group_key, _) in &groups {

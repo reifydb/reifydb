@@ -5,6 +5,7 @@ use crate::execute::Error;
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::SortDirection::{Asc, Desc};
+use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, SortKey};
 use reifydb_diagnostic::query;
 use std::cmp::Ordering::Equal;
@@ -21,11 +22,11 @@ impl SortNode {
 }
 
 impl ExecutionPlan for SortNode {
-    fn next(&mut self) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         let mut frame_opt: Option<Frame> = None;
         let mut mask_opt: Option<BitVec> = None;
 
-        while let Some(Batch { frame, mask }) = self.input.next()? {
+        while let Some(Batch { frame, mask }) = self.input.next(rx)? {
             if let Some(existing_frame) = &mut frame_opt {
                 for (i, col) in frame.columns.into_iter().enumerate() {
                     existing_frame.columns[i].values.extend(col.values)?;

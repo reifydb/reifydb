@@ -7,14 +7,20 @@ use reifydb_catalog::table::Table;
 pub struct ExecutionContext {
     pub functions: Functions,
     pub table: Option<Table>,
+    pub batch_size: usize,
 }
 
 impl ExecutionContext {
     pub fn new(functions: Functions) -> Self {
-        Self { functions, table: None }
+        Self { functions, table: None, batch_size: 1024 }
     }
 
     pub fn with_table(functions: Functions, table: Table) -> Self {
-        Self { functions, table: Some(table) }
+        Self { functions, table: Some(table), batch_size: 1024 }
+    }
+
+    pub fn with_batch_size(mut self, batch_size: usize) -> Self {
+        self.batch_size = batch_size;
+        self
     }
 }

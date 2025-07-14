@@ -26,7 +26,7 @@ pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
     fn versioned(&self) -> VS;
 }
 
-pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + 'a>;
+pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
 pub trait Rx {
     fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error>;

@@ -46,7 +46,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame, mask }) = input_node.next()? {
+        while let Some(Batch { frame, mask }) = input_node.next(tx)? {
             let row_count = frame.row_count();
 
             for row_idx in 0..row_count {
