@@ -41,7 +41,9 @@ impl ExecutionPlan for MapNode {
 
             self.layout = Some(FrameLayout::from_frame(&frame));
 
-            return Ok(Some(Batch { frame: Frame::new(columns), mask }));
+            let new_frame = Frame::new(columns);
+            let new_mask = BitVec::new(new_frame.row_count(), true);
+            return Ok(Some(Batch { frame: new_frame, mask: new_mask }));
         }
         Ok(None)
     }
