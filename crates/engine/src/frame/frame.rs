@@ -90,6 +90,10 @@ impl Frame {
         self.index.get(name).map(|&i| &self.columns[i].values)
     }
 
+    pub fn column_values_mut(&mut self, name: &str) -> Option<&mut ColumnValues> {
+        self.index.get(name).map(|&i| &mut self.columns[i].values)
+    }
+
     pub fn iter(&self) -> FrameIter<'_> {
         let col_names = self.columns.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
         FrameIter {

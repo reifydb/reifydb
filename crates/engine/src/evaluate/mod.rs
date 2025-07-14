@@ -7,7 +7,7 @@ use reifydb_rql::expression::Expression;
 use crate::function::{Functions, math};
 pub use error::Error;
 
-pub(crate) use context::{Context, Convert, Demote, EvaluationColumn, Promote};
+pub(crate) use context::{Context, Convert, Demote,EvaluationColumn, Promote};
 
 mod access;
 mod alias;

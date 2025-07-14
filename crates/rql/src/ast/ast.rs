@@ -42,7 +42,7 @@ impl IntoIterator for AstStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ast {
     Aggregate(AstAggregate),
-    Block(AstBlock),
+    Row(AstRow),
     Cast(AstCast),
     Create(AstCreate),
     Describe(AstDescribe),
@@ -53,6 +53,7 @@ pub enum Ast {
     AstInsert(AstInsert),
     Join(AstJoin),
     Take(AstTake),
+    List(AstList),
     Literal(AstLiteral),
     Nop,
     Sort(AstSort),
@@ -74,7 +75,7 @@ impl Default for Ast {
 impl Ast {
     pub fn token(&self) -> &Token {
         match self {
-            Ast::Block(node) => &node.token,
+            Ast::Row(node) => &node.token,
             Ast::Cast(node) => &node.token,
             Ast::Create(node) => node.token(),
             Ast::Describe(node) => match node {
@@ -87,6 +88,7 @@ impl Ast {
             Ast::Infix(node) => &node.token,
             Ast::AstInsert(node) => &node.token,
             Ast::Take(node) => &node.token,
+            Ast::List(node) => &node.token,
             Ast::Literal(node) => match node {
                 AstLiteral::Boolean(node) => &node.0,
                 AstLiteral::Number(node) => &node.0,
@@ -122,10 +124,10 @@ impl Ast {
     }
 
     pub fn is_block(&self) -> bool {
-        matches!(self, Ast::Block(_))
+        matches!(self, Ast::Row(_))
     }
-    pub fn as_block(&self) -> &AstBlock {
-        if let Ast::Block(result) = self { result } else { panic!("not block") }
+    pub fn as_block(&self) -> &AstRow {
+        if let Ast::Row(result) = self { result } else { panic!("not block") }
     }
 
     pub fn is_cast(&self) -> bool {
@@ -196,6 +198,13 @@ impl Ast {
     }
     pub fn as_take(&self) -> &AstTake {
         if let Ast::Take(result) = self { result } else { panic!("not take") }
+    }
+
+    pub fn is_list(&self) -> bool {
+        matches!(self, Ast::List(_))
+    }
+    pub fn as_list(&self) -> &AstList {
+        if let Ast::List(result) = self { result } else { panic!("not list") }
     }
 
     pub fn is_literal(&self) -> bool {
@@ -274,6 +283,13 @@ impl Ast {
         if let Ast::PolicyBlock(result) = self { result } else { panic!("not policy block") }
     }
 
+    pub fn is_row(&self) -> bool {
+        matches!(self, Ast::Row(_))
+    }
+    pub fn as_row(&self) -> &AstRow {
+        if let Ast::Row(result) = self { result } else { panic!("not row") }
+    }
+
     pub fn is_prefix(&self) -> bool {
         matches!(self, Ast::Prefix(_))
     }
@@ -313,22 +329,28 @@ pub struct AstCast {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstBlock {
-    pub token: Token,
-    pub nodes: Vec<Ast>,
+pub struct AstRowField {
+    pub key: AstIdentifier,
+    pub value: Box<Ast>,
 }
 
-impl AstBlock {
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstRow {
+    pub token: Token,
+    pub fields: Vec<AstRowField>,
+}
+
+impl AstRow {
     pub fn len(&self) -> usize {
-        self.nodes.len()
+        self.fields.len()
     }
 }
 
-impl Index<usize> for AstBlock {
-    type Output = Ast;
+impl Index<usize> for AstRow {
+    type Output = AstRowField;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.nodes[index]
+        &self.fields[index]
     }
 }
 
@@ -403,7 +425,7 @@ pub struct AstFilter {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstFrom {
     Table { token: Token, schema: Option<AstIdentifier>, table: AstIdentifier },
-    Query { token: Token, query: AstBlock },
+    Static { token: Token, list: AstList },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -417,7 +439,7 @@ impl AstFrom {
     pub fn token(&self) -> &Token {
         match self {
             AstFrom::Table { token, .. } => token,
-            AstFrom::Query { token, .. } => token,
+            AstFrom::Static { token, .. } => token,
         }
     }
 }
@@ -426,6 +448,26 @@ impl AstFrom {
 pub struct AstTake {
     pub token: Token,
     pub take: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstList {
+    pub token: Token,
+    pub nodes: Vec<Ast>,
+}
+
+impl AstList {
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+}
+
+impl Index<usize> for AstList {
+    type Output = Ast;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.nodes[index]
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

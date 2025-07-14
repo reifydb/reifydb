@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::Error;
-use crate::execute::query::{Batch, ExecutionPlan};
+use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::SortDirection::{Asc, Desc};
 use reifydb_core::{BitVec, SortKey};

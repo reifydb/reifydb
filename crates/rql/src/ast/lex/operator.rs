@@ -32,6 +32,8 @@ operator! {
     CloseParen       => ")",
     OpenBracket      => "[",
     CloseBracket     => "]",
+    OpenCurly        => "{",
+    CloseCurly      => "}",
     LeftAngle        => "<",
     DoubleLeftAngle  => "<<",
     LeftAngleEqual   => "<=",
@@ -109,6 +111,8 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
         alt((
             value(Operator::OpenBracket, tag("[")),
             value(Operator::CloseBracket, tag("]")),
+            value(Operator::OpenCurly, tag("{")),
+            value(Operator::CloseCurly, tag("}")),
             value(Operator::LeftAngle, tag("<")),
             value(Operator::RightAngle, tag(">")),
             value(Operator::Dot, tag(".")),
@@ -184,6 +188,9 @@ mod tests {
         test_operator_close_paren => (CloseParen, ")"),
         test_operator_open_bracket => (OpenBracket, "["),
         test_operator_close_bracket => (CloseBracket, "]"),
+        test_operator_open_curly => (OpenCurly, "{"),
+        test_operator_close_curly => (CloseCurly, "}"),
+        
         test_operator_left_angle => (LeftAngle, "<"),
         test_operator_double_left_angle => (DoubleLeftAngle, "<<"),
         test_operator_left_angle_equal => (LeftAngleEqual, "<="),

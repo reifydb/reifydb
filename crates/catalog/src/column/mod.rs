@@ -18,7 +18,7 @@ mod list;
 pub struct Column {
     pub id: ColumnId,
     pub name: String,
-    pub value: DataType,
+    pub data_type: DataType,
     pub policies: Vec<ColumnPolicy>,
     pub index: ColumnIndex,
 }

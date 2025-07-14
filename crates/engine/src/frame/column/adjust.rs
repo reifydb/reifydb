@@ -8,7 +8,7 @@ use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
 use reifydb_core::Span;
 
 impl ColumnValues {
-    pub fn adjust_column(
+    pub fn adjust(
 		&self,
 		target: DataType,
 		ctx: impl Promote + Demote + Convert,

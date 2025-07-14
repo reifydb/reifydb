@@ -3,13 +3,25 @@
 
 mod catalog;
 mod error;
-mod query;
 mod mutate;
+mod query;
 
-use crate::execute::query::Batch;
+#[derive(Debug)]
+pub(crate) struct Batch {
+    pub frame: Frame,
+    pub mask: BitVec,
+}
+
+pub(crate) trait ExecutionPlan {
+    fn next(&mut self) -> crate::Result<Option<Batch>>;
+    fn layout(&self) -> Option<FrameLayout>;
+}
+
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{Functions, math};
 pub use error::Error;
+use query::compile::compile;
+use reifydb_core::BitVec;
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
@@ -69,12 +81,13 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::Take(_)
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
+            | PhysicalPlan::InlineData(_)
+            | PhysicalPlan::Insert(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
 
             PhysicalPlan::CreateDeferredView(_)
             | PhysicalPlan::CreateSchema(_)
-            | PhysicalPlan::CreateTable(_)
-            | PhysicalPlan::Insert(_) => unreachable!(), // FIXME return explanatory diagnostic
+            | PhysicalPlan::CreateTable(_) => unreachable!(), // FIXME return explanatory diagnostic
         }
     }
 
@@ -87,14 +100,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
             PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
-            PhysicalPlan::Insert(plan) => self.insert_into_table(tx, plan),
-            // Query
+            PhysicalPlan::Insert(plan) => self.insert(tx, plan),
+
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
             | PhysicalPlan::JoinLeft(_)
             | PhysicalPlan::Take(_)
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
+            | PhysicalPlan::InlineData(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(tx, plan),
         }
     }
@@ -108,7 +122,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             //     Ok(ExecutionResult::DescribeQuery { columns })
             // }
             _ => {
-                let mut node = query::compile(plan, rx, self.functions);
+                let mut node = compile(plan, rx, self.functions);
                 let mut result: Option<Frame> = None;
 
                 while let Some(Batch { mut frame, mask }) = node.next()? {

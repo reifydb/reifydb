@@ -1,31 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{Frame, FrameLayout};
-use reifydb_core::BitVec;
-
-pub(crate) use compile::compile;
-pub(crate) use filter::FilterNode;
-pub(crate) use map::MapNode;
-pub(crate) use scan::ScanFrameNode;
-pub(crate) use take::TakeNode;
-
 mod aggregate;
-mod compile;
 mod filter;
+mod inline;
 mod join;
-mod sort;
 mod map;
 mod scan;
+mod sort;
 mod take;
+pub mod compile;
 
-#[derive(Debug)]
-pub(crate) struct Batch {
-    pub frame: Frame,
-    pub mask: BitVec,
-}
-
-pub(crate) trait ExecutionPlan {
-    fn next(&mut self) -> crate::Result<Option<Batch>>;
-    fn layout(&self) -> Option<FrameLayout>;
-}

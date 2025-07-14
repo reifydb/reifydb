@@ -63,7 +63,7 @@ impl Catalog {
         Ok(Column {
             id,
             name: column_to_create.column,
-            value: column_to_create.value,
+            data_type: column_to_create.value,
             index: column_to_create.index,
             policies: Catalog::list_column_policies(tx, id)?,
         })
@@ -121,12 +121,12 @@ mod test {
         let column_1 = Catalog::get_column(&mut tx, ColumnId(1)).unwrap().unwrap();
         assert_eq!(column_1.id, 1);
         assert_eq!(column_1.name, "col_1");
-        assert_eq!(column_1.value, DataType::Bool);
+        assert_eq!(column_1.data_type, DataType::Bool);
 
         let column_2 = Catalog::get_column(&mut tx, ColumnId(2)).unwrap().unwrap();
         assert_eq!(column_2.id, 2);
         assert_eq!(column_2.name, "col_2");
-        assert_eq!(column_2.value, DataType::Int2);
+        assert_eq!(column_2.data_type, DataType::Int2);
     }
 
     #[test]

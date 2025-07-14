@@ -24,7 +24,7 @@ impl Evaluator {
                     name: column.name,
                     values: column
                         .values
-                        .adjust_column(cast.to.data_type, ctx, cast.expression.lazy_span())
+                        .adjust(cast.to.data_type, ctx, cast.expression.lazy_span())
                         .unwrap(),
                 })
             } // FIXME

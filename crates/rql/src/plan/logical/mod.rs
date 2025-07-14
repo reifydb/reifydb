@@ -58,6 +58,7 @@ pub enum LogicalPlan {
     Take(TakeNode),
     Order(OrderNode),
     Map(MapNode),
+    InlineData(InlineDataNode),
     TableScan(TableScanNode),
 }
 
@@ -90,8 +91,9 @@ pub struct CreateTableNode {
 }
 
 #[derive(Debug)]
-pub enum InsertNode {
-    Values { schema: Option<Span>, table: Span },
+pub struct InsertNode {
+    pub schema: Option<Span>,
+    pub table: Span,
 }
 
 #[derive(Debug)]
@@ -123,6 +125,12 @@ pub struct OrderNode {
 #[derive(Debug)]
 pub struct MapNode {
     pub map: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct InlineDataNode {
+    pub names: Vec<String>,
+    pub columns: Vec<Vec<Expression>>,
 }
 
 #[derive(Debug)]

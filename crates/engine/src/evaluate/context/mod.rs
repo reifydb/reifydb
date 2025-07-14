@@ -4,6 +4,7 @@
 pub use convert::Convert;
 pub use demote::Demote;
 pub use promote::Promote;
+
 use reifydb_catalog::column_policy::{
     ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY,
 };

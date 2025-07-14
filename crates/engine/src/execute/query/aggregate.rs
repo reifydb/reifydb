@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::query::{Batch, ExecutionPlan};
+use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
 use reifydb_core::Span;

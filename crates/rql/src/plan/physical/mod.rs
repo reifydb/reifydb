@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod create;
-mod mutate;
 
 use crate::expression::Expression;
 use crate::plan::logical::LogicalPlan;
@@ -29,13 +28,6 @@ impl Compiler {
         let mut stack: Vec<PhysicalPlan> = Vec::new();
         for plan in logical {
             match plan {
-                LogicalPlan::CreateSchema(create) => {
-                    stack.push(Self::compile_create_schema(rx, create)?);
-                }
-                LogicalPlan::CreateTable(create) => {
-                    stack.push(Self::compile_create_table(rx, create)?);
-                }
-                LogicalPlan::Insert(insert) => stack.push(Self::compile_insert(rx, insert)?),
                 LogicalPlan::Aggregate(aggregate) => {
                     let input = stack.pop().unwrap(); // FIXME
                     stack.push(PhysicalPlan::Aggregate(AggregateNode {
@@ -43,6 +35,14 @@ impl Compiler {
                         map: aggregate.map,
                         input: Box::new(input),
                     }));
+                }
+
+                LogicalPlan::CreateSchema(create) => {
+                    stack.push(Self::compile_create_schema(rx, create)?);
+                }
+
+                LogicalPlan::CreateTable(create) => {
+                    stack.push(Self::compile_create_table(rx, create)?);
                 }
 
                 LogicalPlan::Filter(filter) => {
@@ -53,12 +53,20 @@ impl Compiler {
                     }));
                 }
 
-                LogicalPlan::Take(take) => {
-                    let input = stack.pop().unwrap(); // FIXME
-                    stack.push(PhysicalPlan::Take(TakeNode {
-                        take: take.take,
-                        input: Box::new(input),
+                LogicalPlan::InlineData(inline) => {
+                    stack.push(PhysicalPlan::InlineData(InlineDataNode {
+                        names: inline.names,
+                        columns: inline.columns,
                     }));
+                }
+
+                LogicalPlan::Insert(insert) => {
+                    let input = stack.pop().unwrap();
+                    stack.push(PhysicalPlan::Insert(InsertPlan {
+                        input: Box::new(input),
+                        schema: insert.schema,
+                        table: insert.table,
+                    }))
                 }
 
                 LogicalPlan::JoinLeft(join) => {
@@ -83,9 +91,19 @@ impl Compiler {
                     let input = stack.pop().map(Box::new);
                     stack.push(PhysicalPlan::Map(MapNode { map: map.map, input }));
                 }
+
                 LogicalPlan::TableScan(scan) => {
                     stack.push(TableScan(TableScanNode { schema: scan.schema, table: scan.table }));
                 }
+
+                LogicalPlan::Take(take) => {
+                    let input = stack.pop().unwrap(); // FIXME
+                    stack.push(PhysicalPlan::Take(TakeNode {
+                        take: take.take,
+                        input: Box::new(input),
+                    }));
+                }
+
                 _ => unimplemented!(),
             }
         }
@@ -115,6 +133,7 @@ pub enum PhysicalPlan {
     Take(TakeNode),
     Sort(SortNode),
     Map(MapNode),
+    InlineData(InlineDataNode),
     TableScan(TableScanNode),
 }
 
@@ -141,12 +160,6 @@ pub struct CreateTablePlan {
 }
 
 #[derive(Debug, Clone)]
-pub struct InsertPlan {
-    pub schema: Option<Span>,
-    pub table: Span,
-}
-
-#[derive(Debug, Clone)]
 pub struct AggregateNode {
     pub input: Box<PhysicalPlan>,
     pub by: Vec<Expression>,
@@ -160,16 +173,17 @@ pub struct FilterNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct InsertPlan {
+    pub input: Box<PhysicalPlan>,
+    pub schema: Option<Span>,
+    pub table: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct JoinLeftNode {
     pub left: Box<PhysicalPlan>,
     pub right: Box<PhysicalPlan>,
     pub on: Vec<Expression>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TakeNode {
-    pub input: Box<PhysicalPlan>,
-    pub take: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -185,7 +199,19 @@ pub struct MapNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct InlineDataNode {
+    pub names: Vec<String>,
+    pub columns: Vec<Vec<Expression>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TableScanNode {
     pub schema: Option<Span>,
     pub table: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct TakeNode {
+    pub input: Box<PhysicalPlan>,
+    pub take: usize,
 }

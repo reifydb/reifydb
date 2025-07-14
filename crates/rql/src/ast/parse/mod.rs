@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod aggregate;
-mod block;
 mod cast;
 mod create;
+mod data_type;
 mod describe;
 mod diagnostic;
 mod error;
@@ -14,14 +14,15 @@ mod identifier;
 mod infix;
 mod insert;
 mod join;
-mod data_type;
-mod take;
+mod list;
 mod literal;
-mod sort;
+mod map;
 mod policy;
 mod prefix;
 mod primary;
-mod map;
+mod row;
+mod sort;
+mod take;
 mod tuple;
 
 pub use error::*;
@@ -165,11 +166,6 @@ impl Parser {
         self.advance()
     }
 
-    pub(crate) fn consume_separator(&mut self, expected: Separator) -> Result<Token> {
-        self.current_expect_separator(expected)?;
-        self.advance()
-    }
-
     pub(crate) fn current(&self) -> Result<&Token> {
         self.tokens.last().ok_or(UnexpectedEndOfFile)
     }
@@ -189,10 +185,6 @@ impl Parser {
 
     pub(crate) fn current_expect_keyword(&self, keyword: Keyword) -> Result<()> {
         self.current_expect(TokenKind::Keyword(keyword))
-    }
-
-    pub(crate) fn current_expect_separator(&self, separator: Separator) -> Result<()> {
-        self.current_expect(TokenKind::Separator(separator))
     }
 
     pub(crate) fn current_precedence(&self) -> Result<Precedence> {
@@ -225,7 +217,7 @@ mod tests {
     use crate::ast::lex::Operator::Plus;
     use crate::ast::lex::Separator::Semicolon;
     use crate::ast::lex::TokenKind::{Identifier, Literal, Separator};
-    use crate::ast::lex::{lex, TokenKind};
+    use crate::ast::lex::{TokenKind, lex};
     use crate::ast::parse::Error::UnexpectedEndOfFile;
     use crate::ast::parse::Precedence::Term;
     use crate::ast::parse::{Error, Parser, Precedence};

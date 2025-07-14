@@ -1,11 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::execute::ExecutionPlan;
 use crate::execute::query::aggregate::AggregateNode;
+use crate::execute::query::filter::FilterNode;
+use crate::execute::query::inline::InlineDataNode;
 use crate::execute::query::join::LeftJoinNode;
+use crate::execute::query::map::{MapNode, MapWithoutInputNode};
+use crate::execute::query::scan::ScanFrameNode;
 use crate::execute::query::sort::SortNode;
-use crate::execute::query::map::MapWithoutInputNode;
-use crate::execute::query::{ExecutionPlan, FilterNode, TakeNode, MapNode, ScanFrameNode};
+use crate::execute::query::take::TakeNode;
 use crate::frame::{Column, ColumnValues, Frame};
 use crate::function::Functions;
 use reifydb_catalog::Catalog;
@@ -57,6 +61,10 @@ pub(crate) fn compile(
             Box::new(LeftJoinNode::new(left_node, right_node, on))
         }
 
+        PhysicalPlan::InlineData(physical::InlineDataNode { names, columns }) => {
+            Box::new(InlineDataNode::new(names, columns).expect("Failed to create InlineDataNode"))
+        }
+
         PhysicalPlan::TableScan(physical::TableScanNode { schema, table }) => {
             // If schema is NONE resolve table directly by name
             let schema =
@@ -69,14 +77,14 @@ pub(crate) fn compile(
                 .unwrap();
 
             let columns = table.columns;
-            let values = columns.iter().map(|c| c.value).collect::<Vec<_>>();
+            let values = columns.iter().map(|c| c.data_type).collect::<Vec<_>>();
             let layout = Layout::new(&values);
 
             let columns: Vec<Column> = columns
                 .iter()
                 .map(|col| {
                     let name = col.name.clone();
-                    let data = match col.value {
+                    let data = match col.data_type {
                         DataType::Bool => ColumnValues::bool(vec![]),
                         DataType::Float4 => ColumnValues::float4(vec![]),
                         DataType::Float8 => ColumnValues::float8(vec![]),

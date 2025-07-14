@@ -26,7 +26,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
     let span = &token.span;
     let data_type = match ast {
         Ast::Aggregate(_) => "Aggregate",
-        Ast::Block(_) => "Block",
+        Ast::Row(_) => "Row",
         Ast::Cast(_) => "Cast",
         Ast::Create(_) => "Create",
         Ast::Describe(_) => "Describe",
@@ -36,7 +36,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::Infix(_) => "Infix",
         Ast::AstInsert(_) => "Insert",
         Ast::Join(_) => "Join",
-        Ast::Take(_) => "Take",
+        Ast::List(_) => "List",
         Ast::Literal(_) => "Literal",
         Ast::Nop => "Nop",
         Ast::Sort(_) => "Order",
@@ -44,22 +44,32 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::PolicyBlock(_) => "PolicyBlock",
         Ast::Prefix(_) => "Prefix",
         Ast::Map(_) => "Map",
+        Ast::Take(_) => "Take",
         Ast::Tuple(_) => "Tuple",
         Ast::DataType(_) => "DataType",
         Ast::Wildcard(_) => "Wildcard",
     };
 
     let branch = if is_last { "└──" } else { "├──" };
+    
+    // Special handling for Row to show field summary
+    let description = match &ast {
+        Ast::Row(r) => {
+            let field_names: Vec<&str> = r.fields.iter().map(|f| f.key.value()).collect();
+            format!("{} ({} fields: {})", data_type, r.fields.len(), field_names.join(", "))
+        }
+        _ => data_type.to_string()
+    };
+    
     output.push_str(&format!(
         "{}{} {} @ line {}, offset {} — \"{}\"\n",
-        prefix, branch, data_type, span.line.0, span.offset.0, span.fragment
+        prefix, branch, description, span.line.0, span.offset.0, span.fragment
     ));
 
     let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
     let mut children: Vec<Ast> = vec![];
 
     match ast {
-        Ast::Block(b) => children.extend(b.nodes),
         Ast::Tuple(t) => children.extend(t.nodes),
         Ast::Prefix(p) => children.push(*p.node),
         Ast::Cast(c) => children.extend(c.tuple.nodes),
@@ -71,7 +81,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
                 }
                 children.push(Ast::Identifier(table));
             }
-            AstFrom::Query { query, .. } => {
+            AstFrom::Static { list: query, .. } => {
                 children.extend(query.nodes);
             }
         },
@@ -97,6 +107,16 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         }
         Ast::Policy(p) => children.push(*p.value),
         Ast::DataType(_) => {}
+        Ast::Row(r) => {
+            // Add each field as a child - they will be displayed as key: value pairs
+            for field in &r.fields {
+                // Create an infix node to represent "key: value" 
+                let key_ast = Ast::Identifier(field.key.clone());
+                let value_ast = *field.value.clone();
+                children.push(key_ast);
+                children.push(value_ast);
+            }
+        }
         Ast::Infix(i) => {
             children.push(*i.left);
             children.push(*i.right);

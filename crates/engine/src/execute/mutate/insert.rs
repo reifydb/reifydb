@@ -1,110 +1,123 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::Executor;
+use crate::evaluate::{Context, EvaluationColumn};
+use crate::execute::{Batch, Executor, compile};
 use crate::frame::Frame;
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_catalog::{
+    Catalog,
+    key::{EncodableKey, TableRowKey},
+    sequence::TableRowSequence,
+};
+use reifydb_core::{
+    BitVec, DataType, Line, Offset, Span, Value,
+    interface::{Tx, UnversionedStorage, VersionedStorage},
+    row::Layout,
+};
 use reifydb_rql::plan::physical::InsertPlan;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
-    pub(crate) fn insert_into_table(
+    pub(crate) fn insert(
         &mut self,
         tx: &mut impl Tx<VS, US>,
         plan: InsertPlan,
     ) -> crate::Result<Frame> {
-        let schema = plan.schema;
-        let table = plan.table;
+        let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME
 
-        todo!()
+        let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
+        let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
+            panic!("Table not found: {}", plan.table.fragment);
+        };
 
-        // match plan {
-        //     InsertPlan::Values { schema, table, columns, rows_to_insert } => {
-        //         let mut rows = Vec::with_capacity(rows_to_insert.len());
-        //
-        //         let values: Vec<DataType> = columns.iter().map(|c| c.value).collect();
-        //         let layout = Layout::new(&values);
-        //
-        //         for row_to_insert in rows_to_insert {
-        //             let mut row = layout.allocate_row();
-        //
-        //             for (idx, expr) in row_to_insert.into_iter().enumerate() {
-        //                 let column = &columns[idx];
-        //
-        //                 let context = Context {
-        //                     column: Some(EvaluationColumn {
-        //                         name: Some(column.name.clone()),
-        //                         data_type: Some(column.value),
-        //                         policies: column
-        //                             .policies
-        //                             .iter()
-        //                             .map(|cp| cp.policy.clone())
-        //                             .collect(),
-        //                     }),
-        //                     mask: BitVec::empty(),
-        //                     columns: Vec::new(),
-        //                     row_count: 1,
-        //                     take: None,
-        //                 };
-        //
-        //                 // let span = expr.span().clone();
-        //                 let lazy_span = expr.lazy_span();
-        //                 match &expr {
-        //                     expr => {
-        //                         let cvs = evaluate(expr, &context)?.values;
-        //                         match cvs.len() {
-        //                             1 => {
-        //                                 // FIXME ensure its the right value
-        //                                 let r =
-        //                                     cvs.adjust_column(column.value, &context, &lazy_span)?;
-        //
-        //                                 match r.get(0) {
-        //                                     Value::Bool(v) => layout.set_bool(&mut row, idx, v),
-        //                                     Value::Float4(v) => layout.set_f32(&mut row, idx, *v),
-        //                                     Value::Float8(v) => layout.set_f64(&mut row, idx, *v),
-        //                                     Value::Int1(v) => layout.set_i8(&mut row, idx, v),
-        //                                     Value::Int2(v) => layout.set_i16(&mut row, idx, v),
-        //                                     Value::Int4(v) => layout.set_i32(&mut row, idx, v),
-        //                                     Value::Int8(v) => layout.set_i64(&mut row, idx, v),
-        //                                     Value::Int16(v) => layout.set_i128(&mut row, idx, v),
-        //                                     Value::Utf8(v) => layout.set_utf8(&mut row, idx, v),
-        //                                     Value::Uint1(v) => layout.set_u8(&mut row, idx, v),
-        //                                     Value::Uint2(v) => layout.set_u16(&mut row, idx, v),
-        //                                     Value::Uint4(v) => layout.set_u32(&mut row, idx, v),
-        //                                     Value::Uint8(v) => layout.set_u64(&mut row, idx, v),
-        //                                     Value::Uint16(v) => layout.set_u128(&mut row, idx, v),
-        //                                     Value::Undefined => layout.set_undefined(&mut row, idx),
-        //                                 }
-        //                             }
-        //                             _ => unimplemented!(),
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //             rows.push(row);
-        //         }
-        //
-        //         let schema = Catalog::get_schema_by_name(tx, &schema)?.unwrap();
-        //         let Some(table) = Catalog::get_table_by_name(tx, schema.id, &table.fragment)?
-        //         else {
-        //             return Err(Error::execution(table_not_found(
-        //                 table.clone(),
-        //                 &schema.name,
-        //                 &table.fragment,
-        //             )));
-        //         };
-        //
-        //         let inserted = rows.len();
-        //         for row in rows {
-        //             let row_id = TableRowSequence::next_row_id(tx, table.id)?;
-        //             tx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
-        //         }
-        //
-        //         Ok(Frame::single_row([
-        //             ("schema", Value::Utf8(schema.name)),
-        //             ("table", Value::Utf8(table.name)),
-        //             ("inserted", Value::Uint8(inserted as u64)),
-        //         ]))
-        //     }
-        // }
+        let table_types: Vec<DataType> = table.columns.iter().map(|c| c.data_type).collect();
+        let layout = Layout::new(&table_types);
+
+        // Compile the input plan into an execution node
+        let mut input_node = compile(*plan.input, tx, self.functions.clone());
+
+        let mut inserted_count = 0;
+
+        // Process all input batches using volcano iterator pattern
+        while let Some(Batch { mut frame, mask }) = input_node.next()? {
+            let row_count = frame.row_count();
+
+            // adjust all columns to the appropriate type
+            for table_column in table.columns.iter() {
+                let context = Context {
+                    column: Some(EvaluationColumn {
+                        name: Some(table_column.name.clone()),
+                        data_type: Some(table_column.data_type),
+                        policies: table_column
+                            .policies
+                            .iter()
+                            .map(|cp| cp.policy.clone())
+                            .collect(),
+                    }),
+                    mask: BitVec::empty(),
+                    columns: Vec::new(),
+                    row_count: 1,
+                    take: None,
+                };
+
+                let frame_column_values = frame.column_values(table_column.name.as_str()).unwrap();
+                frame_column_values
+                    // FIXME
+                    .adjust(table_column.data_type, context, || Span {
+                        offset: Offset(0),
+                        line: Line(2),
+                        fragment: table_column.name.clone(),
+                    })?;
+            }
+
+            for row_idx in 0..row_count {
+                if !mask.get(row_idx) {
+                    continue;
+                }
+
+                let mut row = layout.allocate_row();
+
+                // For each table column, find if it exists in the input frame
+                for (table_idx, table_column) in table.columns.iter().enumerate() {
+                    let value = if let Some(input_column) =
+                        frame.columns.iter().find(|col| col.name == table_column.name)
+                    {
+                        input_column.values.get(row_idx)
+                    } else {
+                        Value::Undefined
+                    };
+
+                    match value {
+                        Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),
+                        Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
+                        Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
+                        Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
+                        Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
+                        Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
+                        Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
+                        Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
+                        Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
+                        Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
+                        Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
+                        Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
+                        Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
+                        Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
+                        Value::Undefined => layout.set_undefined(&mut row, table_idx),
+                    }
+                }
+
+                // Insert the row into the database
+                let row_id = TableRowSequence::next_row_id(tx, table.id)?;
+                tx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
+
+                inserted_count += 1;
+            }
+        }
+
+        // Return summary frame
+        Ok(Frame::single_row([
+            ("schema", Value::Utf8(schema.name)),
+            ("table", Value::Utf8(table.name)),
+            ("inserted", Value::Uint8(inserted_count as u64)),
+        ]))
     }
 }

@@ -23,7 +23,7 @@ impl Catalog {
 
                 let policies = Catalog::list_column_policies(rx, id)?;
 
-                Ok(Some(Column { id, name, value, index, policies }))
+                Ok(Some(Column { id, name, data_type: value, index, policies }))
             }
         }
     }
@@ -65,7 +65,7 @@ mod tests {
 
             assert_eq!(result.id, 2);
             assert_eq!(result.name, "col_2");
-            assert_eq!(result.value, DataType::Int2);
+            assert_eq!(result.data_type, DataType::Int2);
         }
 
         #[test]
@@ -99,7 +99,7 @@ mod tests {
 
             assert_eq!(result.id, 3);
             assert_eq!(result.name, "col_3");
-            assert_eq!(result.value, DataType::Int4);
+            assert_eq!(result.data_type, DataType::Int4);
         }
 
         #[test]

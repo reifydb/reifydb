@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{Context, evaluate};
-use crate::execute::query::{Batch, ExecutionPlan};
+use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Column, ColumnValues, Frame, FrameLayout};
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
