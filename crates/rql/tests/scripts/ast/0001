@@ -1,11 +1,11 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-ast 'from users map id, name'
+ast 'from users map {id, name}'
 ---
 > └── From @ line 1, column 1 — "from"
 >     └── Identifier @ line 1, column 6 — "users"
 > └── Map @ line 1, column 12 — "map"
->     ├── Identifier @ line 1, column 16 — "id"
->     └── Identifier @ line 1, column 20 — "name"
+>     ├── Identifier @ line 1, column 17 — "id"
+>     └── Identifier @ line 1, column 21 — "name"
 > 
