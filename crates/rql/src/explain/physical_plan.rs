@@ -127,5 +127,11 @@ fn render_physical_plan_inner(
             };
             write_node_header(output, prefix, is_last, &label);
         }
+
+        PhysicalPlan::InlineData(physical::InlineDataNode { names, columns }) => {
+            let row_count = if columns.is_empty() { 0 } else { columns[0].len() };
+            let label = format!("InlineData columns: [{}], rows: {}", names.join(", "), row_count);
+            write_node_header(output, prefix, is_last, &label);
+        }
     }
 }

@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+ast 'from [
+      {field: 1},
+      {field: 2},
+      {field: 3},
+      {other: true}
+     ]'
+---
+> └── From @ line 1, offset 0 — "from"
+>     ├── Row (1 fields: field) @ line 2, offset 13 — "{"
+>     │   ├── Identifier @ line 2, offset 14 — "field"
+>     │   └── Literal @ line 2, offset 21 — "1"
+>     ├── Row (1 fields: field) @ line 3, offset 31 — "{"
+>     │   ├── Identifier @ line 3, offset 32 — "field"
+>     │   └── Literal @ line 3, offset 39 — "2"
+>     ├── Row (1 fields: field) @ line 4, offset 49 — "{"
+>     │   ├── Identifier @ line 4, offset 50 — "field"
+>     │   └── Literal @ line 4, offset 57 — "3"
+>     └── Row (1 fields: other) @ line 5, offset 67 — "{"
+>         ├── Identifier @ line 5, offset 68 — "other"
+>         └── Literal @ line 5, offset 75 — "true"
+> 

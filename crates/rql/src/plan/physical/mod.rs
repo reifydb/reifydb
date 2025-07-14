@@ -89,6 +89,12 @@ impl Compiler {
                 LogicalPlan::TableScan(scan) => {
                     stack.push(TableScan(TableScanNode { schema: scan.schema, table: scan.table }));
                 }
+                LogicalPlan::InlineData(inline) => {
+                    stack.push(PhysicalPlan::InlineData(InlineDataNode {
+                        names: inline.names,
+                        columns: inline.columns,
+                    }));
+                }
                 _ => unimplemented!(),
             }
         }
@@ -117,6 +123,7 @@ pub enum PhysicalPlan {
     Take(TakeNode),
     Sort(SortNode),
     Map(MapNode),
+    InlineData(InlineDataNode),
     TableScan(TableScanNode),
 }
 
@@ -183,6 +190,12 @@ pub struct SortNode {
 pub struct MapNode {
     pub input: Option<Box<PhysicalPlan>>,
     pub map: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InlineDataNode {
+    pub names: Vec<String>,
+    pub columns: Vec<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]

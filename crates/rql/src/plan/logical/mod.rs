@@ -57,6 +57,7 @@ pub enum LogicalPlan {
     Take(TakeNode),
     Order(OrderNode),
     Map(MapNode),
+    InlineData(InlineDataNode),
     TableScan(TableScanNode),
 }
 
@@ -122,6 +123,12 @@ pub struct OrderNode {
 #[derive(Debug)]
 pub struct MapNode {
     pub map: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct InlineDataNode {
+    pub names: Vec<String>,
+    pub columns: Vec<Vec<Expression>>,
 }
 
 #[derive(Debug)]

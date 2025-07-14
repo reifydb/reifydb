@@ -69,6 +69,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::Take(_)
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
+            | PhysicalPlan::InlineData(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
 
             PhysicalPlan::CreateDeferredView(_)
@@ -95,6 +96,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::Take(_)
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
+            | PhysicalPlan::InlineData(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(tx, plan),
         }
     }

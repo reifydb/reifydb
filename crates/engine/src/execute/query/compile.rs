@@ -5,7 +5,7 @@ use crate::execute::query::aggregate::AggregateNode;
 use crate::execute::query::join::LeftJoinNode;
 use crate::execute::query::sort::SortNode;
 use crate::execute::query::map::MapWithoutInputNode;
-use crate::execute::query::{ExecutionPlan, FilterNode, TakeNode, MapNode, ScanFrameNode};
+use crate::execute::query::{ExecutionPlan, FilterNode, InlineDataNode, TakeNode, MapNode, ScanFrameNode};
 use crate::frame::{Column, ColumnValues, Frame};
 use crate::function::Functions;
 use reifydb_catalog::Catalog;
@@ -55,6 +55,10 @@ pub(crate) fn compile(
             let left_node = compile(*left, rx, functions.clone());
             let right_node = compile(*right, rx, functions);
             Box::new(LeftJoinNode::new(left_node, right_node, on))
+        }
+
+        PhysicalPlan::InlineData(physical::InlineDataNode { names, columns }) => {
+            Box::new(InlineDataNode::new(names, columns).expect("Failed to create InlineDataNode"))
         }
 
         PhysicalPlan::TableScan(physical::TableScanNode { schema, table }) => {
@@ -117,3 +121,4 @@ pub(crate) fn compile(
         | PhysicalPlan::InsertIntoTable(_) => unreachable!(),
     }
 }
+

@@ -3,7 +3,7 @@
 
 use crate::ast::parse;
 use crate::plan::logical::{
-    AggregateNode, FilterNode, JoinLeftNode, TakeNode, LogicalPlan, OrderNode, MapNode,
+    AggregateNode, FilterNode, InlineDataNode, JoinLeftNode, TakeNode, LogicalPlan, OrderNode, MapNode,
     TableScanNode, compile_logical,
 };
 use reifydb_core::Error;
@@ -105,6 +105,21 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
                 None => table.fragment.to_string(),
             };
             output.push_str(&format!("{}{} TableScan {}\n", prefix, branch, name));
+        }
+        LogicalPlan::InlineData(InlineDataNode { names, columns }) => {
+            output.push_str(&format!("{}{} InlineData\n", prefix, branch));
+            output.push_str(&format!(
+                "{}{} columns: [{}]\n",
+                child_prefix,
+                "├──",
+                names.join(", ")
+            ));
+            output.push_str(&format!(
+                "{}{} rows: {}\n",
+                child_prefix,
+                "└──",
+                if columns.is_empty() { 0 } else { columns[0].len() }
+            ));
         }
     }
 }
