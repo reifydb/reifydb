@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-logical 'from users aggregate count(age) by name, age'
+logical 'from users aggregate count(age) by { name, age }'
 ---
 > └── TableScan users
 > └── Aggregate

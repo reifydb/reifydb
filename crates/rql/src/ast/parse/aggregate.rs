@@ -2,34 +2,63 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::Keyword;
+use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
-use crate::ast::parse::{Parser, Precedence};
+use crate::ast::parse::{Error, Parser, Precedence};
 use crate::ast::{AstAggregate, parse};
+use reifydb_diagnostic::parse::multiple_expressions_without_braces;
 
 impl Parser {
-    pub(crate) fn parse_aggregate_by(&mut self) -> parse::Result<AstAggregate> {
+    pub(crate) fn parse_aggregate(&mut self) -> parse::Result<AstAggregate> {
         let token = self.consume_keyword(Keyword::Aggregate)?;
 
         let mut projections = Vec::new();
-        loop {
-            if self.current()?.is_keyword(Keyword::By) {
-                break;
+
+        if !self.current()?.is_keyword(Keyword::By) {
+            let has_projections_braces = self.current()?.is_operator(OpenCurly);
+
+            if has_projections_braces {
+                self.advance()?; // consume opening brace
             }
 
-            projections.push(self.parse_node(Precedence::None)?);
+            loop {
+                if self.current()?.is_keyword(Keyword::By) {
+                    break;
+                }
 
-            if self.is_eof() {
-                break;
+                projections.push(self.parse_node(Precedence::None)?);
+
+                if self.is_eof() {
+                    break;
+                }
+
+                // If we have braces, look for closing brace
+                if has_projections_braces && self.current()?.is_operator(CloseCurly) {
+                    self.advance()?; // consume closing brace
+                    break;
+                }
+
+                if self.current()?.is_separator(Comma) {
+                    self.advance()?;
+                } else {
+                    break;
+                }
             }
 
-            if self.current()?.is_separator(Comma) {
-                self.advance()?;
-            } else {
-                break;
+            if projections.len() > 1 && !has_projections_braces {
+                return Err(Error::Passthrough {
+                    diagnostic: multiple_expressions_without_braces(token.span),
+                });
             }
         }
 
         let _ = self.consume_keyword(Keyword::By)?;
+
+        let has_by_braces = self.current()?.is_operator(OpenCurly);
+
+        if has_by_braces {
+            self.advance()?; // consume opening brace
+        }
 
         let mut by = Vec::new();
 
@@ -40,11 +69,23 @@ impl Parser {
                 break;
             }
 
+            // If we have braces, look for closing brace
+            if has_by_braces && self.current()?.is_operator(CloseCurly) {
+                self.advance()?; // consume closing brace
+                break;
+            }
+
             if self.current()?.is_separator(Comma) {
                 self.advance()?;
             } else {
                 break;
             }
+        }
+
+        if by.len() > 1 && !has_by_braces {
+            return Err(Error::Passthrough {
+                diagnostic: multiple_expressions_without_braces(token.span),
+            });
         }
 
         Ok(AstAggregate { token, by, map: projections })
@@ -92,7 +133,7 @@ mod tests {
         assert_eq!(aggregate.map.len(), 1);
 
         let projection = &aggregate.map[0].as_infix();
-        
+
         let min_age = projection.left.as_infix();
         let identifier = min_age.left.as_identifier();
         assert_eq!(identifier.value(), "min");
@@ -101,7 +142,7 @@ mod tests {
         let tuple = min_age.right.as_tuple();
         let identifier = tuple.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
-        
+
         assert!(matches!(projection.operator, InfixOperator::As(_)));
         let identifier = projection.right.as_identifier();
         assert_eq!(identifier.value(), "min_age");
@@ -128,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_no_projection_multiple_columns() {
-        let tokens = lex("AGGREGATE BY name,age").unwrap();
+        let tokens = lex("AGGREGATE BY {name, age}").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
 
@@ -146,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_many() {
-        let tokens = lex("AGGREGATE min(age), max(age) BY name, gender").unwrap();
+        let tokens = lex("AGGREGATE {min(age), max(age)} BY {name, gender}").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
 
@@ -178,5 +219,54 @@ mod tests {
 
         assert!(matches!(aggregate.by[1], Ast::Identifier(_)));
         assert_eq!(aggregate.by[1].value(), "gender");
+    }
+
+    #[test]
+    fn test_single_projection_with_braces() {
+        let tokens = lex("AGGREGATE {min(age)} BY name").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let aggregate = result.first_unchecked().as_aggregate_by();
+        assert_eq!(aggregate.map.len(), 1);
+
+        let projection = &aggregate.map[0].as_infix();
+        let identifier = projection.left.as_identifier();
+        assert_eq!(identifier.value(), "min");
+
+        assert_eq!(aggregate.by.len(), 1);
+        assert_eq!(aggregate.by[0].value(), "name");
+    }
+
+    #[test]
+    fn test_single_by_with_braces() {
+        let tokens = lex("AGGREGATE BY {name}").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let aggregate = result.first_unchecked().as_aggregate_by();
+        assert_eq!(aggregate.map.len(), 0);
+        assert_eq!(aggregate.by.len(), 1);
+        assert_eq!(aggregate.by[0].value(), "name");
+    }
+
+    #[test]
+    fn test_multiple_projections_without_braces_fails() {
+        let tokens = lex("AGGREGATE min(age), max(age) BY name").unwrap();
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert!(result.is_err(), "Expected error for multiple projections without braces");
+    }
+
+    #[test]
+    fn test_multiple_by_without_braces_fails() {
+        let tokens = lex("AGGREGATE BY name, age").unwrap();
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert!(result.is_err(), "Expected error for multiple BY columns without braces");
     }
 }
