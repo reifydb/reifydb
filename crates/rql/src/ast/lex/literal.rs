@@ -5,7 +5,7 @@ use crate::ast::lex::Literal::{False, Number, Text, True, Undefined};
 use crate::ast::lex::{Token, TokenKind, as_span};
 use TokenKind::Literal;
 use nom::branch::alt;
-use nom::bytes::{is_not, tag_no_case};
+use nom::bytes::tag_no_case;
 use nom::character::{char, multispace0};
 use nom::combinator::{complete, map};
 use nom::error::Error;
@@ -34,10 +34,30 @@ fn parse_boolean(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> 
     .parse(input)
 }
 
-/// Parses any text
+/// Parses text with support for both single and double quotes, allowing mixing
 fn parse_text(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let (rest, span) = delimited(char('\''), is_not("'"), char('\'')).parse(input)?;
-    Ok((rest, Token { kind: Literal(Text), span: as_span(span) }))
+    use nom::bytes::complete::take_while;
+    use nom::branch::alt;
+    
+    let parse_single_quoted = |input| {
+        let (rest, span) = delimited(
+            char('\''), 
+            take_while(|c| c != '\''), 
+            char('\'')
+        ).parse(input)?;
+        Ok((rest, Token { kind: Literal(Text), span: as_span(span) }))
+    };
+    
+    let parse_double_quoted = |input| {
+        let (rest, span) = delimited(
+            char('"'), 
+            take_while(|c| c != '"'), 
+            char('"')
+        ).parse(input)?;
+        Ok((rest, Token { kind: Literal(Text), span: as_span(span) }))
+    };
+    
+    alt((parse_single_quoted, parse_double_quoted)).parse(input)
 }
 
 /// Parses any numeric token (float, int, hex, octal, binary)
@@ -329,11 +349,38 @@ mod tests {
     }
 
     #[test]
-    fn test_text() {
+    fn test_text_single_quotes() {
         let input = LocatedSpan::new("'hello'");
         let (rest, token) = parse_literal(input).unwrap();
         assert_eq!(token.kind, Literal(Text));
         assert_eq!(&token.span.fragment, "hello");
+        assert_eq!(rest.fragment().len(), 0);
+    }
+
+    #[test]
+    fn test_text_double_quotes() {
+        let input = LocatedSpan::new("\"hello\"");
+        let (rest, token) = parse_literal(input).unwrap();
+        assert_eq!(token.kind, Literal(Text));
+        assert_eq!(&token.span.fragment, "hello");
+        assert_eq!(rest.fragment().len(), 0);
+    }
+
+    #[test]
+    fn test_text_single_quotes_with_double_inside() {
+        let input = LocatedSpan::new("'some text\"xx\"no problem'");
+        let (rest, token) = parse_literal(input).unwrap();
+        assert_eq!(token.kind, Literal(Text));
+        assert_eq!(&token.span.fragment, "some text\"xx\"no problem");
+        assert_eq!(rest.fragment().len(), 0);
+    }
+
+    #[test]
+    fn test_text_double_quotes_with_single_inside() {
+        let input = LocatedSpan::new("\"some text'xx'no problem\"");
+        let (rest, token) = parse_literal(input).unwrap();
+        assert_eq!(token.kind, Literal(Text));
+        assert_eq!(&token.span.fragment, "some text'xx'no problem");
         assert_eq!(rest.fragment().len(), 0);
     }
 
@@ -347,10 +394,62 @@ mod tests {
     }
 
     #[test]
-    fn test_text_unterminated_fails() {
+    fn test_text_double_quotes_with_trailing() {
+        let input = LocatedSpan::new("\"data\"123");
+        let (rest, token) = parse_literal(input).unwrap();
+        assert_eq!(&token.span.fragment, "data");
+        assert_eq!(*rest.fragment(), "123");
+        assert_eq!(input.offset(&rest), 6); // "data" is 6 chars
+    }
+
+    #[test]
+    fn test_text_single_unterminated_fails() {
         let input = LocatedSpan::new("'not closed");
         let result = parse_literal(input);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_text_double_unterminated_fails() {
+        let input = LocatedSpan::new("\"not closed");
+        let result = parse_literal(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_text_empty_single_quotes() {
+        let input = LocatedSpan::new("''");
+        let (rest, token) = parse_literal(input).unwrap();
+        assert_eq!(token.kind, Literal(Text));
+        assert_eq!(&token.span.fragment, "");
+        assert_eq!(rest.fragment().len(), 0);
+    }
+
+    #[test]
+    fn test_text_empty_double_quotes() {
+        let input = LocatedSpan::new("\"\"");
+        let (rest, token) = parse_literal(input).unwrap();
+        assert_eq!(token.kind, Literal(Text));
+        assert_eq!(&token.span.fragment, "");
+        assert_eq!(rest.fragment().len(), 0);
+    }
+
+    #[test]
+    fn test_text_mixed_quotes_complex() {
+        let input = LocatedSpan::new("'He said \"Hello\" and she replied \"Hi\"'");
+        let (rest, token) = parse_literal(input).unwrap();
+        assert_eq!(token.kind, Literal(Text));
+        assert_eq!(&token.span.fragment, "He said \"Hello\" and she replied \"Hi\"");
+        assert_eq!(rest.fragment().len(), 0);
+    }
+
+    #[test]
+    fn test_text_multiple_nested_quotes() {
+        let input = LocatedSpan::new("\"It's a 'nice' day, isn't it?\"");
+        let (rest, token) = parse_literal(input).unwrap();
+        assert_eq!(token.kind, Literal(Text));
+        assert_eq!(&token.span.fragment, "It's a 'nice' day, isn't it?");
+        assert_eq!(rest.fragment().len(), 0);
     }
 
     #[test]
