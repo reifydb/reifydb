@@ -13,7 +13,7 @@ impl Compiler {
                     table: table.span(),
                 }))
             }
-            AstFrom::Query { .. } => unimplemented!(),
+            AstFrom::Static { .. } => unimplemented!(),
         }
     }
 }

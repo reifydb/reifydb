@@ -26,7 +26,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
     let span = &token.span;
     let data_type = match ast {
         Ast::Aggregate(_) => "Aggregate",
-        Ast::Block(_) => "Block",
+        Ast::Row(_) => "Block",
         Ast::Cast(_) => "Cast",
         Ast::Create(_) => "Create",
         Ast::Describe(_) => "Describe",
@@ -36,7 +36,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::Infix(_) => "Infix",
         Ast::InsertIntoTable(_) => "Insert",
         Ast::Join(_) => "Join",
-        Ast::Take(_) => "Take",
+        Ast::List(_) => "List",
         Ast::Literal(_) => "Literal",
         Ast::Nop => "Nop",
         Ast::Sort(_) => "Order",
@@ -44,6 +44,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::PolicyBlock(_) => "PolicyBlock",
         Ast::Prefix(_) => "Prefix",
         Ast::Map(_) => "Map",
+        Ast::Take(_) => "Take",
         Ast::Tuple(_) => "Tuple",
         Ast::DataType(_) => "DataType",
         Ast::Wildcard(_) => "Wildcard",
@@ -59,7 +60,6 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
     let mut children: Vec<Ast> = vec![];
 
     match ast {
-        Ast::Block(b) => children.extend(b.nodes),
         Ast::Tuple(t) => children.extend(t.nodes),
         Ast::Prefix(p) => children.push(*p.node),
         Ast::Cast(c) => children.extend(c.tuple.nodes),
@@ -71,7 +71,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
                 }
                 children.push(Ast::Identifier(table));
             }
-            AstFrom::Query { query, .. } => {
+            AstFrom::Static { list: query, .. } => {
                 children.extend(query.nodes);
             }
         },

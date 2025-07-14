@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod aggregate;
-mod block;
 mod cast;
 mod create;
+mod data_type;
 mod describe;
 mod diagnostic;
 mod error;
@@ -14,14 +14,15 @@ mod identifier;
 mod infix;
 mod insert;
 mod join;
-mod data_type;
-mod take;
+mod list;
 mod literal;
-mod sort;
+mod map;
 mod policy;
 mod prefix;
 mod primary;
-mod map;
+mod row;
+mod sort;
+mod take;
 mod tuple;
 
 pub use error::*;
@@ -225,7 +226,7 @@ mod tests {
     use crate::ast::lex::Operator::Plus;
     use crate::ast::lex::Separator::Semicolon;
     use crate::ast::lex::TokenKind::{Identifier, Literal, Separator};
-    use crate::ast::lex::{lex, TokenKind};
+    use crate::ast::lex::{TokenKind, lex};
     use crate::ast::parse::Error::UnexpectedEndOfFile;
     use crate::ast::parse::Precedence::Term;
     use crate::ast::parse::{Error, Parser, Precedence};

@@ -26,7 +26,9 @@ impl Parser {
             TokenKind::Operator(operator) => match operator {
                 Operator::Plus | Operator::Minus | Operator::Bang => self.parse_prefix(),
                 Operator::Asterisk => Ok(Ast::Wildcard(AstWildcard(self.advance()?))),
+                Operator::OpenBracket => Ok(Ast::List(self.parse_list()?)),
                 Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
+                Operator::OpenCurly => Ok(Ast::Row(self.parse_row()?)),
                 _ => Err(Error::unsupported(self.advance()?)),
             },
             TokenKind::Keyword(keyword) => match keyword {

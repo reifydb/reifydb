@@ -2,17 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::ast::AstFrom;
-use crate::ast::lex::Operator::OpenParen;
-use crate::ast::lex::{Keyword, Operator};
-use crate::ast::parse;
+use crate::ast::lex::Operator::{CloseBracket, OpenBracket};
+use crate::ast::lex::{Keyword, Operator, Separator};
 use crate::ast::parse::Parser;
+use crate::ast::{Ast, AstList, TokenKind, parse};
 
 impl Parser {
     pub(crate) fn parse_from(&mut self) -> parse::Result<AstFrom> {
         let token = self.consume_keyword(Keyword::From)?;
 
-        if self.current()?.is_operator(OpenParen) {
-            Ok(AstFrom::Query { token, query: self.parse_block()? })
+        if self.current()?.is_operator(OpenBracket) {
+            Ok(AstFrom::Static { token, list: self.parse_static()? })
         } else {
             let identifier = self.parse_identifier()?;
 
@@ -26,6 +26,25 @@ impl Parser {
 
             Ok(AstFrom::Table { token, schema, table })
         }
+    }
+
+    pub(crate) fn parse_static(&mut self) -> parse::Result<AstList> {
+        let token = self.consume_operator(OpenBracket)?;
+
+        let mut nodes = Vec::new();
+        loop {
+            self.skip_new_line()?;
+
+            if self.current()?.is_operator(CloseBracket) {
+                break;
+            }
+            nodes.push(Ast::Row(self.parse_row()?));
+
+            self.consume_if(TokenKind::Separator(Separator::Comma))?;
+        }
+
+        self.consume_operator(CloseBracket)?;
+        Ok(AstList { token, nodes })
     }
 }
 
@@ -50,7 +69,7 @@ mod tests {
                 assert_eq!(schema.as_ref().unwrap().value(), "reifydb");
                 assert_eq!(table.value(), "users");
             }
-            AstFrom::Query { .. } => unreachable!(),
+            AstFrom::Static { .. } => unreachable!(),
         }
     }
 
@@ -69,13 +88,13 @@ mod tests {
                 assert_eq!(schema, &None);
                 assert_eq!(table.value(), "users");
             }
-            AstFrom::Query { .. } => unreachable!(),
+            AstFrom::Static { .. } => unreachable!(),
         }
     }
 
     #[test]
-    fn test_from_block() {
-        let tokens = lex("FROM ( FROM reifydb.users MAP name )").unwrap();
+    fn test_from_static_empty() {
+        let tokens = lex("FROM []").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -85,23 +104,90 @@ mod tests {
 
         match from {
             AstFrom::Table { .. } => unreachable!(),
-            AstFrom::Query { query, .. } => {
+            AstFrom::Static { list: query, .. } => {
                 let block = query;
-                assert_eq!(block.len(), 2);
+                assert_eq!(block.len(), 0);
+            }
+        }
+    }
 
-                let from = block[0].as_from();
-                match from {
-                    AstFrom::Table { table, schema, .. } => {
-                        assert_eq!(schema.as_ref().unwrap().value(), "reifydb");
-                        assert_eq!(table.value(), "users");
-                    }
-                    AstFrom::Query { .. } => unreachable!(),
-                }
+    #[test]
+    fn test_from_static() {
+        let tokens = lex("FROM [ { key: 'value' }]").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
 
-                let map = block[1].as_map();
-                assert_eq!(map.map.len(), 1);
-                let column = map.map[0].as_identifier();
-                assert_eq!(column.value(), "name");
+        let result = result.pop().unwrap();
+        let from = result.first_unchecked().as_from();
+
+        match from {
+            AstFrom::Table { .. } => unreachable!(),
+            AstFrom::Static { list, .. } => {
+                assert_eq!(list.len(), 1);
+
+                let row = list[0].as_row();
+                assert_eq!(row.fields.len(), 1);
+
+                assert_eq!(row.fields[0].key.value(), "key");
+                assert_eq!(row.fields[0].value.as_literal_text().value(), "value");
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_static_multiple() {
+        let tokens = lex("FROM [ { key: 'value' },\
+        { key: 'value2' }\
+        ]").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let from = result.first_unchecked().as_from();
+
+        match from {
+            AstFrom::Table { .. } => unreachable!(),
+            AstFrom::Static { list, .. } => {
+                assert_eq!(list.len(), 2);
+
+                let row = list[0].as_row();
+                assert_eq!(row.fields.len(), 1);
+
+                assert_eq!(row.fields[0].key.value(), "key");
+                assert_eq!(row.fields[0].value.as_literal_text().value(), "value");
+
+                let row = list[1].as_row();
+                assert_eq!(row.fields.len(), 1);
+
+                assert_eq!(row.fields[0].key.value(), "key");
+                assert_eq!(row.fields[0].value.as_literal_text().value(), "value2");
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_static_trailing_comma() {
+        let tokens = lex("FROM [ { key: 'value' }, ]").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let from = result.first_unchecked().as_from();
+
+        match from {
+            AstFrom::Table { .. } => unreachable!(),
+            AstFrom::Static { list, .. } => {
+                assert_eq!(list.len(), 1);
+
+                let row = list[0].as_row();
+                assert_eq!(row.fields.len(), 1);
+
+                assert_eq!(row.fields[0].key.value(), "key");
+                assert_eq!(row.fields[0].value.as_literal_text().value(), "value");
+
             }
         }
     }
