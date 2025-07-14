@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-physical 'from users left join orders on users.id == orders.user_id'
+physical 'from users left join { with orders on users.id == orders.user_id }'
 ---
 > └── Join(Left) on: [(users.id == orders.user_id)]
 >     ├── TableScan users

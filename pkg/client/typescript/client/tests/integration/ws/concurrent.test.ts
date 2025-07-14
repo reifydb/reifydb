@@ -47,7 +47,7 @@ describe('Concurrent requests', () => {
                     'MAP 1 as result;'
                 ),
                 wsClient.tx<[{ a: number, b: number }]>(
-                    'MAP 2 as a, 3 as b;'
+                    'MAP { 2 as a, 3 as b };'
                 ),
                 wsClient.tx<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"
@@ -69,7 +69,7 @@ describe('Concurrent requests', () => {
                     'MAP 1 as result;'
                 ),
                 wsClient.rx<[{ a: number, b: number }]>(
-                    'MAP 2 as a, 3 as b;'
+                    'MAP { 2 as a, 3 as b };'
                 ),
                 wsClient.rx<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"
@@ -90,7 +90,7 @@ describe('Concurrent requests', () => {
                     'MAP 1 as result;'
                 ),
                 wsClient.rx<[{ a: number, b: number }]>(
-                    'MAP 2 as a, 3 as b;'
+                    'MAP { 2 as a, 3 as b };'
                 ),
                 wsClient.tx<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"

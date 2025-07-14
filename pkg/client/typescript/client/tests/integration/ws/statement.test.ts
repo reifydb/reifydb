@@ -120,7 +120,7 @@ describe('Statement', () => {
                 { result: string },
             ]>(
                 'MAP 1 as result;' +
-                'MAP 2 as a, 3 as b;' +
+                'MAP { 2 as a, 3 as b };' +
                 "MAP 'ReifyDB' as result;"
             );
 
@@ -220,7 +220,7 @@ describe('Statement', () => {
                 { result: string },
             ]>(
                 'MAP 1 as result;' +
-                'MAP 2 as a, 3 as b;' +
+                'MAP { 2 as a, 3 as b } ;' +
                 "MAP 'ReifyDB' as result;"
             );
 
