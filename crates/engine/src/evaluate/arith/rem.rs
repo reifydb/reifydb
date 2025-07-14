@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{FrameColumn, ColumnValues, Push};
 use reifydb_core::Span;
 use reifydb_core::num::{IsNumber, Promote, SafeRemainder};
-use reifydb_core::{CowVec, DataType, GetKind};
+use reifydb_core::{CowVec, DataType, GetDataType};
 use reifydb_rql::expression::RemExpression;
 
 impl Evaluator {
@@ -498,8 +498,8 @@ fn rem_numeric<L, R>(
     span: Span,
 ) -> crate::evaluate::Result<FrameColumn>
 where
-    L: GetKind + Promote<R> + Copy,
-    R: GetKind + IsNumber + Copy,
+    L: GetDataType + Promote<R> + Copy,
+    R: GetDataType + IsNumber + Copy,
     <L as Promote<R>>::Output: IsNumber,
     <L as Promote<R>>::Output: SafeRemainder,
     ColumnValues: Push<<L as Promote<R>>::Output>,

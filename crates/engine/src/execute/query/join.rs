@@ -22,8 +22,7 @@ impl LeftJoinNode {
     fn load_and_merge_all(node: &mut Box<dyn ExecutionPlan>) -> crate::Result<Frame> {
         let mut result: Option<Frame> = None;
 
-        while let Some(Batch { mut frame, mask }) = node.next()? {
-            frame.filter(&mask)?;
+        while let Some(Batch { frame, mask: _ }) = node.next()? {
             if let Some(mut acc) = result.take() {
                 acc.append_frame(frame)?;
                 result = Some(acc);

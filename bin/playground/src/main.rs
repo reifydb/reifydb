@@ -50,16 +50,24 @@ fn main() {
         .unwrap();
     println!("{}", l.first().unwrap());
 
+    // Test simple filter without map
+    let l2 = db
+        .tx_as(
+            &root,
+            r#"from test.edge_cases filter id > 4"#,
+        )
+        .unwrap();
+    println!("Filter test (id > 4):");
+    println!("{}", l2.first().unwrap());
 
-    // let l = db
-    //     .tx_as(
-    //         &root,
-    //         r#"
-    //         from [{x: 1}, {x: 2, y: 3}, {x: 4, y: 5, z: 6}]
-    //     "#,
-    //     )
-    //     .unwrap();
-    //
-    // println!("{}", l.first().unwrap());
+    // Test map without filter  
+    let l3 = db
+        .tx_as(
+            &root,
+            r#"from test.edge_cases map content"#,
+        )
+        .unwrap();
+    println!("Map test (content column):");
+    println!("{}", l3.first().unwrap());
 
 }

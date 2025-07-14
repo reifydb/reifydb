@@ -11,7 +11,7 @@ pub use cowvec::CowVec;
 pub use diagnostic::{Diagnostic, DiagnosticColumn};
 pub use error::Error;
 pub use key::{EncodedKey, EncodedKeyRange};
-pub use data_type::{GetKind, DataType};
+pub use data_type::{GetDataType, DataType};
 pub use sort::{SortDirection, SortKey};
 pub use retry::retry;
 pub use span::{IntoSpan, SpanLine, SpanColumn, Span};

@@ -5,7 +5,7 @@ use crate::DataType;
 use std::cmp::min;
 
 impl DataType {
-    /// Promote two ValueKinds to a common supertype, similar to PostgreSQL expression evaluation.
+    /// Promote two DataTypes to a common supertype, similar to Postgres expression evaluation.
     pub fn promote(left: DataType, right: DataType) -> DataType {
         use DataType::*;
 

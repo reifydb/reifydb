@@ -3,89 +3,89 @@
 
 use crate::DataType;
 
-pub trait GetKind {
+pub trait GetDataType {
     fn data_type(&self) -> DataType;
 }
 
-impl GetKind for bool {
+impl GetDataType for bool {
     fn data_type(&self) -> DataType {
         DataType::Bool
     }
 }
 
-impl GetKind for f32 {
+impl GetDataType for f32 {
     fn data_type(&self) -> DataType {
         DataType::Float4
     }
 }
 
-impl GetKind for f64 {
+impl GetDataType for f64 {
     fn data_type(&self) -> DataType {
         DataType::Float8
     }
 }
 
-impl GetKind for i8 {
+impl GetDataType for i8 {
     fn data_type(&self) -> DataType {
         DataType::Int1
     }
 }
 
-impl GetKind for i16 {
+impl GetDataType for i16 {
     fn data_type(&self) -> DataType {
         DataType::Int2
     }
 }
 
-impl GetKind for i32 {
+impl GetDataType for i32 {
     fn data_type(&self) -> DataType {
         DataType::Int4
     }
 }
 
-impl GetKind for i64 {
+impl GetDataType for i64 {
     fn data_type(&self) -> DataType {
         DataType::Int8
     }
 }
 
-impl GetKind for i128 {
+impl GetDataType for i128 {
     fn data_type(&self) -> DataType {
         DataType::Int16
     }
 }
 
-impl GetKind for String {
+impl GetDataType for String {
     fn data_type(&self) -> DataType {
         DataType::Utf8
     }
 }
 
-impl GetKind for u8 {
+impl GetDataType for u8 {
     fn data_type(&self) -> DataType {
         DataType::Uint1
     }
 }
 
-impl GetKind for u16 {
+impl GetDataType for u16 {
     fn data_type(&self) -> DataType {
         DataType::Uint2
     }
 }
 
-impl GetKind for u32 {
+impl GetDataType for u32 {
     fn data_type(&self) -> DataType {
         DataType::Uint4
     }
 }
 
-impl GetKind for u64 {
+impl GetDataType for u64 {
     fn data_type(&self) -> DataType {
         DataType::Uint8
     }
 }
 
-impl GetKind for u128 {
+impl GetDataType for u128 {
     fn data_type(&self) -> DataType {
         DataType::Uint16
     }
