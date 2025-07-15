@@ -13,7 +13,7 @@ const UNDEFINED_VALUE = "⟪undefined⟫";
 describe('decodeValue', () => {
     describe('undefined value handling', () => {
         it('should return undefined for ⟪undefined⟫ regardless of type', () => {
-            const data_types: DataType[] = ['Bool', 'Float4', 'Int1', 'Utf8', 'Undefined'];
+            const data_types: DataType[] = ['Bool', 'Float4', 'Int1', 'Utf8', 'Date', 'DateTime', 'Time', 'Interval', 'Undefined'];
 
             data_types.forEach(data_type => {
                 expect(decodeValue(data_type, UNDEFINED_VALUE)).toBeUndefined();
@@ -171,6 +171,131 @@ describe('decodeValue', () => {
             expect(decodeValue('Utf8', '👨‍💻🌟')).toBe('👨‍💻🌟');
             expect(decodeValue('Utf8', 'café')).toBe('café');
             expect(decodeValue('Utf8', '中文')).toBe('中文');
+        });
+    });
+
+    describe('Date type', () => {
+        it('should convert date strings to Date objects', () => {
+            expect(decodeValue('Date', '2024-03-15')).toEqual(new Date('2024-03-15'));
+            expect(decodeValue('Date', '2000-01-01')).toEqual(new Date('2000-01-01'));
+            expect(decodeValue('Date', '2024-12-31')).toEqual(new Date('2024-12-31'));
+        });
+
+        it('should handle edge cases', () => {
+            expect(decodeValue('Date', '1970-01-01')).toEqual(new Date('1970-01-01'));
+            expect(decodeValue('Date', '2024-02-29')).toEqual(new Date('2024-02-29')); // Leap year
+        });
+    });
+
+    describe('DateTime type', () => {
+        it('should convert datetime strings to Date objects', () => {
+            expect(decodeValue('DateTime', '2024-03-15T14:30:00.000000000Z')).toEqual(new Date('2024-03-15T14:30:00.000000000Z'));
+            expect(decodeValue('DateTime', '2000-01-01T00:00:00.000000000Z')).toEqual(new Date('2000-01-01T00:00:00.000000000Z'));
+            expect(decodeValue('DateTime', '2024-12-31T23:59:59.999999999Z')).toEqual(new Date('2024-12-31T23:59:59.999999999Z'));
+        });
+
+        it('should handle different datetime formats', () => {
+            expect(decodeValue('DateTime', '2024-03-15T14:30:00Z')).toEqual(new Date('2024-03-15T14:30:00Z'));
+            expect(decodeValue('DateTime', '2024-03-15T14:30:00.123456789Z')).toEqual(new Date('2024-03-15T14:30:00.123456789Z'));
+        });
+    });
+
+    describe('Time type', () => {
+        it('should convert time strings to Date objects with today\'s date', () => {
+            const result = decodeValue('Time', '14:30:00.000000000') as Date;
+            expect(result).toBeInstanceOf(Date);
+            expect(result.getHours()).toBe(14);
+            expect(result.getMinutes()).toBe(30);
+            expect(result.getSeconds()).toBe(0);
+            expect(result.getMilliseconds()).toBe(0);
+        });
+
+        it('should handle time with nanoseconds', () => {
+            const result = decodeValue('Time', '14:30:00.123456789') as Date;
+            expect(result).toBeInstanceOf(Date);
+            expect(result.getHours()).toBe(14);
+            expect(result.getMinutes()).toBe(30);
+            expect(result.getSeconds()).toBe(0);
+            expect(result.getMilliseconds()).toBe(123); // Only milliseconds precision in JS
+        });
+
+        it('should handle edge cases', () => {
+            const midnight = decodeValue('Time', '00:00:00.000000000') as Date;
+            expect(midnight.getHours()).toBe(0);
+            expect(midnight.getMinutes()).toBe(0);
+            expect(midnight.getSeconds()).toBe(0);
+
+            const almostMidnight = decodeValue('Time', '23:59:59.999999999') as Date;
+            expect(almostMidnight.getHours()).toBe(23);
+            expect(almostMidnight.getMinutes()).toBe(59);
+            expect(almostMidnight.getSeconds()).toBe(59);
+            expect(almostMidnight.getMilliseconds()).toBe(999);
+        });
+    });
+
+    describe('Interval type', () => {
+        it('should convert duration strings to nanoseconds as BigInt', () => {
+            // 1 day = 24 * 60 * 60 * 1_000_000_000 nanos
+            expect(decodeValue('Interval', 'P1D')).toBe(BigInt(24 * 60 * 60 * 1_000_000_000));
+            
+            // 2 hours 30 minutes = (2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
+            expect(decodeValue('Interval', 'PT2H30M')).toBe(BigInt((2 * 60 * 60 + 30 * 60) * 1_000_000_000));
+            
+            // 1 hour = 60 * 60 * 1_000_000_000 nanos
+            expect(decodeValue('Interval', 'PT1H')).toBe(BigInt(60 * 60 * 1_000_000_000));
+            
+            // 30 minutes = 30 * 60 * 1_000_000_000 nanos
+            expect(decodeValue('Interval', 'PT30M')).toBe(BigInt(30 * 60 * 1_000_000_000));
+            
+            // 45 seconds = 45 * 1_000_000_000 nanos
+            expect(decodeValue('Interval', 'PT45S')).toBe(BigInt(45 * 1_000_000_000));
+        });
+
+        it('should handle complex intervals', () => {
+            // 1 day + 2 hours + 30 minutes = (24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
+            const expected = BigInt((24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000);
+            expect(decodeValue('Interval', 'P1DT2H30M')).toBe(expected);
+        });
+
+        it('should handle date-only intervals', () => {
+            // 1 year (approximate) = 365 * 24 * 60 * 60 * 1_000_000_000 nanos
+            expect(decodeValue('Interval', 'P1Y')).toBe(BigInt(365 * 24 * 60 * 60 * 1_000_000_000));
+            
+            // 1 month (approximate) = 30 * 24 * 60 * 60 * 1_000_000_000 nanos
+            expect(decodeValue('Interval', 'P1M')).toBe(BigInt(30 * 24 * 60 * 60 * 1_000_000_000));
+            
+            // 1 week = 7 * 24 * 60 * 60 * 1_000_000_000 nanos
+            expect(decodeValue('Interval', 'P1W')).toBe(BigInt(7 * 24 * 60 * 60 * 1_000_000_000));
+        });
+
+        it('should handle time-only intervals', () => {
+            // 1 hour 30 minutes 45 seconds = (1 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 nanos
+            const expected = BigInt((60 * 60 + 30 * 60 + 45) * 1_000_000_000);
+            expect(decodeValue('Interval', 'PT1H30M45S')).toBe(expected);
+        });
+
+        it('should handle edge cases', () => {
+            // Complex interval with all components
+            const complex = 'P1Y2M3DT4H5M6S';
+            const expectedNanos = BigInt(
+                365 * 24 * 60 * 60 * 1_000_000_000 +     // 1 year
+                2 * 30 * 24 * 60 * 60 * 1_000_000_000 +  // 2 months
+                3 * 24 * 60 * 60 * 1_000_000_000 +       // 3 days
+                4 * 60 * 60 * 1_000_000_000 +            // 4 hours
+                5 * 60 * 1_000_000_000 +                 // 5 minutes
+                6 * 1_000_000_000                        // 6 seconds
+            );
+            expect(decodeValue('Interval', complex)).toBe(expectedNanos);
+        });
+
+        it('should throw error for invalid interval format', () => {
+            expect(() => decodeValue('Interval', 'invalid')).toThrow('Invalid interval format - must start with P');
+            expect(() => decodeValue('Interval', 'P1X')).toThrow('Invalid character in interval: X');
+            expect(() => decodeValue('Interval', 'P1TY')).toThrow('Years not allowed in time part');
+            expect(() => decodeValue('Interval', 'P1TW')).toThrow('Weeks not allowed in time part');
+            expect(() => decodeValue('Interval', 'P1TD')).toThrow('Days not allowed in time part');
+            expect(() => decodeValue('Interval', 'P1H')).toThrow('Hours only allowed in time part');
+            expect(() => decodeValue('Interval', 'P1S')).toThrow('Seconds only allowed in time part');
         });
     });
 

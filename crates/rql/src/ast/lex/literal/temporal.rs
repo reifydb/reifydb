@@ -48,17 +48,38 @@ fn parse_date(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpa
 }
 
 fn parse_time(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpan<&str>> {
+    use nom::combinator::opt;
+    use nom::branch::alt;
+    
     recognize((
         take_while1(|c: char| c.is_ascii_digit()), // hour
         char(':'),
         take_while1(|c: char| c.is_ascii_digit()), // minute
         char(':'),
         take_while1(|c: char| c.is_ascii_digit()), // second
+        // Optional fractional seconds
+        opt((
+            char('.'),
+            take_while1(|c: char| c.is_ascii_digit()), // fractional seconds
+        )),
+        // Optional timezone indicator
+        opt(alt((
+            tag("Z"),
+            recognize((
+                alt((char('+'), char('-'))),
+                take_while1(|c: char| c.is_ascii_digit()), // timezone hours
+                char(':'),
+                take_while1(|c: char| c.is_ascii_digit()), // timezone minutes
+            )),
+        ))),
     ))
     .parse(input)
 }
 
 fn parse_datetime(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpan<&str>> {
+    use nom::combinator::opt;
+    use nom::branch::alt;
+    
     recognize((
         take_while1(|c: char| c.is_ascii_digit()), // year
         char('-'),
@@ -71,6 +92,21 @@ fn parse_datetime(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Locate
         take_while1(|c: char| c.is_ascii_digit()), // minute
         char(':'),
         take_while1(|c: char| c.is_ascii_digit()), // second
+        // Optional fractional seconds
+        opt((
+            char('.'),
+            take_while1(|c: char| c.is_ascii_digit()), // fractional seconds
+        )),
+        // Optional timezone indicator
+        opt(alt((
+            tag("Z"),
+            recognize((
+                alt((char('+'), char('-'))),
+                take_while1(|c: char| c.is_ascii_digit()), // timezone hours
+                char(':'),
+                take_while1(|c: char| c.is_ascii_digit()), // timezone minutes
+            )),
+        ))),
     ))
     .parse(input)
 }
@@ -184,6 +220,15 @@ mod tests {
             ("@00:00:00", true),
             ("@1:2:3", true), // single digits
             ("@12:34:56", true),
+            ("@14:30:00.123", true), // milliseconds
+            ("@14:30:00.123456", true), // microseconds
+            ("@14:30:00.123456789", true), // nanoseconds
+            ("@14:30:00Z", true), // with timezone
+            ("@14:30:00.123Z", true), // milliseconds with timezone
+            ("@14:30:00.123456Z", true), // microseconds with timezone
+            ("@14:30:00.123456789Z", true), // nanoseconds with timezone
+            ("@14:30:00+05:30", true), // positive timezone offset
+            ("@14:30:00-08:00", true), // negative timezone offset
         ];
 
         for (input, should_parse) in cases {
@@ -208,6 +253,15 @@ mod tests {
             ("@2000-01-01T00:00:00", true),
             ("@1999-02-28T12:34:56", true),
             ("@2024-3-15T1:2:3", true), // single digits
+            ("@2024-03-15T14:30:00Z", true), // with timezone
+            ("@2024-03-15T14:30:00.123Z", true), // milliseconds with timezone
+            ("@2024-03-15T14:30:00.123456Z", true), // microseconds with timezone
+            ("@2024-03-15T14:30:00.123456789Z", true), // nanoseconds with timezone
+            ("@2024-03-15T14:30:00.123", true), // milliseconds without timezone
+            ("@2024-03-15T14:30:00.123456", true), // microseconds without timezone
+            ("@2024-03-15T14:30:00.123456789", true), // nanoseconds without timezone
+            ("@2024-03-15T14:30:00+05:30", true), // positive timezone offset
+            ("@2024-03-15T14:30:00-08:00", true), // negative timezone offset
         ];
 
         for (input, should_parse) in cases {

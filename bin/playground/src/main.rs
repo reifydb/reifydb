@@ -8,6 +8,9 @@
 
 use reifydb::{ReifyDB, memory, serializable};
 
+// FIXME to test later
+// map @2024-03-15T14:30:00.123456789Z as result;
+
 fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
 
@@ -28,6 +31,7 @@ fn main() {
             r#"
   from [
     { col: @2025-07-15  },
+    { col: @2023-11-23  },
   ] insert test.abc
         "#,
         )
@@ -39,7 +43,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            from test.abc
+            map @P1DT2H30M as result;
         "#,
         )
         .unwrap();

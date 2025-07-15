@@ -10,6 +10,7 @@ export type DataType =
     | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
     | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"
     | "Utf8"
+    | "Date" | "DateTime" | "Time" | "Interval"
     | "Undefined";
 
 export interface WebsocketFrame {

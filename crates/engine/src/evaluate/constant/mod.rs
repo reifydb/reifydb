@@ -312,14 +312,14 @@ impl Evaluator {
 
     fn parse_datetime(span: &Span) -> evaluate::Result<DateTime> {
         let fragment = &span.fragment;
-        // Parse datetime in format YYYY-MM-DDTHH:MM:SS
+        // Parse datetime in format YYYY-MM-DDTHH:MM:SS[.sss[sss[sss]]][Z|±HH:MM]
         let parts: Vec<&str> = fragment.split('T').collect();
         if parts.len() != 2 {
             panic!("Invalid datetime format");
         }
 
         let date_part = parts[0];
-        let time_part = parts[1];
+        let mut time_part = parts[1].to_string();
 
         // Parse date part
         let date_parts: Vec<&str> = date_part.split('-').collect();
@@ -331,7 +331,20 @@ impl Evaluator {
         let month = date_parts[1].parse::<u32>().unwrap_or_else(|_| panic!("Invalid month"));
         let day = date_parts[2].parse::<u32>().unwrap_or_else(|_| panic!("Invalid day"));
 
-        // Parse time part
+        // Remove timezone indicator if present
+        if time_part.ends_with('Z') {
+            time_part = time_part[..time_part.len() - 1].to_string();
+        } else if time_part.contains('+') || time_part.rfind('-').map_or(false, |pos| pos > 0) {
+            // Find timezone offset (+ or - that's not at the start)
+            let tz_pos = time_part.find('+').or_else(|| {
+                time_part.rfind('-').filter(|&pos| pos > 0)
+            });
+            if let Some(pos) = tz_pos {
+                time_part = time_part[..pos].to_string();
+            }
+        }
+
+        // Parse time part (HH:MM:SS[.sss[sss[sss]]])
         let time_parts: Vec<&str> = time_part.split(':').collect();
         if time_parts.len() != 3 {
             panic!("Invalid time format in datetime");
@@ -339,25 +352,88 @@ impl Evaluator {
 
         let hour = time_parts[0].parse::<u32>().unwrap_or_else(|_| panic!("Invalid hour"));
         let minute = time_parts[1].parse::<u32>().unwrap_or_else(|_| panic!("Invalid minute"));
-        let second = time_parts[2].parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
+        
+        // Parse seconds and optional fractional seconds
+        let seconds_with_fraction = time_parts[2];
+        let (second, nanosecond) = if seconds_with_fraction.contains('.') {
+            let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
+            if second_parts.len() != 2 {
+                panic!("Invalid fractional seconds format");
+            }
+            
+            let second = second_parts[0].parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
+            let fraction_str = second_parts[1];
+            
+            // Pad or truncate fractional seconds to 9 digits (nanoseconds)
+            let padded_fraction = if fraction_str.len() < 9 {
+                format!("{:0<9}", fraction_str)
+            } else {
+                fraction_str[..9].to_string()
+            };
+            
+            let nanosecond = padded_fraction.parse::<u32>().unwrap_or_else(|_| panic!("Invalid fractional seconds"));
+            (second, nanosecond)
+        } else {
+            let second = seconds_with_fraction.parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
+            (second, 0)
+        };
 
-        Ok(DateTime::new(year, month, day, hour, minute, second, 0)
+        Ok(DateTime::new(year, month, day, hour, minute, second, nanosecond)
             .unwrap_or_else(|| panic!("Invalid datetime")))
     }
 
     fn parse_time(span: &Span) -> evaluate::Result<Time> {
         let fragment = &span.fragment;
-        // Parse time in format HH:MM:SS
-        let parts: Vec<&str> = fragment.split(':').collect();
+        // Parse time in format HH:MM:SS[.sss[sss[sss]]][Z|±HH:MM]
+        let mut time_str = fragment.clone();
+
+        // Remove timezone indicator if present
+        if time_str.ends_with('Z') {
+            time_str = time_str[..time_str.len() - 1].to_string();
+        } else if time_str.contains('+') || time_str.rfind('-').map_or(false, |pos| pos > 0) {
+            // Find timezone offset (+ or - that's not at the start)
+            let tz_pos = time_str.find('+').or_else(|| {
+                time_str.rfind('-').filter(|&pos| pos > 0)
+            });
+            if let Some(pos) = tz_pos {
+                time_str = time_str[..pos].to_string();
+            }
+        }
+
+        let parts: Vec<&str> = time_str.split(':').collect();
         if parts.len() != 3 {
             panic!("Invalid time format");
         }
 
         let hour = parts[0].parse::<u32>().unwrap_or_else(|_| panic!("Invalid hour"));
         let minute = parts[1].parse::<u32>().unwrap_or_else(|_| panic!("Invalid minute"));
-        let second = parts[2].parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
+        
+        // Parse seconds and optional fractional seconds
+        let seconds_with_fraction = parts[2];
+        let (second, nanosecond) = if seconds_with_fraction.contains('.') {
+            let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
+            if second_parts.len() != 2 {
+                panic!("Invalid fractional seconds format");
+            }
+            
+            let second = second_parts[0].parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
+            let fraction_str = second_parts[1];
+            
+            // Pad or truncate fractional seconds to 9 digits (nanoseconds)
+            let padded_fraction = if fraction_str.len() < 9 {
+                format!("{:0<9}", fraction_str)
+            } else {
+                fraction_str[..9].to_string()
+            };
+            
+            let nanosecond = padded_fraction.parse::<u32>().unwrap_or_else(|_| panic!("Invalid fractional seconds"));
+            (second, nanosecond)
+        } else {
+            let second = seconds_with_fraction.parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
+            (second, 0)
+        };
 
-        Ok(Time::new(hour, minute, second, 0).unwrap_or_else(|| panic!("Invalid time")))
+        Ok(Time::new(hour, minute, second, nanosecond).unwrap_or_else(|| panic!("Invalid time")))
     }
 
     fn parse_interval(span: &Span) -> evaluate::Result<Interval> {
