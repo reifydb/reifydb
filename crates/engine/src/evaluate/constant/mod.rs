@@ -1,12 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod date;
+mod datetime;
+mod interval;
+mod time;
+
 use crate::evaluate;
+use crate::evaluate::constant::date::parse_date;
+use crate::evaluate::constant::datetime::parse_datetime;
+use crate::evaluate::constant::interval::parse_interval;
+use crate::evaluate::constant::time::parse_time;
 use crate::evaluate::{Error, EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::num::parse_float;
 use reifydb_core::{DataType, Span};
-use reifydb_core::{Date, DateTime, Interval, Time};
 use reifydb_diagnostic::r#type::{OutOfRange, out_of_range};
 use reifydb_rql::expression::ConstantExpression;
 
@@ -233,18 +241,17 @@ impl Evaluator {
             (ConstantExpression::Text { span }, DataType::Utf8) => {
                 ColumnValues::utf8(std::iter::repeat(span.fragment.clone()).take(row_count))
             }
-
             (ConstantExpression::Temporal { span }, DataType::Date) => {
-                ColumnValues::date(vec![Self::parse_date(span)?; row_count])
+                ColumnValues::date(vec![parse_date(span)?; row_count])
             }
             (ConstantExpression::Temporal { span }, DataType::DateTime) => {
-                ColumnValues::datetime(vec![Self::parse_datetime(span)?; row_count])
+                ColumnValues::datetime(vec![parse_datetime(span)?; row_count])
             }
             (ConstantExpression::Temporal { span }, DataType::Time) => {
-                ColumnValues::time(vec![Self::parse_time(span)?; row_count])
+                ColumnValues::time(vec![parse_time(span)?; row_count])
             }
             (ConstantExpression::Temporal { span }, DataType::Interval) => {
-                ColumnValues::interval(vec![Self::parse_interval(span)?; row_count])
+                ColumnValues::interval(vec![parse_interval(span)?; row_count])
             }
 
             (ConstantExpression::Undefined { .. }, _) => ColumnValues::Undefined(row_count),
@@ -264,259 +271,40 @@ impl Evaluator {
         // FIXME this should be regex expressions
 
         // Check datetime pattern first (YYYY-MM-DDTHH:MM:SS)
-        if fragment.contains('T') && fragment.matches(':').count() == 2 && fragment.matches('-').count() == 2 {
-            if let Ok(datetime) = Self::parse_datetime(span) {
+        if fragment.contains('T')
+            && fragment.matches(':').count() == 2
+            && fragment.matches('-').count() == 2
+        {
+            if let Ok(datetime) = parse_datetime(span) {
                 return Ok(ColumnValues::datetime(vec![datetime; row_count]));
             }
         }
 
         // Check date pattern (YYYY-MM-DD)
-        if fragment.matches('-').count() == 2 && !fragment.contains('T') && !fragment.contains(':') {
-            if let Ok(date) = Self::parse_date(span) {
+        if fragment.matches('-').count() == 2 && !fragment.contains('T') && !fragment.contains(':')
+        {
+            if let Ok(date) = parse_date(span) {
                 return Ok(ColumnValues::date(vec![date; row_count]));
             }
         }
 
         // Check time pattern (HH:MM:SS)
-        if fragment.matches(':').count() == 2 && !fragment.contains('-') && !fragment.contains('T') {
-            if let Ok(time) = Self::parse_time(span) {
+        if fragment.matches(':').count() == 2 && !fragment.contains('-') && !fragment.contains('T')
+        {
+            if let Ok(time) = parse_time(span) {
                 return Ok(ColumnValues::time(vec![time; row_count]));
             }
         }
 
         // Check interval pattern (starts with P)
         if fragment.starts_with('P') {
-            if let Ok(interval) = Self::parse_interval(span) {
+            if let Ok(interval) = parse_interval(span) {
                 return Ok(ColumnValues::interval(vec![interval; row_count]));
             }
         }
 
         // If none of the parsing attempts succeeded, return an error
         todo!()
-    }
-
-    fn parse_date(span: &Span) -> evaluate::Result<Date> {
-        let fragment = &span.fragment;
-        // Parse date in format YYYY-MM-DD
-        let parts: Vec<&str> = fragment.split('-').collect();
-        if parts.len() != 3 {
-            panic!("Invalid date format");
-        }
-
-        let year = parts[0].parse::<i32>().unwrap_or_else(|_| panic!("Invalid year"));
-        let month = parts[1].parse::<u32>().unwrap_or_else(|_| panic!("Invalid month"));
-        let day = parts[2].parse::<u32>().unwrap_or_else(|_| panic!("Invalid day"));
-
-        Ok(Date::new(year, month, day).unwrap_or_else(|| panic!("Invalid date")))
-    }
-
-    fn parse_datetime(span: &Span) -> evaluate::Result<DateTime> {
-        let fragment = &span.fragment;
-        // Parse datetime in format YYYY-MM-DDTHH:MM:SS[.sss[sss[sss]]][Z|±HH:MM]
-        let parts: Vec<&str> = fragment.split('T').collect();
-        if parts.len() != 2 {
-            panic!("Invalid datetime format");
-        }
-
-        let date_part = parts[0];
-        let mut time_part = parts[1].to_string();
-
-        // Parse date part
-        let date_parts: Vec<&str> = date_part.split('-').collect();
-        if date_parts.len() != 3 {
-            panic!("Invalid date format in datetime");
-        }
-
-        let year = date_parts[0].parse::<i32>().unwrap_or_else(|_| panic!("Invalid year"));
-        let month = date_parts[1].parse::<u32>().unwrap_or_else(|_| panic!("Invalid month"));
-        let day = date_parts[2].parse::<u32>().unwrap_or_else(|_| panic!("Invalid day"));
-
-        // Remove timezone indicator if present
-        if time_part.ends_with('Z') {
-            time_part = time_part[..time_part.len() - 1].to_string();
-        } else if time_part.contains('+') || time_part.rfind('-').map_or(false, |pos| pos > 0) {
-            // Find timezone offset (+ or - that's not at the start)
-            let tz_pos = time_part.find('+').or_else(|| {
-                time_part.rfind('-').filter(|&pos| pos > 0)
-            });
-            if let Some(pos) = tz_pos {
-                time_part = time_part[..pos].to_string();
-            }
-        }
-
-        // Parse time part (HH:MM:SS[.sss[sss[sss]]])
-        let time_parts: Vec<&str> = time_part.split(':').collect();
-        if time_parts.len() != 3 {
-            panic!("Invalid time format in datetime");
-        }
-
-        let hour = time_parts[0].parse::<u32>().unwrap_or_else(|_| panic!("Invalid hour"));
-        let minute = time_parts[1].parse::<u32>().unwrap_or_else(|_| panic!("Invalid minute"));
-        
-        // Parse seconds and optional fractional seconds
-        let seconds_with_fraction = time_parts[2];
-        let (second, nanosecond) = if seconds_with_fraction.contains('.') {
-            let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
-            if second_parts.len() != 2 {
-                panic!("Invalid fractional seconds format");
-            }
-            
-            let second = second_parts[0].parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
-            let fraction_str = second_parts[1];
-            
-            // Pad or truncate fractional seconds to 9 digits (nanoseconds)
-            let padded_fraction = if fraction_str.len() < 9 {
-                format!("{:0<9}", fraction_str)
-            } else {
-                fraction_str[..9].to_string()
-            };
-            
-            let nanosecond = padded_fraction.parse::<u32>().unwrap_or_else(|_| panic!("Invalid fractional seconds"));
-            (second, nanosecond)
-        } else {
-            let second = seconds_with_fraction.parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
-            (second, 0)
-        };
-
-        Ok(DateTime::new(year, month, day, hour, minute, second, nanosecond)
-            .unwrap_or_else(|| panic!("Invalid datetime")))
-    }
-
-    fn parse_time(span: &Span) -> evaluate::Result<Time> {
-        let fragment = &span.fragment;
-        // Parse time in format HH:MM:SS[.sss[sss[sss]]][Z|±HH:MM]
-        let mut time_str = fragment.clone();
-
-        // Remove timezone indicator if present
-        if time_str.ends_with('Z') {
-            time_str = time_str[..time_str.len() - 1].to_string();
-        } else if time_str.contains('+') || time_str.rfind('-').map_or(false, |pos| pos > 0) {
-            // Find timezone offset (+ or - that's not at the start)
-            let tz_pos = time_str.find('+').or_else(|| {
-                time_str.rfind('-').filter(|&pos| pos > 0)
-            });
-            if let Some(pos) = tz_pos {
-                time_str = time_str[..pos].to_string();
-            }
-        }
-
-        let parts: Vec<&str> = time_str.split(':').collect();
-        if parts.len() != 3 {
-            panic!("Invalid time format");
-        }
-
-        let hour = parts[0].parse::<u32>().unwrap_or_else(|_| panic!("Invalid hour"));
-        let minute = parts[1].parse::<u32>().unwrap_or_else(|_| panic!("Invalid minute"));
-        
-        // Parse seconds and optional fractional seconds
-        let seconds_with_fraction = parts[2];
-        let (second, nanosecond) = if seconds_with_fraction.contains('.') {
-            let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
-            if second_parts.len() != 2 {
-                panic!("Invalid fractional seconds format");
-            }
-            
-            let second = second_parts[0].parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
-            let fraction_str = second_parts[1];
-            
-            // Pad or truncate fractional seconds to 9 digits (nanoseconds)
-            let padded_fraction = if fraction_str.len() < 9 {
-                format!("{:0<9}", fraction_str)
-            } else {
-                fraction_str[..9].to_string()
-            };
-            
-            let nanosecond = padded_fraction.parse::<u32>().unwrap_or_else(|_| panic!("Invalid fractional seconds"));
-            (second, nanosecond)
-        } else {
-            let second = seconds_with_fraction.parse::<u32>().unwrap_or_else(|_| panic!("Invalid second"));
-            (second, 0)
-        };
-
-        Ok(Time::new(hour, minute, second, nanosecond).unwrap_or_else(|| panic!("Invalid time")))
-    }
-
-    fn parse_interval(span: &Span) -> evaluate::Result<Interval> {
-        let fragment = &span.fragment;
-        // Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
-        if !fragment.starts_with('P') {
-            panic!("Invalid interval format - must start with P");
-        }
-
-        let mut chars = fragment.chars().skip(1); // Skip 'P'
-        let mut total_nanos = 0i64;
-        let mut current_number = String::new();
-        let mut in_time_part = false;
-
-        while let Some(c) = chars.next() {
-            match c {
-                'T' => {
-                    in_time_part = true;
-                }
-                '0'..='9' => {
-                    current_number.push(c);
-                }
-                'Y' => {
-                    if in_time_part {
-                        panic!("Years not allowed in time part");
-                    }
-                    let years: i64 = current_number.parse().unwrap_or_else(|_| panic!("Invalid year value"));
-                    total_nanos += years * 365 * 24 * 60 * 60 * 1_000_000_000; // Approximate
-                    current_number.clear();
-                }
-                'M' => {
-                    let value: i64 = current_number.parse().unwrap_or_else(|_| panic!("Invalid value"));
-                    if in_time_part {
-                        total_nanos += value * 60 * 1_000_000_000; // Minutes
-                    } else {
-                        total_nanos += value * 30 * 24 * 60 * 60 * 1_000_000_000; // Months (approximate)
-                    }
-                    current_number.clear();
-                }
-                'W' => {
-                    if in_time_part {
-                        panic!("Weeks not allowed in time part");
-                    }
-                    let weeks: i64 = current_number.parse().unwrap_or_else(|_| panic!("Invalid week value"));
-                    total_nanos += weeks * 7 * 24 * 60 * 60 * 1_000_000_000;
-                    current_number.clear();
-                }
-                'D' => {
-                    if in_time_part {
-                        panic!("Days not allowed in time part");
-                    }
-                    let days: i64 = current_number.parse().unwrap_or_else(|_| panic!("Invalid day value"));
-                    total_nanos += days * 24 * 60 * 60 * 1_000_000_000;
-                    current_number.clear();
-                }
-                'H' => {
-                    if !in_time_part {
-                        panic!("Hours only allowed in time part");
-                    }
-                    let hours: i64 = current_number.parse().unwrap_or_else(|_| panic!("Invalid hour value"));
-                    total_nanos += hours * 60 * 60 * 1_000_000_000;
-                    current_number.clear();
-                }
-                'S' => {
-                    if !in_time_part {
-                        panic!("Seconds only allowed in time part");
-                    }
-                    let seconds: i64 =
-                        current_number.parse().unwrap_or_else(|_| panic!("Invalid second value"));
-                    total_nanos += seconds * 1_000_000_000;
-                    current_number.clear();
-                }
-                _ => {
-                    panic!("Invalid character in interval");
-                }
-            }
-        }
-
-        if !current_number.is_empty() {
-            panic!("Incomplete interval specification");
-        }
-
-        Ok(Interval::from_nanos(total_nanos))
     }
 }
 
@@ -717,27 +505,6 @@ mod tests {
                 }
                 _ => panic!("Expected Interval column"),
             }
-        }
-
-        #[test]
-        fn test_temporal_invalid_format() {
-            let expr = ConstantExpression::Temporal { span: make_span("invalid-format") };
-            let err = Evaluator::constant_value(&expr, 1).unwrap_err();
-            assert_eq!(err.diagnostic().code, "TYPE_001");
-        }
-
-        #[test]
-        fn test_temporal_invalid_date() {
-            let expr = ConstantExpression::Temporal { span: make_span("2024-13-32") };
-            let err = Evaluator::constant_value(&expr, 1).unwrap_err();
-            assert_eq!(err.diagnostic().code, "TYPE_001");
-        }
-
-        #[test]
-        fn test_temporal_invalid_time() {
-            let expr = ConstantExpression::Temporal { span: make_span("25:70:80") };
-            let err = Evaluator::constant_value(&expr, 1).unwrap_err();
-            assert_eq!(err.diagnostic().code, "TYPE_001");
         }
     }
 

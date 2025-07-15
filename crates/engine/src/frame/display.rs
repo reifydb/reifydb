@@ -674,12 +674,12 @@ mod tests {
         let output = format!("{}", frame);
 
         let expected = "\
-+--------------------------+
-|         interval         |
-+--------------------------+
-|  30d 0h 0m 0.000000000s  |
-|        Undefined         |
-+--------------------------+
++-------------+
+|  interval   |
++-------------+
+|    P30D     |
+|  Undefined  |
++-------------+
 ";
         assert_eq!(output, expected);
     }
