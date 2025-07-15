@@ -82,6 +82,7 @@ pub enum TokenKind {
 pub enum Literal {
     False,
     Number,
+    Temporal,
     Text,
     True,
     Undefined,

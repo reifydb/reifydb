@@ -91,6 +91,7 @@ impl Ast {
             Ast::Literal(node) => match node {
                 AstLiteral::Boolean(node) => &node.0,
                 AstLiteral::Number(node) => &node.0,
+                AstLiteral::Temporal(node) => &node.0,
                 AstLiteral::Text(node) => &node.0,
                 AstLiteral::Undefined(node) => &node.0,
             },
@@ -234,6 +235,18 @@ impl Ast {
             result
         } else {
             panic!("not literal number")
+        }
+    }
+
+    pub fn is_literal_temporal(&self) -> bool {
+        matches!(self, Ast::Literal(AstLiteral::Temporal(_)))
+    }
+
+    pub fn as_literal_temporal(&self) -> &AstLiteralTemporal {
+        if let Ast::Literal(AstLiteral::Temporal(result)) = self {
+            result
+        } else {
+            panic!("not literal temporal")
         }
     }
 
@@ -465,6 +478,7 @@ pub enum AstLiteral {
     Boolean(AstLiteralBoolean),
     Number(AstLiteralNumber),
     Text(AstLiteralText),
+    Temporal(AstLiteralTemporal),
     Undefined(AstLiteralUndefined),
 }
 
@@ -474,6 +488,7 @@ impl AstLiteral {
             AstLiteral::Boolean(literal) => literal.0.span,
             AstLiteral::Number(literal) => literal.0.span,
             AstLiteral::Text(literal) => literal.0.span,
+            AstLiteral::Temporal(literal) => literal.0.span,
             AstLiteral::Undefined(literal) => literal.0.span,
         }
     }
@@ -550,6 +565,15 @@ pub enum AstJoin {
 pub struct AstLiteralNumber(pub Token);
 
 impl AstLiteralNumber {
+    pub fn value(&self) -> &str {
+        self.0.span.fragment.as_str()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstLiteralTemporal(pub Token);
+
+impl AstLiteralTemporal {
     pub fn value(&self) -> &str {
         self.0.span.fragment.as_str()
     }

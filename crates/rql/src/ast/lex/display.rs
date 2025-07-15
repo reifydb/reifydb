@@ -23,7 +23,8 @@ impl Display for Literal {
         let text = match self {
             Literal::False => "false",
             Literal::Number => "number",
-            Literal::Text => "string",
+            Literal::Temporal => "temporal",
+            Literal::Text => "text",
             Literal::True => "true",
             Literal::Undefined => "undefined",
         };
