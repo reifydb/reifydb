@@ -1,11 +1,27 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
+use crate::function::{Functions, math};
+pub use error::Error;
+use query::compile::compile;
+use reifydb_catalog::table::Table;
+use reifydb_core::BitVec;
+use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_rql::plan::physical::PhysicalPlan;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
 mod catalog;
-mod context;
 mod error;
 mod mutate;
 mod query;
+
+pub struct ExecutionContext {
+    pub functions: Functions,
+    pub table: Option<Table>,
+    pub batch_size: usize,
+}
 
 #[derive(Debug)]
 pub(crate) struct Batch {
@@ -17,17 +33,6 @@ pub(crate) trait ExecutionPlan {
     fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>>;
     fn layout(&self) -> Option<FrameLayout>;
 }
-
-use crate::frame::{FrameColumn, ColumnValues, Frame, FrameLayout};
-use crate::function::{Functions, math};
-pub use context::ExecutionContext;
-pub use error::Error;
-use query::compile::compile;
-use reifydb_core::BitVec;
-use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
-use reifydb_rql::plan::physical::PhysicalPlan;
-use std::marker::PhantomData;
-use std::sync::Arc;
 
 pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     functions: Functions,
@@ -125,8 +130,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             //     Ok(ExecutionResult::DescribeQuery { columns })
             // }
             _ => {
-                let context = ExecutionContext::new(self.functions);
-                let mut node = compile(plan, rx, Arc::new(context));
+                let mut node = compile(
+                    plan,
+                    rx,
+                    Arc::new(ExecutionContext {
+                        functions: self.functions,
+                        table: None,
+                        batch_size: 1024,
+                    }),
+                );
                 let mut result: Option<Frame> = None;
 
                 while let Some(Batch { mut frame, mask }) = node.next(rx)? {

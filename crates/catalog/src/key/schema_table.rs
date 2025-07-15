@@ -7,7 +7,7 @@ use crate::table::TableId;
 use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SchemaTableKey {
     pub schema: SchemaId,
     pub table: TableId,

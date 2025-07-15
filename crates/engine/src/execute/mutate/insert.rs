@@ -40,8 +40,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let layout = Layout::new(&table_types);
 
         // Compile the input plan into an execution node with table context
-        let context = ExecutionContext::with_table(self.functions.clone(), table.clone());
-        let mut input_node = compile(*plan.input, tx, Arc::new(context));
+        let mut input_node = compile(
+            *plan.input,
+            tx,
+            Arc::new(ExecutionContext {
+                functions: self.functions.clone(),
+                table: Some(table.clone()),
+                batch_size: 1024,
+            }),
+        );
 
         let mut inserted_count = 0;
 

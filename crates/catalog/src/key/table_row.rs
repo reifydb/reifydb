@@ -7,7 +7,7 @@ use crate::table::TableId;
 use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
-#[derive(Debug)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct TableRowKey {
     pub table: TableId,
     pub row: RowId,
@@ -47,7 +47,7 @@ impl TableRowKey {
         )
     }
 
-    fn table_start(table_id: TableId) -> EncodedKey {
+    pub fn table_start(table_id: TableId) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
@@ -55,7 +55,7 @@ impl TableRowKey {
         EncodedKey::new(out)
     }
 
-    fn table_end(table_id: TableId) -> EncodedKey {
+    pub fn table_end(table_id: TableId) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));

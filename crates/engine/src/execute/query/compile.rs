@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
-use crate::execute::{ExecutionPlan, ExecutionContext};
 use crate::execute::query::aggregate::AggregateNode;
 use crate::execute::query::filter::FilterNode;
 use crate::execute::query::inline::InlineDataNode;
@@ -11,10 +9,12 @@ use crate::execute::query::map::{MapNode, MapWithoutInputNode};
 use crate::execute::query::scan::ScanFrameNode;
 use crate::execute::query::sort::SortNode;
 use crate::execute::query::take::TakeNode;
+use crate::execute::{ExecutionContext, ExecutionPlan};
 use reifydb_catalog::Catalog;
 use reifydb_core::interface::Rx;
 use reifydb_rql::plan::physical;
 use reifydb_rql::plan::physical::PhysicalPlan;
+use std::sync::Arc;
 
 pub(crate) fn compile(
     plan: PhysicalPlan,
@@ -62,7 +62,7 @@ pub(crate) fn compile(
         }
 
         PhysicalPlan::TableScan(physical::TableScanNode { schema, table }) => {
-            // If schema is NONE resolve table directly by name
+            // FIXME If schema is NONE resolve table directly by name
             let schema =
                 Catalog::get_schema_by_name(rx, &schema.as_ref().unwrap().fragment.as_str())
                     .unwrap()
@@ -72,7 +72,7 @@ pub(crate) fn compile(
                 .unwrap()
                 .unwrap();
 
-            Box::new(ScanFrameNode::new(table, context, rx).unwrap())
+            Box::new(ScanFrameNode::new(table, context).unwrap())
         }
         PhysicalPlan::CreateDeferredView(_)
         | PhysicalPlan::CreateSchema(_)

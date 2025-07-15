@@ -6,7 +6,7 @@ use crate::key::{EncodableKey, KeyKind};
 use reifydb_core::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ColumnKey {
     pub column: ColumnId,
 }

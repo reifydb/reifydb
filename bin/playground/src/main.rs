@@ -19,7 +19,7 @@ fn main() {
     db.tx_as(&root, r#"create schema test"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
-    db.tx_as(&root, r#"create table test.edge_cases(id: int4, content: text)"#).unwrap();
+    db.tx_as(&root, r#"create table test.arith(id: int2, value: int2, num: int2)"#).unwrap();
 
     
     let l = db
@@ -27,13 +27,12 @@ fn main() {
             &root,
             r#"
   from [
-    { id: 1, content: "" },
-    { id: 2, content: "a" },
-    { id: 3, content: "This is a very long string that contains multiple words and should test the storage and retrieval of longer UTF8 content in the database system to ensure it handles variable-length strings correctly." },
-    { id: 4, content: "Line1\nLine2\nLine3" },
-    { id: 5, content: "Tab\tSeparated\tValues" },
-    { id: 6, content: "Mixed: English 中文 العربية ελληνικά 日本語 русский" }
-  ] insert test.edge_cases
+    { id: 1, value: 1, num: 5  },
+    { id: 1, value: 1, num: 10 },
+    { id: 1, value: 2, num: 15 },
+    { id: 2, value: 1, num: 10 },
+    { id: 2, value: 1, num: 30 }
+  ] insert test.arith
         "#,
         )
         .unwrap();
@@ -44,30 +43,30 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            from test.edge_cases filter content == "This is a very long string that contains multiple words and should test the storage and retrieval of longer UTF8 content in the database system to ensure it handles variable-length strings correctly." map id
+            from test.arith aggregate avg(num) by id sort id
         "#,
         )
         .unwrap();
     println!("{}", l.first().unwrap());
 
-    // Test simple filter without map
-    let l2 = db
-        .tx_as(
-            &root,
-            r#"from test.edge_cases filter id > 4"#,
-        )
-        .unwrap();
-    println!("Filter test (id > 4):");
-    println!("{}", l2.first().unwrap());
-
-    // Test map without filter  
-    let l3 = db
-        .tx_as(
-            &root,
-            r#"from test.edge_cases map content"#,
-        )
-        .unwrap();
-    println!("Map test (content column):");
-    println!("{}", l3.first().unwrap());
+    // // Test simple filter without map
+    // let l2 = db
+    //     .tx_as(
+    //         &root,
+    //         r#"from test.edge_cases filter id > 4"#,
+    //     )
+    //     .unwrap();
+    // println!("Filter test (id > 4):");
+    // println!("{}", l2.first().unwrap());
+    //
+    // // Test map without filter
+    // let l3 = db
+    //     .tx_as(
+    //         &root,
+    //         r#"from test.edge_cases map content"#,
+    //     )
+    //     .unwrap();
+    // println!("Map test (content column):");
+    // println!("{}", l3.first().unwrap());
 
 }

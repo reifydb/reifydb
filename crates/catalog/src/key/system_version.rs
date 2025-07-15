@@ -6,7 +6,7 @@ use reifydb_core::EncodedKey;
 use reifydb_core::encoding::keycode;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug,Clone, PartialEq)]
 pub struct SystemVersionKey {
     pub version: SystemVersion,
 }

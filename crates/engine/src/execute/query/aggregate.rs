@@ -37,7 +37,7 @@ impl AggregateNode {
 
 impl ExecutionPlan for AggregateNode {
     fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        if self.layout().is_some() {
+        if self.layout.is_some() {
             return Ok(None);
         }
 
