@@ -7,6 +7,16 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
+mod date;
+mod datetime;
+mod interval;
+mod time;
+
+pub use date::Date;
+pub use datetime::DateTime;
+pub use interval::Interval;
+pub use time::Time;
+
 /// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Value {
@@ -40,6 +50,14 @@ pub enum Value {
     Uint8(u64),
     /// A 16-byte unsigned integer
     Uint16(u128),
+    /// A date value (year, month, day)
+    Date(Date),
+    /// A date and time value with nanosecond precision in UTC
+    DateTime(DateTime),
+    /// A time value (hour, minute, second, nanosecond)
+    Time(Time),
+    /// An interval representing a duration
+    Interval(Interval),
 }
 
 impl Value {
@@ -65,9 +83,13 @@ impl Value {
             Value::Int4(v) => Value::Int4(-v),
             Value::Int8(v) => Value::Int8(-v),
             Value::Int16(v) => Value::Int16(-v),
+            Value::Interval(i) => Value::Interval(i.negate()),
             Value::Undefined => Value::Undefined,
             Value::Bool(_) => Value::Undefined,
             Value::Utf8(_) => Value::Undefined,
+            Value::Date(_) => Value::Undefined,
+            Value::DateTime(_) => Value::Undefined,
+            Value::Time(_) => Value::Undefined,
             Value::Uint1(_)
             | Value::Uint2(_)
             | Value::Uint4(_)
@@ -94,6 +116,10 @@ impl PartialOrd for Value {
             (Value::Uint4(l), Value::Uint4(r)) => l.partial_cmp(r),
             (Value::Uint8(l), Value::Uint8(r)) => l.partial_cmp(r),
             (Value::Uint16(l), Value::Uint16(r)) => l.partial_cmp(r),
+            (Value::Date(l), Value::Date(r)) => l.partial_cmp(r),
+            (Value::DateTime(l), Value::DateTime(r)) => l.partial_cmp(r),
+            (Value::Time(l), Value::Time(r)) => l.partial_cmp(r),
+            (Value::Interval(l), Value::Interval(r)) => l.partial_cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -116,6 +142,10 @@ impl Ord for Value {
             (Value::Uint4(l), Value::Uint4(r)) => l.cmp(r),
             (Value::Uint8(l), Value::Uint8(r)) => l.cmp(r),
             (Value::Uint16(l), Value::Uint16(r)) => l.cmp(r),
+            (Value::Date(l), Value::Date(r)) => l.cmp(r),
+            (Value::DateTime(l), Value::DateTime(r)) => l.cmp(r),
+            (Value::Time(l), Value::Time(r)) => l.cmp(r),
+            (Value::Interval(l), Value::Interval(r)) => l.cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -139,6 +169,10 @@ impl Display for Value {
             Value::Uint4(value) => Display::fmt(value, f),
             Value::Uint8(value) => Display::fmt(value, f),
             Value::Uint16(value) => Display::fmt(value, f),
+            Value::Date(value) => Display::fmt(value, f),
+            Value::DateTime(value) => Display::fmt(value, f),
+            Value::Time(value) => Display::fmt(value, f),
+            Value::Interval(value) => Display::fmt(value, f),
             Value::Undefined => f.write_str("undefined"),
         }
     }
@@ -162,6 +196,10 @@ impl Value {
             Value::Uint4(_) => DataType::Uint4,
             Value::Uint8(_) => DataType::Uint8,
             Value::Uint16(_) => DataType::Uint16,
+            Value::Date(_) => DataType::Date,
+            Value::DateTime(_) => DataType::DateTime,
+            Value::Time(_) => DataType::Time,
+            Value::Interval(_) => DataType::Interval,
         }
     }
 }

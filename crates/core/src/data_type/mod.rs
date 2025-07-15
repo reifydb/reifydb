@@ -40,6 +40,14 @@ pub enum DataType {
     Uint8,
     /// A 16-byte unsigned integer
     Uint16,
+    /// A date value (year, month, day)
+    Date,
+    /// A date and time value with nanosecond precision in UTC
+    DateTime,
+    /// A time value (hour, minute, second, nanosecond)
+    Time,
+    /// An interval representing a duration
+    Interval,
     /// Value is not defined (think null in common programming languages)
     Undefined,
 }
@@ -61,6 +69,10 @@ impl DataType {
             DataType::Uint4 => 0x0B,
             DataType::Uint8 => 0x0C,
             DataType::Uint16 => 0x0D,
+            DataType::Date => 0x0F,
+            DataType::DateTime => 0x10,
+            DataType::Time => 0x11,
+            DataType::Interval => 0x12,
             DataType::Undefined => 0x00,
         }
     }
@@ -84,6 +96,10 @@ impl DataType {
             0x0C => DataType::Uint8,
             0x0D => DataType::Uint16,
             0x0E => DataType::Bool,
+            0x0F => DataType::Date,
+            0x10 => DataType::DateTime,
+            0x11 => DataType::Time,
+            0x12 => DataType::Interval,
             _ => unreachable!(),
         }
     }
@@ -106,6 +122,10 @@ impl DataType {
             DataType::Uint4 => 4,
             DataType::Uint8 => 8,
             DataType::Uint16 => 16,
+            DataType::Date => 4, // days since epoch as i32
+            DataType::DateTime => 8, // timestamp in nanoseconds as i64
+            DataType::Time => 8, // nanoseconds since midnight as u64
+            DataType::Interval => 8, // duration in nanoseconds as i64
             DataType::Undefined => 0,
         }
     }
@@ -126,6 +146,10 @@ impl DataType {
             DataType::Uint4 => 4,
             DataType::Uint8 => 8,
             DataType::Uint16 => 16,
+            DataType::Date => 4,
+            DataType::DateTime => 8,
+            DataType::Time => 8,
+            DataType::Interval => 8,
             DataType::Undefined => 0,
         }
     }
@@ -148,6 +172,10 @@ impl Display for DataType {
             DataType::Uint4 => f.write_str("UINT4"),
             DataType::Uint8 => f.write_str("UINT8"),
             DataType::Uint16 => f.write_str("UINT16"),
+            DataType::Date => f.write_str("DATE"),
+            DataType::DateTime => f.write_str("DATETIME"),
+            DataType::Time => f.write_str("TIME"),
+            DataType::Interval => f.write_str("INTERVAL"),
             DataType::Undefined => f.write_str("UNDEFINED"),
         }
     }
@@ -171,6 +199,10 @@ impl From<&Value> for DataType {
             Value::Uint4(_) => DataType::Uint4,
             Value::Uint8(_) => DataType::Uint8,
             Value::Uint16(_) => DataType::Uint16,
+            Value::Date(_) => DataType::Date,
+            Value::DateTime(_) => DataType::DateTime,
+            Value::Time(_) => DataType::Time,
+            Value::Interval(_) => DataType::Interval,
         }
     }
 }

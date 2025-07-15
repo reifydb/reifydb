@@ -1,8 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = [
-    "bin/cli",
+members = ["bin/cli",
     "bin/playground",
     "bin/server",
     "bin/testcontainer",
@@ -22,8 +21,7 @@ members = [
     "testsuite/regression",
 ]
 
-default-members = [
-    "bin/cli",
+default-members = ["bin/cli",
     "bin/playground",
     "bin/server",
     "bin/testcontainer",
@@ -86,11 +84,11 @@ reifydb-testing = { path = "crates/testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/transaction", version = "0.0.1" }
 
 # util
+chrono = { version = "0.4.41", features = ["serde"]}
 futures-util = { version = "0.3.31" }
 once_cell = { version = "1.21.3" }
 rand = { version = "0.9.1" }
 regex = { version = "1.11.1" }
-url = { version = "2.5.4" }
 uuid = { version = "1.16.0", features = ["v4"] }
 
 crossbeam-skiplist = { version = "0.1.3" }
