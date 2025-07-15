@@ -2,90 +2,153 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
+use crate::evaluate::Error;
 use reifydb_core::{Interval, Span};
+use reifydb_diagnostic::temporal;
 
 pub(crate) fn parse_interval(span: &Span) -> evaluate::Result<Interval> {
     let fragment = &span.fragment;
     // Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
-    if !fragment.starts_with('P') {
-        panic!("Invalid interval format - must start with P");
+
+    if fragment.len() == 1 || !fragment.starts_with('P') {
+        return Err(Error(temporal::invalid_interval_format(span.clone())));
     }
 
     let mut chars = fragment.chars().skip(1); // Skip 'P'
     let mut total_nanos = 0i64;
     let mut current_number = String::new();
     let mut in_time_part = false;
+    let mut current_position = 1; // Start after 'P'
 
     while let Some(c) = chars.next() {
         match c {
             'T' => {
                 in_time_part = true;
+                current_position += 1;
             }
             '0'..='9' => {
                 current_number.push(c);
+                current_position += 1;
             }
             'Y' => {
                 if in_time_part {
-                    panic!("Years not allowed in time part");
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'Y', true)));
                 }
-                let years: i64 =
-                    current_number.parse().unwrap_or_else(|_| panic!("Invalid year value"));
+                if current_number.is_empty() {
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                }
+                let years: i64 = current_number.parse().map_err(|_| {
+                    let number_span = span
+                        .sub_span(current_position - current_number.len(), current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_span, 'Y'))
+                })?;
                 total_nanos += years * 365 * 24 * 60 * 60 * 1_000_000_000; // Approximate
                 current_number.clear();
+                current_position += 1;
             }
             'M' => {
-                let value: i64 = current_number.parse().unwrap_or_else(|_| panic!("Invalid value"));
+                if current_number.is_empty() {
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                }
+                let value: i64 = current_number.parse().map_err(|_| {
+                    let number_span = span
+                        .sub_span(current_position - current_number.len(), current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_span, 'M'))
+                })?;
                 if in_time_part {
                     total_nanos += value * 60 * 1_000_000_000; // Minutes
                 } else {
                     total_nanos += value * 30 * 24 * 60 * 60 * 1_000_000_000; // Months (approximate)
                 }
                 current_number.clear();
+                current_position += 1;
             }
             'W' => {
                 if in_time_part {
-                    panic!("Weeks not allowed in time part");
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'W', true)));
                 }
-                let weeks: i64 =
-                    current_number.parse().unwrap_or_else(|_| panic!("Invalid week value"));
+                if current_number.is_empty() {
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                }
+                let weeks: i64 = current_number.parse().map_err(|_| {
+                    let number_span = span
+                        .sub_span(current_position - current_number.len(), current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_span, 'W'))
+                })?;
                 total_nanos += weeks * 7 * 24 * 60 * 60 * 1_000_000_000;
                 current_number.clear();
+                current_position += 1;
             }
             'D' => {
                 if in_time_part {
-                    panic!("Days not allowed in time part");
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'D', true)));
                 }
-                let days: i64 =
-                    current_number.parse().unwrap_or_else(|_| panic!("Invalid day value"));
+                if current_number.is_empty() {
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                }
+                let days: i64 = current_number.parse().map_err(|_| {
+                    let number_span = span
+                        .sub_span(current_position - current_number.len(), current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_span, 'D'))
+                })?;
                 total_nanos += days * 24 * 60 * 60 * 1_000_000_000;
                 current_number.clear();
+                current_position += 1;
             }
             'H' => {
                 if !in_time_part {
-                    panic!("Hours only allowed in time part");
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'H', false)));
                 }
-                let hours: i64 =
-                    current_number.parse().unwrap_or_else(|_| panic!("Invalid hour value"));
+                if current_number.is_empty() {
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                }
+                let hours: i64 = current_number.parse().map_err(|_| {
+                    let number_span = span
+                        .sub_span(current_position - current_number.len(), current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_span, 'H'))
+                })?;
                 total_nanos += hours * 60 * 60 * 1_000_000_000;
                 current_number.clear();
+                current_position += 1;
             }
             'S' => {
                 if !in_time_part {
-                    panic!("Seconds only allowed in time part");
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'S', false)));
                 }
-                let seconds: i64 =
-                    current_number.parse().unwrap_or_else(|_| panic!("Invalid second value"));
+                if current_number.is_empty() {
+                    let unit_span = span.sub_span(current_position, 1);
+                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                }
+                let seconds: i64 = current_number.parse().map_err(|_| {
+                    let number_span = span
+                        .sub_span(current_position - current_number.len(), current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_span, 'S'))
+                })?;
                 total_nanos += seconds * 1_000_000_000;
                 current_number.clear();
+                current_position += 1;
             }
             _ => {
-                panic!("Invalid character in interval");
+                let char_span = span.sub_span(current_position, 1);
+                return Err(Error(temporal::invalid_interval_character(char_span)));
             }
         }
     }
 
     if !current_number.is_empty() {
-        panic!("Incomplete interval specification");
+        let number_span =
+            span.sub_span(current_position - current_number.len(), current_number.len());
+        return Err(Error(temporal::incomplete_interval_specification(number_span)));
     }
 
     Ok(Interval::from_nanos(total_nanos))
@@ -93,16 +156,12 @@ pub(crate) fn parse_interval(span: &Span) -> evaluate::Result<Interval> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reifydb_core::{SpanColumn, SpanLine};
-
-    fn make_span(value: &str) -> Span {
-        Span { column: SpanColumn(0), line: SpanLine(1), fragment: value.to_string() }
-    }
+    use crate::evaluate::constant::interval::parse_interval;
+    use reifydb_core::Span;
 
     #[test]
     fn test_days() {
-        let span = make_span("P1D");
+        let span = Span::testing("P1D");
         let interval = parse_interval(&span).unwrap();
         // 1 day = 24 * 60 * 60 * 1_000_000_000 nanos
         assert_eq!(interval.to_nanos(), 24 * 60 * 60 * 1_000_000_000);
@@ -110,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_time_hours_minutes() {
-        let span = make_span("PT2H30M");
+        let span = Span::testing("PT2H30M");
         let interval = parse_interval(&span).unwrap();
         // 2 hours 30 minutes = (2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
         assert_eq!(interval.to_nanos(), (2 * 60 * 60 + 30 * 60) * 1_000_000_000);
@@ -118,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_complex() {
-        let span = make_span("P1DT2H30M");
+        let span = Span::testing("P1DT2H30M");
         let interval = parse_interval(&span).unwrap();
         // 1 day + 2 hours + 30 minutes
         let expected = (24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000;
@@ -127,49 +186,49 @@ mod tests {
 
     #[test]
     fn test_seconds_only() {
-        let span = make_span("PT45S");
+        let span = Span::testing("PT45S");
         let interval = parse_interval(&span).unwrap();
         assert_eq!(interval.to_nanos(), 45 * 1_000_000_000);
     }
 
     #[test]
     fn test_minutes_only() {
-        let span = make_span("PT5M");
+        let span = Span::testing("PT5M");
         let interval = parse_interval(&span).unwrap();
         assert_eq!(interval.to_nanos(), 5 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_hours_only() {
-        let span = make_span("PT1H");
+        let span = Span::testing("PT1H");
         let interval = parse_interval(&span).unwrap();
         assert_eq!(interval.to_nanos(), 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_weeks() {
-        let span = make_span("P1W");
+        let span = Span::testing("P1W");
         let interval = parse_interval(&span).unwrap();
         assert_eq!(interval.to_nanos(), 7 * 24 * 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_years() {
-        let span = make_span("P1Y");
+        let span = Span::testing("P1Y");
         let interval = parse_interval(&span).unwrap();
         assert_eq!(interval.to_nanos(), 365 * 24 * 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_months() {
-        let span = make_span("P1M");
+        let span = Span::testing("P1M");
         let interval = parse_interval(&span).unwrap();
         assert_eq!(interval.to_nanos(), 30 * 24 * 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_full_format() {
-        let span = make_span("P1Y2M3DT4H5M6S");
+        let span = Span::testing("P1Y2M3DT4H5M6S");
         let interval = parse_interval(&span).unwrap();
         let expected = 365 * 24 * 60 * 60 * 1_000_000_000 +     // 1 year
                       2 * 30 * 24 * 60 * 60 * 1_000_000_000 +  // 2 months
@@ -181,58 +240,58 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid interval format - must start with P")]
     fn test_invalid_format() {
-        let span = make_span("invalid");
-        parse_interval(&span).unwrap();
+        let span = Span::testing("invalid");
+        let err = parse_interval(&span).unwrap_err();
+        assert_eq!(err.code, "TEMPORAL_004");
     }
 
     #[test]
-    #[should_panic(expected = "Invalid character in interval")]
     fn test_invalid_character() {
-        let span = make_span("P1X");
-        parse_interval(&span).unwrap();
+        let span = Span::testing("P1X");
+        let err = parse_interval(&span).unwrap_err();
+        assert_eq!(err.code, "TEMPORAL_014");
     }
 
     #[test]
-    #[should_panic(expected = "Years not allowed in time part")]
     fn test_years_in_time_part() {
-        let span = make_span("P1TY");
-        parse_interval(&span).unwrap();
+        let span = Span::testing("PTY");
+        let err = parse_interval(&span).unwrap_err();
+        assert_eq!(err.code, "TEMPORAL_016");
     }
 
     #[test]
-    #[should_panic(expected = "Weeks not allowed in time part")]
     fn test_weeks_in_time_part() {
-        let span = make_span("P1TW");
-        parse_interval(&span).unwrap();
+        let span = Span::testing("PTW");
+        let err = parse_interval(&span).unwrap_err();
+        assert_eq!(err.code, "TEMPORAL_016");
     }
 
     #[test]
-    #[should_panic(expected = "Days not allowed in time part")]
     fn test_days_in_time_part() {
-        let span = make_span("P1TD");
-        parse_interval(&span).unwrap();
+        let span = Span::testing("PTD");
+        let err = parse_interval(&span).unwrap_err();
+        assert_eq!(err.code, "TEMPORAL_016");
     }
 
     #[test]
-    #[should_panic(expected = "Hours only allowed in time part")]
     fn test_hours_in_date_part() {
-        let span = make_span("P1H");
-        parse_interval(&span).unwrap();
+        let span = Span::testing("P1H");
+        let err = parse_interval(&span).unwrap_err();
+        assert_eq!(err.code, "TEMPORAL_016");
     }
 
     #[test]
-    #[should_panic(expected = "Seconds only allowed in time part")]
     fn test_seconds_in_date_part() {
-        let span = make_span("P1S");
-        parse_interval(&span).unwrap();
+        let span = Span::testing("P1S");
+        let err = parse_interval(&span).unwrap_err();
+        assert_eq!(err.code, "TEMPORAL_016");
     }
 
     #[test]
-    #[should_panic(expected = "Incomplete interval specification")]
     fn test_incomplete_specification() {
-        let span = make_span("P1");
-        parse_interval(&span).unwrap();
+        let span = Span::testing("P1");
+        let err = parse_interval(&span).unwrap_err();
+        assert_eq!(err.code, "TEMPORAL_015");
     }
 }

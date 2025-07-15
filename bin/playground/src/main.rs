@@ -36,18 +36,28 @@ fn main() {
         "#,
         )
         .unwrap();
-
-
     println!("{}", l.first().unwrap());
-        let l = db
+
+    //     let l = db
+    //     .tx_as(
+    //         &root,
+    //         r#"
+    //         map @2025-13-24 as result;
+    //     "#,
+    //     )
+    //     .unwrap();
+
+
+    // println!("{}", l.first().unwrap());
+    let err = db
         .tx_as(
             &root,
             r#"
-            map @P1DT2H30M as result;
+map @2024-03-15 as result;
         "#,
         )
-        .unwrap();
-    println!("{}", l.first().unwrap());
+        .unwrap_err();
+    println!("{}", err);
 
     // // Test simple filter without map
     // let l2 = db

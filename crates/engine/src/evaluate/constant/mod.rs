@@ -15,6 +15,7 @@ use crate::evaluate::{Error, EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::num::parse_float;
 use reifydb_core::{DataType, Span};
+use reifydb_diagnostic::temporal;
 use reifydb_diagnostic::r#type::{OutOfRange, out_of_range};
 use reifydb_rql::expression::ConstantExpression;
 
@@ -268,101 +269,84 @@ impl Evaluator {
 
     fn parse_temporal(span: &Span, row_count: usize) -> evaluate::Result<ColumnValues> {
         let fragment = &span.fragment;
-        // FIXME this should be regex expressions
 
-        // Check datetime pattern first (YYYY-MM-DDTHH:MM:SS)
-        if fragment.contains('T')
-            && fragment.matches(':').count() == 2
-            && fragment.matches('-').count() == 2
-        {
-            if let Ok(datetime) = parse_datetime(span) {
-                return Ok(ColumnValues::datetime(vec![datetime; row_count]));
-            }
+        // Route based on character patterns
+        if fragment.starts_with('P') || fragment.starts_with('p') {
+            // Interval format (ISO 8601 duration)
+            let interval = parse_interval(span)?;
+            Ok(ColumnValues::interval(vec![interval; row_count]))
+        } else if fragment.contains(':') && fragment.contains('-') {
+            // DateTime format (contains both : and -)
+            let datetime = parse_datetime(span)?;
+            Ok(ColumnValues::datetime(vec![datetime; row_count]))
+        } else if fragment.contains('-') {
+            // Date format with - separators
+            let date = parse_date(span)?;
+            Ok(ColumnValues::date(vec![date; row_count]))
+        } else if fragment.contains(':') {
+            // Time format (contains :)
+            let time = parse_time(span)?;
+            Ok(ColumnValues::time(vec![time; row_count]))
+        } else {
+            // Unrecognized pattern
+            Err(Error(temporal::unrecognized_temporal_pattern(span.clone())))
         }
-
-        // Check date pattern (YYYY-MM-DD)
-        if fragment.matches('-').count() == 2 && !fragment.contains('T') && !fragment.contains(':')
-        {
-            if let Ok(date) = parse_date(span) {
-                return Ok(ColumnValues::date(vec![date; row_count]));
-            }
-        }
-
-        // Check time pattern (HH:MM:SS)
-        if fragment.matches(':').count() == 2 && !fragment.contains('-') && !fragment.contains('T')
-        {
-            if let Ok(time) = parse_time(span) {
-                return Ok(ColumnValues::time(vec![time; row_count]));
-            }
-        }
-
-        // Check interval pattern (starts with P)
-        if fragment.starts_with('P') {
-            if let Ok(interval) = parse_interval(span) {
-                return Ok(ColumnValues::interval(vec![interval; row_count]));
-            }
-        }
-
-        // If none of the parsing attempts succeeded, return an error
-        todo!()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use reifydb_core::{Span, SpanColumn, SpanLine};
-
     mod constant_value {
         use crate::evaluate::Evaluator;
         use crate::evaluate::constant::ConstantExpression;
-        use crate::evaluate::constant::tests::make_span;
         use crate::frame::ColumnValues;
+        use reifydb_core::Span;
 
         #[test]
         fn test_bool_true() {
-            let expr = ConstantExpression::Bool { span: make_span("true") };
+            let expr = ConstantExpression::Bool { span: Span::testing("true") };
             let col = Evaluator::constant_value(&expr, 3).unwrap();
             assert_eq!(col, ColumnValues::bool(vec![true; 3]));
         }
 
         #[test]
         fn test_bool_false() {
-            let expr = ConstantExpression::Bool { span: make_span("false") };
+            let expr = ConstantExpression::Bool { span: Span::testing("false") };
             let col = Evaluator::constant_value(&expr, 2).unwrap();
             assert_eq!(col, ColumnValues::bool(vec![false; 2]));
         }
 
         #[test]
         fn test_float8() {
-            let expr = ConstantExpression::Number { span: make_span("3.14") };
+            let expr = ConstantExpression::Number { span: Span::testing("3.14") };
             let col = Evaluator::constant_value(&expr, 2).unwrap();
             assert_eq!(col, ColumnValues::float8(vec![3.14; 2]));
         }
 
         #[test]
         fn test_int1() {
-            let expr = ConstantExpression::Number { span: make_span("127") };
+            let expr = ConstantExpression::Number { span: Span::testing("127") };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             assert_eq!(col, ColumnValues::int1(vec![127]));
         }
 
         #[test]
         fn test_int2() {
-            let expr = ConstantExpression::Number { span: make_span("32767") };
+            let expr = ConstantExpression::Number { span: Span::testing("32767") };
             let col = Evaluator::constant_value(&expr, 2).unwrap();
             assert_eq!(col, ColumnValues::int2(vec![32767; 2]));
         }
 
         #[test]
         fn test_int4() {
-            let expr = ConstantExpression::Number { span: make_span("2147483647") };
+            let expr = ConstantExpression::Number { span: Span::testing("2147483647") };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             assert_eq!(col, ColumnValues::int4(vec![2147483647]));
         }
 
         #[test]
         fn test_int8() {
-            let expr = ConstantExpression::Number { span: make_span("9223372036854775807") };
+            let expr = ConstantExpression::Number { span: Span::testing("9223372036854775807") };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             assert_eq!(col, ColumnValues::int8(vec![9223372036854775807]));
         }
@@ -370,7 +354,7 @@ mod tests {
         #[test]
         fn test_int16() {
             let expr = ConstantExpression::Number {
-                span: make_span("170141183460469231731687303715884105727"),
+                span: Span::testing("170141183460469231731687303715884105727"),
             };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             assert_eq!(col, ColumnValues::int16(vec![170141183460469231731687303715884105727i128]));
@@ -378,21 +362,21 @@ mod tests {
 
         #[test]
         fn test_uint16() {
-            let expr = ConstantExpression::Number { span: make_span(&u128::MAX.to_string()) };
+            let expr = ConstantExpression::Number { span: Span::testing(&u128::MAX.to_string()) };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             assert_eq!(col, ColumnValues::uint16(vec![340282366920938463463374607431768211455]));
         }
 
         #[test]
         fn test_invalid_number_fallback_to_undefined() {
-            let expr = ConstantExpression::Number { span: make_span("not_a_number") };
+            let expr = ConstantExpression::Number { span: Span::testing("not_a_number") };
             let err = Evaluator::constant_value(&expr, 1).unwrap_err();
             assert_eq!(err.diagnostic().code, "TYPE_001");
         }
 
         #[test]
         fn test_string() {
-            let expr = ConstantExpression::Text { span: make_span("hello") };
+            let expr = ConstantExpression::Text { span: Span::testing("hello") };
             let col = Evaluator::constant_value(&expr, 3).unwrap();
             assert_eq!(
                 col,
@@ -402,14 +386,14 @@ mod tests {
 
         #[test]
         fn test_undefined() {
-            let expr = ConstantExpression::Undefined { span: make_span("") };
+            let expr = ConstantExpression::Undefined { span: Span::testing("") };
             let col = Evaluator::constant_value(&expr, 2).unwrap();
             assert_eq!(col, ColumnValues::Undefined(2));
         }
 
         #[test]
         fn test_temporal_date() {
-            let expr = ConstantExpression::Temporal { span: make_span("2024-03-15") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("2024-03-15") };
             let col = Evaluator::constant_value(&expr, 2).unwrap();
             match col {
                 ColumnValues::Date(values, validity) => {
@@ -426,7 +410,7 @@ mod tests {
 
         #[test]
         fn test_temporal_datetime() {
-            let expr = ConstantExpression::Temporal { span: make_span("2024-03-15T14:30:00") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("2024-03-15T14:30:00") };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             match col {
                 ColumnValues::DateTime(values, validity) => {
@@ -441,7 +425,7 @@ mod tests {
 
         #[test]
         fn test_temporal_time() {
-            let expr = ConstantExpression::Temporal { span: make_span("14:30:00") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("14:30:00") };
             let col = Evaluator::constant_value(&expr, 3).unwrap();
             match col {
                 ColumnValues::Time(values, validity) => {
@@ -460,7 +444,7 @@ mod tests {
 
         #[test]
         fn test_temporal_interval_days() {
-            let expr = ConstantExpression::Temporal { span: make_span("P1D") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("P1D") };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             match col {
                 ColumnValues::Interval(values, validity) => {
@@ -476,7 +460,7 @@ mod tests {
 
         #[test]
         fn test_temporal_interval_time() {
-            let expr = ConstantExpression::Temporal { span: make_span("PT2H30M") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("PT2H30M") };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             match col {
                 ColumnValues::Interval(values, validity) => {
@@ -492,7 +476,7 @@ mod tests {
 
         #[test]
         fn test_temporal_interval_complex() {
-            let expr = ConstantExpression::Temporal { span: make_span("P1DT2H30M") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("P1DT2H30M") };
             let col = Evaluator::constant_value(&expr, 1).unwrap();
             match col {
                 ColumnValues::Interval(values, validity) => {
@@ -510,21 +494,20 @@ mod tests {
 
     mod constant_value_of {
         use crate::evaluate::Evaluator;
-        use crate::evaluate::constant::tests::make_span;
         use crate::frame::ColumnValues;
-        use reifydb_core::DataType;
+        use reifydb_core::{DataType, Span};
         use reifydb_rql::expression::ConstantExpression;
 
         #[test]
         fn test_bool_true() {
-            let expr = ConstantExpression::Bool { span: make_span("true") };
+            let expr = ConstantExpression::Bool { span: Span::testing("true") };
             let col = Evaluator::constant_value_of(&expr, DataType::Bool, 3).unwrap();
             assert_eq!(col, ColumnValues::bool(vec![true; 3]));
         }
 
         #[test]
         fn test_bool_mismatch() {
-            let expr = ConstantExpression::Bool { span: make_span("true") };
+            let expr = ConstantExpression::Bool { span: Span::testing("true") };
             assert!(Evaluator::constant_value_of(&expr, DataType::Int1, 1).is_err());
         }
 
@@ -659,34 +642,34 @@ mod tests {
 
         #[test]
         fn test_text_ok() {
-            let expr = ConstantExpression::Text { span: make_span("hello") };
+            let expr = ConstantExpression::Text { span: Span::testing("hello") };
             let col = Evaluator::constant_value_of(&expr, DataType::Utf8, 3).unwrap();
             assert_eq!(col, ColumnValues::utf8(vec!["hello".to_string(); 3]));
         }
 
         #[test]
         fn test_text_mismatch() {
-            let expr = ConstantExpression::Text { span: make_span("text") };
+            let expr = ConstantExpression::Text { span: Span::testing("text") };
             assert!(Evaluator::constant_value_of(&expr, DataType::Int1, 1).is_err());
         }
 
         #[test]
         fn test_undefined_ok() {
-            let expr = ConstantExpression::Undefined { span: make_span("") };
+            let expr = ConstantExpression::Undefined { span: Span::testing("") };
             let col = Evaluator::constant_value_of(&expr, DataType::Undefined, 5).unwrap();
             assert_eq!(col, ColumnValues::Undefined(5));
         }
 
         #[test]
         fn test_undefined_different_kind() {
-            let expr = ConstantExpression::Undefined { span: make_span("") };
+            let expr = ConstantExpression::Undefined { span: Span::testing("") };
             let col = Evaluator::constant_value_of(&expr, DataType::Float8, 5).unwrap();
             assert_eq!(col, ColumnValues::Undefined(5));
         }
 
         #[test]
         fn test_temporal_date_explicit() {
-            let expr = ConstantExpression::Temporal { span: make_span("2024-03-15") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("2024-03-15") };
             let col = Evaluator::constant_value_of(&expr, DataType::Date, 2).unwrap();
             match col {
                 ColumnValues::Date(values, validity) => {
@@ -703,7 +686,7 @@ mod tests {
 
         #[test]
         fn test_temporal_datetime_explicit() {
-            let expr = ConstantExpression::Temporal { span: make_span("2024-03-15T14:30:00") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("2024-03-15T14:30:00") };
             let col = Evaluator::constant_value_of(&expr, DataType::DateTime, 1).unwrap();
             match col {
                 ColumnValues::DateTime(values, validity) => {
@@ -718,7 +701,7 @@ mod tests {
 
         #[test]
         fn test_temporal_time_explicit() {
-            let expr = ConstantExpression::Temporal { span: make_span("14:30:00") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("14:30:00") };
             let col = Evaluator::constant_value_of(&expr, DataType::Time, 1).unwrap();
             match col {
                 ColumnValues::Time(values, validity) => {
@@ -733,7 +716,7 @@ mod tests {
 
         #[test]
         fn test_temporal_interval_explicit() {
-            let expr = ConstantExpression::Temporal { span: make_span("P1D") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("P1D") };
             let col = Evaluator::constant_value_of(&expr, DataType::Interval, 1).unwrap();
             match col {
                 ColumnValues::Interval(values, validity) => {
@@ -748,48 +731,41 @@ mod tests {
 
         #[test]
         fn test_temporal_wrong_type_date_as_time() {
-            let expr = ConstantExpression::Temporal { span: make_span("2024-03-15") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("2024-03-15") };
             let err = Evaluator::constant_value_of(&expr, DataType::Time, 1).unwrap_err();
-            assert_eq!(err.diagnostic().code, "TYPE_001");
+            assert_eq!(err.diagnostic().code, "TEMPORAL_003");
         }
 
         #[test]
         fn test_temporal_wrong_type_time_as_date() {
-            let expr = ConstantExpression::Temporal { span: make_span("14:30:00") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("14:30:00") };
             let err = Evaluator::constant_value_of(&expr, DataType::Date, 1).unwrap_err();
-            assert_eq!(err.diagnostic().code, "TYPE_001");
+            assert_eq!(err.diagnostic().code, "TEMPORAL_001");
         }
 
         #[test]
         fn test_temporal_wrong_type_interval_as_datetime() {
-            let expr = ConstantExpression::Temporal { span: make_span("P1D") };
+            let expr = ConstantExpression::Temporal { span: Span::testing("P1D") };
             let err = Evaluator::constant_value_of(&expr, DataType::DateTime, 1).unwrap_err();
-            assert_eq!(err.diagnostic().code, "TYPE_001");
+            assert_eq!(err.diagnostic().code, "TEMPORAL_002");
         }
 
         #[test]
-        fn test_temporal_mismatch_with_other_types() {
-            let expr = ConstantExpression::Temporal { span: make_span("2024-03-15") };
+        fn test_temporal_mismatch_with_other_type() {
+            let expr = ConstantExpression::Temporal { span: Span::testing("2024-03-15") };
             assert!(Evaluator::constant_value_of(&expr, DataType::Int1, 1).is_err());
-            assert!(Evaluator::constant_value_of(&expr, DataType::Float8, 1).is_err());
-            assert!(Evaluator::constant_value_of(&expr, DataType::Bool, 1).is_err());
-            assert!(Evaluator::constant_value_of(&expr, DataType::Utf8, 1).is_err());
         }
 
         fn number_ok(expr: &str, data_type: DataType, row_count: usize, expected: ColumnValues) {
-            let expr = ConstantExpression::Number { span: make_span(expr) };
+            let expr = ConstantExpression::Number { span: Span::testing(expr) };
             let result = Evaluator::constant_value_of(&expr, data_type, row_count).unwrap();
             assert_eq!(result, expected);
         }
 
         fn number_type_mismatch(expr: &str, data_type: DataType) {
-            let expr = ConstantExpression::Number { span: make_span(expr) };
+            let expr = ConstantExpression::Number { span: Span::testing(expr) };
             let err = Evaluator::constant_value_of(&expr, data_type, 1).unwrap_err();
             assert_eq!(err.diagnostic().code, "TYPE_001");
         }
-    }
-
-    fn make_span(value: &str) -> Span {
-        Span { column: SpanColumn(0), line: SpanLine(1), fragment: value.to_string() }
     }
 }

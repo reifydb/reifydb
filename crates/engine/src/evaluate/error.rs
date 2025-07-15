@@ -3,6 +3,7 @@
 
 use reifydb_core::Diagnostic;
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 
 #[derive(Debug, PartialEq)]
 pub struct Error(pub Diagnostic);
@@ -20,3 +21,11 @@ impl Error {
 }
 
 impl std::error::Error for Error {}
+
+impl Deref for Error {
+    type Target = Diagnostic;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}

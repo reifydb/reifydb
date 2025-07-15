@@ -19,50 +19,66 @@ impl Display for Error {
 
         let mut output = String::new();
 
-        let _ = writeln!(&mut output, "error[{}]: {}", diagnostic.code, diagnostic.message);
+        let _ = writeln!(&mut output, "ERROR {}", diagnostic.code);
+        let _ = writeln!(&mut output, "  {}", diagnostic.message);
+        let _ = writeln!(&mut output);
 
         if let Some(span) = &diagnostic.span {
             let line = span.line.0;
             let col = span.column.0;
             let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
 
+            let _ = writeln!(&mut output, "LOCATION");
+            let _ = writeln!(&mut output, "  line {}, column {}", line, col);
+            let _ = writeln!(&mut output);
+
             let line_content = get_line(statement, line);
-            let line_number_width = line.to_string().len().max(2);
 
+            let _ = writeln!(&mut output, "CODE");
+            let _ = writeln!(&mut output, "  {} │ {}", line, line_content);
+            let fragment_start = line_content.find(&span.fragment).unwrap_or(col as usize);
             let _ = writeln!(
                 &mut output,
-                " {0:>width$} │ {1}",
-                line,
-                line_content,
-                width = line_number_width
+                "    │ {}{}",
+                " ".repeat(fragment_start),
+                "~".repeat(span.fragment.len())
             );
+            let _ = writeln!(&mut output, "    │");
+            
+            let label_text = diagnostic.label.as_deref().unwrap_or("");
+            let span_center = fragment_start + span.fragment.len() / 2;
+            let label_center_offset = if label_text.len() / 2 > span_center {
+                0
+            } else {
+                span_center - label_text.len() / 2
+            };
+            
             let _ = writeln!(
                 &mut output,
-                " {0:>width$} │ {1}^",
-                "",
-                " ".repeat(col as usize),
-                width = line_number_width
+                "    │ {}{}",
+                " ".repeat(label_center_offset),
+                label_text
             );
-            let _ = writeln!(
-                &mut output,
-                " {0:>width$} = {1}",
-                "",
-                diagnostic.label.as_deref().unwrap_or("value exceeds type bounds"),
-                width = line_number_width
-            );
-        }
-
-        if let Some(col) = &diagnostic.column {
-            let _ =
-                writeln!(&mut output, "\nnote: column `{}` is of type `{}`", col.name, col.data_type);
+            let _ = writeln!(&mut output);
         }
 
         if let Some(help) = &diagnostic.help {
-            let _ = writeln!(&mut output, "\nhelp: {}", help);
+            let _ = writeln!(&mut output, "HELP");
+            let _ = writeln!(&mut output, "  {}", help);
+            let _ = writeln!(&mut output);
         }
 
-        for note in &diagnostic.notes {
-            let _ = writeln!(&mut output, "\nnote: {}", note);
+        if let Some(col) = &diagnostic.column {
+            let _ = writeln!(&mut output, "COLUMN");
+            let _ = writeln!(&mut output, "  column `{}` is of type `{}`", col.name, col.data_type);
+            let _ = writeln!(&mut output);
+        }
+
+        if !diagnostic.notes.is_empty() {
+            let _ = writeln!(&mut output, "NOTES");
+            for note in &diagnostic.notes {
+                let _ = writeln!(&mut output, "  • {}", note);
+            }
         }
 
         f.write_str(output.as_str())
