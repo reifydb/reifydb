@@ -30,11 +30,11 @@ async function startContainer(): Promise<void> {
 
 
 export default async function setup() {
-    // if (!process.env.CI && !isContainerRunning()) {
-    //     console.info('Starting test container...');
-    //     await startContainer();
-    //     console.info('Test container started successfully');
-    // }
+    if (!process.env.CI && !isContainerRunning()) {
+        console.info('Starting test container...');
+        await startContainer();
+        console.info('Test container started successfully');
+    }
 }
 
 

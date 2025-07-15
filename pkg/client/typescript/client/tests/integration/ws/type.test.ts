@@ -6,7 +6,7 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient} from "../../../src";
+import {Client, WsClient, Interval} from "../../../src";
 
 describe('Websocket Data Type', () => {
     let wsClient: WsClient;
@@ -219,15 +219,17 @@ describe('Websocket Data Type', () => {
         }, 1000);
 
         it('interval', async () => {
-            const frames = await wsClient.tx<[{ result: bigint }]>(
+            const frames = await wsClient.tx<[{ result: Interval }]>(
                 'map @P1DT2H30M as result;'
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
+            const result = frames[0][0].result;
+            expect(result).toBeInstanceOf(Interval);
             // 1 day + 2 hours + 30 minutes = (24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
             const expected = BigInt((24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000);
-            expect(frames[0][0].result).toBe(expected);
+            expect(result.totalNanoseconds).toBe(expected);
         }, 1000);
     });
 
@@ -412,15 +414,17 @@ describe('Websocket Data Type', () => {
         }, 1000);
 
         it('interval', async () => {
-            const frames = await wsClient.rx<[{ result: bigint }]>(
+            const frames = await wsClient.rx<[{ result: Interval }]>(
                 'map @P1DT2H30M as result;'
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
+            const result = frames[0][0].result;
+            expect(result).toBeInstanceOf(Interval);
             // 1 day + 2 hours + 30 minutes = (24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
             const expected = BigInt((24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000);
-            expect(frames[0][0].result).toBe(expected);
+            expect(result.totalNanoseconds).toBe(expected);
         }, 1000);
     });
 

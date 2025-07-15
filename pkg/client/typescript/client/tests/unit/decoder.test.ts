@@ -6,7 +6,7 @@
 
 import {describe, expect, it} from 'vitest';
 import {decodeValue} from '../../src/decoder';
-import {DataType} from "../../src";
+import {DataType, Interval} from "../../src";
 
 const UNDEFINED_VALUE = "⟪undefined⟫";
 
@@ -234,44 +234,64 @@ describe('decodeValue', () => {
     });
 
     describe('Interval type', () => {
-        it('should convert duration strings to nanoseconds as BigInt', () => {
+        it('should convert duration strings to Interval instances', () => {
             // 1 day = 24 * 60 * 60 * 1_000_000_000 nanos
-            expect(decodeValue('Interval', 'P1D')).toBe(BigInt(24 * 60 * 60 * 1_000_000_000));
+            const interval1 = decodeValue('Interval', 'P1D') as Interval;
+            expect(interval1).toBeInstanceOf(Interval);
+            expect(interval1.totalNanoseconds).toBe(BigInt(24 * 60 * 60 * 1_000_000_000));
             
             // 2 hours 30 minutes = (2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
-            expect(decodeValue('Interval', 'PT2H30M')).toBe(BigInt((2 * 60 * 60 + 30 * 60) * 1_000_000_000));
+            const interval2 = decodeValue('Interval', 'PT2H30M') as Interval;
+            expect(interval2).toBeInstanceOf(Interval);
+            expect(interval2.totalNanoseconds).toBe(BigInt((2 * 60 * 60 + 30 * 60) * 1_000_000_000));
             
             // 1 hour = 60 * 60 * 1_000_000_000 nanos
-            expect(decodeValue('Interval', 'PT1H')).toBe(BigInt(60 * 60 * 1_000_000_000));
+            const interval3 = decodeValue('Interval', 'PT1H') as Interval;
+            expect(interval3).toBeInstanceOf(Interval);
+            expect(interval3.totalNanoseconds).toBe(BigInt(60 * 60 * 1_000_000_000));
             
             // 30 minutes = 30 * 60 * 1_000_000_000 nanos
-            expect(decodeValue('Interval', 'PT30M')).toBe(BigInt(30 * 60 * 1_000_000_000));
+            const interval4 = decodeValue('Interval', 'PT30M') as Interval;
+            expect(interval4).toBeInstanceOf(Interval);
+            expect(interval4.totalNanoseconds).toBe(BigInt(30 * 60 * 1_000_000_000));
             
             // 45 seconds = 45 * 1_000_000_000 nanos
-            expect(decodeValue('Interval', 'PT45S')).toBe(BigInt(45 * 1_000_000_000));
+            const interval5 = decodeValue('Interval', 'PT45S') as Interval;
+            expect(interval5).toBeInstanceOf(Interval);
+            expect(interval5.totalNanoseconds).toBe(BigInt(45 * 1_000_000_000));
         });
 
         it('should handle complex intervals', () => {
             // 1 day + 2 hours + 30 minutes = (24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
             const expected = BigInt((24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000);
-            expect(decodeValue('Interval', 'P1DT2H30M')).toBe(expected);
+            const interval = decodeValue('Interval', 'P1DT2H30M') as Interval;
+            expect(interval).toBeInstanceOf(Interval);
+            expect(interval.totalNanoseconds).toBe(expected);
         });
 
         it('should handle date-only intervals', () => {
             // 1 year (approximate) = 365 * 24 * 60 * 60 * 1_000_000_000 nanos
-            expect(decodeValue('Interval', 'P1Y')).toBe(BigInt(365 * 24 * 60 * 60 * 1_000_000_000));
+            const interval1 = decodeValue('Interval', 'P1Y') as Interval;
+            expect(interval1).toBeInstanceOf(Interval);
+            expect(interval1.totalNanoseconds).toBe(BigInt(365 * 24 * 60 * 60 * 1_000_000_000));
             
             // 1 month (approximate) = 30 * 24 * 60 * 60 * 1_000_000_000 nanos
-            expect(decodeValue('Interval', 'P1M')).toBe(BigInt(30 * 24 * 60 * 60 * 1_000_000_000));
+            const interval2 = decodeValue('Interval', 'P1M') as Interval;
+            expect(interval2).toBeInstanceOf(Interval);
+            expect(interval2.totalNanoseconds).toBe(BigInt(30 * 24 * 60 * 60 * 1_000_000_000));
             
             // 1 week = 7 * 24 * 60 * 60 * 1_000_000_000 nanos
-            expect(decodeValue('Interval', 'P1W')).toBe(BigInt(7 * 24 * 60 * 60 * 1_000_000_000));
+            const interval3 = decodeValue('Interval', 'P1W') as Interval;
+            expect(interval3).toBeInstanceOf(Interval);
+            expect(interval3.totalNanoseconds).toBe(BigInt(7 * 24 * 60 * 60 * 1_000_000_000));
         });
 
         it('should handle time-only intervals', () => {
             // 1 hour 30 minutes 45 seconds = (1 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 nanos
             const expected = BigInt((60 * 60 + 30 * 60 + 45) * 1_000_000_000);
-            expect(decodeValue('Interval', 'PT1H30M45S')).toBe(expected);
+            const interval = decodeValue('Interval', 'PT1H30M45S') as Interval;
+            expect(interval).toBeInstanceOf(Interval);
+            expect(interval.totalNanoseconds).toBe(expected);
         });
 
         it('should handle edge cases', () => {
@@ -285,7 +305,9 @@ describe('decodeValue', () => {
                 5 * 60 * 1_000_000_000 +                 // 5 minutes
                 6 * 1_000_000_000                        // 6 seconds
             );
-            expect(decodeValue('Interval', complex)).toBe(expectedNanos);
+            const interval = decodeValue('Interval', complex) as Interval;
+            expect(interval).toBeInstanceOf(Interval);
+            expect(interval.totalNanoseconds).toBe(expectedNanos);
         });
 
         it('should throw error for invalid interval format', () => {
@@ -296,6 +318,27 @@ describe('decodeValue', () => {
             expect(() => decodeValue('Interval', 'P1TD')).toThrow('Days not allowed in time part');
             expect(() => decodeValue('Interval', 'P1H')).toThrow('Hours only allowed in time part');
             expect(() => decodeValue('Interval', 'P1S')).toThrow('Seconds only allowed in time part');
+        });
+
+        it('should provide useful interval methods', () => {
+            const interval = decodeValue('Interval', 'P1DT2H30M45S') as Interval;
+            expect(interval).toBeInstanceOf(Interval);
+            
+            // Test components
+            const components = interval.components;
+            expect(components.days).toBe(BigInt(1));
+            expect(components.hours).toBe(BigInt(2));
+            expect(components.minutes).toBe(BigInt(30));
+            expect(components.seconds).toBe(BigInt(45));
+            
+            // Test toString
+            expect(interval.toString()).toBe('P1DT2H30M45S');
+            
+            // Test totals
+            expect(interval.totalDays).toBe(BigInt(1));
+            expect(interval.totalHours).toBe(BigInt(26)); // 1 day + 2 hours
+            expect(interval.totalMinutes).toBe(BigInt(1590)); // 26 hours + 30 minutes
+            expect(interval.totalSeconds).toBe(BigInt(95445)); // 1590 minutes + 45 seconds
         });
     });
 
