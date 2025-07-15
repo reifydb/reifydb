@@ -23,7 +23,7 @@ mod undefined;
 pub fn parse_literal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     preceded(
         multispace0(),
-        alt((parse_text, parse_number, parse_boolean, parse_undefined)),
+        alt((parse_text, parse_number, parse_boolean, parse_undefined, parse_temporal)),
     )
     .parse(input)
 }
