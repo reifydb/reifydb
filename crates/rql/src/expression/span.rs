@@ -18,6 +18,7 @@ impl Expression {
                 ConstantExpression::Undefined { span }
                 | ConstantExpression::Bool { span }
                 | ConstantExpression::Number { span }
+                | ConstantExpression::Temporal { span }
                 | ConstantExpression::Text { span } => span.clone(),
             },
             Expression::Column(expr) => expr.0.clone(),
@@ -61,6 +62,7 @@ impl ConstantExpression {
             ConstantExpression::Undefined { span } => span.clone(),
             ConstantExpression::Bool { span } => span.clone(),
             ConstantExpression::Number { span } => span.clone(),
+            ConstantExpression::Temporal { span } => span.clone(),
             ConstantExpression::Text { span } => span.clone(),
         }
     }

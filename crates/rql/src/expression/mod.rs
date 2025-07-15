@@ -98,6 +98,8 @@ pub enum ConstantExpression {
     Number { span: Span },
     // any textual representation can be String, Text, ...
     Text { span: Span },
+    // any temporal representation can be Date, Time, DateTime, ...
+    Temporal { span: Span },
 }
 
 impl Display for ConstantExpression {
@@ -107,6 +109,7 @@ impl Display for ConstantExpression {
             ConstantExpression::Bool { span } => write!(f, "{}", span.fragment),
             ConstantExpression::Number { span } => write!(f, "{}", span.fragment),
             ConstantExpression::Text { span } => write!(f, "\"{}\"", span.fragment),
+            ConstantExpression::Temporal { span } => write!(f, "{}", span.fragment),
         }
     }
 }

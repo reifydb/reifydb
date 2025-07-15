@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::Literal::{False, Number, Text, True, Undefined};
+use crate::ast::lex::Literal::{False, Number, Temporal, Text, True, Undefined};
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Operator, TokenKind};
 use crate::ast::parse::{Error, Parser};
@@ -51,6 +51,7 @@ impl Parser {
                 _ if current.is_literal(True) => Ok(Ast::Literal(self.parse_literal_true()?)),
                 _ if current.is_literal(False) => Ok(Ast::Literal(self.parse_literal_false()?)),
                 _ if current.is_literal(Text) => Ok(Ast::Literal(self.parse_literal_text()?)),
+                _ if current.is_literal(Temporal) => Ok(Ast::Literal(self.parse_literal_temporal()?)),
                 _ if current.is_literal(Undefined) => {
                     Ok(Ast::Literal(self.parse_literal_undefined()?))
                 }
