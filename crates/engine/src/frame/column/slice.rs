@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::frame::ColumnValues;
+use reifydb_core::{Date, DateTime, Time, Interval};
 
 pub trait AsSlice<T> {
     fn as_slice(&self) -> &[T];
@@ -138,6 +139,42 @@ impl AsSlice<String> for ColumnValues {
         match self {
             ColumnValues::Utf8(values, _) => values.as_slice(),
             other => panic!("called `as_slice::<String>()` on ColumnValues::{:?}", other.data_type()),
+        }
+    }
+}
+
+impl AsSlice<Date> for ColumnValues {
+    fn as_slice(&self) -> &[Date] {
+        match self {
+            ColumnValues::Date(values, _) => values.as_slice(),
+            other => panic!("called `as_slice::<Date>()` on ColumnValues::{:?}", other.data_type()),
+        }
+    }
+}
+
+impl AsSlice<DateTime> for ColumnValues {
+    fn as_slice(&self) -> &[DateTime] {
+        match self {
+            ColumnValues::DateTime(values, _) => values.as_slice(),
+            other => panic!("called `as_slice::<DateTime>()` on ColumnValues::{:?}", other.data_type()),
+        }
+    }
+}
+
+impl AsSlice<Time> for ColumnValues {
+    fn as_slice(&self) -> &[Time] {
+        match self {
+            ColumnValues::Time(values, _) => values.as_slice(),
+            other => panic!("called `as_slice::<Time>()` on ColumnValues::{:?}", other.data_type()),
+        }
+    }
+}
+
+impl AsSlice<Interval> for ColumnValues {
+    fn as_slice(&self) -> &[Interval] {
+        match self {
+            ColumnValues::Interval(values, _) => values.as_slice(),
+            other => panic!("called `as_slice::<Interval>()` on ColumnValues::{:?}", other.data_type()),
         }
     }
 }

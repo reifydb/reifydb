@@ -223,6 +223,66 @@ impl ColumnValues {
                 *valid = CowVec::new(new_valid);
             }
 
+            ColumnValues::Date(values, valid) => {
+                let mut new_values = Vec::with_capacity(mask.count_ones());
+                let mut new_valid = Vec::with_capacity(mask.count_ones());
+
+                for i in 0..values.len().min(mask.len()) {
+                    if mask.get(i) {
+                        new_values.push(values[i].clone());
+                        new_valid.push(valid[i]);
+                    }
+                }
+
+                *values = CowVec::new(new_values);
+                *valid = CowVec::new(new_valid);
+            }
+
+            ColumnValues::DateTime(values, valid) => {
+                let mut new_values = Vec::with_capacity(mask.count_ones());
+                let mut new_valid = Vec::with_capacity(mask.count_ones());
+
+                for i in 0..values.len().min(mask.len()) {
+                    if mask.get(i) {
+                        new_values.push(values[i].clone());
+                        new_valid.push(valid[i]);
+                    }
+                }
+
+                *values = CowVec::new(new_values);
+                *valid = CowVec::new(new_valid);
+            }
+
+            ColumnValues::Time(values, valid) => {
+                let mut new_values = Vec::with_capacity(mask.count_ones());
+                let mut new_valid = Vec::with_capacity(mask.count_ones());
+
+                for i in 0..values.len().min(mask.len()) {
+                    if mask.get(i) {
+                        new_values.push(values[i].clone());
+                        new_valid.push(valid[i]);
+                    }
+                }
+
+                *values = CowVec::new(new_values);
+                *valid = CowVec::new(new_valid);
+            }
+
+            ColumnValues::Interval(values, valid) => {
+                let mut new_values = Vec::with_capacity(mask.count_ones());
+                let mut new_valid = Vec::with_capacity(mask.count_ones());
+
+                for i in 0..values.len().min(mask.len()) {
+                    if mask.get(i) {
+                        new_values.push(values[i].clone());
+                        new_valid.push(valid[i]);
+                    }
+                }
+
+                *values = CowVec::new(new_values);
+                *valid = CowVec::new(new_valid);
+            }
+
             ColumnValues::Undefined(len) => {
                 *len = mask.count_ones();
             }

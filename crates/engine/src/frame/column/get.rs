@@ -106,6 +106,34 @@ impl ColumnValues {
                     Value::Undefined
                 }
             }
+            ColumnValues::Date(v, b) => {
+                if b[index] {
+                    Value::Date(v[index].clone())
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::DateTime(v, b) => {
+                if b[index] {
+                    Value::DateTime(v[index].clone())
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::Time(v, b) => {
+                if b[index] {
+                    Value::Time(v[index].clone())
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::Interval(v, b) => {
+                if b[index] {
+                    Value::Interval(v[index].clone())
+                } else {
+                    Value::Undefined
+                }
+            }
             ColumnValues::Undefined(_) => Value::Undefined,
         }
     }

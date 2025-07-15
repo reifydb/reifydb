@@ -3,6 +3,7 @@
 
 use reifydb_core::num::IsNumber;
 use reifydb_core::{CowVec, DataType, Value};
+use reifydb_core::{Date, DateTime, Interval, Time};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
@@ -21,6 +22,10 @@ pub enum ColumnValues {
     Uint8(CowVec<u64>, CowVec<bool>),
     Uint16(CowVec<u128>, CowVec<bool>),
     Utf8(CowVec<String>, CowVec<bool>),
+    Date(CowVec<Date>, CowVec<bool>),
+    DateTime(CowVec<DateTime>, CowVec<bool>),
+    Time(CowVec<Time>, CowVec<bool>),
+    Interval(CowVec<Interval>, CowVec<bool>),
     // special case: all undefined
     Undefined(usize),
 }
@@ -40,9 +45,13 @@ impl ColumnValues {
             | ColumnValues::Uint4(_, _)
             | ColumnValues::Uint8(_, _)
             | ColumnValues::Uint16(_, _) => true,
-            ColumnValues::Utf8(_, _) | ColumnValues::Bool(_, _) | ColumnValues::Undefined(_) => {
-                false
-            }
+            ColumnValues::Utf8(_, _)
+            | ColumnValues::Bool(_, _)
+            | ColumnValues::Date(_, _)
+            | ColumnValues::DateTime(_, _)
+            | ColumnValues::Time(_, _)
+            | ColumnValues::Interval(_, _)
+            | ColumnValues::Undefined(_) => false,
         }
     }
 }
@@ -79,6 +88,10 @@ impl ColumnValues {
             DataType::Uint8 => Self::uint8_with_capacity(capacity),
             DataType::Uint16 => Self::uint16_with_capacity(capacity),
             DataType::Utf8 => Self::utf8_with_capacity(capacity),
+            DataType::Date => Self::date_with_capacity(capacity),
+            DataType::DateTime => Self::datetime_with_capacity(capacity),
+            DataType::Time => Self::time_with_capacity(capacity),
+            DataType::Interval => Self::interval_with_capacity(capacity),
             DataType::Undefined => Self::undefined(capacity),
         }
     }
@@ -182,6 +195,34 @@ impl ColumnValues {
                     .iter()
                     .zip(validity.iter())
                     .map(|(v, va)| if *va { Value::Uint16(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Date(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Date(v.clone()) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::DateTime(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::DateTime(v.clone()) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Time(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Time(v.clone()) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Interval(values, validity) => Box::new(
+                values
+                    .iter()
+                    .zip(validity.iter())
+                    .map(|(v, va)| if *va { Value::Interval(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Undefined(size) => {
@@ -472,6 +513,86 @@ impl ColumnValues {
         ColumnValues::Uint16(CowVec::new(values), CowVec::new(validity))
     }
 
+    pub fn date(values: impl IntoIterator<Item = Date>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Date(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn date_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Date(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
+    pub fn date_with_validity(
+        values: impl IntoIterator<Item = Date>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let validity = validity.into_iter().collect::<Vec<_>>();
+        assert_eq!(validity.len(), values.len());
+        ColumnValues::Date(CowVec::new(values), CowVec::new(validity))
+    }
+
+    pub fn datetime(values: impl IntoIterator<Item = DateTime>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::DateTime(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn datetime_with_capacity(capacity: usize) -> Self {
+        ColumnValues::DateTime(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
+    pub fn datetime_with_validity(
+        values: impl IntoIterator<Item = DateTime>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let validity = validity.into_iter().collect::<Vec<_>>();
+        assert_eq!(validity.len(), values.len());
+        ColumnValues::DateTime(CowVec::new(values), CowVec::new(validity))
+    }
+
+    pub fn time(values: impl IntoIterator<Item = Time>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Time(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn time_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Time(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
+    pub fn time_with_validity(
+        values: impl IntoIterator<Item = Time>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let validity = validity.into_iter().collect::<Vec<_>>();
+        assert_eq!(validity.len(), values.len());
+        ColumnValues::Time(CowVec::new(values), CowVec::new(validity))
+    }
+
+    pub fn interval(values: impl IntoIterator<Item = Interval>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Interval(CowVec::new(values), CowVec::new(vec![true; len]))
+    }
+
+    pub fn interval_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Interval(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+    }
+
+    pub fn interval_with_validity(
+        values: impl IntoIterator<Item = Interval>,
+        validity: impl IntoIterator<Item = bool>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let validity = validity.into_iter().collect::<Vec<_>>();
+        assert_eq!(validity.len(), values.len());
+        ColumnValues::Interval(CowVec::new(values), CowVec::new(validity))
+    }
+
     pub fn undefined(len: usize) -> Self {
         ColumnValues::Undefined(len)
     }
@@ -494,6 +615,10 @@ impl ColumnValues {
             Value::Uint4(v) => ColumnValues::uint4(vec![v; row_count]),
             Value::Uint8(v) => ColumnValues::uint8(vec![v; row_count]),
             Value::Uint16(v) => ColumnValues::uint16(vec![v; row_count]),
+            Value::Date(v) => ColumnValues::date(vec![v; row_count]),
+            Value::DateTime(v) => ColumnValues::datetime(vec![v; row_count]),
+            Value::Time(v) => ColumnValues::time(vec![v; row_count]),
+            Value::Interval(v) => ColumnValues::interval(vec![v; row_count]),
             Value::Undefined => ColumnValues::undefined(row_count),
         }
     }
@@ -522,6 +647,10 @@ impl ColumnValues {
             ColumnValues::Uint4(_, b) => b.len(),
             ColumnValues::Uint8(_, b) => b.len(),
             ColumnValues::Uint16(_, b) => b.len(),
+            ColumnValues::Date(_, b) => b.len(),
+            ColumnValues::DateTime(_, b) => b.len(),
+            ColumnValues::Time(_, b) => b.len(),
+            ColumnValues::Interval(_, b) => b.len(),
             ColumnValues::Undefined(n) => *n,
         }
     }
@@ -544,6 +673,10 @@ impl ColumnValues {
             ColumnValues::Uint4(_, _) => DataType::Uint4,
             ColumnValues::Uint8(_, _) => DataType::Uint8,
             ColumnValues::Uint16(_, _) => DataType::Uint16,
+            ColumnValues::Date(_, _) => DataType::Date,
+            ColumnValues::DateTime(_, _) => DataType::DateTime,
+            ColumnValues::Time(_, _) => DataType::Time,
+            ColumnValues::Interval(_, _) => DataType::Interval,
             ColumnValues::Undefined(_) => DataType::Undefined,
         }
     }

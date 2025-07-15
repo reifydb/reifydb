@@ -305,11 +305,11 @@ mod tests {
         ]);
         let mut row = layout.allocate_row();
 
-        layout.set_utf8(&mut row, 0, ""); // Empty string
+        layout.set_utf8(&mut row, 0, "");
         layout.set_i16(&mut row, 1, -100i16);
         layout.set_utf8(&mut row, 2, "medium length string");
         layout.set_bool(&mut row, 3, false);
-        layout.set_utf8(&mut row, 4, "x"); // Single char
+        layout.set_utf8(&mut row, 4, "x");
 
         assert_eq!(layout.get_utf8(&row, 0), "");
         assert_eq!(layout.get_i16(&row, 1), -100);
@@ -406,7 +406,6 @@ mod tests {
             Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
         let mut row = layout.allocate_row();
 
-        // Set some test values
         let date = Date::new(2021, 1, 1).unwrap();
         let datetime = DateTime::new(2021, 1, 1, 0, 0, 0, 0).unwrap();
         let time = Time::new(20, 50, 0, 0).unwrap();
@@ -430,10 +429,10 @@ mod tests {
         let mut row = layout.allocate_row();
 
         // Test edge cases
-        let epoch_date = Date::new(1970, 1, 1).unwrap(); // Unix epoch
-        let epoch_datetime = DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap(); // Unix epoch timestamp
-        let midnight = Time::new(0, 0, 0, 0).unwrap(); // Midnight
-        let zero_interval = Interval::from_seconds(0); // Zero duration
+        let epoch_date = Date::default(); // Unix epoch
+        let epoch_datetime = DateTime::default(); // Unix epoch timestamp
+        let midnight = Time::default(); // Midnight
+        let zero_interval = Interval::default(); // Zero duration
         
         layout.set_date(&mut row, 0, epoch_date.clone());
         layout.set_datetime(&mut row, 1, epoch_datetime.clone());

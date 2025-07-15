@@ -377,7 +377,7 @@ mod tests {
         let values = vec![
             Value::Date(Date::new(2000, 1, 1).unwrap()),
             Value::Undefined,
-            Value::Time(Time::new(0, 0, 0, 0).unwrap()),
+            Value::Time(Time::default()),
             Value::Undefined,
         ];
 

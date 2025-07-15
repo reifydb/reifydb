@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{FrameColumn, ColumnValues};
-use reifydb_core::CowVec;
+use crate::frame::{ColumnValues, FrameColumn};
+use reifydb_core::{CowVec, Date, DateTime, Interval, Time};
 
 impl FrameColumn {
     pub fn extend(&mut self, other: FrameColumn) -> crate::frame::Result<()> {
@@ -79,6 +79,26 @@ impl ColumnValues {
             }
 
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint16(r, rv)) => {
+                l.extend(r);
+                lv.extend(rv);
+            }
+
+            (ColumnValues::Date(l, lv), ColumnValues::Date(r, rv)) => {
+                l.extend(r);
+                lv.extend(rv);
+            }
+
+            (ColumnValues::DateTime(l, lv), ColumnValues::DateTime(r, rv)) => {
+                l.extend(r);
+                lv.extend(rv);
+            }
+
+            (ColumnValues::Time(l, lv), ColumnValues::Time(r, rv)) => {
+                l.extend(r);
+                lv.extend(rv);
+            }
+
+            (ColumnValues::Interval(l, lv), ColumnValues::Interval(r, rv)) => {
                 l.extend(r);
                 lv.extend(rv);
             }
@@ -215,6 +235,42 @@ impl ColumnValues {
 
                     *self = ColumnValues::uint16_with_validity(values, validity);
                 }
+                ColumnValues::Date(r, rv) => {
+                    let mut values = CowVec::new(vec![Date::default(); *l_len]);
+                    values.extend(r);
+
+                    let mut validity = CowVec::new(vec![false; *l_len]);
+                    validity.extend(rv);
+
+                    *self = ColumnValues::date_with_validity(values, validity);
+                }
+                ColumnValues::DateTime(r, rv) => {
+                    let mut values = CowVec::new(vec![DateTime::default(); *l_len]);
+                    values.extend(r);
+
+                    let mut validity = CowVec::new(vec![false; *l_len]);
+                    validity.extend(rv);
+
+                    *self = ColumnValues::datetime_with_validity(values, validity);
+                }
+                ColumnValues::Time(r, rv) => {
+                    let mut values = CowVec::new(vec![Time::default(); *l_len]);
+                    values.extend(r);
+
+                    let mut validity = CowVec::new(vec![false; *l_len]);
+                    validity.extend(rv);
+
+                    *self = ColumnValues::time_with_validity(values, validity);
+                }
+                ColumnValues::Interval(r, rv) => {
+                    let mut values = CowVec::new(vec![Interval::default(); *l_len]);
+                    values.extend(r);
+
+                    let mut validity = CowVec::new(vec![false; *l_len]);
+                    validity.extend(rv);
+
+                    *self = ColumnValues::interval_with_validity(values, validity);
+                }
                 ColumnValues::Undefined(_) => {}
             },
 
@@ -274,6 +330,22 @@ impl ColumnValues {
                 }
                 ColumnValues::Uint16(l, lv) => {
                     l.extend(std::iter::repeat(0).take(r_len));
+                    lv.extend(std::iter::repeat(false).take(r_len));
+                }
+                ColumnValues::Date(l, lv) => {
+                    l.extend(std::iter::repeat(Date::default()).take(r_len));
+                    lv.extend(std::iter::repeat(false).take(r_len));
+                }
+                ColumnValues::DateTime(l, lv) => {
+                    l.extend(std::iter::repeat(DateTime::default()).take(r_len));
+                    lv.extend(std::iter::repeat(false).take(r_len));
+                }
+                ColumnValues::Time(l, lv) => {
+                    l.extend(std::iter::repeat(Time::default()).take(r_len));
+                    lv.extend(std::iter::repeat(false).take(r_len));
+                }
+                ColumnValues::Interval(l, lv) => {
+                    l.extend(std::iter::repeat(Interval::default()).take(r_len));
                     lv.extend(std::iter::repeat(false).take(r_len));
                 }
                 ColumnValues::Undefined(_) => unreachable!(),

@@ -14,6 +14,12 @@ pub struct DateTime {
     inner: ChronoDateTime<Utc>,
 }
 
+impl Default for DateTime {
+    fn default() -> Self {
+        Self::new(1970, 1, 1, 0, 0, 0, 0).unwrap()
+    }
+}
+
 impl DateTime {
     pub fn new(
         year: i32,

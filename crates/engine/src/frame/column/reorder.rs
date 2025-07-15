@@ -62,6 +62,22 @@ impl ColumnValues {
                 v.reorder(indices);
                 valid.reorder(indices);
             }
+            ColumnValues::Date(v, valid) => {
+                v.reorder(indices);
+                valid.reorder(indices);
+            }
+            ColumnValues::DateTime(v, valid) => {
+                v.reorder(indices);
+                valid.reorder(indices);
+            }
+            ColumnValues::Time(v, valid) => {
+                v.reorder(indices);
+                valid.reorder(indices);
+            }
+            ColumnValues::Interval(v, valid) => {
+                v.reorder(indices);
+                valid.reorder(indices);
+            }
             ColumnValues::Undefined(len) => {
                 *len = indices.len();
             }

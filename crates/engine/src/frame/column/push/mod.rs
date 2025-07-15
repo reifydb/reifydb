@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
-use reifydb_core::CowVec;
+use reifydb_core::{CowVec, Date, DateTime, Time, Interval};
 use std::fmt::Debug;
 
 mod i128;
@@ -63,6 +63,10 @@ macro_rules! impl_push {
 impl_push!(bool, Bool);
 impl_push!(f32, Float4);
 impl_push!(f64, Float8);
+impl_push!(Date, Date);
+impl_push!(DateTime, DateTime);
+impl_push!(Time, Time);
+impl_push!(Interval, Interval);
 
 impl Push<String> for ColumnValues {
     fn push(&mut self, value: String) {

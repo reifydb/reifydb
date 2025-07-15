@@ -12,6 +12,12 @@ pub struct Date {
     inner: NaiveDate,
 }
 
+impl Default for Date{
+    fn default() -> Self {
+        Self::new(1970, 1, 1).unwrap()
+    }
+}
+
 impl Date {
     pub fn new(year: i32, month: u32, day: u32) -> Option<Self> {
         NaiveDate::from_ymd_opt(year, month, day).map(|inner| Self { inner })

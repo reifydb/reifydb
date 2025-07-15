@@ -29,6 +29,10 @@ impl FrameColumnLayout {
                 ColumnValues::Uint4(_, _) => DataType::Uint4,
                 ColumnValues::Uint8(_, _) => DataType::Uint8,
                 ColumnValues::Uint16(_, _) => DataType::Uint16,
+                ColumnValues::Date(_, _) => DataType::Date,
+                ColumnValues::DateTime(_, _) => DataType::DateTime,
+                ColumnValues::Time(_, _) => DataType::Time,
+                ColumnValues::Interval(_, _) => DataType::Interval,
                 ColumnValues::Undefined(_) => DataType::Undefined,
             },
         }

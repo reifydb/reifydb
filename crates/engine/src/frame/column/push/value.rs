@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
-use reifydb_core::Value;
+use reifydb_core::{Value, Date, DateTime, Time, Interval};
 
 impl ColumnValues {
     pub fn push_value(&mut self, value: Value) {
@@ -171,6 +171,54 @@ impl ColumnValues {
                     values.push(v);
                     validity.push(true);
                     *self = ColumnValues::uint16_with_validity(values, validity);
+                }
+                _ => unimplemented!(),
+            },
+
+            Value::Date(v) => match self {
+                ColumnValues::Date(_, _) => self.push(v),
+                ColumnValues::Undefined(len) => {
+                    let mut values = vec![Date::default(); *len];
+                    let mut validity = vec![false; *len];
+                    values.push(v);
+                    validity.push(true);
+                    *self = ColumnValues::date_with_validity(values, validity);
+                }
+                _ => unimplemented!(),
+            },
+
+            Value::DateTime(v) => match self {
+                ColumnValues::DateTime(_, _) => self.push(v),
+                ColumnValues::Undefined(len) => {
+                    let mut values = vec![DateTime::default(); *len];
+                    let mut validity = vec![false; *len];
+                    values.push(v);
+                    validity.push(true);
+                    *self = ColumnValues::datetime_with_validity(values, validity);
+                }
+                _ => unimplemented!(),
+            },
+
+            Value::Time(v) => match self {
+                ColumnValues::Time(_, _) => self.push(v),
+                ColumnValues::Undefined(len) => {
+                    let mut values = vec![Time::default(); *len];
+                    let mut validity = vec![false; *len];
+                    values.push(v);
+                    validity.push(true);
+                    *self = ColumnValues::time_with_validity(values, validity);
+                }
+                _ => unimplemented!(),
+            },
+
+            Value::Interval(v) => match self {
+                ColumnValues::Interval(_, _) => self.push(v),
+                ColumnValues::Undefined(len) => {
+                    let mut values = vec![Interval::default(); *len];
+                    let mut validity = vec![false; *len];
+                    values.push(v);
+                    validity.push(true);
+                    *self = ColumnValues::interval_with_validity(values, validity);
                 }
                 _ => unimplemented!(),
             },

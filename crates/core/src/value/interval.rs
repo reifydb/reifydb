@@ -11,6 +11,12 @@ pub struct Interval {
     inner: Duration,
 }
 
+impl Default for Interval {
+    fn default() -> Self {
+        Self::from_seconds(0)
+    }
+}
+
 impl Interval {
     pub fn new(duration: Duration) -> Self {
         Self { inner: duration }

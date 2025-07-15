@@ -11,6 +11,12 @@ pub struct Time {
     inner: NaiveTime,
 }
 
+impl Default for Time {
+    fn default() -> Self {
+        Self::new(0, 0, 0, 0).unwrap()
+    }
+}
+
 impl Time {
     pub fn new(hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
         NaiveTime::from_hms_nano_opt(hour, min, sec, nano).map(|inner| Self { inner })

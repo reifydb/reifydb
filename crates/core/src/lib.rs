@@ -8,19 +8,20 @@
 
 pub use bitvec::BitVec;
 pub use cowvec::CowVec;
+pub use data_type::{DataType, GetDataType};
 pub use diagnostic::{Diagnostic, DiagnosticColumn};
 pub use error::Error;
 pub use key::{EncodedKey, EncodedKeyRange};
-pub use data_type::{GetDataType, DataType};
-pub use sort::{SortDirection, SortKey};
 pub use retry::retry;
-pub use span::{IntoSpan, SpanLine, SpanColumn, Span};
-pub use value::Value;
+pub use sort::{SortDirection, SortKey};
+pub use span::{IntoSpan, Span, SpanColumn, SpanLine};
+pub use value::{Date, DateTime, Interval, Time, Value};
 pub use version::Version;
 
 mod bitvec;
 pub mod clock;
 mod cowvec;
+mod data_type;
 pub mod delta;
 mod diagnostic;
 pub mod either;
@@ -29,11 +30,10 @@ mod error;
 pub mod hook;
 pub mod interface;
 mod key;
-mod data_type;
 pub mod num;
-mod sort;
 mod retry;
 pub mod row;
+mod sort;
 mod span;
 mod value;
 mod version;

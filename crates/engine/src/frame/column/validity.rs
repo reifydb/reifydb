@@ -20,6 +20,10 @@ impl ColumnValues {
             ColumnValues::Uint4(_, validity) => validity.as_slice(),
             ColumnValues::Uint8(_, validity) => validity.as_slice(),
             ColumnValues::Uint16(_, validity) => validity.as_slice(),
+            ColumnValues::Date(_, validity) => validity.as_slice(),
+            ColumnValues::DateTime(_, validity) => validity.as_slice(),
+            ColumnValues::Time(_, validity) => validity.as_slice(),
+            ColumnValues::Interval(_, validity) => validity.as_slice(),
             ColumnValues::Undefined(_) => unreachable!("undefined has no validity mask"),
         }
     }
