@@ -19,20 +19,16 @@ fn main() {
     db.tx_as(&root, r#"create schema test"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
-    db.tx_as(&root, r#"create table test.arith(id: int2, value: int2, num: int2)"#).unwrap();
+    db.tx_as(&root, r#"create table test.abc(col: date)"#).unwrap();
 
-    
+
     let l = db
         .tx_as(
             &root,
             r#"
   from [
-    { id: 1, value: 1, num: 5  },
-    { id: 1, value: 1, num: 10 },
-    { id: 1, value: 2, num: 15 },
-    { id: 2, value: 1, num: 10 },
-    { id: 2, value: 1, num: 30 }
-  ] insert test.arith
+    { col: @2025-07-15  },
+  ] insert test.abc
         "#,
         )
         .unwrap();
@@ -43,7 +39,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            from test.arith aggregate avg(num) by id sort id
+            from test.abc
         "#,
         )
         .unwrap();

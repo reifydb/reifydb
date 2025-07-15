@@ -22,10 +22,15 @@ impl Compiler {
                 AstLiteral::Number(_) => {
                     Ok(Expression::Constant(ConstantExpression::Number { span: literal.span() }))
                 }
+                AstLiteral::Temporal(_) => {
+                    Ok(Expression::Constant(ConstantExpression::Temporal { span: literal.span() }))
+                }
                 AstLiteral::Text(_) => {
                     Ok(Expression::Constant(ConstantExpression::Text { span: literal.span() }))
                 }
-                _ => unimplemented!(),
+                AstLiteral::Undefined(_) => {
+                    Ok(Expression::Constant(ConstantExpression::Undefined { span: literal.span() }))
+                }
             },
             Ast::Identifier(identifier) => {
                 Ok(Expression::Column(ColumnExpression(identifier.span())))

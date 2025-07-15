@@ -14,6 +14,7 @@ pub mod query;
 pub mod sequence;
 pub mod r#type;
 mod util;
+mod temporal;
 
 pub trait DiagnosticRenderer {
     fn render(&self, diagnostic: &Diagnostic) -> String;

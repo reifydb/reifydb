@@ -157,6 +157,10 @@ pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<DataType> 
         "uint16" => DataType::Uint16,
         "utf8" => DataType::Utf8,
         "text" => DataType::Utf8,
+        "date" => DataType::Date,
+        "datetime" => DataType::DateTime,
+        "time" => DataType::Time,
+        "interval" => DataType::Interval,
         _ => return Err(Error(unrecognized_type(ast.span.clone()))),
     })
 }
