@@ -23,6 +23,14 @@ impl Date {
         NaiveDate::from_ymd_opt(year, month, day).map(|inner| Self { inner })
     }
 
+    pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, String> {
+        Self::new(year, month, day).ok_or_else(|| format!("Invalid date: {}-{:02}-{:02}", year, month, day))
+    }
+
+    pub fn today() -> Self {
+        Self::from_naive_date(chrono::Utc::now().date_naive())
+    }
+
     pub fn from_naive_date(date: NaiveDate) -> Self {
         Self { inner: date }
     }

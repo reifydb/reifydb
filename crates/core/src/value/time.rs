@@ -26,6 +26,26 @@ impl Time {
         Self { inner: time }
     }
 
+    pub fn from_hms(hour: u32, min: u32, sec: u32) -> Result<Self, String> {
+        Self::new(hour, min, sec, 0).ok_or_else(|| {
+            format!("Invalid time: {:02}:{:02}:{:02}", hour, min, sec)
+        })
+    }
+
+    pub fn from_hms_nano(hour: u32, min: u32, sec: u32, nano: u32) -> Result<Self, String> {
+        Self::new(hour, min, sec, nano).ok_or_else(|| {
+            format!("Invalid time: {:02}:{:02}:{:02}.{:09}", hour, min, sec, nano)
+        })
+    }
+
+    pub fn midnight() -> Self {
+        Self::new(0, 0, 0, 0).unwrap()
+    }
+
+    pub fn noon() -> Self {
+        Self::new(12, 0, 0, 0).unwrap()
+    }
+
     pub fn hour(&self) -> u32 {
         self.inner.hour()
     }

@@ -3,14 +3,14 @@
 
 use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
-use crate::frame::{FrameColumn, ColumnValues};
+use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
     pub(crate) fn prefix(
-		&mut self,
-		prefix: &PrefixExpression,
-		ctx: &EvaluationContext,
+        &mut self,
+        prefix: &PrefixExpression,
+        ctx: &EvaluationContext,
     ) -> evaluate::Result<FrameColumn> {
         let column = evaluate(&prefix.expression, ctx)?;
 
@@ -224,6 +224,19 @@ impl Evaluator {
             //     Err("Cannot apply prefix operator to undefined values".into())
             // }
             ColumnValues::Undefined(_) => {
+                unimplemented!()
+            }
+            
+            ColumnValues::Date(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::DateTime(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Time(_, _) => {
+                unimplemented!()
+            }
+            ColumnValues::Interval(_, _) => {
                 unimplemented!()
             }
         }

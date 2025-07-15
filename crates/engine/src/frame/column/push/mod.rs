@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
-use reifydb_core::{CowVec, Date, DateTime, Time, Interval};
+use reifydb_core::{CowVec, Date, DateTime, Interval, Time};
 use std::fmt::Debug;
 
 mod i128;

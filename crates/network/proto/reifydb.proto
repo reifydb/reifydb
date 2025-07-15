@@ -65,6 +65,11 @@ message Value {
     double float64_value = 14;
 
     bool undefined_value = 15;
+
+    Date date_value = 16;
+    DateTime datetime_value = 17;
+    Time time_value = 18;
+    Interval interval_value = 19;
   }
 }
 
@@ -76,6 +81,28 @@ message Int128 {
 message UInt128 {
   uint64 high = 1;
   uint64 low = 2;
+}
+
+message Date {
+  // Days since Unix epoch (1970-01-01)
+  int32 days_since_epoch = 1;
+}
+
+message DateTime {
+  // Seconds since Unix epoch (1970-01-01T00:00:00Z)
+  int64 seconds = 1;
+  // Nanosecond offset within the second (0-999,999,999)
+  uint32 nanos = 2;
+}
+
+message Time {
+  // Nanoseconds since midnight (00:00:00.000000000)
+  uint64 nanos_since_midnight = 1;
+}
+
+message Interval {
+  // Duration in nanoseconds (can be negative)
+  int64 nanos = 1;
 }
 
 message Diagnostic {
@@ -116,4 +143,8 @@ enum DataType {
   UINT8 = 0x0C;
   UINT16 = 0x0D;
   BOOL = 0x0E;
+  DATE = 0x0F;
+  DATETIME = 0x10;
+  TIME = 0x11;
+  INTERVAL = 0x12;
 }

@@ -39,6 +39,34 @@ impl DateTime {
         Self { inner: dt }
     }
 
+    pub fn from_ymd_hms(
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        min: u32,
+        sec: u32,
+    ) -> Result<Self, String> {
+        Self::new(year, month, day, hour, min, sec, 0).ok_or_else(|| {
+            format!(
+                "Invalid datetime: {}-{:02}-{:02} {:02}:{:02}:{:02}",
+                year, month, day, hour, min, sec
+            )
+        })
+    }
+
+    pub fn from_timestamp(timestamp: i64) -> Result<Self, String> {
+        chrono::DateTime::from_timestamp(timestamp, 0)
+            .map(Self::from_chrono_datetime)
+            .ok_or_else(|| format!("Invalid timestamp: {}", timestamp))
+    }
+
+    pub fn from_timestamp_millis(millis: i64) -> Result<Self, String> {
+        chrono::DateTime::from_timestamp_millis(millis)
+            .map(Self::from_chrono_datetime)
+            .ok_or_else(|| format!("Invalid timestamp millis: {}", millis))
+    }
+
     pub fn now() -> Self {
         Self { inner: Utc::now() }
     }
@@ -73,6 +101,20 @@ impl DateTime {
     /// Create from nanoseconds since Unix epoch for storage
     pub fn from_nanos_since_epoch(nanos: i64) -> Self {
         Self { inner: chrono::DateTime::from_timestamp_nanos(nanos) }
+    }
+
+    /// Create from separate seconds and nanoseconds
+    pub fn from_parts(seconds: i64, nanos: u32) -> Result<Self, String> {
+        chrono::DateTime::from_timestamp(seconds, nanos)
+            .map(Self::from_chrono_datetime)
+            .ok_or_else(|| format!("Invalid timestamp parts: seconds={}, nanos={}", seconds, nanos))
+    }
+
+    /// Get separate seconds and nanoseconds for storage
+    pub fn to_parts(&self) -> (i64, u32) {
+        let seconds = self.inner.timestamp();
+        let nanos = self.inner.timestamp_subsec_nanos();
+        (seconds, nanos)
     }
 }
 

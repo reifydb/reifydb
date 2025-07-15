@@ -123,7 +123,7 @@ impl DataType {
             DataType::Uint8 => 8,
             DataType::Uint16 => 16,
             DataType::Date => 4,
-            DataType::DateTime => 8,
+            DataType::DateTime => 12, // seconds: i64 + nanos: u32
             DataType::Time => 8,
             DataType::Interval => 8,
             DataType::Undefined => 0,

@@ -3,7 +3,7 @@
 
 use crate::DataType;
 use crate::row::{EncodedRow, Layout};
-use crate::value::{Date, DateTime, Time, Interval};
+use crate::value::{Date, DateTime, Interval, Time};
 
 impl Layout {
     pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
@@ -133,9 +133,11 @@ impl Layout {
         debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::DateTime);
         unsafe {
-            DateTime::from_nanos_since_epoch(
-                (row.as_ptr().add(field.offset) as *const i64).read_unaligned()
-            )
+            // Read i64 seconds at offset
+            let seconds = (row.as_ptr().add(field.offset) as *const i64).read_unaligned();
+            // Read u32 nanos at offset + 8
+            let nanos = (row.as_ptr().add(field.offset + 8) as *const u32).read_unaligned();
+            DateTime::from_parts(seconds, nanos).unwrap()
         }
     }
 
@@ -145,8 +147,9 @@ impl Layout {
         debug_assert_eq!(field.value, DataType::Time);
         unsafe {
             Time::from_nanos_since_midnight(
-                (row.as_ptr().add(field.offset) as *const u64).read_unaligned()
-            ).unwrap()
+                (row.as_ptr().add(field.offset) as *const u64).read_unaligned(),
+            )
+            .unwrap()
         }
     }
 
@@ -155,9 +158,7 @@ impl Layout {
         debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::Interval);
         unsafe {
-            Interval::from_nanos(
-                (row.as_ptr().add(field.offset) as *const i64).read_unaligned()
-            )
+            Interval::from_nanos((row.as_ptr().add(field.offset) as *const i64).read_unaligned())
         }
     }
 }
@@ -166,7 +167,7 @@ impl Layout {
 mod tests {
     use crate::DataType;
     use crate::row::Layout;
-    use crate::value::{Date, DateTime, Time, Interval};
+    use crate::value::{Date, DateTime, Interval, Time};
 
     #[test]
     fn test_get_bool() {
@@ -401,47 +402,82 @@ mod tests {
     }
 
     #[test]
-    fn test_get_temporal_types() {
-        let layout =
-            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+    fn test_date() {
+        let layout = Layout::new(&[DataType::Date]);
         let mut row = layout.allocate_row();
 
-        let date = Date::new(2021, 1, 1).unwrap();
-        let datetime = DateTime::new(2021, 1, 1, 0, 0, 0, 0).unwrap();
-        let time = Time::new(20, 50, 0, 0).unwrap();
-        let interval = Interval::from_seconds(-7200); // -2 hours
-        
-        layout.set_date(&mut row, 0, date.clone());
-        layout.set_datetime(&mut row, 1, datetime.clone());
-        layout.set_time(&mut row, 2, time.clone());
-        layout.set_interval(&mut row, 3, interval.clone());
-
-        assert_eq!(layout.get_date(&row, 0), date);
-        assert_eq!(layout.get_datetime(&row, 1), datetime);
-        assert_eq!(layout.get_time(&row, 2), time);
-        assert_eq!(layout.get_interval(&row, 3), interval);
+        let value = Date::new(2021, 1, 1).unwrap();
+        layout.set_date(&mut row, 0, value.clone());
+        assert_eq!(layout.get_date(&row, 0), value);
     }
 
     #[test]
-    fn test_temporal_edge_cases() {
-        let layout =
-            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+    fn test_date_epoch() {
+        let layout = Layout::new(&[DataType::Date]);
         let mut row = layout.allocate_row();
 
-        // Test edge cases
-        let epoch_date = Date::default(); // Unix epoch
-        let epoch_datetime = DateTime::default(); // Unix epoch timestamp
-        let midnight = Time::default(); // Midnight
-        let zero_interval = Interval::default(); // Zero duration
-        
-        layout.set_date(&mut row, 0, epoch_date.clone());
-        layout.set_datetime(&mut row, 1, epoch_datetime.clone());
-        layout.set_time(&mut row, 2, midnight.clone());
-        layout.set_interval(&mut row, 3, zero_interval.clone());
+        let value = Date::default();
+        layout.set_date(&mut row, 0, value.clone());
+        assert_eq!(layout.get_date(&row, 0), value);
+    }
 
-        assert_eq!(layout.get_date(&row, 0), epoch_date);
-        assert_eq!(layout.get_datetime(&row, 1), epoch_datetime);
-        assert_eq!(layout.get_time(&row, 2), midnight);
-        assert_eq!(layout.get_interval(&row, 3), zero_interval);
+    #[test]
+    fn test_datetime() {
+        let layout = Layout::new(&[DataType::DateTime]);
+        let mut row = layout.allocate_row();
+
+        let value = DateTime::new(2024, 9, 9, 08, 17, 0, 1234).unwrap();
+        layout.set_datetime(&mut row, 0, value.clone());
+        assert_eq!(layout.get_datetime(&row, 0), value);
+    }
+
+    #[test]
+    fn test_datetime_epoch() {
+        let layout = Layout::new(&[DataType::DateTime]);
+        let mut row = layout.allocate_row();
+
+        let value = DateTime::default();
+        layout.set_datetime(&mut row, 0, value.clone());
+        assert_eq!(layout.get_datetime(&row, 0), value);
+    }
+
+    #[test]
+    fn test_time() {
+        let layout = Layout::new(&[DataType::Time]);
+        let mut row = layout.allocate_row();
+
+        let value = Time::new(20, 50, 0, 0).unwrap();
+        layout.set_time(&mut row, 0, value.clone());
+        assert_eq!(layout.get_time(&row, 0), value);
+    }
+
+    #[test]
+    fn test_time_midnight() {
+        let layout = Layout::new(&[DataType::Time]);
+        let mut row = layout.allocate_row();
+
+        let value = Time::default();
+        layout.set_time(&mut row, 0, value.clone());
+        assert_eq!(layout.get_time(&row, 0), value);
+    }
+
+    #[test]
+    fn test_interval() {
+        let layout = Layout::new(&[DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        let value = Interval::from_seconds(-7200);
+        layout.set_interval(&mut row, 0, value.clone());
+        assert_eq!(layout.get_interval(&row, 0), value);
+    }
+
+    #[test]
+    fn test_interval_zero() {
+        let layout = Layout::new(&[DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        let value = Interval::default();
+        layout.set_interval(&mut row, 0, value.clone());
+        assert_eq!(layout.get_interval(&row, 0), value);
     }
 }

@@ -125,6 +125,34 @@ impl<'df> Iterator for FrameIter<'df> {
                         ValueRef::Undefined
                     }
                 }
+                ColumnValues::Date(data, bitmap) => {
+                    if bitmap[i] {
+                        ValueRef::Date(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
+                ColumnValues::DateTime(data, bitmap) => {
+                    if bitmap[i] {
+                        ValueRef::DateTime(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
+                ColumnValues::Time(data, bitmap) => {
+                    if bitmap[i] {
+                        ValueRef::Time(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
+                ColumnValues::Interval(data, bitmap) => {
+                    if bitmap[i] {
+                        ValueRef::Interval(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
                 ColumnValues::Undefined(_) => ValueRef::Undefined,
             })
             .collect();

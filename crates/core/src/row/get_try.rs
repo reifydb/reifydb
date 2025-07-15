@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::row::{EncodedRow, Layout};
+use crate::{Date, DateTime, Interval, Time};
 
 impl Layout {
     pub fn try_get_bool(&self, row: &EncodedRow, index: usize) -> Option<bool> {
@@ -59,12 +60,28 @@ impl Layout {
     pub fn try_get_u128(&self, row: &EncodedRow, index: usize) -> Option<u128> {
         if row.is_defined(index) { Some(self.get_u128(row, index)) } else { None }
     }
+
+    pub fn try_get_date(&self, row: &EncodedRow, index: usize) -> Option<Date> {
+        if row.is_defined(index) { Some(self.get_date(row, index)) } else { None }
+    }
+
+    pub fn try_get_datetime(&self, row: &EncodedRow, index: usize) -> Option<DateTime> {
+        if row.is_defined(index) { Some(self.get_datetime(row, index)) } else { None }
+    }
+
+    pub fn try_get_time(&self, row: &EncodedRow, index: usize) -> Option<Time> {
+        if row.is_defined(index) { Some(self.get_time(row, index)) } else { None }
+    }
+
+    pub fn try_get_interval(&self, row: &EncodedRow, index: usize) -> Option<Interval> {
+        if row.is_defined(index) { Some(self.get_interval(row, index)) } else { None }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::DataType;
     use crate::row::Layout;
+    use crate::{DataType, Date, DateTime, Interval, Time};
 
     #[test]
     fn test_try_get_bool() {
@@ -392,5 +409,120 @@ mod tests {
         assert_eq!(layout.try_get_utf8(&row, 1), Some("first_string"));
         assert_eq!(layout.try_get_i32(&row, 2), Some(999));
         assert_eq!(layout.try_get_utf8(&row, 3), None);
+    }
+
+    #[test]
+    fn test_try_get_date() {
+        let layout = Layout::new(&[DataType::Date]);
+        let mut row = layout.allocate_row();
+
+        assert_eq!(layout.try_get_date(&row, 0), None);
+
+        let test_date = Date::from_ymd(2025, 1, 15).unwrap();
+        layout.set_date(&mut row, 0, test_date.clone());
+        assert_eq!(layout.try_get_date(&row, 0), Some(test_date));
+    }
+
+    #[test]
+    fn test_try_get_datetime() {
+        let layout = Layout::new(&[DataType::DateTime]);
+        let mut row = layout.allocate_row();
+
+        assert_eq!(layout.try_get_datetime(&row, 0), None);
+
+        let test_datetime = DateTime::from_timestamp(1642694400).unwrap();
+        layout.set_datetime(&mut row, 0, test_datetime.clone());
+        assert_eq!(layout.try_get_datetime(&row, 0), Some(test_datetime));
+    }
+
+    #[test]
+    fn test_try_get_time() {
+        let layout = Layout::new(&[DataType::Time]);
+        let mut row = layout.allocate_row();
+
+        assert_eq!(layout.try_get_time(&row, 0), None);
+
+        let test_time = Time::from_hms(14, 30, 45).unwrap();
+        layout.set_time(&mut row, 0, test_time.clone());
+        assert_eq!(layout.try_get_time(&row, 0), Some(test_time));
+    }
+
+    #[test]
+    fn test_try_get_interval() {
+        let layout = Layout::new(&[DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        assert_eq!(layout.try_get_interval(&row, 0), None);
+
+        let test_interval = Interval::from_days(30);
+        layout.set_interval(&mut row, 0, test_interval.clone());
+        assert_eq!(layout.try_get_interval(&row, 0), Some(test_interval));
+    }
+
+    #[test]
+    fn test_try_get_mixed_temporal_fields() {
+        let layout =
+            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        // Initially all fields undefined
+        assert_eq!(layout.try_get_date(&row, 0), None);
+        assert_eq!(layout.try_get_datetime(&row, 1), None);
+        assert_eq!(layout.try_get_time(&row, 2), None);
+        assert_eq!(layout.try_get_interval(&row, 3), None);
+
+        // Set only some fields
+        let test_date = Date::from_ymd(2025, 7, 15).unwrap();
+        let test_time = Time::from_hms(9, 15, 30).unwrap();
+
+        layout.set_date(&mut row, 0, test_date.clone());
+        layout.set_time(&mut row, 2, test_time.clone());
+
+        assert_eq!(layout.try_get_date(&row, 0), Some(test_date.clone()));
+        assert_eq!(layout.try_get_datetime(&row, 1), None);
+        assert_eq!(layout.try_get_time(&row, 2), Some(test_time.clone()));
+        assert_eq!(layout.try_get_interval(&row, 3), None);
+
+        // Set remaining fields
+        let test_datetime = DateTime::from_timestamp(1721030130).unwrap();
+        let test_interval = Interval::from_hours(24);
+
+        layout.set_datetime(&mut row, 1, test_datetime.clone());
+        layout.set_interval(&mut row, 3, test_interval.clone());
+
+        assert_eq!(layout.try_get_datetime(&row, 1), Some(test_datetime));
+        assert_eq!(layout.try_get_interval(&row, 3), Some(test_interval));
+    }
+
+    #[test]
+    fn test_try_get_temporal_after_set_undefined() {
+        let layout =
+            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        // Set all temporal fields
+        let test_date = Date::from_ymd(2025, 12, 25).unwrap();
+        let test_datetime = DateTime::from_timestamp(1735142400).unwrap();
+        let test_time = Time::from_hms(12, 0, 0).unwrap();
+        let test_interval = Interval::from_weeks(2);
+
+        layout.set_date(&mut row, 0, test_date.clone());
+        layout.set_datetime(&mut row, 1, test_datetime.clone());
+        layout.set_time(&mut row, 2, test_time.clone());
+        layout.set_interval(&mut row, 3, test_interval.clone());
+
+        assert_eq!(layout.try_get_date(&row, 0), Some(test_date));
+        assert_eq!(layout.try_get_datetime(&row, 1), Some(test_datetime.clone()));
+        assert_eq!(layout.try_get_time(&row, 2), Some(test_time));
+        assert_eq!(layout.try_get_interval(&row, 3), Some(test_interval.clone()));
+
+        // Set some fields as undefined
+        layout.set_undefined(&mut row, 0);
+        layout.set_undefined(&mut row, 2);
+
+        assert_eq!(layout.try_get_date(&row, 0), None);
+        assert_eq!(layout.try_get_datetime(&row, 1), Some(test_datetime));
+        assert_eq!(layout.try_get_time(&row, 2), None);
+        assert_eq!(layout.try_get_interval(&row, 3), Some(test_interval));
     }
 }

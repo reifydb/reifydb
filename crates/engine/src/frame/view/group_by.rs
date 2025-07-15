@@ -129,6 +129,34 @@ impl Frame {
                             Value::Undefined
                         }
                     }
+                    ColumnValues::Date(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Date(data[row_idx].clone())
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::DateTime(data, valid) => {
+                        if valid[row_idx] {
+                            Value::DateTime(data[row_idx].clone())
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Time(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Time(data[row_idx].clone())
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Interval(data, valid) => {
+                        if valid[row_idx] {
+                            Value::Interval(data[row_idx].clone())
+                        } else {
+                            Value::Undefined
+                        }
+                    }
                     ColumnValues::Undefined(_) => Value::Undefined,
                 };
 

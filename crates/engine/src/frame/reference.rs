@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::Value;
+use reifydb_core::{Value, Date, DateTime, Time, Interval};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -33,6 +33,10 @@ pub enum ValueRef<'a> {
     Uint4(&'a u32),
     Uint8(&'a u64),
     Uint16(&'a u128),
+    Date(&'a Date),
+    DateTime(&'a DateTime),
+    Time(&'a Time),
+    Interval(&'a Interval),
     Undefined,
 }
 
@@ -53,6 +57,10 @@ impl<'a> ValueRef<'a> {
             ValueRef::Uint8(v) => Value::Uint8(**v),
             ValueRef::Uint16(v) => Value::Uint16(**v),
             ValueRef::String(s) => Value::Utf8(s.to_string()),
+            ValueRef::Date(v) => Value::Date((*v).clone()),
+            ValueRef::DateTime(v) => Value::DateTime((*v).clone()),
+            ValueRef::Time(v) => Value::Time((*v).clone()),
+            ValueRef::Interval(v) => Value::Interval((*v).clone()),
             ValueRef::Undefined => Value::Undefined,
         }
     }
@@ -75,6 +83,10 @@ impl<'a> ToString for ValueRef<'a> {
             ValueRef::Uint8(v) => v.to_string(),
             ValueRef::Uint16(v) => v.to_string(),
             ValueRef::String(v) => v.to_string(),
+            ValueRef::Date(v) => v.to_string(),
+            ValueRef::DateTime(v) => v.to_string(),
+            ValueRef::Time(v) => v.to_string(),
+            ValueRef::Interval(v) => v.to_string(),
             ValueRef::Undefined => "Undefined".to_string(),
         }
     }

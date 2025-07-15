@@ -152,7 +152,7 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
 }
 
 fn map_frame(frame: Frame) -> grpc::Frame {
-    use grpc::{Column, Frame, Int128, UInt128, Value as GrpcValue, value::DataType as GrpcKind};
+    use grpc::{Column, Frame, Int128, UInt128, Date, DateTime, Time, Interval, Value as GrpcValue, value::DataType as GrpcKind};
 
     Frame {
         name: frame.name,
@@ -187,6 +187,19 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                                 low: i as u64,
                             }),
                             Value::Utf8(s) => GrpcKind::StringValue(s.clone()),
+                            Value::Date(d) => GrpcKind::DateValue(Date {
+                                days_since_epoch: d.to_days_since_epoch(),
+                            }),
+                            Value::DateTime(dt) => {
+                                let (seconds, nanos) = dt.to_parts();
+                                GrpcKind::DatetimeValue(DateTime { seconds, nanos })
+                            },
+                            Value::Time(t) => GrpcKind::TimeValue(Time {
+                                nanos_since_midnight: t.to_nanos_since_midnight(),
+                            }),
+                            Value::Interval(i) => GrpcKind::IntervalValue(Interval {
+                                nanos: i.to_nanos(),
+                            }),
                             Value::Undefined => GrpcKind::UndefinedValue(false),
                         };
                         GrpcValue { data_type: Some(data_type) }

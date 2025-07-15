@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{FrameColumn, ColumnValues, Frame};
+use crate::frame::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::CowVec;
 
 impl Frame {
@@ -63,6 +63,22 @@ impl Frame {
                     CowVec::new(valid[..n.min(valid.len())].to_vec()),
                 ),
                 ColumnValues::Uint16(values, valid) => ColumnValues::Uint16(
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                ),
+                ColumnValues::Date(values, valid) => ColumnValues::Date(
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                ),
+                ColumnValues::DateTime(values, valid) => ColumnValues::DateTime(
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                ),
+                ColumnValues::Time(values, valid) => ColumnValues::Time(
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                ),
+                ColumnValues::Interval(values, valid) => ColumnValues::Interval(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
                     CowVec::new(valid[..n.min(valid.len())].to_vec()),
                 ),
@@ -131,11 +147,8 @@ mod tests {
 
     #[test]
     fn test_int1_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int1_with_validity(
-            "a",
-            [1, 2, 3],
-            [true, false, true],
-        )]);
+        let mut test_instance =
+            Frame::new(vec![FrameColumn::int1_with_validity("a", [1, 2, 3], [true, false, true])]);
 
         test_instance.take(2).unwrap();
 
@@ -163,27 +176,18 @@ mod tests {
 
     #[test]
     fn test_int4_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int4_with_validity(
-            "a",
-            [1, 2],
-            [true, false],
-        )]);
+        let mut test_instance =
+            Frame::new(vec![FrameColumn::int4_with_validity("a", [1, 2], [true, false])]);
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(
-            test_instance.columns[0].values,
-            ColumnValues::int4_with_validity([1], [true])
-        );
+        assert_eq!(test_instance.columns[0].values, ColumnValues::int4_with_validity([1], [true]));
     }
 
     #[test]
     fn test_int8_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int8_with_validity(
-            "a",
-            [1, 2, 3],
-            [false, true, true],
-        )]);
+        let mut test_instance =
+            Frame::new(vec![FrameColumn::int8_with_validity("a", [1, 2, 3], [false, true, true])]);
 
         test_instance.take(2).unwrap();
 
@@ -195,18 +199,12 @@ mod tests {
 
     #[test]
     fn test_int16_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int16_with_validity(
-            "a",
-            [1, 2],
-            [true, true],
-        )]);
+        let mut test_instance =
+            Frame::new(vec![FrameColumn::int16_with_validity("a", [1, 2], [true, true])]);
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(
-            test_instance.columns[0].values,
-            ColumnValues::int16_with_validity([1], [true])
-        );
+        assert_eq!(test_instance.columns[0].values, ColumnValues::int16_with_validity([1], [true]));
     }
 
     #[test]
@@ -227,27 +225,18 @@ mod tests {
 
     #[test]
     fn test_uint2_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint2_with_validity(
-            "a",
-            [1, 2],
-            [true, false],
-        )]);
+        let mut test_instance =
+            Frame::new(vec![FrameColumn::uint2_with_validity("a", [1, 2], [true, false])]);
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(
-            test_instance.columns[0].values,
-            ColumnValues::uint2_with_validity([1], [true])
-        );
+        assert_eq!(test_instance.columns[0].values, ColumnValues::uint2_with_validity([1], [true]));
     }
 
     #[test]
     fn test_uint4_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint4_with_validity(
-            "a",
-            [10, 20],
-            [false, true],
-        )]);
+        let mut test_instance =
+            Frame::new(vec![FrameColumn::uint4_with_validity("a", [10, 20], [false, true])]);
 
         test_instance.take(1).unwrap();
 
@@ -291,8 +280,11 @@ mod tests {
 
     #[test]
     fn test_text_column() {
-        let mut test_instance =
-            Frame::new(vec![FrameColumn::string_with_validity("t", ["a", "b", "c"], [true, false, true])]);
+        let mut test_instance = Frame::new(vec![FrameColumn::string_with_validity(
+            "t",
+            ["a", "b", "c"],
+            [true, false, true],
+        )]);
 
         test_instance.take(2).unwrap();
 

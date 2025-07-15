@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
+use reifydb_core::{Date, DateTime, Time, Interval};
 
 impl ColumnValues {
     pub fn push_undefined(&mut self) {
@@ -60,6 +61,22 @@ impl ColumnValues {
             }
             ColumnValues::Uint16(values, validity) => {
                 values.push(0);
+                validity.push(false);
+            }
+            ColumnValues::Date(values, validity) => {
+                values.push(Date::default());
+                validity.push(false);
+            }
+            ColumnValues::DateTime(values, validity) => {
+                values.push(DateTime::default());
+                validity.push(false);
+            }
+            ColumnValues::Time(values, validity) => {
+                values.push(Time::default());
+                validity.push(false);
+            }
+            ColumnValues::Interval(values, validity) => {
+                values.push(Interval::default());
                 validity.push(false);
             }
             ColumnValues::Undefined(len) => {

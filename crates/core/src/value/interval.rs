@@ -42,6 +42,22 @@ impl Interval {
         Self { inner: Duration::minutes(minutes) }
     }
 
+    pub fn from_hours(hours: i64) -> Self {
+        Self { inner: Duration::hours(hours) }
+    }
+
+    pub fn from_days(days: i64) -> Self {
+        Self { inner: Duration::days(days) }
+    }
+
+    pub fn from_weeks(weeks: i64) -> Self {
+        Self { inner: Duration::weeks(weeks) }
+    }
+
+    pub fn zero() -> Self {
+        Self { inner: Duration::zero() }
+    }
+
     pub fn seconds(&self) -> i64 {
         self.inner.num_seconds()
     }

@@ -3,7 +3,7 @@
 
 use crate::DataType;
 use crate::row::{EncodedRow, Layout};
-use crate::value::{Date, DateTime, Time, Interval};
+use crate::value::{Date, DateTime, Interval, Time};
 use std::ptr;
 
 impl Layout {
@@ -210,11 +210,16 @@ impl Layout {
         debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, DataType::DateTime);
         row.set_valid(index, true);
+        let (seconds, nanos) = value.to_parts();
         unsafe {
             ptr::write_unaligned(
                 row.make_mut().as_mut_ptr().add(field.offset) as *mut i64,
-                value.to_nanos_since_epoch(),
-            )
+                seconds,
+            );
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset + 8) as *mut u32,
+                nanos,
+            );
         }
     }
 
@@ -261,7 +266,7 @@ impl Layout {
 mod tests {
     use crate::DataType;
     use crate::row::Layout;
-    use crate::value::{Date, DateTime, Time, Interval};
+    use crate::value::{Date, DateTime, Interval, Time};
 
     #[test]
     fn test_bool_and_clone_on_write() {
@@ -827,7 +832,7 @@ mod tests {
         let datetime = DateTime::new(2022, 1, 1, 0, 0, 0, 0).unwrap();
         let time = Time::new(12, 0, 0, 0).unwrap();
         let interval = Interval::from_seconds(86400); // 1 day
-        
+
         layout.set_date(&mut row, 0, date.clone());
         layout.set_bool(&mut row, 1, true);
         layout.set_datetime(&mut row, 2, datetime.clone());

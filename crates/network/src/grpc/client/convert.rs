@@ -2,7 +2,7 @@
 // This file is licensed under the MIT
 
 use crate::grpc::client::grpc;
-use reifydb_core::{DataType, Diagnostic, DiagnosticColumn, Span, SpanColumn, SpanLine};
+use reifydb_core::{DataType, Diagnostic, DiagnosticColumn, Span, SpanColumn, SpanLine, Date, DateTime, Time, Interval};
 use reifydb_engine::frame::{FrameColumn, ColumnValues, Frame};
 use std::collections::HashMap;
 
@@ -289,6 +289,93 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                     }
                 }
                 ColumnValues::utf8_with_validity(data, validity)
+            }
+
+            DataType::Date => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.data_type {
+                        Some(GrpcValueKind::DateValue(grpc::Date { days_since_epoch })) => {
+                            if let Some(date) = Date::from_days_since_epoch(days_since_epoch) {
+                                data.push(date);
+                                validity.push(true);
+                            } else {
+                                data.push(Date::default());
+                                validity.push(false);
+                            }
+                        }
+                        _ => {
+                            data.push(Date::default());
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::date_with_validity(data, validity)
+            }
+
+            DataType::DateTime => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.data_type {
+                        Some(GrpcValueKind::DatetimeValue(grpc::DateTime { seconds, nanos })) => {
+                            if let Ok(datetime) = DateTime::from_parts(seconds, nanos) {
+                                data.push(datetime);
+                                validity.push(true);
+                            } else {
+                                data.push(DateTime::default());
+                                validity.push(false);
+                            }
+                        }
+                        _ => {
+                            data.push(DateTime::default());
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::datetime_with_validity(data, validity)
+            }
+
+            DataType::Time => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.data_type {
+                        Some(GrpcValueKind::TimeValue(grpc::Time { nanos_since_midnight })) => {
+                            if let Some(time) = Time::from_nanos_since_midnight(nanos_since_midnight) {
+                                data.push(time);
+                                validity.push(true);
+                            } else {
+                                data.push(Time::default());
+                                validity.push(false);
+                            }
+                        }
+                        _ => {
+                            data.push(Time::default());
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::time_with_validity(data, validity)
+            }
+
+            DataType::Interval => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut validity = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.data_type {
+                        Some(GrpcValueKind::IntervalValue(grpc::Interval { nanos })) => {
+                            data.push(Interval::from_nanos(nanos));
+                            validity.push(true);
+                        }
+                        _ => {
+                            data.push(Interval::default());
+                            validity.push(false);
+                        }
+                    }
+                }
+                ColumnValues::interval_with_validity(data, validity)
             }
 
             DataType::Undefined => ColumnValues::undefined(values.len()),

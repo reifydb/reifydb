@@ -88,18 +88,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
                         Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
                         Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
-                        Value::Date(v) => {
-                            layout.set_date(&mut row, table_idx, v.to_days_since_epoch())
-                        }
-                        Value::DateTime(v) => {
-                            layout.set_datetime(&mut row, table_idx, v.to_nanos_since_epoch())
-                        }
-                        Value::Time(v) => {
-                            layout.set_time(&mut row, table_idx, v.to_nanos_since_midnight())
-                        }
-                        Value::Interval(v) => {
-                            layout.set_interval(&mut row, table_idx, v.nanoseconds())
-                        }
+                        Value::Date(v) => layout.set_date(&mut row, table_idx, v),
+                        Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
+                        Value::Time(v) => layout.set_time(&mut row, table_idx, v),
+                        Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
                         Value::Undefined => layout.set_undefined(&mut row, table_idx),
                     }
                 }

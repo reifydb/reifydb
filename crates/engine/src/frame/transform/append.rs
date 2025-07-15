@@ -3,7 +3,7 @@
 
 use crate::frame::{ColumnValues, Frame};
 use reifydb_core::row::{Layout, EncodedRow};
-use reifydb_core::{CowVec, DataType};
+use reifydb_core::{CowVec, DataType, Date, DateTime, Time, Interval};
 
 impl Frame {
     pub fn append_frame(&mut self, other: Frame) -> crate::frame::Result<()> {
@@ -107,6 +107,22 @@ impl Frame {
                         CowVec::new(vec![0u128; size]),
                         CowVec::new(vec![false; size]),
                     ),
+                    DataType::Date => ColumnValues::date_with_validity(
+                        CowVec::new(vec![Date::default(); size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    DataType::DateTime => ColumnValues::datetime_with_validity(
+                        CowVec::new(vec![DateTime::default(); size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    DataType::Time => ColumnValues::time_with_validity(
+                        CowVec::new(vec![Time::default(); size]),
+                        CowVec::new(vec![false; size]),
+                    ),
+                    DataType::Interval => ColumnValues::interval_with_validity(
+                        CowVec::new(vec![Interval::default(); size]),
+                        CowVec::new(vec![false; size]),
+                    ),
                     DataType::Undefined => column.values.clone(),
                 };
 
@@ -184,6 +200,22 @@ impl Frame {
                 }
                 (ColumnValues::Uint16(vec, valid), DataType::Uint16) => {
                     vec.push(layout.get_u128(&row, index));
+                    valid.push(true);
+                }
+                (ColumnValues::Date(vec, valid), DataType::Date) => {
+                    vec.push(layout.get_date(&row, index));
+                    valid.push(true);
+                }
+                (ColumnValues::DateTime(vec, valid), DataType::DateTime) => {
+                    vec.push(layout.get_datetime(&row, index));
+                    valid.push(true);
+                }
+                (ColumnValues::Time(vec, valid), DataType::Time) => {
+                    vec.push(layout.get_time(&row, index));
+                    valid.push(true);
+                }
+                (ColumnValues::Interval(vec, valid), DataType::Interval) => {
+                    vec.push(layout.get_interval(&row, index));
                     valid.push(true);
                 }
                 (_, v) => {
@@ -367,6 +399,54 @@ impl Frame {
                         }
                         None => {
                             vec.push(0);
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Date(vec, valid), DataType::Date) => {
+                    match layout.try_get_date(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(Date::default());
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::DateTime(vec, valid), DataType::DateTime) => {
+                    match layout.try_get_datetime(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(DateTime::default());
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Time(vec, valid), DataType::Time) => {
+                    match layout.try_get_time(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(Time::default());
+                            valid.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Interval(vec, valid), DataType::Interval) => {
+                    match layout.try_get_interval(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            valid.push(true);
+                        }
+                        None => {
+                            vec.push(Interval::default());
                             valid.push(false);
                         }
                     }

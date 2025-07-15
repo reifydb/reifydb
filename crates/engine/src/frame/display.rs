@@ -116,6 +116,34 @@ impl Display for Frame {
                             "Undefined".into()
                         }
                     }
+                    ColumnValues::Date(v, valid) => {
+                        if valid[row_idx] {
+                            v[row_idx].to_string()
+                        } else {
+                            "Undefined".into()
+                        }
+                    }
+                    ColumnValues::DateTime(v, valid) => {
+                        if valid[row_idx] {
+                            v[row_idx].to_string()
+                        } else {
+                            "Undefined".into()
+                        }
+                    }
+                    ColumnValues::Time(v, valid) => {
+                        if valid[row_idx] {
+                            v[row_idx].to_string()
+                        } else {
+                            "Undefined".into()
+                        }
+                    }
+                    ColumnValues::Interval(v, valid) => {
+                        if valid[row_idx] {
+                            v[row_idx].to_string()
+                        } else {
+                            "Undefined".into()
+                        }
+                    }
                     ColumnValues::Undefined(_) => "Undefined".into(),
                 };
                 col_widths[i] = col_widths[i].max(s.len());
@@ -256,6 +284,34 @@ impl Display for Frame {
                                 "Undefined".into()
                             }
                         }
+                        ColumnValues::Date(v, valid) => {
+                            if valid[row_idx] {
+                                v[row_idx].to_string()
+                            } else {
+                                "Undefined".into()
+                            }
+                        }
+                        ColumnValues::DateTime(v, valid) => {
+                            if valid[row_idx] {
+                                v[row_idx].to_string()
+                            } else {
+                                "Undefined".into()
+                            }
+                        }
+                        ColumnValues::Time(v, valid) => {
+                            if valid[row_idx] {
+                                v[row_idx].to_string()
+                            } else {
+                                "Undefined".into()
+                            }
+                        }
+                        ColumnValues::Interval(v, valid) => {
+                            if valid[row_idx] {
+                                v[row_idx].to_string()
+                            } else {
+                                "Undefined".into()
+                            }
+                        }
                         ColumnValues::Undefined(_) => "Undefined".into(),
                     };
                     let pad = w - s.len();
@@ -295,8 +351,11 @@ mod tests {
 
     #[test]
     fn test_float4() {
-        let frame =
-            Frame::new(vec![FrameColumn::float4_with_validity("float4", [1.2, 2.5], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::float4_with_validity(
+            "float4",
+            [1.2, 2.5],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -311,8 +370,11 @@ mod tests {
 
     #[test]
     fn test_float8() {
-        let frame =
-            Frame::new(vec![FrameColumn::float8_with_validity("float8", [3.14, 6.28], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::float8_with_validity(
+            "float8",
+            [3.14, 6.28],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -327,7 +389,8 @@ mod tests {
 
     #[test]
     fn test_int1() {
-        let frame = Frame::new(vec![FrameColumn::int1_with_validity("int1", [1, -1], [true, false])]);
+        let frame =
+            Frame::new(vec![FrameColumn::int1_with_validity("int1", [1, -1], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -342,7 +405,8 @@ mod tests {
 
     #[test]
     fn test_int2() {
-        let frame = Frame::new(vec![FrameColumn::int2_with_validity("int2", [100, 200], [true, false])]);
+        let frame =
+            Frame::new(vec![FrameColumn::int2_with_validity("int2", [100, 200], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -373,8 +437,11 @@ mod tests {
 
     #[test]
     fn test_int8() {
-        let frame =
-            Frame::new(vec![FrameColumn::int8_with_validity("int8", [10000, 20000], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::int8_with_validity(
+            "int8",
+            [10000, 20000],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -389,8 +456,11 @@ mod tests {
 
     #[test]
     fn test_int16() {
-        let frame =
-            Frame::new(vec![FrameColumn::int16_with_validity("int16", [100000, 200000], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::int16_with_validity(
+            "int16",
+            [100000, 200000],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -405,7 +475,8 @@ mod tests {
 
     #[test]
     fn test_uint1() {
-        let frame = Frame::new(vec![FrameColumn::uint1_with_validity("uint1", [1, 2], [true, false])]);
+        let frame =
+            Frame::new(vec![FrameColumn::uint1_with_validity("uint1", [1, 2], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -436,8 +507,11 @@ mod tests {
 
     #[test]
     fn test_uint4() {
-        let frame =
-            Frame::new(vec![FrameColumn::uint4_with_validity("uint4", [1000, 2000], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::uint4_with_validity(
+            "uint4",
+            [1000, 2000],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -452,8 +526,11 @@ mod tests {
 
     #[test]
     fn test_uint8() {
-        let frame =
-            Frame::new(vec![FrameColumn::uint8_with_validity("uint8", [10000, 20000], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::uint8_with_validity(
+            "uint8",
+            [10000, 20000],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -487,8 +564,11 @@ mod tests {
 
     #[test]
     fn test_string() {
-        let frame =
-            Frame::new(vec![FrameColumn::string_with_validity("string", ["foo", "bar"], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::string_with_validity(
+            "string",
+            ["foo", "bar"],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -512,6 +592,94 @@ mod tests {
 |  Undefined  |
 |  Undefined  |
 +-------------+
+";
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_date() {
+        use reifydb_core::{CowVec, Date};
+        let dates =
+            vec![Date::from_ymd(2025, 1, 15).unwrap(), Date::from_ymd(2025, 12, 25).unwrap()];
+        let frame = Frame::new(vec![FrameColumn {
+            name: "date".to_string(),
+            values: crate::frame::ColumnValues::Date(
+                CowVec::new(dates),
+                CowVec::new(vec![true, false]),
+            ),
+        }]);
+        let output = format!("{}", frame);
+        let expected = "\
++--------------+
+|     date     |
++--------------+
+|  2025-01-15  |
+|  Undefined   |
++--------------+
+";
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_datetime() {
+        use reifydb_core::{CowVec, DateTime};
+        let datetimes = vec![
+            DateTime::from_timestamp(1642694400).unwrap(),
+            DateTime::from_timestamp(1735142400).unwrap(),
+        ];
+        let frame = Frame::new(vec![FrameColumn {
+            name: "datetime".to_string(),
+            values: ColumnValues::DateTime(CowVec::new(datetimes), CowVec::new(vec![true, false])),
+        }]);
+        let output = format!("{}", frame);
+        let expected = "\
++----------------------------------+
+|             datetime             |
++----------------------------------+
+|  2022-01-20T16:00:00.000000000Z  |
+|            Undefined             |
++----------------------------------+
+";
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_time() {
+        use reifydb_core::{CowVec, Time};
+        let times = vec![Time::from_hms(14, 30, 45).unwrap(), Time::from_hms(9, 15, 30).unwrap()];
+        let frame = Frame::new(vec![FrameColumn {
+            name: "time".to_string(),
+            values: ColumnValues::Time(CowVec::new(times), CowVec::new(vec![true, false])),
+        }]);
+        let output = format!("{}", frame);
+        let expected = "\
++----------------------+
+|         time         |
++----------------------+
+|  14:30:45.000000000  |
+|      Undefined       |
++----------------------+
+";
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_interval() {
+        use reifydb_core::{CowVec, Interval};
+        let intervals = vec![Interval::from_days(30), Interval::from_hours(24)];
+        let frame = Frame::new(vec![FrameColumn {
+            name: "interval".to_string(),
+            values: ColumnValues::Interval(CowVec::new(intervals), CowVec::new(vec![true, false])),
+        }]);
+        let output = format!("{}", frame);
+
+        let expected = "\
++--------------------------+
+|         interval         |
++--------------------------+
+|  30d 0h 0m 0.000000000s  |
+|        Undefined         |
++--------------------------+
 ";
         assert_eq!(output, expected);
     }

@@ -8,7 +8,7 @@ use crate::ws::{
     RxResponse, Request, RequestPayload, Response, ResponsePayload,
 };
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::{CowVec, Diagnostic, Error, DataType};
+use reifydb_core::{CowVec, Diagnostic, Error, DataType, Date, DateTime, Time, Interval};
 use reifydb_engine::frame::{FrameColumn, ColumnValues, Frame};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -287,6 +287,102 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                 .map(|s| if s == "⟪undefined⟫" { "".to_string() } else { s.clone() })
                 .collect();
             ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity))
+        }
+        DataType::Date => {
+            let values: Vec<Date> = data
+                .iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        Date::default()
+                    } else {
+                        // Parse date from ISO format (YYYY-MM-DD)
+                        let parts: Vec<&str> = s.split('-').collect();
+                        if parts.len() == 3 {
+                            let year = parts[0].parse::<i32>().unwrap_or(1970);
+                            let month = parts[1].parse::<u32>().unwrap_or(1);
+                            let day = parts[2].parse::<u32>().unwrap_or(1);
+                            Date::from_ymd(year, month, day).unwrap_or_default()
+                        } else {
+                            Date::default()
+                        }
+                    }
+                })
+                .collect();
+            ColumnValues::Date(CowVec::new(values), CowVec::new(validity))
+        }
+        DataType::DateTime => {
+            let values: Vec<DateTime> = data
+                .iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        DateTime::default()
+                    } else {
+                        // Parse timestamp or ISO format
+                        if let Ok(timestamp) = s.parse::<i64>() {
+                            DateTime::from_timestamp(timestamp).unwrap_or_default()
+                        } else {
+                            DateTime::default()
+                        }
+                    }
+                })
+                .collect();
+            ColumnValues::DateTime(CowVec::new(values), CowVec::new(validity))
+        }
+        DataType::Time => {
+            let values: Vec<Time> = data
+                .iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        Time::default()
+                    } else {
+                        // Parse time from HH:MM:SS.nnnnnnnnn format
+                        let parts: Vec<&str> = s.split(':').collect();
+                        if parts.len() >= 3 {
+                            let hour = parts[0].parse::<u32>().unwrap_or(0);
+                            let min = parts[1].parse::<u32>().unwrap_or(0);
+                            
+                            // Handle seconds and nanoseconds
+                            let sec_parts: Vec<&str> = parts[2].split('.').collect();
+                            let sec = sec_parts[0].parse::<u32>().unwrap_or(0);
+                            
+                            let nano = if sec_parts.len() > 1 {
+                                let frac_str = sec_parts[1];
+                                let padded = if frac_str.len() < 9 {
+                                    format!("{:0<9}", frac_str)
+                                } else {
+                                    frac_str[..9].to_string()
+                                };
+                                padded.parse::<u32>().unwrap_or(0)
+                            } else {
+                                0
+                            };
+                            
+                            Time::from_hms_nano(hour, min, sec, nano).unwrap_or_default()
+                        } else {
+                            Time::default()
+                        }
+                    }
+                })
+                .collect();
+            ColumnValues::Time(CowVec::new(values), CowVec::new(validity))
+        }
+        DataType::Interval => {
+            let values: Vec<Interval> = data
+                .iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        Interval::default()
+                    } else {
+                        // Parse interval from nanoseconds or duration string
+                        if let Ok(nanos) = s.parse::<i64>() {
+                            Interval::from_nanos(nanos)
+                        } else {
+                            Interval::default()
+                        }
+                    }
+                })
+                .collect();
+            ColumnValues::Interval(CowVec::new(values), CowVec::new(validity))
         }
         DataType::Undefined => ColumnValues::Undefined(data.len()),
     }
