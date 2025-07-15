@@ -32,6 +32,10 @@ impl Interval {
         Self { inner: Duration::nanoseconds(nanoseconds) }
     }
 
+    pub fn from_minutes(minutes: i64) -> Self {
+        Self { inner: Duration::minutes(minutes) }
+    }
+
     pub fn seconds(&self) -> i64 {
         self.inner.num_seconds()
     }
@@ -78,6 +82,18 @@ impl PartialOrd for Interval {
 impl Ord for Interval {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.inner.cmp(&other.inner)
+    }
+}
+
+impl Interval {
+    /// Convert to nanoseconds for storage
+    pub fn to_nanos(&self) -> i64 {
+        self.inner.num_nanoseconds().unwrap_or(0)
+    }
+
+    /// Create from nanoseconds for storage
+    pub fn from_nanos(nanos: i64) -> Self {
+        Self { inner: chrono::Duration::nanoseconds(nanos) }
     }
 }
 

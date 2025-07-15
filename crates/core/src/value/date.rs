@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use chrono::Datelike;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -36,6 +35,20 @@ impl Date {
 
     pub fn inner(&self) -> &NaiveDate {
         &self.inner
+    }
+}
+
+impl Date {
+    /// Convert to days since Unix epoch for storage
+    pub fn to_days_since_epoch(&self) -> i32 {
+        self.inner.signed_duration_since(NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()).num_days() as i32
+    }
+
+    /// Create from days since Unix epoch for storage
+    pub fn from_days_since_epoch(days: i32) -> Option<Self> {
+        NaiveDate::from_ymd_opt(1970, 1, 1)
+            .and_then(|epoch| epoch.checked_add_signed(chrono::Duration::days(days as i64)))
+            .map(|inner| Self { inner })
     }
 }
 

@@ -19,6 +19,10 @@ pub(crate) fn value_max<'a>(value: DataType) -> &'a str {
         DataType::Uint4 => "4_294_967_295",
         DataType::Uint8 => "18_446_744_073_709_551_615",
         DataType::Uint16 => "340_282_366_920_938_463_463_374_607_431_768_211_455",
+        DataType::Date => "9999-12-31",
+        DataType::DateTime => "9999-12-31T23:59:59.999999999Z",
+        DataType::Time => "23:59:59.999999999",
+        DataType::Interval => "292471208677 years",
         DataType::Undefined => unreachable!(),
     }
 }
@@ -41,6 +45,10 @@ pub(crate) fn value_range<'a>(value: DataType) -> &'a str {
         DataType::Uint4 => "0 to 4_294_967_295",
         DataType::Uint8 => "0 to 18_446_744_073_709_551_615",
         DataType::Uint16 => "0 to 340_282_366_920_938_463_463_374_607_431_768_211_455",
+        DataType::Date => "0001-01-01 to 9999-12-31",
+        DataType::DateTime => "1970-01-01T00:00:00.000000000Z to 2262-04-11T23:47:16.854775807Z",
+        DataType::Time => "00:00:00.000000000 to 23:59:59.999999999",
+        DataType::Interval => "-292471208677 years to +292471208677 years",
         DataType::Undefined => unreachable!(),
     }
 }
@@ -81,6 +89,14 @@ mod tests {
             assert_eq!(value_max(DataType::Float4), "+3.4e38");
             assert_eq!(value_max(DataType::Float8), "+1.8e308");
         }
+
+        #[test]
+        fn test_temporal_types() {
+            assert_eq!(value_max(DataType::Date), "9999-12-31");
+            assert_eq!(value_max(DataType::DateTime), "9999-12-31T23:59:59.999999999Z");
+            assert_eq!(value_max(DataType::Time), "23:59:59.999999999");
+            assert_eq!(value_max(DataType::Interval), "292471208677 years");
+        }
     }
 
     mod value_range {
@@ -118,6 +134,14 @@ mod tests {
         fn test_floats() {
             assert_eq!(value_range(DataType::Float4), "-3.4e38 to +3.4e38");
             assert_eq!(value_range(DataType::Float8), "-1.8e308 to +1.8e308");
+        }
+
+        #[test]
+        fn test_temporal_types() {
+            assert_eq!(value_range(DataType::Date), "0001-01-01 to 9999-12-31");
+            assert_eq!(value_range(DataType::DateTime), "1970-01-01T00:00:00.000000000Z to 2262-04-11T23:47:16.854775807Z");
+            assert_eq!(value_range(DataType::Time), "00:00:00.000000000 to 23:59:59.999999999");
+            assert_eq!(value_range(DataType::Interval), "-292471208677 years to +292471208677 years");
         }
     }
 }

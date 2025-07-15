@@ -3,6 +3,7 @@
 
 use crate::DataType;
 use crate::row::{EncodedRow, Layout};
+use crate::value::{Date, DateTime, Time, Interval};
 
 impl Layout {
     pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
@@ -114,12 +115,58 @@ impl Layout {
         debug_assert_eq!(field.value, DataType::Uint16);
         unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() }
     }
+
+    pub fn get_date(&self, row: &EncodedRow, index: usize) -> Date {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert_eq!(field.value, DataType::Date);
+        unsafe {
+            Date::from_days_since_epoch(
+                (row.as_ptr().add(field.offset) as *const i32).read_unaligned(),
+            )
+            .unwrap()
+        }
+    }
+
+    pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert_eq!(field.value, DataType::DateTime);
+        unsafe {
+            DateTime::from_nanos_since_epoch(
+                (row.as_ptr().add(field.offset) as *const i64).read_unaligned()
+            )
+        }
+    }
+
+    pub fn get_time(&self, row: &EncodedRow, index: usize) -> Time {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert_eq!(field.value, DataType::Time);
+        unsafe {
+            Time::from_nanos_since_midnight(
+                (row.as_ptr().add(field.offset) as *const u64).read_unaligned()
+            ).unwrap()
+        }
+    }
+
+    pub fn get_interval(&self, row: &EncodedRow, index: usize) -> Interval {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert_eq!(field.value, DataType::Interval);
+        unsafe {
+            Interval::from_nanos(
+                (row.as_ptr().add(field.offset) as *const i64).read_unaligned()
+            )
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::DataType;
     use crate::row::Layout;
+    use crate::value::{Date, DateTime, Time, Interval};
 
     #[test]
     fn test_get_bool() {
@@ -237,11 +284,11 @@ mod tests {
     fn test_mixed_utf8_and_static_fields() {
         let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4]);
         let mut row = layout.allocate_row();
-        
+
         layout.set_bool(&mut row, 0, true);
         layout.set_utf8(&mut row, 1, "hello");
         layout.set_i32(&mut row, 2, 42);
-        
+
         assert_eq!(layout.get_bool(&row, 0), true);
         assert_eq!(layout.get_utf8(&row, 1), "hello");
         assert_eq!(layout.get_i32(&row, 2), 42);
@@ -249,15 +296,21 @@ mod tests {
 
     #[test]
     fn test_multiple_utf8_different_sizes() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Int2, DataType::Utf8, DataType::Bool, DataType::Utf8]);
+        let layout = Layout::new(&[
+            DataType::Utf8,
+            DataType::Int2,
+            DataType::Utf8,
+            DataType::Bool,
+            DataType::Utf8,
+        ]);
         let mut row = layout.allocate_row();
-        
-        layout.set_utf8(&mut row, 0, "");  // Empty string
+
+        layout.set_utf8(&mut row, 0, ""); // Empty string
         layout.set_i16(&mut row, 1, -100i16);
         layout.set_utf8(&mut row, 2, "medium length string");
         layout.set_bool(&mut row, 3, false);
-        layout.set_utf8(&mut row, 4, "x");  // Single char
-        
+        layout.set_utf8(&mut row, 4, "x"); // Single char
+
         assert_eq!(layout.get_utf8(&row, 0), "");
         assert_eq!(layout.get_i16(&row, 1), -100);
         assert_eq!(layout.get_utf8(&row, 2), "medium length string");
@@ -269,13 +322,13 @@ mod tests {
     fn test_empty_and_large_utf8_strings() {
         let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
         let mut row = layout.allocate_row();
-        
+
         let large_string = "A".repeat(1000);
-        
+
         layout.set_utf8(&mut row, 0, "");
         layout.set_utf8(&mut row, 1, &large_string);
         layout.set_utf8(&mut row, 2, "small");
-        
+
         assert_eq!(layout.get_utf8(&row, 0), "");
         assert_eq!(layout.get_utf8(&row, 1), large_string);
         assert_eq!(layout.get_utf8(&row, 2), "small");
@@ -285,11 +338,11 @@ mod tests {
     fn test_unicode_multibyte_strings() {
         let layout = Layout::new(&[DataType::Utf8, DataType::Float8, DataType::Utf8]);
         let mut row = layout.allocate_row();
-        
+
         layout.set_utf8(&mut row, 0, "🚀✨🌟");
         layout.set_f64(&mut row, 1, 3.14159);
         layout.set_utf8(&mut row, 2, "Hello 世界 🎉");
-        
+
         assert_eq!(layout.get_utf8(&row, 0), "🚀✨🌟");
         assert_eq!(layout.get_f64(&row, 1), 3.14159);
         assert_eq!(layout.get_utf8(&row, 2), "Hello 世界 🎉");
@@ -299,13 +352,13 @@ mod tests {
     fn test_utf8_arbitrary_setting_order() {
         let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8, DataType::Utf8]);
         let mut row = layout.allocate_row();
-        
+
         // Set in reverse order
         layout.set_utf8(&mut row, 3, "fourth");
         layout.set_utf8(&mut row, 1, "second");
         layout.set_utf8(&mut row, 0, "first");
         layout.set_utf8(&mut row, 2, "third");
-        
+
         assert_eq!(layout.get_utf8(&row, 0), "first");
         assert_eq!(layout.get_utf8(&row, 1), "second");
         assert_eq!(layout.get_utf8(&row, 2), "third");
@@ -316,15 +369,15 @@ mod tests {
     fn test_static_only_fields_no_dynamic() {
         let layout = Layout::new(&[DataType::Bool, DataType::Int4, DataType::Float8]);
         let mut row = layout.allocate_row();
-        
+
         layout.set_bool(&mut row, 0, true);
         layout.set_i32(&mut row, 1, -12345);
         layout.set_f64(&mut row, 2, 2.71828);
-        
+
         // Verify no dynamic section
         assert_eq!(layout.dynamic_section_size(&row), 0);
         assert_eq!(row.len(), layout.total_static_size());
-        
+
         assert_eq!(layout.get_bool(&row, 0), true);
         assert_eq!(layout.get_i32(&row, 1), -12345);
         assert_eq!(layout.get_f64(&row, 2), 2.71828);
@@ -334,16 +387,62 @@ mod tests {
     fn test_interleaved_static_and_dynamic_setting() {
         let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4, DataType::Utf8]);
         let mut row = layout.allocate_row();
-        
+
         // Interleave static and dynamic field setting
         layout.set_bool(&mut row, 0, true);
         layout.set_utf8(&mut row, 1, "first_string");
         layout.set_i32(&mut row, 2, 999);
         layout.set_utf8(&mut row, 3, "second_string");
-        
+
         assert_eq!(layout.get_bool(&row, 0), true);
         assert_eq!(layout.get_utf8(&row, 1), "first_string");
         assert_eq!(layout.get_i32(&row, 2), 999);
         assert_eq!(layout.get_utf8(&row, 3), "second_string");
+    }
+
+    #[test]
+    fn test_get_temporal_types() {
+        let layout =
+            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        // Set some test values
+        let date = Date::new(2021, 1, 1).unwrap();
+        let datetime = DateTime::new(2021, 1, 1, 0, 0, 0, 0).unwrap();
+        let time = Time::new(20, 50, 0, 0).unwrap();
+        let interval = Interval::from_seconds(-7200); // -2 hours
+        
+        layout.set_date(&mut row, 0, date.clone());
+        layout.set_datetime(&mut row, 1, datetime.clone());
+        layout.set_time(&mut row, 2, time.clone());
+        layout.set_interval(&mut row, 3, interval.clone());
+
+        assert_eq!(layout.get_date(&row, 0), date);
+        assert_eq!(layout.get_datetime(&row, 1), datetime);
+        assert_eq!(layout.get_time(&row, 2), time);
+        assert_eq!(layout.get_interval(&row, 3), interval);
+    }
+
+    #[test]
+    fn test_temporal_edge_cases() {
+        let layout =
+            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        // Test edge cases
+        let epoch_date = Date::new(1970, 1, 1).unwrap(); // Unix epoch
+        let epoch_datetime = DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap(); // Unix epoch timestamp
+        let midnight = Time::new(0, 0, 0, 0).unwrap(); // Midnight
+        let zero_interval = Interval::from_seconds(0); // Zero duration
+        
+        layout.set_date(&mut row, 0, epoch_date.clone());
+        layout.set_datetime(&mut row, 1, epoch_datetime.clone());
+        layout.set_time(&mut row, 2, midnight.clone());
+        layout.set_interval(&mut row, 3, zero_interval.clone());
+
+        assert_eq!(layout.get_date(&row, 0), epoch_date);
+        assert_eq!(layout.get_datetime(&row, 1), epoch_datetime);
+        assert_eq!(layout.get_time(&row, 2), midnight);
+        assert_eq!(layout.get_interval(&row, 3), zero_interval);
     }
 }

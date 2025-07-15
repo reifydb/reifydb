@@ -122,10 +122,10 @@ impl DataType {
             DataType::Uint4 => 4,
             DataType::Uint8 => 8,
             DataType::Uint16 => 16,
-            DataType::Date => 4, // days since epoch as i32
-            DataType::DateTime => 8, // timestamp in nanoseconds as i64
-            DataType::Time => 8, // nanoseconds since midnight as u64
-            DataType::Interval => 8, // duration in nanoseconds as i64
+            DataType::Date => 4,
+            DataType::DateTime => 8,
+            DataType::Time => 8,
+            DataType::Interval => 8,
             DataType::Undefined => 0,
         }
     }

@@ -41,6 +41,21 @@ impl Time {
     }
 }
 
+impl Time {
+    /// Convert to nanoseconds since midnight for storage
+    pub fn to_nanos_since_midnight(&self) -> u64 {
+        self.inner.num_seconds_from_midnight() as u64 * 1_000_000_000 + self.inner.nanosecond() as u64
+    }
+
+    /// Create from nanoseconds since midnight for storage
+    pub fn from_nanos_since_midnight(nanos: u64) -> Option<Self> {
+        let seconds = (nanos / 1_000_000_000) as u32;
+        let nano = (nanos % 1_000_000_000) as u32;
+        NaiveTime::from_num_seconds_from_midnight_opt(seconds, nano)
+            .map(|inner| Self { inner })
+    }
+}
+
 impl Display for Time {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.inner.format("%H:%M:%S%.9f"))

@@ -58,6 +58,18 @@ impl DateTime {
     }
 }
 
+impl DateTime {
+    /// Convert to nanoseconds since Unix epoch for storage
+    pub fn to_nanos_since_epoch(&self) -> i64 {
+        self.inner.timestamp_nanos_opt().unwrap_or(0)
+    }
+
+    /// Create from nanoseconds since Unix epoch for storage
+    pub fn from_nanos_since_epoch(nanos: i64) -> Self {
+        Self { inner: chrono::DateTime::from_timestamp_nanos(nanos) }
+    }
+}
+
 impl Display for DateTime {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.inner.format("%Y-%m-%dT%H:%M:%S%.9fZ"))

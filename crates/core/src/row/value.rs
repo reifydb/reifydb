@@ -60,6 +60,18 @@ impl Layout {
             (DataType::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
             (DataType::Uint16, Value::Undefined) => self.set_undefined(row, index),
 
+            (DataType::Date, Value::Date(v)) => self.set_date(row, index, v.clone()),
+            (DataType::Date, Value::Undefined) => self.set_undefined(row, index),
+
+            (DataType::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, v.clone()),
+            (DataType::DateTime, Value::Undefined) => self.set_undefined(row, index),
+
+            (DataType::Time, Value::Time(v)) => self.set_time(row, index, v.clone()),
+            (DataType::Time, Value::Undefined) => self.set_undefined(row, index),
+
+            (DataType::Interval, Value::Interval(v)) => self.set_interval(row, index, v.clone()),
+            (DataType::Interval, Value::Undefined) => self.set_undefined(row, index),
+
             (DataType::Undefined, Value::Undefined) => {}
             (_, _) => unreachable!(),
         }
@@ -67,6 +79,9 @@ impl Layout {
 
     pub fn get_value(&self, row: &EncodedRow, index: usize) -> Value {
         let field = &self.fields[index];
+        if !row.is_defined(index) {
+            return Value::Undefined;
+        }
         match field.value {
             DataType::Bool => Value::Bool(self.get_bool(row, index)),
             DataType::Float4 => OrderedF32::try_from(self.get_f32(row, index))
@@ -86,6 +101,10 @@ impl Layout {
             DataType::Uint4 => Value::Uint4(self.get_u32(row, index)),
             DataType::Uint8 => Value::Uint8(self.get_u64(row, index)),
             DataType::Uint16 => Value::Uint16(self.get_u128(row, index)),
+            DataType::Date => Value::Date(self.get_date(row, index)),
+            DataType::DateTime => Value::DateTime(self.get_datetime(row, index)),
+            DataType::Time => Value::Time(self.get_time(row, index)),
+            DataType::Interval => Value::Interval(self.get_interval(row, index)),
             DataType::Undefined => Value::Undefined,
         }
     }
@@ -95,6 +114,7 @@ impl Layout {
 mod tests {
     use crate::num::ordered_float::{OrderedF32, OrderedF64};
     use crate::row::Layout;
+    use crate::value::{Date, DateTime, Interval, Time};
     use crate::{DataType, Value};
 
     #[test]
@@ -326,6 +346,84 @@ mod tests {
         assert_eq!(layout.get_bool(&row, 0), false);
         assert_eq!(layout.get_i32(&row, 1), 999);
         assert_eq!(layout.get_f64(&row, 2), std::f64::consts::E);
+    }
+
+    #[test]
+    fn test_temporal_types_roundtrip() {
+        let layout =
+            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        let original_values = vec![
+            Value::Date(Date::new(2025, 7, 15).unwrap()),
+            Value::DateTime(DateTime::now()),
+            Value::Time(Time::new(14, 30, 45, 123456789).unwrap()),
+            Value::Interval(Interval::from_seconds(3600)),
+        ];
+
+        layout.set_values(&mut row, &original_values);
+
+        let retrieved_values: Vec<Value> = (0..4).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values, original_values);
+    }
+
+    #[test]
+    fn test_temporal_types_with_undefined() {
+        let layout =
+            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+        let mut row = layout.allocate_row();
+
+        let values = vec![
+            Value::Date(Date::new(2000, 1, 1).unwrap()),
+            Value::Undefined,
+            Value::Time(Time::new(0, 0, 0, 0).unwrap()),
+            Value::Undefined,
+        ];
+
+        layout.set_values(&mut row, &values);
+
+        assert!(row.is_defined(0));
+        assert!(!row.is_defined(1));
+        assert!(row.is_defined(2));
+        assert!(!row.is_defined(3));
+
+        let retrieved_values: Vec<Value> = (0..4).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values[0], values[0]);
+        assert_eq!(retrieved_values[1], Value::Undefined);
+        assert_eq!(retrieved_values[2], values[2]);
+        assert_eq!(retrieved_values[3], Value::Undefined);
+    }
+
+    #[test]
+    fn test_mixed_temporal_and_regular_types() {
+        let layout = Layout::new(&[
+            DataType::Bool,
+            DataType::Date,
+            DataType::Utf8,
+            DataType::DateTime,
+            DataType::Int4,
+            DataType::Time,
+            DataType::Interval,
+        ]);
+        let mut row = layout.allocate_row();
+
+        let values = vec![
+            Value::Bool(true),
+            Value::Date(Date::new(1985, 10, 26).unwrap()),
+            Value::Utf8("time travel".to_string()),
+            Value::DateTime(DateTime::new(2015, 10, 21, 16, 29, 0, 0).unwrap()),
+            Value::Int4(88),
+            Value::Time(Time::new(12, 0, 0, 0).unwrap()),
+            Value::Interval(Interval::from_minutes(30)),
+        ];
+
+        layout.set_values(&mut row, &values);
+
+        let retrieved_values: Vec<Value> = (0..7).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values, values);
     }
 
     #[test]
