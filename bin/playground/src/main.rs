@@ -63,7 +63,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            map @2024-03-15 == @2024-03-15
+            map cast(123456789.123, uint8)
             "#,
         )
         .unwrap();

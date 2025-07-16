@@ -105,9 +105,73 @@ impl Evaluator {
                 ColumnValues::bool(vec![span.fragment == "true"; row_count])
             }
 
+            // Bool to numeric types
+            (ConstantExpression::Bool { span }, DataType::Float4) => {
+                let value = if span.fragment == "true" { 1.0f32 } else { 0.0f32 };
+                ColumnValues::float4(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Float8) => {
+                let value = if span.fragment == "true" { 1.0f64 } else { 0.0f64 };
+                ColumnValues::float8(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Int1) => {
+                let value = if span.fragment == "true" { 1i8 } else { 0i8 };
+                ColumnValues::int1(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Int2) => {
+                let value = if span.fragment == "true" { 1i16 } else { 0i16 };
+                ColumnValues::int2(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Int4) => {
+                let value = if span.fragment == "true" { 1i32 } else { 0i32 };
+                ColumnValues::int4(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Int8) => {
+                let value = if span.fragment == "true" { 1i64 } else { 0i64 };
+                ColumnValues::int8(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Int16) => {
+                let value = if span.fragment == "true" { 1i128 } else { 0i128 };
+                ColumnValues::int16(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Uint1) => {
+                let value = if span.fragment == "true" { 1u8 } else { 0u8 };
+                ColumnValues::uint1(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Uint2) => {
+                let value = if span.fragment == "true" { 1u16 } else { 0u16 };
+                ColumnValues::uint2(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Uint4) => {
+                let value = if span.fragment == "true" { 1u32 } else { 0u32 };
+                ColumnValues::uint4(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Uint8) => {
+                let value = if span.fragment == "true" { 1u64 } else { 0u64 };
+                ColumnValues::uint8(vec![value; row_count])
+            }
+            (ConstantExpression::Bool { span }, DataType::Uint16) => {
+                let value = if span.fragment == "true" { 1u128 } else { 0u128 };
+                ColumnValues::uint16(vec![value; row_count])
+            }
+
             (ConstantExpression::Number { span }, ty) => {
                 let s = &span.fragment.replace("_", "");
                 match ty {
+                    DataType::Bool => {
+                        // Convert number to boolean (0 -> false, non-zero -> true)
+                        if let Ok(f) = s.parse::<f64>() {
+                            let value = f != 0.0;
+                            ColumnValues::bool(vec![value; row_count])
+                        } else {
+                            return Err(Error(out_of_range(OutOfRange {
+                                span: span.clone(),
+                                column: None,
+                                data_type: Some(ty),
+                            })));
+                        }
+                    }
+                    
                     DataType::Float4 => match s.parse::<f32>() {
                         Ok(v) => ColumnValues::float4(vec![v; row_count]),
                         Err(_) => {
@@ -128,9 +192,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Int1 => match s.parse::<i8>() {
-                        Ok(v) => ColumnValues::int1(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Int1 => {
+                        if let Ok(v) = s.parse::<i8>() {
+                            ColumnValues::int1(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
+                                ColumnValues::int1(vec![truncated as i8; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -138,9 +214,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Int2 => match s.parse::<i16>() {
-                        Ok(v) => ColumnValues::int2(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Int2 => {
+                        if let Ok(v) = s.parse::<i16>() {
+                            ColumnValues::int2(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
+                                ColumnValues::int2(vec![truncated as i16; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -148,9 +236,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Int4 => match s.parse::<i32>() {
-                        Ok(v) => ColumnValues::int4(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Int4 => {
+                        if let Ok(v) = s.parse::<i32>() {
+                            ColumnValues::int4(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
+                                ColumnValues::int4(vec![truncated as i32; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -158,9 +258,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Int8 => match s.parse::<i64>() {
-                        Ok(v) => ColumnValues::int8(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Int8 => {
+                        if let Ok(v) = s.parse::<i64>() {
+                            ColumnValues::int8(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
+                                ColumnValues::int8(vec![truncated as i64; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -168,9 +280,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Int16 => match s.parse::<i128>() {
-                        Ok(v) => ColumnValues::int16(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Int16 => {
+                        if let Ok(v) = s.parse::<i128>() {
+                            ColumnValues::int16(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
+                                ColumnValues::int16(vec![truncated as i128; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -178,9 +302,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Uint1 => match s.parse::<u8>() {
-                        Ok(v) => ColumnValues::uint1(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Uint1 => {
+                        if let Ok(v) = s.parse::<u8>() {
+                            ColumnValues::uint1(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u8::MAX as f64 {
+                                ColumnValues::uint1(vec![truncated as u8; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -188,9 +324,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Uint2 => match s.parse::<u16>() {
-                        Ok(v) => ColumnValues::uint2(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Uint2 => {
+                        if let Ok(v) = s.parse::<u16>() {
+                            ColumnValues::uint2(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u16::MAX as f64 {
+                                ColumnValues::uint2(vec![truncated as u16; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -198,9 +346,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Uint4 => match s.parse::<u32>() {
-                        Ok(v) => ColumnValues::uint4(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Uint4 => {
+                        if let Ok(v) = s.parse::<u32>() {
+                            ColumnValues::uint4(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u32::MAX as f64 {
+                                ColumnValues::uint4(vec![truncated as u32; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -208,9 +368,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Uint8 => match s.parse::<u64>() {
-                        Ok(v) => ColumnValues::uint8(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Uint8 => {
+                        if let Ok(v) = s.parse::<u64>() {
+                            ColumnValues::uint8(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u64::MAX as f64 {
+                                ColumnValues::uint8(vec![truncated as u64; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -218,9 +390,21 @@ impl Evaluator {
                             })));
                         }
                     },
-                    DataType::Uint16 => match s.parse::<u128>() {
-                        Ok(v) => ColumnValues::uint16(vec![v; row_count]),
-                        Err(_) => {
+                    DataType::Uint16 => {
+                        if let Ok(v) = s.parse::<u128>() {
+                            ColumnValues::uint16(vec![v; row_count])
+                        } else if let Ok(f) = s.parse::<f64>() {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u128::MAX as f64 {
+                                ColumnValues::uint16(vec![truncated as u128; row_count])
+                            } else {
+                                return Err(Error(out_of_range(OutOfRange {
+                                    span: span.clone(),
+                                    column: None,
+                                    data_type: Some(ty),
+                                })));
+                            }
+                        } else {
                             return Err(Error(out_of_range(OutOfRange {
                                 span: span.clone(),
                                 column: None,
@@ -241,6 +425,18 @@ impl Evaluator {
 
             (ConstantExpression::Text { span }, DataType::Utf8) => {
                 ColumnValues::utf8(std::iter::repeat(span.fragment.clone()).take(row_count))
+            }
+            (ConstantExpression::Text { span }, DataType::Date) => {
+                ColumnValues::date(vec![parse_date(span)?; row_count])
+            }
+            (ConstantExpression::Text { span }, DataType::DateTime) => {
+                ColumnValues::datetime(vec![parse_datetime(span)?; row_count])
+            }
+            (ConstantExpression::Text { span }, DataType::Time) => {
+                ColumnValues::time(vec![parse_time(span)?; row_count])
+            }
+            (ConstantExpression::Text { span }, DataType::Interval) => {
+                ColumnValues::interval(vec![parse_interval(span)?; row_count])
             }
             (ConstantExpression::Temporal { span }, DataType::Date) => {
                 ColumnValues::date(vec![parse_date(span)?; row_count])
@@ -508,7 +704,7 @@ mod tests {
         #[test]
         fn test_bool_mismatch() {
             let expr = ConstantExpression::Bool { span: Span::testing("true") };
-            assert!(Evaluator::constant_value_of(&expr, DataType::Int1, 1).is_err());
+            assert!(Evaluator::constant_value_of(&expr, DataType::Undefined, 1).is_err());
         }
 
         #[test]
