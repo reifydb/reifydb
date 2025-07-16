@@ -38,25 +38,25 @@ fn main() {
   //       .unwrap();
   //   println!("{}", l.first().unwrap());
 
-        let l = db
-        .tx_as(
-            &root,
-            r#"
-            map @2024--15
-        "#,
-        )
-        .unwrap();
-    println!("{}", l.first().unwrap());
-
-    // let err = db
+    //     let l = db
     //     .tx_as(
     //         &root,
     //         r#"
-// map @2024-03-15 as result;
-//         "#,
-//         )
-//         .unwrap_err();
-//     println!("{}", err);
+    //           map cast(3.4028235e+38, float4) - cast(-3.4028235e+38, float4)
+    //     "#,
+    //     )
+    //     .unwrap();
+    // println!("{}", l.first().unwrap());
+
+    let err = db
+        .tx_as(
+            &root,
+            r#"
+          map cast("3.14.15", float4)
+        "#,
+        )
+        .unwrap_err();
+    println!("{}", err);
 //
     // // Test simple filter without map
     // let l = db
