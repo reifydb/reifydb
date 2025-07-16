@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod date;
-mod datetime;
-mod interval;
-mod time;
+pub(crate) mod date;
+pub(crate) mod datetime;
+pub(crate) mod interval;
+pub(crate) mod time;
 
 use crate::evaluate;
 use crate::evaluate::constant::date::parse_date;

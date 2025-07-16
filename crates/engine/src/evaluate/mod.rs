@@ -16,7 +16,7 @@ mod call;
 mod cast;
 mod column;
 mod compare;
-mod constant;
+pub(crate) mod constant;
 mod context;
 mod error;
 mod prefix;
