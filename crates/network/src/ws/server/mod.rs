@@ -275,7 +275,7 @@ where
                                                                 }
                                                                 Err(e) => {
                                                                         let mut diagnostic = e.diagnostic();
-                                                                        diagnostic.statement = Some(statement.clone());
+                                                                        diagnostic.set_statement(statement.clone());
 
                                                                         let response = crate::ws::response::Response {
                                                                         id: request.id,
@@ -327,7 +327,7 @@ where
                                                                 }
                                                               Err(e) => {
                                                                         let mut diagnostic = e.diagnostic();
-                                                                        diagnostic.statement = Some(statement.clone());
+                                                                        diagnostic.set_statement(statement.clone());
 
                                                                         let response = crate::ws::response::Response {
                                                                         id: request.id,

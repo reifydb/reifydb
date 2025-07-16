@@ -1565,6 +1565,7 @@ dependencies = [
 name = "reifydb-network"
 version = "0.0.1"
 dependencies = [
+ "chrono",
  "futures-util",
  "prost",
  "reifydb-catalog",

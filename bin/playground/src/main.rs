@@ -22,32 +22,32 @@ fn main() {
     db.tx_as(&root, r#"create schema test"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
-    db.tx_as(&root, r#"create table test.abc(col: date)"#).unwrap();
+    db.tx_as(&root, r#"create table test.item(field: int16 policy (saturation error) )"#).unwrap();
 
 
-    let l = db
+  //   let l = db
+  //       .tx_as(
+  //           &root,
+  //           r#"
+  // from [
+  //   { col: @2025-07-15  },
+  //   { col: @2023-11-23  },
+  // ] insert test.abc
+  //       "#,
+  //       )
+  //       .unwrap();
+  //   println!("{}", l.first().unwrap());
+
+        let l = db
         .tx_as(
             &root,
             r#"
-  from [
-    { col: @2025-07-15  },
-    { col: @2023-11-23  },
-  ] insert test.abc
+            map cast("2023-01-01T12:00:00Z", datetime)'
         "#,
         )
         .unwrap();
     println!("{}", l.first().unwrap());
 
-    //     let l = db
-    //     .tx_as(
-    //         &root,
-    //         r#"
-    //         map @2025-13-24 as result;
-    //     "#,
-    //     )
-    //     .unwrap();
-
-    // println!("{}", l.first().unwrap());
     // let err = db
     //     .tx_as(
     //         &root,
@@ -59,15 +59,15 @@ fn main() {
 //     println!("{}", err);
 //
     // // Test simple filter without map
-    let l = db
-        .tx_as(
-            &root,
-            r#"
-            map cast(123456789.123, uint8)
-            "#,
-        )
-        .unwrap();
-    println!("{}", l.first().unwrap());
+    // let l = db
+    //     .tx_as(
+    //         &root,
+    //         r#"
+    //         map cast(undefined, float8)
+    //         "#,
+    //     )
+    //     .unwrap();
+    // println!("{}", l.first().unwrap());
     //
     // // Test map without filter
     // let l3 = db

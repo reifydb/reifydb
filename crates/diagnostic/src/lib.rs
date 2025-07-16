@@ -8,13 +8,14 @@
 
 use reifydb_core::{Diagnostic, Span};
 
+pub mod cast;
 pub mod catalog;
 pub mod parse;
 pub mod query;
 pub mod sequence;
+pub mod temporal;
 pub mod r#type;
 mod util;
-pub mod temporal;
 
 pub trait DiagnosticRenderer {
     fn render(&self, diagnostic: &Diagnostic) -> String;
@@ -31,33 +32,45 @@ use std::fmt::Write;
 impl DiagnosticRenderer for DefaultRenderer {
     fn render(&self, diagnostic: &Diagnostic) -> String {
         let mut output = String::new();
+        
+        if !diagnostic.caused_by.is_some() {
+            self.render_flat(&mut output, diagnostic);
+        } else {
+            self.render_nested(&mut output, diagnostic, 0);
+        }
+        
+        output
+    }
+}
 
-        let _ = writeln!(&mut output, "ERROR {}", diagnostic.code);
-        let _ = writeln!(&mut output, "  {}", diagnostic.message);
-        let _ = writeln!(&mut output);
+impl DefaultRenderer {
+    fn render_flat(&self, output: &mut String, diagnostic: &Diagnostic) {
+        let _ = writeln!(output, "ERROR {}", diagnostic.code);
+        let _ = writeln!(output, "  {}", diagnostic.message);
+        let _ = writeln!(output);
 
         if let Some(span) = &diagnostic.span {
             let line = span.line.0;
             let col = span.column.0;
             let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
 
-            let _ = writeln!(&mut output, "LOCATION");
-            let _ = writeln!(&mut output, "  line {}, column {}", line, col);
-            let _ = writeln!(&mut output);
+            let _ = writeln!(output, "LOCATION");
+            let _ = writeln!(output, "  line {}, column {}", line, col);
+            let _ = writeln!(output);
 
             let line_content = get_line(statement, line);
 
-            let _ = writeln!(&mut output, "CODE");
-            let _ = writeln!(&mut output, "  {} │ {}", line, line_content);
+            let _ = writeln!(output, "CODE");
+            let _ = writeln!(output, "  {} │ {}", line, line_content);
             let fragment_start = line_content.find(&span.fragment).unwrap_or(col as usize);
             let _ = writeln!(
-                &mut output,
+                output,
                 "    │ {}{}",
                 " ".repeat(fragment_start),
                 "~".repeat(span.fragment.len())
             );
-            let _ = writeln!(&mut output, "    │");
-            
+            let _ = writeln!(output, "    │");
+
             let label_text = diagnostic.label.as_deref().unwrap_or("");
             let span_center = fragment_start + span.fragment.len() / 2;
             let label_center_offset = if label_text.len() / 2 > span_center {
@@ -65,36 +78,103 @@ impl DiagnosticRenderer for DefaultRenderer {
             } else {
                 span_center - label_text.len() / 2
             };
-            
-            let _ = writeln!(
-                &mut output,
-                "    │ {}{}",
-                " ".repeat(label_center_offset),
-                label_text
-            );
-            let _ = writeln!(&mut output);
+
+            let _ =
+                writeln!(output, "    │ {}{}", " ".repeat(label_center_offset), label_text);
+            let _ = writeln!(output);
         }
 
         if let Some(help) = &diagnostic.help {
-            let _ = writeln!(&mut output, "HELP");
-            let _ = writeln!(&mut output, "  {}", help);
-            let _ = writeln!(&mut output);
+            let _ = writeln!(output, "HELP");
+            let _ = writeln!(output, "  {}", help);
+            let _ = writeln!(output);
         }
 
         if let Some(col) = &diagnostic.column {
-            let _ = writeln!(&mut output, "COLUMN");
-            let _ = writeln!(&mut output, "  column `{}` is of type `{}`", col.name, col.data_type);
-            let _ = writeln!(&mut output);
+            let _ = writeln!(output, "COLUMN");
+            let _ = writeln!(output, "  column `{}` is of type `{}`", col.name, col.data_type);
+            let _ = writeln!(output);
         }
 
         if !diagnostic.notes.is_empty() {
-            let _ = writeln!(&mut output, "NOTES");
+            let _ = writeln!(output, "NOTES");
             for note in &diagnostic.notes {
-                let _ = writeln!(&mut output, "  • {}", note);
+                let _ = writeln!(output, "  • {}", note);
             }
         }
+    }
 
-        output
+    fn render_nested(&self, output: &mut String, diagnostic: &Diagnostic, depth: usize) {
+        let indent = if depth == 0 { "" } else { "  " };
+        let prefix = if depth == 0 { "" } else { "↳ " };
+        
+        // Main error line
+        let _ = writeln!(output, "{}{}{}: {}", indent, prefix, diagnostic.code, diagnostic.message);
+        
+        // Location info
+        if let Some(span) = &diagnostic.span {
+            let line = span.line.0;
+            let col = span.column.0;
+            let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
+            
+            let _ = writeln!(output, "{}  at {} (line {}, column {})", indent, 
+                           if statement.is_empty() { "unknown".to_string() } else { format!("\"{}\"", span.fragment) },
+                           line, col);
+            let _ = writeln!(output);
+            
+            // Code visualization
+            let line_content = get_line(statement, line);
+            
+            let _ = writeln!(output, "{}  {} │ {}", indent, line, line_content);
+            let fragment_start = line_content.find(&span.fragment).unwrap_or(col as usize);
+            let _ = writeln!(
+                output,
+                "{}    │ {}{}",
+                indent,
+                " ".repeat(fragment_start),
+                "~".repeat(span.fragment.len())
+            );
+            
+            let label_text = diagnostic.label.as_deref().unwrap_or("");
+            if !label_text.is_empty() {
+                let span_center = fragment_start + span.fragment.len() / 2;
+                let label_center_offset = if label_text.len() / 2 > span_center {
+                    0
+                } else {
+                    span_center - label_text.len() / 2
+                };
+                
+                let _ = writeln!(output, "{}    │ {}{}", indent, " ".repeat(label_center_offset), label_text);
+            }
+            let _ = writeln!(output);
+        }
+        
+        // Handle nested cause first (if exists)
+        if let Some(cause) = &diagnostic.caused_by {
+            self.render_nested(output, cause, depth + 1);
+        }
+        
+        // Help section
+        if let Some(help) = &diagnostic.help {
+            let _ = writeln!(output, "{}  help: {}", indent, help);
+        }
+        
+        // Column info
+        if let Some(col) = &diagnostic.column {
+            let _ = writeln!(output, "{}  column `{}` is of type `{}`", indent, col.name, col.data_type);
+        }
+        
+        // Notes
+        if !diagnostic.notes.is_empty() {
+            for note in &diagnostic.notes {
+                let _ = writeln!(output, "{}  note: {}", indent, note);
+            }
+        }
+        
+        // Add spacing between diagnostic levels
+        if depth > 0 {
+            let _ = writeln!(output);
+        }
     }
 }
 

@@ -14,5 +14,6 @@ pub fn column_not_found(span: Span) -> Diagnostic {
         help: Some("check for typos or ensure the column is defined in the input".to_string()),
         column: None,
         notes: vec![],
+        caused_by: None,
     }
 }

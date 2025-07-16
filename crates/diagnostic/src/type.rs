@@ -58,5 +58,6 @@ pub fn out_of_range(co: OutOfRange) -> Diagnostic {
             (Some(name), Some(value)) => Some(DiagnosticColumn { name: name.clone(), data_type: value }),
             _ => None,
         },
+        caused_by: None,
     }
 }

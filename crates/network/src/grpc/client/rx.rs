@@ -36,7 +36,7 @@ pub fn convert_result(result: RxResultEnum, query: &str) -> Result<Frame, Networ
     match result {
         RxResultEnum::Error(diagnostic) => {
             let mut diag = convert_diagnostic(diagnostic);
-            diag.statement = Some(query.to_string());
+            diag.set_statement(query.to_string());
             Err(NetworkError::execution_error(diag))
         }
         RxResultEnum::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),

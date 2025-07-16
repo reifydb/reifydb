@@ -4,12 +4,12 @@
 mod rx;
 
 use crate::ws::{
-    AuthRequest, TxRequest, TxResponse, RxRequest,
-    RxResponse, Request, RequestPayload, Response, ResponsePayload,
+    AuthRequest, Request, RequestPayload, Response, ResponsePayload, RxRequest, RxResponse,
+    TxRequest, TxResponse,
 };
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::{CowVec, Diagnostic, Error, DataType, Date, DateTime, Time, Interval};
-use reifydb_engine::frame::{FrameColumn, ColumnValues, Frame};
+use reifydb_core::{CowVec, DataType, Date, DateTime, Diagnostic, Error, Interval, Time};
+use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
@@ -51,6 +51,7 @@ impl WsClient {
                 label: None,
                 help: None,
                 notes: vec![],
+                caused_by: None,
             })
         })?;
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -107,9 +108,7 @@ impl WsClient {
         let (tx, rx) = oneshot::channel();
 
         self.pending.lock().await.insert(id.clone(), tx);
-        self.tx
-            .send(Request { id, payload: RequestPayload::Auth(AuthRequest { token }) })
-            .unwrap();
+        self.tx.send(Request { id, payload: RequestPayload::Auth(AuthRequest { token }) }).unwrap();
 
         let resp = timeout(Duration::from_secs(3), rx)
             .await
@@ -134,9 +133,7 @@ impl WsClient {
         self.tx
             .send(Request {
                 id,
-                payload: RequestPayload::Tx(TxRequest {
-                    statements: vec![statement.to_string()],
-                }),
+                payload: RequestPayload::Tx(TxRequest { statements: vec![statement.to_string()] }),
             })
             .unwrap();
 
@@ -164,9 +161,7 @@ impl WsClient {
         self.tx
             .send(Request {
                 id,
-                payload: RequestPayload::Rx(RxRequest {
-                    statements: vec![statement.to_string()],
-                }),
+                payload: RequestPayload::Rx(RxRequest { statements: vec![statement.to_string()] }),
             })
             .unwrap();
 
@@ -207,7 +202,10 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn { name: col.name, values: convert_column_values(col.data_type, col.data) }
+                FrameColumn {
+                    name: col.name,
+                    values: convert_column_values(col.data_type, col.data),
+                }
             })
             .collect();
 
@@ -228,7 +226,10 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn { name: col.name, values: convert_column_values(col.data_type, col.data) }
+                FrameColumn {
+                    name: col.name,
+                    values: convert_column_values(col.data_type, col.data),
+                }
             })
             .collect();
 
@@ -317,11 +318,44 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                     if s == "⟪undefined⟫" {
                         DateTime::default()
                     } else {
-                        // Parse timestamp or ISO format
+                        // Try parsing as timestamp first
                         if let Ok(timestamp) = s.parse::<i64>() {
                             DateTime::from_timestamp(timestamp).unwrap_or_default()
                         } else {
-                            DateTime::default()
+                            // Try parsing as ISO 8601 format with RFC3339 (handles Z suffix)
+                            match chrono::DateTime::parse_from_rfc3339(s) {
+                                Ok(dt) => DateTime::from_chrono_datetime(dt.with_timezone(&chrono::Utc)),
+                                Err(_) => {
+                                    // Try parsing without timezone (assume UTC)
+                                    match chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+                                        Ok(ndt) => DateTime::from_chrono_datetime(ndt.and_utc()),
+                                        Err(_) => {
+                                            // Try parsing with fractional seconds
+                                            match chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+                                                Ok(ndt) => DateTime::from_chrono_datetime(ndt.and_utc()),
+                                                Err(_) => {
+                                                    // Try parsing with Z suffix manually
+                                                    let clean_str = if s.ends_with('Z') {
+                                                        &s[..s.len()-1]
+                                                    } else {
+                                                        s
+                                                    };
+                                                    match chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S") {
+                                                        Ok(ndt) => DateTime::from_chrono_datetime(ndt.and_utc()),
+                                                        Err(_) => {
+                                                            // Try with fractional seconds and Z suffix
+                                                            match chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f") {
+                                                                Ok(ndt) => DateTime::from_chrono_datetime(ndt.and_utc()),
+                                                                Err(_) => DateTime::default()
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 })
@@ -340,11 +374,11 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                         if parts.len() >= 3 {
                             let hour = parts[0].parse::<u32>().unwrap_or(0);
                             let min = parts[1].parse::<u32>().unwrap_or(0);
-                            
+
                             // Handle seconds and nanoseconds
                             let sec_parts: Vec<&str> = parts[2].split('.').collect();
                             let sec = sec_parts[0].parse::<u32>().unwrap_or(0);
-                            
+
                             let nano = if sec_parts.len() > 1 {
                                 let frac_str = sec_parts[1];
                                 let padded = if frac_str.len() < 9 {
@@ -356,7 +390,7 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                             } else {
                                 0
                             };
-                            
+
                             Time::from_hms_nano(hour, min, sec, nano).unwrap_or_default()
                         } else {
                             Time::default()

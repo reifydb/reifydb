@@ -47,7 +47,7 @@ where
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         self.engine.tx_as(principal, rql).map_err(|err| {
             let mut diagnostic = err.diagnostic();
-            diagnostic.statement = Some(rql.to_string());
+            diagnostic.set_statement(rql.to_string());
             Error::ExecutionError { diagnostic }
         })
     }

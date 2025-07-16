@@ -53,7 +53,7 @@ where
         spawn_blocking(move || {
             engine.tx_as(&principal, &rql).map_err(|err| {
                 let mut diagnostic = err.diagnostic();
-                diagnostic.statement = Some(rql.to_string());
+                diagnostic.set_statement(rql.to_string());
                 Error::ExecutionError { diagnostic }
             })
         })
@@ -69,7 +69,7 @@ where
         spawn_blocking(move || {
             engine.rx_as(&principal, &rql).map_err(|err| {
                 let mut diagnostic = err.diagnostic();
-                diagnostic.statement = Some(rql.to_string());
+                diagnostic.set_statement(rql.to_string());
                 Error::ExecutionError { diagnostic }
             })
         })

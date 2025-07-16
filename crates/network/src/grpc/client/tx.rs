@@ -11,7 +11,6 @@ use tonic::metadata::MetadataValue;
 
 impl GrpcClient {
     pub async fn tx(&self, query: &str) -> Result<Vec<Frame>, NetworkError> {
-
         let uri = format!("http://{}", self.socket_addr);
         let mut client = grpc::db_client::DbClient::connect(uri).await?;
         let mut request = tonic::Request::new(grpc::TxRequest { query: query.into() });
@@ -36,7 +35,7 @@ pub fn convert_result(result: tx_result::Result, query: &str) -> Result<Frame, N
     match result {
         tx_result::Result::Error(diagnostic) => {
             let mut diag = convert_diagnostic(diagnostic);
-            diag.statement = Some(query.to_string());
+            diag.set_statement(query.to_string());
             Err(NetworkError::execution_error(diag))
         }
         tx_result::Result::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),
