@@ -16,7 +16,7 @@ use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::num::parse_float;
 use reifydb_core::{DataType, Span};
 use reifydb_diagnostic::cast;
-use reifydb_diagnostic::r#type::{out_of_range, OutOfRange};
+use reifydb_diagnostic::number;
 use reifydb_diagnostic::temporal;
 use reifydb_rql::expression::ConstantExpression;
 
@@ -61,11 +61,7 @@ impl Evaluator {
                     if let Ok(v) = parse_float(s) {
                         return Ok(ColumnValues::float8(vec![v; row_count]));
                     }
-                    return Err(Error(out_of_range(OutOfRange {
-                        span: expr.span(),
-                        column: None,
-                        data_type: Some(DataType::Float8),
-                    })));
+                    return Err(Error(number::invalid_number_format(span.clone(), DataType::Float8)));
                 }
 
                 if let Ok(v) = s.parse::<i8>() {
@@ -81,11 +77,7 @@ impl Evaluator {
                 } else if let Ok(v) = s.parse::<u128>() {
                     ColumnValues::uint16(vec![v; row_count])
                 } else {
-                    return Err(Error(out_of_range(OutOfRange {
-                        span: expr.span(),
-                        column: None,
-                        data_type: Some(DataType::Uint16),
-                    })));
+                    return Err(Error(number::invalid_number_format(span.clone(), DataType::Uint16)));
                 }
             }
             ConstantExpression::Text { span } => {
@@ -168,11 +160,7 @@ impl Evaluator {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Float8),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -183,11 +171,7 @@ impl Evaluator {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Float4),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     },
@@ -197,11 +181,7 @@ impl Evaluator {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Float8),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     },
@@ -213,17 +193,17 @@ impl Evaluator {
                             if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
                                 ColumnValues::int1(vec![truncated as i8; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Int1),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -235,17 +215,17 @@ impl Evaluator {
                             if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
                                 ColumnValues::int2(vec![truncated as i16; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Int2),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -257,17 +237,17 @@ impl Evaluator {
                             if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
                                 ColumnValues::int4(vec![truncated as i32; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Int4),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -279,17 +259,17 @@ impl Evaluator {
                             if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
                                 ColumnValues::int8(vec![truncated as i64; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Int8),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -301,17 +281,17 @@ impl Evaluator {
                             if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
                                 ColumnValues::int16(vec![truncated as i128; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Int16),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -323,17 +303,17 @@ impl Evaluator {
                             if truncated >= 0.0 && truncated <= u8::MAX as f64 {
                                 ColumnValues::uint1(vec![truncated as u8; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Uint1),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -345,17 +325,17 @@ impl Evaluator {
                             if truncated >= 0.0 && truncated <= u16::MAX as f64 {
                                 ColumnValues::uint2(vec![truncated as u16; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Uint2),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -367,17 +347,17 @@ impl Evaluator {
                             if truncated >= 0.0 && truncated <= u32::MAX as f64 {
                                 ColumnValues::uint4(vec![truncated as u32; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Uint4),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -389,17 +369,17 @@ impl Evaluator {
                             if truncated >= 0.0 && truncated <= u64::MAX as f64 {
                                 ColumnValues::uint8(vec![truncated as u64; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Uint8),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -411,17 +391,17 @@ impl Evaluator {
                             if truncated >= 0.0 && truncated <= u128::MAX as f64 {
                                 ColumnValues::uint16(vec![truncated as u128; row_count])
                             } else {
-                                return Err(Error(cast::numeric_saturation(span.clone(), ty)));
+                                return Err(Error(cast::invalid_number(
+                                    span.clone(),
+                                    ty,
+                                    number::number_out_of_range(span.clone(), ty),
+                                )));
                             }
                         } else {
                             return Err(Error(cast::invalid_number(
                                 span.clone(),
                                 ty,
-                                out_of_range(OutOfRange {
-                                    span: expr.span(),
-                                    column: None,
-                                    data_type: Some(DataType::Uint16),
-                                }),
+                                number::invalid_number_format(span.clone(), ty),
                             )));
                         }
                     }
@@ -459,11 +439,7 @@ impl Evaluator {
                         return Err(Error(cast::invalid_number(
                             span.clone(),
                             DataType::Float4,
-                            out_of_range(OutOfRange {
-                                span: span.clone(),
-                                column: None,
-                                data_type: Some(DataType::Float4),
-                            }),
+                            number::invalid_number_format(span.clone(), DataType::Float4),
                         )));
                     }
                 }
@@ -476,11 +452,7 @@ impl Evaluator {
                         return Err(Error(cast::invalid_number(
                             span.clone(),
                             DataType::Float8,
-                            out_of_range(OutOfRange {
-                                span: span.clone(),
-                                column: None,
-                                data_type: Some(DataType::Float8),
-                            }),
+                            number::invalid_number_format(span.clone(), DataType::Float8),
                         )));
                     }
                 }
@@ -494,17 +466,17 @@ impl Evaluator {
                     if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
                         ColumnValues::int1(vec![truncated as i8; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Int1)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Int1,
+                            number::number_out_of_range(span.clone(), DataType::Int1),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Int1,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Int1),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Int1),
                     )));
                 }
             }
@@ -517,17 +489,17 @@ impl Evaluator {
                     if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
                         ColumnValues::int2(vec![truncated as i16; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Int2)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Int2,
+                            number::number_out_of_range(span.clone(), DataType::Int2),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Int2,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Int2),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Int2),
                     )));
                 }
             }
@@ -540,17 +512,17 @@ impl Evaluator {
                     if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
                         ColumnValues::int4(vec![truncated as i32; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Int4)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Int4,
+                            number::number_out_of_range(span.clone(), DataType::Int4),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Int4,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Int4),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Int4),
                     )));
                 }
             }
@@ -563,17 +535,17 @@ impl Evaluator {
                     if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
                         ColumnValues::int8(vec![truncated as i64; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Int8)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Int8,
+                            number::number_out_of_range(span.clone(), DataType::Int8),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Int8,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Int8),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Int8),
                     )));
                 }
             }
@@ -586,17 +558,17 @@ impl Evaluator {
                     if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
                         ColumnValues::int16(vec![truncated as i128; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Int16)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Int16,
+                            number::number_out_of_range(span.clone(), DataType::Int16),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Int16,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Int16),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Int16),
                     )));
                 }
             }
@@ -609,17 +581,17 @@ impl Evaluator {
                     if truncated >= 0.0 && truncated <= u8::MAX as f64 {
                         ColumnValues::uint1(vec![truncated as u8; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Uint1)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Uint1,
+                            number::number_out_of_range(span.clone(), DataType::Uint1),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Uint1,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Uint1),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Uint1),
                     )));
                 }
             }
@@ -632,17 +604,17 @@ impl Evaluator {
                     if truncated >= 0.0 && truncated <= u16::MAX as f64 {
                         ColumnValues::uint2(vec![truncated as u16; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Uint2)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Uint2,
+                            number::number_out_of_range(span.clone(), DataType::Uint2),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Uint2,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Uint2),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Uint2),
                     )));
                 }
             }
@@ -655,17 +627,17 @@ impl Evaluator {
                     if truncated >= 0.0 && truncated <= u32::MAX as f64 {
                         ColumnValues::uint4(vec![truncated as u32; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Uint4)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Uint4,
+                            number::number_out_of_range(span.clone(), DataType::Uint4),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Uint4,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Uint4),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Uint4),
                     )));
                 }
             }
@@ -678,17 +650,17 @@ impl Evaluator {
                     if truncated >= 0.0 && truncated <= u64::MAX as f64 {
                         ColumnValues::uint8(vec![truncated as u64; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(span.clone(), DataType::Uint8)));
+                        return Err(Error(cast::invalid_number(
+                            span.clone(),
+                            DataType::Uint8,
+                            number::number_out_of_range(span.clone(), DataType::Uint8),
+                        )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Uint8,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Uint8),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Uint8),
                     )));
                 }
             }
@@ -701,20 +673,17 @@ impl Evaluator {
                     if truncated >= 0.0 && truncated <= u128::MAX as f64 {
                         ColumnValues::uint16(vec![truncated as u128; row_count])
                     } else {
-                        return Err(Error(cast::numeric_saturation(
+                        return Err(Error(cast::invalid_number(
                             span.clone(),
                             DataType::Uint16,
+                            number::number_out_of_range(span.clone(), DataType::Uint16),
                         )));
                     }
                 } else {
                     return Err(Error(cast::invalid_number(
                         span.clone(),
                         DataType::Uint16,
-                        out_of_range(OutOfRange {
-                            span: span.clone(),
-                            column: None,
-                            data_type: Some(DataType::Uint16),
-                        }),
+                        number::invalid_number_format(span.clone(), DataType::Uint16),
                     )));
                 }
             }

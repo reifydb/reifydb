@@ -23,7 +23,7 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
             name: c.name,
             data_type: DataType::from_u8(c.data_type as u8),
         }),
-        caused_by: todo!(),
+        caused_by: grpc.caused_by.map(|cb| Box::from(convert_diagnostic(*cb))),
     }
 }
 

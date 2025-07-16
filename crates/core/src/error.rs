@@ -30,7 +30,7 @@ impl Display for Error {
 
 impl Error {
     fn render_flat(&self, output: &mut String, diagnostic: &Diagnostic) {
-        let _ = writeln!(output, "ERROR {}", diagnostic.code);
+        let _ = writeln!(output, "Error {}", diagnostic.code);
         let _ = writeln!(output, "  {}", diagnostic.message);
         let _ = writeln!(output);
 
@@ -93,7 +93,7 @@ impl Error {
         let prefix = if depth == 0 { "" } else { "↳ " };
 
         // Main error line
-        let _ = writeln!(output, "{}{}{}: {}", indent, prefix, diagnostic.code, diagnostic.message);
+        let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
 
         // Location info
         if let Some(span) = &diagnostic.span {

@@ -10,6 +10,7 @@ use reifydb_core::{Diagnostic, Span};
 
 pub mod cast;
 pub mod catalog;
+pub mod number;
 pub mod parse;
 pub mod query;
 pub mod sequence;
@@ -45,7 +46,7 @@ impl DiagnosticRenderer for DefaultRenderer {
 
 impl DefaultRenderer {
     fn render_flat(&self, output: &mut String, diagnostic: &Diagnostic) {
-        let _ = writeln!(output, "ERROR {}", diagnostic.code);
+        let _ = writeln!(output, "Error {}", diagnostic.code);
         let _ = writeln!(output, "  {}", diagnostic.message);
         let _ = writeln!(output);
 
@@ -109,7 +110,7 @@ impl DefaultRenderer {
         let prefix = if depth == 0 { "" } else { "↳ " };
         
         // Main error line
-        let _ = writeln!(output, "{}{}{}: {}", indent, prefix, diagnostic.code, diagnostic.message);
+        let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
         
         // Location info
         if let Some(span) = &diagnostic.span {

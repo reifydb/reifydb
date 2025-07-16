@@ -11,7 +11,7 @@ use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Diagnostic, DataType, Value};
+use reifydb_core::{DataType, Diagnostic, Value};
 use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
 
@@ -61,8 +61,7 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
-            {
+            match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
                 Ok(frames) => {
                     let mut responses: Vec<Result<TxResult, Status>> = vec![];
 
@@ -104,8 +103,7 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
-            {
+            match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
                 Ok(frames) => {
                     let mut responses: Vec<Result<RxResult, Status>> = vec![];
 
@@ -148,11 +146,15 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
         column: diagnostic
             .column
             .map(|c| grpc::DiagnosticColumn { name: c.name, data_type: c.data_type as i32 }),
+        caused_by: diagnostic.caused_by.map(|cb| Box::from(map_diagnostic(*cb))),
     }
 }
 
 fn map_frame(frame: Frame) -> grpc::Frame {
-    use grpc::{Column, Frame, Int128, UInt128, Date, DateTime, Time, Interval, Value as GrpcValue, value::DataType as GrpcKind};
+    use grpc::{
+        Column, Date, DateTime, Frame, Int128, Interval, Time, UInt128, Value as GrpcValue,
+        value::DataType as GrpcKind,
+    };
 
     Frame {
         name: frame.name,
@@ -193,13 +195,13 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                             Value::DateTime(dt) => {
                                 let (seconds, nanos) = dt.to_parts();
                                 GrpcKind::DatetimeValue(DateTime { seconds, nanos })
-                            },
+                            }
                             Value::Time(t) => GrpcKind::TimeValue(Time {
                                 nanos_since_midnight: t.to_nanos_since_midnight(),
                             }),
-                            Value::Interval(i) => GrpcKind::IntervalValue(Interval {
-                                nanos: i.to_nanos(),
-                            }),
+                            Value::Interval(i) => {
+                                GrpcKind::IntervalValue(Interval { nanos: i.to_nanos() })
+                            }
                             Value::Undefined => GrpcKind::UndefinedValue(false),
                         };
                         GrpcValue { data_type: Some(data_type) }

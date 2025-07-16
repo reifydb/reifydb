@@ -42,7 +42,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            map cast("2023-01-01T12:00:00Z", datetime)'
+            map @2024--15
         "#,
         )
         .unwrap();
