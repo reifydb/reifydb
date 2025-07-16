@@ -47,27 +47,27 @@ fn main() {
     //     )
     //     .unwrap();
 
-
     // println!("{}", l.first().unwrap());
-    let err = db
+    // let err = db
+    //     .tx_as(
+    //         &root,
+    //         r#"
+// map @2024-03-15 as result;
+//         "#,
+//         )
+//         .unwrap_err();
+//     println!("{}", err);
+//
+    // // Test simple filter without map
+    let l = db
         .tx_as(
             &root,
             r#"
-map @2024-03-15 as result;
-        "#,
+            map @2024-03-15 == @2024-03-15
+            "#,
         )
-        .unwrap_err();
-    println!("{}", err);
-
-    // // Test simple filter without map
-    // let l2 = db
-    //     .tx_as(
-    //         &root,
-    //         r#"from test.edge_cases filter id > 4"#,
-    //     )
-    //     .unwrap();
-    // println!("Filter test (id > 4):");
-    // println!("{}", l2.first().unwrap());
+        .unwrap();
+    println!("{}", l.first().unwrap());
     //
     // // Test map without filter
     // let l3 = db

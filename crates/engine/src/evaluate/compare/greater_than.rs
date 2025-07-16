@@ -461,6 +461,18 @@ impl Evaluator {
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint16(r, rv)) => {
                 Ok(compare_numeric::<u128, u128>(l, r, lv, rv, gt.span()))
             }
+            (ColumnValues::Date(l, lv), ColumnValues::Date(r, rv)) => {
+                Ok(compare_temporal_gt(l, r, lv, rv, gt.span()))
+            }
+            (ColumnValues::DateTime(l, lv), ColumnValues::DateTime(r, rv)) => {
+                Ok(compare_temporal_gt(l, r, lv, rv, gt.span()))
+            }
+            (ColumnValues::Time(l, lv), ColumnValues::Time(r, rv)) => {
+                Ok(compare_temporal_gt(l, r, lv, rv, gt.span()))
+            }
+            (ColumnValues::Interval(l, lv), ColumnValues::Interval(r, rv)) => {
+                Ok(compare_temporal_gt(l, r, lv, rv, gt.span()))
+            }
             (ColumnValues::Utf8(l, lv), ColumnValues::Utf8(r, rv)) => {
                 Ok(compare_utf8(l, r, lv, rv, gt.span()))
             }
@@ -487,6 +499,32 @@ where
     for i in 0..l.len() {
         if lv[i] && rv[i] {
             values.push(is_greater_than(l[i], r[i]));
+            valid.push(true);
+        } else {
+            values.push(false);
+            valid.push(false);
+        }
+    }
+
+    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
+}
+
+fn compare_temporal_gt<T>(
+    l: &CowVec<T>,
+    r: &CowVec<T>,
+    lv: &CowVec<bool>,
+    rv: &CowVec<bool>,
+    span: Span,
+) -> FrameColumn
+where
+    T: PartialOrd + Clone,
+{
+    let mut values = Vec::with_capacity(l.len());
+    let mut valid = Vec::with_capacity(lv.len());
+
+    for i in 0..l.len() {
+        if lv[i] && rv[i] {
+            values.push(l[i] > r[i]);
             valid.push(true);
         } else {
             values.push(false);
