@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Diagnostic;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq)]
@@ -11,6 +10,7 @@ pub fn get_line(source: &str, line: u32) -> &str {
     source.lines().nth((line - 1) as usize).unwrap_or("")
 }
 
+use crate::diagnostic::Diagnostic;
 use std::fmt::Write;
 
 impl Display for Error {
@@ -93,7 +93,11 @@ impl Error {
         let prefix = if depth == 0 { "" } else { "↳ " };
 
         // Main error line
-        let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
+        let _ = writeln!(
+            output,
+            "{}{} Error {}: {}",
+            indent, prefix, diagnostic.code, diagnostic.message
+        );
 
         // Location info
         if let Some(span) = &diagnostic.span {

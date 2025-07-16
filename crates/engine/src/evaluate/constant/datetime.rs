@@ -6,7 +6,7 @@ use crate::evaluate::Error;
 use crate::evaluate::constant::date::parse_date;
 use crate::evaluate::constant::time::parse_time;
 use reifydb_core::{DateTime, Span};
-use reifydb_diagnostic::temporal;
+use reifydb_core::diagnostic::temporal;
 
 pub(crate) fn parse_datetime(span: &Span) -> evaluate::Result<DateTime> {
     let parts = span.split('T');

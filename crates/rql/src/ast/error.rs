@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::{lex, parse};
-use reifydb_core::Diagnostic;
+use reifydb_core::diagnostic::Diagnostic;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq)]

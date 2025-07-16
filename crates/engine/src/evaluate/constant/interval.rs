@@ -4,7 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::Error;
 use reifydb_core::{Interval, Span};
-use reifydb_diagnostic::temporal;
+use reifydb_core::diagnostic::temporal;
 
 pub(crate) fn parse_interval(span: &Span) -> evaluate::Result<Interval> {
     let fragment = &span.fragment;

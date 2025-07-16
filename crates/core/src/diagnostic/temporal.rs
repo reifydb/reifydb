@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Diagnostic, Span};
+use crate::Span;
+use crate::diagnostic::Diagnostic;
 
 pub fn invalid_date_format(span: Span) -> Diagnostic {
     let label = Some(format!("expected YYYY-MM-DD format, found '{}'", span.fragment));

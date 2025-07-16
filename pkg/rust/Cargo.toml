@@ -19,7 +19,6 @@ embedded_blocking = []
 reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
-reifydb-diagnostic = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
 reifydb-storage = { workspace = true }

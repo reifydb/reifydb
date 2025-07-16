@@ -5,7 +5,7 @@ use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
 use reifydb_core::num::SafeDemote;
-use reifydb_diagnostic::r#type::{OutOfRange, out_of_range};
+use reifydb_core::diagnostic::r#type::{OutOfRange, out_of_range};
 
 pub trait Demote {
     fn demote<From, To>(

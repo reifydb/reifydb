@@ -4,7 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::Error;
 use reifydb_core::{Date, Span};
-use reifydb_diagnostic::temporal;
+use reifydb_core::diagnostic::temporal;
 
 pub(crate) fn parse_date(span: &Span) -> evaluate::Result<Date> {
     let span_parts = span.split('-');

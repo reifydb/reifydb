@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Diagnostic, Span};
+use crate::Span;
+use crate::diagnostic::Diagnostic;
 
 pub fn multiple_expressions_without_braces(span: Span) -> Diagnostic {
     let keyword = span.fragment.clone();

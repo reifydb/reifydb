@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Diagnostic, Span};
-use reifydb_core::DataType;
+use crate::diagnostic::Diagnostic;
+use crate::{DataType, Span};
 
 pub fn unsupported_cast(span: Span, from_type: DataType, to_type: DataType) -> Diagnostic {
     let label = Some(format!("cannot cast {} of type {} to {}", span.fragment, from_type, to_type));

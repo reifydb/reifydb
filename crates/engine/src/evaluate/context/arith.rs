@@ -5,7 +5,7 @@ use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
 use reifydb_core::num::{IsNumber, Promote, SafeAdd, SafeDiv, SafeRemainder, SafeMul, SafeSub};
-use reifydb_diagnostic::r#type::{OutOfRange, out_of_range};
+use reifydb_core::diagnostic::r#type::{OutOfRange, out_of_range};
 
 impl EvaluationContext {
     pub(crate) fn add<L, R>(

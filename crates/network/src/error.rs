@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::Diagnostic;
-use reifydb_diagnostic::DefaultRenderer;
+use reifydb_core::diagnostic::{DefaultRenderer, Diagnostic};
 use std::fmt::{Display, Formatter};
 use tonic::Status;
 

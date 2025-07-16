@@ -2,8 +2,9 @@
 // This file is licensed under the MIT
 
 use crate::grpc::client::grpc;
-use reifydb_core::{DataType, Diagnostic, DiagnosticColumn, Span, SpanColumn, SpanLine, Date, DateTime, Time, Interval};
-use reifydb_engine::frame::{FrameColumn, ColumnValues, Frame};
+use reifydb_core::diagnostic::{Diagnostic, DiagnosticColumn};
+use reifydb_core::{DataType, Date, DateTime, Interval, Span, SpanColumn, SpanLine, Time};
+use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::collections::HashMap;
 
 pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
@@ -344,7 +345,9 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 for v in values {
                     match v.data_type {
                         Some(GrpcValueKind::TimeValue(grpc::Time { nanos_since_midnight })) => {
-                            if let Some(time) = Time::from_nanos_since_midnight(nanos_since_midnight) {
+                            if let Some(time) =
+                                Time::from_nanos_since_midnight(nanos_since_midnight)
+                            {
                                 data.push(time);
                                 validity.push(true);
                             } else {

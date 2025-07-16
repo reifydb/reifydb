@@ -5,7 +5,7 @@ use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Error, Evaluator};
 use crate::frame::{FrameColumn, ColumnValues};
 use reifydb_core::Value;
-use reifydb_diagnostic::query::column_not_found;
+use reifydb_core::diagnostic::query::column_not_found;
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {

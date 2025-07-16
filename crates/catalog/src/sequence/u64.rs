@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{EncodedKey, DataType};
-use reifydb_diagnostic::sequence::sequence_exhausted;
+use reifydb_core::diagnostic::sequence::sequence_exhausted;
 
 static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[DataType::Uint8]));
 
@@ -48,7 +48,7 @@ mod tests {
     use crate::sequence::u64::{LAYOUT, SequenceGeneratorU64};
     use reifydb_core::interface::{Unversioned, UnversionedScan, UnversionedSet};
     use reifydb_core::{EncodedKey, DataType};
-    use reifydb_diagnostic::sequence::sequence_exhausted;
+    use reifydb_core::diagnostic::sequence::sequence_exhausted;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

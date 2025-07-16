@@ -11,7 +11,7 @@ use crate::expression::{Expression, KeyedExpression};
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::{DataType, Error, SortKey, Span};
-use reifydb_diagnostic::parse::unrecognized_type;
+use reifydb_core::diagnostic::parse::unrecognized_type;
 
 struct Compiler {}
 

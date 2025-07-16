@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::util::value_range;
-use crate::{Diagnostic, Span};
-use reifydb_core::{DiagnosticColumn, DataType};
+use crate::diagnostic::util::value_range;
+use crate::diagnostic::{Diagnostic, DiagnosticColumn};
+use crate::{DataType, Span};
 
 pub struct OutOfRange {
     pub span: Span,
@@ -55,7 +55,9 @@ pub fn out_of_range(co: OutOfRange) -> Diagnostic {
         help,
         notes: vec![],
         column: match (&co.column, co.data_type) {
-            (Some(name), Some(value)) => Some(DiagnosticColumn { name: name.clone(), data_type: value }),
+            (Some(name), Some(value)) => {
+                Some(DiagnosticColumn { name: name.clone(), data_type: value })
+            }
             _ => None,
         },
         caused_by: None,

@@ -15,9 +15,9 @@ use crate::evaluate::{Error, EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::num::parse_float;
 use reifydb_core::{DataType, Span};
-use reifydb_diagnostic::cast;
-use reifydb_diagnostic::number;
-use reifydb_diagnostic::temporal;
+use reifydb_core::diagnostic::cast;
+use reifydb_core::diagnostic::number;
+use reifydb_core::diagnostic::temporal;
 use reifydb_rql::expression::ConstantExpression;
 
 impl Evaluator {

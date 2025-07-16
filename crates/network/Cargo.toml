@@ -16,7 +16,6 @@ server = []
 [dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
-reifydb-diagnostic = { workspace = true }
 reifydb-engine = { workspace = true }
 
 serde = { workspace = true }

@@ -7,7 +7,7 @@ use crate::frame::{Frame, FrameLayout};
 use reifydb_core::SortDirection::{Asc, Desc};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, SortKey};
-use reifydb_diagnostic::query;
+use reifydb_core::diagnostic::query;
 use std::cmp::Ordering::Equal;
 
 pub(crate) struct SortNode {

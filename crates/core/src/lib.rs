@@ -9,7 +9,6 @@
 pub use bitvec::BitVec;
 pub use cowvec::CowVec;
 pub use data_type::{DataType, GetDataType};
-pub use diagnostic::{Diagnostic, DiagnosticColumn};
 pub use error::Error;
 pub use key::{EncodedKey, EncodedKeyRange};
 pub use retry::retry;
@@ -23,7 +22,7 @@ pub mod clock;
 mod cowvec;
 mod data_type;
 pub mod delta;
-mod diagnostic;
+pub mod diagnostic;
 pub mod either;
 pub mod encoding;
 mod error;

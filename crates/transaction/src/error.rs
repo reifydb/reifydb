@@ -3,7 +3,7 @@
 
 use crate::mvcc;
 use crate::mvcc::error::TransactionError;
-use reifydb_core::Diagnostic;
+use reifydb_core::diagnostic::Diagnostic;
 use std::fmt::{Display, Formatter};
 
 /// Represents all possible errors related to transactions, the mem-table, or persistence.

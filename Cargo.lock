@@ -1477,7 +1477,6 @@ dependencies = [
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
- "reifydb-diagnostic",
  "reifydb-engine",
  "reifydb-network",
  "reifydb-rql",
@@ -1499,7 +1498,6 @@ version = "0.0.1"
 dependencies = [
  "once_cell",
  "reifydb-core",
- "reifydb-diagnostic",
  "reifydb-storage",
  "reifydb-transaction",
  "serde",
@@ -1539,13 +1537,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-diagnostic"
-version = "0.0.1"
-dependencies = [
- "reifydb-core",
-]
-
-[[package]]
 name = "reifydb-engine"
 version = "0.0.1"
 dependencies = [
@@ -1553,7 +1544,6 @@ dependencies = [
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
- "reifydb-diagnostic",
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-testing",
@@ -1570,7 +1560,6 @@ dependencies = [
  "prost",
  "reifydb-catalog",
  "reifydb-core",
- "reifydb-diagnostic",
  "reifydb-engine",
  "reifydb-testing",
  "serde",
@@ -1609,7 +1598,6 @@ dependencies = [
  "nom_locate",
  "reifydb-catalog",
  "reifydb-core",
- "reifydb-diagnostic",
  "reifydb-storage",
  "reifydb-testing",
  "reifydb-transaction",
@@ -1655,7 +1643,6 @@ dependencies = [
  "nom_locate",
  "regex",
  "reifydb-core",
- "reifydb-diagnostic",
  "reifydb-engine",
  "reifydb-rql",
  "reifydb-storage",
@@ -1670,7 +1657,6 @@ version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
  "reifydb-core",
- "reifydb-diagnostic",
  "reifydb-storage",
  "reifydb-testing",
  "test_each_file",

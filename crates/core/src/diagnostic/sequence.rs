@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Diagnostic;
-use crate::util::value_max;
-use reifydb_core::DataType;
+use crate::DataType;
+use crate::diagnostic::Diagnostic;
+use crate::diagnostic::util::value_max;
 
 pub fn sequence_exhausted(value: DataType) -> Diagnostic {
     Diagnostic {

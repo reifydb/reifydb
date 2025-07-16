@@ -5,7 +5,7 @@ use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
 use reifydb_core::num::SafeConvert;
-use reifydb_diagnostic::r#type::{out_of_range, OutOfRange};
+use reifydb_core::diagnostic::r#type::{out_of_range, OutOfRange};
 
 pub trait Convert {
     fn convert<From, To>(

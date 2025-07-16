@@ -6,7 +6,7 @@ use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Error, Parser};
 use crate::ast::{AstSort, parse};
-use reifydb_diagnostic::parse::multiple_expressions_without_braces;
+use reifydb_core::diagnostic::parse::multiple_expressions_without_braces;
 
 impl Parser {
     pub(crate) fn parse_sort(&mut self) -> parse::Result<AstSort> {

@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::util::value_range;
-use crate::{Diagnostic, Span};
-use reifydb_core::DataType;
+use crate::diagnostic::Diagnostic;
+use crate::diagnostic::util::value_range;
+use crate::{DataType, Span};
 
 pub fn invalid_number_format(span: Span, target: DataType) -> Diagnostic {
     let label = Some(format!("'{}' is not a valid {} number", span.fragment, target));

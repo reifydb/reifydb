@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::DataType;
+use crate::DataType;
 
 pub(crate) fn value_max<'a>(value: DataType) -> &'a str {
     match value {
@@ -57,8 +57,8 @@ pub(crate) fn value_range<'a>(value: DataType) -> &'a str {
 mod tests {
 
     mod value_max {
-        use crate::util::value_max;
-        use reifydb_core::DataType;
+        use crate::diagnostic::util::value_max;
+        use crate::DataType;
 
         #[test]
         fn test_signed_ints() {
@@ -93,8 +93,8 @@ mod tests {
     }
 
     mod value_range {
-        use crate::util::value_range;
-        use reifydb_core::DataType;
+        use crate::diagnostic::util::value_range;
+        use crate::DataType;
 
         #[test]
         fn test_signed_ints() {
