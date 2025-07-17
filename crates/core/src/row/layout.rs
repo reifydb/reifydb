@@ -2,14 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::row::EncodedRow;
-use crate::{CowVec, DataType};
+use crate::{CowVec, Type};
 
 #[derive(Debug)]
 pub struct Field {
     pub offset: usize,
     pub size: usize,
     pub align: usize,
-    pub value: DataType,
+    pub value: Type,
 }
 
 #[derive(Debug)]
@@ -23,7 +23,7 @@ pub struct Layout {
 }
 
 impl Layout {
-    pub fn new(kinds: &[DataType]) -> Self {
+    pub fn new(kinds: &[Type]) -> Self {
         assert!(!kinds.is_empty());
 
         let num_fields = kinds.len();
@@ -45,7 +45,12 @@ impl Layout {
         }
 
         let size = align_up(offset, max_align);
-        Layout { fields, static_section_size: size, alignment: max_align, validity_size: validity_bytes }
+        Layout {
+            fields,
+            static_section_size: size,
+            alignment: max_align,
+            validity_size: validity_bytes,
+        }
     }
 
     pub fn allocate_row(&self) -> EncodedRow {
@@ -110,7 +115,7 @@ impl Layout {
         true
     }
 
-    pub fn value(&self, index: usize) -> DataType {
+    pub fn value(&self, index: usize) -> Type {
         self.fields[index].value
     }
 }
@@ -122,12 +127,12 @@ fn align_up(offset: usize, align: usize) -> usize {
 #[cfg(test)]
 mod tests {
     mod new {
-        use crate::DataType;
+        use crate::Type;
         use crate::row::Layout;
 
         #[test]
         fn test_single_field_bool() {
-            let layout = Layout::new(&[DataType::Bool]);
+            let layout = Layout::new(&[Type::Bool]);
             assert_eq!(layout.validity_size, 1);
             assert_eq!(layout.fields.len(), 1);
             assert_eq!(layout.fields[0].offset, 1);
@@ -137,13 +142,13 @@ mod tests {
 
         #[test]
         fn test_multiple_fields() {
-            let layout = Layout::new(&[DataType::Int1, DataType::Int2, DataType::Int4]);
+            let layout = Layout::new(&[Type::Int1, Type::Int2, Type::Int4]);
             assert_eq!(layout.validity_size, 1); // 3 fields = 1 byte
             assert_eq!(layout.fields.len(), 3);
 
-            assert_eq!(layout.fields[0].value, DataType::Int1);
-            assert_eq!(layout.fields[1].value, DataType::Int2);
-            assert_eq!(layout.fields[2].value, DataType::Int4);
+            assert_eq!(layout.fields[0].value, Type::Int1);
+            assert_eq!(layout.fields[1].value, Type::Int2);
+            assert_eq!(layout.fields[2].value, Type::Int4);
 
             assert_eq!(layout.fields[0].offset, 1);
             assert_eq!(layout.fields[1].offset, 2);
@@ -156,13 +161,8 @@ mod tests {
 
         #[test]
         fn test_offset_and_alignment() {
-            let layout = Layout::new(&[
-                DataType::Uint1,
-                DataType::Uint2,
-                DataType::Uint4,
-                DataType::Uint8,
-                DataType::Uint16,
-            ]);
+            let layout =
+                Layout::new(&[Type::Uint1, Type::Uint2, Type::Uint4, Type::Uint8, Type::Uint16]);
 
             assert_eq!(layout.validity_size, 1); // 5 fields = 1 byte
             assert_eq!(layout.fields.len(), 5);
@@ -181,15 +181,15 @@ mod tests {
         #[test]
         fn test_nine_fields_validity_size_two() {
             let kinds = vec![
-                DataType::Bool,
-                DataType::Int1,
-                DataType::Int2,
-                DataType::Int4,
-                DataType::Int8,
-                DataType::Uint1,
-                DataType::Uint2,
-                DataType::Uint4,
-                DataType::Uint8,
+                Type::Bool,
+                Type::Int1,
+                Type::Int2,
+                Type::Int4,
+                Type::Int8,
+                Type::Uint1,
+                Type::Uint2,
+                Type::Uint4,
+                Type::Uint8,
             ];
 
             let layout = Layout::new(&kinds);
@@ -211,12 +211,12 @@ mod tests {
     }
 
     mod allocate_row {
-        use crate::DataType;
+        use crate::Type;
         use crate::row::Layout;
 
         #[test]
         fn test_initial_state() {
-            let layout = Layout::new(&[DataType::Bool, DataType::Int1, DataType::Uint2]);
+            let layout = Layout::new(&[Type::Bool, Type::Int1, Type::Uint2]);
 
             let row = layout.allocate_row();
 
@@ -229,7 +229,7 @@ mod tests {
 
         #[test]
         fn test_clone_on_write_semantics() {
-            let layout = Layout::new(&[DataType::Bool, DataType::Bool, DataType::Bool]);
+            let layout = Layout::new(&[Type::Bool, Type::Bool, Type::Bool]);
 
             let row1 = layout.allocate_row();
             let mut row2 = row1.clone();
@@ -251,12 +251,12 @@ mod tests {
     }
 
     mod all_defined {
-        use crate::DataType;
+        use crate::Type;
         use crate::row::Layout;
 
         #[test]
         fn test_one_field_none_valid() {
-            let layout = Layout::new(&[DataType::Bool; 1]);
+            let layout = Layout::new(&[Type::Bool; 1]);
             let mut row = layout.allocate_row();
             layout.set_undefined(&mut row, 0);
             assert!(!layout.all_defined(&row));
@@ -264,7 +264,7 @@ mod tests {
 
         #[test]
         fn test_one_field_valid() {
-            let layout = Layout::new(&[DataType::Bool; 1]);
+            let layout = Layout::new(&[Type::Bool; 1]);
             let mut row = layout.allocate_row();
             layout.set_bool(&mut row, 0, true);
             assert!(layout.all_defined(&row));
@@ -272,7 +272,7 @@ mod tests {
 
         #[test]
         fn test_seven_fields_none_valid() {
-            let kinds = vec![DataType::Bool; 7];
+            let kinds = vec![Type::Bool; 7];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -285,7 +285,7 @@ mod tests {
 
         #[test]
         fn test_seven_fields_allv() {
-            let kinds = vec![DataType::Bool; 7];
+            let kinds = vec![Type::Bool; 7];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -298,7 +298,7 @@ mod tests {
 
         #[test]
         fn test_seven_fields_partial_valid() {
-            let kinds = vec![DataType::Bool; 7];
+            let kinds = vec![Type::Bool; 7];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -315,7 +315,7 @@ mod tests {
 
         #[test]
         fn test_eight_fields_none_valid() {
-            let kinds = vec![DataType::Bool; 8];
+            let kinds = vec![Type::Bool; 8];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -328,7 +328,7 @@ mod tests {
 
         #[test]
         fn test_eight_fields_allv() {
-            let kinds = vec![DataType::Bool; 8];
+            let kinds = vec![Type::Bool; 8];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -341,7 +341,7 @@ mod tests {
 
         #[test]
         fn test_eight_fields_partial_valid() {
-            let kinds = vec![DataType::Bool; 8];
+            let kinds = vec![Type::Bool; 8];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -358,7 +358,7 @@ mod tests {
 
         #[test]
         fn test_nine_fields_allv() {
-            let kinds = vec![DataType::Bool; 9];
+            let kinds = vec![Type::Bool; 9];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -371,7 +371,7 @@ mod tests {
 
         #[test]
         fn test_nine_fields_none_valid() {
-            let kinds = vec![DataType::Bool; 9];
+            let kinds = vec![Type::Bool; 9];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -384,7 +384,7 @@ mod tests {
 
         #[test]
         fn test_nine_fields_partial_valid() {
-            let kinds = vec![DataType::Bool; 9];
+            let kinds = vec![Type::Bool; 9];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -401,7 +401,7 @@ mod tests {
 
         #[test]
         fn test_sixteen_fields_allv() {
-            let kinds = vec![DataType::Bool; 16];
+            let kinds = vec![Type::Bool; 16];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -414,7 +414,7 @@ mod tests {
 
         #[test]
         fn test_sixteen_fields_none_valid() {
-            let kinds = vec![DataType::Bool; 16];
+            let kinds = vec![Type::Bool; 16];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 
@@ -427,7 +427,7 @@ mod tests {
 
         #[test]
         fn test_sixteen_fields_partial_valid() {
-            let kinds = vec![DataType::Bool; 16];
+            let kinds = vec![Type::Bool; 16];
             let layout = Layout::new(&kinds);
             let mut row = layout.allocate_row();
 

@@ -163,7 +163,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                             .into_iter()
                             .map(|cl| FrameColumn {
                                 name: cl.name,
-                                values: ColumnValues::with_capacity(cl.data_type, 0),
+                                values: ColumnValues::with_capacity(cl.ty, 0),
                             })
                             .collect(),
                         index: Default::default(),

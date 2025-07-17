@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
-use reifydb_core::{Value, Date, DateTime, Time, Interval};
+use reifydb_core::{Date, DateTime, Interval, Time, Value};
 
 impl ColumnValues {
     pub fn push_value(&mut self, value: Value) {
@@ -232,7 +232,7 @@ impl ColumnValues {
 mod tests {
     use crate::frame::ColumnValues;
     use reifydb_core::Value;
-    use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
+    use reifydb_core::{OrderedF32, OrderedF64};
 
     #[test]
     fn test_bool() {

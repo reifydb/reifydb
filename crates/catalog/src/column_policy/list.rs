@@ -38,7 +38,7 @@ mod tests {
     use crate::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
     use crate::table::TableId;
     use crate::test_utils::ensure_test_table;
-    use reifydb_core::DataType;
+    use reifydb_core::Type;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
@@ -55,7 +55,7 @@ mod tests {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "with_policy".to_string(),
-                value: DataType::Int2,
+                value: Type::Int2,
                 if_not_exists: false,
                 policies: vec![ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Undefined)],
                 index: ColumnIndex(0),

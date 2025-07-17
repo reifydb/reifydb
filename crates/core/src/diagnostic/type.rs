@@ -3,16 +3,16 @@
 
 use crate::diagnostic::util::value_range;
 use crate::diagnostic::{Diagnostic, DiagnosticColumn};
-use crate::{DataType, Span};
+use crate::{Type, Span};
 
 pub struct OutOfRange {
     pub span: Span,
     pub column: Option<String>,
-    pub data_type: Option<DataType>,
+    pub ty: Option<Type>,
 }
 
 pub fn out_of_range(co: OutOfRange) -> Diagnostic {
-    let label = match (&co.data_type, &co.column) {
+    let label = match (&co.ty, &co.column) {
         (Some(ty), Some(column)) => Some(format!(
             "value `{}` does not fit into column `{}` of type `{}` (range: {})",
             co.span.fragment,
@@ -32,7 +32,7 @@ pub fn out_of_range(co: OutOfRange) -> Diagnostic {
         (None, None) => Some(format!("value `{}` does not fit into column type", co.span.fragment)),
     };
 
-    let message = match (&co.column, &co.data_type) {
+    let message = match (&co.column, &co.ty) {
         (Some(column), Some(value)) => {
             format!("value out of range in column `{}` type `{}`", column, value)
         }
@@ -54,9 +54,9 @@ pub fn out_of_range(co: OutOfRange) -> Diagnostic {
         label,
         help,
         notes: vec![],
-        column: match (&co.column, co.data_type) {
+        column: match (&co.column, co.ty) {
             (Some(name), Some(value)) => {
-                Some(DiagnosticColumn { name: name.clone(), data_type: value })
+                Some(DiagnosticColumn { name: name.clone(), ty: value })
             }
             _ => None,
         },

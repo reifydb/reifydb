@@ -39,12 +39,12 @@ message Frame {
 
 message Column {
   string name = 1;
-  DataType data_type = 2;
+  Type ty = 2;
   repeated Value values = 3;
 }
 
 message Value {
-  oneof data_type {
+  oneof type {
     bool bool_value = 1;
 
     int32 int1_value = 2;
@@ -125,10 +125,10 @@ message Span {
 
 message DiagnosticColumn {
   string name = 1;
-  DataType data_type = 2;
+  Type ty = 2;
 }
 
-enum DataType {
+enum Type {
   UNDEFINED = 0x00;
   FLOAT4 = 0x01;
   FLOAT8 = 0x02;

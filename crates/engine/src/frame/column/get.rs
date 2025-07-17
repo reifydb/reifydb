@@ -3,7 +3,7 @@
 
 use crate::frame::ColumnValues;
 use reifydb_core::Value;
-use reifydb_core::num::ordered_float::{OrderedF32, OrderedF64};
+use reifydb_core::{OrderedF32, OrderedF64};
 
 impl ColumnValues {
     pub fn get(&self, index: usize) -> Value {

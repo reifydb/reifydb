@@ -9,14 +9,14 @@ use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
 use crate::{Catalog, Error};
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{DataType, Span};
 use reifydb_core::diagnostic::catalog::{schema_not_found, table_already_exists};
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::{Span, Type};
 
 #[derive(Debug, Clone)]
 pub struct ColumnToCreate {
     pub name: String,
-    pub data_type: DataType,
+    pub ty: Type,
     pub policies: Vec<ColumnPolicyKind>,
 }
 
@@ -94,7 +94,7 @@ impl Catalog {
                     table,
                     table_name: &to_create.table,
                     column: column_to_create.name,
-                    value: column_to_create.data_type,
+                    value: column_to_create.ty,
                     if_not_exists: false,
                     policies: column_to_create.policies.clone(),
                     index: ColumnIndex(idx as u16),

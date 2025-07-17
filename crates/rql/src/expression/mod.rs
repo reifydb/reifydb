@@ -3,7 +3,7 @@
 
 mod span;
 
-use reifydb_core::DataType;
+use reifydb_core::Type;
 use reifydb_core::Span;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -75,7 +75,7 @@ pub enum Expression {
 
     NotEqual(NotEqualExpression),
 
-    DataType(DataTypeExpression),
+    Type(DataTypeExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,7 +124,7 @@ pub struct CastExpression {
 #[derive(Debug, Clone)]
 pub struct DataTypeExpression {
     pub span: Span,
-    pub data_type: DataType,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone)]
@@ -300,7 +300,7 @@ impl Display for Expression {
             Expression::NotEqual(NotEqualExpression { left, right, .. }) => {
                 write!(f, "({} != {})", left, right)
             }
-            Expression::DataType(DataTypeExpression { span, .. }) => write!(f, "{}", span.fragment),
+            Expression::Type(DataTypeExpression { span, .. }) => write!(f, "{}", span.fragment),
         }
     }
 }

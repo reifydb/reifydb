@@ -404,7 +404,7 @@ pub enum AstDescribe {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstColumnToCreate {
     pub name: AstIdentifier,
-    pub data_type: AstIdentifier,
+    pub ty: AstIdentifier,
     pub policies: Option<AstPolicyBlock>,
 }
 

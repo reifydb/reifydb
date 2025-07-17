@@ -51,14 +51,14 @@ mod tests {
     use crate::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
     use crate::table::TableId;
     use crate::test_utils::{create_test_table_column, ensure_test_table};
-    use reifydb_core::DataType;
+    use reifydb_core::Type;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
     fn test_ok() {
         let mut tx = TestTransaction::new();
         ensure_test_table(&mut tx);
-        create_test_table_column(&mut tx, "col_1", DataType::Int2, vec![]);
+        create_test_table_column(&mut tx, "col_1", Type::Int2, vec![]);
 
         let policy = ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Error);
         let result = Catalog::create_column_policy(&mut tx, ColumnId(1), policy.clone()).unwrap();
@@ -80,7 +80,7 @@ mod tests {
                 table: TableId(1),
                 table_name: "table",
                 column: "col1".to_string(),
-                value: DataType::Int2,
+                value: Type::Int2,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),

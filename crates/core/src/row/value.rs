@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::num::ordered_float::{OrderedF32, OrderedF64};
+use crate::value::{OrderedF32, OrderedF64};
 use crate::row::{EncodedRow, Layout};
-use crate::{DataType, Value};
+use crate::{Type, Value};
 
 impl Layout {
     pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
@@ -18,61 +18,61 @@ impl Layout {
         debug_assert!(row.len() >= self.total_static_size());
 
         match (field.value, val) {
-            (DataType::Bool, Value::Bool(v)) => self.set_bool(row, index, *v),
-            (DataType::Bool, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Bool, Value::Bool(v)) => self.set_bool(row, index, *v),
+            (Type::Bool, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
-            (DataType::Float4, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
+            (Type::Float4, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
-            (DataType::Float8, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
+            (Type::Float8, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
-            (DataType::Int1, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
+            (Type::Int1, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
-            (DataType::Int2, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
+            (Type::Int2, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
-            (DataType::Int4, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
+            (Type::Int4, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
-            (DataType::Int8, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
+            (Type::Int8, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
-            (DataType::Int16, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
+            (Type::Int16, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Utf8, Value::Utf8(v)) => self.set_utf8(row, index, v),
-            (DataType::Utf8, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Utf8, Value::Utf8(v)) => self.set_utf8(row, index, v),
+            (Type::Utf8, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
-            (DataType::Uint1, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
+            (Type::Uint1, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
-            (DataType::Uint2, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
+            (Type::Uint2, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
-            (DataType::Uint4, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
+            (Type::Uint4, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
-            (DataType::Uint8, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
+            (Type::Uint8, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
-            (DataType::Uint16, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
+            (Type::Uint16, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Date, Value::Date(v)) => self.set_date(row, index, v.clone()),
-            (DataType::Date, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Date, Value::Date(v)) => self.set_date(row, index, v.clone()),
+            (Type::Date, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, v.clone()),
-            (DataType::DateTime, Value::Undefined) => self.set_undefined(row, index),
+            (Type::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, v.clone()),
+            (Type::DateTime, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Time, Value::Time(v)) => self.set_time(row, index, v.clone()),
-            (DataType::Time, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Time, Value::Time(v)) => self.set_time(row, index, v.clone()),
+            (Type::Time, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Interval, Value::Interval(v)) => self.set_interval(row, index, v.clone()),
-            (DataType::Interval, Value::Undefined) => self.set_undefined(row, index),
+            (Type::Interval, Value::Interval(v)) => self.set_interval(row, index, v.clone()),
+            (Type::Interval, Value::Undefined) => self.set_undefined(row, index),
 
-            (DataType::Undefined, Value::Undefined) => {}
+            (Type::Undefined, Value::Undefined) => {}
             (_, _) => unreachable!(),
         }
     }
@@ -83,43 +83,43 @@ impl Layout {
             return Value::Undefined;
         }
         match field.value {
-            DataType::Bool => Value::Bool(self.get_bool(row, index)),
-            DataType::Float4 => OrderedF32::try_from(self.get_f32(row, index))
+            Type::Bool => Value::Bool(self.get_bool(row, index)),
+            Type::Float4 => OrderedF32::try_from(self.get_f32(row, index))
                 .map(Value::Float4)
                 .unwrap_or(Value::Undefined),
-            DataType::Float8 => OrderedF64::try_from(self.get_f64(row, index))
+            Type::Float8 => OrderedF64::try_from(self.get_f64(row, index))
                 .map(Value::Float8)
                 .unwrap_or(Value::Undefined),
-            DataType::Int1 => Value::Int1(self.get_i8(row, index)),
-            DataType::Int2 => Value::Int2(self.get_i16(row, index)),
-            DataType::Int4 => Value::Int4(self.get_i32(row, index)),
-            DataType::Int8 => Value::Int8(self.get_i64(row, index)),
-            DataType::Int16 => Value::Int16(self.get_i128(row, index)),
-            DataType::Utf8 => Value::Utf8(self.get_utf8(row, index).to_string()),
-            DataType::Uint1 => Value::Uint1(self.get_u8(row, index)),
-            DataType::Uint2 => Value::Uint2(self.get_u16(row, index)),
-            DataType::Uint4 => Value::Uint4(self.get_u32(row, index)),
-            DataType::Uint8 => Value::Uint8(self.get_u64(row, index)),
-            DataType::Uint16 => Value::Uint16(self.get_u128(row, index)),
-            DataType::Date => Value::Date(self.get_date(row, index)),
-            DataType::DateTime => Value::DateTime(self.get_datetime(row, index)),
-            DataType::Time => Value::Time(self.get_time(row, index)),
-            DataType::Interval => Value::Interval(self.get_interval(row, index)),
-            DataType::Undefined => Value::Undefined,
+            Type::Int1 => Value::Int1(self.get_i8(row, index)),
+            Type::Int2 => Value::Int2(self.get_i16(row, index)),
+            Type::Int4 => Value::Int4(self.get_i32(row, index)),
+            Type::Int8 => Value::Int8(self.get_i64(row, index)),
+            Type::Int16 => Value::Int16(self.get_i128(row, index)),
+            Type::Utf8 => Value::Utf8(self.get_utf8(row, index).to_string()),
+            Type::Uint1 => Value::Uint1(self.get_u8(row, index)),
+            Type::Uint2 => Value::Uint2(self.get_u16(row, index)),
+            Type::Uint4 => Value::Uint4(self.get_u32(row, index)),
+            Type::Uint8 => Value::Uint8(self.get_u64(row, index)),
+            Type::Uint16 => Value::Uint16(self.get_u128(row, index)),
+            Type::Date => Value::Date(self.get_date(row, index)),
+            Type::DateTime => Value::DateTime(self.get_datetime(row, index)),
+            Type::Time => Value::Time(self.get_time(row, index)),
+            Type::Interval => Value::Interval(self.get_interval(row, index)),
+            Type::Undefined => Value::Undefined,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::num::ordered_float::{OrderedF32, OrderedF64};
+    use crate::value::{OrderedF32, OrderedF64};
     use crate::row::Layout;
     use crate::value::{Date, DateTime, Interval, Time};
-    use crate::{DataType, Value};
+    use crate::{Type, Value};
 
     #[test]
     fn test_set_value_utf8_with_dynamic_content() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Int4, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let value1 = Value::Utf8("hello".to_string());
@@ -138,11 +138,11 @@ mod tests {
     #[test]
     fn test_set_values_with_mixed_dynamic_content() {
         let layout = Layout::new(&[
-            DataType::Bool,
-            DataType::Utf8,
-            DataType::Float4,
-            DataType::Utf8,
-            DataType::Int2,
+            Type::Bool,
+            Type::Utf8,
+            Type::Float4,
+            Type::Utf8,
+            Type::Int2,
         ]);
         let mut row = layout.allocate_row();
 
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_set_value_with_empty_and_large_utf8() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let large_string = "X".repeat(2000);
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn test_get_value_from_dynamic_content() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Int8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "test_string");
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_set_value_undefined_with_utf8_fields() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Bool, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Bool, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Set some values
@@ -240,18 +240,18 @@ mod tests {
     #[test]
     fn test_get_value_all_types_including_utf8() {
         let layout = Layout::new(&[
-            DataType::Bool,
-            DataType::Int1,
-            DataType::Int2,
-            DataType::Int4,
-            DataType::Int8,
-            DataType::Uint1,
-            DataType::Uint2,
-            DataType::Uint4,
-            DataType::Uint8,
-            DataType::Float4,
-            DataType::Float8,
-            DataType::Utf8,
+            Type::Bool,
+            Type::Int1,
+            Type::Int2,
+            Type::Int4,
+            Type::Int8,
+            Type::Uint1,
+            Type::Uint2,
+            Type::Uint4,
+            Type::Uint8,
+            Type::Float4,
+            Type::Float8,
+            Type::Utf8,
         ]);
         let mut row = layout.allocate_row();
 
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_set_values_sparse_with_utf8() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Only set some values
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_set_values_unicode_strings() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Int4, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn test_static_fields_only_no_dynamic_with_values() {
-        let layout = Layout::new(&[DataType::Bool, DataType::Int4, DataType::Float8]);
+        let layout = Layout::new(&[Type::Bool, Type::Int4, Type::Float8]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn test_temporal_types_roundtrip() {
         let layout =
-            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+            Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         let original_values = vec![
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn test_temporal_types_with_undefined() {
         let layout =
-            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+            Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -399,13 +399,13 @@ mod tests {
     #[test]
     fn test_mixed_temporal_and_regular_types() {
         let layout = Layout::new(&[
-            DataType::Bool,
-            DataType::Date,
-            DataType::Utf8,
-            DataType::DateTime,
-            DataType::Int4,
-            DataType::Time,
-            DataType::Interval,
+            Type::Bool,
+            Type::Date,
+            Type::Utf8,
+            Type::DateTime,
+            Type::Int4,
+            Type::Time,
+            Type::Interval,
         ]);
         let mut row = layout.allocate_row();
 
@@ -429,7 +429,7 @@ mod tests {
     #[test]
     fn test_value_roundtrip_with_dynamic_content() {
         let layout =
-            Layout::new(&[DataType::Utf8, DataType::Int2, DataType::Utf8, DataType::Float4]);
+            Layout::new(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
         let mut row = layout.allocate_row();
 
         let original_values = vec![

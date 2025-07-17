@@ -6,7 +6,7 @@ use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_catalog::key::{EncodableKey, Key, TableRowKey};
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
-use reifydb_core::DataType;
+use reifydb_core::Type;
 use reifydb_core::EncodedKeyRange;
 use reifydb_core::interface::Rx;
 use reifydb_core::row::Layout;
@@ -23,7 +23,7 @@ pub(crate) struct ScanFrameNode {
 
 impl ScanFrameNode {
     pub fn new(table: Table, context: Arc<ExecutionContext>) -> crate::Result<Self> {
-        let values = table.columns.iter().map(|c| c.data_type).collect::<Vec<_>>();
+        let values = table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
         let row_layout = Layout::new(&values);
 
         let frame = create_empty_frame(&table);
@@ -110,26 +110,26 @@ fn create_empty_frame(table: &Table) -> Frame {
         .iter()
         .map(|col| {
             let name = col.name.clone();
-            let data = match col.data_type {
-                DataType::Bool => ColumnValues::bool(vec![]),
-                DataType::Float4 => ColumnValues::float4(vec![]),
-                DataType::Float8 => ColumnValues::float8(vec![]),
-                DataType::Int1 => ColumnValues::int1(vec![]),
-                DataType::Int2 => ColumnValues::int2(vec![]),
-                DataType::Int4 => ColumnValues::int4(vec![]),
-                DataType::Int8 => ColumnValues::int8(vec![]),
-                DataType::Int16 => ColumnValues::int16(vec![]),
-                DataType::Utf8 => ColumnValues::utf8(vec![]),
-                DataType::Uint1 => ColumnValues::uint1(vec![]),
-                DataType::Uint2 => ColumnValues::uint2(vec![]),
-                DataType::Uint4 => ColumnValues::uint4(vec![]),
-                DataType::Uint8 => ColumnValues::uint8(vec![]),
-                DataType::Uint16 => ColumnValues::uint16(vec![]),
-                DataType::Date => ColumnValues::date(vec![]),
-                DataType::DateTime => ColumnValues::datetime(vec![]),
-                DataType::Time => ColumnValues::time(vec![]),
-                DataType::Interval => ColumnValues::interval(vec![]),
-                DataType::Undefined => ColumnValues::Undefined(0),
+            let data = match col.ty {
+                Type::Bool => ColumnValues::bool(vec![]),
+                Type::Float4 => ColumnValues::float4(vec![]),
+                Type::Float8 => ColumnValues::float8(vec![]),
+                Type::Int1 => ColumnValues::int1(vec![]),
+                Type::Int2 => ColumnValues::int2(vec![]),
+                Type::Int4 => ColumnValues::int4(vec![]),
+                Type::Int8 => ColumnValues::int8(vec![]),
+                Type::Int16 => ColumnValues::int16(vec![]),
+                Type::Utf8 => ColumnValues::utf8(vec![]),
+                Type::Uint1 => ColumnValues::uint1(vec![]),
+                Type::Uint2 => ColumnValues::uint2(vec![]),
+                Type::Uint4 => ColumnValues::uint4(vec![]),
+                Type::Uint8 => ColumnValues::uint8(vec![]),
+                Type::Uint16 => ColumnValues::uint16(vec![]),
+                Type::Date => ColumnValues::date(vec![]),
+                Type::DateTime => ColumnValues::datetime(vec![]),
+                Type::Time => ColumnValues::time(vec![]),
+                Type::Interval => ColumnValues::interval(vec![]),
+                Type::Undefined => ColumnValues::Undefined(0),
             };
             FrameColumn { name, values: data }
         })

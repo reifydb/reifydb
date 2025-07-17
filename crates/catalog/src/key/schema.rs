@@ -3,7 +3,7 @@
 
 use crate::key::{EncodableKey, KeyKind};
 use crate::schema::SchemaId;
-use reifydb_core::encoding::keycode;
+use reifydb_core::util::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug, Clone, PartialEq)]

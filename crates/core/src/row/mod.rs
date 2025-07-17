@@ -7,6 +7,7 @@ pub use layout::{Field, Layout};
 mod encoded;
 mod get;
 mod get_try;
+pub mod key;
 mod layout;
 mod set;
 mod value;

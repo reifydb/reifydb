@@ -3,7 +3,7 @@
 
 pub use layout::FrameColumnLayout;
 pub use push::Push;
-use reifydb_core::DataType;
+use reifydb_core::Type;
 pub use values::ColumnValues;
 
 mod adjust;
@@ -24,8 +24,8 @@ pub struct FrameColumn {
 }
 
 impl FrameColumn {
-    pub fn data_type(&self) -> DataType {
-        self.values.data_type()
+    pub fn ty(&self) -> Type {
+        self.values.ty()
     }
 
     pub fn is_numeric(&self) -> bool {

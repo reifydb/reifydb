@@ -28,7 +28,7 @@ pub struct Diagnostic {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiagnosticColumn {
     pub name: String,
-    pub data_type: DataType,
+    pub ty: Type,
 }
 
 impl Display for Diagnostic {
@@ -61,7 +61,7 @@ pub fn get_line(source: &str, line: u32) -> &str {
     source.lines().nth((line - 1) as usize).unwrap_or("")
 }
 
-use crate::{DataType, Span};
+use crate::{Type, Span};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Write};
 
@@ -127,7 +127,7 @@ impl DefaultRenderer {
 
         if let Some(col) = &diagnostic.column {
             let _ = writeln!(output, "COLUMN");
-            let _ = writeln!(output, "  column `{}` is of type `{}`", col.name, col.data_type);
+            let _ = writeln!(output, "  column `{}` is of type `{}`", col.name, col.ty);
             let _ = writeln!(output);
         }
 
@@ -218,7 +218,7 @@ impl DefaultRenderer {
             let _ = writeln!(
                 output,
                 "{}  column `{}` is of type `{}`",
-                indent, col.name, col.data_type
+                indent, col.name, col.ty
             );
         }
 

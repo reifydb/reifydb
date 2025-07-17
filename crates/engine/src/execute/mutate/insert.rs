@@ -10,7 +10,7 @@ use reifydb_catalog::{
     sequence::TableRowSequence,
 };
 use reifydb_core::{
-    DataType, IntoSpan, Value,
+    Type, IntoSpan, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},
     row::Layout,
 };
@@ -36,7 +36,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             )));
         };
 
-        let table_types: Vec<DataType> = table.columns.iter().map(|c| c.data_type).collect();
+        let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
         let layout = Layout::new(&table_types);
 
         // Compile the input plan into an execution node with table context

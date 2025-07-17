@@ -3,13 +3,13 @@
 
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic::util::value_range;
-use crate::{DataType, Span};
+use crate::{Type, Span};
 
-pub fn invalid_number_format(span: Span, target: DataType) -> Diagnostic {
+pub fn invalid_number_format(span: Span, target: Type) -> Diagnostic {
     let label = Some(format!("'{}' is not a valid {} number", span.fragment, target));
 
     let (help, notes) = match target {
-        DataType::Float4 | DataType::Float8 => (
+        Type::Float4 | Type::Float8 => (
             "use decimal format (e.g., 123.45, -67.89, 1.23e-4)".to_string(),
             vec![
                 "valid: 123.45".to_string(),
@@ -17,16 +17,16 @@ pub fn invalid_number_format(span: Span, target: DataType) -> Diagnostic {
                 "valid: 1.23e-4".to_string(),
             ],
         ),
-        DataType::Int1
-        | DataType::Int2
-        | DataType::Int4
-        | DataType::Int8
-        | DataType::Int16
-        | DataType::Uint1
-        | DataType::Uint2
-        | DataType::Uint4
-        | DataType::Uint8
-        | DataType::Uint16 => (
+        Type::Int1
+        | Type::Int2
+        | Type::Int4
+        | Type::Int8
+        | Type::Int16
+        | Type::Uint1
+        | Type::Uint2
+        | Type::Uint4
+        | Type::Uint8
+        | Type::Uint16 => (
             "use integer format (e.g., 123, -456) or decimal that can be truncated".to_string(),
             vec![
                 "valid: 123".to_string(),
@@ -53,7 +53,7 @@ pub fn invalid_number_format(span: Span, target: DataType) -> Diagnostic {
     }
 }
 
-pub fn number_out_of_range(span: Span, target: DataType) -> Diagnostic {
+pub fn number_out_of_range(span: Span, target: Type) -> Diagnostic {
     let range = value_range(target);
     let label = Some(format!(
         "value '{}' exceeds the valid range for type {} ({})",
@@ -71,6 +71,22 @@ pub fn number_out_of_range(span: Span, target: DataType) -> Diagnostic {
             target
         )),
         notes: vec![format!("valid range: {}", range)],
+        column: None,
+        caused_by: None,
+    }
+}
+
+pub fn nan_not_allowed() -> Diagnostic {
+    let label = Some("NaN (Not a Number) values are not permitted".to_string());
+
+    Diagnostic {
+        code: "NUMBER_003".to_string(),
+        statement: None,
+        message: "NaN not allowed".to_string(),
+        span: None,
+        label,
+        help: Some("use a finite number or undefined instead".to_string()),
+        notes: vec![],
         column: None,
         caused_by: None,
     }

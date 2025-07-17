@@ -15,12 +15,12 @@ mod demote;
 mod promote;
 
 use crate::frame::FrameColumn;
-use reifydb_core::{BitVec, DataType};
+use reifydb_core::{Type, BitVec};
 
 #[derive(Clone, Debug)]
 pub(crate) struct EvaluationColumn {
     pub(crate) name: Option<String>,
-    pub(crate) data_type: Option<DataType>,
+    pub(crate) ty: Option<Type>,
     pub(crate) policies: Vec<ColumnPolicyKind>,
 }
 
@@ -28,7 +28,7 @@ impl From<Column> for EvaluationColumn {
     fn from(value: Column) -> Self {
         Self {
             name: Some(value.name),
-            data_type: Some(value.data_type),
+            ty: Some(value.ty),
             policies: value.policies.into_iter().map(|cp| cp.policy).collect(),
         }
     }

@@ -81,11 +81,11 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use crate::row::Layout;
-    use crate::{DataType, Date, DateTime, Interval, Time};
+    use crate::{Type, Date, DateTime, Interval, Time};
 
     #[test]
     fn test_try_get_bool() {
-        let layout = Layout::new(&[DataType::Bool]);
+        let layout = Layout::new(&[Type::Bool]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_bool(&row, 0), None);
@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn test_try_get_f32() {
-        let layout = Layout::new(&[DataType::Float4]);
+        let layout = Layout::new(&[Type::Float4]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_f32(&row, 0), None);
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_try_get_f64() {
-        let layout = Layout::new(&[DataType::Float8]);
+        let layout = Layout::new(&[Type::Float8]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_f64(&row, 0), None);
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i8() {
-        let layout = Layout::new(&[DataType::Int1]);
+        let layout = Layout::new(&[Type::Int1]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i8(&row, 0), None);
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i16() {
-        let layout = Layout::new(&[DataType::Int2]);
+        let layout = Layout::new(&[Type::Int2]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i16(&row, 0), None);
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i32() {
-        let layout = Layout::new(&[DataType::Int4]);
+        let layout = Layout::new(&[Type::Int4]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i32(&row, 0), None);
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i64() {
-        let layout = Layout::new(&[DataType::Int8]);
+        let layout = Layout::new(&[Type::Int8]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i64(&row, 0), None);
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn test_try_get_i128() {
-        let layout = Layout::new(&[DataType::Int16]);
+        let layout = Layout::new(&[Type::Int16]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_i128(&row, 0), None);
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_try_get_str() {
-        let layout = Layout::new(&[DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_utf8(&row, 0), None);
@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u8() {
-        let layout = Layout::new(&[DataType::Uint1]);
+        let layout = Layout::new(&[Type::Uint1]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u8(&row, 0), None);
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u16() {
-        let layout = Layout::new(&[DataType::Uint2]);
+        let layout = Layout::new(&[Type::Uint2]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u16(&row, 0), None);
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u32() {
-        let layout = Layout::new(&[DataType::Uint4]);
+        let layout = Layout::new(&[Type::Uint4]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u32(&row, 0), None);
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u64() {
-        let layout = Layout::new(&[DataType::Uint8]);
+        let layout = Layout::new(&[Type::Uint8]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u64(&row, 0), None);
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_try_get_u128() {
-        let layout = Layout::new(&[DataType::Uint16]);
+        let layout = Layout::new(&[Type::Uint16]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_u128(&row, 0), None);
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_try_get_mixed_utf8_and_static_fields() {
-        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4]);
+        let layout = Layout::new(&[Type::Bool, Type::Utf8, Type::Int4]);
         let mut row = layout.allocate_row();
 
         // Initially all fields undefined
@@ -263,11 +263,11 @@ mod tests {
     #[test]
     fn test_try_get_multiple_utf8_different_sizes() {
         let layout = Layout::new(&[
-            DataType::Utf8,
-            DataType::Int2,
-            DataType::Utf8,
-            DataType::Bool,
-            DataType::Utf8,
+            Type::Utf8,
+            Type::Int2,
+            Type::Utf8,
+            Type::Bool,
+            Type::Utf8,
         ]);
         let mut row = layout.allocate_row();
 
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_try_get_sparse_field_setting() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Only set some UTF8 fields, leave others undefined
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_try_get_unicode_multibyte_strings() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Float8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Float8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Initially undefined
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_try_get_after_set_undefined() {
-        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4]);
+        let layout = Layout::new(&[Type::Bool, Type::Utf8, Type::Int4]);
         let mut row = layout.allocate_row();
 
         // Set all fields
@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn test_try_get_empty_and_large_utf8_strings() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let large_string = "A".repeat(1000);
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn test_try_get_static_only_fields_no_dynamic() {
-        let layout = Layout::new(&[DataType::Bool, DataType::Int4, DataType::Float8]);
+        let layout = Layout::new(&[Type::Bool, Type::Int4, Type::Float8]);
         let mut row = layout.allocate_row();
 
         // Set only some static fields
@@ -396,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_try_get_interleaved_static_and_dynamic_setting() {
-        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Int4, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Bool, Type::Utf8, Type::Int4, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Interleave static and dynamic field setting, with some undefined
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_try_get_date() {
-        let layout = Layout::new(&[DataType::Date]);
+        let layout = Layout::new(&[Type::Date]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_date(&row, 0), None);
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_try_get_datetime() {
-        let layout = Layout::new(&[DataType::DateTime]);
+        let layout = Layout::new(&[Type::DateTime]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_datetime(&row, 0), None);
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn test_try_get_time() {
-        let layout = Layout::new(&[DataType::Time]);
+        let layout = Layout::new(&[Type::Time]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_time(&row, 0), None);
@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_try_get_interval() {
-        let layout = Layout::new(&[DataType::Interval]);
+        let layout = Layout::new(&[Type::Interval]);
         let mut row = layout.allocate_row();
 
         assert_eq!(layout.try_get_interval(&row, 0), None);
@@ -462,7 +462,7 @@ mod tests {
     #[test]
     fn test_try_get_mixed_temporal_fields() {
         let layout =
-            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+            Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         // Initially all fields undefined
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn test_try_get_temporal_after_set_undefined() {
         let layout =
-            Layout::new(&[DataType::Date, DataType::DateTime, DataType::Time, DataType::Interval]);
+            Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         // Set all temporal fields

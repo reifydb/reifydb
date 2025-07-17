@@ -4,7 +4,8 @@
 use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
-use reifydb_core::num::{IsNumber, Promote, SafeAdd, SafeDiv, SafeRemainder, SafeMul, SafeSub};
+use reifydb_core::value::IsNumber;
+use reifydb_core::value::number::{ Promote, SafeAdd, SafeDiv, SafeRemainder, SafeMul, SafeSub};
 use reifydb_core::diagnostic::r#type::{OutOfRange, out_of_range};
 
 impl EvaluationContext {
@@ -26,7 +27,7 @@ impl EvaluationContext {
                     return Err(crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        data_type: None,
+                        ty: None,
                     })));
                 };
 
@@ -36,13 +37,13 @@ impl EvaluationContext {
                             return crate::evaluate::Error(out_of_range(OutOfRange {
                                 span: span.into_span(),
                                 column: column.name.clone(),
-                                data_type: column.data_type,
+                                ty: column.ty,
                             }));
                         }
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: None,
-                            data_type: None,
+                            ty: None,
                         }));
                     })
                     .map(Some)
@@ -80,7 +81,7 @@ impl EvaluationContext {
                     return Err(crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        data_type: None,
+                        ty: None,
                     })));
                 };
 
@@ -90,13 +91,13 @@ impl EvaluationContext {
                             return crate::evaluate::Error(out_of_range(OutOfRange {
                                 span: span.into_span(),
                                 column: column.name.clone(),
-                                data_type: column.data_type,
+                                ty: column.ty,
                             }));
                         }
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: None,
-                            data_type: None,
+                            ty: None,
                         }));
                     })
                     .map(Some)
@@ -134,7 +135,7 @@ impl EvaluationContext {
                     return Err(crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        data_type: None,
+                        ty: None,
                     })));
                 };
 
@@ -144,13 +145,13 @@ impl EvaluationContext {
                             return crate::evaluate::Error(out_of_range(OutOfRange {
                                 span: span.into_span(),
                                 column: column.name.clone(),
-                                data_type: column.data_type,
+                                ty: column.ty,
                             }));
                         }
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: None,
-                            data_type: None,
+                            ty: None,
                         }));
                     })
                     .map(Some)
@@ -188,7 +189,7 @@ impl EvaluationContext {
                     return Err(crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        data_type: None,
+                        ty: None,
                     })));
                 };
 
@@ -198,13 +199,13 @@ impl EvaluationContext {
                             return crate::evaluate::Error(out_of_range(OutOfRange {
                                 span: span.into_span(),
                                 column: column.name.clone(),
-                                data_type: column.data_type,
+                                ty: column.ty,
                             }));
                         }
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: None,
-                            data_type: None,
+                            ty: None,
                         }));
                     })
                     .map(Some)
@@ -242,7 +243,7 @@ impl EvaluationContext {
                     return Err(crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        data_type: None,
+                        ty: None,
                     })));
                 };
 
@@ -252,13 +253,13 @@ impl EvaluationContext {
                             return crate::evaluate::Error(out_of_range(OutOfRange {
                                 span: span.into_span(),
                                 column: column.name.clone(),
-                                data_type: column.data_type,
+                                ty: column.ty,
                             }));
                         }
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: None,
-                            data_type: None,
+                            ty: None,
                         }));
                     })
                     .map(Some)

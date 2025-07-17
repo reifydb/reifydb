@@ -9,7 +9,7 @@ use crate::schema::{Schema, SchemaId};
 use crate::table;
 use crate::table::TableId;
 use crate::table::{Table, TableToCreate};
-use reifydb_core::DataType;
+use reifydb_core::Type;
 use reifydb_core::interface::Tx;
 use reifydb_storage::memory::Memory;
 
@@ -54,7 +54,7 @@ pub fn create_table(
 pub fn create_test_table_column(
 	tx: &mut impl Tx<Memory, Memory>,
 	name: &str,
-	value: DataType,
+	value: Type,
 	policies: Vec<ColumnPolicyKind>,
 ) {
     ensure_test_table(tx);

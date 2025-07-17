@@ -10,7 +10,8 @@ use crate::ast::{Ast, AstIdentifier, AstPolicy, AstPolicyKind, AstStatement};
 use crate::expression::{Expression, KeyedExpression};
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::{DataType, Error, SortKey, Span};
+use crate::Error;
+use reifydb_core::{Type, SortKey, Span};
 use reifydb_core::diagnostic::parse::unrecognized_type;
 
 struct Compiler {}
@@ -140,27 +141,27 @@ pub struct TableScanNode {
     pub table: Span,
 }
 
-pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<DataType> {
+pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<Type> {
     Ok(match ast.value().to_ascii_lowercase().as_str() {
-        "bool" => DataType::Bool,
-        "float4" => DataType::Float4,
-        "float8" => DataType::Float8,
-        "int1" => DataType::Int1,
-        "int2" => DataType::Int2,
-        "int4" => DataType::Int4,
-        "int8" => DataType::Int8,
-        "int16" => DataType::Int16,
-        "uint1" => DataType::Uint1,
-        "uint2" => DataType::Uint2,
-        "uint4" => DataType::Uint4,
-        "uint8" => DataType::Uint8,
-        "uint16" => DataType::Uint16,
-        "utf8" => DataType::Utf8,
-        "text" => DataType::Utf8,
-        "date" => DataType::Date,
-        "datetime" => DataType::DateTime,
-        "time" => DataType::Time,
-        "interval" => DataType::Interval,
+        "bool" => Type::Bool,
+        "float4" => Type::Float4,
+        "float8" => Type::Float8,
+        "int1" => Type::Int1,
+        "int2" => Type::Int2,
+        "int4" => Type::Int4,
+        "int8" => Type::Int8,
+        "int16" => Type::Int16,
+        "uint1" => Type::Uint1,
+        "uint2" => Type::Uint2,
+        "uint4" => Type::Uint4,
+        "uint8" => Type::Uint8,
+        "uint16" => Type::Uint16,
+        "utf8" => Type::Utf8,
+        "text" => Type::Utf8,
+        "date" => Type::Date,
+        "datetime" => Type::DateTime,
+        "time" => Type::Time,
+        "interval" => Type::Interval,
         _ => return Err(Error(unrecognized_type(ast.span.clone()))),
     })
 }

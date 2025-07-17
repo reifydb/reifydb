@@ -24,7 +24,7 @@ pub fn explain_ast(query: &str) -> Result<String, Error> {
 fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut String) {
     let token = ast.token();
     let span = &token.span;
-    let data_type = match ast {
+    let ty = match ast {
         Ast::Aggregate(_) => "Aggregate",
         Ast::Inline(_) => "Row",
         Ast::Cast(_) => "Cast",
@@ -55,9 +55,9 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
     let description = match &ast {
         Ast::Inline(r) => {
             let field_names: Vec<&str> = r.keyed_values.iter().map(|f| f.key.value()).collect();
-            format!("{} ({} fields: {})", data_type, r.keyed_values.len(), field_names.join(", "))
+            format!("{} ({} fields: {})", ty, r.keyed_values.len(), field_names.join(", "))
         }
-        _ => data_type.to_string(),
+        _ => ty.to_string(),
     };
 
     output.push_str(&format!(

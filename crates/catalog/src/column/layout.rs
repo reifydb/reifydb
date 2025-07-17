@@ -3,7 +3,7 @@
 
 pub(crate) mod column {
     use once_cell::sync::Lazy;
-    use reifydb_core::DataType;
+    use reifydb_core::Type;
     use reifydb_core::row::Layout;
 
     pub(crate) const ID: usize = 0;
@@ -14,18 +14,18 @@ pub(crate) mod column {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            DataType::Uint8,  // id
-            DataType::Uint8,  // table
-            DataType::Utf8, // name
-            DataType::Uint1,  // value
-            DataType::Uint2,  // index
+            Type::Uint8, // id
+            Type::Uint8, // table
+            Type::Utf8,  // name
+            Type::Uint1, // value
+            Type::Uint2, // index
         ])
     });
 }
 
 pub(crate) mod table_column {
     use once_cell::sync::Lazy;
-    use reifydb_core::DataType;
+    use reifydb_core::Type;
     use reifydb_core::row::Layout;
 
     pub(crate) const ID: usize = 0;
@@ -34,9 +34,9 @@ pub(crate) mod table_column {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            DataType::Uint8,  // column id
-            DataType::Utf8, // column name
-            DataType::Uint2,  // column index - position in the table
+            Type::Uint8, // column id
+            Type::Utf8,  // column name
+            Type::Uint2, // column index - position in the table
         ])
     });
 }

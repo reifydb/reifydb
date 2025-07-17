@@ -14,7 +14,7 @@ impl Compiler {
 
         for col in ast.columns.iter() {
             let column_name = col.name.value().to_string();
-            let data_type = convert_data_type(&col.data_type)?;
+            let ty = convert_data_type(&col.ty)?;
 
             let policies = if let Some(policy_block) = &col.policies {
                 policy_block.policies.iter().map(convert_policy).collect::<Vec<ColumnPolicyKind>>()
@@ -22,7 +22,7 @@ impl Compiler {
                 vec![]
             };
 
-            columns.push(ColumnToCreate { name: column_name, data_type, policies });
+            columns.push(ColumnToCreate { name: column_name, ty, policies });
         }
 
         Ok(LogicalPlan::CreateTable(CreateTableNode {

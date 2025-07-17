@@ -4,7 +4,7 @@
 use crate::column::ColumnId;
 use crate::column_policy::ColumnPolicyId;
 use crate::key::{EncodableKey, KeyKind};
-use reifydb_core::encoding::keycode;
+use reifydb_core::util::encoding::keycode;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug, Clone, PartialEq)]

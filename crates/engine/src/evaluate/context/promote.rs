@@ -4,7 +4,7 @@
 use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
-use reifydb_core::num::SafePromote;
+use reifydb_core::value::number::SafePromote;
 use reifydb_core::diagnostic::r#type::{OutOfRange, out_of_range};
 
 pub trait Promote {
@@ -47,13 +47,13 @@ impl Promote for &EvaluationContext {
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: column.name.clone(),
-                            data_type: column.data_type,
+                            ty: column.ty,
                         }));
                     }
                     return crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        data_type: None,
+                        ty: None,
                     }));
                 })
                 .map(Some),
@@ -71,16 +71,16 @@ mod tests {
     use crate::evaluate::{EvaluationContext, Promote};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
-    use reifydb_core::DataType;
+    use reifydb_core::Type;
     use reifydb_core::Span;
-    use reifydb_core::num::SafePromote;
+    use reifydb_core::value::number::SafePromote;
 
     #[test]
     fn test_promote_ok() {
         let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            data_type: Some(DataType::Int2),
+            ty: Some(Type::Int2),
             policies: vec![Saturation(Error)],
         });
 
@@ -93,7 +93,7 @@ mod tests {
         let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            data_type: Some(DataType::Int2),
+            ty: Some(Type::Int2),
             policies: vec![Saturation(Error)],
         });
 
@@ -108,7 +108,7 @@ mod tests {
         let mut ctx = EvaluationContext::testing();
         ctx.column = Some(EvaluationColumn {
             name: Some("test_column".to_string()),
-            data_type: Some(DataType::Int2),
+            ty: Some(Type::Int2),
             policies: vec![Saturation(Undefined)],
         });
 

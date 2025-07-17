@@ -142,8 +142,8 @@ mod tests {
         let Infix(AstInfix { left, right, .. }) = &u_node else { panic!() };
         let Identifier(identifier) = &left.as_ref() else { panic!() };
         assert_eq!(identifier.value(), "u");
-        let Identifier(data_type) = &right.as_ref() else { panic!() };
-        assert_eq!(data_type.value(), "Bool");
+        let Identifier(ty) = &right.as_ref() else { panic!() };
+        assert_eq!(ty.value(), "Bool");
 
         let Some(v_node) = node.nodes.last() else { panic!() };
         let Infix(AstInfix { left, right, .. }) = &v_node else { panic!() };

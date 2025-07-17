@@ -12,7 +12,7 @@ use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::diagnostic::Diagnostic;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_core::{DataType, Value};
+use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
 
@@ -144,9 +144,7 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
         label: diagnostic.label,
         help: diagnostic.help,
         notes: diagnostic.notes,
-        column: diagnostic
-            .column
-            .map(|c| grpc::DiagnosticColumn { name: c.name, data_type: c.data_type as i32 }),
+        column: diagnostic.column.map(|c| grpc::DiagnosticColumn { name: c.name, ty: c.ty as i32 }),
         caused_by: diagnostic.caused_by.map(|cb| Box::from(map_diagnostic(*cb))),
     }
 }
@@ -154,7 +152,7 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
 fn map_frame(frame: Frame) -> grpc::Frame {
     use grpc::{
         Column, Date, DateTime, Frame, Int128, Interval, Time, UInt128, Value as GrpcValue,
-        value::DataType as GrpcKind,
+        value::Type as GrpcType,
     };
 
     Frame {
@@ -163,53 +161,53 @@ fn map_frame(frame: Frame) -> grpc::Frame {
             .columns
             .into_iter()
             .map(|col| {
-                let data_type = col.values.data_type();
+                let data_type = col.values.ty();
 
                 let values = col
                     .values
                     .iter()
                     .map(|v| {
                         let data_type = match v {
-                            Value::Bool(b) => GrpcKind::BoolValue(b),
-                            Value::Float4(f) => GrpcKind::Float32Value(f.value()),
-                            Value::Float8(f) => GrpcKind::Float64Value(f.value()),
-                            Value::Int1(i) => GrpcKind::Int1Value(i as i32),
-                            Value::Int2(i) => GrpcKind::Int2Value(i as i32),
-                            Value::Int4(i) => GrpcKind::Int4Value(i),
-                            Value::Int8(i) => GrpcKind::Int8Value(i),
-                            Value::Int16(i) => GrpcKind::Int16Value(Int128 {
+                            Value::Bool(b) => GrpcType::BoolValue(b),
+                            Value::Float4(f) => GrpcType::Float32Value(f.value()),
+                            Value::Float8(f) => GrpcType::Float64Value(f.value()),
+                            Value::Int1(i) => GrpcType::Int1Value(i as i32),
+                            Value::Int2(i) => GrpcType::Int2Value(i as i32),
+                            Value::Int4(i) => GrpcType::Int4Value(i),
+                            Value::Int8(i) => GrpcType::Int8Value(i),
+                            Value::Int16(i) => GrpcType::Int16Value(Int128 {
                                 high: (i >> 64) as u64,
                                 low: i as u64,
                             }),
-                            Value::Uint1(i) => GrpcKind::Uint1Value(i as u32),
-                            Value::Uint2(i) => GrpcKind::Uint2Value(i as u32),
-                            Value::Uint4(i) => GrpcKind::Uint4Value(i),
-                            Value::Uint8(i) => GrpcKind::Uint8Value(i),
-                            Value::Uint16(i) => GrpcKind::Uint16Value(UInt128 {
+                            Value::Uint1(i) => GrpcType::Uint1Value(i as u32),
+                            Value::Uint2(i) => GrpcType::Uint2Value(i as u32),
+                            Value::Uint4(i) => GrpcType::Uint4Value(i),
+                            Value::Uint8(i) => GrpcType::Uint8Value(i),
+                            Value::Uint16(i) => GrpcType::Uint16Value(UInt128 {
                                 high: (i >> 64) as u64,
                                 low: i as u64,
                             }),
-                            Value::Utf8(s) => GrpcKind::StringValue(s.clone()),
-                            Value::Date(d) => GrpcKind::DateValue(Date {
+                            Value::Utf8(s) => GrpcType::StringValue(s.clone()),
+                            Value::Date(d) => GrpcType::DateValue(Date {
                                 days_since_epoch: d.to_days_since_epoch(),
                             }),
                             Value::DateTime(dt) => {
                                 let (seconds, nanos) = dt.to_parts();
-                                GrpcKind::DatetimeValue(DateTime { seconds, nanos })
+                                GrpcType::DatetimeValue(DateTime { seconds, nanos })
                             }
-                            Value::Time(t) => GrpcKind::TimeValue(Time {
+                            Value::Time(t) => GrpcType::TimeValue(Time {
                                 nanos_since_midnight: t.to_nanos_since_midnight(),
                             }),
                             Value::Interval(i) => {
-                                GrpcKind::IntervalValue(Interval { nanos: i.to_nanos() })
+                                GrpcType::IntervalValue(Interval { nanos: i.to_nanos() })
                             }
-                            Value::Undefined => GrpcKind::UndefinedValue(false),
+                            Value::Undefined => GrpcType::UndefinedValue(false),
                         };
-                        GrpcValue { data_type: Some(data_type) }
+                        GrpcValue { r#type: Some(data_type) }
                     })
                     .collect();
 
-                Column { name: col.name, data_type: DataType::to_u8(&data_type) as i32, values }
+                Column { name: col.name, ty: Type::to_u8(&data_type) as i32, values }
             })
             .collect(),
     }

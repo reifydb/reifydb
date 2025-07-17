@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::diagnostic::Diagnostic;
-use crate::{DataType, Span};
+use crate::{Type, Span};
 
-pub fn unsupported_cast(span: Span, from_type: DataType, to_type: DataType) -> Diagnostic {
+pub fn unsupported_cast(span: Span, from_type: Type, to_type: Type) -> Diagnostic {
     let label = Some(format!("cannot cast {} of type {} to {}", span.fragment, from_type, to_type));
     Diagnostic {
         code: "CAST_001".to_string(),
@@ -22,7 +22,7 @@ pub fn unsupported_cast(span: Span, from_type: DataType, to_type: DataType) -> D
     }
 }
 
-pub fn invalid_number(span: Span, target: DataType, cause: Diagnostic) -> Diagnostic {
+pub fn invalid_number(span: Span, target: Type, cause: Diagnostic) -> Diagnostic {
     let label = Some(format!("failed to cast to {}", target));
     Diagnostic {
         code: "CAST_002".to_string(),
@@ -37,7 +37,7 @@ pub fn invalid_number(span: Span, target: DataType, cause: Diagnostic) -> Diagno
     }
 }
 
-pub fn invalid_temporal(span: Span, target: DataType, cause: Diagnostic) -> Diagnostic {
+pub fn invalid_temporal(span: Span, target: Type, cause: Diagnostic) -> Diagnostic {
     let label = Some(format!("failed to cast to {}", target));
     Diagnostic {
         code: "CAST_003".to_string(),

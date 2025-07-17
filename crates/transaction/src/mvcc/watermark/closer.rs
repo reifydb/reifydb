@@ -16,7 +16,7 @@ use std::sync::{
 };
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
-use reifydb_core::wait_group::WaitGroup;
+use reifydb_core::WaitGroup;
 
 #[derive(Debug)]
 struct Canceler {

@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(
             TokenKind::Operator(op),
             token.kind,
-            "data_type mismatch for symbol: {}",
+            "ty mismatch for symbol: {}",
             symbol
         );
         assert_eq!(token.span.fragment, symbol);

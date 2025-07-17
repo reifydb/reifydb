@@ -9,7 +9,7 @@ use super::{Date, Time};
 
 /// A date and time value with nanosecond precision.
 /// Always in UTC timezone.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct DateTime {
     inner: ChronoDateTime<Utc>,
 }

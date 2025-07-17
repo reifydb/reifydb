@@ -29,7 +29,7 @@ impl InlineDataNode {
         let columns = table
             .columns
             .iter()
-            .map(|col| FrameColumnLayout { name: col.name.clone(), data_type: col.data_type })
+            .map(|col| FrameColumnLayout { name: col.name.clone(), ty: col.ty })
             .collect();
 
         FrameLayout { columns }
@@ -148,7 +148,7 @@ impl InlineDataNode {
 
         for column_layout in &layout.columns {
             let mut column_values =
-                ColumnValues::with_capacity(column_layout.data_type, self.rows.len());
+                ColumnValues::with_capacity(column_layout.ty, self.rows.len());
 
             // Find the corresponding table column for policies
             let table_column =

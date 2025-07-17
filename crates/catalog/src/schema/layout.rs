@@ -3,7 +3,7 @@
 
 pub(crate) mod schema {
     use once_cell::sync::Lazy;
-    use reifydb_core::DataType;
+    use reifydb_core::Type;
     use reifydb_core::row::Layout;
 
     pub(crate) const ID: usize = 0;
@@ -11,8 +11,8 @@ pub(crate) mod schema {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            DataType::Uint8,  // id
-            DataType::Utf8, // name
+            Type::Uint8, // id
+            Type::Utf8,  // name
         ])
     });
 }

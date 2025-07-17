@@ -8,7 +8,7 @@
 
 use reifydb_core::delta::Delta;
 use reifydb_core::delta::Delta::Set;
-use reifydb_core::encoding::keycode::serialize;
+use reifydb_core::util::encoding::keycode::serialize;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, Version};
 use reifydb_core::interface::VersionedStorage;

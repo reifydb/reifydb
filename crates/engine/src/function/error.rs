@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::DataType;
+use reifydb_core::Type;
 use std::fmt;
 use std::fmt::Display;
 
@@ -18,7 +18,7 @@ pub enum FunctionError {
     TooManyArguments { function: String, max_args: usize, actual: usize },
 
     /// Argument has the wrong type.
-    InvalidArgumentType { function: String, index: usize, expected_one_of: Vec<DataType>, actual: DataType },
+    InvalidArgumentType { function: String, index: usize, expected_one_of: Vec<Type>, actual: Type },
 
     /// One or more arguments are undefined when the function doesn't accept them.
     UndefinedArgument { function: String, index: usize },
@@ -146,8 +146,8 @@ mod tests {
         let err = FunctionError::InvalidArgumentType {
             function: "sqrt".to_string(),
             index: 4,
-            expected_one_of: vec![DataType::Int2],
-            actual: DataType::Utf8,
+            expected_one_of: vec![Type::Int2],
+            actual: Type::Utf8,
         };
         assert_eq!(
             err.to_string(),
@@ -160,8 +160,8 @@ mod tests {
         let err = FunctionError::InvalidArgumentType {
             function: "if".to_string(),
             index: 1,
-            expected_one_of: vec![DataType::Bool, DataType::Int2],
-            actual: DataType::Utf8,
+            expected_one_of: vec![Type::Bool, Type::Int2],
+            actual: Type::Utf8,
         };
         assert_eq!(
             err.to_string(),

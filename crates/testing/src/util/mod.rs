@@ -11,7 +11,7 @@
 
 use regex::Regex;
 use reifydb_core::CowVec;
-use reifydb_core::encoding::binary::decode_binary;
+use reifydb_core::util::encoding::binary::decode_binary;
 use std::error::Error;
 use std::ops::Bound;
 

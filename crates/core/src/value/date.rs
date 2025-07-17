@@ -7,7 +7,7 @@ use std::fmt::{Display, Formatter};
 
 /// A date value representing a calendar date (year, month, day) without time information.
 /// Always interpreted in UTC.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct Date {
     inner: NaiveDate,
 }

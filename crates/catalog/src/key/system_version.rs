@@ -3,7 +3,7 @@
 
 use crate::key::{EncodableKey, KeyKind};
 use reifydb_core::EncodedKey;
-use reifydb_core::encoding::keycode;
+use reifydb_core::util::encoding::keycode;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug,Clone, PartialEq)]

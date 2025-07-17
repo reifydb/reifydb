@@ -2,38 +2,38 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{ColumnValues, FrameColumn};
-use reifydb_core::DataType;
+use reifydb_core::Type;
 
 #[derive(Debug, Clone)]
 pub struct FrameColumnLayout {
     pub name: String,
-    pub data_type: DataType,
+    pub ty: Type,
 }
 
 impl FrameColumnLayout {
     pub fn from_column(column: &FrameColumn) -> Self {
         Self {
             name: column.name.clone(),
-            data_type: match column.values {
-                ColumnValues::Bool(_, _) => DataType::Bool,
-                ColumnValues::Float4(_, _) => DataType::Float4,
-                ColumnValues::Float8(_, _) => DataType::Float8,
-                ColumnValues::Int1(_, _) => DataType::Int1,
-                ColumnValues::Int2(_, _) => DataType::Int2,
-                ColumnValues::Int4(_, _) => DataType::Int4,
-                ColumnValues::Int8(_, _) => DataType::Int8,
-                ColumnValues::Int16(_, _) => DataType::Int16,
-                ColumnValues::Utf8(_, _) => DataType::Utf8,
-                ColumnValues::Uint1(_, _) => DataType::Uint1,
-                ColumnValues::Uint2(_, _) => DataType::Uint2,
-                ColumnValues::Uint4(_, _) => DataType::Uint4,
-                ColumnValues::Uint8(_, _) => DataType::Uint8,
-                ColumnValues::Uint16(_, _) => DataType::Uint16,
-                ColumnValues::Date(_, _) => DataType::Date,
-                ColumnValues::DateTime(_, _) => DataType::DateTime,
-                ColumnValues::Time(_, _) => DataType::Time,
-                ColumnValues::Interval(_, _) => DataType::Interval,
-                ColumnValues::Undefined(_) => DataType::Undefined,
+            ty: match column.values {
+                ColumnValues::Bool(_, _) => Type::Bool,
+                ColumnValues::Float4(_, _) => Type::Float4,
+                ColumnValues::Float8(_, _) => Type::Float8,
+                ColumnValues::Int1(_, _) => Type::Int1,
+                ColumnValues::Int2(_, _) => Type::Int2,
+                ColumnValues::Int4(_, _) => Type::Int4,
+                ColumnValues::Int8(_, _) => Type::Int8,
+                ColumnValues::Int16(_, _) => Type::Int16,
+                ColumnValues::Utf8(_, _) => Type::Utf8,
+                ColumnValues::Uint1(_, _) => Type::Uint1,
+                ColumnValues::Uint2(_, _) => Type::Uint2,
+                ColumnValues::Uint4(_, _) => Type::Uint4,
+                ColumnValues::Uint8(_, _) => Type::Uint8,
+                ColumnValues::Uint16(_, _) => Type::Uint16,
+                ColumnValues::Date(_, _) => Type::Date,
+                ColumnValues::DateTime(_, _) => Type::DateTime,
+                ColumnValues::Time(_, _) => Type::Time,
+                ColumnValues::Interval(_, _) => Type::Interval,
+                ColumnValues::Undefined(_) => Type::Undefined,
             },
         }
     }

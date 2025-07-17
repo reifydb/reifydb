@@ -257,7 +257,7 @@ where
                                                                                 name: frame.name,
                                                                                 columns: frame.columns.into_iter().map(|c| WebsocketColumn {
                                                                                     name: c.name.clone(),
-                                                                                    data_type: c.data_type(),
+                                                                                    ty: c.ty(),
                                                                                     data: c.values.iter().map(|v| {
                                                                                         if v == Value::Undefined {
                                                                                             "⟪undefined⟫".to_string()
@@ -309,7 +309,7 @@ where
                                                                                 name: frame.name,
                                                                                 columns: frame.columns.into_iter().map(|c| WebsocketColumn {
                                                                                     name: c.name.clone(),
-                                                                                    data_type: c.data_type(),
+                                                                                    ty: c.ty(),
                                                                                     data: c.values.iter().map(|v| {
                                                                                         if v == Value::Undefined {
                                                                                             "⟪undefined⟫".to_string()

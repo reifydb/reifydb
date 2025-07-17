@@ -4,7 +4,7 @@
 mod optimistic;
 mod serializable;
 
-use reifydb_core::encoding::{bincode, keycode};
+use reifydb_core::util::encoding::{bincode, keycode};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey};
 

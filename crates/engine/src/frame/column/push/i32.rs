@@ -3,7 +3,7 @@
 
 use crate::frame::{ColumnValues, Push};
 use reifydb_core::CowVec;
-use reifydb_core::num::{SafeConvert, SafeDemote, SafePromote};
+use reifydb_core::value::number::{SafeConvert, SafeDemote, SafePromote};
 
 impl Push<i32> for ColumnValues {
     fn push(&mut self, value: i32) {
@@ -110,7 +110,7 @@ impl Push<i32> for ColumnValues {
                 *self = ColumnValues::Int4(CowVec::new(values), CowVec::new(validity));
             }
             other => {
-                panic!("called `push::<i32>()` on incompatible ColumnValues::{:?}", other.data_type());
+                panic!("called `push::<i32>()` on incompatible ColumnValues::{:?}", other.ty());
             }
         }
     }

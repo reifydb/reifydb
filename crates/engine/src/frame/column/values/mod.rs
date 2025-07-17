@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::num::IsNumber;
-use reifydb_core::{CowVec, DataType, Value};
+use reifydb_core::value::IsNumber;
+use reifydb_core::{Type, Value, CowVec};
 use reifydb_core::{Date, DateTime, Interval, Time};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -72,27 +72,27 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn with_capacity(value: DataType, capacity: usize) -> Self {
+    pub fn with_capacity(value: Type, capacity: usize) -> Self {
         match value {
-            DataType::Bool => Self::bool_with_capacity(capacity),
-            DataType::Float4 => Self::float4_with_capacity(capacity),
-            DataType::Float8 => Self::float8_with_capacity(capacity),
-            DataType::Int1 => Self::int1_with_capacity(capacity),
-            DataType::Int2 => Self::int2_with_capacity(capacity),
-            DataType::Int4 => Self::int4_with_capacity(capacity),
-            DataType::Int8 => Self::int8_with_capacity(capacity),
-            DataType::Int16 => Self::int16_with_capacity(capacity),
-            DataType::Uint1 => Self::uint1_with_capacity(capacity),
-            DataType::Uint2 => Self::uint2_with_capacity(capacity),
-            DataType::Uint4 => Self::uint4_with_capacity(capacity),
-            DataType::Uint8 => Self::uint8_with_capacity(capacity),
-            DataType::Uint16 => Self::uint16_with_capacity(capacity),
-            DataType::Utf8 => Self::utf8_with_capacity(capacity),
-            DataType::Date => Self::date_with_capacity(capacity),
-            DataType::DateTime => Self::datetime_with_capacity(capacity),
-            DataType::Time => Self::time_with_capacity(capacity),
-            DataType::Interval => Self::interval_with_capacity(capacity),
-            DataType::Undefined => Self::undefined(capacity),
+            Type::Bool => Self::bool_with_capacity(capacity),
+            Type::Float4 => Self::float4_with_capacity(capacity),
+            Type::Float8 => Self::float8_with_capacity(capacity),
+            Type::Int1 => Self::int1_with_capacity(capacity),
+            Type::Int2 => Self::int2_with_capacity(capacity),
+            Type::Int4 => Self::int4_with_capacity(capacity),
+            Type::Int8 => Self::int8_with_capacity(capacity),
+            Type::Int16 => Self::int16_with_capacity(capacity),
+            Type::Uint1 => Self::uint1_with_capacity(capacity),
+            Type::Uint2 => Self::uint2_with_capacity(capacity),
+            Type::Uint4 => Self::uint4_with_capacity(capacity),
+            Type::Uint8 => Self::uint8_with_capacity(capacity),
+            Type::Uint16 => Self::uint16_with_capacity(capacity),
+            Type::Utf8 => Self::utf8_with_capacity(capacity),
+            Type::Date => Self::date_with_capacity(capacity),
+            Type::DateTime => Self::datetime_with_capacity(capacity),
+            Type::Time => Self::time_with_capacity(capacity),
+            Type::Interval => Self::interval_with_capacity(capacity),
+            Type::Undefined => Self::undefined(capacity),
         }
     }
 
@@ -657,27 +657,27 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn data_type(&self) -> DataType {
+    pub fn ty(&self) -> Type {
         match self {
-            ColumnValues::Bool(_, _) => DataType::Bool,
-            ColumnValues::Float4(_, _) => DataType::Float4,
-            ColumnValues::Float8(_, _) => DataType::Float8,
-            ColumnValues::Int1(_, _) => DataType::Int1,
-            ColumnValues::Int2(_, _) => DataType::Int2,
-            ColumnValues::Int4(_, _) => DataType::Int4,
-            ColumnValues::Int8(_, _) => DataType::Int8,
-            ColumnValues::Int16(_, _) => DataType::Int16,
-            ColumnValues::Utf8(_, _) => DataType::Utf8,
-            ColumnValues::Uint1(_, _) => DataType::Uint1,
-            ColumnValues::Uint2(_, _) => DataType::Uint2,
-            ColumnValues::Uint4(_, _) => DataType::Uint4,
-            ColumnValues::Uint8(_, _) => DataType::Uint8,
-            ColumnValues::Uint16(_, _) => DataType::Uint16,
-            ColumnValues::Date(_, _) => DataType::Date,
-            ColumnValues::DateTime(_, _) => DataType::DateTime,
-            ColumnValues::Time(_, _) => DataType::Time,
-            ColumnValues::Interval(_, _) => DataType::Interval,
-            ColumnValues::Undefined(_) => DataType::Undefined,
+            ColumnValues::Bool(_, _) => Type::Bool,
+            ColumnValues::Float4(_, _) => Type::Float4,
+            ColumnValues::Float8(_, _) => Type::Float8,
+            ColumnValues::Int1(_, _) => Type::Int1,
+            ColumnValues::Int2(_, _) => Type::Int2,
+            ColumnValues::Int4(_, _) => Type::Int4,
+            ColumnValues::Int8(_, _) => Type::Int8,
+            ColumnValues::Int16(_, _) => Type::Int16,
+            ColumnValues::Utf8(_, _) => Type::Utf8,
+            ColumnValues::Uint1(_, _) => Type::Uint1,
+            ColumnValues::Uint2(_, _) => Type::Uint2,
+            ColumnValues::Uint4(_, _) => Type::Uint4,
+            ColumnValues::Uint8(_, _) => Type::Uint8,
+            ColumnValues::Uint16(_, _) => Type::Uint16,
+            ColumnValues::Date(_, _) => Type::Date,
+            ColumnValues::DateTime(_, _) => Type::DateTime,
+            ColumnValues::Time(_, _) => Type::Time,
+            ColumnValues::Interval(_, _) => Type::Interval,
+            ColumnValues::Undefined(_) => Type::Undefined,
         }
     }
 }

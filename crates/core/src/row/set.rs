@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::DataType;
+use crate::Type;
 use crate::row::{EncodedRow, Layout};
 use crate::value::{Date, DateTime, Interval, Time};
 use std::ptr;
@@ -10,7 +10,7 @@ impl Layout {
     pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Bool);
+        debug_assert_eq!(field.value, Type::Bool);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -23,7 +23,7 @@ impl Layout {
     pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Float4);
+        debug_assert_eq!(field.value, Type::Float4);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -36,7 +36,7 @@ impl Layout {
     pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: impl Into<f64>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Float8);
+        debug_assert_eq!(field.value, Type::Float8);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -49,7 +49,7 @@ impl Layout {
     pub fn set_i8(&self, row: &mut EncodedRow, index: usize, value: impl Into<i8>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Int1);
+        debug_assert_eq!(field.value, Type::Int1);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -62,7 +62,7 @@ impl Layout {
     pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: impl Into<i16>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Int2);
+        debug_assert_eq!(field.value, Type::Int2);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -75,7 +75,7 @@ impl Layout {
     pub fn set_i32(&self, row: &mut EncodedRow, index: usize, value: impl Into<i32>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Int4);
+        debug_assert_eq!(field.value, Type::Int4);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -88,7 +88,7 @@ impl Layout {
     pub fn set_i64(&self, row: &mut EncodedRow, index: usize, value: impl Into<i64>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Int8);
+        debug_assert_eq!(field.value, Type::Int8);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -101,7 +101,7 @@ impl Layout {
     pub fn set_i128(&self, row: &mut EncodedRow, index: usize, value: impl Into<i128>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Int16);
+        debug_assert_eq!(field.value, Type::Int16);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -113,7 +113,7 @@ impl Layout {
 
     pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
         let field = &self.fields[index];
-        debug_assert_eq!(field.value, DataType::Utf8);
+        debug_assert_eq!(field.value, Type::Utf8);
         debug_assert!(!row.is_defined(index), "UTF8 field {} already set", index);
 
         let bytes = value.as_ref().as_bytes();
@@ -135,7 +135,7 @@ impl Layout {
     pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Uint1);
+        debug_assert_eq!(field.value, Type::Uint1);
         row.set_valid(index, true);
         unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset), value.into()) }
     }
@@ -143,7 +143,7 @@ impl Layout {
     pub fn set_u16(&self, row: &mut EncodedRow, index: usize, value: impl Into<u16>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Uint2);
+        debug_assert_eq!(field.value, Type::Uint2);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -156,7 +156,7 @@ impl Layout {
     pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Uint4);
+        debug_assert_eq!(field.value, Type::Uint4);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -169,7 +169,7 @@ impl Layout {
     pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: impl Into<u64>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Uint8);
+        debug_assert_eq!(field.value, Type::Uint8);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -182,7 +182,7 @@ impl Layout {
     pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: impl Into<u128>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Uint16);
+        debug_assert_eq!(field.value, Type::Uint16);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -195,7 +195,7 @@ impl Layout {
     pub fn set_date(&self, row: &mut EncodedRow, index: usize, value: Date) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Date);
+        debug_assert_eq!(field.value, Type::Date);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -208,7 +208,7 @@ impl Layout {
     pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::DateTime);
+        debug_assert_eq!(field.value, Type::DateTime);
         row.set_valid(index, true);
         let (seconds, nanos) = value.to_parts();
         unsafe {
@@ -226,7 +226,7 @@ impl Layout {
     pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Time);
+        debug_assert_eq!(field.value, Type::Time);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -239,7 +239,7 @@ impl Layout {
     pub fn set_interval(&self, row: &mut EncodedRow, index: usize, value: Interval) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
-        debug_assert_eq!(field.value, DataType::Interval);
+        debug_assert_eq!(field.value, Type::Interval);
         row.set_valid(index, true);
         unsafe {
             ptr::write_unaligned(
@@ -264,13 +264,13 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    use crate::DataType;
+    use crate::Type;
     use crate::row::Layout;
     use crate::value::{Date, DateTime, Interval, Time};
 
     #[test]
     fn test_bool_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Bool]);
+        let layout = Layout::new(&[Type::Bool]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_f32_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Float4]);
+        let layout = Layout::new(&[Type::Float4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_f64_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Float8]);
+        let layout = Layout::new(&[Type::Float8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_i8_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Int1]);
+        let layout = Layout::new(&[Type::Int1]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_i16_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Int2]);
+        let layout = Layout::new(&[Type::Int2]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -376,7 +376,7 @@ mod tests {
 
     #[test]
     fn test_i32_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Int4]);
+        let layout = Layout::new(&[Type::Int4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_i64_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Int8]);
+        let layout = Layout::new(&[Type::Int8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn test_i128_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Int16]);
+        let layout = Layout::new(&[Type::Int16]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -442,7 +442,7 @@ mod tests {
 
     #[test]
     fn test_str_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn test_u8_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Uint1]);
+        let layout = Layout::new(&[Type::Uint1]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_u16_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Uint2]);
+        let layout = Layout::new(&[Type::Uint2]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn test_u32_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Uint4]);
+        let layout = Layout::new(&[Type::Uint4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -525,7 +525,7 @@ mod tests {
 
     #[test]
     fn test_u64_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Uint8]);
+        let layout = Layout::new(&[Type::Uint8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn test_u128_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Uint16]);
+        let layout = Layout::new(&[Type::Uint16]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -573,7 +573,7 @@ mod tests {
 
     #[test]
     fn test_set_undefined_and_clone_on_write() {
-        let layout = Layout::new(&[DataType::Int4]);
+        let layout = Layout::new(&[Type::Int4]);
         let mut row1 = layout.allocate_row();
 
         layout.set_i32(&mut row1, 0, 12345);
@@ -593,7 +593,7 @@ mod tests {
     #[test]
     fn test_utf8_setting_order_variations() {
         // Test forward order
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "first");
@@ -627,7 +627,7 @@ mod tests {
 
     #[test]
     fn test_utf8_with_clone_on_write_dynamic() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Int4, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
         let mut row1 = layout.allocate_row();
 
         layout.set_utf8(&mut row1, 0, "original_string");
@@ -652,7 +652,7 @@ mod tests {
 
     #[test]
     fn test_large_utf8_string_allocation() {
-        let layout = Layout::new(&[DataType::Bool, DataType::Utf8, DataType::Uint4]);
+        let layout = Layout::new(&[Type::Bool, Type::Utf8, Type::Uint4]);
         let mut row = layout.allocate_row();
 
         let initial_size = row.len();
@@ -672,12 +672,12 @@ mod tests {
     #[test]
     fn test_mixed_field_types_arbitrary_order() {
         let layout = Layout::new(&[
-            DataType::Float8,
-            DataType::Utf8,
-            DataType::Bool,
-            DataType::Utf8,
-            DataType::Int2,
-            DataType::Utf8,
+            Type::Float8,
+            Type::Utf8,
+            Type::Bool,
+            Type::Utf8,
+            Type::Int2,
+            Type::Utf8,
         ]);
         let mut row = layout.allocate_row();
 
@@ -699,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_sparse_utf8_field_setting() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Only set some UTF8 fields, leave others undefined
@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn test_empty_utf8_strings() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "");
@@ -735,7 +735,7 @@ mod tests {
 
     #[test]
     fn test_utf8_memory_layout_verification() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let initial_size = layout.total_static_size();
@@ -755,7 +755,7 @@ mod tests {
 
     #[test]
     fn test_utf8_with_various_unicode() {
-        let layout = Layout::new(&[DataType::Utf8, DataType::Utf8, DataType::Utf8]);
+        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "🎉"); // Emoji
@@ -769,7 +769,7 @@ mod tests {
 
     #[test]
     fn test_date_set_and_get() {
-        let layout = Layout::new(&[DataType::Date]);
+        let layout = Layout::new(&[Type::Date]);
         let mut row = layout.allocate_row();
 
         let date = Date::new(2025, 7, 15).unwrap();
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn test_datetime_set_and_get() {
-        let layout = Layout::new(&[DataType::DateTime]);
+        let layout = Layout::new(&[Type::DateTime]);
         let mut row = layout.allocate_row();
 
         let datetime = DateTime::new(2025, 7, 15, 14, 30, 45, 123456789).unwrap();
@@ -793,7 +793,7 @@ mod tests {
 
     #[test]
     fn test_time_set_and_get() {
-        let layout = Layout::new(&[DataType::Time]);
+        let layout = Layout::new(&[Type::Time]);
         let mut row = layout.allocate_row();
 
         let time = Time::new(12, 34, 56, 123456789).unwrap();
@@ -805,7 +805,7 @@ mod tests {
 
     #[test]
     fn test_interval_set_and_get() {
-        let layout = Layout::new(&[DataType::Interval]);
+        let layout = Layout::new(&[Type::Interval]);
         let mut row = layout.allocate_row();
 
         let interval = Interval::from_seconds(-3600); // -1 hour
@@ -818,13 +818,13 @@ mod tests {
     #[test]
     fn test_temporal_types_mixed_with_others() {
         let layout = Layout::new(&[
-            DataType::Date,
-            DataType::Bool,
-            DataType::DateTime,
-            DataType::Utf8,
-            DataType::Time,
-            DataType::Int4,
-            DataType::Interval,
+            Type::Date,
+            Type::Bool,
+            Type::DateTime,
+            Type::Utf8,
+            Type::Time,
+            Type::Int4,
+            Type::Interval,
         ]);
         let mut row = layout.allocate_row();
 

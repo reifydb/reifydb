@@ -3,7 +3,7 @@
 
 use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 pub use create::ColumnToCreate;
-use reifydb_core::DataType;
+use reifydb_core::Type;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -18,7 +18,7 @@ mod list;
 pub struct Column {
     pub id: ColumnId,
     pub name: String,
-    pub data_type: DataType,
+    pub ty: Type,
     pub policies: Vec<ColumnPolicy>,
     pub index: ColumnIndex,
 }

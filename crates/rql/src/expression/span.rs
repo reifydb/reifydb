@@ -41,7 +41,7 @@ impl Expression {
                 // Span::merge_all(spans).unwrap()
                 unimplemented!()
             }
-            Expression::DataType(expr) => expr.span.clone(),
+            Expression::Type(expr) => expr.span.clone(),
 
             Expression::Prefix(expr) => expr.span(),
 

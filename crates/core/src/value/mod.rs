@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::DataType;
-use crate::num::ordered_float::{OrderedF32, OrderedF64};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
@@ -10,12 +8,22 @@ use std::fmt::{Display, Formatter};
 mod date;
 mod datetime;
 mod interval;
+mod is;
+pub mod number;
+mod ordered_f32;
+mod ordered_f64;
+pub mod temporal;
 mod time;
+mod r#type;
 
 pub use date::Date;
 pub use datetime::DateTime;
 pub use interval::Interval;
+pub use is::*;
+pub use ordered_f32::OrderedF32;
+pub use ordered_f64::OrderedF64;
 pub use time::Time;
+pub use r#type::{GetType, Type};
 
 /// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -179,27 +187,27 @@ impl Display for Value {
 }
 
 impl Value {
-    pub fn data_type(&self) -> DataType {
+    pub fn ty(&self) -> Type {
         match self {
-            Value::Undefined => DataType::Undefined,
-            Value::Bool(_) => DataType::Bool,
-            Value::Float4(_) => DataType::Float4,
-            Value::Float8(_) => DataType::Float8,
-            Value::Int1(_) => DataType::Int1,
-            Value::Int2(_) => DataType::Int2,
-            Value::Int4(_) => DataType::Int4,
-            Value::Int8(_) => DataType::Int8,
-            Value::Int16(_) => DataType::Int16,
-            Value::Utf8(_) => DataType::Utf8,
-            Value::Uint1(_) => DataType::Uint1,
-            Value::Uint2(_) => DataType::Uint2,
-            Value::Uint4(_) => DataType::Uint4,
-            Value::Uint8(_) => DataType::Uint8,
-            Value::Uint16(_) => DataType::Uint16,
-            Value::Date(_) => DataType::Date,
-            Value::DateTime(_) => DataType::DateTime,
-            Value::Time(_) => DataType::Time,
-            Value::Interval(_) => DataType::Interval,
+            Value::Undefined => Type::Undefined,
+            Value::Bool(_) => Type::Bool,
+            Value::Float4(_) => Type::Float4,
+            Value::Float8(_) => Type::Float8,
+            Value::Int1(_) => Type::Int1,
+            Value::Int2(_) => Type::Int2,
+            Value::Int4(_) => Type::Int4,
+            Value::Int8(_) => Type::Int8,
+            Value::Int16(_) => Type::Int16,
+            Value::Utf8(_) => Type::Utf8,
+            Value::Uint1(_) => Type::Uint1,
+            Value::Uint2(_) => Type::Uint2,
+            Value::Uint4(_) => Type::Uint4,
+            Value::Uint8(_) => Type::Uint8,
+            Value::Uint16(_) => Type::Uint16,
+            Value::Date(_) => Type::Date,
+            Value::DateTime(_) => Type::DateTime,
+            Value::Time(_) => Type::Time,
+            Value::Interval(_) => Type::Interval,
         }
     }
 }

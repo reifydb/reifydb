@@ -70,7 +70,7 @@ mod tests {
         let result = parse_separator(input).unwrap();
         let (remaining, token) = result;
 
-        assert_eq!(TokenKind::Separator(op), token.kind, "data_type mismatch for symbol: {}", symbol);
+        assert_eq!(TokenKind::Separator(op), token.kind, "ty mismatch for symbol: {}", symbol);
         assert_eq!(token.span.fragment, symbol);
         assert_eq!(token.span.column, 1);
         assert_eq!(token.span.line, 1);

@@ -67,14 +67,14 @@ impl Compiler {
                 let node = tuple.nodes.pop().unwrap();
                 let node = node.as_identifier();
                 let span = node.span.clone();
-                let data_type = convert_data_type(node)?;
+                let ty = convert_data_type(node)?;
 
                 let expr = tuple.nodes.pop().unwrap();
 
                 Ok(Expression::Cast(CastExpression {
                     span: tuple.token.span,
                     expression: Box::new(Self::compile_expression(expr)?),
-                    to: DataTypeExpression { span, data_type },
+                    to: DataTypeExpression { span, ty },
                 }))
             }
             ast => unimplemented!("{:?}", ast),

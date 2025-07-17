@@ -4,7 +4,7 @@
 use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
-use reifydb_core::num::SafeConvert;
+use reifydb_core::value::number::SafeConvert;
 use reifydb_core::diagnostic::r#type::{out_of_range, OutOfRange};
 
 pub trait Convert {
@@ -47,13 +47,13 @@ impl Convert for &EvaluationContext {
                         return crate::evaluate::Error(out_of_range(OutOfRange {
                             span: span.into_span(),
                             column: column.name.clone(),
-                            data_type: column.data_type,
+                            ty: column.ty,
                         }));
                     }
                     return crate::evaluate::Error(out_of_range(OutOfRange {
                         span: span.into_span(),
                         column: None,
-                        data_type: None,
+                        ty: None,
                     }));
                 })
                 .map(Some),

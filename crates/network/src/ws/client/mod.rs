@@ -9,7 +9,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::diagnostic::Diagnostic;
-use reifydb_core::{CowVec, DataType, Date, DateTime, Error, Interval, Time};
+use reifydb_core::{CowVec, Date, DateTime, Error, Interval, Time, Type};
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -203,10 +203,7 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn {
-                    name: col.name,
-                    values: convert_column_values(col.data_type, col.data),
-                }
+                FrameColumn { name: col.name, values: convert_column_values(col.ty, col.data) }
             })
             .collect();
 
@@ -227,10 +224,7 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn {
-                    name: col.name,
-                    values: convert_column_values(col.data_type, col.data),
-                }
+                FrameColumn { name: col.name, values: convert_column_values(col.ty, col.data) }
             })
             .collect();
 
@@ -239,7 +233,6 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
 
     result
 }
-
 
 // FIXME this is duplicated - move this into a the core crate - like promote, demote, convert
 /// Parse interval from ISO 8601 duration string (e.g., P1D, PT2H30M, P428DT4H5M6S)
@@ -326,7 +319,7 @@ fn parse_interval_string(s: &str) -> Result<Interval, ()> {
     Ok(Interval::from_nanos(total_nanos))
 }
 
-fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues {
+fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
     let validity: Vec<bool> = data.iter().map(|s| s != "⟪undefined⟫").collect();
 
     macro_rules! parse {
@@ -345,8 +338,8 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
         }};
     }
 
-    match data_type {
-        DataType::Bool => {
+    match ty {
+        Type::Bool => {
             let values: Vec<bool> = data
                 .iter()
                 .map(|s| match s.as_str() {
@@ -357,26 +350,26 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                 .collect();
             ColumnValues::Bool(CowVec::new(values), CowVec::new(validity))
         }
-        DataType::Float4 => parse!(f32, Float4),
-        DataType::Float8 => parse!(f64, Float8),
-        DataType::Int1 => parse!(i8, Int1),
-        DataType::Int2 => parse!(i16, Int2),
-        DataType::Int4 => parse!(i32, Int4),
-        DataType::Int8 => parse!(i64, Int8),
-        DataType::Int16 => parse!(i128, Int16),
-        DataType::Uint1 => parse!(u8, Uint1),
-        DataType::Uint2 => parse!(u16, Uint2),
-        DataType::Uint4 => parse!(u32, Uint4),
-        DataType::Uint8 => parse!(u64, Uint8),
-        DataType::Uint16 => parse!(u128, Uint16),
-        DataType::Utf8 => {
+        Type::Float4 => parse!(f32, Float4),
+        Type::Float8 => parse!(f64, Float8),
+        Type::Int1 => parse!(i8, Int1),
+        Type::Int2 => parse!(i16, Int2),
+        Type::Int4 => parse!(i32, Int4),
+        Type::Int8 => parse!(i64, Int8),
+        Type::Int16 => parse!(i128, Int16),
+        Type::Uint1 => parse!(u8, Uint1),
+        Type::Uint2 => parse!(u16, Uint2),
+        Type::Uint4 => parse!(u32, Uint4),
+        Type::Uint8 => parse!(u64, Uint8),
+        Type::Uint16 => parse!(u128, Uint16),
+        Type::Utf8 => {
             let values: Vec<String> = data
                 .iter()
                 .map(|s| if s == "⟪undefined⟫" { "".to_string() } else { s.clone() })
                 .collect();
             ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity))
         }
-        DataType::Date => {
+        Type::Date => {
             let values: Vec<Date> = data
                 .iter()
                 .map(|s| {
@@ -398,7 +391,7 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                 .collect();
             ColumnValues::Date(CowVec::new(values), CowVec::new(validity))
         }
-        DataType::DateTime => {
+        Type::DateTime => {
             let values: Vec<DateTime> = data
                 .iter()
                 .map(|s| {
@@ -449,7 +442,7 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                 .collect();
             ColumnValues::DateTime(CowVec::new(values), CowVec::new(validity))
         }
-        DataType::Time => {
+        Type::Time => {
             let values: Vec<Time> = data
                 .iter()
                 .map(|s| {
@@ -487,7 +480,7 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                 .collect();
             ColumnValues::Time(CowVec::new(values), CowVec::new(validity))
         }
-        DataType::Interval => {
+        Type::Interval => {
             let values: Vec<Interval> = data
                 .iter()
                 .map(|s| {
@@ -501,6 +494,6 @@ fn convert_column_values(data_type: DataType, data: Vec<String>) -> ColumnValues
                 .collect();
             ColumnValues::Interval(CowVec::new(values), CowVec::new(validity))
         }
-        DataType::Undefined => ColumnValues::Undefined(data.len()),
+        Type::Undefined => ColumnValues::Undefined(data.len()),
     }
 }

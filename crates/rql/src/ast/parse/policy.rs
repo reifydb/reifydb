@@ -32,7 +32,7 @@ impl Parser {
 
     fn parse_policy_kind(&mut self) -> parse::Result<(Token, AstPolicyKind)> {
         let identifier = self.consume(Identifier)?;
-        let data_type = match identifier.span.fragment.as_str() {
+        let ty = match identifier.span.fragment.as_str() {
             "saturation" => AstPolicyKind::Saturation,
             "default" => AstPolicyKind::Default,
             "not" => {
@@ -42,7 +42,7 @@ impl Parser {
             _ => return Err(Error::invalid_policy(identifier)),
         };
 
-        Ok((identifier, data_type))
+        Ok((identifier, ty))
     }
 }
 
@@ -112,7 +112,7 @@ mod tests {
 
                 let col = &columns[0];
                 assert_eq!(col.name.value(), "field");
-                assert_eq!(col.data_type.value(), "int2");
+                assert_eq!(col.ty.value(), "int2");
 
                 let policies = col.policies.as_ref().unwrap();
                 assert_eq!(policies.policies.len(), 2);

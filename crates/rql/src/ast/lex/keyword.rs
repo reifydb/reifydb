@@ -242,7 +242,7 @@ mod tests {
             assert_eq!(
 				TokenKind::Keyword(keyword),
 				token.kind,
-				"data_type mismatch for keyword: {}",
+				"ty mismatch for keyword: {}",
 				repr
             );
             assert_eq!(token.span.fragment.to_lowercase(), repr.to_lowercase());

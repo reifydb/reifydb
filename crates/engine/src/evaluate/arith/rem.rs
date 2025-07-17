@@ -4,8 +4,9 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{FrameColumn, ColumnValues, Push};
 use reifydb_core::Span;
-use reifydb_core::num::{IsNumber, Promote, SafeRemainder};
-use reifydb_core::{CowVec, DataType, GetDataType};
+use reifydb_core::value::IsNumber;
+use reifydb_core::value::number::{ Promote, SafeRemainder};
+use reifydb_core::{Type, CowVec, GetType};
 use reifydb_rql::expression::RemExpression;
 
 impl Evaluator {
@@ -16,471 +17,471 @@ impl Evaluator {
     ) -> crate::evaluate::Result<FrameColumn> {
         let left = self.evaluate(&rem.left, ctx)?;
         let right = self.evaluate(&rem.right, ctx)?;
-        let data_type = DataType::promote(left.data_type(), right.data_type());
+        let ty = Type::promote(left.ty(), right.ty());
 
         match (&left.values, &right.values) {
             // Float4
             (ColumnValues::Float4(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float4(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int1(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint1(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             // Float8
             (ColumnValues::Float8(l, lv), ColumnValues::Float4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Float8(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int1(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint1(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Float8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             // Signed × Signed
             (ColumnValues::Int1(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int2(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int4(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int8(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int16(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             // Signed × Unsigned
             (ColumnValues::Int1(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int1(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int2(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int2(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int4(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int4(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int8(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int8(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Int16(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Int16(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             // Unsigned × Signed
             (ColumnValues::Uint1(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint2(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint4(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint8(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint16(l, lv), ColumnValues::Int1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Int2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Int4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Int8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Int16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             // Unsigned × Unsigned
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint1(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint2(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint4(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint8(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint1(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint2(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint4(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint8(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
             (ColumnValues::Uint16(l, lv), ColumnValues::Uint16(r, rv)) => {
-                rem_numeric(ctx, l, r, lv, rv, data_type, rem.span())
+                rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
             _ => unimplemented!(),
@@ -494,12 +495,12 @@ fn rem_numeric<L, R>(
     r: &CowVec<R>,
     lv: &CowVec<bool>,
     rv: &CowVec<bool>,
-    data_type: DataType,
+    ty: Type,
     span: Span,
 ) -> crate::evaluate::Result<FrameColumn>
 where
-    L: GetDataType + Promote<R> + Copy,
-    R: GetDataType + IsNumber + Copy,
+    L: GetType + Promote<R> + Copy,
+    R: GetType + IsNumber + Copy,
     <L as Promote<R>>::Output: IsNumber,
     <L as Promote<R>>::Output: SafeRemainder,
     ColumnValues: Push<<L as Promote<R>>::Output>,
@@ -507,7 +508,7 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(lv.len(), rv.len());
 
-    let mut data = ColumnValues::with_capacity(data_type, lv.len());
+    let mut data = ColumnValues::with_capacity(ty, lv.len());
     for i in 0..l.len() {
         if lv[i] && rv[i] {
             if let Some(value) = ctx.remainder(l[i], r[i], &span)? {

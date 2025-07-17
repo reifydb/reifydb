@@ -72,11 +72,11 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> Result<FrameColum
     };
 
     // Ensures that result column data type matches the expected target column type
-    if let Some(data_type) = ctx.column.as_ref().and_then(|c| c.data_type) {
+    if let Some(ty) = ctx.column.as_ref().and_then(|c| c.ty) {
         let mut column = evaluator.evaluate(expr, ctx)?;
         column.values = column
             .values
-            .adjust(data_type, ctx, expr.lazy_span())
+            .adjust(ty, ctx, expr.lazy_span())
             .map_err(|e| Error(e.diagnostic()))?;
         Ok(column)
     } else {

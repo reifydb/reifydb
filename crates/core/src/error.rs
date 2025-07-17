@@ -76,7 +76,7 @@ impl Error {
 
         if let Some(col) = &diagnostic.column {
             let _ = writeln!(output, "COLUMN");
-            let _ = writeln!(output, "  column `{}` is of type `{}`", col.name, col.data_type);
+            let _ = writeln!(output, "  column `{}` is of type `{}`", col.name, col.ty);
             let _ = writeln!(output);
         }
 
@@ -167,7 +167,7 @@ impl Error {
             let _ = writeln!(
                 output,
                 "{}  column `{}` is of type `{}`",
-                indent, col.name, col.data_type
+                indent, col.name, col.ty
             );
         }
 

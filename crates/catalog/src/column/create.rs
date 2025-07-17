@@ -7,9 +7,9 @@ use crate::key::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
 use crate::table::TableId;
 use crate::{Catalog, Error};
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{DataType, Span};
 use reifydb_core::diagnostic::catalog::column_already_exists;
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::{Span, Type};
 
 pub struct ColumnToCreate<'a> {
     pub span: Option<Span>,
@@ -17,7 +17,7 @@ pub struct ColumnToCreate<'a> {
     pub table: TableId,
     pub table_name: &'a str,
     pub column: String,
-    pub value: DataType,
+    pub value: Type,
     pub if_not_exists: bool,
     pub policies: Vec<ColumnPolicyKind>,
     pub index: ColumnIndex,
@@ -63,7 +63,7 @@ impl Catalog {
         Ok(Column {
             id,
             name: column_to_create.column,
-            data_type: column_to_create.value,
+            ty: column_to_create.value,
             index: column_to_create.index,
             policies: Catalog::list_column_policies(tx, id)?,
         })
@@ -73,10 +73,10 @@ impl Catalog {
 #[cfg(test)]
 mod test {
     use crate::Catalog;
+    use reifydb_core::Type;
     use crate::column::{ColumnId, ColumnIndex, ColumnToCreate};
     use crate::table::TableId;
     use crate::test_utils::ensure_test_table;
-    use reifydb_core::DataType;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]
@@ -93,7 +93,7 @@ mod test {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "col_1".to_string(),
-                value: DataType::Bool,
+                value: Type::Bool,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),
@@ -110,7 +110,7 @@ mod test {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "col_2".to_string(),
-                value: DataType::Int2,
+                value: Type::Int2,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(1),
@@ -121,12 +121,12 @@ mod test {
         let column_1 = Catalog::get_column(&mut tx, ColumnId(1)).unwrap().unwrap();
         assert_eq!(column_1.id, 1);
         assert_eq!(column_1.name, "col_1");
-        assert_eq!(column_1.data_type, DataType::Bool);
+        assert_eq!(column_1.ty, Type::Bool);
 
         let column_2 = Catalog::get_column(&mut tx, ColumnId(2)).unwrap().unwrap();
         assert_eq!(column_2.id, 2);
         assert_eq!(column_2.name, "col_2");
-        assert_eq!(column_2.data_type, DataType::Int2);
+        assert_eq!(column_2.ty, Type::Int2);
     }
 
     #[test]
@@ -143,7 +143,7 @@ mod test {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "col_1".to_string(),
-                value: DataType::Bool,
+                value: Type::Bool,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),
@@ -161,7 +161,7 @@ mod test {
                 table: TableId(1),
                 table_name: "test_table",
                 column: "col_1".to_string(),
-                value: DataType::Bool,
+                value: Type::Bool,
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(1),

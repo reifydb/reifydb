@@ -9,9 +9,9 @@
 // // The original Apache License can be found at:
 // //   http://www.apache.org/licenses/LICENSE-2.0
 // 
-// use reifydb_core::encoding::binary::decode_binary;
-// use reifydb_core::encoding::format;
-// use reifydb_core::encoding::format::Formatter;
+// use reifydb_core::util::encoding::binary::decode_binary;
+// use reifydb_core::util::encoding::format;
+// use reifydb_core::util::encoding::format::Formatter;
 // use reifydb_core::row::EncodedRow;
 // use reifydb_core::{EncodedKey, EncodedKeyRange};
 // use reifydb_core::interface::Stored;

@@ -3,7 +3,7 @@
 
 use crate::grpc::client::grpc;
 use reifydb_core::diagnostic::{Diagnostic, DiagnosticColumn};
-use reifydb_core::{DataType, Date, DateTime, Interval, Span, SpanColumn, SpanLine, Time};
+use reifydb_core::{Date, DateTime, Interval, Span, SpanColumn, SpanLine, Time, Type};
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::collections::HashMap;
 
@@ -20,33 +20,32 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
         label: grpc.label,
         help: grpc.help,
         notes: grpc.notes,
-        column: grpc.column.map(|c| DiagnosticColumn {
-            name: c.name,
-            data_type: DataType::from_u8(c.data_type as u8),
-        }),
+        column: grpc
+            .column
+            .map(|c| DiagnosticColumn { name: c.name, ty: Type::from_u8(c.ty as u8) }),
         caused_by: grpc.caused_by.map(|cb| Box::from(convert_diagnostic(*cb))),
     }
 }
 
 pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
-    use grpc::value::DataType as GrpcValueKind;
+    use grpc::value::Type as GrpcType;
 
     let mut columns = Vec::with_capacity(frame.columns.len());
     let mut index = HashMap::with_capacity(frame.columns.len());
 
     for (i, grpc_col) in frame.columns.into_iter().enumerate() {
-        let data_type = DataType::from_u8(grpc_col.data_type as u8);
+        let data_type = Type::from_u8(grpc_col.ty as u8);
         let name = grpc_col.name;
 
         let values = grpc_col.values;
 
         let column_values = match data_type {
-            DataType::Bool => {
+            Type::Bool => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::BoolValue(b)) => {
+                    match v.r#type {
+                        Some(GrpcType::BoolValue(b)) => {
                             data.push(b);
                             validity.push(true);
                         }
@@ -59,12 +58,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::bool_with_validity(data, validity)
             }
 
-            DataType::Float4 => {
+            Type::Float4 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Float32Value(f)) => {
+                    match v.r#type {
+                        Some(GrpcType::Float32Value(f)) => {
                             data.push(f);
                             validity.push(true);
                         }
@@ -77,12 +76,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::float4_with_validity(data, validity)
             }
 
-            DataType::Float8 => {
+            Type::Float8 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Float64Value(f)) => {
+                    match v.r#type {
+                        Some(GrpcType::Float64Value(f)) => {
                             data.push(f);
                             validity.push(true);
                         }
@@ -95,12 +94,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::float8_with_validity(data, validity)
             }
 
-            DataType::Int1 => {
+            Type::Int1 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Int1Value(i)) => {
+                    match v.r#type {
+                        Some(GrpcType::Int1Value(i)) => {
                             data.push(i as i8);
                             validity.push(true);
                         }
@@ -113,12 +112,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::int1_with_validity(data, validity)
             }
 
-            DataType::Int2 => {
+            Type::Int2 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Int2Value(i)) => {
+                    match v.r#type {
+                        Some(GrpcType::Int2Value(i)) => {
                             data.push(i as i16);
                             validity.push(true);
                         }
@@ -131,12 +130,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::int2_with_validity(data, validity)
             }
 
-            DataType::Int4 => {
+            Type::Int4 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Int4Value(i)) => {
+                    match v.r#type {
+                        Some(GrpcType::Int4Value(i)) => {
                             data.push(i);
                             validity.push(true);
                         }
@@ -149,12 +148,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::int4_with_validity(data, validity)
             }
 
-            DataType::Int8 => {
+            Type::Int8 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Int8Value(i)) => {
+                    match v.r#type {
+                        Some(GrpcType::Int8Value(i)) => {
                             data.push(i);
                             validity.push(true);
                         }
@@ -167,12 +166,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::int8_with_validity(data, validity)
             }
 
-            DataType::Int16 => {
+            Type::Int16 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Int16Value(grpc::Int128 { high, low })) => {
+                    match v.r#type {
+                        Some(GrpcType::Int16Value(grpc::Int128 { high, low })) => {
                             data.push(((high as i128) << 64) | (low as i128));
                             validity.push(true);
                         }
@@ -185,12 +184,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::int16_with_validity(data, validity)
             }
 
-            DataType::Uint1 => {
+            Type::Uint1 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Uint1Value(i)) => {
+                    match v.r#type {
+                        Some(GrpcType::Uint1Value(i)) => {
                             data.push(i as u8);
                             validity.push(true);
                         }
@@ -203,12 +202,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::uint1_with_validity(data, validity)
             }
 
-            DataType::Uint2 => {
+            Type::Uint2 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Uint2Value(i)) => {
+                    match v.r#type {
+                        Some(GrpcType::Uint2Value(i)) => {
                             data.push(i as u16);
                             validity.push(true);
                         }
@@ -221,12 +220,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::uint2_with_validity(data, validity)
             }
 
-            DataType::Uint4 => {
+            Type::Uint4 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Uint4Value(i)) => {
+                    match v.r#type {
+                        Some(GrpcType::Uint4Value(i)) => {
                             data.push(i);
                             validity.push(true);
                         }
@@ -239,12 +238,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::uint4_with_validity(data, validity)
             }
 
-            DataType::Uint8 => {
+            Type::Uint8 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Uint8Value(i)) => {
+                    match v.r#type {
+                        Some(GrpcType::Uint8Value(i)) => {
                             data.push(i);
                             validity.push(true);
                         }
@@ -257,12 +256,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::uint8_with_validity(data, validity)
             }
 
-            DataType::Uint16 => {
+            Type::Uint16 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::Uint16Value(grpc::UInt128 { high, low })) => {
+                    match v.r#type {
+                        Some(GrpcType::Uint16Value(grpc::UInt128 { high, low })) => {
                             data.push(((high as u128) << 64) | (low as u128));
                             validity.push(true);
                         }
@@ -275,12 +274,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::uint16_with_validity(data, validity)
             }
 
-            DataType::Utf8 => {
+            Type::Utf8 => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::StringValue(s)) => {
+                    match v.r#type {
+                        Some(GrpcType::StringValue(s)) => {
                             data.push(s);
                             validity.push(true);
                         }
@@ -293,12 +292,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::utf8_with_validity(data, validity)
             }
 
-            DataType::Date => {
+            Type::Date => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::DateValue(grpc::Date { days_since_epoch })) => {
+                    match v.r#type {
+                        Some(GrpcType::DateValue(grpc::Date { days_since_epoch })) => {
                             if let Some(date) = Date::from_days_since_epoch(days_since_epoch) {
                                 data.push(date);
                                 validity.push(true);
@@ -316,12 +315,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::date_with_validity(data, validity)
             }
 
-            DataType::DateTime => {
+            Type::DateTime => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::DatetimeValue(grpc::DateTime { seconds, nanos })) => {
+                    match v.r#type {
+                        Some(GrpcType::DatetimeValue(grpc::DateTime { seconds, nanos })) => {
                             if let Ok(datetime) = DateTime::from_parts(seconds, nanos) {
                                 data.push(datetime);
                                 validity.push(true);
@@ -339,12 +338,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::datetime_with_validity(data, validity)
             }
 
-            DataType::Time => {
+            Type::Time => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::TimeValue(grpc::Time { nanos_since_midnight })) => {
+                    match v.r#type {
+                        Some(GrpcType::TimeValue(grpc::Time { nanos_since_midnight })) => {
                             if let Some(time) =
                                 Time::from_nanos_since_midnight(nanos_since_midnight)
                             {
@@ -364,12 +363,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::time_with_validity(data, validity)
             }
 
-            DataType::Interval => {
+            Type::Interval => {
                 let mut data = Vec::with_capacity(values.len());
                 let mut validity = Vec::with_capacity(values.len());
                 for v in values {
-                    match v.data_type {
-                        Some(GrpcValueKind::IntervalValue(grpc::Interval { nanos })) => {
+                    match v.r#type {
+                        Some(GrpcType::IntervalValue(grpc::Interval { nanos })) => {
                             data.push(Interval::from_nanos(nanos));
                             validity.push(true);
                         }
@@ -382,7 +381,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 ColumnValues::interval_with_validity(data, validity)
             }
 
-            DataType::Undefined => ColumnValues::undefined(values.len()),
+            Type::Undefined => ColumnValues::undefined(values.len()),
         };
 
         columns.push(FrameColumn { name: name.clone(), values: column_values });

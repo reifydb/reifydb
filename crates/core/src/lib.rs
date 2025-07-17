@@ -6,37 +6,26 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use bitvec::BitVec;
-pub use cowvec::CowVec;
-pub use data_type::{DataType, GetDataType};
 pub use error::Error;
-pub use key::{EncodedKey, EncodedKeyRange};
-pub use retry::retry;
+pub use row::key::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
 pub use span::{IntoSpan, Span, SpanColumn, SpanLine};
-pub use value::{Date, DateTime, Interval, Time, Value};
-pub use version::Version;
+pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
+pub use value::{Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, Time, Type, Value};
 
-mod bitvec;
 pub mod clock;
-mod cowvec;
-mod data_type;
 pub mod delta;
 pub mod diagnostic;
-pub mod either;
-pub mod encoding;
 mod error;
 pub mod hook;
 pub mod interface;
-mod key;
-pub mod num;
-mod retry;
 pub mod row;
 mod sort;
 mod span;
-mod value;
-mod version;
-pub mod wait_group;
+pub mod util;
+pub mod value;
+
+pub type Version = u64;
 
 #[derive(Copy, Clone, Debug)]
 pub enum StoreKind {

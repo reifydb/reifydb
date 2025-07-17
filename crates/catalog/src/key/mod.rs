@@ -5,7 +5,7 @@ pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use kind::KeyKind;
 use reifydb_core::EncodedKey;
-use reifydb_core::encoding::keycode;
+use reifydb_core::util::encoding::keycode;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
 pub use system_sequence::SystemSequenceKey;
