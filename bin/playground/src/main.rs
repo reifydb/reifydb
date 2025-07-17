@@ -44,7 +44,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-      from test.text_test9 map cast(col, int1)
+      map cast("9223372036854775808", int8)
         "#,
         )
         .unwrap();
