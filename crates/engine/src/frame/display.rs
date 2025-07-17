@@ -3,6 +3,161 @@
 
 use crate::frame::{ColumnValues, Frame};
 use std::fmt::{self, Display, Formatter};
+use unicode_width::UnicodeWidthStr;
+
+/// Calculate the display width of a string, handling newlines properly.
+/// For strings with newlines, returns the width of the longest line.
+/// For strings without newlines, returns the unicode display width.
+fn display_width(s: &str) -> usize {
+    if s.contains('\n') {
+        s.lines()
+            .map(|line| line.width())
+            .max()
+            .unwrap_or(0)
+    } else {
+        s.width()
+    }
+}
+
+/// Escape newlines and tabs in a string for single-line display.
+/// Replaces '\n' with "\\n" and '\t' with "\\t".
+fn escape_control_chars(s: &str) -> String {
+    s.replace('\n', "\\n").replace('\t', "\\t")
+}
+
+/// Extract string value from column at given row index, with proper escaping
+fn extract_string_value(col: &crate::frame::FrameColumn, row_idx: usize) -> String {
+    let s = match &col.values {
+        ColumnValues::Bool(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Float4(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Float8(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Int1(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Int2(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Int4(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Int8(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Int16(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Uint1(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Uint2(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Uint4(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Uint8(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Uint16(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Utf8(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].clone()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Date(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::DateTime(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Time(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Interval(v, valid) => {
+            if valid[row_idx] {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Undefined(_) => "Undefined".into(),
+    };
+    escape_control_chars(&s)
+}
 
 impl Display for Frame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -12,141 +167,13 @@ impl Display for Frame {
         let mut col_widths = vec![0; col_count];
 
         for (i, col) in self.columns.iter().enumerate() {
-            col_widths[i] = col.name.len();
+            col_widths[i] = display_width(&col.name);
         }
 
         for row_idx in 0..row_count {
             for (i, col) in self.columns.iter().enumerate() {
-                let s = match &col.values {
-                    ColumnValues::Bool(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Float4(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Float8(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Int1(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Int2(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Int4(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Int8(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Int16(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Uint1(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Uint2(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Uint4(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Uint8(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Uint16(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Utf8(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].clone()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Date(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::DateTime(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Time(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Interval(v, valid) => {
-                        if valid[row_idx] {
-                            v[row_idx].to_string()
-                        } else {
-                            "Undefined".into()
-                        }
-                    }
-                    ColumnValues::Undefined(_) => "Undefined".into(),
-                };
-                col_widths[i] = col_widths[i].max(s.len());
+                let s = extract_string_value(col, row_idx);
+                col_widths[i] = col_widths[i].max(display_width(&s));
             }
         }
 
@@ -168,7 +195,7 @@ impl Display for Frame {
             .map(|(i, col)| {
                 let w = col_widths[i];
                 let name = &col.name;
-                let pad = w - name.len();
+                let pad = w - display_width(name);
                 let l = pad / 2;
                 let r = pad - l;
                 format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r)
@@ -185,136 +212,8 @@ impl Display for Frame {
                 .enumerate()
                 .map(|(i, col)| {
                     let w = col_widths[i];
-                    let s = match &col.values {
-                        ColumnValues::Bool(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Float4(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Float8(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Int1(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Int2(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Int4(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Int8(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Int16(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Uint1(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Uint2(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Uint4(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Uint8(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Uint16(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Utf8(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].clone()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Date(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::DateTime(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Time(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Interval(v, valid) => {
-                            if valid[row_idx] {
-                                v[row_idx].to_string()
-                            } else {
-                                "Undefined".into()
-                            }
-                        }
-                        ColumnValues::Undefined(_) => "Undefined".into(),
-                    };
-                    let pad = w - s.len();
+                    let s = extract_string_value(col, row_idx);
+                    let pad = w - display_width(&s);
                     let l = pad / 2;
                     let r = pad - l;
                     format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r)

@@ -81,12 +81,14 @@ reifydb-testing = { path = "crates/testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/transaction", version = "0.0.1" }
 
 # util
-chrono = { version = "0.4.41", features = ["serde"]}
+chrono = { version = "0.4.41", features = ["serde"] }
 futures-util = { version = "0.3.31" }
 once_cell = { version = "1.21.3" }
 rand = { version = "0.9.1" }
 regex = { version = "1.11.1" }
+unicode-width = { version = "0.2.1" }
 uuid = { version = "1.16.0", features = ["v4"] }
+
 
 crossbeam-skiplist = { version = "0.1.3" }
 crossbeam-channel = { version = "0.5.15" }
@@ -126,3 +128,4 @@ heed = { version = "0.22.0", features = ["preserve_order"] }
 # testing
 goldenfile = { version = "1.8.0" }
 test_each_file = { version = "0.3.4" }
+
