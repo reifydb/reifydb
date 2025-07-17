@@ -2,29 +2,28 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::evaluate::{Convert, Demote, Promote};
-use crate::evaluate::constant::date::parse_date;
-use crate::evaluate::constant::datetime::parse_datetime;
-use crate::evaluate::constant::time::parse_time;
-use crate::evaluate::constant::interval::parse_interval;
 use crate::frame::ColumnValues;
+use reifydb_core::value::number::{
+    parse_float, parse_int, parse_uint, SafeConvert, SafeDemote, SafePromote,
+};
+use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
 use reifydb_core::Type;
-use reifydb_core::value::number::{SafeConvert, SafeDemote, SafePromote, parse_int, parse_uint, parse_float};
-use reifydb_core::{Span, Date, DateTime, Time, Interval};
+use reifydb_core::{Date, DateTime, Interval, Span, Time};
 use std::fmt::Display;
 
 impl ColumnValues {
     pub fn adjust(
-		&self,
-		target: Type,
-		ctx: impl Promote + Demote + Convert,
-		span: impl Fn() -> Span,
+        &self,
+        target: Type,
+        ctx: impl Promote + Demote + Convert,
+        span: impl Fn() -> Span,
     ) -> crate::Result<ColumnValues> {
         use Type::*;
 
         if target == self.ty() {
             return Ok(self.clone());
         }
-        
+
         macro_rules! adjust {
         (
             $src_variant:ident, $src_ty:ty,
@@ -163,7 +162,7 @@ impl ColumnValues {
             }
         }
 
-        // Handle Utf8 conversions  
+        // Handle Utf8 conversions
         if let ColumnValues::Utf8(values, validity) = self {
             match target {
                 Type::Utf8 => return Ok(self.clone()),
@@ -190,44 +189,70 @@ impl ColumnValues {
 
         // Handle numeric to Bool conversions
         match target {
-            Type::Bool => {
-                match self {
-                    ColumnValues::Int1(values, validity) => return i8_to_bool_vec(values, validity),
-                    ColumnValues::Int2(values, validity) => return i16_to_bool_vec(values, validity),
-                    ColumnValues::Int4(values, validity) => return i32_to_bool_vec(values, validity),
-                    ColumnValues::Int8(values, validity) => return i64_to_bool_vec(values, validity),
-                    ColumnValues::Int16(values, validity) => return i128_to_bool_vec(values, validity),
-                    ColumnValues::Uint1(values, validity) => return u8_to_bool_vec(values, validity),
-                    ColumnValues::Uint2(values, validity) => return u16_to_bool_vec(values, validity),
-                    ColumnValues::Uint4(values, validity) => return u32_to_bool_vec(values, validity),
-                    ColumnValues::Uint8(values, validity) => return u64_to_bool_vec(values, validity),
-                    ColumnValues::Uint16(values, validity) => return u128_to_bool_vec(values, validity),
-                    ColumnValues::Float4(values, validity) => return f32_to_bool_vec(values, validity),
-                    ColumnValues::Float8(values, validity) => return f64_to_bool_vec(values, validity),
-                    _ => {}
+            Type::Bool => match self {
+                ColumnValues::Int1(values, validity) => return i8_to_bool_vec(values, validity),
+                ColumnValues::Int2(values, validity) => return i16_to_bool_vec(values, validity),
+                ColumnValues::Int4(values, validity) => return i32_to_bool_vec(values, validity),
+                ColumnValues::Int8(values, validity) => return i64_to_bool_vec(values, validity),
+                ColumnValues::Int16(values, validity) => return i128_to_bool_vec(values, validity),
+                ColumnValues::Uint1(values, validity) => return u8_to_bool_vec(values, validity),
+                ColumnValues::Uint2(values, validity) => return u16_to_bool_vec(values, validity),
+                ColumnValues::Uint4(values, validity) => return u32_to_bool_vec(values, validity),
+                ColumnValues::Uint8(values, validity) => return u64_to_bool_vec(values, validity),
+                ColumnValues::Uint16(values, validity) => {
+                    return u128_to_bool_vec(values, validity);
                 }
-            }
-            Type::Utf8 => {
-                match self {
-                    ColumnValues::Int1(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Int2(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Int4(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Int8(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Int16(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Uint1(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Uint2(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Uint4(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Uint8(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Uint16(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Float4(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Float8(values, validity) => return numeric_to_text_vec(values, validity),
-                    ColumnValues::Date(values, validity) => return date_to_text_vec(values, validity),
-                    ColumnValues::DateTime(values, validity) => return datetime_to_text_vec(values, validity),
-                    ColumnValues::Time(values, validity) => return time_to_text_vec(values, validity),
-                    ColumnValues::Interval(values, validity) => return interval_to_text_vec(values, validity),
-                    _ => {}
+                ColumnValues::Float4(values, validity) => return f32_to_bool_vec(values, validity),
+                ColumnValues::Float8(values, validity) => return f64_to_bool_vec(values, validity),
+                _ => {}
+            },
+            Type::Utf8 => match self {
+                ColumnValues::Int1(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
                 }
-            }
+                ColumnValues::Int2(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Int4(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Int8(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Int16(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Uint1(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Uint2(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Uint4(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Uint8(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Uint16(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Float4(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Float8(values, validity) => {
+                    return numeric_to_text_vec(values, validity);
+                }
+                ColumnValues::Date(values, validity) => return date_to_text_vec(values, validity),
+                ColumnValues::DateTime(values, validity) => {
+                    return datetime_to_text_vec(values, validity);
+                }
+                ColumnValues::Time(values, validity) => return time_to_text_vec(values, validity),
+                ColumnValues::Interval(values, validity) => {
+                    return interval_to_text_vec(values, validity);
+                }
+                _ => {}
+            },
             _ => {}
         }
 
@@ -269,12 +294,12 @@ impl ColumnValues {
 }
 
 fn demote_vec<From, To>(
-	values: &[From],
-	validity: &[bool],
-	demote: impl Demote,
-	span: impl Fn() -> Span,
-	target_kind: Type,
-	mut push: impl FnMut(&mut ColumnValues, To),
+    values: &[From],
+    validity: &[bool],
+    demote: impl Demote,
+    span: impl Fn() -> Span,
+    target_kind: Type,
+    mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
     From: Copy + SafeDemote<To>,
@@ -294,12 +319,12 @@ where
 }
 
 fn promote_vec<From, To>(
-	values: &[From],
-	validity: &[bool],
-	ctx: impl Promote,
-	span: impl Fn() -> Span,
-	target_kind: Type,
-	mut push: impl FnMut(&mut ColumnValues, To),
+    values: &[From],
+    validity: &[bool],
+    ctx: impl Promote,
+    span: impl Fn() -> Span,
+    target_kind: Type,
+    mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
     From: Copy + SafePromote<To>,
@@ -319,12 +344,12 @@ where
 }
 
 fn convert_vec<From, To>(
-	values: &[From],
-	validity: &[bool],
-	ctx: impl Convert,
-	span: impl Fn() -> Span,
-	target_kind: Type,
-	mut push: impl FnMut(&mut ColumnValues, To),
+    values: &[From],
+    validity: &[bool],
+    ctx: impl Convert,
+    span: impl Fn() -> Span,
+    target_kind: Type,
+    mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
     From: Copy + SafeConvert<To>,
@@ -348,8 +373,8 @@ mod tests {
     mod promote {
         use crate::evaluate::Promote;
         use crate::frame::column::adjust::promote_vec;
-        use reifydb_core::Type;
         use reifydb_core::value::number::SafePromote;
+        use reifydb_core::Type;
         use reifydb_core::{IntoSpan, Span};
 
         #[test]
@@ -359,12 +384,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
-				&values,
-				&validity,
-				&ctx,
-				|| Span::testing_empty(),
-				Type::Int2,
-				|col, v| col.push::<i16>(v),
+                &values,
+                &validity,
+                &ctx,
+                || Span::testing_empty(),
+                Type::Int2,
+                |col, v| col.push::<i16>(v),
             )
             .unwrap();
 
@@ -380,12 +405,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
-				&values,
-				&validity,
-				&ctx,
-				|| Span::testing_empty(),
-				Type::Int2,
-				|col, v| col.push::<i16>(v),
+                &values,
+                &validity,
+                &ctx,
+                || Span::testing_empty(),
+                Type::Int2,
+                |col, v| col.push::<i16>(v),
             )
             .unwrap();
 
@@ -399,12 +424,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
-				&values,
-				&validity,
-				&ctx,
-				|| Span::testing_empty(),
-				Type::Int2,
-				|col, v| col.push::<i16>(v),
+                &values,
+                &validity,
+                &ctx,
+                || Span::testing_empty(),
+                Type::Int2,
+                |col, v| col.push::<i16>(v),
             )
             .unwrap();
 
@@ -418,12 +443,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
-				&values,
-				&validity,
-				&ctx,
-				|| Span::testing_empty(),
-				Type::Int2,
-				|col, v| col.push::<i16>(v),
+                &values,
+                &validity,
+                &ctx,
+                || Span::testing_empty(),
+                Type::Int2,
+                |col, v| col.push::<i16>(v),
             )
             .unwrap();
 
@@ -463,8 +488,8 @@ mod tests {
     mod demote {
         use crate::evaluate::Demote;
         use crate::frame::column::adjust::demote_vec;
-        use reifydb_core::Type;
         use reifydb_core::value::number::SafeDemote;
+        use reifydb_core::Type;
         use reifydb_core::{IntoSpan, Span};
 
         #[test]
@@ -474,12 +499,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
-				&values,
-				&validity,
-				&ctx,
-				|| Span::testing_empty(),
-				Type::Int1,
-				|col, v| col.push::<i8>(v),
+                &values,
+                &validity,
+                &ctx,
+                || Span::testing_empty(),
+                Type::Int1,
+                |col, v| col.push::<i8>(v),
             )
             .unwrap();
 
@@ -495,12 +520,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
-				&values,
-				&validity,
-				&ctx,
-				|| Span::testing_empty(),
-				Type::Int1,
-				|col, v| col.push::<i8>(v),
+                &values,
+                &validity,
+                &ctx,
+                || Span::testing_empty(),
+                Type::Int1,
+                |col, v| col.push::<i8>(v),
             )
             .unwrap();
 
@@ -514,12 +539,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
-				&values,
-				&validity,
-				&ctx,
-				|| Span::testing_empty(),
-				Type::Int1,
-				|col, v| col.push::<i8>(v),
+                &values,
+                &validity,
+                &ctx,
+                || Span::testing_empty(),
+                Type::Int1,
+                |col, v| col.push::<i8>(v),
             )
             .unwrap();
 
@@ -533,12 +558,12 @@ mod tests {
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
-				&values,
-				&validity,
-				&ctx,
-				|| Span::testing_empty(),
-				Type::Int1,
-				|col, v| col.push::<i8>(v),
+                &values,
+                &validity,
+                &ctx,
+                || Span::testing_empty(),
+                Type::Int1,
+                |col, v| col.push::<i8>(v),
             )
             .unwrap();
 
@@ -607,10 +632,7 @@ fn bool_to_numeric_vec(
     Ok(out)
 }
 
-fn bool_to_text_vec(
-    values: &[bool],
-    validity: &[bool],
-) -> crate::Result<ColumnValues> {
+fn bool_to_text_vec(values: &[bool], validity: &[bool]) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if validity[idx] {
@@ -767,10 +789,7 @@ fn f64_to_bool_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn numeric_to_text_vec<T>(
-    values: &[T],
-    validity: &[bool],
-) -> crate::Result<ColumnValues>
+fn numeric_to_text_vec<T>(values: &[T], validity: &[bool]) -> crate::Result<ColumnValues>
 where
     T: Copy + Display,
 {
@@ -786,10 +805,7 @@ where
 }
 
 // Text parsing functions
-fn text_to_bool_vec(
-    values: &[String],
-    validity: &[bool],
-) -> crate::Result<ColumnValues> {
+fn text_to_bool_vec(values: &[String], validity: &[bool]) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
@@ -815,184 +831,161 @@ fn text_to_numeric_vec(
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
             // Create a temporary span for parsing
-            let temp_span = Span {
-                fragment: val.clone(),
-                line: span().line,
-                column: span().column,
-            };
-            
+            let temp_span =
+                Span { fragment: val.clone(), line: span().line, column: span().column };
+
             // Try to parse based on the target type
             match target {
-                Type::Int1 => {
-                    match parse_int::<i8>(&temp_span) {
-                        Ok(v) => out.push::<i8>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
-                                    out.push::<i8>(truncated as i8);
-                                } else {
-                                    out.push_undefined();
-                                }
+                Type::Int1 => match parse_int::<i8>(&temp_span) {
+                    Ok(v) => out.push::<i8>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
+                                out.push::<i8>(truncated as i8);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Int2 => {
-                    match parse_int::<i16>(&temp_span) {
-                        Ok(v) => out.push::<i16>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
-                                    out.push::<i16>(truncated as i16);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Int2 => match parse_int::<i16>(&temp_span) {
+                    Ok(v) => out.push::<i16>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
+                                out.push::<i16>(truncated as i16);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Int4 => {
-                    match parse_int::<i32>(&temp_span) {
-                        Ok(v) => out.push::<i32>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
-                                    out.push::<i32>(truncated as i32);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Int4 => match parse_int::<i32>(&temp_span) {
+                    Ok(v) => out.push::<i32>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
+                                out.push::<i32>(truncated as i32);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Int8 => {
-                    match parse_int::<i64>(&temp_span) {
-                        Ok(v) => out.push::<i64>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
-                                    out.push::<i64>(truncated as i64);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Int8 => match parse_int::<i64>(&temp_span) {
+                    Ok(v) => out.push::<i64>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
+                                out.push::<i64>(truncated as i64);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Int16 => {
-                    match parse_int::<i128>(&temp_span) {
-                        Ok(v) => out.push::<i128>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
-                                    out.push::<i128>(truncated as i128);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Int16 => match parse_int::<i128>(&temp_span) {
+                    Ok(v) => out.push::<i128>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
+                                out.push::<i128>(truncated as i128);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Uint1 => {
-                    match parse_uint::<u8>(&temp_span) {
-                        Ok(v) => out.push::<u8>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= 0.0 && truncated <= u8::MAX as f64 {
-                                    out.push::<u8>(truncated as u8);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Uint1 => match parse_uint::<u8>(&temp_span) {
+                    Ok(v) => out.push::<u8>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u8::MAX as f64 {
+                                out.push::<u8>(truncated as u8);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Uint2 => {
-                    match parse_uint::<u16>(&temp_span) {
-                        Ok(v) => out.push::<u16>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= 0.0 && truncated <= u16::MAX as f64 {
-                                    out.push::<u16>(truncated as u16);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Uint2 => match parse_uint::<u16>(&temp_span) {
+                    Ok(v) => out.push::<u16>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u16::MAX as f64 {
+                                out.push::<u16>(truncated as u16);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Uint4 => {
-                    match parse_uint::<u32>(&temp_span) {
-                        Ok(v) => out.push::<u32>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= 0.0 && truncated <= u32::MAX as f64 {
-                                    out.push::<u32>(truncated as u32);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Uint4 => match parse_uint::<u32>(&temp_span) {
+                    Ok(v) => out.push::<u32>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u32::MAX as f64 {
+                                out.push::<u32>(truncated as u32);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Uint8 => {
-                    match parse_uint::<u64>(&temp_span) {
-                        Ok(v) => out.push::<u64>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= 0.0 && truncated <= u64::MAX as f64 {
-                                    out.push::<u64>(truncated as u64);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Uint8 => match parse_uint::<u64>(&temp_span) {
+                    Ok(v) => out.push::<u64>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u64::MAX as f64 {
+                                out.push::<u64>(truncated as u64);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
-                Type::Uint16 => {
-                    match parse_uint::<u128>(&temp_span) {
-                        Ok(v) => out.push::<u128>(v),
-                        Err(_) => {
-                            if let Ok(f) = parse_float::<f64>(&temp_span) {
-                                let truncated = f.trunc();
-                                if truncated >= 0.0 && truncated <= u128::MAX as f64 {
-                                    out.push::<u128>(truncated as u128);
-                                } else {
-                                    out.push_undefined();
-                                }
+                },
+                Type::Uint16 => match parse_uint::<u128>(&temp_span) {
+                    Ok(v) => out.push::<u128>(v),
+                    Err(_) => {
+                        if let Ok(f) = parse_float::<f64>(&temp_span) {
+                            let truncated = f.trunc();
+                            if truncated >= 0.0 && truncated <= u128::MAX as f64 {
+                                out.push::<u128>(truncated as u128);
                             } else {
                                 out.push_undefined();
                             }
+                        } else {
+                            out.push_undefined();
                         }
                     }
-                }
+                },
                 _ => unreachable!(),
             }
         } else {
@@ -1011,25 +1004,18 @@ fn text_to_float_vec(
     let mut out = ColumnValues::with_capacity(target, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
-            let temp_span = Span {
-                fragment: val.clone(),
-                line: span().line,
-                column: span().column,
-            };
-            
+            let temp_span =
+                Span { fragment: val.clone(), line: span().line, column: span().column };
+
             match target {
-                Type::Float4 => {
-                    match parse_float::<f32>(&temp_span) {
-                        Ok(v) => out.push::<f32>(v),
-                        Err(_) => out.push_undefined(),
-                    }
-                }
-                Type::Float8 => {
-                    match parse_float::<f64>(&temp_span) {
-                        Ok(v) => out.push::<f64>(v),
-                        Err(_) => out.push_undefined(),
-                    }
-                }
+                Type::Float4 => match parse_float::<f32>(&temp_span) {
+                    Ok(v) => out.push::<f32>(v),
+                    Err(_) => out.push_undefined(),
+                },
+                Type::Float8 => match parse_float::<f64>(&temp_span) {
+                    Ok(v) => out.push::<f64>(v),
+                    Err(_) => out.push_undefined(),
+                },
                 _ => unreachable!(),
             }
         } else {
@@ -1047,12 +1033,9 @@ fn text_to_date_vec(
     let mut out = ColumnValues::with_capacity(Type::Date, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
-            let temp_span = Span {
-                fragment: val.clone(),
-                line: span().line,
-                column: span().column,
-            };
-            
+            let temp_span =
+                Span { fragment: val.clone(), line: span().line, column: span().column };
+
             match parse_date(&temp_span) {
                 Ok(date) => out.push::<Date>(date),
                 Err(_) => out.push_undefined(),
@@ -1072,12 +1055,9 @@ fn text_to_datetime_vec(
     let mut out = ColumnValues::with_capacity(Type::DateTime, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
-            let temp_span = Span {
-                fragment: val.clone(),
-                line: span().line,
-                column: span().column,
-            };
-            
+            let temp_span =
+                Span { fragment: val.clone(), line: span().line, column: span().column };
+
             match parse_datetime(&temp_span) {
                 Ok(datetime) => out.push::<DateTime>(datetime),
                 Err(_) => out.push_undefined(),
@@ -1097,12 +1077,9 @@ fn text_to_time_vec(
     let mut out = ColumnValues::with_capacity(Type::Time, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
-            let temp_span = Span {
-                fragment: val.clone(),
-                line: span().line,
-                column: span().column,
-            };
-            
+            let temp_span =
+                Span { fragment: val.clone(), line: span().line, column: span().column };
+
             match parse_time(&temp_span) {
                 Ok(time) => out.push::<Time>(time),
                 Err(_) => out.push_undefined(),
@@ -1122,12 +1099,9 @@ fn text_to_interval_vec(
     let mut out = ColumnValues::with_capacity(Type::Interval, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
-            let temp_span = Span {
-                fragment: val.clone(),
-                line: span().line,
-                column: span().column,
-            };
-            
+            let temp_span =
+                Span { fragment: val.clone(), line: span().line, column: span().column };
+
             match parse_interval(&temp_span) {
                 Ok(interval) => out.push::<Interval>(interval),
                 Err(_) => out.push_undefined(),
@@ -1139,10 +1113,7 @@ fn text_to_interval_vec(
     Ok(out)
 }
 
-fn date_to_text_vec(
-    values: &[Date],
-    validity: &[bool],
-) -> crate::Result<ColumnValues> {
+fn date_to_text_vec(values: &[Date], validity: &[bool]) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
@@ -1154,10 +1125,7 @@ fn date_to_text_vec(
     Ok(out)
 }
 
-fn datetime_to_text_vec(
-    values: &[DateTime],
-    validity: &[bool],
-) -> crate::Result<ColumnValues> {
+fn datetime_to_text_vec(values: &[DateTime], validity: &[bool]) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
@@ -1169,10 +1137,7 @@ fn datetime_to_text_vec(
     Ok(out)
 }
 
-fn time_to_text_vec(
-    values: &[Time],
-    validity: &[bool],
-) -> crate::Result<ColumnValues> {
+fn time_to_text_vec(values: &[Time], validity: &[bool]) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {
@@ -1184,10 +1149,7 @@ fn time_to_text_vec(
     Ok(out)
 }
 
-fn interval_to_text_vec(
-    values: &[Interval],
-    validity: &[bool],
-) -> crate::Result<ColumnValues> {
+fn interval_to_text_vec(values: &[Interval], validity: &[bool]) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
         if validity[idx] {

@@ -1,14 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
-use crate::evaluate::Error;
-use crate::evaluate::constant::date::parse_date;
-use crate::evaluate::constant::time::parse_time;
-use reifydb_core::{DateTime, Span};
-use reifydb_core::diagnostic::temporal;
+use crate::{DateTime, Error, Span};
+use crate::diagnostic::temporal;
+use super::date::parse_date;
+use super::time::parse_time;
 
-pub(crate) fn parse_datetime(span: &Span) -> evaluate::Result<DateTime> {
+pub fn parse_datetime(span: &Span) -> Result<DateTime, Error> {
     let parts = span.split('T');
     if parts.len() != 2 {
         return Err(Error(temporal::invalid_datetime_format(span.clone())));
@@ -31,8 +29,8 @@ pub(crate) fn parse_datetime(span: &Span) -> evaluate::Result<DateTime> {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluate::constant::datetime::parse_datetime;
-    use reifydb_core::Span;
+    use super::parse_datetime;
+    use crate::Span;
 
     #[test]
     fn test_basic() {
@@ -91,48 +89,48 @@ mod tests {
     fn test_invalid_format() {
         let span = Span::testing("2024-03-15");
         let err = parse_datetime(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_002");
+        assert_eq!(err.0.code, "TEMPORAL_002");
     }
 
     #[test]
     fn test_invalid_date_format() {
         let span = Span::testing("2024-03T14:30:00");
         let err = parse_datetime(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_001");
+        assert_eq!(err.0.code, "TEMPORAL_001");
     }
 
     #[test]
     fn test_invalid_time_format() {
         let span = Span::testing("2024-03-15T14:30");
         let err = parse_datetime(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_003");
+        assert_eq!(err.0.code, "TEMPORAL_003");
     }
 
     #[test]
     fn test_invalid_year() {
         let span = Span::testing("invalid-03-15T14:30:00");
         let err = parse_datetime(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_005");
+        assert_eq!(err.0.code, "TEMPORAL_005");
     }
 
     #[test]
     fn test_invalid_date_values() {
         let span = Span::testing("2024-13-32T23:30:40");
         let err = parse_datetime(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_012");
+        assert_eq!(err.0.code, "TEMPORAL_012");
     }
 
     #[test]
     fn test_invalid_time_value() {
         let span = Span::testing("2024-09-09T30:70:80");
         let err = parse_datetime(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_013");
+        assert_eq!(err.0.code, "TEMPORAL_013");
     }
 
     #[test]
     fn test_invalid_fractional_seconds() {
         let span = Span::testing("2024-03-15T14:30:00.123.456");
         let err = parse_datetime(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_011");
+        assert_eq!(err.0.code, "TEMPORAL_011");
     }
 }

@@ -52,7 +52,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-          map cast("3.14.15", float4)
+          map cast("NaN", float4)
         "#,
         )
         .unwrap_err();

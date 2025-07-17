@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::diagnostic::number::{invalid_number_format, number_out_of_range};
+use crate::diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range};
 use crate::value::is::{IsFloat, IsInt, IsUint};
 use crate::{Error, Span, Type};
 use std::any::TypeId;
@@ -50,6 +50,10 @@ pub fn parse_float<T>(span: &Span) -> Result<T, Error>
 where
     T: IsFloat + 'static,
 {
+    if span.fragment.to_lowercase().contains("nan") {
+        return Err(Error(nan_not_allowed()));
+    }
+
     if TypeId::of::<T>() == TypeId::of::<f32>() {
         Ok(cast::<T, f32>(parse_f32(span)?))
     } else if TypeId::of::<T>() == TypeId::of::<f64>() {

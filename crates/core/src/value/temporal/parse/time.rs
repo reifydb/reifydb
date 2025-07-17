@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
-use crate::evaluate::Error;
-use reifydb_core::{Span, Time};
-use reifydb_core::diagnostic::temporal;
+use crate::{Error, Span, Time};
+use crate::diagnostic::temporal;
 
-pub(crate) fn parse_time(span: &Span) -> evaluate::Result<Time> {
+pub fn parse_time(span: &Span) -> Result<Time, Error> {
     let fragment = &span.fragment;
     // Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
     let mut time_str = fragment.clone();
@@ -80,8 +78,8 @@ pub(crate) fn parse_time(span: &Span) -> evaluate::Result<Time> {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluate::constant::time::parse_time;
-    use reifydb_core::Span;
+    use super::parse_time;
+    use crate::Span;
 
     #[test]
     fn test_basic() {
@@ -140,7 +138,7 @@ mod tests {
     fn test_invalid_format() {
         let span = Span::testing("14:30");
         let err = parse_time(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_003");
+        assert_eq!(err.0.code, "TEMPORAL_003");
     }
 
     #[test]
@@ -149,7 +147,7 @@ mod tests {
         let result = parse_time(&span);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_008");
+        assert_eq!(err.0.code, "TEMPORAL_008");
     }
 
     #[test]
@@ -158,7 +156,7 @@ mod tests {
         let result = parse_time(&span);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_009");
+        assert_eq!(err.0.code, "TEMPORAL_009");
     }
 
     #[test]
@@ -167,7 +165,7 @@ mod tests {
         let result = parse_time(&span);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_010");
+        assert_eq!(err.0.code, "TEMPORAL_010");
     }
 
     #[test]
@@ -176,7 +174,7 @@ mod tests {
         let result = parse_time(&span);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_013");
+        assert_eq!(err.0.code, "TEMPORAL_013");
     }
 
     #[test]
@@ -185,6 +183,6 @@ mod tests {
         let result = parse_time(&span);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_011");
+        assert_eq!(err.0.code, "TEMPORAL_011");
     }
 }

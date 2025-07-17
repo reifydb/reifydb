@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
-use crate::evaluate::Error;
-use reifydb_core::{Date, Span};
-use reifydb_core::diagnostic::temporal;
+use crate::{Date, Error, Span};
+use crate::diagnostic::temporal;
 
-pub(crate) fn parse_date(span: &Span) -> evaluate::Result<Date> {
+pub fn parse_date(span: &Span) -> Result<Date, Error> {
     let span_parts = span.split('-');
     if span_parts.len() != 3 {
         return Err(Error(temporal::invalid_date_format(span.clone())));
@@ -43,8 +41,8 @@ pub(crate) fn parse_date(span: &Span) -> evaluate::Result<Date> {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluate::constant::date::parse_date;
-    use reifydb_core::Span;
+    use super::parse_date;
+    use crate::Span;
 
     #[test]
     fn test_basic() {
@@ -75,34 +73,34 @@ mod tests {
     fn test_invalid_format() {
         let span = Span::testing("2024-03");
         let err = parse_date(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_001");
+        assert_eq!(err.0.code, "TEMPORAL_001");
     }
 
     #[test]
     fn test_invalid_year() {
         let span = Span::testing("invalid-03-15");
         let err = parse_date(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_005");
+        assert_eq!(err.0.code, "TEMPORAL_005");
     }
 
     #[test]
     fn test_invalid_month() {
         let span = Span::testing("2024-invalid-15");
         let err = parse_date(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_006");
+        assert_eq!(err.0.code, "TEMPORAL_006");
     }
 
     #[test]
     fn test_invalid_day() {
         let span = Span::testing("2024-03-invalid");
         let err = parse_date(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_007");
+        assert_eq!(err.0.code, "TEMPORAL_007");
     }
 
     #[test]
     fn test_invalid_date_values() {
         let span = Span::testing("2024-13-32");
         let err = parse_date(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_012");
+        assert_eq!(err.0.code, "TEMPORAL_012");
     }
 }

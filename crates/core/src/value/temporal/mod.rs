@@ -5,3 +5,4 @@ mod compare;
 mod parse;
 
 pub use compare::*;
+pub use parse::*;

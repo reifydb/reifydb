@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
-use crate::evaluate::Error;
-use reifydb_core::{Interval, Span};
-use reifydb_core::diagnostic::temporal;
+use crate::{Error, Interval, Span};
+use crate::diagnostic::temporal;
 
-pub(crate) fn parse_interval(span: &Span) -> evaluate::Result<Interval> {
+pub fn parse_interval(span: &Span) -> Result<Interval, Error> {
     let fragment = &span.fragment;
     // Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
@@ -156,8 +154,8 @@ pub(crate) fn parse_interval(span: &Span) -> evaluate::Result<Interval> {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluate::constant::interval::parse_interval;
-    use reifydb_core::Span;
+    use super::parse_interval;
+    use crate::Span;
 
     #[test]
     fn test_days() {
@@ -243,55 +241,55 @@ mod tests {
     fn test_invalid_format() {
         let span = Span::testing("invalid");
         let err = parse_interval(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_004");
+        assert_eq!(err.0.code, "TEMPORAL_004");
     }
 
     #[test]
     fn test_invalid_character() {
         let span = Span::testing("P1X");
         let err = parse_interval(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_014");
+        assert_eq!(err.0.code, "TEMPORAL_014");
     }
 
     #[test]
     fn test_years_in_time_part() {
         let span = Span::testing("PTY");
         let err = parse_interval(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_016");
+        assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_weeks_in_time_part() {
         let span = Span::testing("PTW");
         let err = parse_interval(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_016");
+        assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_days_in_time_part() {
         let span = Span::testing("PTD");
         let err = parse_interval(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_016");
+        assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_hours_in_date_part() {
         let span = Span::testing("P1H");
         let err = parse_interval(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_016");
+        assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_seconds_in_date_part() {
         let span = Span::testing("P1S");
         let err = parse_interval(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_016");
+        assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_incomplete_specification() {
         let span = Span::testing("P1");
         let err = parse_interval(&span).unwrap_err();
-        assert_eq!(err.code, "TEMPORAL_015");
+        assert_eq!(err.0.code, "TEMPORAL_015");
     }
 }
