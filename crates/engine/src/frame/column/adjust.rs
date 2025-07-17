@@ -3,14 +3,14 @@
 
 use crate::evaluate::{Convert, Demote, Error, Promote};
 use crate::frame::ColumnValues;
+use reifydb_core::Type;
+use reifydb_core::diagnostic::cast;
 use reifydb_core::value::number::{
-    parse_float, parse_int, parse_uint, SafeConvert, SafeDemote, SafePromote,
+    SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,
 };
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
-use reifydb_core::Type;
 use reifydb_core::{Date, DateTime, Interval, Span, Time};
 use std::fmt::Display;
-use reifydb_core::diagnostic::cast;
 
 impl ColumnValues {
     pub fn adjust(
@@ -374,8 +374,8 @@ mod tests {
     mod promote {
         use crate::evaluate::Promote;
         use crate::frame::column::adjust::promote_vec;
-        use reifydb_core::value::number::SafePromote;
         use reifydb_core::Type;
+        use reifydb_core::value::number::SafePromote;
         use reifydb_core::{IntoSpan, Span};
 
         #[test]
@@ -489,8 +489,8 @@ mod tests {
     mod demote {
         use crate::evaluate::Demote;
         use crate::frame::column::adjust::demote_vec;
-        use reifydb_core::value::number::SafeDemote;
         use reifydb_core::Type;
+        use reifydb_core::value::number::SafeDemote;
         use reifydb_core::{IntoSpan, Span};
 
         #[test]
@@ -837,56 +837,36 @@ fn text_to_numeric_vec(
 
             // Try to parse based on the target type
             match target {
-                Type::Int1 => {
-                    out.push::<i8>(parse_int::<i8>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Int1, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Int2 => {
-                    out.push::<i16>(parse_int::<i16>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Int2, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Int4 => {
-                    out.push::<i32>(parse_int::<i32>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Int4, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Int8 => {
-                    out.push::<i64>(parse_int::<i64>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Int8, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Int16 => {
-                    out.push::<i128>(parse_int::<i128>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Int16, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Uint1 => {
-                    out.push::<u8>(parse_uint::<u8>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Uint1, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Uint2 => {
-                    out.push::<u16>(parse_uint::<u16>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Uint2, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Uint4 => {
-                    out.push::<u32>(parse_uint::<u32>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Uint4, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Uint8 => {
-                    out.push::<u64>(parse_uint::<u64>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Uint8, e.diagnostic(),)
-                    ))?)
-                }
-                Type::Uint16 => {
-                    out.push::<u128>(parse_uint::<u128>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Uint16, e.diagnostic(),)
-                    ))?)
-                }
+                Type::Int1 => out.push::<i8>(parse_int::<i8>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Int1, e.diagnostic()))
+                })?),
+                Type::Int2 => out.push::<i16>(parse_int::<i16>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Int2, e.diagnostic()))
+                })?),
+                Type::Int4 => out.push::<i32>(parse_int::<i32>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Int4, e.diagnostic()))
+                })?),
+                Type::Int8 => out.push::<i64>(parse_int::<i64>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Int8, e.diagnostic()))
+                })?),
+                Type::Int16 => out.push::<i128>(parse_int::<i128>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Int16, e.diagnostic()))
+                })?),
+                Type::Uint1 => out.push::<u8>(parse_uint::<u8>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Uint1, e.diagnostic()))
+                })?),
+                Type::Uint2 => out.push::<u16>(parse_uint::<u16>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Uint2, e.diagnostic()))
+                })?),
+                Type::Uint4 => out.push::<u32>(parse_uint::<u32>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Uint4, e.diagnostic()))
+                })?),
+                Type::Uint8 => out.push::<u64>(parse_uint::<u64>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Uint8, e.diagnostic()))
+                })?),
+                Type::Uint16 => out.push::<u128>(parse_uint::<u128>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Uint16, e.diagnostic()))
+                })?),
                 _ => unreachable!(),
             }
         } else {
@@ -909,17 +889,13 @@ fn text_to_float_vec(
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
             match target {
-                Type::Float4 => {
-                    out.push::<f32>(parse_float::<f32>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Float4, e.diagnostic())
-                    ))?)
-                }
+                Type::Float4 => out.push::<f32>(parse_float::<f32>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Float4, e.diagnostic()))
+                })?),
 
-                Type::Float8 => {
-                    out.push::<f64>(parse_float::<f64>(&temp_span).map_err(|e| Error(
-                        cast::invalid_number(span(), Type::Float8, e.diagnostic())
-                    ))?)
-                }
+                Type::Float8 => out.push::<f64>(parse_float::<f64>(&temp_span).map_err(|e| {
+                    Error(cast::invalid_number(span(), Type::Float8, e.diagnostic()))
+                })?),
                 _ => unreachable!(),
             }
         } else {
@@ -940,10 +916,10 @@ fn text_to_date_vec(
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
-            match parse_date(&temp_span) {
-                Ok(date) => out.push::<Date>(date),
-                Err(_) => out.push_undefined(),
-            }
+            let date = parse_date(&temp_span)
+                .map_err(|e| Error(cast::invalid_temporal(span(), Type::Date, e.0)))?;
+
+            out.push::<Date>(date);
         } else {
             out.push_undefined();
         }

@@ -44,7 +44,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-      map cast("9223372036854775808", int8)
+        map cast("25-01-15", date)
         "#,
         )
         .unwrap();
