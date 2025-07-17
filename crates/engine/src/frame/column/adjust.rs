@@ -938,10 +938,10 @@ fn text_to_datetime_vec(
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
-            match parse_datetime(&temp_span) {
-                Ok(datetime) => out.push::<DateTime>(datetime),
-                Err(_) => out.push_undefined(),
-            }
+            let datetime = parse_datetime(&temp_span)
+                .map_err(|e| Error(cast::invalid_temporal(span(), Type::DateTime, e.0)))?;
+
+            out.push::<DateTime>(datetime);
         } else {
             out.push_undefined();
         }
@@ -960,10 +960,10 @@ fn text_to_time_vec(
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
-            match parse_time(&temp_span) {
-                Ok(time) => out.push::<Time>(time),
-                Err(_) => out.push_undefined(),
-            }
+            let time = parse_time(&temp_span)
+                .map_err(|e| Error(cast::invalid_temporal(span(), Type::Time, e.0)))?;
+
+            out.push::<Time>(time);
         } else {
             out.push_undefined();
         }
@@ -982,10 +982,10 @@ fn text_to_interval_vec(
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
-            match parse_interval(&temp_span) {
-                Ok(interval) => out.push::<Interval>(interval),
-                Err(_) => out.push_undefined(),
-            }
+            let interval = parse_interval(&temp_span)
+                .map_err(|e| Error(cast::invalid_temporal(span(), Type::Interval, e.0)))?;
+
+            out.push::<Interval>(interval);
         } else {
             out.push_undefined();
         }

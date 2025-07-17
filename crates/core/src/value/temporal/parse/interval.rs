@@ -8,7 +8,7 @@ pub fn parse_interval(span: &Span) -> Result<Interval, Error> {
     let fragment = &span.fragment;
     // Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
-    if fragment.len() == 1 || !fragment.starts_with('P') {
+    if fragment.len() == 1 || !fragment.starts_with('P')  || fragment == "PT"{
         return Err(Error(temporal::invalid_interval_format(span.clone())));
     }
 
