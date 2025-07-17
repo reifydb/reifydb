@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::evaluate::{Convert, Demote, Promote};
+use crate::evaluate::{Convert, Demote, Error, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::value::number::{
     parse_float, parse_int, parse_uint, SafeConvert, SafeDemote, SafePromote,
@@ -10,6 +10,7 @@ use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, 
 use reifydb_core::Type;
 use reifydb_core::{Date, DateTime, Interval, Span, Time};
 use std::fmt::Display;
+use reifydb_core::diagnostic::cast;
 
 impl ColumnValues {
     pub fn adjust(
@@ -836,21 +837,27 @@ fn text_to_numeric_vec(
 
             // Try to parse based on the target type
             match target {
-                Type::Int1 => match parse_int::<i8>(&temp_span) {
-                    Ok(v) => out.push::<i8>(v),
-                    Err(_) => {
-                        if let Ok(f) = parse_float::<f64>(&temp_span) {
-                            let truncated = f.trunc();
-                            if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
-                                out.push::<i8>(truncated as i8);
-                            } else {
-                                out.push_undefined();
-                            }
-                        } else {
-                            out.push_undefined();
-                        }
-                    }
-                },
+                Type::Int1 => {
+
+                    out.push::<i8>(parse_int::<i8>(&temp_span).map_err(|e| Error(
+                        cast::invalid_number(span(), Type::Int1, e.diagnostic(),)
+                    ))?)
+                }
+                // Type::Int1 => match parse_int::<i8>(&temp_span) {
+                //     Ok(v) => out.push::<i8>(v),
+                //     Err(_) => {
+                //         if let Ok(f) = parse_float::<f64>(&temp_span) {
+                //             let truncated = f.trunc();
+                //             if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
+                //                 out.push::<i8>(truncated as i8);
+                //             } else {
+                //                 out.push_undefined();
+                //             }
+                //         } else {
+                //             out.push_undefined();
+                //         }
+                //     }
+                // },
                 Type::Int2 => match parse_int::<i16>(&temp_span) {
                     Ok(v) => out.push::<i16>(v),
                     Err(_) => {

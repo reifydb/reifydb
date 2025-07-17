@@ -21,28 +21,30 @@ pub fn parse_time(span: &Span) -> Result<Time, Error> {
     }
 
     // Check for empty time parts
-    if time_span_parts[0].fragment.is_empty() {
+    if time_span_parts[0].fragment.trim().is_empty() {
         return Err(Error(temporal::empty_time_component(time_span_parts[0].clone())));
     }
-    if time_span_parts[1].fragment.is_empty() {
+    if time_span_parts[1].fragment.trim().is_empty() {
         return Err(Error(temporal::empty_time_component(time_span_parts[1].clone())));
     }
-    if time_span_parts[2].fragment.is_empty() {
+    if time_span_parts[2].fragment.trim().is_empty() {
         return Err(Error(temporal::empty_time_component(time_span_parts[2].clone())));
     }
 
     let hour = time_span_parts[0]
         .fragment
+        .trim()
         .parse::<u32>()
         .map_err(|_| Error(temporal::invalid_hour(time_span_parts[0].clone())))?;
 
     let minute = time_span_parts[1]
         .fragment
+        .trim()
         .parse::<u32>()
         .map_err(|_| Error(temporal::invalid_minute(time_span_parts[1].clone())))?;
 
     // Parse seconds and optional fractional seconds
-    let seconds_with_fraction = &time_span_parts[2].fragment;
+    let seconds_with_fraction = time_span_parts[2].fragment.trim();
     let (second, nanosecond) = if seconds_with_fraction.contains('.') {
         let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
         if second_parts.len() != 2 {

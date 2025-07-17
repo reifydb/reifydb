@@ -22,7 +22,9 @@ fn main() {
     db.tx_as(&root, r#"create schema test"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
-    db.tx_as(&root, r#"create table test.item(field: int16 policy (saturation error) )"#).unwrap();
+    // db.tx_as(&root, r#"create table test.item(field: int16 policy (saturation error) )"#).unwrap();
+    db.tx_as(&root, r#"create table test.text_test9(col: text)"#).unwrap();
+    db.tx_as(&root, r#"from [{ col: "128" }] insert test.text_test9"#).unwrap();
 
 
   //   let l = db
@@ -38,25 +40,25 @@ fn main() {
   //       .unwrap();
   //   println!("{}", l.first().unwrap());
 
-    //     let l = db
-    //     .tx_as(
-    //         &root,
-    //         r#"
-    //           map cast(3.4028235e+38, float4) - cast(-3.4028235e+38, float4)
-    //     "#,
-    //     )
-    //     .unwrap();
-    // println!("{}", l.first().unwrap());
-
-    let err = db
+        let l = db
         .tx_as(
             &root,
             r#"
-          map cast("NaN", float4)
+      from test.text_test9 map cast(col, int1)
         "#,
         )
-        .unwrap_err();
-    println!("{}", err);
+        .unwrap();
+    println!("{}", l.first().unwrap());
+
+    // let err = db
+    //     .tx_as(
+    //         &root,
+    //         r#"
+    //       map cast(1, int1)
+    //     "#,
+    //     )
+    //     .unwrap_err();
+    // println!("{}", err);
 //
     // // Test simple filter without map
     // let l = db

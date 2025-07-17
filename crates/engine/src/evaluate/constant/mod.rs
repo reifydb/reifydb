@@ -451,29 +451,15 @@ impl Evaluator {
                     )));
                 }
             },
-            (ConstantExpression::Text { span }, Type::Int1) => match parse_int::<i8>(&span) {
-                Ok(v) => ColumnValues::int1(vec![v; row_count]),
-                Err(int_err) => {
-                    if let Ok(f) = parse_float::<f64>(&span) {
-                        let truncated = f.trunc();
-                        if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
-                            ColumnValues::int1(vec![truncated as i8; row_count])
-                        } else {
-                            return Err(Error(cast::invalid_number(
-                                span.clone(),
-                                Type::Int1,
-                                number::number_out_of_range(span.clone(), Type::Int1),
-                            )));
-                        }
-                    } else {
-                        return Err(Error(cast::invalid_number(
-                            span.clone(),
-                            Type::Int1,
-                            int_err.diagnostic(),
-                        )));
-                    }
-                }
-            },
+            (ConstantExpression::Text { span }, Type::Int1) => {
+                ColumnValues::int1(vec![
+                    parse_int::<i8>(&span).map_err(|e| Error(
+                        cast::invalid_number(span.clone(), Type::Int1, e.diagnostic(),)
+                    ))?;
+                    row_count
+                ])
+            }
+
             (ConstantExpression::Text { span }, Type::Int2) => match parse_int::<i16>(&span) {
                 Ok(v) => ColumnValues::int2(vec![v; row_count]),
                 Err(int_err) => {
@@ -704,13 +690,11 @@ impl Evaluator {
                 })?;
                 ColumnValues::interval(vec![interval; row_count])
             }
-            (ConstantExpression::Temporal { span }, Type::Date) => {
-                ColumnValues::date(vec![
+            (ConstantExpression::Temporal { span }, Type::Date) => ColumnValues::date(vec![
                     parse_date(span)
                         .map_err(|e| evaluate::Error(e.diagnostic()))?;
                     row_count
-                ])
-            }
+                ]),
             (ConstantExpression::Temporal { span }, Type::DateTime) => {
                 ColumnValues::datetime(vec![
                     parse_datetime(span)
@@ -718,13 +702,11 @@ impl Evaluator {
                     row_count
                 ])
             }
-            (ConstantExpression::Temporal { span }, Type::Time) => {
-                ColumnValues::time(vec![
+            (ConstantExpression::Temporal { span }, Type::Time) => ColumnValues::time(vec![
                     parse_time(span)
                         .map_err(|e| evaluate::Error(e.diagnostic()))?;
                     row_count
-                ])
-            }
+                ]),
             (ConstantExpression::Temporal { span }, Type::Interval) => {
                 ColumnValues::interval(vec![
                     parse_interval(span)

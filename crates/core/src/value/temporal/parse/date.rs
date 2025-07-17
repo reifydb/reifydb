@@ -11,28 +11,31 @@ pub fn parse_date(span: &Span) -> Result<Date, Error> {
     }
 
     // Check for empty parts
-    if span_parts[0].fragment.is_empty() {
+    if span_parts[0].fragment.trim().is_empty() {
         return Err(Error(temporal::empty_date_component(span_parts[0].clone())));
     }
-    if span_parts[1].fragment.is_empty() {
+    if span_parts[1].fragment.trim().is_empty() {
         return Err(Error(temporal::empty_date_component(span_parts[1].clone())));
     }
-    if span_parts[2].fragment.is_empty() {
+    if span_parts[2].fragment.trim().is_empty() {
         return Err(Error(temporal::empty_date_component(span_parts[2].clone())));
     }
 
     let year = span_parts[0]
         .fragment
+        .trim()
         .parse::<i32>()
         .map_err(|_| Error(temporal::invalid_year(span_parts[0].clone())))?;
 
     let month = span_parts[1]
         .fragment
+        .trim()
         .parse::<u32>()
         .map_err(|_| Error(temporal::invalid_month(span_parts[1].clone())))?;
 
     let day = span_parts[2]
         .fragment
+        .trim()
         .parse::<u32>()
         .map_err(|_| Error(temporal::invalid_day(span_parts[2].clone())))?;
 

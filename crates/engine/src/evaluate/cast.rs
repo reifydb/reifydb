@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate;
-use crate::evaluate::{EvaluationContext, Evaluator};
+use crate::evaluate::{Error, EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
@@ -25,7 +25,7 @@ impl Evaluator {
                     values: column
                         .values
                         .adjust(cast.to.ty, ctx, cast.expression.lazy_span())
-                        .unwrap(),
+                        .map_err(|e| Error(e.diagnostic()))?,
                 })
             } // FIXME
         }
