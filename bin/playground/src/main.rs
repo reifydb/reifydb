@@ -44,7 +44,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            MAP cast(129, int1) as result;
+            map cast(cast(0,int1), text);
         "#,
         )
         .unwrap();

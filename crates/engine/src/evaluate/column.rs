@@ -374,6 +374,106 @@ impl Evaluator {
                 Ok(FrameColumn { name, values: ColumnValues::uint16_with_bitvec(values, bitvec) })
             }
 
+            Value::Date(_) => {
+                let mut values = Vec::new();
+                let mut bitvec = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.values.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        match v {
+                            Value::Date(d) => {
+                                values.push(d.clone());
+                                bitvec.push(true);
+                            }
+                            _ => {
+                                values.push(reifydb_core::Date::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(FrameColumn { name, values: ColumnValues::date_with_bitvec(values, bitvec) })
+            }
+
+            Value::DateTime(_) => {
+                let mut values = Vec::new();
+                let mut bitvec = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.values.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        match v {
+                            Value::DateTime(dt) => {
+                                values.push(dt.clone());
+                                bitvec.push(true);
+                            }
+                            _ => {
+                                values.push(reifydb_core::DateTime::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(FrameColumn { name, values: ColumnValues::datetime_with_bitvec(values, bitvec) })
+            }
+
+            Value::Time(_) => {
+                let mut values = Vec::new();
+                let mut bitvec = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.values.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        match v {
+                            Value::Time(t) => {
+                                values.push(t.clone());
+                                bitvec.push(true);
+                            }
+                            _ => {
+                                values.push(reifydb_core::Time::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(FrameColumn { name, values: ColumnValues::time_with_bitvec(values, bitvec) })
+            }
+
+            Value::Interval(_) => {
+                let mut values = Vec::new();
+                let mut bitvec = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.values.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        match v {
+                            Value::Interval(i) => {
+                                values.push(i.clone());
+                                bitvec.push(true);
+                            }
+                            _ => {
+                                values.push(reifydb_core::Interval::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(FrameColumn { name, values: ColumnValues::interval_with_bitvec(values, bitvec) })
+            }
+
             _ => unimplemented!(),
         }
     }
