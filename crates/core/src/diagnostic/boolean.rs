@@ -33,3 +33,22 @@ pub fn empty_boolean_value(span: Span) -> Diagnostic {
         cause: None,
     }
 }
+
+pub fn invalid_numeric_boolean(span: Span) -> Diagnostic {
+    let label = Some(format!("number '{}' cannot be cast to boolean, only 1 or 0 are allowed", span.fragment));
+    Diagnostic {
+        code: "BOOLEAN_003".to_string(),
+        statement: None,
+        message: "invalid numeric boolean".to_string(),
+        span: Some(span),
+        label,
+        help: Some("use 1 for true or 0 for false".to_string()),
+        notes: vec![
+            "valid: 1 → true".to_string(),
+            "valid: 0 → false".to_string(),
+            "invalid: any other number".to_string(),
+        ],
+        column: None,
+        cause: None,
+    }
+}

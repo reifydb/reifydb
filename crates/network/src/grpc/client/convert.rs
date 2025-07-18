@@ -42,305 +42,305 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
         let column_values = match data_type {
             Type::Bool => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::BoolValue(b)) => {
                             data.push(b);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(false);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::bool_with_bitvec(data, validity)
+                ColumnValues::bool_with_bitvec(data, bitvec)
             }
 
             Type::Float4 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Float32Value(f)) => {
                             data.push(f);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0.0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::float4_with_bitvec(data, validity)
+                ColumnValues::float4_with_bitvec(data, bitvec)
             }
 
             Type::Float8 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Float64Value(f)) => {
                             data.push(f);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0.0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::float8_with_bitvec(data, validity)
+                ColumnValues::float8_with_bitvec(data, bitvec)
             }
 
             Type::Int1 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int1Value(i)) => {
                             data.push(i as i8);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::int1_with_bitvec(data, validity)
+                ColumnValues::int1_with_bitvec(data, bitvec)
             }
 
             Type::Int2 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int2Value(i)) => {
                             data.push(i as i16);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::int2_with_bitvec(data, validity)
+                ColumnValues::int2_with_bitvec(data, bitvec)
             }
 
             Type::Int4 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int4Value(i)) => {
                             data.push(i);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::int4_with_bitvec(data, validity)
+                ColumnValues::int4_with_bitvec(data, bitvec)
             }
 
             Type::Int8 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int8Value(i)) => {
                             data.push(i);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::int8_with_bitvec(data, validity)
+                ColumnValues::int8_with_bitvec(data, bitvec)
             }
 
             Type::Int16 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int16Value(grpc::Int128 { high, low })) => {
                             data.push(((high as i128) << 64) | (low as i128));
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::int16_with_bitvec(data, validity)
+                ColumnValues::int16_with_bitvec(data, bitvec)
             }
 
             Type::Uint1 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint1Value(i)) => {
                             data.push(i as u8);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::uint1_with_bitvec(data, validity)
+                ColumnValues::uint1_with_bitvec(data, bitvec)
             }
 
             Type::Uint2 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint2Value(i)) => {
                             data.push(i as u16);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::uint2_with_bitvec(data, validity)
+                ColumnValues::uint2_with_bitvec(data, bitvec)
             }
 
             Type::Uint4 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint4Value(i)) => {
                             data.push(i);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::uint4_with_bitvec(data, validity)
+                ColumnValues::uint4_with_bitvec(data, bitvec)
             }
 
             Type::Uint8 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint8Value(i)) => {
                             data.push(i);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::uint8_with_bitvec(data, validity)
+                ColumnValues::uint8_with_bitvec(data, bitvec)
             }
 
             Type::Uint16 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint16Value(grpc::UInt128 { high, low })) => {
                             data.push(((high as u128) << 64) | (low as u128));
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(0);
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::uint16_with_bitvec(data, validity)
+                ColumnValues::uint16_with_bitvec(data, bitvec)
             }
 
             Type::Utf8 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::StringValue(s)) => {
                             data.push(s);
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(String::new());
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::utf8_with_bitvec(data, validity)
+                ColumnValues::utf8_with_bitvec(data, bitvec)
             }
 
             Type::Date => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::DateValue(grpc::Date { days_since_epoch })) => {
                             if let Some(date) = Date::from_days_since_epoch(days_since_epoch) {
                                 data.push(date);
-                                validity.push(true);
+                                bitvec.push(true);
                             } else {
                                 data.push(Date::default());
-                                validity.push(false);
+                                bitvec.push(false);
                             }
                         }
                         _ => {
                             data.push(Date::default());
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::date_with_bitvec(data, validity)
+                ColumnValues::date_with_bitvec(data, bitvec)
             }
 
             Type::DateTime => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::DatetimeValue(grpc::DateTime { seconds, nanos })) => {
                             if let Ok(datetime) = DateTime::from_parts(seconds, nanos) {
                                 data.push(datetime);
-                                validity.push(true);
+                                bitvec.push(true);
                             } else {
                                 data.push(DateTime::default());
-                                validity.push(false);
+                                bitvec.push(false);
                             }
                         }
                         _ => {
                             data.push(DateTime::default());
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::datetime_with_bitvec(data, validity)
+                ColumnValues::datetime_with_bitvec(data, bitvec)
             }
 
             Type::Time => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::TimeValue(grpc::Time { nanos_since_midnight })) => {
@@ -348,37 +348,37 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                                 Time::from_nanos_since_midnight(nanos_since_midnight)
                             {
                                 data.push(time);
-                                validity.push(true);
+                                bitvec.push(true);
                             } else {
                                 data.push(Time::default());
-                                validity.push(false);
+                                bitvec.push(false);
                             }
                         }
                         _ => {
                             data.push(Time::default());
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::time_with_bitvec(data, validity)
+                ColumnValues::time_with_bitvec(data, bitvec)
             }
 
             Type::Interval => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut validity = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::IntervalValue(grpc::Interval { nanos })) => {
                             data.push(Interval::from_nanos(nanos));
-                            validity.push(true);
+                            bitvec.push(true);
                         }
                         _ => {
                             data.push(Interval::default());
-                            validity.push(false);
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::interval_with_bitvec(data, validity)
+                ColumnValues::interval_with_bitvec(data, bitvec)
             }
 
             Type::Undefined => ColumnValues::undefined(values.len()),

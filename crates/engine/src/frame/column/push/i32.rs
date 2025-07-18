@@ -8,106 +8,106 @@ use reifydb_core::{BitVec, CowVec};
 impl Push<i32> for ColumnValues {
     fn push(&mut self, value: i32) {
         match self {
-            ColumnValues::Float4(values, validity) => match value.checked_convert() {
+            ColumnValues::Float4(values, bitvec) => match value.checked_convert() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0.0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
-            ColumnValues::Float8(values, validity) => match value.checked_convert() {
+            ColumnValues::Float8(values, bitvec) => match value.checked_convert() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0.0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
-            ColumnValues::Int1(values, validity) => match value.checked_demote() {
+            ColumnValues::Int1(values, bitvec) => match value.checked_demote() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
-            ColumnValues::Int2(values, validity) => match value.checked_demote() {
+            ColumnValues::Int2(values, bitvec) => match value.checked_demote() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
-            ColumnValues::Int4(values, validity) => {
+            ColumnValues::Int4(values, bitvec) => {
                 values.push(value);
-                validity.push(true);
+                bitvec.push(true);
             }
-            ColumnValues::Int8(values, validity) => match value.checked_promote() {
+            ColumnValues::Int8(values, bitvec) => match value.checked_promote() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
-            ColumnValues::Int16(values, validity) => match value.checked_promote() {
+            ColumnValues::Int16(values, bitvec) => match value.checked_promote() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
-            ColumnValues::Uint4(values, validity) => match value.checked_convert() {
+            ColumnValues::Uint4(values, bitvec) => match value.checked_convert() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
-            ColumnValues::Uint8(values, validity) => match value.checked_convert() {
+            ColumnValues::Uint8(values, bitvec) => match value.checked_convert() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
-            ColumnValues::Uint16(values, validity) => match value.checked_convert() {
+            ColumnValues::Uint16(values, bitvec) => match value.checked_convert() {
                 Some(v) => {
                     values.push(v);
-                    validity.push(true);
+                    bitvec.push(true);
                 }
                 None => {
                     values.push(0);
-                    validity.push(false);
+                    bitvec.push(false);
                 }
             },
             ColumnValues::Undefined(len) => {
                 let mut values = vec![0i32; *len];
-                let mut validity = BitVec::new(*len, false);
+                let mut bitvec = BitVec::new(*len, false);
                 values.push(value);
-                validity.push(true);
-                *self = ColumnValues::Int4(CowVec::new(values), validity);
+                bitvec.push(true);
+                *self = ColumnValues::Int4(CowVec::new(values), bitvec);
             }
             other => {
                 panic!("called `push::<i32>()` on incompatible ColumnValues::{:?}", other.ty());

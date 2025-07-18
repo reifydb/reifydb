@@ -46,7 +46,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            map cast(cast("yes", utf8), bool);
+            map cast(2, bool);
         "#,
         )
         .unwrap();

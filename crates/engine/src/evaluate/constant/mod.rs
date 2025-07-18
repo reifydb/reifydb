@@ -194,22 +194,15 @@ impl Evaluator {
 
             (ConstantExpression::Number { span }, ty) => {
                 match ty {
-                    Type::Bool => {
-                        // Convert number to boolean (0 -> false, non-zero -> true)
-                        match parse_float::<f64>(&span) {
-                            Ok(f) => {
-                                let value = f != 0.0;
-                                ColumnValues::bool(vec![value; row_count])
-                            }
-                            Err(err) => {
-                                return Err(Error(cast::invalid_number(
-                                    span.clone(),
-                                    ty,
-                                    err.diagnostic(),
-                                )));
-                            }
+                    Type::Bool => match parse_bool(&span) {
+                        Ok(v) => ColumnValues::bool(vec![v; row_count]),
+                        Err(err) => {
+                            return Err(Error(cast::invalid_boolean(
+                                span.clone(),
+                                err.diagnostic(),
+                            )));
                         }
-                    }
+                    },
 
                     Type::Float4 => match parse_float::<f32>(&span) {
                         Ok(v) => ColumnValues::float4(vec![v; row_count]),

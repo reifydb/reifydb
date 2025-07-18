@@ -24,11 +24,11 @@ impl AggregateFunction for Max {
 		groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> Result<(), FunctionError> {
         match &column.values {
-            ColumnValues::Float8(values, validity) => {
+            ColumnValues::Float8(values, bitvec) => {
                 for (group, indices) in groups {
                     let max_val = indices
                         .iter()
-                        .filter(|&&i| validity.get(i) && mask.get(i))
+                        .filter(|&&i| bitvec.get(i) && mask.get(i))
                         .map(|&i| values[i])
                         .max_by(|a, b| a.partial_cmp(b).unwrap());
 

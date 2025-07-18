@@ -4,6 +4,7 @@
 use crate::evaluate::{Convert, Demote, Error, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::diagnostic::cast;
+use reifydb_core::diagnostic::boolean::invalid_numeric_boolean;
 use reifydb_core::value::number::{
     parse_float, parse_int, parse_uint, SafeConvert, SafeDemote, SafePromote,
 };
@@ -12,6 +13,7 @@ use reifydb_core::{BitVec, Type};
 use reifydb_core::{Date, DateTime, Interval, Span, Time};
 use std::fmt::Display;
 use reifydb_core::value::boolean::parse_bool;
+use crate::error;
 
 impl ColumnValues {
     pub fn adjust(
@@ -192,20 +194,20 @@ impl ColumnValues {
         // Handle numeric to Bool conversions
         match target {
             Type::Bool => match self {
-                ColumnValues::Int1(values, bitvec) => return i8_to_bool_vec(values, bitvec),
-                ColumnValues::Int2(values, bitvec) => return i16_to_bool_vec(values, bitvec),
-                ColumnValues::Int4(values, bitvec) => return i32_to_bool_vec(values, bitvec),
-                ColumnValues::Int8(values, bitvec) => return i64_to_bool_vec(values, bitvec),
-                ColumnValues::Int16(values, bitvec) => return i128_to_bool_vec(values, bitvec),
-                ColumnValues::Uint1(values, bitvec) => return u8_to_bool_vec(values, bitvec),
-                ColumnValues::Uint2(values, bitvec) => return u16_to_bool_vec(values, bitvec),
-                ColumnValues::Uint4(values, bitvec) => return u32_to_bool_vec(values, bitvec),
-                ColumnValues::Uint8(values, bitvec) => return u64_to_bool_vec(values, bitvec),
+                ColumnValues::Int1(values, bitvec) => return i8_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Int2(values, bitvec) => return i16_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Int4(values, bitvec) => return i32_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Int8(values, bitvec) => return i64_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Int16(values, bitvec) => return i128_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Uint1(values, bitvec) => return u8_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Uint2(values, bitvec) => return u16_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Uint4(values, bitvec) => return u32_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Uint8(values, bitvec) => return u64_to_bool_vec(values, bitvec, &span),
                 ColumnValues::Uint16(values, bitvec) => {
-                    return u128_to_bool_vec(values, bitvec);
+                    return u128_to_bool_vec(values, bitvec, &span);
                 }
-                ColumnValues::Float4(values, bitvec) => return f32_to_bool_vec(values, bitvec),
-                ColumnValues::Float8(values, bitvec) => return f64_to_bool_vec(values, bitvec),
+                ColumnValues::Float4(values, bitvec) => return f32_to_bool_vec(values, bitvec, &span),
+                ColumnValues::Float8(values, bitvec) => return f64_to_bool_vec(values, bitvec, &span),
                 _ => {}
             },
             Type::Utf8 => match self {
@@ -654,11 +656,19 @@ fn bool_to_text_vec(values: &[bool], bitvec: &BitVec) -> crate::Result<ColumnVal
 }
 
 // Specific implementations for different numeric types
-fn i8_to_bool_vec(values: &[i8], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn i8_to_bool_vec(values: &[i8], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -666,11 +676,19 @@ fn i8_to_bool_vec(values: &[i8], bitvec: &BitVec) -> crate::Result<ColumnValues>
     Ok(out)
 }
 
-fn i16_to_bool_vec(values: &[i16], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn i16_to_bool_vec(values: &[i16], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -678,11 +696,19 @@ fn i16_to_bool_vec(values: &[i16], bitvec: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn i32_to_bool_vec(values: &[i32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn i32_to_bool_vec(values: &[i32], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -690,11 +716,19 @@ fn i32_to_bool_vec(values: &[i32], bitvec: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn i64_to_bool_vec(values: &[i64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn i64_to_bool_vec(values: &[i64], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -702,11 +736,19 @@ fn i64_to_bool_vec(values: &[i64], bitvec: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn i128_to_bool_vec(values: &[i128], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn i128_to_bool_vec(values: &[i128], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -714,11 +756,19 @@ fn i128_to_bool_vec(values: &[i128], bitvec: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn u8_to_bool_vec(values: &[u8], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn u8_to_bool_vec(values: &[u8], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -726,11 +776,19 @@ fn u8_to_bool_vec(values: &[u8], bitvec: &BitVec) -> crate::Result<ColumnValues>
     Ok(out)
 }
 
-fn u16_to_bool_vec(values: &[u16], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn u16_to_bool_vec(values: &[u16], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -738,11 +796,19 @@ fn u16_to_bool_vec(values: &[u16], bitvec: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn u32_to_bool_vec(values: &[u32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn u32_to_bool_vec(values: &[u32], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -750,11 +816,19 @@ fn u32_to_bool_vec(values: &[u32], bitvec: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn u64_to_bool_vec(values: &[u64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn u64_to_bool_vec(values: &[u64], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -762,11 +836,19 @@ fn u64_to_bool_vec(values: &[u64], bitvec: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn u128_to_bool_vec(values: &[u128], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn u128_to_bool_vec(values: &[u128], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0);
+            match val {
+                0 => out.push::<bool>(false),
+                1 => out.push::<bool>(true),
+                _ => {
+                    let mut error_span = span();
+                    error_span.fragment = val.to_string();
+                    return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+                }
+            }
         } else {
             out.push_undefined();
         }
@@ -774,11 +856,19 @@ fn u128_to_bool_vec(values: &[u128], bitvec: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn f32_to_bool_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_bool_vec(values: &[f32], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0.0);
+            if val == 0.0 {
+                out.push::<bool>(false);
+            } else if val == 1.0 {
+                out.push::<bool>(true);
+            } else {
+                let mut error_span = span();
+                error_span.fragment = val.to_string();
+                return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+            }
         } else {
             out.push_undefined();
         }
@@ -786,11 +876,19 @@ fn f32_to_bool_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f64_to_bool_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_bool_vec(values: &[f64], bitvec: &BitVec, span: &impl Fn() -> Span) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            out.push::<bool>(val != 0.0);
+            if val == 0.0 {
+                out.push::<bool>(false);
+            } else if val == 1.0 {
+                out.push::<bool>(true);
+            } else {
+                let mut error_span = span();
+                error_span.fragment = val.to_string();
+                return Err(error::Error::Evaluation(Error(invalid_numeric_boolean(error_span))));
+            }
         } else {
             out.push_undefined();
         }

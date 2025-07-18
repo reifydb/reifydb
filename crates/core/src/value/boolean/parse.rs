@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::diagnostic::boolean::{empty_boolean_value, invalid_boolean_format};
+use crate::diagnostic::boolean::{empty_boolean_value, invalid_boolean_format, invalid_numeric_boolean};
 
 use crate::{Error, Span};
 
@@ -15,7 +15,16 @@ pub fn parse_bool(span: &Span) -> Result<bool, Error> {
     match value.to_lowercase().as_str() {
         "true" => Ok(true),
         "false" => Ok(false),
-        _ => Err(Error(invalid_boolean_format(span.clone()))),
+        "1" | "1.0" => Ok(true),
+        "0" | "0.0" => Ok(false),
+        _ => {
+            // Check if the value contains numbers - if so, use numeric boolean diagnostic
+            if value.chars().any(|c| c.is_ascii_digit()) {
+                Err(Error(invalid_numeric_boolean(span.clone())))
+            } else {
+                Err(Error(invalid_boolean_format(span.clone())))
+            }
+        }
     }
 }
 
@@ -59,9 +68,20 @@ mod tests {
     }
 
     #[test]
-    fn test_numeric_boolean_not_supported() {
-        assert!(parse_bool(&Span::testing("1")).is_err());
-        assert!(parse_bool(&Span::testing("0")).is_err());
+    fn test_valid_numeric_boolean() {
+        assert_eq!(parse_bool(&Span::testing("1")), Ok(true));
+        assert_eq!(parse_bool(&Span::testing("0")), Ok(false));
+        assert_eq!(parse_bool(&Span::testing("1.0")), Ok(true));
+        assert_eq!(parse_bool(&Span::testing("0.0")), Ok(false));
+    }
+
+    #[test]
+    fn test_invalid_numeric_boolean() {
+        assert!(parse_bool(&Span::testing("2")).is_err());
+        assert!(parse_bool(&Span::testing("1.5")).is_err());
+        assert!(parse_bool(&Span::testing("0.5")).is_err());
+        assert!(parse_bool(&Span::testing("-1")).is_err());
+        assert!(parse_bool(&Span::testing("100")).is_err());
     }
 
     #[test]

@@ -37,17 +37,17 @@ macro_rules! impl_push {
         impl Push<$t> for ColumnValues {
             fn push(&mut self, value: $t) {
                 match self {
-                    ColumnValues::$variant(values, validity) => {
+                    ColumnValues::$variant(values, bitvec) => {
                         values.push(value);
-                        validity.push(true);
+                        bitvec.push(true);
                     }
                     ColumnValues::Undefined(len) => {
                         let mut values = vec![Default::default(); *len];
-                        let mut validity = BitVec::new(*len, false);
+                        let mut bitvec = BitVec::new(*len, false);
                         values.push(value);
-                        validity.push(true);
+                        bitvec.push(true);
 
-                        *self = ColumnValues::$variant(CowVec::new(values), validity);
+                        *self = ColumnValues::$variant(CowVec::new(values), bitvec);
                     }
                     other => panic!(
                         "called `push::<{}>()` on ColumnValues::{:?}",
@@ -71,17 +71,17 @@ impl_push!(Interval, Interval);
 impl Push<String> for ColumnValues {
     fn push(&mut self, value: String) {
         match self {
-            ColumnValues::Utf8(values, validity) => {
+            ColumnValues::Utf8(values, bitvec) => {
                 values.push(value);
-                validity.push(true);
+                bitvec.push(true);
             }
             ColumnValues::Undefined(len) => {
                 let mut values = vec![String::default(); *len];
-                let mut validity = BitVec::new(*len, false);
+                let mut bitvec = BitVec::new(*len, false);
                 values.push(value);
-                validity.push(true);
+                bitvec.push(true);
 
-                *self = ColumnValues::Utf8(CowVec::new(values), validity);
+                *self = ColumnValues::Utf8(CowVec::new(values), bitvec);
             }
             other => panic!("called `push::<String>()` on ColumnValues::{:?}", other.ty()),
         }

@@ -25,13 +25,13 @@ impl AggregateFunction for Avg {
 		groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> Result<(), FunctionError> {
         match &column.values {
-            ColumnValues::Float8(values, validity) => {
+            ColumnValues::Float8(values, bitvec) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;
                     let mut count = 0;
 
                     for &i in indices {
-                        if mask.get(i) && validity.get(i) {
+                        if mask.get(i) && bitvec.get(i) {
                             sum += values[i];
                             count += 1;
                         }
@@ -48,13 +48,13 @@ impl AggregateFunction for Avg {
                 }
                 Ok(())
             }
-            ColumnValues::Int2(values, validity) => {
+            ColumnValues::Int2(values, bitvec) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;
                     let mut count = 0;
 
                     for &i in indices {
-                        if mask.get(i) && validity.get(i) {
+                        if mask.get(i) && bitvec.get(i) {
                             sum += values[i] as f64;
                             count += 1;
                         }

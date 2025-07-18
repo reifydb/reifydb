@@ -17,8 +17,8 @@ pub struct Layout {
     pub fields: Vec<Field>,
     /// size of data in bytes
     pub static_section_size: usize,
-    /// size of validity part in bytes
-    pub validity_size: usize,
+    /// size of bitvec part in bytes
+    pub bitvec_size: usize,
     pub alignment: usize,
 }
 
@@ -27,9 +27,9 @@ impl Layout {
         assert!(!kinds.is_empty());
 
         let num_fields = kinds.len();
-        let validity_bytes = (num_fields + 7) / 8;
+        let bitvec_bytes = (num_fields + 7) / 8;
 
-        let mut offset = validity_bytes;
+        let mut offset = bitvec_bytes;
         let mut fields = Vec::with_capacity(num_fields);
         let mut max_align = 1;
 
@@ -49,7 +49,7 @@ impl Layout {
             fields,
             static_section_size: size,
             alignment: max_align,
-            validity_size: validity_bytes,
+            bitvec_size: bitvec_bytes,
         }
     }
 
@@ -68,7 +68,7 @@ impl Layout {
     }
 
     pub const fn data_offset(&self) -> usize {
-        self.validity_size
+        self.bitvec_size
     }
 
     pub const fn static_section_size(&self) -> usize {
@@ -76,7 +76,7 @@ impl Layout {
     }
 
     pub const fn total_static_size(&self) -> usize {
-        self.validity_size + self.static_section_size
+        self.bitvec_size + self.static_section_size
     }
 
     pub fn dynamic_section_start(&self) -> usize {
@@ -101,10 +101,10 @@ impl Layout {
             return false;
         }
 
-        let validity_slice = &row[..self.validity_size];
-        for (i, &byte) in validity_slice.iter().enumerate() {
+        let bitvec_slice = &row[..self.bitvec_size];
+        for (i, &byte) in bitvec_slice.iter().enumerate() {
             let bits_in_byte =
-                if i == self.validity_size - 1 && bits % 8 != 0 { bits % 8 } else { 8 };
+                if i == self.bitvec_size - 1 && bits % 8 != 0 { bits % 8 } else { 8 };
 
             let mask = if bits_in_byte == 8 { 0xFF } else { (1u8 << bits_in_byte) - 1 };
             if (byte & mask) != mask {
@@ -133,7 +133,7 @@ mod tests {
         #[test]
         fn test_single_field_bool() {
             let layout = Layout::new(&[Type::Bool]);
-            assert_eq!(layout.validity_size, 1);
+            assert_eq!(layout.bitvec_size, 1);
             assert_eq!(layout.fields.len(), 1);
             assert_eq!(layout.fields[0].offset, 1);
             assert_eq!(layout.alignment, 1);
@@ -143,7 +143,7 @@ mod tests {
         #[test]
         fn test_multiple_fields() {
             let layout = Layout::new(&[Type::Int1, Type::Int2, Type::Int4]);
-            assert_eq!(layout.validity_size, 1); // 3 fields = 1 byte
+            assert_eq!(layout.bitvec_size, 1); // 3 fields = 1 byte
             assert_eq!(layout.fields.len(), 3);
 
             assert_eq!(layout.fields[0].value, Type::Int1);
@@ -164,10 +164,10 @@ mod tests {
             let layout =
                 Layout::new(&[Type::Uint1, Type::Uint2, Type::Uint4, Type::Uint8, Type::Uint16]);
 
-            assert_eq!(layout.validity_size, 1); // 5 fields = 1 byte
+            assert_eq!(layout.bitvec_size, 1); // 5 fields = 1 byte
             assert_eq!(layout.fields.len(), 5);
 
-            assert_eq!(layout.fields[0].offset, 1); // 1. byte is for validity
+            assert_eq!(layout.fields[0].offset, 1); // 1. byte is for bitvec
             assert_eq!(layout.fields[1].offset, 2);
             assert_eq!(layout.fields[2].offset, 4);
             assert_eq!(layout.fields[3].offset, 8);
@@ -179,7 +179,7 @@ mod tests {
         }
 
         #[test]
-        fn test_nine_fields_validity_size_two() {
+        fn test_nine_fields_bitvec_size_two() {
             let kinds = vec![
                 Type::Bool,
                 Type::Int1,
@@ -194,13 +194,13 @@ mod tests {
 
             let layout = Layout::new(&kinds);
 
-            // 9 fields → ceil(9/8) = 2 bytes of validity bitmap
-            assert_eq!(layout.validity_size, 2);
+            // 9 fields → ceil(9/8) = 2 bytes of bitvec bitmap
+            assert_eq!(layout.bitvec_size, 2);
             assert_eq!(layout.fields.len(), 9);
 
-            assert_eq!(layout.fields[0].offset, 2); // first 2 bytes are for validity
+            assert_eq!(layout.fields[0].offset, 2); // first 2 bytes are for bitvec
 
-            // All field offsets must come after the 2 validity bytes
+            // All field offsets must come after the 2 bitvec bytes
             for field in &layout.fields {
                 assert!(field.offset >= 2);
                 assert_eq!(field.offset % field.align, 0);
@@ -237,7 +237,7 @@ mod tests {
             // Initially identical
             assert_eq!(row1.as_slice(), row2.as_slice());
 
-            // Modify one row's validity bit
+            // Modify one row's bitvec bit
             row2.set_valid(1, true);
 
             // Internal buffers must now differ
