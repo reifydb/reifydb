@@ -91,7 +91,7 @@ mod tests {
     fn make_test_instance() -> Frame {
         Frame::new(vec![
 			FrameColumn::int2("id", [1, 2]),
-			FrameColumn::string("name", ["Alice", "Bob"]),
+			FrameColumn::utf8("name", ["Alice", "Bob"]),
 			FrameColumn::int2("score", [23, 32]),
         ])
     }

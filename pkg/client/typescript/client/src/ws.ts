@@ -152,7 +152,7 @@ function columnsToRows(columns: WebsocketColumn[]): Record<string, unknown>[] {
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, unknown> = {};
         for (const col of columns) {
-            row[col.name] = decodeValue(col.data_type, col.data[i]);
+            row[col.name] = decodeValue(col.ty, col.data[i]);
         }
         return row;
     });

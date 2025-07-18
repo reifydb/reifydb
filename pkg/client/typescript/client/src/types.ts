@@ -19,7 +19,7 @@ export interface WebsocketFrame {
 
 export interface DiagnosticColumn {
     name: string,
-    data_type: DataType,
+    ty: DataType,
 }
 
 export interface Span {
@@ -37,11 +37,12 @@ export interface Diagnostic {
     label?: string,
     help?: string,
     notes: Array<string>,
+    cause?: Diagnostic,
 }
 
 export interface WebsocketColumn {
     name: string;
-    data_type: DataType;
+    ty: DataType;
     data: string[];
 }
 
@@ -94,6 +95,7 @@ export class ReifyError extends Error {
     public readonly label?: string;
     public readonly help?: string;
     public readonly notes: string[];
+    public readonly cause?: Diagnostic;
 
     constructor(response: ErrorResponse) {
         const diagnostic = response.payload.diagnostic;
@@ -110,6 +112,7 @@ export class ReifyError extends Error {
         this.label = diagnostic.label;
         this.help = diagnostic.help;
         this.notes = diagnostic.notes ?? [];
+        this.cause = diagnostic.cause;
 
         // Required for instanceof checks to work properly
         Object.setPrototypeOf(this, new.target.prototype);

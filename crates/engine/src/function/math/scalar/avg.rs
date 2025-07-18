@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{FrameColumn, ColumnValues};
+use crate::frame::{ColumnValues, FrameColumn};
 use crate::function::{FunctionError, ScalarFunction};
 
 pub struct Avg {}
@@ -9,28 +9,31 @@ pub struct Avg {}
 impl Avg {
     pub fn new() -> Self {
         Self {}
-
     }
 }
 
 impl ScalarFunction for Avg {
-    fn scalar(&self, columns: &[FrameColumn], row_count: usize) -> Result<ColumnValues, FunctionError> {
+    fn scalar(
+        &self,
+        columns: &[FrameColumn],
+        row_count: usize,
+    ) -> Result<ColumnValues, FunctionError> {
         let mut sum = vec![0.0f64; row_count];
         let mut count = vec![0u32; row_count];
 
         for col in columns {
             match &col.values {
-                ColumnValues::Int2(vals, valid) => {
+                ColumnValues::Int2(vals, bitvec) => {
                     for i in 0..row_count {
-                        if valid.get(i).copied().unwrap_or(false) {
+                        if bitvec.get(i) {
                             sum[i] += vals[i] as f64;
                             count[i] += 1;
                         }
                     }
                 }
-                ColumnValues::Float8(vals, valid) => {
+                ColumnValues::Float8(vals, bitvec) => {
                     for i in 0..row_count {
-                        if valid.get(i).copied().unwrap_or(false) {
+                        if bitvec.get(i) {
                             sum[i] += vals[i];
                             count[i] += 1;
                         }
@@ -53,6 +56,6 @@ impl ScalarFunction for Avg {
             }
         }
 
-        Ok(ColumnValues::float8_with_validity(values, valids))
+        Ok(ColumnValues::float8_with_bitvec(values, valids))
     }
 }

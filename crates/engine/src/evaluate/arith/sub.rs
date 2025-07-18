@@ -6,7 +6,7 @@ use crate::frame::{FrameColumn, ColumnValues, Push};
 use reifydb_core::Span;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeSub};
-use reifydb_core::{Type, CowVec, GetType};
+use reifydb_core::{Type, BitVec, CowVec, GetType};
 use reifydb_rql::expression::SubExpression;
 
 impl Evaluator {
@@ -493,8 +493,8 @@ fn sub_numeric<L, R>(
     ctx: &EvaluationContext,
     l: &CowVec<L>,
     r: &CowVec<R>,
-    lv: &CowVec<bool>,
-    rv: &CowVec<bool>,
+    lv: &BitVec,
+    rv: &BitVec,
     ty: Type,
     span: Span,
 ) -> crate::evaluate::Result<FrameColumn>
@@ -510,7 +510,7 @@ where
 
     let mut data = ColumnValues::with_capacity(ty, lv.len());
     for i in 0..l.len() {
-        if lv[i] && rv[i] {
+        if lv.get(i) && rv.get(i) {
             if let Some(value) = ctx.sub(l[i], r[i], &span)? {
                 data.push(value);
             } else {

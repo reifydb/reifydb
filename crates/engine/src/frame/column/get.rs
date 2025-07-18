@@ -9,126 +9,126 @@ impl ColumnValues {
     pub fn get(&self, index: usize) -> Value {
         match self {
             ColumnValues::Bool(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Bool(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Float4(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     OrderedF32::try_from(v[index]).map(Value::Float4).unwrap_or(Value::Undefined)
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Float8(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     OrderedF64::try_from(v[index]).map(Value::Float8).unwrap_or(Value::Undefined)
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Int1(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Int1(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Int2(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Int2(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Int4(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Int4(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Int8(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Int8(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Int16(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Int16(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Utf8(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Utf8(v[index].clone())
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Uint1(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Uint1(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Uint2(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Uint2(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Uint4(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Uint4(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Uint8(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Uint8(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Uint16(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Uint16(v[index])
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Date(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Date(v[index].clone())
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::DateTime(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::DateTime(v[index].clone())
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Time(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Time(v[index].clone())
                 } else {
                     Value::Undefined
                 }
             }
             ColumnValues::Interval(v, b) => {
-                if b[index] {
+                if b.get(index) {
                     Value::Interval(v[index].clone())
                 } else {
                     Value::Undefined

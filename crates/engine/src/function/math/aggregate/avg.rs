@@ -31,7 +31,7 @@ impl AggregateFunction for Avg {
                     let mut count = 0;
 
                     for &i in indices {
-                        if mask.get(i) && validity[i] {
+                        if mask.get(i) && validity.get(i) {
                             sum += values[i];
                             count += 1;
                         }
@@ -54,7 +54,7 @@ impl AggregateFunction for Avg {
                     let mut count = 0;
 
                     for &i in indices {
-                        if mask.get(i) && validity[i] {
+                        if mask.get(i) && validity.get(i) {
                             sum += values[i] as f64;
                             count += 1;
                         }

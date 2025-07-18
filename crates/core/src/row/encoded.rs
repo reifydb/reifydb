@@ -38,10 +38,10 @@ impl EncodedRow {
         (self.0[byte] & (1 << bit)) != 0
     }
 
-    pub(crate) fn set_valid(&mut self, index: usize, valid: bool) {
+    pub(crate) fn set_valid(&mut self, index: usize, bitvec: bool) {
         let byte = index / 8;
         let bit = index % 8;
-        if valid {
+        if bitvec {
             self.0.make_mut()[byte] |= 1 << bit;
         } else {
             self.0.make_mut()[byte] &= !(1 << bit);

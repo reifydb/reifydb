@@ -47,8 +47,14 @@ describe('Error', () => {
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
-                message: expect.stringContaining('value out of range in type `INT1`')
+                code: 'CAST_002',
+                cause: expect.objectContaining({
+                    code: expect.stringContaining('NUMBER_002'),
+                    label: expect.stringContaining("value '129' exceeds the valid range for type INT1 (-128 to 127)"),
+                    message: expect.stringContaining('number out of range')
+                })
             });
+
         }, 1000);
     });
 
@@ -61,8 +67,14 @@ describe('Error', () => {
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
-                message: expect.stringContaining('value out of range in type `INT1`')
+                code: 'CAST_002',
+                cause: expect.objectContaining({
+                    code: expect.stringContaining('NUMBER_002'),
+                    label: expect.stringContaining("value '129' exceeds the valid range for type INT1 (-128 to 127)"),
+                    message: expect.stringContaining('number out of range')
+                })
             });
+
         }, 1000);
     });
 

@@ -18,7 +18,7 @@ pub fn unsupported_cast(span: Span, from_type: Type, to_type: Type) -> Diagnosti
                 .to_string(),
         ],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -33,7 +33,7 @@ pub fn invalid_number(span: Span, target: Type, cause: Diagnostic) -> Diagnostic
         help: None,
         notes: vec![],
         column: None,
-        caused_by: Some(Box::from(cause)),
+        cause: Some(Box::from(cause)),
     }
 }
 
@@ -48,6 +48,6 @@ pub fn invalid_temporal(span: Span, target: Type, cause: Diagnostic) -> Diagnost
         help: None,
         notes: vec![],
         column: None,
-        caused_by: Some(Box::from(cause)),
+        cause: Some(Box::from(cause)),
     }
 }

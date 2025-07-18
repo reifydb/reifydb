@@ -18,7 +18,7 @@ pub fn multiple_expressions_without_braces(span: Span) -> Diagnostic {
         )),
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -33,6 +33,6 @@ pub fn unrecognized_type(span: Span) -> Diagnostic {
         help: None,
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }

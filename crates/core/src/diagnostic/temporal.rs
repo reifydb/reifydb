@@ -15,7 +15,7 @@ pub fn invalid_date_format(span: Span) -> Diagnostic {
         help: Some("use the format YYYY-MM-DD (e.g., 2024-03-15)".to_string()),
         notes: vec!["dates must have exactly 3 parts separated by hyphens".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -33,7 +33,7 @@ pub fn invalid_datetime_format(span: Span) -> Diagnostic {
         ),
         notes: vec!["datetime must contain 'T' separator between date and time parts".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -48,7 +48,7 @@ pub fn invalid_time_format(span: Span) -> Diagnostic {
         help: Some("use the format HH:MM:SS[.fff][Z|±HH:MM] (e.g., 14:30:45)".to_string()),
         notes: vec!["time must have exactly 3 parts separated by colons".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -73,7 +73,7 @@ pub fn invalid_interval_format(span: Span) -> Diagnostic {
             "time part: T[n]H[n]M[n]S (hours, minutes, seconds)".to_string(),
         ],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -88,7 +88,7 @@ pub fn invalid_year(span: Span) -> Diagnostic {
         help: Some("ensure the year is a valid 4-digit number".to_string()),
         notes: vec!["valid examples: 2024, 1999, 2000".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -104,7 +104,7 @@ pub fn invalid_month(span: Span) -> Diagnostic {
         help: Some("ensure the month is a valid number between 1 and 12".to_string()),
         notes: vec!["valid examples: 01, 03, 12".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -120,7 +120,7 @@ pub fn invalid_day(span: Span) -> Diagnostic {
         help: Some("ensure the day is a valid number between 1 and 31".to_string()),
         notes: vec!["valid examples: 01, 15, 31".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -141,7 +141,7 @@ pub fn invalid_hour(span: Span) -> Diagnostic {
             "hours must be in 24-hour format (00-23)".to_string(),
         ],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -157,7 +157,7 @@ pub fn invalid_minute(span: Span) -> Diagnostic {
         help: Some("ensure the minute is a valid number between 0 and 59".to_string()),
         notes: vec!["valid examples: 00, 30, 59".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -173,7 +173,7 @@ pub fn invalid_second(span: Span) -> Diagnostic {
         help: Some("ensure the second is a valid number between 0 and 59".to_string()),
         notes: vec!["valid examples: 00, 30, 59".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -189,7 +189,7 @@ pub fn invalid_fractional_seconds(span: Span) -> Diagnostic {
         help: Some("ensure fractional seconds contain only digits".to_string()),
         notes: vec!["valid examples: 123, 999999, 000001".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -207,7 +207,7 @@ pub fn invalid_date_values(span: Span) -> Diagnostic {
             "consider leap years for February 29".to_string(),
         ],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -222,7 +222,7 @@ pub fn invalid_time_values(span: Span) -> Diagnostic {
         help: Some("ensure hours are 0-23, minutes and seconds are 0-59".to_string()),
         notes: vec!["use 24-hour format for hours".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -240,7 +240,7 @@ pub fn invalid_interval_character(span: Span) -> Diagnostic {
             "time part units: H (hours), m (minutes), S (seconds)".to_string(),
         ],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -255,7 +255,7 @@ pub fn incomplete_interval_specification(span: Span) -> Diagnostic {
         help: Some("add a unit letter after the number (Y, M, W, D, H, M, or S)".to_string()),
         notes: vec!["example: P1D (not P1), PT2H (not PT2)".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -275,7 +275,7 @@ pub fn invalid_unit_in_context(span: Span, unit: char, in_time_part: bool) -> Di
             "time part (after T): H, M, S".to_string(),
         ],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -291,7 +291,7 @@ pub fn invalid_interval_component_value(span: Span, unit: char) -> Diagnostic {
         help: Some(format!("ensure the {} value is a valid number", unit_name(unit))),
         notes: vec![format!("valid examples: P1{}, P10{}", unit, unit)],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -311,7 +311,7 @@ pub fn unrecognized_temporal_pattern(span: Span) -> Diagnostic {
 			"interval: P1Y2M3DT4H5M6S".to_string(),
 		],
 		column: None,
-        caused_by: None,
+        cause: None,
 	}
 }
 
@@ -326,7 +326,7 @@ pub fn empty_date_component(span: Span) -> Diagnostic {
         help: Some("ensure all date parts (year, month, day) are provided".to_string()),
         notes: vec!["date format: YYYY-MM-DD (e.g., 2024-03-15)".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -341,7 +341,7 @@ pub fn empty_time_component(span: Span) -> Diagnostic {
         help: Some("ensure all time parts (hour, minute, second) are provided".to_string()),
         notes: vec!["time format: HH:MM:SS (e.g., 14:30:45)".to_string()],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 

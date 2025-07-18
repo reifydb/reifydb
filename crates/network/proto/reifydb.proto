@@ -114,7 +114,7 @@ message Diagnostic {
   optional string help = 6;
   repeated string notes = 7;
   DiagnosticColumn column = 8;
-  optional Diagnostic caused_by = 9;
+  optional Diagnostic cause = 9;
 }
 
 message Span {

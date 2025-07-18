@@ -18,10 +18,10 @@ impl Evaluator {
             // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
             ColumnValues::Bool(_, _) => unimplemented!(),
 
-            ColumnValues::Float4(values, valid) => {
+            ColumnValues::Float4(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
+                    if bitvec.get(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
@@ -32,14 +32,14 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::float4_with_validity(result, valid),
+                    values: ColumnValues::float4_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Float8(values, valid) => {
+            ColumnValues::Float8(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
+                    if bitvec.get(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
@@ -50,14 +50,14 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::float8_with_validity(result, valid),
+                    values: ColumnValues::float8_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Int1(values, valid) => {
+            ColumnValues::Int1(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
+                    if bitvec.get(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
@@ -68,14 +68,14 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int1_with_validity(result, valid),
+                    values: ColumnValues::int1_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Int2(values, valid) => {
+            ColumnValues::Int2(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
+                    if bitvec.get(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
@@ -86,14 +86,14 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int2_with_validity(result, valid),
+                    values: ColumnValues::int2_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Int4(values, valid) => {
+            ColumnValues::Int4(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
+                    if bitvec.get(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
@@ -104,14 +104,14 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int4_with_validity(result, valid),
+                    values: ColumnValues::int4_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Int8(values, valid) => {
+            ColumnValues::Int8(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
+                    if bitvec.get(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
@@ -122,14 +122,14 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int8_with_validity(result, valid),
+                    values: ColumnValues::int8_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Int16(values, valid) => {
+            ColumnValues::Int16(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for (idx, val) in values.iter().enumerate() {
-                    if valid.get(idx).copied().unwrap_or(false) {
+                    if bitvec.get(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
@@ -140,14 +140,14 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int16_with_validity(result, valid),
+                    values: ColumnValues::int16_with_bitvec(result, bitvec),
                 })
             }
 
             // ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
             ColumnValues::Utf8(_, _) => unimplemented!(),
 
-            ColumnValues::Uint1(values, valid) => {
+            ColumnValues::Uint1(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for val in values {
                     let signed = val as i8;
@@ -158,11 +158,11 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int1_with_validity(result, valid),
+                    values: ColumnValues::int1_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Uint2(values, valid) => {
+            ColumnValues::Uint2(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for val in values {
                     let signed = val as i16;
@@ -173,11 +173,11 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int2_with_validity(result, valid),
+                    values: ColumnValues::int2_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Uint4(values, valid) => {
+            ColumnValues::Uint4(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for val in values {
                     let signed = val as i32;
@@ -188,11 +188,11 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int4_with_validity(result, valid),
+                    values: ColumnValues::int4_with_bitvec(result, bitvec),
                 })
             }
 
-            ColumnValues::Uint8(values, valid) => {
+            ColumnValues::Uint8(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for val in values {
                     let signed = val as i64;
@@ -203,10 +203,10 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int8_with_validity(result, valid),
+                    values: ColumnValues::int8_with_bitvec(result, bitvec),
                 })
             }
-            ColumnValues::Uint16(values, valid) => {
+            ColumnValues::Uint16(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
                 for val in values {
                     let signed = val as i128;
@@ -217,7 +217,7 @@ impl Evaluator {
                 }
                 Ok(FrameColumn {
                     name: column.name,
-                    values: ColumnValues::int16_with_validity(result, valid),
+                    values: ColumnValues::int16_with_bitvec(result, bitvec),
                 })
             }
             // ColumnValues::Undefined(_) => {
@@ -226,7 +226,7 @@ impl Evaluator {
             ColumnValues::Undefined(_) => {
                 unimplemented!()
             }
-            
+
             ColumnValues::Date(_, _) => {
                 unimplemented!()
             }

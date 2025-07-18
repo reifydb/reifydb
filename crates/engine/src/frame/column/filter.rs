@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{FrameColumn, ColumnValues};
+use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::{BitVec, CowVec};
 
 impl FrameColumn {
@@ -13,274 +13,274 @@ impl FrameColumn {
 impl ColumnValues {
     pub fn filter(&mut self, mask: &BitVec) -> crate::frame::Result<()> {
         match self {
-            ColumnValues::Bool(values, valid) => {
+            ColumnValues::Bool(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i].clone());
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Float4(values, valid) => {
+            ColumnValues::Float4(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Float8(values, valid) => {
+            ColumnValues::Float8(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Int1(values, valid) => {
+            ColumnValues::Int1(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Int2(values, valid) => {
+            ColumnValues::Int2(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Int4(values, valid) => {
+            ColumnValues::Int4(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Int8(values, valid) => {
+            ColumnValues::Int8(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Int16(values, valid) => {
+            ColumnValues::Int16(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Uint1(values, valid) => {
+            ColumnValues::Uint1(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Uint2(values, valid) => {
+            ColumnValues::Uint2(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Uint4(values, valid) => {
+            ColumnValues::Uint4(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Uint8(values, valid) => {
+            ColumnValues::Uint8(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Uint16(values, valid) => {
+            ColumnValues::Uint16(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i]);
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Utf8(values, valid) => {
+            ColumnValues::Utf8(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i].clone());
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Date(values, valid) => {
+            ColumnValues::Date(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i].clone());
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::DateTime(values, valid) => {
+            ColumnValues::DateTime(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i].clone());
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Time(values, valid) => {
+            ColumnValues::Time(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i].clone());
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
-            ColumnValues::Interval(values, valid) => {
+            ColumnValues::Interval(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());
                 let mut new_valid = Vec::with_capacity(mask.count_ones());
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
                         new_values.push(values[i].clone());
-                        new_valid.push(valid[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
 
                 *values = CowVec::new(new_values);
-                *valid = CowVec::new(new_valid);
+                *bitvec = new_valid.into();
             }
 
             ColumnValues::Undefined(len) => {

@@ -52,7 +52,7 @@ impl WsClient {
                 label: None,
                 help: None,
                 notes: vec![],
-                caused_by: None,
+                cause: None,
             })
         })?;
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -320,7 +320,7 @@ fn parse_interval_string(s: &str) -> Result<Interval, ()> {
 }
 
 fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
-    let validity: Vec<bool> = data.iter().map(|s| s != "⟪undefined⟫").collect();
+    let bitvec: Vec<bool> = data.iter().map(|s| s != "⟪undefined⟫").collect();
 
     macro_rules! parse {
         ($typ:ty, $variant:ident) => {{
@@ -334,7 +334,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::$variant(CowVec::new(values), CowVec::new(validity))
+            ColumnValues::$variant(CowVec::new(values), bitvec.into())
         }};
     }
 
@@ -348,7 +348,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
                     _ => false, // treat ⟪undefined⟫ or anything else as false
                 })
                 .collect();
-            ColumnValues::Bool(CowVec::new(values), CowVec::new(validity))
+            ColumnValues::Bool(CowVec::new(values), bitvec.into())
         }
         Type::Float4 => parse!(f32, Float4),
         Type::Float8 => parse!(f64, Float8),
@@ -367,7 +367,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
                 .iter()
                 .map(|s| if s == "⟪undefined⟫" { "".to_string() } else { s.clone() })
                 .collect();
-            ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity))
+            ColumnValues::Utf8(CowVec::new(values), bitvec.into())
         }
         Type::Date => {
             let values: Vec<Date> = data
@@ -389,7 +389,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Date(CowVec::new(values), CowVec::new(validity))
+            ColumnValues::Date(CowVec::new(values), bitvec.into())
         }
         Type::DateTime => {
             let values: Vec<DateTime> = data
@@ -440,7 +440,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::DateTime(CowVec::new(values), CowVec::new(validity))
+            ColumnValues::DateTime(CowVec::new(values), bitvec.into())
         }
         Type::Time => {
             let values: Vec<Time> = data
@@ -478,7 +478,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Time(CowVec::new(values), CowVec::new(validity))
+            ColumnValues::Time(CowVec::new(values), bitvec.into())
         }
         Type::Interval => {
             let values: Vec<Interval> = data
@@ -492,7 +492,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Interval(CowVec::new(values), CowVec::new(validity))
+            ColumnValues::Interval(CowVec::new(values), bitvec.into())
         }
         Type::Undefined => ColumnValues::Undefined(data.len()),
     }

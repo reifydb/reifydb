@@ -28,7 +28,7 @@ impl AggregateFunction for Sum {
                 for (group, indices) in groups {
                     let sum: f64 = indices
                         .iter()
-                        .filter(|&&i| validity[i] && mask.get(i))
+                        .filter(|&&i| validity.get(i) && mask.get(i))
                         .map(|&i| values[i])
                         .sum();
 

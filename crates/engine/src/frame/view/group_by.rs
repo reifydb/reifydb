@@ -31,127 +31,127 @@ impl Frame {
 
             for col in &key_columns {
                 let value = match col {
-                    ColumnValues::Bool(data, valid) => {
-                        if valid[row_idx] {
+                    ColumnValues::Bool(data, bitvec) => {
+                        if bitvec.get(row_idx) {
                             Value::Bool(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Float4(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::float4(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Float8(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::float8(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Int1(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Int1(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Int2(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Int2(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Int4(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Int4(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Int8(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Int8(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Int16(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Int16(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Uint1(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Uint1(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Uint2(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Uint2(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Uint4(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Uint4(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Uint8(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Uint8(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Uint16(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Uint16(data[row_idx])
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Utf8(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Utf8(data[row_idx].clone())
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Date(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Date(data[row_idx].clone())
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::DateTime(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::DateTime(data[row_idx].clone())
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Time(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Time(data[row_idx].clone())
                         } else {
                             Value::Undefined
                         }
                     }
                     ColumnValues::Interval(data, valid) => {
-                        if valid[row_idx] {
+                        if valid.get(row_idx) {
                             Value::Interval(data[row_idx].clone())
                         } else {
                             Value::Undefined

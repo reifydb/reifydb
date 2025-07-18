@@ -145,7 +145,7 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
         help: diagnostic.help,
         notes: diagnostic.notes,
         column: diagnostic.column.map(|c| grpc::DiagnosticColumn { name: c.name, ty: c.ty as i32 }),
-        caused_by: diagnostic.caused_by.map(|cb| Box::from(map_diagnostic(*cb))),
+        cause: diagnostic.cause.map(|cb| Box::from(map_diagnostic(*cb))),
     }
 }
 

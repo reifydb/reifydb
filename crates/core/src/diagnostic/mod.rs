@@ -22,7 +22,7 @@ pub struct Diagnostic {
     pub label: Option<String>,
     pub help: Option<String>,
     pub notes: Vec<String>,
-    pub caused_by: Option<Box<Diagnostic>>,
+    pub cause: Option<Box<Diagnostic>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -43,7 +43,7 @@ impl Diagnostic {
         self.statement = Some(statement.clone());
 
         // Recursively set statement for all nested diagnostics
-        if let Some(ref mut cause) = self.caused_by {
+        if let Some(ref mut cause) = self.cause {
             let mut updated_cause = std::mem::replace(cause.as_mut(), Diagnostic::default());
             updated_cause.set_statement(statement);
             *cause = Box::new(updated_cause);
@@ -69,7 +69,7 @@ impl DiagnosticRenderer for DefaultRenderer {
     fn render(&self, diagnostic: &Diagnostic) -> String {
         let mut output = String::new();
 
-        if !diagnostic.caused_by.is_some() {
+        if !diagnostic.cause.is_some() {
             self.render_flat(&mut output, diagnostic);
         } else {
             self.render_nested(&mut output, diagnostic, 0);
@@ -204,7 +204,7 @@ impl DefaultRenderer {
         }
 
         // Handle nested cause first (if exists)
-        if let Some(cause) = &diagnostic.caused_by {
+        if let Some(cause) = &diagnostic.cause {
             self.render_nested(output, cause, depth + 1);
         }
 

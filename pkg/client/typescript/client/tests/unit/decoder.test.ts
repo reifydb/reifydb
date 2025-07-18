@@ -13,10 +13,10 @@ const UNDEFINED_VALUE = "⟪undefined⟫";
 describe('decodeValue', () => {
     describe('undefined value handling', () => {
         it('should return undefined for ⟪undefined⟫ regardless of type', () => {
-            const data_types: DataType[] = ['Bool', 'Float4', 'Int1', 'Utf8', 'Date', 'DateTime', 'Time', 'Interval', 'Undefined'];
+            const types: DataType[] = ['Bool', 'Float4', 'Int1', 'Utf8', 'Date', 'DateTime', 'Time', 'Interval', 'Undefined'];
 
-            data_types.forEach(data_type => {
-                expect(decodeValue(data_type, UNDEFINED_VALUE)).toBeUndefined();
+            types.forEach(ty => {
+                expect(decodeValue(ty, UNDEFINED_VALUE)).toBeUndefined();
             });
         });
 
@@ -39,25 +39,25 @@ describe('decodeValue', () => {
     describe('Float types (Float4, Float8)', () => {
         const floatKinds: DataType[] = ['Float4', 'Float8'];
 
-        floatKinds.forEach(data_type => {
-            describe(`${data_type}`, () => {
+        floatKinds.forEach(ty => {
+            describe(`${ty}`, () => {
                 it('should convert valid float strings to numbers', () => {
-                    expect(decodeValue(data_type, '3.14')).toBe(3.14);
-                    expect(decodeValue(data_type, '-2.5')).toBe(-2.5);
-                    expect(decodeValue(data_type, '0.0')).toBe(0.0);
-                    expect(decodeValue(data_type, '123.456')).toBe(123.456);
+                    expect(decodeValue(ty, '3.14')).toBe(3.14);
+                    expect(decodeValue(ty, '-2.5')).toBe(-2.5);
+                    expect(decodeValue(ty, '0.0')).toBe(0.0);
+                    expect(decodeValue(ty, '123.456')).toBe(123.456);
                 });
 
                 it('should convert integer strings to numbers', () => {
-                    expect(decodeValue(data_type, '42')).toBe(42);
-                    expect(decodeValue(data_type, '-17')).toBe(-17);
-                    expect(decodeValue(data_type, '0')).toBe(0);
+                    expect(decodeValue(ty, '42')).toBe(42);
+                    expect(decodeValue(ty, '-17')).toBe(-17);
+                    expect(decodeValue(ty, '0')).toBe(0);
                 });
 
                 it('should handle scientific notation', () => {
-                    expect(decodeValue(data_type, '1e5')).toBe(100000);
-                    expect(decodeValue(data_type, '2.5e-3')).toBe(0.0025);
-                    expect(decodeValue(data_type, '-1.23e4')).toBe(-12300);
+                    expect(decodeValue(ty, '1e5')).toBe(100000);
+                    expect(decodeValue(ty, '2.5e-3')).toBe(0.0025);
+                    expect(decodeValue(ty, '-1.23e4')).toBe(-12300);
                 });
             });
         });
@@ -66,18 +66,18 @@ describe('decodeValue', () => {
     describe('Small singed integer types (Int1, Int2, Int4)', () => {
         const intKinds: DataType[] = ['Int1', 'Int2', 'Int4'];
 
-        intKinds.forEach(data_type => {
-            describe(`${data_type}`, () => {
+        intKinds.forEach(ty => {
+            describe(`${ty}`, () => {
                 it('should convert valid integer strings to numbers', () => {
-                    expect(decodeValue(data_type, '42')).toBe(42);
-                    expect(decodeValue(data_type, '-17')).toBe(-17);
-                    expect(decodeValue(data_type, '0')).toBe(0);
-                    expect(decodeValue(data_type, '123')).toBe(123);
+                    expect(decodeValue(ty, '42')).toBe(42);
+                    expect(decodeValue(ty, '-17')).toBe(-17);
+                    expect(decodeValue(ty, '0')).toBe(0);
+                    expect(decodeValue(ty, '123')).toBe(123);
                 });
 
                 it('should handle edge cases', () => {
-                    expect(decodeValue(data_type, '2147483647')).toBe(2147483647);
-                    expect(decodeValue(data_type, '-2147483648')).toBe(-2147483648);
+                    expect(decodeValue(ty, '2147483647')).toBe(2147483647);
+                    expect(decodeValue(ty, '-2147483648')).toBe(-2147483648);
                 });
 
             });
@@ -87,16 +87,16 @@ describe('decodeValue', () => {
     describe('Small unsinged integer types (Uint1, Uint2, Uint4)', () => {
         const intKinds: DataType[] = ['Uint1', 'Uint2', 'Uint4'];
 
-        intKinds.forEach(data_type => {
-            describe(`${data_type}`, () => {
+        intKinds.forEach(ty => {
+            describe(`${ty}`, () => {
                 it('should convert valid integer strings to numbers', () => {
-                    expect(decodeValue(data_type, '42')).toBe(42);
-                    expect(decodeValue(data_type, '0')).toBe(0);
-                    expect(decodeValue(data_type, '123')).toBe(123);
+                    expect(decodeValue(ty, '42')).toBe(42);
+                    expect(decodeValue(ty, '0')).toBe(0);
+                    expect(decodeValue(ty, '123')).toBe(123);
                 });
 
                 it('should handle edge cases', () => {
-                    expect(decodeValue(data_type, '2147483647')).toBe(2147483647);
+                    expect(decodeValue(ty, '2147483647')).toBe(2147483647);
                 });
 
             });
@@ -107,23 +107,23 @@ describe('decodeValue', () => {
     describe('big signed integer (Int8, Int16)', () => {
         const bigintKinds: DataType[] = ['Int8', 'Int16'];
 
-        bigintKinds.forEach(data_type => {
-            describe(`${data_type}`, () => {
+        bigintKinds.forEach(ty => {
+            describe(`${ty}`, () => {
                 it('should convert valid integer strings to BigInt', () => {
-                    expect(decodeValue(data_type, '42')).toBe(BigInt(42));
-                    expect(decodeValue(data_type, '-17')).toBe(BigInt(-17));
-                    expect(decodeValue(data_type, '0')).toBe(BigInt(0));
-                    expect(decodeValue(data_type, '123')).toBe(BigInt(123));
+                    expect(decodeValue(ty, '42')).toBe(BigInt(42));
+                    expect(decodeValue(ty, '-17')).toBe(BigInt(-17));
+                    expect(decodeValue(ty, '0')).toBe(BigInt(0));
+                    expect(decodeValue(ty, '123')).toBe(BigInt(123));
                 });
 
                 it('should handle large numbers', () => {
-                    expect(decodeValue(data_type, '9223372036854775807')).toBe(BigInt('9223372036854775807'));
-                    expect(decodeValue(data_type, '-9223372036854775808')).toBe(BigInt('-9223372036854775808'));
+                    expect(decodeValue(ty, '9223372036854775807')).toBe(BigInt('9223372036854775807'));
+                    expect(decodeValue(ty, '-9223372036854775808')).toBe(BigInt('-9223372036854775808'));
                 });
 
                 it('should handle very large numbers', () => {
                     const largeNumber = '123456789012345678901234567890';
-                    expect(decodeValue(data_type, largeNumber)).toBe(BigInt(largeNumber));
+                    expect(decodeValue(ty, largeNumber)).toBe(BigInt(largeNumber));
                 });
             });
         });
@@ -132,21 +132,21 @@ describe('decodeValue', () => {
     describe('big unsigned integer(Uint8, Uint16)', () => {
         const bigintKinds: DataType[] = ['Uint8', 'Uint16'];
 
-        bigintKinds.forEach(data_type => {
-            describe(`${data_type}`, () => {
+        bigintKinds.forEach(ty => {
+            describe(`${ty}`, () => {
                 it('should convert valid integer strings to BigInt', () => {
-                    expect(decodeValue(data_type, '42')).toBe(BigInt(42));
-                    expect(decodeValue(data_type, '0')).toBe(BigInt(0));
-                    expect(decodeValue(data_type, '123')).toBe(BigInt(123));
+                    expect(decodeValue(ty, '42')).toBe(BigInt(42));
+                    expect(decodeValue(ty, '0')).toBe(BigInt(0));
+                    expect(decodeValue(ty, '123')).toBe(BigInt(123));
                 });
 
                 it('should handle large numbers', () => {
-                    expect(decodeValue(data_type, '18446744073709551615')).toBe(BigInt('18446744073709551615'));
+                    expect(decodeValue(ty, '18446744073709551615')).toBe(BigInt('18446744073709551615'));
                 });
 
                 it('should handle very large numbers', () => {
                     const largeNumber = '123456789012345678901234567890';
-                    expect(decodeValue(data_type, largeNumber)).toBe(BigInt(largeNumber));
+                    expect(decodeValue(ty, largeNumber)).toBe(BigInt(largeNumber));
                 });
             });
         });
@@ -353,14 +353,14 @@ describe('decodeValue', () => {
     });
 
     describe('unknown type', () => {
-        it('should throw an error for unknown data_types', () => {
-            // @ts-expect-error - Testing invalid data_type
+        it('should throw an error for unknown tys', () => {
+            // @ts-expect-error - Testing invalid ty
             expect(() => decodeValue('InvalidKind', 'value')).toThrow('Unknown data type: InvalidKind');
 
-            // @ts-expect-error - Testing invalid data_type
+            // @ts-expect-error - Testing invalid ty
             expect(() => decodeValue('String', 'value')).toThrow('Unknown data type: String');
 
-            // @ts-expect-error - Testing invalid data_type
+            // @ts-expect-error - Testing invalid ty
             expect(() => decodeValue('', 'value')).toThrow('Unknown data type: ');
         });
     });

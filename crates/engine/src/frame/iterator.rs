@@ -28,126 +28,126 @@ impl<'df> Iterator for FrameIter<'df> {
             .iter()
             .map(|col| match &col.values {
                 ColumnValues::Bool(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Bool(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Float4(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Float4(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Float8(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Float8(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Int1(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Int1(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Int2(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Int2(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Int4(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Int4(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Int8(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Int8(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Int16(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Int16(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Uint1(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Uint1(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Uint2(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Uint2(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Uint4(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Uint4(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Uint8(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Uint8(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Uint16(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Uint16(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Utf8(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::String(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Date(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Date(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::DateTime(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::DateTime(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Time(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Time(&data[i])
                     } else {
                         ValueRef::Undefined
                     }
                 }
                 ColumnValues::Interval(data, bitmap) => {
-                    if bitmap[i] {
+                    if bitmap.get(i) {
                         ValueRef::Interval(&data[i])
                     } else {
                         ValueRef::Undefined

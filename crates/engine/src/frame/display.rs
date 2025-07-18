@@ -9,14 +9,7 @@ use unicode_width::UnicodeWidthStr;
 /// For strings with newlines, returns the width of the longest line.
 /// For strings without newlines, returns the unicode display width.
 fn display_width(s: &str) -> usize {
-    if s.contains('\n') {
-        s.lines()
-            .map(|line| line.width())
-            .max()
-            .unwrap_or(0)
-    } else {
-        s.width()
-    }
+    if s.contains('\n') { s.lines().map(|line| line.width()).max().unwrap_or(0) } else { s.width() }
 }
 
 /// Escape newlines and tabs in a string for single-line display.
@@ -28,127 +21,127 @@ fn escape_control_chars(s: &str) -> String {
 /// Extract string value from column at given row index, with proper escaping
 fn extract_string_value(col: &crate::frame::FrameColumn, row_idx: usize) -> String {
     let s = match &col.values {
-        ColumnValues::Bool(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Bool(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Float4(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Float4(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Float8(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Float8(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Int1(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Int1(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Int2(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Int2(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Int4(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Int4(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Int8(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Int8(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Int16(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Int16(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Uint1(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Uint1(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Uint2(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Uint2(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Uint4(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Uint4(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Uint8(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Uint8(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Uint16(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Uint16(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Utf8(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Utf8(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].clone()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Date(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Date(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::DateTime(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::DateTime(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Time(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Time(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
             }
         }
-        ColumnValues::Interval(v, valid) => {
-            if valid[row_idx] {
+        ColumnValues::Interval(v, bitvec) => {
+            if bitvec.get(row_idx) {
                 v[row_idx].to_string()
             } else {
                 "Undefined".into()
@@ -231,11 +224,12 @@ impl Display for Frame {
 mod tests {
     use super::*;
     use crate::frame::FrameColumn;
+    use reifydb_core::BitVec;
 
     #[test]
     fn test_bool() {
         let frame =
-            Frame::new(vec![FrameColumn::bool_with_validity("bool", [true, false], [true, false])]);
+            Frame::new(vec![FrameColumn::bool_with_bitvec("bool", [true, false], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -250,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_float4() {
-        let frame = Frame::new(vec![FrameColumn::float4_with_validity(
+        let frame = Frame::new(vec![FrameColumn::float4_with_bitvec(
             "float4",
             [1.2, 2.5],
             [true, false],
@@ -269,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_float8() {
-        let frame = Frame::new(vec![FrameColumn::float8_with_validity(
+        let frame = Frame::new(vec![FrameColumn::float8_with_bitvec(
             "float8",
             [3.14, 6.28],
             [true, false],
@@ -289,7 +283,7 @@ mod tests {
     #[test]
     fn test_int1() {
         let frame =
-            Frame::new(vec![FrameColumn::int1_with_validity("int1", [1, -1], [true, false])]);
+            Frame::new(vec![FrameColumn::int1_with_bitvec("int1", [1, -1], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -305,7 +299,7 @@ mod tests {
     #[test]
     fn test_int2() {
         let frame =
-            Frame::new(vec![FrameColumn::int2_with_validity("int2", [100, 200], [true, false])]);
+            Frame::new(vec![FrameColumn::int2_with_bitvec("int2", [100, 200], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -321,7 +315,7 @@ mod tests {
     #[test]
     fn test_int4() {
         let frame =
-            Frame::new(vec![FrameColumn::int4_with_validity("int4", [1000, 2000], [true, false])]);
+            Frame::new(vec![FrameColumn::int4_with_bitvec("int4", [1000, 2000], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -336,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_int8() {
-        let frame = Frame::new(vec![FrameColumn::int8_with_validity(
+        let frame = Frame::new(vec![FrameColumn::int8_with_bitvec(
             "int8",
             [10000, 20000],
             [true, false],
@@ -355,7 +349,7 @@ mod tests {
 
     #[test]
     fn test_int16() {
-        let frame = Frame::new(vec![FrameColumn::int16_with_validity(
+        let frame = Frame::new(vec![FrameColumn::int16_with_bitvec(
             "int16",
             [100000, 200000],
             [true, false],
@@ -375,7 +369,7 @@ mod tests {
     #[test]
     fn test_uint1() {
         let frame =
-            Frame::new(vec![FrameColumn::uint1_with_validity("uint1", [1, 2], [true, false])]);
+            Frame::new(vec![FrameColumn::uint1_with_bitvec("uint1", [1, 2], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -391,7 +385,7 @@ mod tests {
     #[test]
     fn test_uint2() {
         let frame =
-            Frame::new(vec![FrameColumn::uint2_with_validity("uint2", [100, 200], [true, false])]);
+            Frame::new(vec![FrameColumn::uint2_with_bitvec("uint2", [100, 200], [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -406,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_uint4() {
-        let frame = Frame::new(vec![FrameColumn::uint4_with_validity(
+        let frame = Frame::new(vec![FrameColumn::uint4_with_bitvec(
             "uint4",
             [1000, 2000],
             [true, false],
@@ -425,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_uint8() {
-        let frame = Frame::new(vec![FrameColumn::uint8_with_validity(
+        let frame = Frame::new(vec![FrameColumn::uint8_with_bitvec(
             "uint8",
             [10000, 20000],
             [true, false],
@@ -444,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_uint16() {
-        let frame = Frame::new(vec![FrameColumn::uint16_with_validity(
+        let frame = Frame::new(vec![FrameColumn::uint16_with_bitvec(
             "uint16",
             [100000, 200000],
             [true, false],
@@ -463,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_string() {
-        let frame = Frame::new(vec![FrameColumn::string_with_validity(
+        let frame = Frame::new(vec![FrameColumn::utf8_with_bitvec(
             "string",
             ["foo", "bar"],
             [true, false],
@@ -502,10 +496,7 @@ mod tests {
             vec![Date::from_ymd(2025, 1, 15).unwrap(), Date::from_ymd(2025, 12, 25).unwrap()];
         let frame = Frame::new(vec![FrameColumn {
             name: "date".to_string(),
-            values: crate::frame::ColumnValues::Date(
-                CowVec::new(dates),
-                CowVec::new(vec![true, false]),
-            ),
+            values: ColumnValues::Date(CowVec::new(dates), BitVec::from_slice(&[true, false])),
         }]);
         let output = format!("{}", frame);
         let expected = "\
@@ -528,7 +519,10 @@ mod tests {
         ];
         let frame = Frame::new(vec![FrameColumn {
             name: "datetime".to_string(),
-            values: ColumnValues::DateTime(CowVec::new(datetimes), CowVec::new(vec![true, false])),
+            values: ColumnValues::DateTime(
+                CowVec::new(datetimes),
+                BitVec::from_slice(&[true, false]),
+            ),
         }]);
         let output = format!("{}", frame);
         let expected = "\
@@ -548,7 +542,7 @@ mod tests {
         let times = vec![Time::from_hms(14, 30, 45).unwrap(), Time::from_hms(9, 15, 30).unwrap()];
         let frame = Frame::new(vec![FrameColumn {
             name: "time".to_string(),
-            values: ColumnValues::Time(CowVec::new(times), CowVec::new(vec![true, false])),
+            values: ColumnValues::Time(CowVec::new(times), BitVec::from_slice(&[true, false])),
         }]);
         let output = format!("{}", frame);
         let expected = "\
@@ -568,7 +562,10 @@ mod tests {
         let intervals = vec![Interval::from_days(30), Interval::from_hours(24)];
         let frame = Frame::new(vec![FrameColumn {
             name: "interval".to_string(),
-            values: ColumnValues::Interval(CowVec::new(intervals), CowVec::new(vec![true, false])),
+            values: ColumnValues::Interval(
+                CowVec::new(intervals),
+                BitVec::from_slice(&[true, false]),
+            ),
         }]);
         let output = format!("{}", frame);
 

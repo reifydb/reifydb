@@ -41,7 +41,7 @@ impl Compiler {
                                 label: None,
                                 help: None,
                                 notes: vec![],
-                                caused_by: None,
+                                cause: None,
                             }));
                         }
                     }

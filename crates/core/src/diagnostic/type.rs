@@ -60,6 +60,6 @@ pub fn out_of_range(co: OutOfRange) -> Diagnostic {
             }
             _ => None,
         },
-        caused_by: None,
+        cause: None,
     }
 }

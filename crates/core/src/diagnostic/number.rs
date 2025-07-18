@@ -49,7 +49,7 @@ pub fn invalid_number_format(span: Span, target: Type) -> Diagnostic {
         help: Some(help),
         notes,
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -72,7 +72,7 @@ pub fn number_out_of_range(span: Span, target: Type) -> Diagnostic {
         )),
         notes: vec![format!("valid range: {}", range)],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -88,6 +88,6 @@ pub fn nan_not_allowed() -> Diagnostic {
         help: Some("use a finite number or undefined instead".to_string()),
         notes: vec![],
         column: None,
-        caused_by: None,
+        cause: None,
     }
 }

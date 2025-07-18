@@ -3,12 +3,12 @@
 
 use crate::evaluate::{Convert, Demote, Error, Promote};
 use crate::frame::ColumnValues;
-use reifydb_core::Type;
 use reifydb_core::diagnostic::cast;
 use reifydb_core::value::number::{
     SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,
 };
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
+use reifydb_core::{BitVec, Type};
 use reifydb_core::{Date, DateTime, Interval, Span, Time};
 use std::fmt::Display;
 
@@ -296,7 +296,7 @@ impl ColumnValues {
 
 fn demote_vec<From, To>(
     values: &[From],
-    validity: &[bool],
+    validity: &BitVec,
     demote: impl Demote,
     span: impl Fn() -> Span,
     target_kind: Type,
@@ -307,7 +307,7 @@ where
 {
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             match demote.demote::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -321,7 +321,7 @@ where
 
 fn promote_vec<From, To>(
     values: &[From],
-    validity: &[bool],
+    validity: &BitVec,
     ctx: impl Promote,
     span: impl Fn() -> Span,
     target_kind: Type,
@@ -332,7 +332,7 @@ where
 {
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             match ctx.promote::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -346,7 +346,7 @@ where
 
 fn convert_vec<From, To>(
     values: &[From],
-    validity: &[bool],
+    validity: &BitVec,
     ctx: impl Convert,
     span: impl Fn() -> Span,
     target_kind: Type,
@@ -357,7 +357,7 @@ where
 {
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             match ctx.convert::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -374,14 +374,14 @@ mod tests {
     mod promote {
         use crate::evaluate::Promote;
         use crate::frame::column::adjust::promote_vec;
-        use reifydb_core::Type;
         use reifydb_core::value::number::SafePromote;
+        use reifydb_core::{BitVec, Type};
         use reifydb_core::{IntoSpan, Span};
 
         #[test]
         fn test_ok() {
             let values = [1i8, 2i8];
-            let validity = [true, true];
+            let validity = BitVec::from_slice(&[true, true]);
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
@@ -402,7 +402,7 @@ mod tests {
         fn test_none_maps_to_undefined() {
             // 42 mapped to None
             let values = [42i8];
-            let validity = [true];
+            let validity = BitVec::from_slice(&[true]);
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
@@ -415,13 +415,13 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(result.validity(), &[false]);
+            assert!(!result.bitvec().get(0));
         }
 
         #[test]
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i8];
-            let validity = [false];
+            let validity = BitVec::from_slice(&[false]);
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
@@ -434,13 +434,13 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(result.validity(), &[false]);
+            assert!(!result.bitvec().get(0));
         }
 
         #[test]
         fn test_mixed_validity_and_promote_failure() {
             let values = [1i8, 42i8, 3i8, 4i8];
-            let validity = [true, true, false, true];
+            let validity = BitVec::from_slice(&[true, true, false, true]);
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
@@ -455,7 +455,10 @@ mod tests {
 
             let slice = result.as_slice::<i16>();
             assert_eq!(slice, &[1i16, 0, 0, 4i16]);
-            assert_eq!(result.validity(), &[true, false, false, true]);
+            assert!(result.bitvec().get(0));
+            assert!(!result.bitvec().get(1));
+            assert!(!result.bitvec().get(2));
+            assert!(result.bitvec().get(3));
         }
 
         struct TestCtx;
@@ -489,14 +492,14 @@ mod tests {
     mod demote {
         use crate::evaluate::Demote;
         use crate::frame::column::adjust::demote_vec;
-        use reifydb_core::Type;
         use reifydb_core::value::number::SafeDemote;
+        use reifydb_core::{BitVec, Type};
         use reifydb_core::{IntoSpan, Span};
 
         #[test]
         fn test_ok() {
             let values = [1i16, 2i16];
-            let validity = [true, true];
+            let validity = BitVec::from_slice(&[true, true]);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
@@ -511,13 +514,14 @@ mod tests {
 
             let slice: &[i8] = result.as_slice();
             assert_eq!(slice, &[1i8, 2i8]);
-            assert_eq!(result.validity(), &[true, true]);
+            assert!(result.bitvec().get(0));
+            assert!(result.bitvec().get(1));
         }
 
         #[test]
         fn test_none_maps_to_undefined() {
             let values = [42i16];
-            let validity = [true];
+            let validity = BitVec::from_slice(&[true]);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
@@ -530,13 +534,13 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(result.validity(), &[false]);
+            assert!(!result.bitvec().get(0));
         }
 
         #[test]
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i16];
-            let validity = [false];
+            let validity = BitVec::new(1, false);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
@@ -549,13 +553,13 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(result.validity(), &[false]);
+            assert!(!result.bitvec().get(0));
         }
 
         #[test]
         fn test_mixed_validity_and_demote_failure() {
             let values = [1i16, 42i16, 3i16, 4i16];
-            let validity = [true, true, false, true];
+            let validity = BitVec::from_slice(&[true, true, false, true]);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
@@ -570,7 +574,10 @@ mod tests {
 
             let slice: &[i8] = result.as_slice();
             assert_eq!(slice, &[1i8, 0, 0, 4i8]);
-            assert_eq!(result.validity(), &[true, false, false, true]);
+            assert!(result.bitvec().get(0));
+            assert!(!result.bitvec().get(1));
+            assert!(!result.bitvec().get(2));
+            assert!(result.bitvec().get(3));
         }
 
         struct TestCtx;
@@ -605,12 +612,12 @@ mod tests {
 // Bool conversion functions
 fn bool_to_numeric_vec(
     values: &[bool],
-    validity: &[bool],
+    validity: &BitVec,
     target: Type,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(target, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             match target {
                 Type::Int1 => out.push::<i8>(if val { 1i8 } else { 0i8 }),
                 Type::Int2 => out.push::<i16>(if val { 1i16 } else { 0i16 }),
@@ -633,10 +640,10 @@ fn bool_to_numeric_vec(
     Ok(out)
 }
 
-fn bool_to_text_vec(values: &[bool], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn bool_to_text_vec(values: &[bool], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<String>(if val { "true".to_string() } else { "false".to_string() });
         } else {
             out.push_undefined();
@@ -646,10 +653,10 @@ fn bool_to_text_vec(values: &[bool], validity: &[bool]) -> crate::Result<ColumnV
 }
 
 // Specific implementations for different numeric types
-fn i8_to_bool_vec(values: &[i8], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn i8_to_bool_vec(values: &[i8], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -658,10 +665,10 @@ fn i8_to_bool_vec(values: &[i8], validity: &[bool]) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn i16_to_bool_vec(values: &[i16], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn i16_to_bool_vec(values: &[i16], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -670,10 +677,10 @@ fn i16_to_bool_vec(values: &[i16], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn i32_to_bool_vec(values: &[i32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn i32_to_bool_vec(values: &[i32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -682,10 +689,10 @@ fn i32_to_bool_vec(values: &[i32], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn i64_to_bool_vec(values: &[i64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn i64_to_bool_vec(values: &[i64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -694,10 +701,10 @@ fn i64_to_bool_vec(values: &[i64], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn i128_to_bool_vec(values: &[i128], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn i128_to_bool_vec(values: &[i128], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -706,10 +713,10 @@ fn i128_to_bool_vec(values: &[i128], validity: &[bool]) -> crate::Result<ColumnV
     Ok(out)
 }
 
-fn u8_to_bool_vec(values: &[u8], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn u8_to_bool_vec(values: &[u8], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -718,10 +725,10 @@ fn u8_to_bool_vec(values: &[u8], validity: &[bool]) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn u16_to_bool_vec(values: &[u16], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn u16_to_bool_vec(values: &[u16], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -730,10 +737,10 @@ fn u16_to_bool_vec(values: &[u16], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn u32_to_bool_vec(values: &[u32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn u32_to_bool_vec(values: &[u32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -742,10 +749,10 @@ fn u32_to_bool_vec(values: &[u32], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn u64_to_bool_vec(values: &[u64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn u64_to_bool_vec(values: &[u64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -754,10 +761,10 @@ fn u64_to_bool_vec(values: &[u64], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn u128_to_bool_vec(values: &[u128], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn u128_to_bool_vec(values: &[u128], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -766,10 +773,10 @@ fn u128_to_bool_vec(values: &[u128], validity: &[bool]) -> crate::Result<ColumnV
     Ok(out)
 }
 
-fn f32_to_bool_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_bool_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0.0);
         } else {
             out.push_undefined();
@@ -778,10 +785,10 @@ fn f32_to_bool_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn f64_to_bool_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_bool_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<bool>(val != 0.0);
         } else {
             out.push_undefined();
@@ -790,13 +797,13 @@ fn f64_to_bool_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn numeric_to_text_vec<T>(values: &[T], validity: &[bool]) -> crate::Result<ColumnValues>
+fn numeric_to_text_vec<T>(values: &[T], validity: &BitVec) -> crate::Result<ColumnValues>
 where
     T: Copy + Display,
 {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -806,10 +813,10 @@ where
 }
 
 // Text parsing functions
-fn text_to_bool_vec(values: &[String], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn text_to_bool_vec(values: &[String], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             match val.as_str() {
                 "true" => out.push::<bool>(true),
                 "false" => out.push::<bool>(false),
@@ -824,13 +831,13 @@ fn text_to_bool_vec(values: &[String], validity: &[bool]) -> crate::Result<Colum
 
 fn text_to_numeric_vec(
     values: &[String],
-    validity: &[bool],
+    validity: &BitVec,
     target: Type,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(target, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             // Create a temporary span for parsing
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
@@ -878,13 +885,13 @@ fn text_to_numeric_vec(
 
 fn text_to_float_vec(
     values: &[String],
-    validity: &[bool],
+    validity: &BitVec,
     target: Type,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(target, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -907,12 +914,12 @@ fn text_to_float_vec(
 
 fn text_to_date_vec(
     values: &[String],
-    validity: &[bool],
+    validity: &BitVec,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Date, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -929,12 +936,12 @@ fn text_to_date_vec(
 
 fn text_to_datetime_vec(
     values: &[String],
-    validity: &[bool],
+    validity: &BitVec,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::DateTime, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -951,12 +958,12 @@ fn text_to_datetime_vec(
 
 fn text_to_time_vec(
     values: &[String],
-    validity: &[bool],
+    validity: &BitVec,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Time, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -973,12 +980,12 @@ fn text_to_time_vec(
 
 fn text_to_interval_vec(
     values: &[String],
-    validity: &[bool],
+    validity: &BitVec,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Interval, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -993,10 +1000,10 @@ fn text_to_interval_vec(
     Ok(out)
 }
 
-fn date_to_text_vec(values: &[Date], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn date_to_text_vec(values: &[Date], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -1005,10 +1012,10 @@ fn date_to_text_vec(values: &[Date], validity: &[bool]) -> crate::Result<ColumnV
     Ok(out)
 }
 
-fn datetime_to_text_vec(values: &[DateTime], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn datetime_to_text_vec(values: &[DateTime], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -1017,10 +1024,10 @@ fn datetime_to_text_vec(values: &[DateTime], validity: &[bool]) -> crate::Result
     Ok(out)
 }
 
-fn time_to_text_vec(values: &[Time], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn time_to_text_vec(values: &[Time], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -1029,10 +1036,10 @@ fn time_to_text_vec(values: &[Time], validity: &[bool]) -> crate::Result<ColumnV
     Ok(out)
 }
 
-fn interval_to_text_vec(values: &[Interval], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn interval_to_text_vec(values: &[Interval], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -1042,10 +1049,10 @@ fn interval_to_text_vec(values: &[Interval], validity: &[bool]) -> crate::Result
 }
 
 // Float32 to integer conversion functions
-fn f32_to_i8_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_i8_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int1, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i8::MIN as f32 && truncated <= i8::MAX as f32 {
                 out.push::<i8>(truncated as i8);
@@ -1059,10 +1066,10 @@ fn f32_to_i8_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f32_to_i16_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_i16_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int2, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i16::MIN as f32 && truncated <= i16::MAX as f32 {
                 out.push::<i16>(truncated as i16);
@@ -1076,10 +1083,10 @@ fn f32_to_i16_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_i32_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_i32_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int4, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i32::MIN as f32 && truncated <= i32::MAX as f32 {
                 out.push::<i32>(truncated as i32);
@@ -1093,10 +1100,10 @@ fn f32_to_i32_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_i64_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_i64_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i64::MIN as f32 && truncated <= i64::MAX as f32 {
                 out.push::<i64>(truncated as i64);
@@ -1110,10 +1117,10 @@ fn f32_to_i64_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_i128_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_i128_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int16, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i128::MIN as f32 && truncated <= i128::MAX as f32 {
                 out.push::<i128>(truncated as i128);
@@ -1127,10 +1134,10 @@ fn f32_to_i128_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn f32_to_u8_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_u8_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint1, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u8::MAX as f32 {
                 out.push::<u8>(truncated as u8);
@@ -1144,10 +1151,10 @@ fn f32_to_u8_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f32_to_u16_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_u16_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint2, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u16::MAX as f32 {
                 out.push::<u16>(truncated as u16);
@@ -1161,10 +1168,10 @@ fn f32_to_u16_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_u32_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_u32_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint4, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u32::MAX as f32 {
                 out.push::<u32>(truncated as u32);
@@ -1178,10 +1185,10 @@ fn f32_to_u32_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_u64_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_u64_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u64::MAX as f32 {
                 out.push::<u64>(truncated as u64);
@@ -1195,10 +1202,10 @@ fn f32_to_u64_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_u128_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f32_to_u128_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint16, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u128::MAX as f32 {
                 out.push::<u128>(truncated as u128);
@@ -1213,10 +1220,10 @@ fn f32_to_u128_vec(values: &[f32], validity: &[bool]) -> crate::Result<ColumnVal
 }
 
 // Float64 to integer conversion functions
-fn f64_to_i8_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_i8_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int1, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
                 out.push::<i8>(truncated as i8);
@@ -1230,10 +1237,10 @@ fn f64_to_i8_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f64_to_i16_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_i16_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int2, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
                 out.push::<i16>(truncated as i16);
@@ -1247,10 +1254,10 @@ fn f64_to_i16_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_i32_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_i32_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int4, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
                 out.push::<i32>(truncated as i32);
@@ -1264,10 +1271,10 @@ fn f64_to_i32_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_i64_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_i64_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
                 out.push::<i64>(truncated as i64);
@@ -1281,10 +1288,10 @@ fn f64_to_i64_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_i128_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_i128_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int16, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
                 out.push::<i128>(truncated as i128);
@@ -1298,10 +1305,10 @@ fn f64_to_i128_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn f64_to_u8_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_u8_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint1, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u8::MAX as f64 {
                 out.push::<u8>(truncated as u8);
@@ -1315,10 +1322,10 @@ fn f64_to_u8_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f64_to_u16_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_u16_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint2, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u16::MAX as f64 {
                 out.push::<u16>(truncated as u16);
@@ -1332,10 +1339,10 @@ fn f64_to_u16_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_u32_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_u32_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint4, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u32::MAX as f64 {
                 out.push::<u32>(truncated as u32);
@@ -1349,10 +1356,10 @@ fn f64_to_u32_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_u64_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_u64_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u64::MAX as f64 {
                 out.push::<u64>(truncated as u64);
@@ -1366,10 +1373,10 @@ fn f64_to_u64_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_u128_vec(values: &[f64], validity: &[bool]) -> crate::Result<ColumnValues> {
+fn f64_to_u128_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint16, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity[idx] {
+        if validity.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u128::MAX as f64 {
                 out.push::<u128>(truncated as u128);

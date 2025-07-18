@@ -9,11 +9,11 @@ import {Interval} from "./interval";
 
 const UNDEFINED_VALUE = "⟪undefined⟫";
 
-export function decodeValue(data_type: DataType, value: string): unknown {
+export function decodeValue(ty: DataType, value: string): unknown {
     if (value == UNDEFINED_VALUE) {
         return undefined
     }
-    switch (data_type) {
+    switch (ty) {
         case "Bool":
             return value === "true";
         case "Float4":
@@ -54,7 +54,7 @@ export function decodeValue(data_type: DataType, value: string): unknown {
         case "Undefined":
             return undefined;
         default:
-            throw new Error(`Unknown data type: ${data_type}`);
+            throw new Error(`Unknown data type: ${ty}`);
     }
 }
 

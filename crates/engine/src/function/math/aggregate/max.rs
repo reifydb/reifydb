@@ -28,7 +28,7 @@ impl AggregateFunction for Max {
                 for (group, indices) in groups {
                     let max_val = indices
                         .iter()
-                        .filter(|&&i| validity[i] && mask.get(i))
+                        .filter(|&&i| validity.get(i) && mask.get(i))
                         .map(|&i| values[i])
                         .max_by(|a, b| a.partial_cmp(b).unwrap());
 

@@ -6,7 +6,7 @@ use crate::frame::{ColumnValues, FrameColumn, Push};
 use reifydb_core::Span;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{Promote, SafeAdd};
-use reifydb_core::{CowVec, GetType, Type};
+use reifydb_core::{BitVec, CowVec, GetType, Type};
 use reifydb_rql::expression::AddExpression;
 
 impl Evaluator {
@@ -493,8 +493,8 @@ fn add_numeric<L, R>(
     ctx: &EvaluationContext,
     l: &CowVec<L>,
     r: &CowVec<R>,
-    lv: &CowVec<bool>,
-    rv: &CowVec<bool>,
+    lv: &BitVec,
+    rv: &BitVec,
     ty: Type,
     span: Span,
 ) -> crate::evaluate::Result<FrameColumn>
@@ -510,7 +510,7 @@ where
 
     let mut data = ColumnValues::with_capacity(ty, lv.len());
     for i in 0..l.len() {
-        if lv[i] && rv[i] {
+        if lv.get(i) && rv.get(i) {
             if let Some(value) = ctx.add(l[i], r[i], &span)? {
                 data.push(value);
             } else {

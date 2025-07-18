@@ -28,7 +28,7 @@ impl AggregateFunction for Min {
                 for (group, indices) in groups {
                     let min_val = indices
                         .iter()
-                        .filter(|&&i| validity[i] && mask.get(i))
+                        .filter(|&&i| validity.get(i) && mask.get(i))
                         .map(|&i| values[i])
                         .min_by(|a, b| a.partial_cmp(b).unwrap());
 
@@ -45,7 +45,7 @@ impl AggregateFunction for Min {
                 for (group, indices) in groups {
                     let min_val = indices
                         .iter()
-                        .filter(|&&i| validity[i] && mask.get(i))
+                        .filter(|&&i| validity.get(i) && mask.get(i))
                         .map(|&i| values[i])
                         .min_by(|a, b| a.partial_cmp(b).unwrap());
 

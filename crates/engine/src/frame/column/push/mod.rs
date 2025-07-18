@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
-use reifydb_core::{CowVec, Date, DateTime, Interval, Time};
+use reifydb_core::{BitVec, CowVec, Date, DateTime, Interval, Time};
 use std::fmt::Debug;
 
 mod i128;
@@ -43,11 +43,11 @@ macro_rules! impl_push {
                     }
                     ColumnValues::Undefined(len) => {
                         let mut values = vec![Default::default(); *len];
-                        let mut validity = vec![false; *len];
+                        let mut validity = BitVec::new(*len, false);
                         values.push(value);
                         validity.push(true);
 
-                        *self = ColumnValues::$variant(CowVec::new(values), CowVec::new(validity));
+                        *self = ColumnValues::$variant(CowVec::new(values), validity);
                     }
                     other => panic!(
                         "called `push::<{}>()` on ColumnValues::{:?}",
@@ -77,11 +77,11 @@ impl Push<String> for ColumnValues {
             }
             ColumnValues::Undefined(len) => {
                 let mut values = vec![String::default(); *len];
-                let mut validity = vec![false; *len];
+                let mut validity = BitVec::new(*len, false);
                 values.push(value);
                 validity.push(true);
 
-                *self = ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity));
+                *self = ColumnValues::Utf8(CowVec::new(values), validity);
             }
             other => panic!("called `push::<String>()` on ColumnValues::{:?}", other.ty()),
         }

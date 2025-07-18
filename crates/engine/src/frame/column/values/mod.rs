@@ -1,72 +1,55 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::value::IsNumber;
-use reifydb_core::{Type, Value, CowVec};
+use reifydb_core::{BitVec, CowVec, Type, Value};
 use reifydb_core::{Date, DateTime, Interval, Time};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
-    // value, is_valid
-    Bool(CowVec<bool>, CowVec<bool>),
-    Float4(CowVec<f32>, CowVec<bool>),
-    Float8(CowVec<f64>, CowVec<bool>),
-    Int1(CowVec<i8>, CowVec<bool>),
-    Int2(CowVec<i16>, CowVec<bool>),
-    Int4(CowVec<i32>, CowVec<bool>),
-    Int8(CowVec<i64>, CowVec<bool>),
-    Int16(CowVec<i128>, CowVec<bool>),
-    Uint1(CowVec<u8>, CowVec<bool>),
-    Uint2(CowVec<u16>, CowVec<bool>),
-    Uint4(CowVec<u32>, CowVec<bool>),
-    Uint8(CowVec<u64>, CowVec<bool>),
-    Uint16(CowVec<u128>, CowVec<bool>),
-    Utf8(CowVec<String>, CowVec<bool>),
-    Date(CowVec<Date>, CowVec<bool>),
-    DateTime(CowVec<DateTime>, CowVec<bool>),
-    Time(CowVec<Time>, CowVec<bool>),
-    Interval(CowVec<Interval>, CowVec<bool>),
+    Bool(CowVec<bool>, BitVec),
+    Float4(CowVec<f32>, BitVec),
+    Float8(CowVec<f64>, BitVec),
+    Int1(CowVec<i8>, BitVec),
+    Int2(CowVec<i16>, BitVec),
+    Int4(CowVec<i32>, BitVec),
+    Int8(CowVec<i64>, BitVec),
+    Int16(CowVec<i128>, BitVec),
+    Uint1(CowVec<u8>, BitVec),
+    Uint2(CowVec<u16>, BitVec),
+    Uint4(CowVec<u32>, BitVec),
+    Uint8(CowVec<u64>, BitVec),
+    Uint16(CowVec<u128>, BitVec),
+    Utf8(CowVec<String>, BitVec),
+    Date(CowVec<Date>, BitVec),
+    DateTime(CowVec<DateTime>, BitVec),
+    Time(CowVec<Time>, BitVec),
+    Interval(CowVec<Interval>, BitVec),
     // special case: all undefined
     Undefined(usize),
 }
 
 impl ColumnValues {
-    pub fn is_numeric(&self) -> bool {
+    pub fn bitvec(&self) -> &BitVec {
         match self {
-            ColumnValues::Float4(_, _)
-            | ColumnValues::Float8(_, _)
-            | ColumnValues::Int1(_, _)
-            | ColumnValues::Int2(_, _)
-            | ColumnValues::Int4(_, _)
-            | ColumnValues::Int8(_, _)
-            | ColumnValues::Int16(_, _)
-            | ColumnValues::Uint1(_, _)
-            | ColumnValues::Uint2(_, _)
-            | ColumnValues::Uint4(_, _)
-            | ColumnValues::Uint8(_, _)
-            | ColumnValues::Uint16(_, _) => true,
-            ColumnValues::Utf8(_, _)
-            | ColumnValues::Bool(_, _)
-            | ColumnValues::Date(_, _)
-            | ColumnValues::DateTime(_, _)
-            | ColumnValues::Time(_, _)
-            | ColumnValues::Interval(_, _)
-            | ColumnValues::Undefined(_) => false,
-        }
-    }
-}
-
-impl ColumnValues {
-    pub fn get_numeric_value(&self, index: usize) -> Option<impl IsNumber> {
-        match self {
-            ColumnValues::Int1(values, validity) => {
-                if validity[index] {
-                    Some(values[index])
-                } else {
-                    None
-                }
-            }
-            _ => unimplemented!(),
+            ColumnValues::Bool(_, bitvec) => bitvec,
+            ColumnValues::Float4(_, bitvec) => bitvec,
+            ColumnValues::Float8(_, bitvec) => bitvec,
+            ColumnValues::Int1(_, bitvec) => bitvec,
+            ColumnValues::Int2(_, bitvec) => bitvec,
+            ColumnValues::Int4(_, bitvec) => bitvec,
+            ColumnValues::Int8(_, bitvec) => bitvec,
+            ColumnValues::Int16(_, bitvec) => bitvec,
+            ColumnValues::Uint1(_, bitvec) => bitvec,
+            ColumnValues::Uint2(_, bitvec) => bitvec,
+            ColumnValues::Uint4(_, bitvec) => bitvec,
+            ColumnValues::Uint8(_, bitvec) => bitvec,
+            ColumnValues::Uint16(_, bitvec) => bitvec,
+            ColumnValues::Utf8(_, bitvec) => bitvec,
+            ColumnValues::Date(_, bitvec) => bitvec,
+            ColumnValues::DateTime(_, bitvec) => bitvec,
+            ColumnValues::Time(_, bitvec) => bitvec,
+            ColumnValues::Interval(_, bitvec) => bitvec,
+            ColumnValues::Undefined(_) => unreachable!(),
         }
     }
 }
@@ -103,126 +86,126 @@ impl ColumnValues {
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Bool(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Bool(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Float4(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::float4(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::float4(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Float8(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::float8(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::float8(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Int1(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Int1(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Int1(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Int2(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Int2(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Int2(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Int4(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Int4(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Int4(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Int8(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Int8(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Int8(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Int16(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Int16(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Int16(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Utf8(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Utf8(v.clone()) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Utf8(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Uint1(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Uint1(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Uint1(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Uint2(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Uint2(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Uint2(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Uint4(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Uint4(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Uint4(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Uint8(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Uint8(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Uint8(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Uint16(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Uint16(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Uint16(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Date(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Date(v.clone()) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Date(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::DateTime(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::DateTime(v.clone()) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::DateTime(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Time(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Time(v.clone()) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Time(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Interval(values, validity) => Box::new(
                 values
                     .iter()
                     .zip(validity.iter())
-                    .map(|(v, va)| if *va { Value::Interval(v.clone()) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Interval(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Undefined(size) => {
@@ -236,361 +219,361 @@ impl ColumnValues {
     pub fn bool(values: impl IntoIterator<Item = bool>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Bool(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Bool(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn bool_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Bool(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Bool(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn bool_with_validity(
+    pub fn bool_with_bitvec(
         values: impl IntoIterator<Item = bool>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Bool(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Bool(CowVec::new(values), bitvec)
     }
 
     pub fn float4(values: impl IntoIterator<Item = f32>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Float4(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Float4(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn float4_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Float4(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Float4(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn float4_with_validity(
+    pub fn float4_with_bitvec(
         values: impl IntoIterator<Item = f32>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Float4(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Float4(CowVec::new(values), bitvec)
     }
 
     pub fn float8(values: impl IntoIterator<Item = f64>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Float8(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Float8(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn float8_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Float8(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Float8(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn float8_with_validity(
+    pub fn float8_with_bitvec(
         values: impl IntoIterator<Item = f64>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Float8(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Float8(CowVec::new(values), bitvec)
     }
 
     pub fn int1(values: impl IntoIterator<Item = i8>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int1(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Int1(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn int1_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int1(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Int1(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn int1_with_validity(
+    pub fn int1_with_bitvec(
         values: impl IntoIterator<Item = i8>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Int1(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Int1(CowVec::new(values), bitvec)
     }
 
     pub fn int2(values: impl IntoIterator<Item = i16>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int2(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Int2(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn int2_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int2(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Int2(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn int2_with_validity(
+    pub fn int2_with_bitvec(
         values: impl IntoIterator<Item = i16>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Int2(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Int2(CowVec::new(values), bitvec)
     }
 
     pub fn int4(values: impl IntoIterator<Item = i32>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int4(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Int4(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn int4_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int4(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Int4(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn int4_with_validity(
+    pub fn int4_with_bitvec(
         values: impl IntoIterator<Item = i32>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Int4(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Int4(CowVec::new(values), bitvec)
     }
 
     pub fn int8(values: impl IntoIterator<Item = i64>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int8(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Int8(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn int8_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int8(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Int8(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn int8_with_validity(
+    pub fn int8_with_bitvec(
         values: impl IntoIterator<Item = i64>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Int8(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Int8(CowVec::new(values), bitvec)
     }
 
     pub fn int16(values: impl IntoIterator<Item = i128>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int16(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Int16(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn int16_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int16(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Int16(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn int16_with_validity(
+    pub fn int16_with_bitvec(
         values: impl IntoIterator<Item = i128>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Int16(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Int16(CowVec::new(values), bitvec)
     }
 
     pub fn utf8<'a>(values: impl IntoIterator<Item = String>) -> Self {
         let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Utf8(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Utf8(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn utf8_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Utf8(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Utf8(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn utf8_with_validity<'a>(
+    pub fn utf8_with_bitvec<'a>(
         values: impl IntoIterator<Item = String>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
-        let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Utf8(CowVec::new(values), CowVec::new(validity))
+        let values = values.into_iter().collect::<Vec<_>>();
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Utf8(CowVec::new(values), bitvec)
     }
 
     pub fn uint1(values: impl IntoIterator<Item = u8>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint1(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Uint1(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn uint1_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint1(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Uint1(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn uint1_with_validity(
+    pub fn uint1_with_bitvec(
         values: impl IntoIterator<Item = u8>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Uint1(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Uint1(CowVec::new(values), bitvec)
     }
 
     pub fn uint2(values: impl IntoIterator<Item = u16>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint2(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Uint2(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn uint2_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint2(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Uint2(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn uint2_with_validity(
+    pub fn uint2_with_bitvec(
         values: impl IntoIterator<Item = u16>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Uint2(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Uint2(CowVec::new(values), bitvec)
     }
 
     pub fn uint4(values: impl IntoIterator<Item = u32>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint4(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Uint4(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn uint4_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint4(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Uint4(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn uint4_with_validity(
+    pub fn uint4_with_bitvec(
         values: impl IntoIterator<Item = u32>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Uint4(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Uint4(CowVec::new(values), bitvec)
     }
 
     pub fn uint8(values: impl IntoIterator<Item = u64>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint8(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Uint8(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn uint8_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint8(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Uint8(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn uint8_with_validity(
+    pub fn uint8_with_bitvec(
         values: impl IntoIterator<Item = u64>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Uint8(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Uint8(CowVec::new(values), bitvec)
     }
 
     pub fn uint16(values: impl IntoIterator<Item = u128>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint16(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Uint16(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn uint16_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint16(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Uint16(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn uint16_with_validity(
+    pub fn uint16_with_bitvec(
         values: impl IntoIterator<Item = u128>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Uint16(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Uint16(CowVec::new(values), bitvec)
     }
 
     pub fn date(values: impl IntoIterator<Item = Date>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Date(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Date(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn date_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Date(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Date(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn date_with_validity(
+    pub fn date_with_bitvec(
         values: impl IntoIterator<Item = Date>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Date(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Date(CowVec::new(values), bitvec)
     }
 
     pub fn datetime(values: impl IntoIterator<Item = DateTime>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::DateTime(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::DateTime(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn datetime_with_capacity(capacity: usize) -> Self {
-        ColumnValues::DateTime(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::DateTime(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn datetime_with_validity(
+    pub fn datetime_with_bitvec(
         values: impl IntoIterator<Item = DateTime>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::DateTime(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::DateTime(CowVec::new(values), bitvec)
     }
 
     pub fn time(values: impl IntoIterator<Item = Time>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Time(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Time(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn time_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Time(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Time(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn time_with_validity(
+    pub fn time_with_bitvec(
         values: impl IntoIterator<Item = Time>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Time(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Time(CowVec::new(values), bitvec)
     }
 
     pub fn interval(values: impl IntoIterator<Item = Interval>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Interval(CowVec::new(values), CowVec::new(vec![true; len]))
+        ColumnValues::Interval(CowVec::new(values), BitVec::new(len, true))
     }
 
     pub fn interval_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Interval(CowVec::with_capacity(capacity), CowVec::with_capacity(capacity))
+        ColumnValues::Interval(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
-    pub fn interval_with_validity(
+    pub fn interval_with_bitvec(
         values: impl IntoIterator<Item = Interval>,
-        validity: impl IntoIterator<Item = bool>,
+        bitvec: impl Into<BitVec>,
     ) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
-        let validity = validity.into_iter().collect::<Vec<_>>();
-        assert_eq!(validity.len(), values.len());
-        ColumnValues::Interval(CowVec::new(values), CowVec::new(validity))
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Interval(CowVec::new(values), bitvec)
     }
 
     pub fn undefined(len: usize) -> Self {

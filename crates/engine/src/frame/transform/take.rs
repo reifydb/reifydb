@@ -10,77 +10,77 @@ impl Frame {
 
         for col in &self.columns {
             let data = match &col.values {
-                ColumnValues::Bool(values, valid) => ColumnValues::Bool(
+                ColumnValues::Bool(values, bitvec) => ColumnValues::Bool(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Float4(values, valid) => ColumnValues::Float4(
+                ColumnValues::Float4(values, bitvec) => ColumnValues::Float4(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Float8(values, valid) => ColumnValues::Float8(
+                ColumnValues::Float8(values, bitvec) => ColumnValues::Float8(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Int1(values, valid) => ColumnValues::Int1(
+                ColumnValues::Int1(values, bitvec) => ColumnValues::Int1(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Int2(values, valid) => ColumnValues::Int2(
+                ColumnValues::Int2(values, bitvec) => ColumnValues::Int2(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Int4(values, valid) => ColumnValues::Int4(
+                ColumnValues::Int4(values, bitvec) => ColumnValues::Int4(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Int8(values, valid) => ColumnValues::Int8(
+                ColumnValues::Int8(values, bitvec) => ColumnValues::Int8(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Int16(values, valid) => ColumnValues::Int16(
+                ColumnValues::Int16(values, bitvec) => ColumnValues::Int16(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Utf8(values, valid) => ColumnValues::Utf8(
+                ColumnValues::Utf8(values, bitvec) => ColumnValues::Utf8(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Uint1(values, valid) => ColumnValues::Uint1(
+                ColumnValues::Uint1(values, bitvec) => ColumnValues::Uint1(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Uint2(values, valid) => ColumnValues::Uint2(
+                ColumnValues::Uint2(values, bitvec) => ColumnValues::Uint2(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Uint4(values, valid) => ColumnValues::Uint4(
+                ColumnValues::Uint4(values, bitvec) => ColumnValues::Uint4(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Uint8(values, valid) => ColumnValues::Uint8(
+                ColumnValues::Uint8(values, bitvec) => ColumnValues::Uint8(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Uint16(values, valid) => ColumnValues::Uint16(
+                ColumnValues::Uint16(values, bitvec) => ColumnValues::Uint16(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Date(values, valid) => ColumnValues::Date(
+                ColumnValues::Date(values, bitvec) => ColumnValues::Date(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::DateTime(values, valid) => ColumnValues::DateTime(
+                ColumnValues::DateTime(values, bitvec) => ColumnValues::DateTime(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Time(values, valid) => ColumnValues::Time(
+                ColumnValues::Time(values, bitvec) => ColumnValues::Time(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
-                ColumnValues::Interval(values, valid) => ColumnValues::Interval(
+                ColumnValues::Interval(values, bitvec) => ColumnValues::Interval(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
-                    CowVec::new(valid[..n.min(valid.len())].to_vec()),
+                    bitvec.take(n),
                 ),
                 ColumnValues::Undefined(len) => ColumnValues::Undefined(n.min(*len)),
             };
@@ -99,7 +99,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_bool_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::bool_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::bool_with_bitvec(
             "flag",
             [true, true, false],
             [false, true, true],
@@ -109,13 +109,13 @@ mod tests {
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::bool_with_validity([true], [false])
+            ColumnValues::bool_with_bitvec([true], [false])
         );
     }
 
     #[test]
     fn test_float4_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::float4_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::float4_with_bitvec(
             "a",
             [1.0, 2.0, 3.0],
             [true, false, true],
@@ -125,13 +125,13 @@ mod tests {
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::float4_with_validity([1.0, 2.0], [true, false])
+            ColumnValues::float4_with_bitvec([1.0, 2.0], [true, false])
         );
     }
 
     #[test]
     fn test_float8_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::float8_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::float8_with_bitvec(
             "a",
             [1f64, 2.0, 3.0, 4.0],
             [true, true, false, true],
@@ -141,26 +141,26 @@ mod tests {
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::float8_with_validity([1.0, 2.0], [true, true])
+            ColumnValues::float8_with_bitvec([1.0, 2.0], [true, true])
         );
     }
 
     #[test]
     fn test_int1_column() {
         let mut test_instance =
-            Frame::new(vec![FrameColumn::int1_with_validity("a", [1, 2, 3], [true, false, true])]);
+            Frame::new(vec![FrameColumn::int1_with_bitvec("a", [1, 2, 3], [true, false, true])]);
 
         test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::int1_with_validity([1, 2], [true, false])
+            ColumnValues::int1_with_bitvec([1, 2], [true, false])
         );
     }
 
     #[test]
     fn test_int2_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int2_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::int2_with_bitvec(
             "a",
             [1, 2, 3, 4],
             [true, true, false, true],
@@ -170,85 +170,79 @@ mod tests {
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::int2_with_validity([1, 2], [true, true])
+            ColumnValues::int2_with_bitvec([1, 2], [true, true])
         );
     }
 
     #[test]
     fn test_int4_column() {
         let mut test_instance =
-            Frame::new(vec![FrameColumn::int4_with_validity("a", [1, 2], [true, false])]);
+            Frame::new(vec![FrameColumn::int4_with_bitvec("a", [1, 2], [true, false])]);
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(test_instance.columns[0].values, ColumnValues::int4_with_validity([1], [true]));
+        assert_eq!(test_instance.columns[0].values, ColumnValues::int4_with_bitvec([1], [true]));
     }
 
     #[test]
     fn test_int8_column() {
         let mut test_instance =
-            Frame::new(vec![FrameColumn::int8_with_validity("a", [1, 2, 3], [false, true, true])]);
+            Frame::new(vec![FrameColumn::int8_with_bitvec("a", [1, 2, 3], [false, true, true])]);
 
         test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::int8_with_validity([1, 2], [false, true])
+            ColumnValues::int8_with_bitvec([1, 2], [false, true])
         );
     }
 
     #[test]
     fn test_int16_column() {
         let mut test_instance =
-            Frame::new(vec![FrameColumn::int16_with_validity("a", [1, 2], [true, true])]);
+            Frame::new(vec![FrameColumn::int16_with_bitvec("a", [1, 2], [true, true])]);
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(test_instance.columns[0].values, ColumnValues::int16_with_validity([1], [true]));
+        assert_eq!(test_instance.columns[0].values, ColumnValues::int16_with_bitvec([1], [true]));
     }
 
     #[test]
     fn test_uint1_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint1_with_validity(
-            "a",
-            [1, 2, 3],
-            [false, false, true],
-        )]);
+        let mut test_instance =
+            Frame::new(vec![FrameColumn::uint1_with_bitvec("a", [1, 2, 3], [false, false, true])]);
 
         test_instance.take(2).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::uint1_with_validity([1, 2], [false, false])
+            ColumnValues::uint1_with_bitvec([1, 2], [false, false])
         );
     }
 
     #[test]
     fn test_uint2_column() {
         let mut test_instance =
-            Frame::new(vec![FrameColumn::uint2_with_validity("a", [1, 2], [true, false])]);
+            Frame::new(vec![FrameColumn::uint2_with_bitvec("a", [1, 2], [true, false])]);
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(test_instance.columns[0].values, ColumnValues::uint2_with_validity([1], [true]));
+        assert_eq!(test_instance.columns[0].values, ColumnValues::uint2_with_bitvec([1], [true]));
     }
 
     #[test]
     fn test_uint4_column() {
         let mut test_instance =
-            Frame::new(vec![FrameColumn::uint4_with_validity("a", [10, 20], [false, true])]);
+            Frame::new(vec![FrameColumn::uint4_with_bitvec("a", [10, 20], [false, true])]);
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(
-            test_instance.columns[0].values,
-            ColumnValues::uint4_with_validity([10], [false])
-        );
+        assert_eq!(test_instance.columns[0].values, ColumnValues::uint4_with_bitvec([10], [false]));
     }
 
     #[test]
     fn test_uint8_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint8_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::uint8_with_bitvec(
             "a",
             [10, 20, 30],
             [true, true, false],
@@ -258,13 +252,13 @@ mod tests {
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::uint8_with_validity([10, 20], [true, true])
+            ColumnValues::uint8_with_bitvec([10, 20], [true, true])
         );
     }
 
     #[test]
     fn test_uint16_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint16_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::uint16_with_bitvec(
             "a",
             [100, 200, 300],
             [true, false, true],
@@ -274,13 +268,13 @@ mod tests {
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::uint16_with_validity([100], [true])
+            ColumnValues::uint16_with_bitvec([100], [true])
         );
     }
 
     #[test]
     fn test_text_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::string_with_validity(
+        let mut test_instance = Frame::new(vec![FrameColumn::utf8_with_bitvec(
             "t",
             ["a", "b", "c"],
             [true, false, true],
@@ -290,7 +284,7 @@ mod tests {
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::utf8_with_validity(["a".to_string(), "b".to_string()], [true, false])
+            ColumnValues::utf8_with_bitvec(["a".to_string(), "b".to_string()], [true, false])
         );
     }
 
@@ -323,13 +317,13 @@ mod tests {
     #[test]
     fn test_n_larger_than_len_is_safe() {
         let mut test_instance =
-            Frame::new(vec![FrameColumn::int2_with_validity("a", [10, 20], [true, false])]);
+            Frame::new(vec![FrameColumn::int2_with_bitvec("a", [10, 20], [true, false])]);
 
         test_instance.take(10).unwrap();
 
         assert_eq!(
             test_instance.columns[0].values,
-            ColumnValues::int2_with_validity([10, 20], [true, false])
+            ColumnValues::int2_with_bitvec([10, 20], [true, false])
         );
     }
 }

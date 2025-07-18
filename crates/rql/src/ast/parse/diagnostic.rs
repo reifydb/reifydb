@@ -18,7 +18,7 @@ impl Error {
                 help: Some(format!("expected token of type `{}`", expected)),
                 column: None,
                 notes: vec![],
-                caused_by: None,
+                cause: None,
             },
             UnsupportedToken { got } => Diagnostic {
                 code: "PA_002".to_string(),
@@ -29,7 +29,7 @@ impl Error {
                 help: Some("check for misplaced symbols or keywords".to_string()),
                 column: None,
                 notes: vec![],
-                caused_by: None,
+                cause: None,
             },
             InvalidType { got } => Diagnostic {
                 code: "PA_003".to_string(),
@@ -40,7 +40,7 @@ impl Error {
                 help: None,
                 column: None,
                 notes: vec![],
-                caused_by: None,
+                cause: None,
             },
             InvalidPolicy { got } => Diagnostic {
                 code: "PA_004".to_string(),
@@ -54,7 +54,7 @@ impl Error {
                 ),
                 column: None,
                 notes: vec![],
-                caused_by: None,
+                cause: None,
             },
             UnexpectedEndOfFile => Diagnostic {
                 code: "PA_999".to_string(),
@@ -65,7 +65,7 @@ impl Error {
                 help: Some("did you forget to complete your expression?".to_string()),
                 column: None,
                 notes: vec![],
-                caused_by: None,
+                cause: None,
             },
             Error::Passthrough { diagnostic } => diagnostic,
         }

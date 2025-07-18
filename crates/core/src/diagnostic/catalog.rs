@@ -14,7 +14,7 @@ pub fn schema_already_exists(span: Option<Span>, schema: &str) -> Diagnostic {
         help: Some("choose a different name or drop the existing schema first".to_string()),
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -28,7 +28,7 @@ pub fn schema_not_found(span: Option<Span>, schema: &str) -> Diagnostic {
         help: Some("make sure the schema exists before using it or create it first".to_string()),
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -42,7 +42,7 @@ pub fn table_already_exists(span: Option<Span>, schema: &str, table: &str) -> Di
         help: Some("choose a different name, drop the existing table or create table in a different schema".to_string()),
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -56,7 +56,7 @@ pub fn table_not_found(span: Span, schema: &str, table: &str) -> Diagnostic {
         help: Some("ensure the table exists or create it first using `CREATE TABLE`".to_string()),
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -75,7 +75,7 @@ pub fn column_already_exists(
         help: Some("choose a different column name or drop the existing one first".to_string()),
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }
 
@@ -89,6 +89,6 @@ pub fn column_policy_already_exists(policy: &str, column: &str) -> Diagnostic {
         help: Some("remove the existing policy first".to_string()),
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }

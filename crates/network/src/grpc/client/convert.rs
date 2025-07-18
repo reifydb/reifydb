@@ -23,7 +23,7 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
         column: grpc
             .column
             .map(|c| DiagnosticColumn { name: c.name, ty: Type::from_u8(c.ty as u8) }),
-        caused_by: grpc.caused_by.map(|cb| Box::from(convert_diagnostic(*cb))),
+        cause: grpc.cause.map(|cb| Box::from(convert_diagnostic(*cb))),
     }
 }
 
@@ -55,7 +55,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::bool_with_validity(data, validity)
+                ColumnValues::bool_with_bitvec(data, validity)
             }
 
             Type::Float4 => {
@@ -73,7 +73,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::float4_with_validity(data, validity)
+                ColumnValues::float4_with_bitvec(data, validity)
             }
 
             Type::Float8 => {
@@ -91,7 +91,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::float8_with_validity(data, validity)
+                ColumnValues::float8_with_bitvec(data, validity)
             }
 
             Type::Int1 => {
@@ -109,7 +109,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int1_with_validity(data, validity)
+                ColumnValues::int1_with_bitvec(data, validity)
             }
 
             Type::Int2 => {
@@ -127,7 +127,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int2_with_validity(data, validity)
+                ColumnValues::int2_with_bitvec(data, validity)
             }
 
             Type::Int4 => {
@@ -145,7 +145,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int4_with_validity(data, validity)
+                ColumnValues::int4_with_bitvec(data, validity)
             }
 
             Type::Int8 => {
@@ -163,7 +163,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int8_with_validity(data, validity)
+                ColumnValues::int8_with_bitvec(data, validity)
             }
 
             Type::Int16 => {
@@ -181,7 +181,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int16_with_validity(data, validity)
+                ColumnValues::int16_with_bitvec(data, validity)
             }
 
             Type::Uint1 => {
@@ -199,7 +199,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint1_with_validity(data, validity)
+                ColumnValues::uint1_with_bitvec(data, validity)
             }
 
             Type::Uint2 => {
@@ -217,7 +217,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint2_with_validity(data, validity)
+                ColumnValues::uint2_with_bitvec(data, validity)
             }
 
             Type::Uint4 => {
@@ -235,7 +235,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint4_with_validity(data, validity)
+                ColumnValues::uint4_with_bitvec(data, validity)
             }
 
             Type::Uint8 => {
@@ -253,7 +253,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint8_with_validity(data, validity)
+                ColumnValues::uint8_with_bitvec(data, validity)
             }
 
             Type::Uint16 => {
@@ -271,7 +271,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint16_with_validity(data, validity)
+                ColumnValues::uint16_with_bitvec(data, validity)
             }
 
             Type::Utf8 => {
@@ -289,7 +289,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::utf8_with_validity(data, validity)
+                ColumnValues::utf8_with_bitvec(data, validity)
             }
 
             Type::Date => {
@@ -312,7 +312,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::date_with_validity(data, validity)
+                ColumnValues::date_with_bitvec(data, validity)
             }
 
             Type::DateTime => {
@@ -335,7 +335,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::datetime_with_validity(data, validity)
+                ColumnValues::datetime_with_bitvec(data, validity)
             }
 
             Type::Time => {
@@ -360,7 +360,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::time_with_validity(data, validity)
+                ColumnValues::time_with_bitvec(data, validity)
             }
 
             Type::Interval => {
@@ -378,7 +378,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::interval_with_validity(data, validity)
+                ColumnValues::interval_with_bitvec(data, validity)
             }
 
             Type::Undefined => ColumnValues::undefined(values.len()),

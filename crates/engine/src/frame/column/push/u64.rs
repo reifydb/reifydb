@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{ColumnValues, Push};
-use reifydb_core::CowVec;
+use reifydb_core::{BitVec, CowVec};
 use reifydb_core::value::number::{SafeConvert, SafeDemote, SafePromote};
 
 impl Push<u64> for ColumnValues {
@@ -94,10 +94,10 @@ impl Push<u64> for ColumnValues {
             },
             ColumnValues::Undefined(len) => {
                 let mut values = vec![0u64; *len];
-                let mut validity = vec![false; *len];
+                let mut validity = BitVec::new(*len, false);
                 values.push(value);
                 validity.push(true);
-                *self = ColumnValues::Uint8(CowVec::new(values), CowVec::new(validity));
+                *self = ColumnValues::Uint8(CowVec::new(values), validity);
             }
             other => {
                 panic!("called `push::<u64>()` on incompatible ColumnValues::{:?}", other.ty());

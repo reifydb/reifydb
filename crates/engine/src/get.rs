@@ -6,8 +6,12 @@ use crate::frame::{ColumnValues, Frame};
 impl Frame {
     pub fn get_bool(&self, name: &str, idx: usize) -> Option<bool> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Bool(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Bool(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -15,8 +19,12 @@ impl Frame {
 
     pub fn get_float4(&self, name: &str, idx: usize) -> Option<f32> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Float4(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Float4(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -24,8 +32,12 @@ impl Frame {
 
     pub fn get_float8(&self, name: &str, idx: usize) -> Option<f64> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Float8(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Float8(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -33,8 +45,12 @@ impl Frame {
 
     pub fn get_int1(&self, name: &str, idx: usize) -> Option<i8> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Int1(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Int1(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -42,8 +58,12 @@ impl Frame {
 
     pub fn get_int2(&self, name: &str, idx: usize) -> Option<i16> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Int2(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Int2(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -51,8 +71,12 @@ impl Frame {
 
     pub fn get_int4(&self, name: &str, idx: usize) -> Option<i32> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Int4(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Int4(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -60,8 +84,12 @@ impl Frame {
 
     pub fn get_int8(&self, name: &str, idx: usize) -> Option<i64> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Int8(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Int8(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -69,8 +97,12 @@ impl Frame {
 
     pub fn get_int16(&self, name: &str, idx: usize) -> Option<i128> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Int16(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Int16(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -78,8 +110,12 @@ impl Frame {
 
     pub fn get_uint1(&self, name: &str, idx: usize) -> Option<u8> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Uint1(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Uint1(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -87,8 +123,12 @@ impl Frame {
 
     pub fn get_uint2(&self, name: &str, idx: usize) -> Option<u16> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Uint2(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Uint2(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -96,8 +136,12 @@ impl Frame {
 
     pub fn get_uint4(&self, name: &str, idx: usize) -> Option<u32> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Uint4(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Uint4(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -105,8 +149,12 @@ impl Frame {
 
     pub fn get_uint8(&self, name: &str, idx: usize) -> Option<u64> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Uint8(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Uint8(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -114,17 +162,25 @@ impl Frame {
 
     pub fn get_uint16(&self, name: &str, idx: usize) -> Option<u128> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Uint16(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx])
+            ColumnValues::Uint16(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx])
+                } else {
+                    None
+                }
             }
             _ => None,
         }
     }
 
-    pub fn get_string(&self, name: &str, idx: usize) -> Option<&str> {
+    pub fn get_str(&self, name: &str, idx: usize) -> Option<&str> {
         match &self.columns[*self.index.get(name)?].values {
-            ColumnValues::Utf8(values, valid) => {
-                valid.get(idx).copied().unwrap_or(false).then(|| values[idx].as_str())
+            ColumnValues::Utf8(v, b) => {
+                if b.get(idx) {
+                    Some(v[idx].as_str())
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -141,7 +197,7 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     mod bool {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -152,7 +208,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::bool_with_validity([true], [true]),
+                    values: ColumnValues::bool_with_bitvec([true], [true]),
                 }],
                 index,
             };
@@ -173,7 +229,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::bool_with_validity([true], [false]),
+                    values: ColumnValues::bool_with_bitvec([true], [false]),
                 }],
                 index,
             };
@@ -188,7 +244,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -196,7 +252,7 @@ mod tests {
         }
     }
     mod float4 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -207,7 +263,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::float4_with_validity([3.14], [true]),
+                    values: ColumnValues::float4_with_bitvec([3.14], [true]),
                 }],
                 index,
             };
@@ -228,7 +284,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::float4_with_validity([3.14], [false]),
+                    values: ColumnValues::float4_with_bitvec([3.14], [false]),
                 }],
                 index,
             };
@@ -243,7 +299,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -251,7 +307,7 @@ mod tests {
         }
     }
     mod float8 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -262,7 +318,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::float8_with_validity([2.718], [true]),
+                    values: ColumnValues::float8_with_bitvec([2.718], [true]),
                 }],
                 index,
             };
@@ -283,7 +339,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::float8_with_validity([2.718], [false]),
+                    values: ColumnValues::float8_with_bitvec([2.718], [false]),
                 }],
                 index,
             };
@@ -298,7 +354,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -307,7 +363,7 @@ mod tests {
     }
 
     mod int1 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -318,7 +374,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int1_with_validity([1], [true]),
+                    values: ColumnValues::int1_with_bitvec([1], [true]),
                 }],
                 index,
             };
@@ -339,7 +395,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int1_with_validity([1], [false]),
+                    values: ColumnValues::int1_with_bitvec([1], [false]),
                 }],
                 index,
             };
@@ -354,7 +410,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -362,7 +418,7 @@ mod tests {
         }
     }
     mod int2 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -373,7 +429,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int2_with_validity([2], [true]),
+                    values: ColumnValues::int2_with_bitvec([2], [true]),
                 }],
                 index,
             };
@@ -394,7 +450,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int2_with_validity([2], [false]),
+                    values: ColumnValues::int2_with_bitvec([2], [false]),
                 }],
                 index,
             };
@@ -409,7 +465,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -417,7 +473,7 @@ mod tests {
         }
     }
     mod int4 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -428,7 +484,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([42], [true]),
+                    values: ColumnValues::int4_with_bitvec([42], [true]),
                 }],
                 index,
             };
@@ -449,7 +505,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([42], [false]),
+                    values: ColumnValues::int4_with_bitvec([42], [false]),
                 }],
                 index,
             };
@@ -464,7 +520,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::float4_with_validity([3.14], [true]),
+                    values: ColumnValues::float4_with_bitvec([3.14], [true]),
                 }],
                 index,
             };
@@ -472,7 +528,7 @@ mod tests {
         }
     }
     mod int8 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -483,7 +539,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int8_with_validity([8], [true]),
+                    values: ColumnValues::int8_with_bitvec([8], [true]),
                 }],
                 index,
             };
@@ -504,7 +560,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int8_with_validity([8], [false]),
+                    values: ColumnValues::int8_with_bitvec([8], [false]),
                 }],
                 index,
             };
@@ -519,7 +575,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -527,7 +583,7 @@ mod tests {
         }
     }
     mod int16 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -538,7 +594,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int16_with_validity([16], [true]),
+                    values: ColumnValues::int16_with_bitvec([16], [true]),
                 }],
                 index,
             };
@@ -559,7 +615,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int16_with_validity([16], [false]),
+                    values: ColumnValues::int16_with_bitvec([16], [false]),
                 }],
                 index,
             };
@@ -574,7 +630,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -583,7 +639,7 @@ mod tests {
     }
 
     mod uint1 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -594,7 +650,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint1_with_validity([1], [true]),
+                    values: ColumnValues::uint1_with_bitvec([1], [true]),
                 }],
                 index,
             };
@@ -615,7 +671,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint1_with_validity([1], [false]),
+                    values: ColumnValues::uint1_with_bitvec([1], [false]),
                 }],
                 index,
             };
@@ -630,7 +686,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -638,7 +694,7 @@ mod tests {
         }
     }
     mod uint2 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -649,7 +705,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint2_with_validity([2], [true]),
+                    values: ColumnValues::uint2_with_bitvec([2], [true]),
                 }],
                 index,
             };
@@ -670,7 +726,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint2_with_validity([2], [false]),
+                    values: ColumnValues::uint2_with_bitvec([2], [false]),
                 }],
                 index,
             };
@@ -685,7 +741,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -693,7 +749,7 @@ mod tests {
         }
     }
     mod uint4 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -704,7 +760,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint4_with_validity([4], [true]),
+                    values: ColumnValues::uint4_with_bitvec([4], [true]),
                 }],
                 index,
             };
@@ -725,7 +781,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint4_with_validity([4], [false]),
+                    values: ColumnValues::uint4_with_bitvec([4], [false]),
                 }],
                 index,
             };
@@ -740,7 +796,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -748,7 +804,7 @@ mod tests {
         }
     }
     mod uint8 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -759,7 +815,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint8_with_validity([8], [true]),
+                    values: ColumnValues::uint8_with_bitvec([8], [true]),
                 }],
                 index,
             };
@@ -780,7 +836,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint8_with_validity([8], [false]),
+                    values: ColumnValues::uint8_with_bitvec([8], [false]),
                 }],
                 index,
             };
@@ -795,7 +851,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -803,7 +859,7 @@ mod tests {
         }
     }
     mod uint16 {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -814,7 +870,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint16_with_validity([16], [true]),
+                    values: ColumnValues::uint16_with_bitvec([16], [true]),
                 }],
                 index,
             };
@@ -835,7 +891,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::uint16_with_validity([16], [false]),
+                    values: ColumnValues::uint16_with_bitvec([16], [false]),
                 }],
                 index,
             };
@@ -850,7 +906,7 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([123], [true]),
+                    values: ColumnValues::int4_with_bitvec([123], [true]),
                 }],
                 index,
             };
@@ -859,7 +915,7 @@ mod tests {
     }
 
     mod string {
-        use crate::frame::{FrameColumn, ColumnValues, Frame};
+        use crate::frame::{ColumnValues, Frame, FrameColumn};
         use std::collections::HashMap;
 
         #[test]
@@ -870,17 +926,17 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::utf8_with_validity(["hello".to_string()], [true]),
+                    values: ColumnValues::utf8_with_bitvec(["hello".to_string()], [true]),
                 }],
                 index,
             };
-            assert_eq!(frame.get_string("col", 0), Some("hello"));
+            assert_eq!(frame.get_str("col", 0), Some("hello"));
         }
 
         #[test]
         fn test_value_not_found() {
             let frame = Frame { name: "frame".to_string(), columns: vec![], index: HashMap::new() };
-            assert_eq!(frame.get_string("col", 0), None);
+            assert_eq!(frame.get_str("col", 0), None);
         }
 
         #[test]
@@ -891,11 +947,11 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::utf8_with_validity(["hello".to_string()], [false]),
+                    values: ColumnValues::utf8_with_bitvec(["hello".to_string()], [false]),
                 }],
                 index,
             };
-            assert_eq!(frame.get_string("col", 0), None);
+            assert_eq!(frame.get_str("col", 0), None);
         }
 
         #[test]
@@ -906,11 +962,11 @@ mod tests {
                 name: "frame".to_string(),
                 columns: vec![FrameColumn {
                     name: "col".into(),
-                    values: ColumnValues::int4_with_validity([1], [true]),
+                    values: ColumnValues::int4_with_bitvec([1], [true]),
                 }],
                 index,
             };
-            assert_eq!(frame.get_string("col", 0), None);
+            assert_eq!(frame.get_str("col", 0), None);
         }
     }
 }

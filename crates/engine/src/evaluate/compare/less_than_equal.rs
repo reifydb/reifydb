@@ -2,17 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::frame::{FrameColumn, ColumnValues};
-use reifydb_core::value::{IsNumber, IsTemporal, temporal};
+use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::value::number::Promote;
-use reifydb_core::{CowVec, Span, value};
+use reifydb_core::value::{IsNumber, IsTemporal, temporal};
+use reifydb_core::{BitVec, CowVec, Span, value};
 use reifydb_rql::expression::LessThanEqualExpression;
 
 impl Evaluator {
     pub(crate) fn less_than_equal(
-		&mut self,
-		lte: &LessThanEqualExpression,
-		ctx: &EvaluationContext,
+        &mut self,
+        lte: &LessThanEqualExpression,
+        ctx: &EvaluationContext,
     ) -> crate::evaluate::Result<FrameColumn> {
         let left = self.evaluate(&lte.left, ctx)?;
         let right = self.evaluate(&lte.right, ctx)?;
@@ -485,8 +485,8 @@ impl Evaluator {
 pub fn compare_number<L, R>(
     l: &CowVec<L>,
     r: &CowVec<R>,
-    lv: &CowVec<bool>,
-    rv: &CowVec<bool>,
+    lv: &BitVec,
+    rv: &BitVec,
     span: Span,
 ) -> FrameColumn
 where
@@ -495,66 +495,66 @@ where
     <L as Promote<R>>::Output: PartialOrd,
 {
     let mut values = Vec::with_capacity(l.len());
-    let mut valid = Vec::with_capacity(l.len());
+    let mut bitvec = Vec::with_capacity(l.len());
 
     for i in 0..l.len() {
-        if lv[i] && rv[i] {
+        if lv.get(i) && rv.get(i) {
             values.push(value::number::is_less_than_equal(l[i], r[i]));
-            valid.push(true);
+            bitvec.push(true);
         } else {
             values.push(false);
-            valid.push(false);
+            bitvec.push(false);
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
+    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
 }
 
 fn compare_temporal<T>(
     l: &CowVec<T>,
     r: &CowVec<T>,
-    lv: &CowVec<bool>,
-    rv: &CowVec<bool>,
+    lv: &BitVec,
+    rv: &BitVec,
     span: Span,
 ) -> FrameColumn
 where
     T: IsTemporal,
 {
     let mut values = Vec::with_capacity(l.len());
-    let mut valid = Vec::with_capacity(lv.len());
+    let mut bitvec = Vec::with_capacity(lv.len());
 
     for i in 0..l.len() {
-        if lv[i] && rv[i] {
+        if lv.get(i) && rv.get(i) {
             values.push(temporal::is_less_than_equal(l[i], r[i]));
-            valid.push(true);
+            bitvec.push(true);
         } else {
             values.push(false);
-            valid.push(false);
+            bitvec.push(false);
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
+    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
 }
 
 fn compare_utf8(
     l: &CowVec<String>,
     r: &CowVec<String>,
-    lv: &CowVec<bool>,
-    rv: &CowVec<bool>,
+    lv: &BitVec,
+    rv: &BitVec,
     span: Span,
 ) -> FrameColumn {
     let mut values = Vec::with_capacity(l.len());
-    let mut valid = Vec::with_capacity(lv.len());
+    let mut bitvec = Vec::with_capacity(lv.len());
 
     for i in 0..l.len() {
-        if lv[i] && rv[i] {
+        if lv.get(i) && rv.get(i) {
             values.push(l[i] <= r[i]);
-            valid.push(true);
+            bitvec.push(true);
         } else {
             values.push(false);
-            valid.push(false);
+            bitvec.push(false);
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_validity(values, valid) }
+    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
 }

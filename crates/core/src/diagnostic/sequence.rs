@@ -15,6 +15,6 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
         help: Some(format!("maximum value for `{}` is `{}`", value, value_max(Type::Uint4))),
         column: None,
         notes: vec![],
-        caused_by: None,
+        cause: None,
     }
 }

@@ -35,9 +35,9 @@ impl ExecutionPlan for FilterNode {
             for filter_expr in &self.expressions {
                 let result = evaluate(filter_expr, &ctx)?;
                 match result.values {
-                    ColumnValues::Bool(values, valid) => {
+                    ColumnValues::Bool(values, bitvec) => {
                         for i in 0..row_count {
-                            ctx.mask.set(i, ctx.mask.get(i) & &valid[i] & &values[i]);
+                            ctx.mask.set(i, ctx.mask.get(i) & bitvec.get(i) & values[i]);
                         }
                     }
                     _ => panic!("filter expression must evaluate to a boolean column"),
