@@ -51,3 +51,18 @@ pub fn invalid_temporal(span: Span, target: Type, cause: Diagnostic) -> Diagnost
         cause: Some(Box::from(cause)),
     }
 }
+
+pub fn invalid_boolean(span: Span, cause: Diagnostic) -> Diagnostic {
+    let label = Some("failed to cast to bool".to_string());
+    Diagnostic {
+        code: "CAST_004".to_string(),
+        statement: None,
+        message: "failed to cast to bool".to_string(),
+        span: Some(span),
+        label,
+        help: None,
+        notes: vec![],
+        column: None,
+        cause: Some(Box::from(cause)),
+    }
+}

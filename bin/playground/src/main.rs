@@ -23,7 +23,9 @@ fn main() {
     // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field: int16 policy (saturation error) )"#).unwrap();
-    db.tx_as(&root, r#"create table test.text_test9(col: interval)"#).unwrap();
+    // db.tx_as(&root, r#"create table test.text_test5(col: text)"#).unwrap();
+    // db.tx_as(&root, r#"from [{ col: "yes" }] insert test.text_test5"#).unwrap();
+    // db.tx_as(&root, r#"from test.text_test5 map cast(col, bool)"#).unwrap();
     // db.tx_as(&root, r#"(tx 'from [{ col: cast("P30D", interval)}] insert test.text_test9')"#).unwrap();
 
 
@@ -44,7 +46,7 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            map cast(cast(0,int1), text);
+            map cast(cast("yes", utf8), bool);
         "#,
         )
         .unwrap();

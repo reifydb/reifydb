@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
+pub mod boolean;
 mod date;
 mod datetime;
 mod interval;

@@ -7,6 +7,7 @@ use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::diagnostic::cast;
 use reifydb_core::diagnostic::number;
 use reifydb_core::diagnostic::temporal;
+use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
 use reifydb_core::{Span, Type};
@@ -43,9 +44,10 @@ impl Evaluator {
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
         Ok(match expr {
-            ConstantExpression::Bool { span } => {
-                ColumnValues::bool(vec![span.fragment == "true"; row_count])
-            }
+            ConstantExpression::Bool { span } => match parse_bool(span) {
+                Ok(v) => return Ok(ColumnValues::bool(vec![v; row_count])),
+                Err(err) => return Err(Error(err.diagnostic())),
+            },
             ConstantExpression::Number { span } => {
                 if span.fragment.contains(".") || span.fragment.contains("e") {
                     match parse_float(&span) {
@@ -88,56 +90,105 @@ impl Evaluator {
     ) -> evaluate::Result<ColumnValues> {
         Ok(match (expr, ty) {
             (ConstantExpression::Bool { span }, Type::Bool) => {
-                ColumnValues::bool(vec![span.fragment == "true"; row_count])
+                let value = parse_bool(span).map_err(|err| Error(err.diagnostic()))?;
+                ColumnValues::bool(vec![value; row_count])
             }
 
             // Bool to numeric types
             (ConstantExpression::Bool { span }, Type::Float4) => {
-                let value = if span.fragment == "true" { 1.0f32 } else { 0.0f32 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1.0f32
+                } else {
+                    0.0f32
+                };
                 ColumnValues::float4(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Float8) => {
-                let value = if span.fragment == "true" { 1.0f64 } else { 0.0f64 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1.0f64
+                } else {
+                    0.0f64
+                };
                 ColumnValues::float8(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int1) => {
-                let value = if span.fragment == "true" { 1i8 } else { 0i8 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1i8
+                } else {
+                    0i8
+                };
                 ColumnValues::int1(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int2) => {
-                let value = if span.fragment == "true" { 1i16 } else { 0i16 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1i16
+                } else {
+                    0i16
+                };
                 ColumnValues::int2(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int4) => {
-                let value = if span.fragment == "true" { 1i32 } else { 0i32 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1i32
+                } else {
+                    0i32
+                };
                 ColumnValues::int4(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int8) => {
-                let value = if span.fragment == "true" { 1i64 } else { 0i64 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1i64
+                } else {
+                    0i64
+                };
                 ColumnValues::int8(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int16) => {
-                let value = if span.fragment == "true" { 1i128 } else { 0i128 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1i128
+                } else {
+                    0i128
+                };
                 ColumnValues::int16(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint1) => {
-                let value = if span.fragment == "true" { 1u8 } else { 0u8 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1u8
+                } else {
+                    0u8
+                };
                 ColumnValues::uint1(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint2) => {
-                let value = if span.fragment == "true" { 1u16 } else { 0u16 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1u16
+                } else {
+                    0u16
+                };
                 ColumnValues::uint2(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint4) => {
-                let value = if span.fragment == "true" { 1u32 } else { 0u32 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1u32
+                } else {
+                    0u32
+                };
                 ColumnValues::uint4(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint8) => {
-                let value = if span.fragment == "true" { 1u64 } else { 0u64 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1u64
+                } else {
+                    0u64
+                };
                 ColumnValues::uint8(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint16) => {
-                let value = if span.fragment == "true" { 1u128 } else { 0u128 };
+                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                    1u128
+                } else {
+                    0u128
+                };
                 ColumnValues::uint16(vec![value; row_count])
             }
 
@@ -421,16 +472,12 @@ impl Evaluator {
             }
 
             // Text to numeric types
-            (ConstantExpression::Text { span }, Type::Bool) => {
-                let s = &span.fragment;
-                if s == "true" {
-                    ColumnValues::bool(vec![true; row_count])
-                } else if s == "false" {
-                    ColumnValues::bool(vec![false; row_count])
-                } else {
-                    ColumnValues::undefined(row_count)
+            (ConstantExpression::Text { span }, Type::Bool) => match parse_bool(span) {
+                Ok(value) => ColumnValues::bool(vec![value; row_count]),
+                Err(err) => {
+                    return Err(Error(cast::invalid_boolean(span.clone(), err.diagnostic())));
                 }
-            }
+            },
             (ConstantExpression::Text { span }, Type::Float4) => match parse_float::<f32>(&span) {
                 Ok(v) => ColumnValues::float4(vec![v; row_count]),
                 Err(err) => {
@@ -485,55 +532,42 @@ impl Evaluator {
                 ])
             }
 
-
-            (ConstantExpression::Text { span }, Type::Int16) => {
-                ColumnValues::int16(vec![
+            (ConstantExpression::Text { span }, Type::Int16) => ColumnValues::int16(vec![
                     parse_int::<i128>(&span).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Int16, e.diagnostic(),)
                     ))?;
                     row_count
-                ])
-            }
-            (ConstantExpression::Text { span }, Type::Uint1) => {
-                ColumnValues::uint1(vec![
+                ]),
+            (ConstantExpression::Text { span }, Type::Uint1) => ColumnValues::uint1(vec![
                     parse_uint::<u8>(&span).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint1, e.diagnostic(),)
                     ))?;
                     row_count
-                ])
-            }
-            (ConstantExpression::Text { span }, Type::Uint2) => {
-                ColumnValues::uint2(vec![
+                ]),
+            (ConstantExpression::Text { span }, Type::Uint2) => ColumnValues::uint2(vec![
                     parse_uint::<u16>(&span).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint2, e.diagnostic(),)
                     ))?;
                     row_count
-                ])
-            }
-            (ConstantExpression::Text { span }, Type::Uint4) => {
-                ColumnValues::uint4(vec![
+                ]),
+            (ConstantExpression::Text { span }, Type::Uint4) => ColumnValues::uint4(vec![
                     parse_uint::<u32>(&span).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint4, e.diagnostic(),)
                     ))?;
                     row_count
-                ])
-            }
-            (ConstantExpression::Text { span }, Type::Uint8) => {
-                ColumnValues::uint8(vec![
+                ]),
+            (ConstantExpression::Text { span }, Type::Uint8) => ColumnValues::uint8(vec![
                     parse_uint::<u64>(&span).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint8, e.diagnostic(),)
                     ))?;
                     row_count
-                ])
-            }
-            (ConstantExpression::Text { span }, Type::Uint16) => {
-                ColumnValues::uint16(vec![
+                ]),
+            (ConstantExpression::Text { span }, Type::Uint16) => ColumnValues::uint16(vec![
                     parse_uint::<u128>(&span).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint16, e.diagnostic(),)
                     ))?;
                     row_count
-                ])
-            }
+                ]),
 
             (ConstantExpression::Text { span }, Type::Date) => {
                 let date = parse_date(span)

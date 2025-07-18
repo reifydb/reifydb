@@ -4,8 +4,8 @@
 use crate::evaluate;
 use crate::evaluate::{Error, EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
-use reifydb_core::Value;
 use reifydb_core::diagnostic::query::column_not_found;
+use reifydb_core::{Date, DateTime, Interval, Time, Value};
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
@@ -389,7 +389,7 @@ impl Evaluator {
                                 bitvec.push(true);
                             }
                             _ => {
-                                values.push(reifydb_core::Date::default());
+                                values.push(Date::default());
                                 bitvec.push(false);
                             }
                         }
@@ -414,7 +414,7 @@ impl Evaluator {
                                 bitvec.push(true);
                             }
                             _ => {
-                                values.push(reifydb_core::DateTime::default());
+                                values.push(DateTime::default());
                                 bitvec.push(false);
                             }
                         }
@@ -439,7 +439,7 @@ impl Evaluator {
                                 bitvec.push(true);
                             }
                             _ => {
-                                values.push(reifydb_core::Time::default());
+                                values.push(Time::default());
                                 bitvec.push(false);
                             }
                         }
@@ -464,7 +464,7 @@ impl Evaluator {
                                 bitvec.push(true);
                             }
                             _ => {
-                                values.push(reifydb_core::Interval::default());
+                                values.push(Interval::default());
                                 bitvec.push(false);
                             }
                         }

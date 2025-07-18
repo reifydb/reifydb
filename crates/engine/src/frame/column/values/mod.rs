@@ -82,129 +82,129 @@ impl ColumnValues {
     // FIXME wrapping and then later unwrapping a value feels pretty stupid -- FIXME
     pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
         match self {
-            ColumnValues::Bool(values, validity) => Box::new(
+            ColumnValues::Bool(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Bool(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Float4(values, validity) => Box::new(
+            ColumnValues::Float4(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::float4(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Float8(values, validity) => Box::new(
+            ColumnValues::Float8(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::float8(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Int1(values, validity) => Box::new(
+            ColumnValues::Int1(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Int1(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Int2(values, validity) => Box::new(
+            ColumnValues::Int2(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Int2(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Int4(values, validity) => Box::new(
+            ColumnValues::Int4(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Int4(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Int8(values, validity) => Box::new(
+            ColumnValues::Int8(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Int8(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Int16(values, validity) => Box::new(
+            ColumnValues::Int16(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Int16(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Utf8(values, validity) => Box::new(
+            ColumnValues::Utf8(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Utf8(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Uint1(values, validity) => Box::new(
+            ColumnValues::Uint1(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Uint1(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Uint2(values, validity) => Box::new(
+            ColumnValues::Uint2(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Uint2(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Uint4(values, validity) => Box::new(
+            ColumnValues::Uint4(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Uint4(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Uint8(values, validity) => Box::new(
+            ColumnValues::Uint8(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Uint8(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Uint16(values, validity) => Box::new(
+            ColumnValues::Uint16(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Uint16(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Date(values, validity) => Box::new(
+            ColumnValues::Date(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Date(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::DateTime(values, validity) => Box::new(
+            ColumnValues::DateTime(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::DateTime(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Time(values, validity) => Box::new(
+            ColumnValues::Time(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Time(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
-            ColumnValues::Interval(values, validity) => Box::new(
+            ColumnValues::Interval(values, bitvec) => Box::new(
                 values
                     .iter()
-                    .zip(validity.iter())
+                    .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Interval(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),

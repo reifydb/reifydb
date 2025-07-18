@@ -5,12 +5,13 @@ use crate::evaluate::{Convert, Demote, Error, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::diagnostic::cast;
 use reifydb_core::value::number::{
-    SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,
+    parse_float, parse_int, parse_uint, SafeConvert, SafeDemote, SafePromote,
 };
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
 use reifydb_core::{BitVec, Type};
 use reifydb_core::{Date, DateTime, Interval, Span, Time};
 use std::fmt::Display;
+use reifydb_core::value::boolean::parse_bool;
 
 impl ColumnValues {
     pub fn adjust(
@@ -32,12 +33,12 @@ impl ColumnValues {
             demote => [ $( ($dem_variant:ident, $dem_ty:ty) ),* ],
             convert => [ $( ($con_variant:ident, $con_ty:ty) ),* ]
         ) => {
-            if let ColumnValues::$src_variant(values, validity) = self {
+            if let ColumnValues::$src_variant(values, bitvec) = self {
                 match target {
                     $(
                         $pro_variant => return promote_vec::<$src_ty, $pro_ty>(
                             values,
-                            validity,
+                            bitvec,
                             ctx,
                             &span,
                             $pro_variant,
@@ -47,7 +48,7 @@ impl ColumnValues {
                     $(
                         $dem_variant => return demote_vec::<$src_ty, $dem_ty>(
                                 values,
-                                validity,
+                                bitvec,
                                 ctx,
                                 &span,
                                 $dem_variant,
@@ -57,7 +58,7 @@ impl ColumnValues {
                     $(
                         $con_variant => return convert_vec::<$src_ty, $con_ty>(
                             values,
-                            validity,
+                            bitvec,
                             ctx,
                             &span,
                             $con_variant,
@@ -143,47 +144,47 @@ impl ColumnValues {
         );
 
         // Handle Bool conversions
-        if let ColumnValues::Bool(values, validity) = self {
+        if let ColumnValues::Bool(values, bitvec) = self {
             match target {
                 Type::Bool => return Ok(self.clone()),
-                Type::Int1 => return bool_to_numeric_vec(values, validity, target),
-                Type::Int2 => return bool_to_numeric_vec(values, validity, target),
-                Type::Int4 => return bool_to_numeric_vec(values, validity, target),
-                Type::Int8 => return bool_to_numeric_vec(values, validity, target),
-                Type::Int16 => return bool_to_numeric_vec(values, validity, target),
-                Type::Uint1 => return bool_to_numeric_vec(values, validity, target),
-                Type::Uint2 => return bool_to_numeric_vec(values, validity, target),
-                Type::Uint4 => return bool_to_numeric_vec(values, validity, target),
-                Type::Uint8 => return bool_to_numeric_vec(values, validity, target),
-                Type::Uint16 => return bool_to_numeric_vec(values, validity, target),
-                Type::Float4 => return bool_to_numeric_vec(values, validity, target),
-                Type::Float8 => return bool_to_numeric_vec(values, validity, target),
-                Type::Utf8 => return bool_to_text_vec(values, validity),
+                Type::Int1 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Int2 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Int4 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Int8 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Int16 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Uint1 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Uint2 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Uint4 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Uint8 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Uint16 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Float4 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Float8 => return bool_to_numeric_vec(values, bitvec, target),
+                Type::Utf8 => return bool_to_text_vec(values, bitvec),
                 _ => {}
             }
         }
 
         // Handle Utf8 conversions
-        if let ColumnValues::Utf8(values, validity) = self {
+        if let ColumnValues::Utf8(values, bitvec) = self {
             match target {
                 Type::Utf8 => return Ok(self.clone()),
-                Type::Bool => return text_to_bool_vec(values, validity),
-                Type::Int1 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Int2 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Int4 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Int8 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Int16 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Uint1 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Uint2 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Uint4 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Uint8 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Uint16 => return text_to_numeric_vec(values, validity, target, &span),
-                Type::Float4 => return text_to_float_vec(values, validity, target, &span),
-                Type::Float8 => return text_to_float_vec(values, validity, target, &span),
-                Type::Date => return text_to_date_vec(values, validity, &span),
-                Type::DateTime => return text_to_datetime_vec(values, validity, &span),
-                Type::Time => return text_to_time_vec(values, validity, &span),
-                Type::Interval => return text_to_interval_vec(values, validity, &span),
+                Type::Bool => return text_to_bool_vec(values, bitvec, &span),
+                Type::Int1 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Int2 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Int4 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Int8 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Int16 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Uint1 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Uint2 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Uint4 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Uint8 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Uint16 => return text_to_numeric_vec(values, bitvec, target, &span),
+                Type::Float4 => return text_to_float_vec(values, bitvec, target, &span),
+                Type::Float8 => return text_to_float_vec(values, bitvec, target, &span),
+                Type::Date => return text_to_date_vec(values, bitvec, &span),
+                Type::DateTime => return text_to_datetime_vec(values, bitvec, &span),
+                Type::Time => return text_to_time_vec(values, bitvec, &span),
+                Type::Interval => return text_to_interval_vec(values, bitvec, &span),
                 _ => {}
             }
         }
@@ -191,66 +192,66 @@ impl ColumnValues {
         // Handle numeric to Bool conversions
         match target {
             Type::Bool => match self {
-                ColumnValues::Int1(values, validity) => return i8_to_bool_vec(values, validity),
-                ColumnValues::Int2(values, validity) => return i16_to_bool_vec(values, validity),
-                ColumnValues::Int4(values, validity) => return i32_to_bool_vec(values, validity),
-                ColumnValues::Int8(values, validity) => return i64_to_bool_vec(values, validity),
-                ColumnValues::Int16(values, validity) => return i128_to_bool_vec(values, validity),
-                ColumnValues::Uint1(values, validity) => return u8_to_bool_vec(values, validity),
-                ColumnValues::Uint2(values, validity) => return u16_to_bool_vec(values, validity),
-                ColumnValues::Uint4(values, validity) => return u32_to_bool_vec(values, validity),
-                ColumnValues::Uint8(values, validity) => return u64_to_bool_vec(values, validity),
-                ColumnValues::Uint16(values, validity) => {
-                    return u128_to_bool_vec(values, validity);
+                ColumnValues::Int1(values, bitvec) => return i8_to_bool_vec(values, bitvec),
+                ColumnValues::Int2(values, bitvec) => return i16_to_bool_vec(values, bitvec),
+                ColumnValues::Int4(values, bitvec) => return i32_to_bool_vec(values, bitvec),
+                ColumnValues::Int8(values, bitvec) => return i64_to_bool_vec(values, bitvec),
+                ColumnValues::Int16(values, bitvec) => return i128_to_bool_vec(values, bitvec),
+                ColumnValues::Uint1(values, bitvec) => return u8_to_bool_vec(values, bitvec),
+                ColumnValues::Uint2(values, bitvec) => return u16_to_bool_vec(values, bitvec),
+                ColumnValues::Uint4(values, bitvec) => return u32_to_bool_vec(values, bitvec),
+                ColumnValues::Uint8(values, bitvec) => return u64_to_bool_vec(values, bitvec),
+                ColumnValues::Uint16(values, bitvec) => {
+                    return u128_to_bool_vec(values, bitvec);
                 }
-                ColumnValues::Float4(values, validity) => return f32_to_bool_vec(values, validity),
-                ColumnValues::Float8(values, validity) => return f64_to_bool_vec(values, validity),
+                ColumnValues::Float4(values, bitvec) => return f32_to_bool_vec(values, bitvec),
+                ColumnValues::Float8(values, bitvec) => return f64_to_bool_vec(values, bitvec),
                 _ => {}
             },
             Type::Utf8 => match self {
-                ColumnValues::Int1(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Int1(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Int2(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Int2(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Int4(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Int4(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Int8(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Int8(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Int16(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Int16(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Uint1(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Uint1(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Uint2(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Uint2(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Uint4(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Uint4(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Uint8(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Uint8(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Uint16(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Uint16(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Float4(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Float4(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Float8(values, validity) => {
-                    return numeric_to_text_vec(values, validity);
+                ColumnValues::Float8(values, bitvec) => {
+                    return numeric_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Date(values, validity) => return date_to_text_vec(values, validity),
-                ColumnValues::DateTime(values, validity) => {
-                    return datetime_to_text_vec(values, validity);
+                ColumnValues::Date(values, bitvec) => return date_to_text_vec(values, bitvec),
+                ColumnValues::DateTime(values, bitvec) => {
+                    return datetime_to_text_vec(values, bitvec);
                 }
-                ColumnValues::Time(values, validity) => return time_to_text_vec(values, validity),
-                ColumnValues::Interval(values, validity) => {
-                    return interval_to_text_vec(values, validity);
+                ColumnValues::Time(values, bitvec) => return time_to_text_vec(values, bitvec),
+                ColumnValues::Interval(values, bitvec) => {
+                    return interval_to_text_vec(values, bitvec);
                 }
                 _ => {}
             },
@@ -258,34 +259,34 @@ impl ColumnValues {
         }
 
         // Handle Float to integer/unsigned conversions
-        if let ColumnValues::Float4(values, validity) = self {
+        if let ColumnValues::Float4(values, bitvec) = self {
             match target {
-                Type::Int1 => return f32_to_i8_vec(values, validity),
-                Type::Int2 => return f32_to_i16_vec(values, validity),
-                Type::Int4 => return f32_to_i32_vec(values, validity),
-                Type::Int8 => return f32_to_i64_vec(values, validity),
-                Type::Int16 => return f32_to_i128_vec(values, validity),
-                Type::Uint1 => return f32_to_u8_vec(values, validity),
-                Type::Uint2 => return f32_to_u16_vec(values, validity),
-                Type::Uint4 => return f32_to_u32_vec(values, validity),
-                Type::Uint8 => return f32_to_u64_vec(values, validity),
-                Type::Uint16 => return f32_to_u128_vec(values, validity),
+                Type::Int1 => return f32_to_i8_vec(values, bitvec),
+                Type::Int2 => return f32_to_i16_vec(values, bitvec),
+                Type::Int4 => return f32_to_i32_vec(values, bitvec),
+                Type::Int8 => return f32_to_i64_vec(values, bitvec),
+                Type::Int16 => return f32_to_i128_vec(values, bitvec),
+                Type::Uint1 => return f32_to_u8_vec(values, bitvec),
+                Type::Uint2 => return f32_to_u16_vec(values, bitvec),
+                Type::Uint4 => return f32_to_u32_vec(values, bitvec),
+                Type::Uint8 => return f32_to_u64_vec(values, bitvec),
+                Type::Uint16 => return f32_to_u128_vec(values, bitvec),
                 _ => {}
             }
         }
 
-        if let ColumnValues::Float8(values, validity) = self {
+        if let ColumnValues::Float8(values, bitvec) = self {
             match target {
-                Type::Int1 => return f64_to_i8_vec(values, validity),
-                Type::Int2 => return f64_to_i16_vec(values, validity),
-                Type::Int4 => return f64_to_i32_vec(values, validity),
-                Type::Int8 => return f64_to_i64_vec(values, validity),
-                Type::Int16 => return f64_to_i128_vec(values, validity),
-                Type::Uint1 => return f64_to_u8_vec(values, validity),
-                Type::Uint2 => return f64_to_u16_vec(values, validity),
-                Type::Uint4 => return f64_to_u32_vec(values, validity),
-                Type::Uint8 => return f64_to_u64_vec(values, validity),
-                Type::Uint16 => return f64_to_u128_vec(values, validity),
+                Type::Int1 => return f64_to_i8_vec(values, bitvec),
+                Type::Int2 => return f64_to_i16_vec(values, bitvec),
+                Type::Int4 => return f64_to_i32_vec(values, bitvec),
+                Type::Int8 => return f64_to_i64_vec(values, bitvec),
+                Type::Int16 => return f64_to_i128_vec(values, bitvec),
+                Type::Uint1 => return f64_to_u8_vec(values, bitvec),
+                Type::Uint2 => return f64_to_u16_vec(values, bitvec),
+                Type::Uint4 => return f64_to_u32_vec(values, bitvec),
+                Type::Uint8 => return f64_to_u64_vec(values, bitvec),
+                Type::Uint16 => return f64_to_u128_vec(values, bitvec),
                 _ => {}
             }
         }
@@ -296,7 +297,7 @@ impl ColumnValues {
 
 fn demote_vec<From, To>(
     values: &[From],
-    validity: &BitVec,
+    bitvec: &BitVec,
     demote: impl Demote,
     span: impl Fn() -> Span,
     target_kind: Type,
@@ -307,7 +308,7 @@ where
 {
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             match demote.demote::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -321,7 +322,7 @@ where
 
 fn promote_vec<From, To>(
     values: &[From],
-    validity: &BitVec,
+    bitvec: &BitVec,
     ctx: impl Promote,
     span: impl Fn() -> Span,
     target_kind: Type,
@@ -332,7 +333,7 @@ where
 {
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             match ctx.promote::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -346,7 +347,7 @@ where
 
 fn convert_vec<From, To>(
     values: &[From],
-    validity: &BitVec,
+    bitvec: &BitVec,
     ctx: impl Convert,
     span: impl Fn() -> Span,
     target_kind: Type,
@@ -357,7 +358,7 @@ where
 {
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             match ctx.convert::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -381,12 +382,12 @@ mod tests {
         #[test]
         fn test_ok() {
             let values = [1i8, 2i8];
-            let validity = BitVec::from_slice(&[true, true]);
+            let bitvec = BitVec::from_slice(&[true, true]);
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
-                &validity,
+                &bitvec,
                 &ctx,
                 || Span::testing_empty(),
                 Type::Int2,
@@ -402,12 +403,12 @@ mod tests {
         fn test_none_maps_to_undefined() {
             // 42 mapped to None
             let values = [42i8];
-            let validity = BitVec::from_slice(&[true]);
+            let bitvec = BitVec::from_slice(&[true]);
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
-                &validity,
+                &bitvec,
                 &ctx,
                 || Span::testing_empty(),
                 Type::Int2,
@@ -421,12 +422,12 @@ mod tests {
         #[test]
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i8];
-            let validity = BitVec::from_slice(&[false]);
+            let bitvec = BitVec::from_slice(&[false]);
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
-                &validity,
+                &bitvec,
                 &ctx,
                 || Span::testing_empty(),
                 Type::Int2,
@@ -438,14 +439,14 @@ mod tests {
         }
 
         #[test]
-        fn test_mixed_validity_and_promote_failure() {
+        fn test_mixed_bitvec_and_promote_failure() {
             let values = [1i8, 42i8, 3i8, 4i8];
-            let validity = BitVec::from_slice(&[true, true, false, true]);
+            let bitvec = BitVec::from_slice(&[true, true, false, true]);
             let ctx = TestCtx::new();
 
             let result = promote_vec::<i8, i16>(
                 &values,
-                &validity,
+                &bitvec,
                 &ctx,
                 || Span::testing_empty(),
                 Type::Int2,
@@ -499,12 +500,12 @@ mod tests {
         #[test]
         fn test_ok() {
             let values = [1i16, 2i16];
-            let validity = BitVec::from_slice(&[true, true]);
+            let bitvec = BitVec::from_slice(&[true, true]);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
-                &validity,
+                &bitvec,
                 &ctx,
                 || Span::testing_empty(),
                 Type::Int1,
@@ -521,12 +522,12 @@ mod tests {
         #[test]
         fn test_none_maps_to_undefined() {
             let values = [42i16];
-            let validity = BitVec::from_slice(&[true]);
+            let bitvec = BitVec::from_slice(&[true]);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
-                &validity,
+                &bitvec,
                 &ctx,
                 || Span::testing_empty(),
                 Type::Int1,
@@ -540,12 +541,12 @@ mod tests {
         #[test]
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i16];
-            let validity = BitVec::new(1, false);
+            let bitvec = BitVec::new(1, false);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
-                &validity,
+                &bitvec,
                 &ctx,
                 || Span::testing_empty(),
                 Type::Int1,
@@ -557,14 +558,14 @@ mod tests {
         }
 
         #[test]
-        fn test_mixed_validity_and_demote_failure() {
+        fn test_mixed_bitvec_and_demote_failure() {
             let values = [1i16, 42i16, 3i16, 4i16];
-            let validity = BitVec::from_slice(&[true, true, false, true]);
+            let bitvec = BitVec::from_slice(&[true, true, false, true]);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(
                 &values,
-                &validity,
+                &bitvec,
                 &ctx,
                 || Span::testing_empty(),
                 Type::Int1,
@@ -612,12 +613,12 @@ mod tests {
 // Bool conversion functions
 fn bool_to_numeric_vec(
     values: &[bool],
-    validity: &BitVec,
+    bitvec: &BitVec,
     target: Type,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(target, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             match target {
                 Type::Int1 => out.push::<i8>(if val { 1i8 } else { 0i8 }),
                 Type::Int2 => out.push::<i16>(if val { 1i16 } else { 0i16 }),
@@ -640,10 +641,10 @@ fn bool_to_numeric_vec(
     Ok(out)
 }
 
-fn bool_to_text_vec(values: &[bool], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn bool_to_text_vec(values: &[bool], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<String>(if val { "true".to_string() } else { "false".to_string() });
         } else {
             out.push_undefined();
@@ -653,10 +654,10 @@ fn bool_to_text_vec(values: &[bool], validity: &BitVec) -> crate::Result<ColumnV
 }
 
 // Specific implementations for different numeric types
-fn i8_to_bool_vec(values: &[i8], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn i8_to_bool_vec(values: &[i8], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -665,10 +666,10 @@ fn i8_to_bool_vec(values: &[i8], validity: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn i16_to_bool_vec(values: &[i16], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn i16_to_bool_vec(values: &[i16], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -677,10 +678,10 @@ fn i16_to_bool_vec(values: &[i16], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn i32_to_bool_vec(values: &[i32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn i32_to_bool_vec(values: &[i32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -689,10 +690,10 @@ fn i32_to_bool_vec(values: &[i32], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn i64_to_bool_vec(values: &[i64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn i64_to_bool_vec(values: &[i64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -701,10 +702,10 @@ fn i64_to_bool_vec(values: &[i64], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn i128_to_bool_vec(values: &[i128], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn i128_to_bool_vec(values: &[i128], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -713,10 +714,10 @@ fn i128_to_bool_vec(values: &[i128], validity: &BitVec) -> crate::Result<ColumnV
     Ok(out)
 }
 
-fn u8_to_bool_vec(values: &[u8], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn u8_to_bool_vec(values: &[u8], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -725,10 +726,10 @@ fn u8_to_bool_vec(values: &[u8], validity: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn u16_to_bool_vec(values: &[u16], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn u16_to_bool_vec(values: &[u16], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -737,10 +738,10 @@ fn u16_to_bool_vec(values: &[u16], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn u32_to_bool_vec(values: &[u32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn u32_to_bool_vec(values: &[u32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -749,10 +750,10 @@ fn u32_to_bool_vec(values: &[u32], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn u64_to_bool_vec(values: &[u64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn u64_to_bool_vec(values: &[u64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -761,10 +762,10 @@ fn u64_to_bool_vec(values: &[u64], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn u128_to_bool_vec(values: &[u128], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn u128_to_bool_vec(values: &[u128], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0);
         } else {
             out.push_undefined();
@@ -773,10 +774,10 @@ fn u128_to_bool_vec(values: &[u128], validity: &BitVec) -> crate::Result<ColumnV
     Ok(out)
 }
 
-fn f32_to_bool_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_bool_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0.0);
         } else {
             out.push_undefined();
@@ -785,10 +786,10 @@ fn f32_to_bool_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn f64_to_bool_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_bool_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<bool>(val != 0.0);
         } else {
             out.push_undefined();
@@ -797,13 +798,13 @@ fn f64_to_bool_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn numeric_to_text_vec<T>(values: &[T], validity: &BitVec) -> crate::Result<ColumnValues>
+fn numeric_to_text_vec<T>(values: &[T], bitvec: &BitVec) -> crate::Result<ColumnValues>
 where
     T: Copy + Display,
 {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -813,15 +814,18 @@ where
 }
 
 // Text parsing functions
-fn text_to_bool_vec(values: &[String], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn text_to_bool_vec(
+    values: &[String],
+    bitvec: &BitVec,
+    span: impl Fn() -> Span,
+) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
-            match val.as_str() {
-                "true" => out.push::<bool>(true),
-                "false" => out.push::<bool>(false),
-                _ => out.push_undefined(),
-            }
+        if bitvec.get(idx) {
+            let mut span = span();
+            span.fragment = val.clone();
+
+            out.push(parse_bool(&mut span)?);
         } else {
             out.push_undefined();
         }
@@ -831,13 +835,13 @@ fn text_to_bool_vec(values: &[String], validity: &BitVec) -> crate::Result<Colum
 
 fn text_to_numeric_vec(
     values: &[String],
-    validity: &BitVec,
+    bitvec: &BitVec,
     target: Type,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(target, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             // Create a temporary span for parsing
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
@@ -885,13 +889,13 @@ fn text_to_numeric_vec(
 
 fn text_to_float_vec(
     values: &[String],
-    validity: &BitVec,
+    bitvec: &BitVec,
     target: Type,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(target, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -914,12 +918,12 @@ fn text_to_float_vec(
 
 fn text_to_date_vec(
     values: &[String],
-    validity: &BitVec,
+    bitvec: &BitVec,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Date, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -936,12 +940,12 @@ fn text_to_date_vec(
 
 fn text_to_datetime_vec(
     values: &[String],
-    validity: &BitVec,
+    bitvec: &BitVec,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::DateTime, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -958,12 +962,12 @@ fn text_to_datetime_vec(
 
 fn text_to_time_vec(
     values: &[String],
-    validity: &BitVec,
+    bitvec: &BitVec,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Time, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -980,12 +984,12 @@ fn text_to_time_vec(
 
 fn text_to_interval_vec(
     values: &[String],
-    validity: &BitVec,
+    bitvec: &BitVec,
     span: impl Fn() -> Span,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Interval, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let temp_span =
                 Span { fragment: val.clone(), line: span().line, column: span().column };
 
@@ -1000,10 +1004,10 @@ fn text_to_interval_vec(
     Ok(out)
 }
 
-fn date_to_text_vec(values: &[Date], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn date_to_text_vec(values: &[Date], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -1012,10 +1016,10 @@ fn date_to_text_vec(values: &[Date], validity: &BitVec) -> crate::Result<ColumnV
     Ok(out)
 }
 
-fn datetime_to_text_vec(values: &[DateTime], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn datetime_to_text_vec(values: &[DateTime], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -1024,10 +1028,10 @@ fn datetime_to_text_vec(values: &[DateTime], validity: &BitVec) -> crate::Result
     Ok(out)
 }
 
-fn time_to_text_vec(values: &[Time], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn time_to_text_vec(values: &[Time], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -1036,10 +1040,10 @@ fn time_to_text_vec(values: &[Time], validity: &BitVec) -> crate::Result<ColumnV
     Ok(out)
 }
 
-fn interval_to_text_vec(values: &[Interval], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn interval_to_text_vec(values: &[Interval], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
     for (idx, val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             out.push::<String>(val.to_string());
         } else {
             out.push_undefined();
@@ -1049,10 +1053,10 @@ fn interval_to_text_vec(values: &[Interval], validity: &BitVec) -> crate::Result
 }
 
 // Float32 to integer conversion functions
-fn f32_to_i8_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_i8_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int1, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i8::MIN as f32 && truncated <= i8::MAX as f32 {
                 out.push::<i8>(truncated as i8);
@@ -1066,10 +1070,10 @@ fn f32_to_i8_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f32_to_i16_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_i16_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int2, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i16::MIN as f32 && truncated <= i16::MAX as f32 {
                 out.push::<i16>(truncated as i16);
@@ -1083,10 +1087,10 @@ fn f32_to_i16_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_i32_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_i32_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int4, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i32::MIN as f32 && truncated <= i32::MAX as f32 {
                 out.push::<i32>(truncated as i32);
@@ -1100,10 +1104,10 @@ fn f32_to_i32_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_i64_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_i64_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i64::MIN as f32 && truncated <= i64::MAX as f32 {
                 out.push::<i64>(truncated as i64);
@@ -1117,10 +1121,10 @@ fn f32_to_i64_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_i128_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_i128_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int16, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i128::MIN as f32 && truncated <= i128::MAX as f32 {
                 out.push::<i128>(truncated as i128);
@@ -1134,10 +1138,10 @@ fn f32_to_i128_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn f32_to_u8_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_u8_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint1, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u8::MAX as f32 {
                 out.push::<u8>(truncated as u8);
@@ -1151,10 +1155,10 @@ fn f32_to_u8_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f32_to_u16_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_u16_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint2, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u16::MAX as f32 {
                 out.push::<u16>(truncated as u16);
@@ -1168,10 +1172,10 @@ fn f32_to_u16_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_u32_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_u32_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint4, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u32::MAX as f32 {
                 out.push::<u32>(truncated as u32);
@@ -1185,10 +1189,10 @@ fn f32_to_u32_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_u64_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_u64_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u64::MAX as f32 {
                 out.push::<u64>(truncated as u64);
@@ -1202,10 +1206,10 @@ fn f32_to_u64_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f32_to_u128_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f32_to_u128_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint16, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u128::MAX as f32 {
                 out.push::<u128>(truncated as u128);
@@ -1220,10 +1224,10 @@ fn f32_to_u128_vec(values: &[f32], validity: &BitVec) -> crate::Result<ColumnVal
 }
 
 // Float64 to integer conversion functions
-fn f64_to_i8_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_i8_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int1, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
                 out.push::<i8>(truncated as i8);
@@ -1237,10 +1241,10 @@ fn f64_to_i8_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f64_to_i16_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_i16_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int2, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
                 out.push::<i16>(truncated as i16);
@@ -1254,10 +1258,10 @@ fn f64_to_i16_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_i32_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_i32_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int4, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
                 out.push::<i32>(truncated as i32);
@@ -1271,10 +1275,10 @@ fn f64_to_i32_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_i64_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_i64_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
                 out.push::<i64>(truncated as i64);
@@ -1288,10 +1292,10 @@ fn f64_to_i64_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_i128_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_i128_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Int16, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
                 out.push::<i128>(truncated as i128);
@@ -1305,10 +1309,10 @@ fn f64_to_i128_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnVal
     Ok(out)
 }
 
-fn f64_to_u8_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_u8_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint1, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u8::MAX as f64 {
                 out.push::<u8>(truncated as u8);
@@ -1322,10 +1326,10 @@ fn f64_to_u8_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValue
     Ok(out)
 }
 
-fn f64_to_u16_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_u16_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint2, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u16::MAX as f64 {
                 out.push::<u16>(truncated as u16);
@@ -1339,10 +1343,10 @@ fn f64_to_u16_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_u32_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_u32_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint4, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u32::MAX as f64 {
                 out.push::<u32>(truncated as u32);
@@ -1356,10 +1360,10 @@ fn f64_to_u32_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_u64_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_u64_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint8, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u64::MAX as f64 {
                 out.push::<u64>(truncated as u64);
@@ -1373,10 +1377,10 @@ fn f64_to_u64_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValu
     Ok(out)
 }
 
-fn f64_to_u128_vec(values: &[f64], validity: &BitVec) -> crate::Result<ColumnValues> {
+fn f64_to_u128_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Uint16, values.len());
     for (idx, &val) in values.iter().enumerate() {
-        if validity.get(idx) {
+        if bitvec.get(idx) {
             let truncated = val.trunc();
             if truncated >= 0.0 && truncated <= u128::MAX as f64 {
                 out.push::<u128>(truncated as u128);
