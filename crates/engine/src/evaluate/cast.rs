@@ -4,15 +4,18 @@
 use crate::evaluate;
 use crate::evaluate::{Error, EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
+use reifydb_core::diagnostic::cast;
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 
 impl Evaluator {
     pub(crate) fn cast(
-		&mut self,
-		cast: &CastExpression,
-		ctx: &EvaluationContext,
+        &mut self,
+        cast: &CastExpression,
+        ctx: &EvaluationContext,
     ) -> evaluate::Result<FrameColumn> {
+        let cast_span = cast.lazy_span();
+
         // FIXME optimization does not apply for prefix expressions, like cast(-2 as int1) at the moment
         match cast.expression.deref() {
             // Optimization: it is a constant value and we now the target ty, therefore it is possible to create the values directly
@@ -25,7 +28,9 @@ impl Evaluator {
                     values: column
                         .values
                         .adjust(cast.to.ty, ctx, cast.expression.lazy_span())
-                        .map_err(|e| Error(e.diagnostic()))?,
+                        .map_err(|e| {
+                            Error(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
+                        })?,
                 })
             } // FIXME
         }
@@ -34,18 +39,18 @@ impl Evaluator {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluate::evaluate;
     use crate::evaluate::EvaluationContext;
     use crate::evaluate::Expression;
+    use crate::evaluate::evaluate;
     use crate::frame::ColumnValues;
-    use reifydb_core::Type;
-    use reifydb_core::Span;
-    use reifydb_rql::expression::Expression::Prefix;
-    use reifydb_rql::expression::{
-		CastExpression, ConstantExpression, DataTypeExpression, PrefixExpression, PrefixOperator,
-    };
     use ConstantExpression::Number;
     use Expression::{Cast, Constant};
+    use reifydb_core::Span;
+    use reifydb_core::Type;
+    use reifydb_rql::expression::Expression::Prefix;
+    use reifydb_rql::expression::{
+        CastExpression, ConstantExpression, DataTypeExpression, PrefixExpression, PrefixOperator,
+    };
 
     #[test]
     fn test_cast_integer() {

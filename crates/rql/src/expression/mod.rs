@@ -3,8 +3,8 @@
 
 mod span;
 
-use reifydb_core::Type;
 use reifydb_core::Span;
+use reifydb_core::Type;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -121,10 +121,30 @@ pub struct CastExpression {
     pub to: DataTypeExpression,
 }
 
+impl CastExpression {
+    pub fn span(&self) -> Span {
+        Span::merge_all([self.span.clone(), self.expression.span(), self.to.span()])
+    }
+
+    pub fn lazy_span(&self) -> impl Fn() -> Span + '_ {
+        move || self.span()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DataTypeExpression {
     pub span: Span,
     pub ty: Type,
+}
+
+impl DataTypeExpression {
+    pub fn span(&self) -> Span {
+        self.span.clone()
+    }
+
+    pub fn lazy_span(&self) -> impl Fn() -> Span + '_ {
+        move || self.span()
+    }
 }
 
 #[derive(Debug, Clone)]

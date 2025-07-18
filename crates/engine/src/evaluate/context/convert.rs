@@ -3,9 +3,9 @@
 
 use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
-use reifydb_core::IntoSpan;
+use reifydb_core::diagnostic::number::number_out_of_range;
 use reifydb_core::value::number::SafeConvert;
-use reifydb_core::diagnostic::r#type::{out_of_range, OutOfRange};
+use reifydb_core::{GetType, IntoSpan};
 
 pub trait Convert {
     fn convert<From, To>(
@@ -14,7 +14,8 @@ pub trait Convert {
         span: impl IntoSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
-        From: SafeConvert<To>;
+        From: SafeConvert<To>,
+        To: GetType;
 }
 
 impl Convert for EvaluationContext {
@@ -25,6 +26,7 @@ impl Convert for EvaluationContext {
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeConvert<To>,
+        To: GetType,
     {
         Convert::convert(&self, from, span)
     }
@@ -38,23 +40,16 @@ impl Convert for &EvaluationContext {
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeConvert<To>,
+        To: GetType,
     {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => from
                 .checked_convert()
                 .ok_or_else(|| {
-                    if let Some(column) = &self.column {
-                        return crate::evaluate::Error(out_of_range(OutOfRange {
-                            span: span.into_span(),
-                            column: column.name.clone(),
-                            ty: column.ty,
-                        }));
-                    }
-                    return crate::evaluate::Error(out_of_range(OutOfRange {
-                        span: span.into_span(),
-                        column: None,
-                        ty: None,
-                    }));
+                    return crate::evaluate::Error(number_out_of_range(
+                        span.into_span(),
+                        To::get_type(),
+                    ));
                 })
                 .map(Some),
             ColumnSaturationPolicy::Undefined => match from.checked_convert() {

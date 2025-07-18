@@ -9,7 +9,6 @@ pub mod parse;
 pub mod query;
 pub mod sequence;
 pub mod temporal;
-pub mod r#type;
 mod util;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -62,7 +61,7 @@ pub fn get_line(source: &str, line: u32) -> &str {
     source.lines().nth((line - 1) as usize).unwrap_or("")
 }
 
-use crate::{Type, Span};
+use crate::{Span, Type};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Write};
 
@@ -216,11 +215,7 @@ impl DefaultRenderer {
 
         // Column info
         if let Some(col) = &diagnostic.column {
-            let _ = writeln!(
-                output,
-                "{}  column `{}` is of type `{}`",
-                indent, col.name, col.ty
-            );
+            let _ = writeln!(output, "{}  column `{}` is of type `{}`", indent, col.name, col.ty);
         }
 
         // Notes

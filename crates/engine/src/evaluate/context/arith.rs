@@ -4,9 +4,9 @@
 use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoSpan;
+use reifydb_core::diagnostic::number::number_out_of_range;
 use reifydb_core::value::IsNumber;
-use reifydb_core::value::number::{ Promote, SafeAdd, SafeDiv, SafeRemainder, SafeMul, SafeSub};
-use reifydb_core::diagnostic::r#type::{OutOfRange, out_of_range};
+use reifydb_core::value::number::{Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder, SafeSub};
 
 impl EvaluationContext {
     pub(crate) fn add<L, R>(
@@ -24,27 +24,18 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(out_of_range(OutOfRange {
-                        span: span.into_span(),
-                        column: None,
-                        ty: None,
-                    })));
+                    return Err(crate::evaluate::Error(number_out_of_range(
+                        span.into_span(),
+                        R::get_type(),
+                    )));
                 };
 
                 lp.checked_add(rp)
                     .ok_or_else(|| {
-                        if let Some(column) = &self.column {
-                            return crate::evaluate::Error(out_of_range(OutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                ty: column.ty,
-                            }));
-                        }
-                        return crate::evaluate::Error(out_of_range(OutOfRange {
-                            span: span.into_span(),
-                            column: None,
-                            ty: None,
-                        }));
+                        return crate::evaluate::Error(number_out_of_range(
+                            span.into_span(),
+                            R::get_type(),
+                        ));
                     })
                     .map(Some)
             }
@@ -78,27 +69,18 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(out_of_range(OutOfRange {
-                        span: span.into_span(),
-                        column: None,
-                        ty: None,
-                    })));
+                    return Err(crate::evaluate::Error(number_out_of_range(
+                        span.into_span(),
+                        R::get_type(),
+                    )));
                 };
 
                 lp.checked_sub(rp)
                     .ok_or_else(|| {
-                        if let Some(column) = &self.column {
-                            return crate::evaluate::Error(out_of_range(OutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                ty: column.ty,
-                            }));
-                        }
-                        return crate::evaluate::Error(out_of_range(OutOfRange {
-                            span: span.into_span(),
-                            column: None,
-                            ty: None,
-                        }));
+                        return crate::evaluate::Error(number_out_of_range(
+                            span.into_span(),
+                            R::get_type(),
+                        ));
                     })
                     .map(Some)
             }
@@ -132,27 +114,18 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(out_of_range(OutOfRange {
-                        span: span.into_span(),
-                        column: None,
-                        ty: None,
-                    })));
+                    return Err(crate::evaluate::Error(number_out_of_range(
+                        span.into_span(),
+                        R::get_type(),
+                    )));
                 };
 
                 lp.checked_mul(rp)
                     .ok_or_else(|| {
-                        if let Some(column) = &self.column {
-                            return crate::evaluate::Error(out_of_range(OutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                ty: column.ty,
-                            }));
-                        }
-                        return crate::evaluate::Error(out_of_range(OutOfRange {
-                            span: span.into_span(),
-                            column: None,
-                            ty: None,
-                        }));
+                        return crate::evaluate::Error(number_out_of_range(
+                            span.into_span(),
+                            R::get_type(),
+                        ));
                     })
                     .map(Some)
             }
@@ -186,27 +159,18 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(out_of_range(OutOfRange {
-                        span: span.into_span(),
-                        column: None,
-                        ty: None,
-                    })));
+                    return Err(crate::evaluate::Error(number_out_of_range(
+                        span.into_span(),
+                        R::get_type(),
+                    )));
                 };
 
                 lp.checked_div(rp)
                     .ok_or_else(|| {
-                        if let Some(column) = &self.column {
-                            return crate::evaluate::Error(out_of_range(OutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                ty: column.ty,
-                            }));
-                        }
-                        return crate::evaluate::Error(out_of_range(OutOfRange {
-                            span: span.into_span(),
-                            column: None,
-                            ty: None,
-                        }));
+                        return crate::evaluate::Error(number_out_of_range(
+                            span.into_span(),
+                            R::get_type(),
+                        ));
                     })
                     .map(Some)
             }
@@ -240,27 +204,18 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(out_of_range(OutOfRange {
-                        span: span.into_span(),
-                        column: None,
-                        ty: None,
-                    })));
+                    return Err(crate::evaluate::Error(number_out_of_range(
+                        span.into_span(),
+                        R::get_type(),
+                    )));
                 };
 
                 lp.checked_rem(rp)
                     .ok_or_else(|| {
-                        if let Some(column) = &self.column {
-                            return crate::evaluate::Error(out_of_range(OutOfRange {
-                                span: span.into_span(),
-                                column: column.name.clone(),
-                                ty: column.ty,
-                            }));
-                        }
-                        return crate::evaluate::Error(out_of_range(OutOfRange {
-                            span: span.into_span(),
-                            column: None,
-                            ty: None,
-                        }));
+                        return crate::evaluate::Error(number_out_of_range(
+                            span.into_span(),
+                            R::get_type(),
+                        ));
                     })
                     .map(Some)
             }

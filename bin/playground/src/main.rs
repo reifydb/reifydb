@@ -14,12 +14,9 @@ use reifydb::{ReifyDB, memory, serializable};
 fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
 
-    // (tx 'create schema test')
-    //     (tx 'create table test.item(field_one: int1, field_two: int1, field_three: int1)')
-    //
-    //      !tx 'from [{field_one: 127, field_two: 128, field_three: -128}] insert test.item'
-
     db.tx_as(&root, r#"create schema test"#).unwrap();
+    db.tx_as(&root, r#"create table test.float4_test10(col: float4)"#).unwrap();
+    db.tx_as(&root, r#"from [{ col: 128.0 }] insert test.float4_test10"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
     // db.tx_as(&root, r#"create table test.item(field: int16 policy (saturation error) )"#).unwrap();
@@ -28,29 +25,28 @@ fn main() {
     // db.tx_as(&root, r#"from test.text_test5 map cast(col, bool)"#).unwrap();
     // db.tx_as(&root, r#"(tx 'from [{ col: cast("P30D", interval)}] insert test.text_test9')"#).unwrap();
 
+    //   let l = db
+    //       .tx_as(
+    //           &root,
+    //           r#"
+    // from [
+    //   { col: @2025-07-15  },
+    //   { col: @2023-11-23  },
+    // ] insert test.abc
+    //       "#,
+    //       )
+    //       .unwrap();
+    //   println!("{}", l.first().unwrap());
 
-  //   let l = db
-  //       .tx_as(
-  //           &root,
-  //           r#"
-  // from [
-  //   { col: @2025-07-15  },
-  //   { col: @2023-11-23  },
-  // ] insert test.abc
-  //       "#,
-  //       )
-  //       .unwrap();
-  //   println!("{}", l.first().unwrap());
-
-        let l = db
+    let l = db
         .tx_as(
             &root,
             r#"
-            map cast(2, bool);
+    map cast(cast(9223372036854775807, int8), float4)
         "#,
         )
-        .unwrap();
-    println!("{}", l.first().unwrap());
+        .unwrap_err();
+    println!("{}", l);
 
     // let err = db
     //     .tx_as(
@@ -61,7 +57,7 @@ fn main() {
     //     )
     //     .unwrap_err();
     // println!("{}", err);
-//
+    //
     // // Test simple filter without map
     // let l = db
     //     .tx_as(
@@ -82,5 +78,4 @@ fn main() {
     //     .unwrap();
     // println!("Map test (content column):");
     // println!("{}", l3.first().unwrap());
-
 }

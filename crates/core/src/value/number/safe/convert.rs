@@ -103,7 +103,7 @@ macro_rules! impl_safe_convert_signed_to_float {
     };
 }
 
-impl_safe_convert_signed_to_float!(24;i8 => f32,);
+impl_safe_convert_signed_to_float!(24;i8 => f32);
 impl_safe_convert_signed_to_float!(24;i16 => f32);
 impl_safe_convert_signed_to_float!(24;i32 => f32);
 impl_safe_convert_signed_to_float!(24;i64 => f32);
@@ -156,6 +156,120 @@ impl_safe_convert_unsigned_to_float!(53;u16 => f64);
 impl_safe_convert_unsigned_to_float!(53;u32 => f64);
 impl_safe_convert_unsigned_to_float!(53;u64 =>  f64);
 impl_safe_convert_unsigned_to_float!(53;u128 => f64);
+
+macro_rules! impl_safe_convert_float_to_signed {
+    ($src:ty => $($dst:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<$dst> for $src {
+                fn checked_convert(self) -> Option<$dst> {
+                    if self.is_nan() || self.is_infinite() {
+                        return None;
+                    }
+                    
+                    let min_val = <$dst>::MIN as $src;
+                    let max_val = <$dst>::MAX as $src;
+                    
+                    if self < min_val || self > max_val {
+                        None
+                    } else {
+                        Some(self as $dst)
+                    }
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if self.is_nan() {
+                        return 0;
+                    }
+                    
+                    if self.is_infinite() {
+                        return if self.is_sign_positive() { <$dst>::MAX } else { <$dst>::MIN };
+                    }
+                    
+                    let min_val = <$dst>::MIN as $src;
+                    let max_val = <$dst>::MAX as $src;
+                    
+                    if self < min_val {
+                        <$dst>::MIN
+                    } else if self > max_val {
+                        <$dst>::MAX
+                    } else {
+                        self as $dst
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    if self.is_nan() {
+                        return 0;
+                    }
+                    
+                    if self.is_infinite() {
+                        return if self.is_sign_positive() { <$dst>::MAX } else { <$dst>::MIN };
+                    }
+                    
+                    self as $dst
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_float_to_unsigned {
+    ($src:ty => $($dst:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<$dst> for $src {
+                fn checked_convert(self) -> Option<$dst> {
+                    if self.is_nan() || self.is_infinite() || self < 0.0 {
+                        return None;
+                    }
+                    
+                    let max_val = <$dst>::MAX as $src;
+                    
+                    if self > max_val {
+                        None
+                    } else {
+                        Some(self as $dst)
+                    }
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if self.is_nan() || self < 0.0 {
+                        return 0;
+                    }
+                    
+                    if self.is_infinite() {
+                        return <$dst>::MAX;
+                    }
+                    
+                    let max_val = <$dst>::MAX as $src;
+                    
+                    if self > max_val {
+                        <$dst>::MAX
+                    } else {
+                        self as $dst
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    if self.is_nan() || self < 0.0 {
+                        return 0;
+                    }
+                    
+                    if self.is_infinite() {
+                        return <$dst>::MAX;
+                    }
+                    
+                    self as $dst
+                }
+            }
+        )*
+    };
+}
+
+impl_safe_convert_float_to_signed!(f32 => i8, i16, i32, i64, i128);
+impl_safe_convert_float_to_signed!(f64 => i8, i16, i32, i64, i128);
+
+impl_safe_convert_float_to_unsigned!(f32 => u8, u16, u32, u64, u128);
+impl_safe_convert_float_to_unsigned!(f64 => u8, u16, u32, u64, u128);
 
 #[cfg(test)]
 mod tests {
@@ -2406,6 +2520,1080 @@ mod tests {
             let x: u128 = u128::MIN;
             let y: f64 = x.wrapping_convert();
             assert_eq!(y, u128::MIN as f64);
+        }
+    }
+
+    mod f32_to_i8 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, Some(42i8));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 300.0;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, Some(-42i8));
+        }
+
+        #[test]
+        fn test_checked_convert_nan() {
+            let x: f32 = f32::NAN;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_infinity() {
+            let x: f32 = f32::INFINITY;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 300.0;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, i8::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -300.0;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, i8::MIN);
+        }
+
+        #[test]
+        fn test_saturating_convert_nan() {
+            let x: f32 = f32::NAN;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_saturating_convert_infinity() {
+            let x: f32 = f32::INFINITY;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, i8::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_neg_infinity() {
+            let x: f32 = f32::NEG_INFINITY;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, i8::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: i8 = x.wrapping_convert();
+            assert_eq!(y, 42i8);
+        }
+
+        #[test]
+        fn test_wrapping_convert_nan() {
+            let x: f32 = f32::NAN;
+            let y: i8 = x.wrapping_convert();
+            assert_eq!(y, 0);
+        }
+    }
+
+    mod f32_to_i16 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<i16> = x.checked_convert();
+            assert_eq!(y, Some(42i16));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 40000.0;
+            let y: Option<i16> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<i16> = x.checked_convert();
+            assert_eq!(y, Some(-42i16));
+        }
+
+        #[test]
+        fn test_checked_convert_nan() {
+            let x: f32 = f32::NAN;
+            let y: Option<i16> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 40000.0;
+            let y: i16 = x.saturating_convert();
+            assert_eq!(y, i16::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -40000.0;
+            let y: i16 = x.saturating_convert();
+            assert_eq!(y, i16::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: i16 = x.wrapping_convert();
+            assert_eq!(y, 42i16);
+        }
+    }
+
+    mod f32_to_i32 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<i32> = x.checked_convert();
+            assert_eq!(y, Some(42i32));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 3e38;
+            let y: Option<i32> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<i32> = x.checked_convert();
+            assert_eq!(y, Some(-42i32));
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 3e38;
+            let y: i32 = x.saturating_convert();
+            assert_eq!(y, i32::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -3e38;
+            let y: i32 = x.saturating_convert();
+            assert_eq!(y, i32::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: i32 = x.wrapping_convert();
+            assert_eq!(y, 42i32);
+        }
+    }
+
+    mod f32_to_i64 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<i64> = x.checked_convert();
+            assert_eq!(y, Some(42i64));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 3e38;
+            let y: Option<i64> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<i64> = x.checked_convert();
+            assert_eq!(y, Some(-42i64));
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 3e38;
+            let y: i64 = x.saturating_convert();
+            assert_eq!(y, i64::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -3e38;
+            let y: i64 = x.saturating_convert();
+            assert_eq!(y, i64::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: i64 = x.wrapping_convert();
+            assert_eq!(y, 42i64);
+        }
+    }
+
+    mod f32_to_i128 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<i128> = x.checked_convert();
+            assert_eq!(y, Some(42i128));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 3e38;
+            let y: Option<i128> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<i128> = x.checked_convert();
+            assert_eq!(y, Some(-42i128));
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 3e38;
+            let y: i128 = x.saturating_convert();
+            assert_eq!(y, i128::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -3e38;
+            let y: i128 = x.saturating_convert();
+            assert_eq!(y, i128::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: i128 = x.wrapping_convert();
+            assert_eq!(y, 42i128);
+        }
+    }
+
+    mod f32_to_u8 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, Some(42u8));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 300.0;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_nan() {
+            let x: f32 = f32::NAN;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_infinity() {
+            let x: f32 = f32::INFINITY;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 300.0;
+            let y: u8 = x.saturating_convert();
+            assert_eq!(y, u8::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -42.0;
+            let y: u8 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_saturating_convert_nan() {
+            let x: f32 = f32::NAN;
+            let y: u8 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_saturating_convert_infinity() {
+            let x: f32 = f32::INFINITY;
+            let y: u8 = x.saturating_convert();
+            assert_eq!(y, u8::MAX);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: u8 = x.wrapping_convert();
+            assert_eq!(y, 42u8);
+        }
+
+        #[test]
+        fn test_wrapping_convert_negative() {
+            let x: f32 = -42.0;
+            let y: u8 = x.wrapping_convert();
+            assert_eq!(y, 0);
+        }
+    }
+
+    mod f32_to_u16 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<u16> = x.checked_convert();
+            assert_eq!(y, Some(42u16));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 70000.0;
+            let y: Option<u16> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<u16> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 70000.0;
+            let y: u16 = x.saturating_convert();
+            assert_eq!(y, u16::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -42.0;
+            let y: u16 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: u16 = x.wrapping_convert();
+            assert_eq!(y, 42u16);
+        }
+    }
+
+    mod f32_to_u32 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<u32> = x.checked_convert();
+            assert_eq!(y, Some(42u32));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 3e38;
+            let y: Option<u32> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<u32> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 3e38;
+            let y: u32 = x.saturating_convert();
+            assert_eq!(y, u32::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -42.0;
+            let y: u32 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: u32 = x.wrapping_convert();
+            assert_eq!(y, 42u32);
+        }
+    }
+
+    mod f32_to_u64 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<u64> = x.checked_convert();
+            assert_eq!(y, Some(42u64));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f32 = 3e38;
+            let y: Option<u64> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<u64> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f32 = 3e38;
+            let y: u64 = x.saturating_convert();
+            assert_eq!(y, u64::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -42.0;
+            let y: u64 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: u64 = x.wrapping_convert();
+            assert_eq!(y, 42u64);
+        }
+    }
+
+    mod f32_to_u128 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f32 = 42.0;
+            let y: Option<u128> = x.checked_convert();
+            assert_eq!(y, Some(42u128));
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f32 = -42.0;
+            let y: Option<u128> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f32 = -42.0;
+            let y: u128 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f32 = 42.0;
+            let y: u128 = x.wrapping_convert();
+            assert_eq!(y, 42u128);
+        }
+    }
+
+    mod f64_to_i8 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, Some(42i8));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 300.0;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, Some(-42i8));
+        }
+
+        #[test]
+        fn test_checked_convert_nan() {
+            let x: f64 = f64::NAN;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_infinity() {
+            let x: f64 = f64::INFINITY;
+            let y: Option<i8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 300.0;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, i8::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -300.0;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, i8::MIN);
+        }
+
+        #[test]
+        fn test_saturating_convert_nan() {
+            let x: f64 = f64::NAN;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_saturating_convert_infinity() {
+            let x: f64 = f64::INFINITY;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, i8::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_neg_infinity() {
+            let x: f64 = f64::NEG_INFINITY;
+            let y: i8 = x.saturating_convert();
+            assert_eq!(y, i8::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: i8 = x.wrapping_convert();
+            assert_eq!(y, 42i8);
+        }
+
+        #[test]
+        fn test_wrapping_convert_nan() {
+            let x: f64 = f64::NAN;
+            let y: i8 = x.wrapping_convert();
+            assert_eq!(y, 0);
+        }
+    }
+
+    mod f64_to_i16 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<i16> = x.checked_convert();
+            assert_eq!(y, Some(42i16));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 40000.0;
+            let y: Option<i16> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<i16> = x.checked_convert();
+            assert_eq!(y, Some(-42i16));
+        }
+
+        #[test]
+        fn test_checked_convert_nan() {
+            let x: f64 = f64::NAN;
+            let y: Option<i16> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 40000.0;
+            let y: i16 = x.saturating_convert();
+            assert_eq!(y, i16::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -40000.0;
+            let y: i16 = x.saturating_convert();
+            assert_eq!(y, i16::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: i16 = x.wrapping_convert();
+            assert_eq!(y, 42i16);
+        }
+    }
+
+    mod f64_to_i32 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<i32> = x.checked_convert();
+            assert_eq!(y, Some(42i32));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 3e38;
+            let y: Option<i32> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<i32> = x.checked_convert();
+            assert_eq!(y, Some(-42i32));
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 3e38;
+            let y: i32 = x.saturating_convert();
+            assert_eq!(y, i32::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -3e38;
+            let y: i32 = x.saturating_convert();
+            assert_eq!(y, i32::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: i32 = x.wrapping_convert();
+            assert_eq!(y, 42i32);
+        }
+    }
+
+    mod f64_to_i64 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<i64> = x.checked_convert();
+            assert_eq!(y, Some(42i64));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 1e300;
+            let y: Option<i64> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<i64> = x.checked_convert();
+            assert_eq!(y, Some(-42i64));
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 1e300;
+            let y: i64 = x.saturating_convert();
+            assert_eq!(y, i64::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -1e300;
+            let y: i64 = x.saturating_convert();
+            assert_eq!(y, i64::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: i64 = x.wrapping_convert();
+            assert_eq!(y, 42i64);
+        }
+    }
+
+    mod f64_to_i128 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<i128> = x.checked_convert();
+            assert_eq!(y, Some(42i128));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 1e300;
+            let y: Option<i128> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<i128> = x.checked_convert();
+            assert_eq!(y, Some(-42i128));
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 1e300;
+            let y: i128 = x.saturating_convert();
+            assert_eq!(y, i128::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -1e300;
+            let y: i128 = x.saturating_convert();
+            assert_eq!(y, i128::MIN);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: i128 = x.wrapping_convert();
+            assert_eq!(y, 42i128);
+        }
+    }
+
+    mod f64_to_u8 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, Some(42u8));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 300.0;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_nan() {
+            let x: f64 = f64::NAN;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_infinity() {
+            let x: f64 = f64::INFINITY;
+            let y: Option<u8> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 300.0;
+            let y: u8 = x.saturating_convert();
+            assert_eq!(y, u8::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -42.0;
+            let y: u8 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_saturating_convert_nan() {
+            let x: f64 = f64::NAN;
+            let y: u8 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_saturating_convert_infinity() {
+            let x: f64 = f64::INFINITY;
+            let y: u8 = x.saturating_convert();
+            assert_eq!(y, u8::MAX);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: u8 = x.wrapping_convert();
+            assert_eq!(y, 42u8);
+        }
+
+        #[test]
+        fn test_wrapping_convert_negative() {
+            let x: f64 = -42.0;
+            let y: u8 = x.wrapping_convert();
+            assert_eq!(y, 0);
+        }
+    }
+
+    mod f64_to_u16 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<u16> = x.checked_convert();
+            assert_eq!(y, Some(42u16));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 70000.0;
+            let y: Option<u16> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<u16> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 70000.0;
+            let y: u16 = x.saturating_convert();
+            assert_eq!(y, u16::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -42.0;
+            let y: u16 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: u16 = x.wrapping_convert();
+            assert_eq!(y, 42u16);
+        }
+    }
+
+    mod f64_to_u32 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<u32> = x.checked_convert();
+            assert_eq!(y, Some(42u32));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 1e300;
+            let y: Option<u32> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<u32> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 1e300;
+            let y: u32 = x.saturating_convert();
+            assert_eq!(y, u32::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -42.0;
+            let y: u32 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: u32 = x.wrapping_convert();
+            assert_eq!(y, 42u32);
+        }
+    }
+
+    mod f64_to_u64 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<u64> = x.checked_convert();
+            assert_eq!(y, Some(42u64));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 1e300;
+            let y: Option<u64> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<u64> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 1e300;
+            let y: u64 = x.saturating_convert();
+            assert_eq!(y, u64::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -42.0;
+            let y: u64 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: u64 = x.wrapping_convert();
+            assert_eq!(y, 42u64);
+        }
+    }
+
+    mod f64_to_u128 {
+        use crate::value::number::SafeConvert;
+
+        #[test]
+        fn test_checked_convert_happy() {
+            let x: f64 = 42.0;
+            let y: Option<u128> = x.checked_convert();
+            assert_eq!(y, Some(42u128));
+        }
+
+        #[test]
+        fn test_checked_convert_unhappy() {
+            let x: f64 = 1e300;
+            let y: Option<u128> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_checked_convert_negative() {
+            let x: f64 = -42.0;
+            let y: Option<u128> = x.checked_convert();
+            assert_eq!(y, None);
+        }
+
+        #[test]
+        fn test_saturating_convert_overflow() {
+            let x: f64 = 1e300;
+            let y: u128 = x.saturating_convert();
+            assert_eq!(y, u128::MAX);
+        }
+
+        #[test]
+        fn test_saturating_convert_underflow() {
+            let x: f64 = -42.0;
+            let y: u128 = x.saturating_convert();
+            assert_eq!(y, 0);
+        }
+
+        #[test]
+        fn test_wrapping_convert() {
+            let x: f64 = 42.0;
+            let y: u128 = x.wrapping_convert();
+            assert_eq!(y, 42u128);
         }
     }
 }
