@@ -180,8 +180,29 @@ impl BitVec {
         let byte_count = (len + 7) / 8;
         let mut result_bits = vec![0u8; byte_count];
 
-        for i in 0..byte_count {
+        // Process 8 bytes at a time for better performance
+        let chunks = byte_count / 8;
+        let mut i = 0;
+        
+        // Process 64-bit chunks
+        for _ in 0..chunks {
+            let a = u64::from_le_bytes([
+                self.inner.bits[i], self.inner.bits[i+1], self.inner.bits[i+2], self.inner.bits[i+3],
+                self.inner.bits[i+4], self.inner.bits[i+5], self.inner.bits[i+6], self.inner.bits[i+7]
+            ]);
+            let b = u64::from_le_bytes([
+                other.inner.bits[i], other.inner.bits[i+1], other.inner.bits[i+2], other.inner.bits[i+3],
+                other.inner.bits[i+4], other.inner.bits[i+5], other.inner.bits[i+6], other.inner.bits[i+7]
+            ]);
+            let result = a & b;
+            result_bits[i..i+8].copy_from_slice(&result.to_le_bytes());
+            i += 8;
+        }
+        
+        // Process remaining bytes
+        while i < byte_count {
             result_bits[i] = self.inner.bits[i] & other.inner.bits[i];
+            i += 1;
         }
 
         BitVec { inner: Arc::new(BitVecInner { bits: result_bits, len }) }
@@ -192,21 +213,82 @@ impl BitVec {
     }
 
     pub fn count_ones(&self) -> usize {
-        let mut result = 0;
-        for i in 0..self.len() {
-            if self.get(i) {
-                result += 1;
-            }
+        // Count complete bytes using built-in popcount
+        let mut count = self.inner.bits.iter()
+            .map(|&byte| byte.count_ones() as usize)
+            .sum();
+        
+        // Adjust for partial last byte if needed
+        let full_bytes = self.inner.len / 8;
+        let remainder_bits = self.inner.len % 8;
+        
+        if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
+            let last_byte = self.inner.bits[full_bytes];
+            // Mask out bits beyond our length
+            let mask = (1u8 << remainder_bits) - 1;
+            // Subtract the invalid bits we counted
+            count -= (last_byte & !mask).count_ones() as usize;
         }
-        result
+        
+        count
     }
 
     pub fn any(&self) -> bool {
-        self.count_ones() > 0
+        // Fast path: check if any complete bytes are non-zero
+        let full_bytes = self.inner.len / 8;
+        for i in 0..full_bytes {
+            if self.inner.bits[i] != 0 {
+                return true;
+            }
+        }
+        
+        // Check remaining bits in last partial byte
+        let remainder_bits = self.inner.len % 8;
+        if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
+            let last_byte = self.inner.bits[full_bytes];
+            let mask = (1u8 << remainder_bits) - 1;
+            return (last_byte & mask) != 0;
+        }
+        
+        false
     }
 
     pub fn none(&self) -> bool {
-        self.count_ones() == 0
+        !self.any()
+    }
+    
+    pub fn or(&self, other: &Self) -> Self {
+        assert_eq!(self.len(), other.len());
+        let len = self.len();
+        let byte_count = (len + 7) / 8;
+        let mut result_bits = vec![0u8; byte_count];
+
+        // Process 8 bytes at a time for better performance
+        let chunks = byte_count / 8;
+        let mut i = 0;
+        
+        // Process 64-bit chunks
+        for _ in 0..chunks {
+            let a = u64::from_le_bytes([
+                self.inner.bits[i], self.inner.bits[i+1], self.inner.bits[i+2], self.inner.bits[i+3],
+                self.inner.bits[i+4], self.inner.bits[i+5], self.inner.bits[i+6], self.inner.bits[i+7]
+            ]);
+            let b = u64::from_le_bytes([
+                other.inner.bits[i], other.inner.bits[i+1], other.inner.bits[i+2], other.inner.bits[i+3],
+                other.inner.bits[i+4], other.inner.bits[i+5], other.inner.bits[i+6], other.inner.bits[i+7]
+            ]);
+            let result = a | b;
+            result_bits[i..i+8].copy_from_slice(&result.to_le_bytes());
+            i += 8;
+        }
+        
+        // Process remaining bytes
+        while i < byte_count {
+            result_bits[i] = self.inner.bits[i] | other.inner.bits[i];
+            i += 1;
+        }
+
+        BitVec { inner: Arc::new(BitVecInner { bits: result_bits, len }) }
     }
 
     pub fn is_owned(&self) -> bool {
