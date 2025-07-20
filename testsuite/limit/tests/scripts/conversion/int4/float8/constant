@@ -1,0 +1,29 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tx 'map cast(cast(0, int4), float8)'
+---
+> +-----+
+> |  0  |
+> +-----+
+> |  0  |
+> +-----+
+> 
+
+tx 'map cast(cast(-2147483648, int4), float8)'
+---
+> +---------------+
+> |  -2147483648  |
+> +---------------+
+> |  -2147483648  |
+> +---------------+
+> 
+
+tx 'map cast(cast(2147483647, int4), float8)'
+---
+> +--------------+
+> |  2147483647  |
+> +--------------+
+> |  2147483647  |
+> +--------------+
+> 

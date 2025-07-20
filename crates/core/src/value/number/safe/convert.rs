@@ -74,7 +74,9 @@ macro_rules! impl_safe_convert_signed_to_float {
         $(
             impl SafeConvert<$float> for $src {
                 fn checked_convert(self) -> Option<$float> {
-                    if  (self as i128) <= 1i128 << $mantissa_bits as $src {
+                    let val = self as i128;
+                    let max_exact = 1i128 << $mantissa_bits;
+                    if val >= -max_exact && val <= max_exact {
                         Some(self as $float)
                     } else {
                         None
@@ -83,8 +85,8 @@ macro_rules! impl_safe_convert_signed_to_float {
 
                 fn saturating_convert(self) -> $float {
                     let max_exact = 1i128 << $mantissa_bits;
-                    let min = -(max_exact as i128);
-                    let max = max_exact as i128;
+                    let min = -max_exact;
+                    let max = max_exact;
                     let val = self as i128;
                     if val < min {
                         min as $float
@@ -165,10 +167,10 @@ macro_rules! impl_safe_convert_float_to_signed {
                     if self.is_nan() || self.is_infinite() {
                         return None;
                     }
-                    
+
                     let min_val = <$dst>::MIN as $src;
                     let max_val = <$dst>::MAX as $src;
-                    
+
                     if self < min_val || self > max_val {
                         None
                     } else {
@@ -180,14 +182,14 @@ macro_rules! impl_safe_convert_float_to_signed {
                     if self.is_nan() {
                         return 0;
                     }
-                    
+
                     if self.is_infinite() {
                         return if self.is_sign_positive() { <$dst>::MAX } else { <$dst>::MIN };
                     }
-                    
+
                     let min_val = <$dst>::MIN as $src;
                     let max_val = <$dst>::MAX as $src;
-                    
+
                     if self < min_val {
                         <$dst>::MIN
                     } else if self > max_val {
@@ -201,11 +203,11 @@ macro_rules! impl_safe_convert_float_to_signed {
                     if self.is_nan() {
                         return 0;
                     }
-                    
+
                     if self.is_infinite() {
                         return if self.is_sign_positive() { <$dst>::MAX } else { <$dst>::MIN };
                     }
-                    
+
                     self as $dst
                 }
             }
@@ -221,9 +223,9 @@ macro_rules! impl_safe_convert_float_to_unsigned {
                     if self.is_nan() || self.is_infinite() || self < 0.0 {
                         return None;
                     }
-                    
+
                     let max_val = <$dst>::MAX as $src;
-                    
+
                     if self > max_val {
                         None
                     } else {
@@ -235,13 +237,13 @@ macro_rules! impl_safe_convert_float_to_unsigned {
                     if self.is_nan() || self < 0.0 {
                         return 0;
                     }
-                    
+
                     if self.is_infinite() {
                         return <$dst>::MAX;
                     }
-                    
+
                     let max_val = <$dst>::MAX as $src;
-                    
+
                     if self > max_val {
                         <$dst>::MAX
                     } else {
@@ -253,11 +255,11 @@ macro_rules! impl_safe_convert_float_to_unsigned {
                     if self.is_nan() || self < 0.0 {
                         return 0;
                     }
-                    
+
                     if self.is_infinite() {
                         return <$dst>::MAX;
                     }
-                    
+
                     self as $dst
                 }
             }

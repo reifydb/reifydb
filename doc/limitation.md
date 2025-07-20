@@ -33,3 +33,7 @@ max int16 -170141183460469231731687303715884105728 for the same reason
 
 ## float 8
 float literal -  -1.8e308 to +1.8e308 for the same reason
+
+# casting signed/unsigned to float  
+max 2^24 = 16,777,216  for float4  - otherwise loss of precision
+max 2^53 = 9,007,199,254,740,992 for float8  - otherwise loss of precision

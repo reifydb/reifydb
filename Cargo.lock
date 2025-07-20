@@ -908,6 +908,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "limit"
+version = "0.0.1"
+dependencies = [
+ "reifydb",
+ "reifydb-testing",
+ "test_each_file",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

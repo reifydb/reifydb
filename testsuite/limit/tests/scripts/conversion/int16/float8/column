@@ -1,0 +1,60 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+(tx 'create schema test')
+
+(tx 'create table test.conversion(col: int16)')
+(tx 'from [{ col: 0 }] insert test.conversion')
+tx 'from test.conversion map cast(col, float8)'
+---
+> +-------+
+> |  col  |
+> +-------+
+> |   0   |
+> +-------+
+> 
+
+
+(tx 'from [{ col: 9007199254740992 }] insert test.conversion')
+tx 'from test.conversion map cast(col, float8)'
+---
+> +--------------------+
+> |        col         |
+> +--------------------+
+> |  9007199254740992  |
+> |         0          |
+> +--------------------+
+> 
+
+(tx 'from [{ col: -9007199254740992 }] insert test.conversion')
+tx 'from test.conversion map cast(col, float8)'
+---
+> +---------------------+
+> |         col         |
+> +---------------------+
+> |  -9007199254740992  |
+> |  9007199254740992   |
+> |          0          |
+> +---------------------+
+> 
+
+(tx 'from [{ col: 9007199254740993 }] insert test.conversion')
+!tx 'from test.conversion map cast(col, float8)'
+---
+>  Error CAST_002: failed to cast to FLOAT8
+>   at "(colfloat8" (line 1, column 30)
+> 
+>   1 │ from test.conversion map cast(col, float8)
+>     │                               ~~~~~~~~~~
+>     │                        failed to cast to FLOAT8
+> 
+>   ↳  Error NUMBER_004: too large for precise float conversion
+>     at "col" (line 1, column 31)
+> 
+>     1 │ from test.conversion map cast(col, float8)
+>       │                               ~~~
+>       │   converting 'col' from INT16 to FLOAT8 would lose precision
+> 
+>     note: FLOAT8 can only represent from -9_007_199_254_740_992 (-2^53) to 9_007_199_254_740_992 (2^53) precisely
+>     note: consider using a different numeric type if exact precision is required
+> 

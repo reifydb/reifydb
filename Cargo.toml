@@ -17,6 +17,7 @@ members = ["bin/cli",
     "pkg/client/rust",
     "pkg/python",
     "pkg/rust",
+    "testsuite/limit",
     "testsuite/regression",
 ]
 
@@ -35,6 +36,7 @@ default-members = ["bin/cli",
     "crates/transaction",
     "pkg/client/rust",
     "pkg/rust",
+    "testsuite/limit",
     "testsuite/regression",
 ]
 

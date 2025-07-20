@@ -1,0 +1,40 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tx 'map cast(cast(0, uint8), float8)'
+---
+> +-----+
+> |  0  |
+> +-----+
+> |  0  |
+> +-----+
+> 
+
+tx 'map cast(cast(9007199254740992, uint8), float8)'
+---
+> +--------------------+
+> |  9007199254740992  |
+> +--------------------+
+> |  9007199254740992  |
+> +--------------------+
+> 
+
+!tx 'map cast(cast(9007199254740993, uint8), float8)'
+---
+>  Error CAST_002: failed to cast to FLOAT8
+>   at "(9007199254740993float8" (line 1, column 9)
+> 
+>   1 │ map cast(cast(9007199254740993, uint8), float8)
+>     │          ~~~~~~~~~~~~~~~~~~~~~~~
+>     │         failed to cast to FLOAT8
+> 
+>   ↳  Error NUMBER_004: too large for precise float conversion
+>     at "9007199254740993" (line 1, column 15)
+> 
+>     1 │ map cast(cast(9007199254740993, uint8), float8)
+>       │               ~~~~~~~~~~~~~~~~
+>       │ converting '9007199254740993' from UINT8 to FLOAT8 would lose precision
+> 
+>     note: FLOAT8 can only represent from 0 to 9_007_199_254_740_992 (2^53) precisely
+>     note: consider using a different numeric type if exact precision is required
+> 

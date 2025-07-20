@@ -3,7 +3,7 @@
 
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic::util::value_range;
-use crate::{Type, Span};
+use crate::{Span, Type};
 
 pub fn invalid_number_format(span: Span, target: Type) -> Diagnostic {
     let label = Some(format!("'{}' is not a valid {} number", span.fragment, target));
@@ -87,6 +87,50 @@ pub fn nan_not_allowed() -> Diagnostic {
         label,
         help: Some("use a finite number or undefined instead".to_string()),
         notes: vec![],
+        column: None,
+        cause: None,
+    }
+}
+
+pub fn integer_precision_loss(span: Span, source_type: Type, target: Type) -> Diagnostic {
+    let is_signed = source_type.is_signed_integer();
+
+    let (min_limit, max_limit) = match target {
+        Type::Float4 => {
+            if is_signed {
+                ("-16_777_216 (-2^24)", "16_777_216 (2^24)")
+            } else {
+                ("0", "16_777_216 (2^24)")
+            }
+        }
+        Type::Float8 => {
+            if is_signed {
+                ("-9_007_199_254_740_992 (-2^53)", "9_007_199_254_740_992 (2^53)")
+            } else {
+                ("0", "9_007_199_254_740_992 (2^53)")
+            }
+        }
+        _ => {
+            unreachable!("precision_loss_on_float_conversion should only be called for float types")
+        }
+    };
+
+    let label = Some(format!(
+        "converting '{}' from {} to {} would lose precision",
+        span.fragment, source_type, target
+    ));
+
+    Diagnostic {
+        code: "NUMBER_004".to_string(),
+        statement: None,
+        message: "too large for precise float conversion".to_string(),
+        span: Some(span),
+        label,
+        help: None,
+        notes: vec![
+            format!("{} can only represent from {} to {} precisely", target, min_limit, max_limit),
+            "consider using a different numeric type if exact precision is required".to_string(),
+        ],
         column: None,
         cause: None,
     }

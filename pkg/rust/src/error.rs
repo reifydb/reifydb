@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::diagnostic::{DefaultRenderer, Diagnostic};
+#[cfg(any(feature = "server", feature = "client"))]
 use reifydb_network::NetworkError;
 use std::fmt::{Display, Formatter};
 use tonic::Status;
@@ -61,6 +62,7 @@ impl From<reifydb_core::Error> for Error {
     }
 }
 
+#[cfg(any(feature = "server", feature = "client"))]
 impl From<reifydb_network::NetworkError> for Error {
     fn from(value: NetworkError) -> Self {
         match value {

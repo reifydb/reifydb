@@ -1,0 +1,69 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tx 'map cast(cast(0, int16), float4)'
+---
+> +-----+
+> |  0  |
+> +-----+
+> |  0  |
+> +-----+
+> 
+
+tx 'map cast(cast(16777216, int16), float4)'
+---
+> +------------+
+> |  16777216  |
+> +------------+
+> |  16777216  |
+> +------------+
+> 
+
+tx 'map cast(cast(-16777216, int16), float4)'
+---
+> +-------------+
+> |  -16777216  |
+> +-------------+
+> |  -16777216  |
+> +-------------+
+> 
+
+!tx 'map cast(cast(16777217, int16), float4)'
+---
+>  Error CAST_002: failed to cast to FLOAT4
+>   at "(16777217float4" (line 1, column 9)
+> 
+>   1 │ map cast(cast(16777217, int16), float4)
+>     │          ~~~~~~~~~~~~~~~
+>     │     failed to cast to FLOAT4
+> 
+>   ↳  Error NUMBER_004: too large for precise float conversion
+>     at "16777217" (line 1, column 15)
+> 
+>     1 │ map cast(cast(16777217, int16), float4)
+>       │               ~~~~~~~~
+>       │ converting '16777217' from INT16 to FLOAT4 would lose precision
+> 
+>     note: FLOAT4 can only represent from -16_777_216 (-2^24) to 16_777_216 (2^24) precisely
+>     note: consider using a different numeric type if exact precision is required
+> 
+
+!tx 'map cast(cast(-16777217, int16), float4)'
+---
+>  Error CAST_002: failed to cast to FLOAT4
+>   at "(-16777217float4" (line 1, column 9)
+> 
+>   1 │ map cast(cast(-16777217, int16), float4)
+>     │          ~~~~~~~~~~~~~~~~
+>     │      failed to cast to FLOAT4
+> 
+>   ↳  Error NUMBER_004: too large for precise float conversion
+>     at "-16777217" (line 1, column 15)
+> 
+>     1 │ map cast(cast(-16777217, int16), float4)
+>       │               ~~~~~~~~~
+>       │ converting '-16777217' from INT16 to FLOAT4 would lose precision
+> 
+>     note: FLOAT4 can only represent from -16_777_216 (-2^24) to 16_777_216 (2^24) precisely
+>     note: consider using a different numeric type if exact precision is required
+> 

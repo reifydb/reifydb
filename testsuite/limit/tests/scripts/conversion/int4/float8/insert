@@ -1,0 +1,38 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+(tx 'create schema test')
+
+(tx 'create table test.conversion(col: float8)')
+
+(tx 'from [{ col: cast(cast(0, int4), float8) }] insert test.conversion')
+tx 'from test.conversion map col'
+---
+> +-------+
+> |  col  |
+> +-------+
+> |   0   |
+> +-------+
+> 
+
+(tx 'from [{ col: cast(cast(-2147483648, int4), float8) }] insert test.conversion')
+tx 'from test.conversion map col'
+---
+> +---------------+
+> |      col      |
+> +---------------+
+> |  -2147483648  |
+> |       0       |
+> +---------------+
+> 
+
+(tx 'from [{ col: cast(cast(2147483647, int4), float8) }] insert test.conversion')
+tx 'from test.conversion map col'
+---
+> +---------------+
+> |      col      |
+> +---------------+
+> |  2147483647   |
+> |  -2147483648  |
+> |       0       |
+> +---------------+
+> 

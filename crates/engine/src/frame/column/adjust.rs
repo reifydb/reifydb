@@ -378,8 +378,8 @@ fn convert_vec<From, To>(
     mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
 where
-    From: Copy + SafeConvert<To>,
-    To: GetType
+    From: Copy + SafeConvert<To> + GetType,
+    To: GetType,
 {
     let mut out = ColumnValues::with_capacity(target_kind, values.len());
     for (idx, &val) in values.iter().enumerate() {

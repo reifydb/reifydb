@@ -25,38 +25,35 @@ fn main() {
     // db.tx_as(&root, r#"from test.text_test5 map cast(col, bool)"#).unwrap();
     // db.tx_as(&root, r#"(tx 'from [{ col: cast("P30D", interval)}] insert test.text_test9')"#).unwrap();
 
-    //   let l = db
-    //       .tx_as(
-    //           &root,
-    //           r#"
-    // from [
-    //   { col: @2025-07-15  },
-    //   { col: @2023-11-23  },
-    // ] insert test.abc
-    //       "#,
-    //       )
-    //       .unwrap();
-    //   println!("{}", l.first().unwrap());
+      // let l = db
+      //     .tx_as(
+      //         &root,
+      //         r#"
+      //
+      //     "#,
+      //     )
+      //     .unwrap();
+      // println!("{}", l.first().unwrap());
 
-    let l = db
-        .tx_as(
-            &root,
-            r#"
-    map cast(cast(9223372036854775807, int8), float4)
-        "#,
-        )
-        .unwrap_err();
-    println!("{}", l);
-
-    // let err = db
+    // let l = db
     //     .tx_as(
     //         &root,
     //         r#"
-    //       map cast(1, int1)
+    // map cast(cast(9223372036854775808.0, float8), int8)
     //     "#,
     //     )
     //     .unwrap_err();
-    // println!("{}", err);
+    // println!("{}", l);
+
+    let err = db
+        .tx_as(
+            &root,
+            r#"
+              map cast(cast(18446744073709551615, uint8), float8)
+        "#,
+        )
+        .unwrap_err();
+    println!("{}", err);
     //
     // // Test simple filter without map
     // let l = db

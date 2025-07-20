@@ -1,0 +1,47 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+(tx 'create schema test')
+
+(tx 'create table test.conversion(col: float8)')
+
+(tx 'from [{ col: cast(cast(0, uint8), float8) }] insert test.conversion')
+tx 'from test.conversion map col'
+---
+> +-------+
+> |  col  |
+> +-------+
+> |   0   |
+> +-------+
+> 
+
+(tx 'from [{ col: cast(cast(9007199254740992, uint8), float8) }] insert test.conversion')
+tx 'from test.conversion map col'
+---
+> +--------------------+
+> |        col         |
+> +--------------------+
+> |  9007199254740992  |
+> |         0          |
+> +--------------------+
+> 
+
+(tx 'create table test.float8_test10(col: float8)')
+!tx 'from [{ col: cast(cast(9007199254740993, uint8), float8) }] insert test.float8_test10'
+---
+>  Error CAST_002: failed to cast to FLOAT8
+>   at "(9007199254740993float8" (line 1, column 18)
+> 
+>   1 │ from [{ col: cast(cast(9007199254740993, uint8), float8) }] insert test.float8_test10
+>     │                   ~~~~~~~~~~~~~~~~~~~~~~~
+>     │                  failed to cast to FLOAT8
+> 
+>   ↳  Error NUMBER_004: too large for precise float conversion
+>     at "9007199254740993" (line 1, column 24)
+> 
+>     1 │ from [{ col: cast(cast(9007199254740993, uint8), float8) }] insert test.float8_test10
+>       │                        ~~~~~~~~~~~~~~~~
+>       │ converting '9007199254740993' from UINT8 to FLOAT8 would lose precision
+> 
+>     note: FLOAT8 can only represent from 0 to 9_007_199_254_740_992 (2^53) precisely
+>     note: consider using a different numeric type if exact precision is required
+> 

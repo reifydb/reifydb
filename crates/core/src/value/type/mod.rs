@@ -54,6 +54,27 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn is_signed_integer(&self) -> bool {
+        matches!(self, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16)
+    }
+
+    pub fn is_unsigned_integer(&self) -> bool {
+        matches!(self, Type::Uint1 | Type::Uint2 | Type::Uint4 | Type::Uint8 | Type::Uint16)
+    }
+
+    pub fn is_integer(&self) -> bool {
+        self.is_signed_integer() || self.is_unsigned_integer()
+    }
+
+    pub fn is_floating_point(&self) -> bool {
+        match self {
+            Type::Float4 | Type::Float8 => true,
+            _ => false,
+        }
+    }
+}
+
+impl Type {
     pub fn to_u8(&self) -> u8 {
         match self {
             Type::Bool => 0x0E,
