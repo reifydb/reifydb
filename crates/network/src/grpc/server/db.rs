@@ -161,7 +161,7 @@ fn map_frame(frame: Frame) -> grpc::Frame {
             .columns
             .into_iter()
             .map(|col| {
-                let data_type = col.values.ty();
+                let data_type = col.values.get_type();
 
                 let values = col
                     .values

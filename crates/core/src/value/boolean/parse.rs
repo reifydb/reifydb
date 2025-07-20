@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::diagnostic::boolean::{empty_boolean_value, invalid_boolean_format, invalid_numeric_boolean};
+use crate::diagnostic::boolean::{empty_boolean_value, invalid_boolean_format, invalid_number_boolean};
 
 use crate::{Error, Span};
 
@@ -20,7 +20,7 @@ pub fn parse_bool(span: &Span) -> Result<bool, Error> {
         _ => {
             // Check if the value contains numbers - if so, use numeric boolean diagnostic
             if value.chars().any(|c| c.is_ascii_digit()) {
-                Err(Error(invalid_numeric_boolean(span.clone())))
+                Err(Error(invalid_number_boolean(span.clone())))
             } else {
                 Err(Error(invalid_boolean_format(span.clone())))
             }

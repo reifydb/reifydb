@@ -29,6 +29,44 @@ pub enum ColumnValues {
 }
 
 impl ColumnValues {
+    pub fn get_type(&self) -> Type {
+        match self {
+            ColumnValues::Bool(_, _) => Type::Bool,
+            ColumnValues::Float4(_, _) => Type::Float4,
+            ColumnValues::Float8(_, _) => Type::Float8,
+            ColumnValues::Int1(_, _) => Type::Int1,
+            ColumnValues::Int2(_, _) => Type::Int2,
+            ColumnValues::Int4(_, _) => Type::Int4,
+            ColumnValues::Int8(_, _) => Type::Int8,
+            ColumnValues::Int16(_, _) => Type::Int16,
+            ColumnValues::Uint1(_, _) => Type::Uint1,
+            ColumnValues::Uint2(_, _) => Type::Uint2,
+            ColumnValues::Uint4(_, _) => Type::Uint4,
+            ColumnValues::Uint8(_, _) => Type::Uint8,
+            ColumnValues::Uint16(_, _) => Type::Uint16,
+            ColumnValues::Utf8(_, _) => Type::Utf8,
+            ColumnValues::Date(_, _) => Type::Date,
+            ColumnValues::DateTime(_, _) => Type::DateTime,
+            ColumnValues::Time(_, _) => Type::Time,
+            ColumnValues::Interval(_, _) => Type::Interval,
+            ColumnValues::Undefined(_) => Type::Undefined,
+        }
+    }
+
+    pub fn is_bool(&self) -> bool {
+        self.get_type() == Type::Bool
+    }
+
+    pub fn is_float(&self) -> bool {
+        self.get_type() == Type::Float4 || self.get_type() == Type::Float8
+    }
+
+    pub fn is_utf8(&self) -> bool {
+        self.get_type() == Type::Utf8
+    }
+}
+
+impl ColumnValues {
     pub fn bitvec(&self) -> &BitVec {
         match self {
             ColumnValues::Bool(_, bitvec) => bitvec,
@@ -635,32 +673,6 @@ impl ColumnValues {
             ColumnValues::Time(_, b) => b.len(),
             ColumnValues::Interval(_, b) => b.len(),
             ColumnValues::Undefined(n) => *n,
-        }
-    }
-}
-
-impl ColumnValues {
-    pub fn ty(&self) -> Type {
-        match self {
-            ColumnValues::Bool(_, _) => Type::Bool,
-            ColumnValues::Float4(_, _) => Type::Float4,
-            ColumnValues::Float8(_, _) => Type::Float8,
-            ColumnValues::Int1(_, _) => Type::Int1,
-            ColumnValues::Int2(_, _) => Type::Int2,
-            ColumnValues::Int4(_, _) => Type::Int4,
-            ColumnValues::Int8(_, _) => Type::Int8,
-            ColumnValues::Int16(_, _) => Type::Int16,
-            ColumnValues::Utf8(_, _) => Type::Utf8,
-            ColumnValues::Uint1(_, _) => Type::Uint1,
-            ColumnValues::Uint2(_, _) => Type::Uint2,
-            ColumnValues::Uint4(_, _) => Type::Uint4,
-            ColumnValues::Uint8(_, _) => Type::Uint8,
-            ColumnValues::Uint16(_, _) => Type::Uint16,
-            ColumnValues::Date(_, _) => Type::Date,
-            ColumnValues::DateTime(_, _) => Type::DateTime,
-            ColumnValues::Time(_, _) => Type::Time,
-            ColumnValues::Interval(_, _) => Type::Interval,
-            ColumnValues::Undefined(_) => Type::Undefined,
         }
     }
 }

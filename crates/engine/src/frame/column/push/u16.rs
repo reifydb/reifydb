@@ -120,7 +120,7 @@ impl Push<u16> for ColumnValues {
                 *self = ColumnValues::Uint2(CowVec::new(values), bitvec);
             }
             other => {
-                panic!("called `push::<u16>()` on incompatible ColumnValues::{:?}", other.ty());
+                panic!("called `push::<u16>()` on incompatible ColumnValues::{:?}", other.get_type());
             }
         }
     }

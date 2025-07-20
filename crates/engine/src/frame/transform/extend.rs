@@ -226,7 +226,7 @@ impl Frame {
                     return Err(format!(
                         "type mismatch for column '{}'({}): incompatible with value {}",
                         column.name,
-                        column.values.ty(),
+                        column.values.get_type(),
                         v
                     )
                     .into());

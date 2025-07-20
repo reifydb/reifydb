@@ -6,7 +6,7 @@ pub use push::Push;
 use reifydb_core::{BitVec, Type};
 pub use values::ColumnValues;
 
-mod adjust;
+mod cast;
 mod extend;
 mod filter;
 mod get;
@@ -23,8 +23,8 @@ pub struct FrameColumn {
 }
 
 impl FrameColumn {
-    pub fn ty(&self) -> Type {
-        self.values.ty()
+    pub fn get_type(&self) -> Type {
+        self.values.get_type()
     }
 }
 

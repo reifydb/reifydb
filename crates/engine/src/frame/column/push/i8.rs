@@ -152,7 +152,7 @@ impl Push<i8> for ColumnValues {
                 *self = ColumnValues::Int1(CowVec::new(values), bitvec);
             }
             other => {
-                panic!("called `push::<i8>()` on incompatible ColumnValues::{:?}", other.ty());
+                panic!("called `push::<i8>()` on incompatible ColumnValues::{:?}", other.get_type());
             }
         }
     }

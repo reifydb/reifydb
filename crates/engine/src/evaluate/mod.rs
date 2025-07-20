@@ -76,7 +76,7 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> Result<FrameColum
         let mut column = evaluator.evaluate(expr, ctx)?;
         column.values = column
             .values
-            .adjust(ty, ctx, expr.lazy_span())
+            .cast(ty, ctx, expr.lazy_span())
             .map_err(|e| Error(e.diagnostic()))?;
         Ok(column)
     } else {

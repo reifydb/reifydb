@@ -17,7 +17,7 @@ impl Evaluator {
     ) -> crate::evaluate::Result<FrameColumn> {
         let left = self.evaluate(&rem.left, ctx)?;
         let right = self.evaluate(&rem.right, ctx)?;
-        let ty = Type::promote(left.ty(), right.ty());
+        let ty = Type::promote(left.get_type(), right.get_type());
 
         match (&left.values, &right.values) {
             // Float4

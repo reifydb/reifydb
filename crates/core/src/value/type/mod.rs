@@ -54,6 +54,28 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn is_number(&self) -> bool {
+        matches!(
+            self,
+            Type::Float4
+                | Type::Float8
+                | Type::Int1
+                | Type::Int2
+                | Type::Int4
+                | Type::Int8
+                | Type::Int16
+                | Type::Uint1
+                | Type::Uint2
+                | Type::Uint4
+                | Type::Uint8
+                | Type::Uint16
+        )
+    }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Type::Bool)
+    }
+
     pub fn is_signed_integer(&self) -> bool {
         matches!(self, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16)
     }
@@ -67,10 +89,15 @@ impl Type {
     }
 
     pub fn is_floating_point(&self) -> bool {
-        match self {
-            Type::Float4 | Type::Float8 => true,
-            _ => false,
-        }
+        matches!(self, Type::Float4 | Type::Float8)
+    }
+
+    pub fn is_utf8(&self) -> bool {
+        matches!(self, Type::Utf8)
+    }
+
+    pub fn is_temporal(&self) -> bool {
+        matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Interval)
     }
 }
 

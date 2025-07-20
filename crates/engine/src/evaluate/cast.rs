@@ -27,7 +27,7 @@ impl Evaluator {
                     name: column.name,
                     values: column
                         .values
-                        .adjust(cast.to.ty, ctx, cast.expression.lazy_span())
+                        .cast(cast.to.ty, ctx, cast.expression.lazy_span())
                         .map_err(|e| {
                             Error(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
                         })?,
