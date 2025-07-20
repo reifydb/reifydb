@@ -91,6 +91,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::Map(_)
             | PhysicalPlan::InlineData(_)
             | PhysicalPlan::Insert(_)
+            | PhysicalPlan::Update(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
 
             PhysicalPlan::CreateDeferredView(_)
@@ -109,6 +110,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
             PhysicalPlan::Insert(plan) => self.insert(tx, plan),
+            PhysicalPlan::Update(plan) => self.update(tx, plan),
 
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)

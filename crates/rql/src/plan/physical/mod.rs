@@ -66,6 +66,15 @@ impl Compiler {
                     }))
                 }
 
+                LogicalPlan::Update(update) => {
+                    let input = stack.pop().unwrap();
+                    stack.push(PhysicalPlan::Update(UpdatePlan {
+                        input: Box::new(input),
+                        schema: update.schema,
+                        table: update.table,
+                    }))
+                }
+
                 LogicalPlan::JoinLeft(join) => {
                     let left = stack.pop().unwrap(); // FIXME;
                     let right = Self::compile(rx, join.with)?.unwrap();
@@ -122,6 +131,7 @@ pub enum PhysicalPlan {
     CreateTable(CreateTablePlan),
     // Mutate
     Insert(InsertPlan),
+    Update(UpdatePlan),
 
     // Query
     Aggregate(AggregateNode),
@@ -171,6 +181,13 @@ pub struct FilterNode {
 
 #[derive(Debug, Clone)]
 pub struct InsertPlan {
+    pub input: Box<PhysicalPlan>,
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdatePlan {
     pub input: Box<PhysicalPlan>,
     pub schema: Option<OwnedSpan>,
     pub table: OwnedSpan,
