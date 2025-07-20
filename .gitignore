@@ -2,3 +2,4 @@
 .idea
 .run
 .venv
+.env

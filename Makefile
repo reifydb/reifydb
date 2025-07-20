@@ -3,8 +3,14 @@
 # =============================================================================
 
 # Configuration
-TEST_SUITE_DIR := ../testsuite
+TEST_SUITE_DIR ?= ../testsuite
 TEST_CLIENT_DIR := ./pkg/client
+
+# Load .env file if it exists
+ifneq (,$(wildcard ./.env))
+    include ./.env
+    export
+endif
 
 # Default target when just running 'make'
 .DEFAULT_GOAL := help
