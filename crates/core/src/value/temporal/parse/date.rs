@@ -11,17 +11,17 @@ pub fn parse_date(span: impl Span) -> Result<Date, Error> {
     }
 
     // Check for empty parts
-    if span_parts[0].fragment.trim().is_empty() {
+    if span_parts[0].trimmed_fragment().is_empty() {
         return Err(Error(temporal::empty_date_component(span_parts[0].clone())));
     }
-    if span_parts[1].fragment.trim().is_empty() {
+    if span_parts[1].trimmed_fragment().is_empty() {
         return Err(Error(temporal::empty_date_component(span_parts[1].clone())));
     }
-    if span_parts[2].fragment.trim().is_empty() {
+    if span_parts[2].trimmed_fragment().is_empty() {
         return Err(Error(temporal::empty_date_component(span_parts[2].clone())));
     }
 
-    let year_str = span_parts[0].fragment.trim();
+    let year_str = span_parts[0].trimmed_fragment();
     if year_str.len() != 4 {
         return Err(Error(temporal::invalid_year(span_parts[0].clone())));
     }
@@ -30,7 +30,7 @@ pub fn parse_date(span: impl Span) -> Result<Date, Error> {
         .parse::<i32>()
         .map_err(|_| Error(temporal::invalid_year(span_parts[0].clone())))?;
 
-    let month_str = span_parts[1].fragment.trim();
+    let month_str = span_parts[1].trimmed_fragment();
     if month_str.len() != 2 {
         return Err(Error(temporal::invalid_month(span_parts[1].clone())));
     }
@@ -39,7 +39,7 @@ pub fn parse_date(span: impl Span) -> Result<Date, Error> {
         .parse::<u32>()
         .map_err(|_| Error(temporal::invalid_month(span_parts[1].clone())))?;
 
-    let day_str = span_parts[2].fragment.trim();
+    let day_str = span_parts[2].trimmed_fragment();
     if day_str.len() != 2 {
         return Err(Error(temporal::invalid_day(span_parts[2].clone())));
     }

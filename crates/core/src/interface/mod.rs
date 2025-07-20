@@ -3,10 +3,12 @@
 
 pub use auth::*;
 pub use hook::*;
+pub use span::*;
 pub use storage::*;
 pub use transaction::*;
 
 mod auth;
 mod hook;
+mod span;
 mod storage;
 mod transaction;

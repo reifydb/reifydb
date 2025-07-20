@@ -12,8 +12,8 @@ pub fn parse_datetime(span: impl Span) -> Result<DateTime, Error> {
         return Err(Error(temporal::invalid_datetime_format(span.to_owned())));
     }
 
-    let date_span = BorrowedSpan::new(&parts[0].fragment);
-    let time_span = BorrowedSpan::new(&parts[1].fragment);
+    let date_span = BorrowedSpan::new(parts[0].fragment());
+    let time_span = BorrowedSpan::new(parts[1].fragment());
     let date = parse_date(date_span)?;
     let time = parse_time(time_span)?;
 
