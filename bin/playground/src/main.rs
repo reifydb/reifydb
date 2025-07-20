@@ -8,71 +8,23 @@
 
 use reifydb::{ReifyDB, memory, serializable};
 
-// FIXME to test later
-// map @2024-03-15T14:30:00.123456789Z as result;
-
 fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
 
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.float4_test10(col: float4)"#).unwrap();
-    db.tx_as(&root, r#"from [{ col: 128.0 }] insert test.float4_test10"#).unwrap();
-    // db.tx_as(&root, r#"create table test.item(field_one: float8 policy (saturation undefined))"#).unwrap();
-    // db.tx_as(&root, r#"create table test.item(field_one: uint8 policy (saturation error))"#).unwrap();
-    // db.tx_as(&root, r#"create table test.item(field: int16 policy (saturation error) )"#).unwrap();
-    // db.tx_as(&root, r#"create table test.text_test5(col: text)"#).unwrap();
-    // db.tx_as(&root, r#"from [{ col: "yes" }] insert test.text_test5"#).unwrap();
-    // db.tx_as(&root, r#"from test.text_test5 map cast(col, bool)"#).unwrap();
-    // db.tx_as(&root, r#"(tx 'from [{ col: cast("P30D", interval)}] insert test.text_test9')"#).unwrap();
+    db.tx_as(&root, r#"create table test.abc(id: int1, col: float4)"#).unwrap();
+    db.tx_as(&root, r#"from [{ id: 1, col: 128.0 }] insert test.abc"#).unwrap();
 
-      // let l = db
-      //     .tx_as(
-      //         &root,
-      //         r#"
-      //
-      //     "#,
-      //     )
-      //     .unwrap();
-      // println!("{}", l.first().unwrap());
+      let l = db
+          .tx_as(
+              &root,
+              r#"
+            from test.abc
+            map { id, col - 10 }
+            update test.abc;
+          "#,
+          )
+          .unwrap();
+      println!("{}", l.first().unwrap());
 
-    // let l = db
-    //     .tx_as(
-    //         &root,
-    //         r#"
-    // map cast(cast(9223372036854775808.0, float8), int8)
-    //     "#,
-    //     )
-    //     .unwrap_err();
-    // println!("{}", l);
-
-    let err = db
-        .tx_as(
-            &root,
-            r#"
-              map cast(cast(18446744073709551615, uint8), float8)
-        "#,
-        )
-        .unwrap_err();
-    println!("{}", err);
-    //
-    // // Test simple filter without map
-    // let l = db
-    //     .tx_as(
-    //         &root,
-    //         r#"
-    //         map cast(undefined, float8)
-    //         "#,
-    //     )
-    //     .unwrap();
-    // println!("{}", l.first().unwrap());
-    //
-    // // Test map without filter
-    // let l3 = db
-    //     .tx_as(
-    //         &root,
-    //         r#"from test.edge_cases map content"#,
-    //     )
-    //     .unwrap();
-    // println!("Map test (content column):");
-    // println!("{}", l3.first().unwrap());
 }

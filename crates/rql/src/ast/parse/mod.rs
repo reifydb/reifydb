@@ -23,6 +23,7 @@ mod primary;
 mod sort;
 mod take;
 mod tuple;
+mod update;
 
 pub use error::*;
 
