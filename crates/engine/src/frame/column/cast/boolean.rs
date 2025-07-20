@@ -58,6 +58,7 @@ where
 
 macro_rules! impl_integer_to_bool {
     ($fn_name:ident, $type:ty) => {
+        #[inline]
         fn $fn_name(
             values: &[$type],
             bitvec: &BitVec,
@@ -74,6 +75,7 @@ macro_rules! impl_integer_to_bool {
 
 macro_rules! impl_float_to_bool {
     ($fn_name:ident, $type:ty) => {
+        #[inline]
         fn $fn_name(
             values: &[$type],
             bitvec: &BitVec,

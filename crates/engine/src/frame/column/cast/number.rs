@@ -4,10 +4,11 @@
 use crate::error;
 use crate::evaluate::{Convert, Demote, Error, Promote};
 use crate::frame::ColumnValues;
-use crate::frame::column::cast::{convert_vec, demote_vec, number, promote_vec};
 use reifydb_core::diagnostic::cast;
-use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
-use reifydb_core::{BitVec, OwnedSpan, Span, Type};
+use reifydb_core::value::number::{
+    SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,
+};
+use reifydb_core::{BitVec, GetType, OwnedSpan, Span, Type};
 
 impl ColumnValues {
     pub(crate) fn to_number(
@@ -16,72 +17,61 @@ impl ColumnValues {
         ctx: impl Promote + Demote + Convert,
         span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
+        if !target.is_number() {
+            unreachable!()
+        }
+
         if self.get_type().is_number() {
             return self.number_to_number(target, ctx, span);
         }
 
-        match target {
-            Type::Int1
-            | Type::Int2
-            | Type::Int4
-            | Type::Int8
-            | Type::Int16
-            | Type::Uint1
-            | Type::Uint2
-            | Type::Uint4
-            | Type::Uint8
-            | Type::Uint16 => {
-                if self.is_bool() {
-                    return self.bool_to_numeric_vec(target);
-                }
-
-                if self.is_utf8() {
-                    return self.text_to_numeric_vec(target, span);
-                }
-
-                if self.is_float() {
-                    return self.float_to_number(target);
-                }
-
-                unreachable!()
-            }
-            Type::Float4 | Type::Float8 => {
-                match self {
-                    ColumnValues::Bool(values, bitvec) => {
-                        // return number::bool_to_numeric_vec(values, bitvec, target);
-                        return self.bool_to_numeric_vec(target);
-                    }
-                    ColumnValues::Utf8(values, bitvec) => {
-                        return number::text_to_float_vec(values, bitvec, target, span);
-                    }
-                    _ => unreachable!(),
-                }
-            }
-            _ => unreachable!(),
+        if self.is_bool() {
+            return self.bool_to_number(target);
         }
+
+        if self.is_utf8() {
+            return match target {
+                Type::Float4 | Type::Float8 => self.text_to_float(target, span),
+                _ => self.text_to_integer(target, span),
+            };
+        }
+
+        if self.is_float() {
+            return self.float_to_integer(target);
+        }
+
+        unreachable!()
     }
 }
 
 impl ColumnValues {
-    pub(crate) fn bool_to_numeric_vec(&self, target: Type) -> crate::Result<ColumnValues> {
+    fn bool_to_number(&self, target: Type) -> crate::Result<ColumnValues> {
+        macro_rules! bool_to_number {
+            ($target_ty:ty, $true_val:expr, $false_val:expr) => {{
+                |out: &mut ColumnValues, val: bool| {
+                    out.push::<$target_ty>(if val { $true_val } else { $false_val })
+                }
+            }};
+        }
+
         match self {
             ColumnValues::Bool(values, bitvec) => {
                 let mut out = ColumnValues::with_capacity(target, values.len());
                 for (idx, &val) in values.iter().enumerate() {
                     if bitvec.get(idx) {
                         match target {
-                            Type::Int1 => out.push::<i8>(if val { 1i8 } else { 0i8 }),
-                            Type::Int2 => out.push::<i16>(if val { 1i16 } else { 0i16 }),
-                            Type::Int4 => out.push::<i32>(if val { 1i32 } else { 0i32 }),
-                            Type::Int8 => out.push::<i64>(if val { 1i64 } else { 0i64 }),
-                            Type::Int16 => out.push::<i128>(if val { 1i128 } else { 0i128 }),
-                            Type::Uint1 => out.push::<u8>(if val { 1u8 } else { 0u8 }),
-                            Type::Uint2 => out.push::<u16>(if val { 1u16 } else { 0u16 }),
-                            Type::Uint4 => out.push::<u32>(if val { 1u32 } else { 0u32 }),
-                            Type::Uint8 => out.push::<u64>(if val { 1u64 } else { 0u64 }),
-                            Type::Uint16 => out.push::<u128>(if val { 1u128 } else { 0u128 }),
-                            Type::Float4 => out.push::<f32>(if val { 1.0f32 } else { 0.0f32 }),
-                            Type::Float8 => out.push::<f64>(if val { 1.0f64 } else { 0.0f64 }),
+                            Type::Int1 => bool_to_number!(i8, 1i8, 0i8)(&mut out, val),
+                            Type::Int2 => bool_to_number!(i16, 1i16, 0i16)(&mut out, val),
+                            Type::Int4 => bool_to_number!(i32, 1i32, 0i32)(&mut out, val),
+                            Type::Int8 => bool_to_number!(i64, 1i64, 0i64)(&mut out, val),
+                            Type::Int16 => bool_to_number!(i128, 1i128, 0i128)(&mut out, val),
+                            Type::Uint1 => bool_to_number!(u8, 1u8, 0u8)(&mut out, val),
+                            Type::Uint2 => bool_to_number!(u16, 1u16, 0u16)(&mut out, val),
+                            Type::Uint4 => bool_to_number!(u32, 1u32, 0u32)(&mut out, val),
+                            Type::Uint8 => bool_to_number!(u64, 1u64, 0u64)(&mut out, val),
+                            Type::Uint16 => bool_to_number!(u128, 1u128, 0u128)(&mut out, val),
+                            Type::Float4 => bool_to_number!(f32, 1.0f32, 0.0f32)(&mut out, val),
+                            Type::Float8 => bool_to_number!(f64, 1.0f64, 0.0f64)(&mut out, val),
                             _ => unreachable!(),
                         }
                     } else {
@@ -96,7 +86,7 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub(crate) fn float_to_number(&self, target: Type) -> crate::Result<ColumnValues> {
+    fn float_to_integer(&self, target: Type) -> crate::Result<ColumnValues> {
         match self {
             ColumnValues::Float4(values, bitvec) => match target {
                 Type::Int1 => f32_to_i8_vec(values, bitvec),
@@ -129,486 +119,237 @@ impl ColumnValues {
     }
 }
 
+macro_rules! parse_and_push {
+    (parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
+        let result = parse_int::<$ty>($temp_span).map_err(|e| {
+            Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
+        })?;
+        $out.push::<$ty>(result);
+    }};
+    (parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
+        let result = parse_uint::<$ty>($temp_span).map_err(|e| {
+            Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
+        })?;
+        $out.push::<$ty>(result);
+    }};
+}
+
 impl ColumnValues {
-    pub(crate) fn text_to_numeric_vec(
+    fn text_to_integer(
         &self,
         target: Type,
         span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         match self {
             ColumnValues::Utf8(values, bitvec) => {
-                // Create base span once for efficiency
                 let base_span = span();
                 let mut out = ColumnValues::with_capacity(target, values.len());
                 for (idx, val) in values.iter().enumerate() {
                     if bitvec.get(idx) {
-                        // Create efficient borrowed span for parsing
                         use reifydb_core::BorrowedSpan;
-                        let temp_span = BorrowedSpan::with_position(
-                            val,
-                            base_span.line(),
-                            base_span.column(),
-                        );
+                        let temp_span =
+                            BorrowedSpan::with_position(val, base_span.line(), base_span.column());
 
-                        // Try to parse based on the target type
                         match target {
-                            Type::Int1 => {
-                                out.push::<i8>(parse_int::<i8>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Int1, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Int2 => {
-                                out.push::<i16>(parse_int::<i16>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Int2, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Int4 => {
-                                out.push::<i32>(parse_int::<i32>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Int4, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Int8 => {
-                                out.push::<i64>(parse_int::<i64>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Int8, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Int16 => {
-                                out.push::<i128>(parse_int::<i128>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Int16, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Uint1 => {
-                                out.push::<u8>(parse_uint::<u8>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Uint1, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Uint2 => {
-                                out.push::<u16>(parse_uint::<u16>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Uint2, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Uint4 => {
-                                out.push::<u32>(parse_uint::<u32>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Uint4, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Uint8 => {
-                                out.push::<u64>(parse_uint::<u64>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(base_span.clone(), Type::Uint8, e.diagnostic()))
-                                })?)
-                            }
-                            Type::Uint16 => {
-                                out.push::<u128>(parse_uint::<u128>(temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(
-                                        base_span.clone(),
-                                        Type::Uint16,
-                                        e.diagnostic(),
-                                    ))
-                                })?)
-                            }
+                            Type::Int1 => parse_and_push!(
+                                parse_int,
+                                i8,
+                                Type::Int1,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Int2 => parse_and_push!(
+                                parse_int,
+                                i16,
+                                Type::Int2,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Int4 => parse_and_push!(
+                                parse_int,
+                                i32,
+                                Type::Int4,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Int8 => parse_and_push!(
+                                parse_int,
+                                i64,
+                                Type::Int8,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Int16 => parse_and_push!(
+                                parse_int,
+                                i128,
+                                Type::Int16,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Uint1 => parse_and_push!(
+                                parse_uint,
+                                u8,
+                                Type::Uint1,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Uint2 => parse_and_push!(
+                                parse_uint,
+                                u16,
+                                Type::Uint2,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Uint4 => parse_and_push!(
+                                parse_uint,
+                                u32,
+                                Type::Uint4,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Uint8 => parse_and_push!(
+                                parse_uint,
+                                u64,
+                                Type::Uint8,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
+                            Type::Uint16 => parse_and_push!(
+                                parse_uint,
+                                u128,
+                                Type::Uint16,
+                                out,
+                                temp_span,
+                                base_span
+                            ),
                             _ => unreachable!(),
                         }
                     } else {
                         out.push_undefined();
                     }
                 }
-                return Ok(out);
+                Ok(out)
             }
             _ => unreachable!(),
         }
     }
 }
 
-// Cast from text to float
-pub fn text_to_float_vec(
-    values: &[String],
-    bitvec: &BitVec,
-    target: Type,
-    span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
-    // Create base span once for efficiency  
-    let base_span = span();
-    let mut out = ColumnValues::with_capacity(target, values.len());
-    for (idx, val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            // Create efficient borrowed span for parsing
-            use reifydb_core::BorrowedSpan;
-            let temp_span = BorrowedSpan::with_position(
-                val,
-                base_span.line(),
-                base_span.column(),
-            );
+impl ColumnValues {
+    fn text_to_float(
+        &self,
+        target: Type,
+        span: impl Fn() -> OwnedSpan,
+    ) -> crate::Result<ColumnValues> {
+        if let ColumnValues::Utf8(values, bitvec) = self {
+            // Create base span once for efficiency
+            let base_span = span();
+            let mut out = ColumnValues::with_capacity(target, values.len());
+            for (idx, val) in values.iter().enumerate() {
+                if bitvec.get(idx) {
+                    // Create efficient borrowed span for parsing
+                    use reifydb_core::BorrowedSpan;
+                    let temp_span =
+                        BorrowedSpan::with_position(val, base_span.line(), base_span.column());
 
-            match target {
-                Type::Float4 => out.push::<f32>(parse_float::<f32>(temp_span).map_err(|e| {
-                    Error(cast::invalid_number(base_span.clone(), Type::Float4, e.diagnostic()))
-                })?),
+                    match target {
+                        Type::Float4 => {
+                            out.push::<f32>(parse_float::<f32>(temp_span).map_err(|e| {
+                                Error(cast::invalid_number(
+                                    base_span.clone(),
+                                    Type::Float4,
+                                    e.diagnostic(),
+                                ))
+                            })?)
+                        }
 
-                Type::Float8 => out.push::<f64>(parse_float::<f64>(temp_span).map_err(|e| {
-                    Error(cast::invalid_number(base_span.clone(), Type::Float8, e.diagnostic()))
-                })?),
-                _ => unreachable!(),
+                        Type::Float8 => {
+                            out.push::<f64>(parse_float::<f64>(temp_span).map_err(|e| {
+                                Error(cast::invalid_number(
+                                    base_span.clone(),
+                                    Type::Float8,
+                                    e.diagnostic(),
+                                ))
+                            })?)
+                        }
+                        _ => unreachable!(),
+                    }
+                } else {
+                    out.push_undefined();
+                }
             }
+            Ok(out)
         } else {
-            out.push_undefined();
+            unreachable!()
         }
     }
-    Ok(out)
 }
 
-// Float32 to integer conversion functions
-pub fn f32_to_i8_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int1, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i8::MIN as f32 && truncated <= i8::MAX as f32 {
-                out.push::<i8>(truncated as i8);
-            } else {
-                out.push_undefined();
+macro_rules! float_to_int_vec {
+    ($fn_name:ident, $float_ty:ty, $int_ty:ty, $target_type:expr, $min_val:expr, $max_val:expr) => {
+        fn $fn_name(values: &[$float_ty], bitvec: &BitVec) -> crate::Result<ColumnValues> {
+            let mut out = ColumnValues::with_capacity($target_type, values.len());
+            for (idx, &val) in values.iter().enumerate() {
+                if bitvec.get(idx) {
+                    let truncated = val.trunc();
+                    if truncated >= $min_val && truncated <= $max_val {
+                        out.push::<$int_ty>(truncated as $int_ty);
+                    } else {
+                        out.push_undefined();
+                    }
+                } else {
+                    out.push_undefined();
+                }
             }
-        } else {
-            out.push_undefined();
+            Ok(out)
         }
-    }
-    Ok(out)
+    };
 }
 
-pub fn f32_to_i16_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int2, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i16::MIN as f32 && truncated <= i16::MAX as f32 {
-                out.push::<i16>(truncated as i16);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
+float_to_int_vec!(f32_to_i8_vec, f32, i8, Type::Int1, i8::MIN as f32, i8::MAX as f32);
+float_to_int_vec!(f32_to_i16_vec, f32, i16, Type::Int2, i16::MIN as f32, i16::MAX as f32);
+float_to_int_vec!(f32_to_i32_vec, f32, i32, Type::Int4, i32::MIN as f32, i32::MAX as f32);
+float_to_int_vec!(f32_to_i64_vec, f32, i64, Type::Int8, i64::MIN as f32, i64::MAX as f32);
+float_to_int_vec!(f32_to_i128_vec, f32, i128, Type::Int16, i128::MIN as f32, i128::MAX as f32);
+float_to_int_vec!(f32_to_u8_vec, f32, u8, Type::Uint1, 0.0, u8::MAX as f32);
+float_to_int_vec!(f32_to_u16_vec, f32, u16, Type::Uint2, 0.0, u16::MAX as f32);
+float_to_int_vec!(f32_to_u32_vec, f32, u32, Type::Uint4, 0.0, u32::MAX as f32);
+float_to_int_vec!(f32_to_u64_vec, f32, u64, Type::Uint8, 0.0, u64::MAX as f32);
+float_to_int_vec!(f32_to_u128_vec, f32, u128, Type::Uint16, 0.0, u128::MAX as f32);
 
-pub fn f32_to_i32_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int4, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i32::MIN as f32 && truncated <= i32::MAX as f32 {
-                out.push::<i32>(truncated as i32);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f32_to_i64_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int8, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i64::MIN as f32 && truncated <= i64::MAX as f32 {
-                out.push::<i64>(truncated as i64);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f32_to_i128_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int16, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i128::MIN as f32 && truncated <= i128::MAX as f32 {
-                out.push::<i128>(truncated as i128);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f32_to_u8_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint1, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u8::MAX as f32 {
-                out.push::<u8>(truncated as u8);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f32_to_u16_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint2, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u16::MAX as f32 {
-                out.push::<u16>(truncated as u16);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f32_to_u32_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint4, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u32::MAX as f32 {
-                out.push::<u32>(truncated as u32);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f32_to_u64_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint8, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u64::MAX as f32 {
-                out.push::<u64>(truncated as u64);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f32_to_u128_vec(values: &[f32], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint16, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u128::MAX as f32 {
-                out.push::<u128>(truncated as u128);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-// Float64 to integer conversion functions
-pub fn f64_to_i8_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int1, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
-                out.push::<i8>(truncated as i8);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_i16_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int2, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
-                out.push::<i16>(truncated as i16);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_i32_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int4, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
-                out.push::<i32>(truncated as i32);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_i64_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int8, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
-                out.push::<i64>(truncated as i64);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_i128_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Int16, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
-                out.push::<i128>(truncated as i128);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_u8_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint1, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u8::MAX as f64 {
-                out.push::<u8>(truncated as u8);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_u16_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint2, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u16::MAX as f64 {
-                out.push::<u16>(truncated as u16);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_u32_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint4, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u32::MAX as f64 {
-                out.push::<u32>(truncated as u32);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_u64_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint8, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u64::MAX as f64 {
-                out.push::<u64>(truncated as u64);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
-
-pub fn f64_to_u128_vec(values: &[f64], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-    let mut out = ColumnValues::with_capacity(Type::Uint16, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
-            let truncated = val.trunc();
-            if truncated >= 0.0 && truncated <= u128::MAX as f64 {
-                out.push::<u128>(truncated as u128);
-            } else {
-                out.push_undefined();
-            }
-        } else {
-            out.push_undefined();
-        }
-    }
-    Ok(out)
-}
+float_to_int_vec!(f64_to_i8_vec, f64, i8, Type::Int1, i8::MIN as f64, i8::MAX as f64);
+float_to_int_vec!(f64_to_i16_vec, f64, i16, Type::Int2, i16::MIN as f64, i16::MAX as f64);
+float_to_int_vec!(f64_to_i32_vec, f64, i32, Type::Int4, i32::MIN as f64, i32::MAX as f64);
+float_to_int_vec!(f64_to_i64_vec, f64, i64, Type::Int8, i64::MIN as f64, i64::MAX as f64);
+float_to_int_vec!(f64_to_i128_vec, f64, i128, Type::Int16, i128::MIN as f64, i128::MAX as f64);
+float_to_int_vec!(f64_to_u8_vec, f64, u8, Type::Uint1, 0.0, u8::MAX as f64);
+float_to_int_vec!(f64_to_u16_vec, f64, u16, Type::Uint2, 0.0, u16::MAX as f64);
+float_to_int_vec!(f64_to_u32_vec, f64, u32, Type::Uint4, 0.0, u32::MAX as f64);
+float_to_int_vec!(f64_to_u64_vec, f64, u64, Type::Uint8, 0.0, u64::MAX as f64);
+float_to_int_vec!(f64_to_u128_vec, f64, u128, Type::Uint16, 0.0, u128::MAX as f64);
 
 impl ColumnValues {
-    pub fn number_to_number(
+    fn number_to_number(
         &self,
         target: Type,
         ctx: impl Promote + Demote + Convert,
         span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         if !target.is_number() {
-            return Err(error::Error::Evaluation(Error(
-                reifydb_core::diagnostic::cast::unsupported_cast(span(), self.get_type(), target),
-            )));
+            return Err(error::Error::Evaluation(Error(cast::unsupported_cast(
+                span(),
+                self.get_type(),
+                target,
+            ))));
         }
 
         macro_rules! cast {
@@ -733,5 +474,323 @@ impl ColumnValues {
             self.get_type(),
             target
         )
+    }
+}
+
+pub(crate) fn demote_vec<From, To>(
+    values: &[From],
+    bitvec: &BitVec,
+    demote: impl Demote,
+    span: impl Fn() -> OwnedSpan,
+    target_kind: Type,
+    mut push: impl FnMut(&mut ColumnValues, To),
+) -> crate::Result<ColumnValues>
+where
+    From: Copy + SafeDemote<To>,
+    To: GetType,
+{
+    let mut out = ColumnValues::with_capacity(target_kind, values.len());
+    for (idx, &val) in values.iter().enumerate() {
+        if bitvec.get(idx) {
+            match demote.demote::<From, To>(val, &span)? {
+                Some(v) => push(&mut out, v),
+                None => out.push_undefined(),
+            }
+        } else {
+            out.push_undefined();
+        }
+    }
+    Ok(out)
+}
+
+pub(crate) fn promote_vec<From, To>(
+    values: &[From],
+    bitvec: &BitVec,
+    ctx: impl Promote,
+    span: impl Fn() -> OwnedSpan,
+    target_kind: Type,
+    mut push: impl FnMut(&mut ColumnValues, To),
+) -> crate::Result<ColumnValues>
+where
+    From: Copy + SafePromote<To>,
+    To: GetType,
+{
+    let mut out = ColumnValues::with_capacity(target_kind, values.len());
+    for (idx, &val) in values.iter().enumerate() {
+        if bitvec.get(idx) {
+            match ctx.promote::<From, To>(val, &span)? {
+                Some(v) => push(&mut out, v),
+                None => out.push_undefined(),
+            }
+        } else {
+            out.push_undefined();
+        }
+    }
+    Ok(out)
+}
+
+pub(crate) fn convert_vec<From, To>(
+    values: &[From],
+    bitvec: &BitVec,
+    ctx: impl Convert,
+    span: impl Fn() -> OwnedSpan,
+    target_kind: Type,
+    mut push: impl FnMut(&mut ColumnValues, To),
+) -> crate::Result<ColumnValues>
+where
+    From: Copy + SafeConvert<To> + GetType,
+    To: GetType,
+{
+    let mut out = ColumnValues::with_capacity(target_kind, values.len());
+    for (idx, &val) in values.iter().enumerate() {
+        if bitvec.get(idx) {
+            match ctx.convert::<From, To>(val, &span)? {
+                Some(v) => push(&mut out, v),
+                None => out.push_undefined(),
+            }
+        } else {
+            out.push_undefined();
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    mod promote {
+        use crate::evaluate::Promote;
+        use crate::frame::column::cast::number::promote_vec;
+        use reifydb_core::value::number::SafePromote;
+        use reifydb_core::{BitVec, Type};
+        use reifydb_core::{IntoOwnedSpan, OwnedSpan};
+
+        #[test]
+        fn test_ok() {
+            let values = [1i8, 2i8];
+            let bitvec = BitVec::from_slice(&[true, true]);
+            let ctx = TestCtx::new();
+
+            let result = promote_vec::<i8, i16>(
+                &values,
+                &bitvec,
+                &ctx,
+                || OwnedSpan::testing_empty(),
+                Type::Int2,
+                |col, v| col.push::<i16>(v),
+            )
+            .unwrap();
+
+            let slice: &[i16] = result.as_slice();
+            assert_eq!(slice, &[1i16, 2i16]);
+        }
+
+        #[test]
+        fn test_none_maps_to_undefined() {
+            // 42 mapped to None
+            let values = [42i8];
+            let bitvec = BitVec::from_slice(&[true]);
+            let ctx = TestCtx::new();
+
+            let result = promote_vec::<i8, i16>(
+                &values,
+                &bitvec,
+                &ctx,
+                || OwnedSpan::testing_empty(),
+                Type::Int2,
+                |col, v| col.push::<i16>(v),
+            )
+            .unwrap();
+
+            assert!(!result.bitvec().get(0));
+        }
+
+        #[test]
+        fn test_invalid_bitmaps_are_undefined() {
+            let values = [1i8];
+            let bitvec = BitVec::from_slice(&[false]);
+            let ctx = TestCtx::new();
+
+            let result = promote_vec::<i8, i16>(
+                &values,
+                &bitvec,
+                &ctx,
+                || OwnedSpan::testing_empty(),
+                Type::Int2,
+                |col, v| col.push::<i16>(v),
+            )
+            .unwrap();
+
+            assert!(!result.bitvec().get(0));
+        }
+
+        #[test]
+        fn test_mixed_bitvec_and_promote_failure() {
+            let values = [1i8, 42i8, 3i8, 4i8];
+            let bitvec = BitVec::from_slice(&[true, true, false, true]);
+            let ctx = TestCtx::new();
+
+            let result = promote_vec::<i8, i16>(
+                &values,
+                &bitvec,
+                &ctx,
+                || OwnedSpan::testing_empty(),
+                Type::Int2,
+                |col, v| col.push::<i16>(v),
+            )
+            .unwrap();
+
+            let slice = result.as_slice::<i16>();
+            assert_eq!(slice, &[1i16, 0, 0, 4i16]);
+            assert!(result.bitvec().get(0));
+            assert!(!result.bitvec().get(1));
+            assert!(!result.bitvec().get(2));
+            assert!(result.bitvec().get(3));
+        }
+
+        struct TestCtx;
+
+        impl TestCtx {
+            fn new() -> Self {
+                Self
+            }
+        }
+
+        impl Promote for &TestCtx {
+            /// Can only used with i8
+            fn promote<From, To>(
+                &self,
+                val: From,
+                _span: impl IntoOwnedSpan,
+            ) -> crate::evaluate::Result<Option<To>>
+            where
+                From: SafePromote<To>,
+            {
+                // Only simulate promotion failure for i8 == 42
+                let raw: i8 = unsafe { std::mem::transmute_copy(&val) };
+                if raw == 42 {
+                    return Ok(None);
+                }
+                Ok(Some(val.checked_promote().unwrap()))
+            }
+        }
+    }
+
+    mod demote {
+        use crate::evaluate::Demote;
+        use crate::frame::column::cast::number::demote_vec;
+        use reifydb_core::value::number::SafeDemote;
+        use reifydb_core::{BitVec, Type};
+        use reifydb_core::{IntoOwnedSpan, OwnedSpan};
+
+        #[test]
+        fn test_ok() {
+            let values = [1i16, 2i16];
+            let bitvec = BitVec::from_slice(&[true, true]);
+            let ctx = TestCtx::new();
+
+            let result = demote_vec::<i16, i8>(
+                &values,
+                &bitvec,
+                &ctx,
+                || OwnedSpan::testing_empty(),
+                Type::Int1,
+                |col, v| col.push::<i8>(v),
+            )
+            .unwrap();
+
+            let slice: &[i8] = result.as_slice();
+            assert_eq!(slice, &[1i8, 2i8]);
+            assert!(result.bitvec().get(0));
+            assert!(result.bitvec().get(1));
+        }
+
+        #[test]
+        fn test_none_maps_to_undefined() {
+            let values = [42i16];
+            let bitvec = BitVec::from_slice(&[true]);
+            let ctx = TestCtx::new();
+
+            let result = demote_vec::<i16, i8>(
+                &values,
+                &bitvec,
+                &ctx,
+                || OwnedSpan::testing_empty(),
+                Type::Int1,
+                |col, v| col.push::<i8>(v),
+            )
+            .unwrap();
+
+            assert!(!result.bitvec().get(0));
+        }
+
+        #[test]
+        fn test_invalid_bitmaps_are_undefined() {
+            let values = [1i16];
+            let bitvec = BitVec::new(1, false);
+            let ctx = TestCtx::new();
+
+            let result = demote_vec::<i16, i8>(
+                &values,
+                &bitvec,
+                &ctx,
+                || OwnedSpan::testing_empty(),
+                Type::Int1,
+                |col, v| col.push::<i8>(v),
+            )
+            .unwrap();
+
+            assert!(!result.bitvec().get(0));
+        }
+
+        #[test]
+        fn test_mixed_bitvec_and_demote_failure() {
+            let values = [1i16, 42i16, 3i16, 4i16];
+            let bitvec = BitVec::from_slice(&[true, true, false, true]);
+            let ctx = TestCtx::new();
+
+            let result = demote_vec::<i16, i8>(
+                &values,
+                &bitvec,
+                &ctx,
+                || OwnedSpan::testing_empty(),
+                Type::Int1,
+                |col, v| col.push::<i8>(v),
+            )
+            .unwrap();
+
+            let slice: &[i8] = result.as_slice();
+            assert_eq!(slice, &[1i8, 0, 0, 4i8]);
+            assert!(result.bitvec().get(0));
+            assert!(!result.bitvec().get(1));
+            assert!(!result.bitvec().get(2));
+            assert!(result.bitvec().get(3));
+        }
+
+        struct TestCtx;
+
+        impl TestCtx {
+            fn new() -> Self {
+                Self
+            }
+        }
+
+        impl Demote for &TestCtx {
+            /// Can only be used with i16 → i8
+            fn demote<From, To>(
+                &self,
+                val: From,
+                _span: impl IntoOwnedSpan,
+            ) -> crate::evaluate::Result<Option<To>>
+            where
+                From: SafeDemote<To>,
+            {
+                // Only simulate promotion failure for i16 == 42
+                let raw: i16 = unsafe { std::mem::transmute_copy(&val) };
+                if raw == 42 {
+                    return Ok(None);
+                }
+                Ok(Some(val.checked_demote().unwrap()))
+            }
+        }
     }
 }
