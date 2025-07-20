@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use reifydb_core::Span;
+use reifydb_core::OwnedSpan;
 use std::ops::{Deref, Index};
 
 #[derive(Debug)]
@@ -483,7 +483,7 @@ pub enum AstLiteral {
 }
 
 impl AstLiteral {
-    pub fn span(self) -> Span {
+    pub fn span(self) -> OwnedSpan {
         match self {
             AstLiteral::Boolean(literal) => literal.0.span,
             AstLiteral::Number(literal) => literal.0.span,
@@ -506,7 +506,7 @@ impl AstIdentifier {
         self.value().to_string()
     }
 
-    pub fn span(self) -> Span {
+    pub fn span(self) -> OwnedSpan {
         self.0.span
     }
 }

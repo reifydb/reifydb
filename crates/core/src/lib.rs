@@ -9,7 +9,7 @@
 pub use error::Error;
 pub use row::key::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
-pub use span::{IntoSpan, Span, SpanColumn, SpanLine};
+pub use span::{BorrowedSpan, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine};
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
 pub use value::{Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, Time, Type, Value};
 

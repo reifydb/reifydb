@@ -5,13 +5,13 @@ use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::diagnostic::number::number_out_of_range;
 use reifydb_core::value::number::SafeDemote;
-use reifydb_core::{GetType, IntoSpan};
+use reifydb_core::{GetType, IntoOwnedSpan};
 
 pub trait Demote {
     fn demote<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeDemote<To>,
@@ -22,7 +22,7 @@ impl Demote for EvaluationContext {
     fn demote<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeDemote<To>,
@@ -36,7 +36,7 @@ impl Demote for &EvaluationContext {
     fn demote<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeDemote<To>,
@@ -68,7 +68,7 @@ mod tests {
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
     use reifydb_core::Type;
     use reifydb_core::value::number::SafeDemote;
-    use reifydb_core::{GetType, Span};
+    use reifydb_core::{GetType, OwnedSpan};
 
     #[test]
     fn test_demote_ok() {
@@ -76,7 +76,7 @@ mod tests {
         ctx.column =
             Some(EvaluationColumn { ty: Some(Type::Int1), policies: vec![Saturation(Error)] });
 
-        let result = ctx.demote::<i16, i8>(1i16, || Span::testing_empty());
+        let result = ctx.demote::<i16, i8>(1i16, || OwnedSpan::testing_empty());
         assert_eq!(result, Ok(Some(1i8)));
     }
 
@@ -87,7 +87,7 @@ mod tests {
             Some(EvaluationColumn { ty: Some(Type::Int1), policies: vec![Saturation(Error)] });
 
         let err =
-            ctx.demote::<TestI16, TestI8>(TestI16 {}, || Span::testing_empty()).err().unwrap();
+            ctx.demote::<TestI16, TestI8>(TestI16 {}, || OwnedSpan::testing_empty()).err().unwrap();
 
         let diagnostic = err.diagnostic();
         assert_eq!(diagnostic.code, "NUMBER_002");
@@ -99,7 +99,7 @@ mod tests {
         ctx.column =
             Some(EvaluationColumn { ty: Some(Type::Int1), policies: vec![Saturation(Undefined)] });
 
-        let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || Span::testing_empty()).unwrap();
+        let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || OwnedSpan::testing_empty()).unwrap();
         assert!(result.is_none());
     }
 

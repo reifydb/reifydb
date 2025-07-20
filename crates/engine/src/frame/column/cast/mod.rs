@@ -9,14 +9,14 @@ pub mod text;
 use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::value::number::{SafeConvert, SafeDemote, SafePromote};
-use reifydb_core::{BitVec, GetType, Span, Type};
+use reifydb_core::{BitVec, GetType, OwnedSpan, Type};
 
 impl ColumnValues {
     pub fn cast(
         &self,
         target: Type,
         ctx: impl Promote + Demote + Convert,
-        span: impl Fn() -> Span,
+        span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         match target {
             _ if target == self.get_type() => Ok(self.clone()),
@@ -33,7 +33,7 @@ pub(crate) fn demote_vec<From, To>(
     values: &[From],
     bitvec: &BitVec,
     demote: impl Demote,
-    span: impl Fn() -> Span,
+    span: impl Fn() -> OwnedSpan,
     target_kind: Type,
     mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
@@ -59,7 +59,7 @@ pub(crate) fn promote_vec<From, To>(
     values: &[From],
     bitvec: &BitVec,
     ctx: impl Promote,
-    span: impl Fn() -> Span,
+    span: impl Fn() -> OwnedSpan,
     target_kind: Type,
     mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
@@ -85,7 +85,7 @@ pub(crate) fn convert_vec<From, To>(
     values: &[From],
     bitvec: &BitVec,
     ctx: impl Convert,
-    span: impl Fn() -> Span,
+    span: impl Fn() -> OwnedSpan,
     target_kind: Type,
     mut push: impl FnMut(&mut ColumnValues, To),
 ) -> crate::Result<ColumnValues>
@@ -114,7 +114,7 @@ mod tests {
         use crate::frame::column::cast::promote_vec;
         use reifydb_core::value::number::SafePromote;
         use reifydb_core::{BitVec, Type};
-        use reifydb_core::{IntoSpan, Span};
+        use reifydb_core::{IntoOwnedSpan, OwnedSpan};
 
         #[test]
         fn test_ok() {
@@ -126,7 +126,7 @@ mod tests {
                 &values,
                 &bitvec,
                 &ctx,
-                || Span::testing_empty(),
+                || OwnedSpan::testing_empty(),
                 Type::Int2,
                 |col, v| col.push::<i16>(v),
             )
@@ -147,7 +147,7 @@ mod tests {
                 &values,
                 &bitvec,
                 &ctx,
-                || Span::testing_empty(),
+                || OwnedSpan::testing_empty(),
                 Type::Int2,
                 |col, v| col.push::<i16>(v),
             )
@@ -166,7 +166,7 @@ mod tests {
                 &values,
                 &bitvec,
                 &ctx,
-                || Span::testing_empty(),
+                || OwnedSpan::testing_empty(),
                 Type::Int2,
                 |col, v| col.push::<i16>(v),
             )
@@ -185,7 +185,7 @@ mod tests {
                 &values,
                 &bitvec,
                 &ctx,
-                || Span::testing_empty(),
+                || OwnedSpan::testing_empty(),
                 Type::Int2,
                 |col, v| col.push::<i16>(v),
             )
@@ -212,7 +212,7 @@ mod tests {
             fn promote<From, To>(
                 &self,
                 val: From,
-                _span: impl IntoSpan,
+                _span: impl IntoOwnedSpan,
             ) -> crate::evaluate::Result<Option<To>>
             where
                 From: SafePromote<To>,
@@ -232,7 +232,7 @@ mod tests {
         use crate::frame::column::cast::demote_vec;
         use reifydb_core::value::number::SafeDemote;
         use reifydb_core::{BitVec, Type};
-        use reifydb_core::{IntoSpan, Span};
+        use reifydb_core::{IntoOwnedSpan, OwnedSpan};
 
         #[test]
         fn test_ok() {
@@ -244,7 +244,7 @@ mod tests {
                 &values,
                 &bitvec,
                 &ctx,
-                || Span::testing_empty(),
+                || OwnedSpan::testing_empty(),
                 Type::Int1,
                 |col, v| col.push::<i8>(v),
             )
@@ -266,7 +266,7 @@ mod tests {
                 &values,
                 &bitvec,
                 &ctx,
-                || Span::testing_empty(),
+                || OwnedSpan::testing_empty(),
                 Type::Int1,
                 |col, v| col.push::<i8>(v),
             )
@@ -285,7 +285,7 @@ mod tests {
                 &values,
                 &bitvec,
                 &ctx,
-                || Span::testing_empty(),
+                || OwnedSpan::testing_empty(),
                 Type::Int1,
                 |col, v| col.push::<i8>(v),
             )
@@ -304,7 +304,7 @@ mod tests {
                 &values,
                 &bitvec,
                 &ctx,
-                || Span::testing_empty(),
+                || OwnedSpan::testing_empty(),
                 Type::Int1,
                 |col, v| col.push::<i8>(v),
             )
@@ -331,7 +331,7 @@ mod tests {
             fn demote<From, To>(
                 &self,
                 val: From,
-                _span: impl IntoSpan,
+                _span: impl IntoOwnedSpan,
             ) -> crate::evaluate::Result<Option<To>>
             where
                 From: SafeDemote<To>,

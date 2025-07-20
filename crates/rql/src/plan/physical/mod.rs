@@ -8,7 +8,7 @@ use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::Rx;
-use reifydb_core::{SortKey, Span};
+use reifydb_core::{SortKey, OwnedSpan};
 
 struct Compiler {}
 
@@ -136,22 +136,22 @@ pub enum PhysicalPlan {
 
 #[derive(Debug, Clone)]
 pub struct CreateDeferredViewPlan {
-    pub schema: Span,
-    pub view: Span,
+    pub schema: OwnedSpan,
+    pub view: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateSchemaPlan {
-    pub schema: Span,
+    pub schema: OwnedSpan,
     pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateTablePlan {
-    pub schema: Span,
-    pub table: Span,
+    pub schema: OwnedSpan,
+    pub table: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
 }
@@ -172,8 +172,8 @@ pub struct FilterNode {
 #[derive(Debug, Clone)]
 pub struct InsertPlan {
     pub input: Box<PhysicalPlan>,
-    pub schema: Option<Span>,
-    pub table: Span,
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -202,8 +202,8 @@ pub struct InlineDataNode {
 
 #[derive(Debug, Clone)]
 pub struct TableScanNode {
-    pub schema: Option<Span>,
-    pub table: Span,
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
 }
 
 #[derive(Debug, Clone)]

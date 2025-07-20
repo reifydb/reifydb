@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Span;
+use crate::OwnedSpan;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -13,7 +13,7 @@ pub enum SortDirection {
 
 #[derive(Debug, Clone)]
 pub struct SortKey {
-    pub column: Span,
+    pub column: OwnedSpan,
     pub direction: SortDirection,
 }
 

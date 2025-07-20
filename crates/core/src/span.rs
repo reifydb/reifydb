@@ -5,34 +5,46 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
-/// Trait to provide a `Span` either directly or lazily (via closure).
-pub trait IntoSpan {
-    fn into_span(self) -> Span;
+/// Trait to provide a `OwnedSpan` either directly or lazily (via closure).
+pub trait IntoOwnedSpan {
+    fn into_span(self) -> OwnedSpan;
 }
 
-impl IntoSpan for Span {
-    fn into_span(self) -> Span {
+impl IntoOwnedSpan for OwnedSpan {
+    fn into_span(self) -> OwnedSpan {
         self
     }
 }
 
-impl IntoSpan for &Span {
-    fn into_span(self) -> Span {
+impl IntoOwnedSpan for &OwnedSpan {
+    fn into_span(self) -> OwnedSpan {
         self.clone()
     }
 }
 
-impl<F> IntoSpan for F
+impl<F> IntoOwnedSpan for F
 where
-    F: Fn() -> Span,
+    F: Fn() -> OwnedSpan,
 {
-    fn into_span(self) -> Span {
+    fn into_span(self) -> OwnedSpan {
         self()
     }
 }
 
+impl<'a> IntoOwnedSpan for BorrowedSpan<'a> {
+    fn into_span(self) -> OwnedSpan {
+        OwnedSpan { column: self.column, line: self.line, fragment: self.fragment.to_string() }
+    }
+}
+
+impl<'a> IntoOwnedSpan for &BorrowedSpan<'a> {
+    fn into_span(self) -> OwnedSpan {
+        OwnedSpan { column: self.column, line: self.line, fragment: self.fragment.to_string() }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Span {
+pub struct OwnedSpan {
     /// The offset represents the position of the fragment relatively to
     /// the input of the parser. It starts at offset 0.
     pub column: SpanColumn,
@@ -43,19 +55,31 @@ pub struct Span {
     pub fragment: String,
 }
 
-impl AsRef<str> for Span {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BorrowedSpan<'a> {
+    /// The offset represents the position of the fragment relatively to
+    /// the input of the parser. It starts at offset 0.
+    pub column: SpanColumn,
+    /// The line number of the fragment relatively to the input of the
+    /// parser. It starts at line 1.
+    pub line: SpanLine,
+
+    pub fragment: &'a str,
+}
+
+impl AsRef<str> for OwnedSpan {
     fn as_ref(&self) -> &str {
         self.fragment.as_str()
     }
 }
 
-impl Display for Span {
+impl Display for OwnedSpan {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         Display::fmt(&self.fragment, f)
     }
 }
 
-impl Span {
+impl OwnedSpan {
     pub fn testing_empty() -> Self {
         Self { column: SpanColumn(0), line: SpanLine(1), fragment: "".to_string() }
     }
@@ -65,13 +89,173 @@ impl Span {
     }
 }
 
-impl PartialOrd for Span {
+// Trait for types that can provide span information for parsing
+pub trait Span {
+    fn fragment(&self) -> &str;
+    fn line(&self) -> SpanLine;
+    fn column(&self) -> SpanColumn;
+
+    /// Split this span by delimiter, returning a vector of owned spans for each part.
+    fn split(&self, delimiter: char) -> Vec<OwnedSpan> {
+        let parts: Vec<&str> = self.fragment().split(delimiter).collect();
+        let mut result = Vec::new();
+        let mut current_column = self.column().0;
+
+        for part in parts {
+            let part_span = OwnedSpan {
+                column: SpanColumn(current_column),
+                line: self.line(),
+                fragment: part.to_string(),
+            };
+            result.push(part_span);
+            // Move column forward by part length + 1 (for the delimiter)
+            current_column += part.len() as u32 + 1;
+        }
+
+        result
+    }
+
+    /// Convert to owned version
+    fn to_owned(self) -> OwnedSpan
+    where
+        Self: Sized;
+
+    /// Get a sub-span starting at the given offset with the given length.
+    fn sub_span(&self, offset: usize, length: usize) -> OwnedSpan {
+        let fragment = self.fragment();
+        let end = std::cmp::min(offset + length, fragment.len());
+        let sub_fragment =
+            if offset < fragment.len() { fragment[offset..end].to_string() } else { String::new() };
+
+        OwnedSpan {
+            column: SpanColumn(self.column().0 + offset as u32),
+            line: self.line(),
+            fragment: sub_fragment,
+        }
+    }
+}
+
+impl Span for OwnedSpan {
+    fn fragment(&self) -> &str {
+        &self.fragment
+    }
+
+    fn line(&self) -> SpanLine {
+        self.line
+    }
+
+    fn column(&self) -> SpanColumn {
+        self.column
+    }
+
+    fn to_owned(self) -> OwnedSpan {
+        self
+    }
+}
+
+impl<'a> Span for BorrowedSpan<'a> {
+    fn fragment(&self) -> &str {
+        self.fragment
+    }
+
+    fn line(&self) -> SpanLine {
+        self.line
+    }
+
+    fn column(&self) -> SpanColumn {
+        self.column
+    }
+
+    fn to_owned(self) -> OwnedSpan
+    where
+        Self: Sized,
+    {
+        OwnedSpan {
+            column: self.column(),
+            line: self.line(),
+            fragment: self.fragment().to_string(),
+        }
+    }
+}
+
+impl Span for &OwnedSpan {
+    fn fragment(&self) -> &str {
+        &self.fragment
+    }
+
+    fn line(&self) -> SpanLine {
+        self.line
+    }
+
+    fn column(&self) -> SpanColumn {
+        self.column
+    }
+
+    fn to_owned(self) -> OwnedSpan {
+        (*self).clone()
+    }
+}
+
+impl<'a> Span for &BorrowedSpan<'a> {
+    fn fragment(&self) -> &str {
+        self.fragment
+    }
+
+    fn line(&self) -> SpanLine {
+        self.line
+    }
+
+    fn column(&self) -> SpanColumn {
+        self.column
+    }
+
+    fn to_owned(self) -> OwnedSpan
+    where
+        Self: Sized,
+    {
+        OwnedSpan {
+            column: self.column(),
+            line: self.line(),
+            fragment: self.fragment().to_string(),
+        }
+    }
+}
+
+impl Span for &mut OwnedSpan {
+    fn fragment(&self) -> &str {
+        &self.fragment
+    }
+
+    fn line(&self) -> SpanLine {
+        self.line
+    }
+
+    fn column(&self) -> SpanColumn {
+        self.column
+    }
+
+    fn to_owned(self) -> OwnedSpan {
+        self.clone()
+    }
+}
+
+impl<'a> BorrowedSpan<'a> {
+    pub fn new(fragment: &'a str) -> Self {
+        Self { column: SpanColumn(0), line: SpanLine(1), fragment }
+    }
+
+    pub fn with_position(fragment: &'a str, line: SpanLine, column: SpanColumn) -> Self {
+        Self { column, line, fragment }
+    }
+}
+
+impl PartialOrd for OwnedSpan {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for Span {
+impl Ord for OwnedSpan {
     fn cmp(&self, other: &Self) -> Ordering {
         self.column.cmp(&other.column).then(self.line.cmp(&other.line))
     }
@@ -97,10 +281,10 @@ impl PartialEq<i32> for SpanLine {
     }
 }
 
-impl Span {
+impl OwnedSpan {
     /// Merge multiple spans (in any order) into one encompassing span.
-    pub fn merge_all(spans: impl IntoIterator<Item = Span>) -> Span {
-        let mut spans: Vec<Span> = spans.into_iter().collect();
+    pub fn merge_all(spans: impl IntoIterator<Item = OwnedSpan>) -> OwnedSpan {
+        let mut spans: Vec<OwnedSpan> = spans.into_iter().collect();
         assert!(!spans.is_empty());
 
         spans.sort();
@@ -112,18 +296,18 @@ impl Span {
             fragment.push_str(&span.fragment);
         }
 
-        Span { column: first.column, line: first.line, fragment }
+        OwnedSpan { column: first.column, line: first.line, fragment }
     }
 
     /// Split this span by delimiter, returning a vector of spans for each part.
     /// Each resulting span will have the correct column offset and fragment.
-    pub fn split(&self, delimiter: char) -> Vec<Span> {
+    pub fn split(&self, delimiter: char) -> Vec<OwnedSpan> {
         let parts: Vec<&str> = self.fragment.split(delimiter).collect();
         let mut result = Vec::new();
         let mut current_column = self.column.0;
 
         for part in parts {
-            let part_span = Span {
+            let part_span = OwnedSpan {
                 column: SpanColumn(current_column),
                 line: self.line,
                 fragment: part.to_string(),
@@ -138,35 +322,31 @@ impl Span {
 
     /// Get a sub-span starting at the given offset with the given length.
     /// Useful for pinpointing specific parts of a larger span.
-    pub fn sub_span(&self, offset: usize, length: usize) -> Span {
+    pub fn sub_span(&self, offset: usize, length: usize) -> OwnedSpan {
         let end = std::cmp::min(offset + length, self.fragment.len());
         let fragment = if offset < self.fragment.len() {
             self.fragment[offset..end].to_string()
         } else {
             String::new()
         };
-        
-        Span {
-            column: SpanColumn(self.column.0 + offset as u32),
-            line: self.line,
-            fragment,
-        }
+
+        OwnedSpan { column: SpanColumn(self.column.0 + offset as u32), line: self.line, fragment }
     }
 }
 
 #[cfg(test)]
 mod tests {
     mod merge_all {
-        use crate::{SpanLine, SpanColumn, Span};
+        use crate::{OwnedSpan, SpanColumn, SpanLine};
 
         #[test]
         fn test_multiple_spans_in_order() {
             let spans = vec![
-                Span { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() },
-                Span { column: SpanColumn(6), line: SpanLine(1), fragment: "world".into() },
+                OwnedSpan { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() },
+                OwnedSpan { column: SpanColumn(6), line: SpanLine(1), fragment: "world".into() },
             ];
 
-            let merged = Span::merge_all(spans);
+            let merged = OwnedSpan::merge_all(spans);
 
             assert_eq!(merged.column, SpanColumn(0));
             assert_eq!(merged.line, SpanLine(1));
@@ -176,11 +356,11 @@ mod tests {
         #[test]
         fn test_multiple_spans_out_of_order() {
             let spans = vec![
-                Span { column: SpanColumn(10), line: SpanLine(1), fragment: "world".into() },
-                Span { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() },
+                OwnedSpan { column: SpanColumn(10), line: SpanLine(1), fragment: "world".into() },
+                OwnedSpan { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() },
             ];
 
-            let merged = Span::merge_all(spans);
+            let merged = OwnedSpan::merge_all(spans);
 
             assert_eq!(merged.column, SpanColumn(0));
             assert_eq!(merged.fragment, "hello world");
@@ -188,20 +368,27 @@ mod tests {
 
         #[test]
         fn test_single_span_returns_same() {
-            let span = Span { column: SpanColumn(5), line: SpanLine(3), fragment: "solo".into() };
+            let span =
+                OwnedSpan { column: SpanColumn(5), line: SpanLine(3), fragment: "solo".into() };
 
-            let merged = Span::merge_all([span.clone()]);
+            let merged = OwnedSpan::merge_all([span.clone()]);
 
             assert_eq!(merged, span);
         }
 
         #[test]
         fn test_merge_three_spans_out_of_order() {
-            let span1 = Span { column: SpanColumn(10), line: SpanLine(1), fragment: "world".into() };
-            let span2 = Span { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() };
-            let span3 = Span { column: SpanColumn(6), line: SpanLine(1), fragment: "beautiful ".into() };
+            let span1 =
+                OwnedSpan { column: SpanColumn(10), line: SpanLine(1), fragment: "world".into() };
+            let span2 =
+                OwnedSpan { column: SpanColumn(0), line: SpanLine(1), fragment: "hello ".into() };
+            let span3 = OwnedSpan {
+                column: SpanColumn(6),
+                line: SpanLine(1),
+                fragment: "beautiful ".into(),
+            };
 
-            let merged = Span::merge_all([span1, span2, span3]);
+            let merged = OwnedSpan::merge_all([span1, span2, span3]);
 
             assert_eq!(merged.column, SpanColumn(0));
             assert_eq!(merged.line, SpanLine(1));
@@ -211,11 +398,11 @@ mod tests {
         #[test]
         fn test_overlapping_spans() {
             let spans = vec![
-                Span { column: SpanColumn(0), line: SpanLine(1), fragment: "abc".into() },
-                Span { column: SpanColumn(2), line: SpanLine(1), fragment: "cde".into() },
+                OwnedSpan { column: SpanColumn(0), line: SpanLine(1), fragment: "abc".into() },
+                OwnedSpan { column: SpanColumn(2), line: SpanLine(1), fragment: "cde".into() },
             ];
 
-            let merged = Span::merge_all(spans);
+            let merged = OwnedSpan::merge_all(spans);
 
             assert_eq!(merged.column, SpanColumn(0));
             assert_eq!(merged.fragment, "abccde");
@@ -223,11 +410,11 @@ mod tests {
     }
 
     mod split {
-        use crate::{SpanLine, SpanColumn, Span};
+        use crate::{OwnedSpan, SpanColumn, SpanLine};
 
         #[test]
         fn test_split_date() {
-            let span = Span {
+            let span = OwnedSpan {
                 column: SpanColumn(10),
                 line: SpanLine(1),
                 fragment: "2024-03-15".to_string(),
@@ -246,7 +433,7 @@ mod tests {
 
         #[test]
         fn test_split_time() {
-            let span = Span {
+            let span = OwnedSpan {
                 column: SpanColumn(0),
                 line: SpanLine(1),
                 fragment: "14:30:45".to_string(),
@@ -265,7 +452,7 @@ mod tests {
 
         #[test]
         fn test_split_single_part() {
-            let span = Span {
+            let span = OwnedSpan {
                 column: SpanColumn(5),
                 line: SpanLine(2),
                 fragment: "single".to_string(),
@@ -281,11 +468,11 @@ mod tests {
     }
 
     mod sub_span {
-        use crate::{SpanLine, SpanColumn, Span};
+        use crate::{OwnedSpan, SpanColumn, SpanLine};
 
         #[test]
         fn test_sub_span_middle() {
-            let span = Span {
+            let span = OwnedSpan {
                 column: SpanColumn(0),
                 line: SpanLine(1),
                 fragment: "2024-03-15".to_string(),
@@ -300,7 +487,7 @@ mod tests {
 
         #[test]
         fn test_sub_span_bounds() {
-            let span = Span {
+            let span = OwnedSpan {
                 column: SpanColumn(10),
                 line: SpanLine(1),
                 fragment: "abc".to_string(),
@@ -314,11 +501,8 @@ mod tests {
 
         #[test]
         fn test_sub_span_out_of_bounds() {
-            let span = Span {
-                column: SpanColumn(0),
-                line: SpanLine(1),
-                fragment: "abc".to_string(),
-            };
+            let span =
+                OwnedSpan { column: SpanColumn(0), line: SpanLine(1), fragment: "abc".to_string() };
 
             let sub = span.sub_span(10, 5); // Start beyond string length
 

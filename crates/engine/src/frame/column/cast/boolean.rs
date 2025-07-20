@@ -6,10 +6,10 @@ use crate::evaluate::Error;
 use crate::frame::ColumnValues;
 use reifydb_core::diagnostic::boolean::invalid_number_boolean;
 use reifydb_core::value::boolean::parse_bool;
-use reifydb_core::{BitVec, Span, Type};
+use reifydb_core::{BitVec, OwnedSpan, Type};
 
 impl ColumnValues {
-    pub fn to_boolean(&self, span: impl Fn() -> Span) -> crate::Result<ColumnValues> {
+    pub fn to_boolean(&self, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
         match self {
             ColumnValues::Int1(values, bitvec) => from_int1(values, bitvec, &span),
             ColumnValues::Int2(values, bitvec) => from_int2(values, bitvec, &span),
@@ -32,7 +32,7 @@ impl ColumnValues {
 fn to_bool<T>(
     values: &[T],
     bitvec: &BitVec,
-    span: &impl Fn() -> Span,
+    span: &impl Fn() -> OwnedSpan,
     validate: impl Fn(T) -> Option<bool>,
 ) -> crate::Result<ColumnValues>
 where
@@ -61,7 +61,7 @@ macro_rules! impl_integer_to_bool {
         fn $fn_name(
             values: &[$type],
             bitvec: &BitVec,
-            span: &impl Fn() -> Span,
+            span: &impl Fn() -> OwnedSpan,
         ) -> crate::Result<ColumnValues> {
             to_bool(values, bitvec, span, |val| match val {
                 0 => Some(false),
@@ -77,7 +77,7 @@ macro_rules! impl_float_to_bool {
         fn $fn_name(
             values: &[$type],
             bitvec: &BitVec,
-            span: &impl Fn() -> Span,
+            span: &impl Fn() -> OwnedSpan,
         ) -> crate::Result<ColumnValues> {
             to_bool(values, bitvec, span, |val| {
                 if val == 0.0 {
@@ -108,7 +108,7 @@ impl_float_to_bool!(from_float8, f64);
 fn from_utf8(
     values: &[String],
     bitvec: &BitVec,
-    span: impl Fn() -> Span,
+    span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnValues> {
     let mut out = ColumnValues::with_capacity(Type::Bool, values.len());
     for (idx, val) in values.iter().enumerate() {
@@ -116,7 +116,7 @@ fn from_utf8(
             let mut span = span();
             span.fragment = val.clone();
 
-            out.push(parse_bool(&mut span)?);
+            out.push(parse_bool(span)?);
         } else {
             out.push_undefined();
         }

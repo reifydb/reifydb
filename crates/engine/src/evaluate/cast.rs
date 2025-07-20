@@ -45,8 +45,7 @@ mod tests {
     use crate::frame::ColumnValues;
     use ConstantExpression::Number;
     use Expression::{Cast, Constant};
-    use reifydb_core::Span;
-    use reifydb_core::Type;
+    use reifydb_core::{OwnedSpan, Type};
     use reifydb_rql::expression::Expression::Prefix;
     use reifydb_rql::expression::{
         CastExpression, ConstantExpression, DataTypeExpression, PrefixExpression, PrefixOperator,
@@ -57,9 +56,9 @@ mod tests {
         let ctx = EvaluationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
-                span: Span::testing_empty(),
-                expression: Box::new(Constant(Number { span: Span::testing("42") })),
-                to: DataTypeExpression { span: Span::testing_empty(), ty: Type::Int4 },
+                span: OwnedSpan::testing_empty(),
+                expression: Box::new(Constant(Number { span: OwnedSpan::testing("42") })),
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int4 },
             }),
             &ctx,
         )
@@ -73,13 +72,13 @@ mod tests {
         let ctx = EvaluationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
-                span: Span::testing_empty(),
+                span: OwnedSpan::testing_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(Span::testing_empty()),
-                    expression: Box::new(Constant(Number { span: Span::testing("42") })),
-                    span: Span::testing_empty(),
+                    operator: PrefixOperator::Minus(OwnedSpan::testing_empty()),
+                    expression: Box::new(Constant(Number { span: OwnedSpan::testing("42") })),
+                    span: OwnedSpan::testing_empty(),
                 })),
-                to: DataTypeExpression { span: Span::testing_empty(), ty: Type::Int4 },
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int4 },
             }),
             &ctx,
         )
@@ -93,13 +92,13 @@ mod tests {
         let ctx = EvaluationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
-                span: Span::testing_empty(),
+                span: OwnedSpan::testing_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(Span::testing_empty()),
-                    expression: Box::new(Constant(Number { span: Span::testing("128") })),
-                    span: Span::testing_empty(),
+                    operator: PrefixOperator::Minus(OwnedSpan::testing_empty()),
+                    expression: Box::new(Constant(Number { span: OwnedSpan::testing("128") })),
+                    span: OwnedSpan::testing_empty(),
                 })),
-                to: DataTypeExpression { span: Span::testing_empty(), ty: Type::Int1 },
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int1 },
             }),
             &ctx,
         )
@@ -113,9 +112,9 @@ mod tests {
         let ctx = EvaluationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
-                span: Span::testing_empty(),
-                expression: Box::new(Constant(Number { span: Span::testing("4.2") })),
-                to: DataTypeExpression { span: Span::testing_empty(), ty: Type::Float8 },
+                span: OwnedSpan::testing_empty(),
+                expression: Box::new(Constant(Number { span: OwnedSpan::testing("4.2") })),
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Float8 },
             }),
             &ctx,
         )
@@ -129,9 +128,9 @@ mod tests {
         let ctx = EvaluationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
-                span: Span::testing_empty(),
-                expression: Box::new(Constant(Number { span: Span::testing("4.2") })),
-                to: DataTypeExpression { span: Span::testing_empty(), ty: Type::Float4 },
+                span: OwnedSpan::testing_empty(),
+                expression: Box::new(Constant(Number { span: OwnedSpan::testing("4.2") })),
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Float4 },
             }),
             &ctx,
         )
@@ -145,9 +144,9 @@ mod tests {
         let ctx = EvaluationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
-                span: Span::testing_empty(),
-                expression: Box::new(Constant(Number { span: Span::testing("-1.1") })),
-                to: DataTypeExpression { span: Span::testing_empty(), ty: Type::Float4 },
+                span: OwnedSpan::testing_empty(),
+                expression: Box::new(Constant(Number { span: OwnedSpan::testing("-1.1") })),
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Float4 },
             }),
             &ctx,
         )
@@ -161,9 +160,9 @@ mod tests {
         let ctx = EvaluationContext::testing();
         let result = evaluate(
             &Cast(CastExpression {
-                span: Span::testing_empty(),
-                expression: Box::new(Constant(Number { span: Span::testing("-1.1") })),
-                to: DataTypeExpression { span: Span::testing_empty(), ty: Type::Float8 },
+                span: OwnedSpan::testing_empty(),
+                expression: Box::new(Constant(Number { span: OwnedSpan::testing("-1.1") })),
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Float8 },
             }),
             &ctx,
         )

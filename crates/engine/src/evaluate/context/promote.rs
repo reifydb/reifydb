@@ -5,13 +5,13 @@ use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::diagnostic::number::number_out_of_range;
 use reifydb_core::value::number::SafePromote;
-use reifydb_core::{GetType, IntoSpan};
+use reifydb_core::{GetType, IntoOwnedSpan};
 
 pub trait Promote {
     fn promote<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafePromote<To>,
@@ -22,7 +22,7 @@ impl Promote for EvaluationContext {
     fn promote<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafePromote<To>,
@@ -36,7 +36,7 @@ impl Promote for &EvaluationContext {
     fn promote<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafePromote<To>,
@@ -67,7 +67,7 @@ mod tests {
     use crate::evaluate::{EvaluationContext, Promote};
     use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
     use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
-    use reifydb_core::Span;
+    use reifydb_core::OwnedSpan;
     use reifydb_core::Type;
     use reifydb_core::value::number::SafePromote;
 
@@ -77,7 +77,7 @@ mod tests {
         ctx.column =
             Some(EvaluationColumn { ty: Some(Type::Int2), policies: vec![Saturation(Error)] });
 
-        let result = ctx.promote::<i8, i16>(1i8, || Span::testing_empty());
+        let result = ctx.promote::<i8, i16>(1i8, || OwnedSpan::testing_empty());
         assert_eq!(result, Ok(Some(1i16)));
     }
 
@@ -88,7 +88,7 @@ mod tests {
             Some(EvaluationColumn { ty: Some(Type::Int2), policies: vec![Saturation(Error)] });
 
         let err =
-            ctx.promote::<TestI8, TestI16>(TestI8 {}, || Span::testing_empty()).err().unwrap();
+            ctx.promote::<TestI8, TestI16>(TestI8 {}, || OwnedSpan::testing_empty()).err().unwrap();
         let diagnostic = err.diagnostic();
         assert_eq!(diagnostic.code, "NUMBER_002")
     }
@@ -99,7 +99,7 @@ mod tests {
         ctx.column =
             Some(EvaluationColumn { ty: Some(Type::Int2), policies: vec![Saturation(Undefined)] });
 
-        let result = ctx.promote::<TestI8, TestI16>(TestI8 {}, || Span::testing_empty()).unwrap();
+        let result = ctx.promote::<TestI8, TestI16>(TestI8 {}, || OwnedSpan::testing_empty()).unwrap();
         assert!(result.is_none());
     }
 

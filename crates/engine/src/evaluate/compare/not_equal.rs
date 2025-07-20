@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::value::number::Promote;
-use reifydb_core::{BitVec, CowVec, Span, value};
+use reifydb_core::{BitVec, CowVec, OwnedSpan, value};
 use reifydb_rql::expression::NotEqualExpression;
 
 impl Evaluator {
@@ -490,7 +490,7 @@ fn compare_bool(
     r: &CowVec<bool>,
     lv: &BitVec,
     rv: &BitVec,
-    span: Span,
+    span: OwnedSpan,
 ) -> FrameColumn {
     let mut values = Vec::with_capacity(l.len());
     let mut bitvec = Vec::with_capacity(lv.len());
@@ -513,7 +513,7 @@ fn compare_number<L, R>(
     r: &CowVec<R>,
     lv: &BitVec,
     rv: &BitVec,
-    span: Span,
+    span: OwnedSpan,
 ) -> FrameColumn
 where
     L: Promote<R> + IsNumber,
@@ -541,7 +541,7 @@ fn compare_temporal<T>(
     r: &CowVec<T>,
     lv: &BitVec,
     rv: &BitVec,
-    span: Span,
+    span: OwnedSpan,
 ) -> FrameColumn
 where
     T: IsTemporal,
@@ -567,7 +567,7 @@ fn compare_utf8(
     r: &CowVec<String>,
     lv: &BitVec,
     rv: &BitVec,
-    span: Span,
+    span: OwnedSpan,
 ) -> FrameColumn {
     let mut values = Vec::with_capacity(l.len());
     let mut bitvec = Vec::with_capacity(lv.len());

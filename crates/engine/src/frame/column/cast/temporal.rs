@@ -5,13 +5,13 @@ use crate::evaluate::Error;
 use crate::frame::ColumnValues;
 use reifydb_core::diagnostic::cast;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
-use reifydb_core::{BitVec, Date, DateTime, Interval, Span, Time, Type};
+use reifydb_core::{BitVec, BorrowedSpan, Date, DateTime, Interval, OwnedSpan, SpanColumn, SpanLine, Time, Type};
 
 impl ColumnValues {
     pub(crate) fn to_temporal(
         &self,
         target: Type,
-        span: impl Fn() -> Span,
+        span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         if let ColumnValues::Utf8(values, bitvec) = self {
             match target {
@@ -32,16 +32,30 @@ macro_rules! impl_to_temporal {
         fn $fn_name(
             values: &[String],
             bitvec: &BitVec,
-            span: impl Fn() -> Span,
+            span: impl Fn() -> OwnedSpan,
         ) -> crate::Result<ColumnValues> {
             let mut out = ColumnValues::with_capacity($target_type, values.len());
             for (idx, val) in values.iter().enumerate() {
                 if bitvec.get(idx) {
-                    let temp_span =
-                        Span { fragment: val.clone(), line: span().line, column: span().column };
+                    // Use BorrowedSpan - no string cloning!
+                    let temp_span = BorrowedSpan {
+                        column: SpanColumn(0),
+                        line: SpanLine(0),
+                        fragment: val.as_str(),
+                    };
 
-                    let parsed = $parse_fn(&temp_span)
-                        .map_err(|e| Error(cast::invalid_temporal(span(), $target_type, e.0)))?;
+                    let parsed = $parse_fn(temp_span).map_err(|mut e| {
+                        // Only create proper span on error
+                        let proper_span = span();
+                        
+                        // Update the diagnostic span
+                        if let Some(ref mut diagnostic_span) = e.0.span {
+                            *diagnostic_span = proper_span.clone();
+                        }
+                        
+                        e.0.update_spans(&proper_span);
+                        Error(cast::invalid_temporal(proper_span, $target_type, e.0))
+                    })?;
 
                     out.push::<$type>(parsed);
                 } else {

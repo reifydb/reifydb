@@ -20,7 +20,7 @@ use nom::combinator::complete;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
-use reifydb_core::{SpanLine, SpanColumn, Span};
+use reifydb_core::{SpanLine, SpanColumn, OwnedSpan};
 
 mod display;
 mod error;
@@ -35,10 +35,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
-impl From<Token> for Span {
+impl From<Token> for OwnedSpan {
     fn from(value: Token) -> Self {
         value.span
     }
@@ -103,8 +103,8 @@ fn token(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     .parse(input)
 }
 
-pub(crate) fn as_span(value: LocatedSpan<&str>) -> Span {
-    Span {
+pub(crate) fn as_span(value: LocatedSpan<&str>) -> OwnedSpan {
+    OwnedSpan {
         column: SpanColumn(value.get_column() as u32),
         line: SpanLine(value.location_line()),
         fragment: value.fragment().to_string(),

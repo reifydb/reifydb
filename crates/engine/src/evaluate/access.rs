@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
-use reifydb_core::Span;
+use reifydb_core::OwnedSpan;
 use reifydb_rql::expression::{AccessTableExpression, ColumnExpression, Expression};
 
 impl Evaluator {
@@ -13,7 +13,7 @@ impl Evaluator {
 		ctx: &EvaluationContext,
     ) -> crate::evaluate::Result<FrameColumn> {
         self.evaluate(
-            &Expression::Column(ColumnExpression(Span {
+            &Expression::Column(ColumnExpression(OwnedSpan {
                 column: expr.table.column,
                 line: expr.table.line,
                 fragment: format!("{}_{}", expr.table.fragment, expr.column.fragment),

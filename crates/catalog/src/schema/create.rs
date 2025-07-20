@@ -6,13 +6,13 @@ use crate::schema::Schema;
 use crate::schema::layout::schema;
 use crate::sequence::SystemSequence;
 use crate::{Catalog, Error};
-use reifydb_core::Span;
+use reifydb_core::OwnedSpan;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::diagnostic::catalog::schema_already_exists;
 
 #[derive(Debug, Clone)]
 pub struct SchemaToCreate {
-    pub schema_span: Option<Span>,
+    pub schema_span: Option<OwnedSpan>,
     pub name: String,
 }
 

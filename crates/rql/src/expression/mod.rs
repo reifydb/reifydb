@@ -3,7 +3,7 @@
 
 mod span;
 
-use reifydb_core::Span;
+use reifydb_core::OwnedSpan;
 use reifydb_core::Type;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -12,7 +12,7 @@ use std::fmt::{Display, Formatter};
 pub struct AliasExpression {
     pub alias: IdentExpression,
     pub expression: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl Display for AliasExpression {
@@ -80,26 +80,26 @@ pub enum Expression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccessTableExpression {
-    pub table: Span,
-    pub column: Span,
+    pub table: OwnedSpan,
+    pub column: OwnedSpan,
 }
 
 impl AccessTableExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.table.clone(), self.column.clone()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.table.clone(), self.column.clone()])
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstantExpression {
-    Undefined { span: Span },
-    Bool { span: Span },
+    Undefined { span: OwnedSpan },
+    Bool { span: OwnedSpan },
     // any number
-    Number { span: Span },
+    Number { span: OwnedSpan },
     // any textual representation can be String, Text, ...
-    Text { span: Span },
+    Text { span: OwnedSpan },
     // any temporal representation can be Date, Time, DateTime, ...
-    Temporal { span: Span },
+    Temporal { span: OwnedSpan },
 }
 
 impl Display for ConstantExpression {
@@ -116,33 +116,33 @@ impl Display for ConstantExpression {
 
 #[derive(Debug, Clone)]
 pub struct CastExpression {
-    pub span: Span,
+    pub span: OwnedSpan,
     pub expression: Box<Expression>,
     pub to: DataTypeExpression,
 }
 
 impl CastExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.span.clone(), self.expression.span(), self.to.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.span.clone(), self.expression.span(), self.to.span()])
     }
 
-    pub fn lazy_span(&self) -> impl Fn() -> Span + '_ {
+    pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
         move || self.span()
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct DataTypeExpression {
-    pub span: Span,
+    pub span: OwnedSpan,
     pub ty: Type,
 }
 
 impl DataTypeExpression {
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> OwnedSpan {
         self.span.clone()
     }
 
-    pub fn lazy_span(&self) -> impl Fn() -> Span + '_ {
+    pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
         move || self.span()
     }
 }
@@ -151,47 +151,47 @@ impl DataTypeExpression {
 pub struct AddExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct DivExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct SubExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct RemExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct MulExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct GreaterThanExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl GreaterThanExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
@@ -199,12 +199,12 @@ impl GreaterThanExpression {
 pub struct GreaterThanEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl GreaterThanEqualExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
@@ -212,12 +212,12 @@ impl GreaterThanEqualExpression {
 pub struct LessThanExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl LessThanExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
@@ -225,12 +225,12 @@ impl LessThanExpression {
 pub struct LessThanEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl LessThanEqualExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
@@ -238,12 +238,12 @@ impl LessThanEqualExpression {
 pub struct EqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl EqualExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
@@ -251,20 +251,20 @@ impl EqualExpression {
 pub struct NotEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl NotEqualExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ColumnExpression(pub Span);
+pub struct ColumnExpression(pub OwnedSpan);
 
 impl ColumnExpression {
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> OwnedSpan {
         self.0.clone()
     }
 }
@@ -329,12 +329,12 @@ impl Display for Expression {
 pub struct CallExpression {
     pub func: IdentExpression,
     pub args: Vec<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl CallExpression {
-    pub fn span(&self) -> Span {
-        Span {
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan {
             column: self.func.0.column,
             line: self.func.0.line,
             fragment: format!(
@@ -358,7 +358,7 @@ impl Display for CallExpression {
 }
 
 #[derive(Debug, Clone)]
-pub struct IdentExpression(pub Span);
+pub struct IdentExpression(pub OwnedSpan);
 
 impl IdentExpression {
     pub fn name(&self) -> &str {
@@ -374,8 +374,8 @@ impl Display for IdentExpression {
 
 #[derive(Debug, Clone)]
 pub enum PrefixOperator {
-    Minus(Span),
-    Plus(Span),
+    Minus(OwnedSpan),
+    Plus(OwnedSpan),
 }
 
 impl Display for PrefixOperator {
@@ -391,7 +391,7 @@ impl Display for PrefixOperator {
 pub struct PrefixExpression {
     pub operator: PrefixOperator,
     pub expression: Box<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl Display for PrefixExpression {
@@ -403,7 +403,7 @@ impl Display for PrefixExpression {
 #[derive(Debug, Clone)]
 pub struct TupleExpression {
     pub expressions: Vec<Expression>,
-    pub span: Span,
+    pub span: OwnedSpan,
 }
 
 impl Display for TupleExpression {

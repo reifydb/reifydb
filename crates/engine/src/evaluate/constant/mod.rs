@@ -44,30 +44,30 @@ impl Evaluator {
         row_count: usize,
     ) -> evaluate::Result<ColumnValues> {
         Ok(match expr {
-            ConstantExpression::Bool { span } => match parse_bool(span) {
+            ConstantExpression::Bool { span } => match parse_bool(span.clone()) {
                 Ok(v) => return Ok(ColumnValues::bool(vec![v; row_count])),
                 Err(err) => return Err(Error(err.diagnostic())),
             },
             ConstantExpression::Number { span } => {
                 if span.fragment.contains(".") || span.fragment.contains("e") {
-                    match parse_float(&span) {
+                    match parse_float(span.clone()) {
                         Ok(v) => return Ok(ColumnValues::float8(vec![v; row_count])),
                         Err(err) => return Err(Error(err.diagnostic())),
                     }
                 }
 
-                if let Ok(v) = parse_int::<i8>(&span) {
+                if let Ok(v) = parse_int::<i8>(span.clone()) {
                     ColumnValues::int1(vec![v; row_count])
-                } else if let Ok(v) = parse_int::<i16>(&span) {
+                } else if let Ok(v) = parse_int::<i16>(span.clone()) {
                     ColumnValues::int2(vec![v; row_count])
-                } else if let Ok(v) = parse_int::<i32>(&span) {
+                } else if let Ok(v) = parse_int::<i32>(span.clone()) {
                     ColumnValues::int4(vec![v; row_count])
-                } else if let Ok(v) = parse_int::<i64>(&span) {
+                } else if let Ok(v) = parse_int::<i64>(span.clone()) {
                     ColumnValues::int8(vec![v; row_count])
-                } else if let Ok(v) = parse_int::<i128>(&span) {
+                } else if let Ok(v) = parse_int::<i128>(span.clone()) {
                     ColumnValues::int16(vec![v; row_count])
                 } else {
-                    match parse_uint::<u128>(&span) {
+                    match parse_uint::<u128>(span.clone()) {
                         Ok(v) => ColumnValues::uint16(vec![v; row_count]),
                         Err(err) => {
                             return Err(Error(err.diagnostic()));
@@ -78,7 +78,7 @@ impl Evaluator {
             ConstantExpression::Text { span } => {
                 ColumnValues::utf8(std::iter::repeat(span.fragment.clone()).take(row_count))
             }
-            ConstantExpression::Temporal { span } => Self::parse_temporal(span, row_count)?,
+            ConstantExpression::Temporal { span } => Self::parse_temporal(span.clone(), row_count)?,
             ConstantExpression::Undefined { .. } => ColumnValues::Undefined(row_count),
         })
     }
@@ -90,13 +90,13 @@ impl Evaluator {
     ) -> evaluate::Result<ColumnValues> {
         Ok(match (expr, ty) {
             (ConstantExpression::Bool { span }, Type::Bool) => {
-                let value = parse_bool(span).map_err(|err| Error(err.diagnostic()))?;
+                let value = parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))?;
                 ColumnValues::bool(vec![value; row_count])
             }
 
             // Bool to numeric types
             (ConstantExpression::Bool { span }, Type::Float4) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1.0f32
                 } else {
                     0.0f32
@@ -104,7 +104,7 @@ impl Evaluator {
                 ColumnValues::float4(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Float8) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1.0f64
                 } else {
                     0.0f64
@@ -112,7 +112,7 @@ impl Evaluator {
                 ColumnValues::float8(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int1) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1i8
                 } else {
                     0i8
@@ -120,7 +120,7 @@ impl Evaluator {
                 ColumnValues::int1(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int2) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1i16
                 } else {
                     0i16
@@ -128,7 +128,7 @@ impl Evaluator {
                 ColumnValues::int2(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int4) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1i32
                 } else {
                     0i32
@@ -136,7 +136,7 @@ impl Evaluator {
                 ColumnValues::int4(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int8) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1i64
                 } else {
                     0i64
@@ -144,7 +144,7 @@ impl Evaluator {
                 ColumnValues::int8(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Int16) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1i128
                 } else {
                     0i128
@@ -152,7 +152,7 @@ impl Evaluator {
                 ColumnValues::int16(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint1) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1u8
                 } else {
                     0u8
@@ -160,7 +160,7 @@ impl Evaluator {
                 ColumnValues::uint1(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint2) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1u16
                 } else {
                     0u16
@@ -168,7 +168,7 @@ impl Evaluator {
                 ColumnValues::uint2(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint4) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1u32
                 } else {
                     0u32
@@ -176,7 +176,7 @@ impl Evaluator {
                 ColumnValues::uint4(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint8) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1u64
                 } else {
                     0u64
@@ -184,7 +184,7 @@ impl Evaluator {
                 ColumnValues::uint8(vec![value; row_count])
             }
             (ConstantExpression::Bool { span }, Type::Uint16) => {
-                let value = if parse_bool(span).map_err(|err| Error(err.diagnostic()))? {
+                let value = if parse_bool(span.clone()).map_err(|err| Error(err.diagnostic()))? {
                     1u128
                 } else {
                     0u128
@@ -194,7 +194,7 @@ impl Evaluator {
 
             (ConstantExpression::Number { span }, ty) => {
                 match ty {
-                    Type::Bool => match parse_bool(&span) {
+                    Type::Bool => match parse_bool(span.clone()) {
                         Ok(v) => ColumnValues::bool(vec![v; row_count]),
                         Err(err) => {
                             return Err(Error(cast::invalid_boolean(
@@ -204,7 +204,7 @@ impl Evaluator {
                         }
                     },
 
-                    Type::Float4 => match parse_float::<f32>(&span) {
+                    Type::Float4 => match parse_float::<f32>(span.clone()) {
                         Ok(v) => ColumnValues::float4(vec![v; row_count]),
                         Err(err) => {
                             return Err(Error(cast::invalid_number(
@@ -214,7 +214,7 @@ impl Evaluator {
                             )));
                         }
                     },
-                    Type::Float8 => match parse_float::<f64>(&span) {
+                    Type::Float8 => match parse_float::<f64>(span.clone()) {
                         Ok(v) => ColumnValues::float8(vec![v; row_count]),
                         Err(err) => {
                             return Err(Error(cast::invalid_number(
@@ -225,9 +225,9 @@ impl Evaluator {
                         }
                     },
                     Type::Int1 => {
-                        if let Ok(v) = parse_int::<i8>(&span) {
+                        if let Ok(v) = parse_int::<i8>(span.clone()) {
                             ColumnValues::int1(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
                                 ColumnValues::int1(vec![truncated as i8; row_count])
@@ -239,7 +239,7 @@ impl Evaluator {
                                 )));
                             }
                         } else {
-                            match parse_int::<i8>(&span) {
+                            match parse_int::<i8>(span.clone()) {
                                 Ok(_) => unreachable!(),
                                 Err(err) => {
                                     return Err(Error(cast::invalid_number(
@@ -252,9 +252,9 @@ impl Evaluator {
                         }
                     }
                     Type::Int2 => {
-                        if let Ok(v) = parse_int::<i16>(&span) {
+                        if let Ok(v) = parse_int::<i16>(span.clone()) {
                             ColumnValues::int2(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
                                 ColumnValues::int2(vec![truncated as i16; row_count])
@@ -274,9 +274,9 @@ impl Evaluator {
                         }
                     }
                     Type::Int4 => {
-                        if let Ok(v) = parse_int::<i32>(&span) {
+                        if let Ok(v) = parse_int::<i32>(span.clone()) {
                             ColumnValues::int4(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
                                 ColumnValues::int4(vec![truncated as i32; row_count])
@@ -296,9 +296,9 @@ impl Evaluator {
                         }
                     }
                     Type::Int8 => {
-                        if let Ok(v) = parse_int::<i64>(&span) {
+                        if let Ok(v) = parse_int::<i64>(span.clone()) {
                             ColumnValues::int8(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
                                 ColumnValues::int8(vec![truncated as i64; row_count])
@@ -318,9 +318,9 @@ impl Evaluator {
                         }
                     }
                     Type::Int16 => {
-                        if let Ok(v) = parse_int::<i128>(&span) {
+                        if let Ok(v) = parse_int::<i128>(span.clone()) {
                             ColumnValues::int16(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
                                 ColumnValues::int16(vec![truncated as i128; row_count])
@@ -340,9 +340,9 @@ impl Evaluator {
                         }
                     }
                     Type::Uint1 => {
-                        if let Ok(v) = parse_uint::<u8>(&span) {
+                        if let Ok(v) = parse_uint::<u8>(span.clone()) {
                             ColumnValues::uint1(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= 0.0 && truncated <= u8::MAX as f64 {
                                 ColumnValues::uint1(vec![truncated as u8; row_count])
@@ -362,9 +362,9 @@ impl Evaluator {
                         }
                     }
                     Type::Uint2 => {
-                        if let Ok(v) = parse_uint::<u16>(&span) {
+                        if let Ok(v) = parse_uint::<u16>(span.clone()) {
                             ColumnValues::uint2(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= 0.0 && truncated <= u16::MAX as f64 {
                                 ColumnValues::uint2(vec![truncated as u16; row_count])
@@ -384,9 +384,9 @@ impl Evaluator {
                         }
                     }
                     Type::Uint4 => {
-                        if let Ok(v) = parse_uint::<u32>(&span) {
+                        if let Ok(v) = parse_uint::<u32>(span.clone()) {
                             ColumnValues::uint4(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= 0.0 && truncated <= u32::MAX as f64 {
                                 ColumnValues::uint4(vec![truncated as u32; row_count])
@@ -406,9 +406,9 @@ impl Evaluator {
                         }
                     }
                     Type::Uint8 => {
-                        if let Ok(v) = parse_uint::<u64>(&span) {
+                        if let Ok(v) = parse_uint::<u64>(span.clone()) {
                             ColumnValues::uint8(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= 0.0 && truncated <= u64::MAX as f64 {
                                 ColumnValues::uint8(vec![truncated as u64; row_count])
@@ -428,9 +428,9 @@ impl Evaluator {
                         }
                     }
                     Type::Uint16 => {
-                        if let Ok(v) = parse_uint::<u128>(&span) {
+                        if let Ok(v) = parse_uint::<u128>(span.clone()) {
                             ColumnValues::uint16(vec![v; row_count])
-                        } else if let Ok(f) = parse_float::<f64>(&span) {
+                        } else if let Ok(f) = parse_float::<f64>(span.clone()) {
                             let truncated = f.trunc();
                             if truncated >= 0.0 && truncated <= u128::MAX as f64 {
                                 ColumnValues::uint16(vec![truncated as u128; row_count])
@@ -465,13 +465,13 @@ impl Evaluator {
             }
 
             // Text to numeric types
-            (ConstantExpression::Text { span }, Type::Bool) => match parse_bool(span) {
+            (ConstantExpression::Text { span }, Type::Bool) => match parse_bool(span.clone()) {
                 Ok(value) => ColumnValues::bool(vec![value; row_count]),
                 Err(err) => {
                     return Err(Error(cast::invalid_boolean(span.clone(), err.diagnostic())));
                 }
             },
-            (ConstantExpression::Text { span }, Type::Float4) => match parse_float::<f32>(&span) {
+            (ConstantExpression::Text { span }, Type::Float4) => match parse_float::<f32>(span.clone()) {
                 Ok(v) => ColumnValues::float4(vec![v; row_count]),
                 Err(err) => {
                     return Err(Error(cast::invalid_number(
@@ -481,7 +481,7 @@ impl Evaluator {
                     )));
                 }
             },
-            (ConstantExpression::Text { span }, Type::Float8) => match parse_float::<f64>(&span) {
+            (ConstantExpression::Text { span }, Type::Float8) => match parse_float::<f64>(span.clone()) {
                 Ok(v) => ColumnValues::float8(vec![v; row_count]),
                 Err(err) => {
                     return Err(Error(cast::invalid_number(
@@ -493,7 +493,7 @@ impl Evaluator {
             },
             (ConstantExpression::Text { span }, Type::Int1) => {
                 ColumnValues::int1(vec![
-                    parse_int::<i8>(&span).map_err(|e| Error(
+                    parse_int::<i8>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Int1, e.diagnostic(),)
                     ))?;
                     row_count
@@ -502,7 +502,7 @@ impl Evaluator {
 
             (ConstantExpression::Text { span }, Type::Int2) => {
                 ColumnValues::int2(vec![
-                    parse_int::<i16>(&span).map_err(|e| Error(
+                    parse_int::<i16>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Int2, e.diagnostic(),)
                     ))?;
                     row_count
@@ -510,7 +510,7 @@ impl Evaluator {
             }
             (ConstantExpression::Text { span }, Type::Int4) => {
                 ColumnValues::int4(vec![
-                    parse_int::<i32>(&span).map_err(|e| Error(
+                    parse_int::<i32>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Int4, e.diagnostic(),)
                     ))?;
                     row_count
@@ -518,7 +518,7 @@ impl Evaluator {
             }
             (ConstantExpression::Text { span }, Type::Int8) => {
                 ColumnValues::int8(vec![
-                    parse_int::<i64>(&span).map_err(|e| Error(
+                    parse_int::<i64>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Int8, e.diagnostic(),)
                     ))?;
                     row_count
@@ -526,37 +526,37 @@ impl Evaluator {
             }
 
             (ConstantExpression::Text { span }, Type::Int16) => ColumnValues::int16(vec![
-                    parse_int::<i128>(&span).map_err(|e| Error(
+                    parse_int::<i128>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Int16, e.diagnostic(),)
                     ))?;
                     row_count
                 ]),
             (ConstantExpression::Text { span }, Type::Uint1) => ColumnValues::uint1(vec![
-                    parse_uint::<u8>(&span).map_err(|e| Error(
+                    parse_uint::<u8>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint1, e.diagnostic(),)
                     ))?;
                     row_count
                 ]),
             (ConstantExpression::Text { span }, Type::Uint2) => ColumnValues::uint2(vec![
-                    parse_uint::<u16>(&span).map_err(|e| Error(
+                    parse_uint::<u16>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint2, e.diagnostic(),)
                     ))?;
                     row_count
                 ]),
             (ConstantExpression::Text { span }, Type::Uint4) => ColumnValues::uint4(vec![
-                    parse_uint::<u32>(&span).map_err(|e| Error(
+                    parse_uint::<u32>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint4, e.diagnostic(),)
                     ))?;
                     row_count
                 ]),
             (ConstantExpression::Text { span }, Type::Uint8) => ColumnValues::uint8(vec![
-                    parse_uint::<u64>(&span).map_err(|e| Error(
+                    parse_uint::<u64>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint8, e.diagnostic(),)
                     ))?;
                     row_count
                 ]),
             (ConstantExpression::Text { span }, Type::Uint16) => ColumnValues::uint16(vec![
-                    parse_uint::<u128>(&span).map_err(|e| Error(
+                    parse_uint::<u128>(span.clone()).map_err(|e| Error(
                         cast::invalid_number(span.clone(), Type::Uint16, e.diagnostic(),)
                     ))?;
                     row_count
@@ -624,8 +624,8 @@ impl Evaluator {
         })
     }
 
-    fn parse_temporal(span: &Span, row_count: usize) -> evaluate::Result<ColumnValues> {
-        let fragment = &span.fragment;
+    fn parse_temporal(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+        let fragment = span.fragment();
 
         // Route based on character patterns
         if fragment.starts_with('P') || fragment.starts_with('p') {
@@ -646,7 +646,7 @@ impl Evaluator {
             Ok(ColumnValues::time(vec![time; row_count]))
         } else {
             // Unrecognized pattern
-            Err(Error(temporal::unrecognized_temporal_pattern(span.clone())))
+            Err(Error(temporal::unrecognized_temporal_pattern(span.to_owned())))
         }
     }
 }

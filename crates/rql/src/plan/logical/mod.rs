@@ -11,7 +11,7 @@ use crate::expression::{Expression, KeyedExpression};
 use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use crate::Error;
-use reifydb_core::{Type, SortKey, Span};
+use reifydb_core::{Type, SortKey, OwnedSpan};
 use reifydb_core::diagnostic::parse::unrecognized_type;
 
 struct Compiler {}
@@ -67,36 +67,36 @@ pub enum LogicalPlan {
 
 #[derive(Debug)]
 pub struct CreateDeferredViewNode {
-    pub schema: Span,
-    pub view: Span,
+    pub schema: OwnedSpan,
+    pub view: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
 }
 
 #[derive(Debug)]
 pub struct CreateSchemaNode {
-    pub schema: Span,
+    pub schema: OwnedSpan,
     pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
 pub struct CreateSequenceNode {
-    pub schema: Span,
+    pub schema: OwnedSpan,
     pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
 pub struct CreateTableNode {
-    pub schema: Span,
-    pub table: Span,
+    pub schema: OwnedSpan,
+    pub table: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
 }
 
 #[derive(Debug)]
 pub struct InsertNode {
-    pub schema: Option<Span>,
-    pub table: Span,
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
 }
 
 #[derive(Debug)]
@@ -137,8 +137,8 @@ pub struct InlineDataNode {
 
 #[derive(Debug)]
 pub struct TableScanNode {
-    pub schema: Option<Span>,
-    pub table: Span,
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
 }
 
 pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<Type> {

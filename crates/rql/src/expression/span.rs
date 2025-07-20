@@ -5,10 +5,10 @@ use crate::expression::{
     AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
     PrefixExpression, RemExpression, SubExpression,
 };
-use reifydb_core::Span;
+use reifydb_core::OwnedSpan;
 
 impl Expression {
-    pub fn lazy_span(&self) -> impl Fn() -> Span + '_ {
+    pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
         move || match self {
             Expression::AccessTable(expr) => expr.span(),
             Expression::Alias(expr) => expr.expression.span(),
@@ -51,13 +51,13 @@ impl Expression {
 }
 
 impl AddExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
 impl ConstantExpression {
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> OwnedSpan {
         match self {
             ConstantExpression::Undefined { span } => span.clone(),
             ConstantExpression::Bool { span } => span.clone(),
@@ -69,37 +69,37 @@ impl ConstantExpression {
 }
 
 impl PrefixExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.span.clone(), self.expression.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.span.clone(), self.expression.span()])
     }
 }
 
 impl SubExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
 impl MulExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
 impl DivExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
 impl RemExpression {
-    pub fn span(&self) -> Span {
-        Span::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
     }
 }
 
 impl Expression {
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> OwnedSpan {
         self.lazy_span()()
     }
 }

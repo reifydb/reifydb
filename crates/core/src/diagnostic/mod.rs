@@ -18,7 +18,7 @@ pub struct Diagnostic {
     pub message: String,
     pub column: Option<DiagnosticColumn>,
 
-    pub span: Option<Span>,
+    pub span: Option<OwnedSpan>,
     pub label: Option<String>,
     pub help: Option<String>,
     pub notes: Vec<String>,
@@ -49,6 +49,16 @@ impl Diagnostic {
             *cause = Box::new(updated_cause);
         }
     }
+
+    /// Update the span for this diagnostic and all nested diagnostics recursively
+    pub fn update_spans(&mut self, new_span: &OwnedSpan) {
+        if self.span.is_some() {
+            self.span = Some(new_span.clone());
+        }
+        if let Some(ref mut cause) = self.cause {
+            cause.update_spans(new_span);
+        }
+    }
 }
 
 pub trait DiagnosticRenderer {
@@ -61,7 +71,7 @@ pub fn get_line(source: &str, line: u32) -> &str {
     source.lines().nth((line - 1) as usize).unwrap_or("")
 }
 
-use crate::{Span, Type};
+use crate::{OwnedSpan, Type};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Write};
 

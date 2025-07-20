@@ -10,9 +10,9 @@ use reifydb_catalog::{
     sequence::TableRowSequence,
 };
 use reifydb_core::{
-    Type, IntoSpan, Value,
-    interface::{Tx, UnversionedStorage, VersionedStorage},
-    row::Layout,
+	Type, IntoOwnedSpan, Value,
+	interface::{Tx, UnversionedStorage, VersionedStorage},
+	row::Layout,
 };
 use reifydb_core::diagnostic::catalog::table_not_found;
 use reifydb_rql::plan::physical::InsertPlan;

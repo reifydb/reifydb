@@ -26,7 +26,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }
 
             return Err(Error::execution(schema_already_exists(
-                Some(plan.schema.clone()),
+                Some(plan.schema),
                 &schema.name,
             )));
         }
@@ -49,7 +49,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 #[cfg(test)]
 mod tests {
     use crate::execute::execute_tx;
-    use reifydb_core::{Span, Value};
+    use reifydb_core::{OwnedSpan, Value};
     use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
     use reifydb_transaction::test_utils::TestTransaction;
 
@@ -58,7 +58,7 @@ mod tests {
         let mut tx = TestTransaction::new();
 
         let mut plan =
-            CreateSchemaPlan { schema: Span::testing("my_schema"), if_not_exists: false };
+            CreateSchemaPlan { schema: OwnedSpan::testing("my_schema"), if_not_exists: false };
 
         // First creation should succeed
         let result = execute_tx(&mut tx, PhysicalPlan::CreateSchema(plan.clone())).unwrap();

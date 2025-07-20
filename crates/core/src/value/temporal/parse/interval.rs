@@ -4,12 +4,12 @@
 use crate::{Error, Interval, Span};
 use crate::diagnostic::temporal;
 
-pub fn parse_interval(span: &Span) -> Result<Interval, Error> {
-    let fragment = &span.fragment;
+pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
+    let fragment = span.fragment();
     // Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
     if fragment.len() == 1 || !fragment.starts_with('P')  || fragment == "PT"{
-        return Err(Error(temporal::invalid_interval_format(span.clone())));
+        return Err(Error(temporal::invalid_interval_format(span.to_owned())));
     }
 
     let mut chars = fragment.chars().skip(1); // Skip 'P'
@@ -155,28 +155,28 @@ pub fn parse_interval(span: &Span) -> Result<Interval, Error> {
 #[cfg(test)]
 mod tests {
     use super::parse_interval;
-    use crate::Span;
+    use crate::OwnedSpan;
 
     #[test]
     fn test_days() {
-        let span = Span::testing("P1D");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("P1D");
+        let interval = parse_interval(span).unwrap();
         // 1 day = 24 * 60 * 60 * 1_000_000_000 nanos
         assert_eq!(interval.to_nanos(), 24 * 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_time_hours_minutes() {
-        let span = Span::testing("PT2H30M");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("PT2H30M");
+        let interval = parse_interval(span).unwrap();
         // 2 hours 30 minutes = (2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
         assert_eq!(interval.to_nanos(), (2 * 60 * 60 + 30 * 60) * 1_000_000_000);
     }
 
     #[test]
     fn test_complex() {
-        let span = Span::testing("P1DT2H30M");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("P1DT2H30M");
+        let interval = parse_interval(span).unwrap();
         // 1 day + 2 hours + 30 minutes
         let expected = (24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000;
         assert_eq!(interval.to_nanos(), expected);
@@ -184,50 +184,50 @@ mod tests {
 
     #[test]
     fn test_seconds_only() {
-        let span = Span::testing("PT45S");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("PT45S");
+        let interval = parse_interval(span).unwrap();
         assert_eq!(interval.to_nanos(), 45 * 1_000_000_000);
     }
 
     #[test]
     fn test_minutes_only() {
-        let span = Span::testing("PT5M");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("PT5M");
+        let interval = parse_interval(span).unwrap();
         assert_eq!(interval.to_nanos(), 5 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_hours_only() {
-        let span = Span::testing("PT1H");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("PT1H");
+        let interval = parse_interval(span).unwrap();
         assert_eq!(interval.to_nanos(), 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_weeks() {
-        let span = Span::testing("P1W");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("P1W");
+        let interval = parse_interval(span).unwrap();
         assert_eq!(interval.to_nanos(), 7 * 24 * 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_years() {
-        let span = Span::testing("P1Y");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("P1Y");
+        let interval = parse_interval(span).unwrap();
         assert_eq!(interval.to_nanos(), 365 * 24 * 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_months() {
-        let span = Span::testing("P1M");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("P1M");
+        let interval = parse_interval(span).unwrap();
         assert_eq!(interval.to_nanos(), 30 * 24 * 60 * 60 * 1_000_000_000);
     }
 
     #[test]
     fn test_full_format() {
-        let span = Span::testing("P1Y2M3DT4H5M6S");
-        let interval = parse_interval(&span).unwrap();
+        let span = OwnedSpan::testing("P1Y2M3DT4H5M6S");
+        let interval = parse_interval(span).unwrap();
         let expected = 365 * 24 * 60 * 60 * 1_000_000_000 +     // 1 year
                       2 * 30 * 24 * 60 * 60 * 1_000_000_000 +  // 2 months
                       3 * 24 * 60 * 60 * 1_000_000_000 +       // 3 days
@@ -239,57 +239,57 @@ mod tests {
 
     #[test]
     fn test_invalid_format() {
-        let span = Span::testing("invalid");
-        let err = parse_interval(&span).unwrap_err();
+        let span = OwnedSpan::testing("invalid");
+        let err = parse_interval(span).unwrap_err();
         assert_eq!(err.0.code, "TEMPORAL_004");
     }
 
     #[test]
     fn test_invalid_character() {
-        let span = Span::testing("P1X");
-        let err = parse_interval(&span).unwrap_err();
+        let span = OwnedSpan::testing("P1X");
+        let err = parse_interval(span).unwrap_err();
         assert_eq!(err.0.code, "TEMPORAL_014");
     }
 
     #[test]
     fn test_years_in_time_part() {
-        let span = Span::testing("PTY");
-        let err = parse_interval(&span).unwrap_err();
+        let span = OwnedSpan::testing("PTY");
+        let err = parse_interval(span).unwrap_err();
         assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_weeks_in_time_part() {
-        let span = Span::testing("PTW");
-        let err = parse_interval(&span).unwrap_err();
+        let span = OwnedSpan::testing("PTW");
+        let err = parse_interval(span).unwrap_err();
         assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_days_in_time_part() {
-        let span = Span::testing("PTD");
-        let err = parse_interval(&span).unwrap_err();
+        let span = OwnedSpan::testing("PTD");
+        let err = parse_interval(span).unwrap_err();
         assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_hours_in_date_part() {
-        let span = Span::testing("P1H");
-        let err = parse_interval(&span).unwrap_err();
+        let span = OwnedSpan::testing("P1H");
+        let err = parse_interval(span).unwrap_err();
         assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_seconds_in_date_part() {
-        let span = Span::testing("P1S");
-        let err = parse_interval(&span).unwrap_err();
+        let span = OwnedSpan::testing("P1S");
+        let err = parse_interval(span).unwrap_err();
         assert_eq!(err.0.code, "TEMPORAL_016");
     }
 
     #[test]
     fn test_incomplete_specification() {
-        let span = Span::testing("P1");
-        let err = parse_interval(&span).unwrap_err();
+        let span = OwnedSpan::testing("P1");
+        let err = parse_interval(span).unwrap_err();
         assert_eq!(err.0.code, "TEMPORAL_015");
     }
 }

@@ -3,10 +3,11 @@
 
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic::util::value_range;
-use crate::{Span, Type};
+use crate::{Type, IntoOwnedSpan};
 
-pub fn invalid_number_format(span: Span, target: Type) -> Diagnostic {
-    let label = Some(format!("'{}' is not a valid {} number", span.fragment, target));
+pub fn invalid_number_format(span: impl IntoOwnedSpan, target: Type) -> Diagnostic {
+    let owned_span = span.into_span();
+    let label = Some(format!("'{}' is not a valid {} number", owned_span.fragment, target));
 
     let (help, notes) = match target {
         Type::Float4 | Type::Float8 => (
@@ -44,7 +45,7 @@ pub fn invalid_number_format(span: Span, target: Type) -> Diagnostic {
         code: "NUMBER_001".to_string(),
         statement: None,
         message: "invalid number format".to_string(),
-        span: Some(span),
+        span: Some(owned_span),
         label,
         help: Some(help),
         notes,
@@ -53,18 +54,19 @@ pub fn invalid_number_format(span: Span, target: Type) -> Diagnostic {
     }
 }
 
-pub fn number_out_of_range(span: Span, target: Type) -> Diagnostic {
+pub fn number_out_of_range(span: impl IntoOwnedSpan, target: Type) -> Diagnostic {
+    let owned_span = span.into_span();
     let range = value_range(target);
     let label = Some(format!(
         "value '{}' exceeds the valid range for type {} ({})",
-        span.fragment, target, range
+        owned_span.fragment, target, range
     ));
 
     Diagnostic {
         code: "NUMBER_002".to_string(),
         statement: None,
         message: "number out of range".to_string(),
-        span: Some(span),
+        span: Some(owned_span),
         label,
         help: Some(format!(
             "use a value within the valid range for {} or use a wider type",
@@ -92,7 +94,8 @@ pub fn nan_not_allowed() -> Diagnostic {
     }
 }
 
-pub fn integer_precision_loss(span: Span, source_type: Type, target: Type) -> Diagnostic {
+pub fn integer_precision_loss(span: impl IntoOwnedSpan, source_type: Type, target: Type) -> Diagnostic {
+    let owned_span = span.into_span();
     let is_signed = source_type.is_signed_integer();
 
     let (min_limit, max_limit) = match target {
@@ -117,14 +120,14 @@ pub fn integer_precision_loss(span: Span, source_type: Type, target: Type) -> Di
 
     let label = Some(format!(
         "converting '{}' from {} to {} would lose precision",
-        span.fragment, source_type, target
+        owned_span.fragment, source_type, target
     ));
 
     Diagnostic {
         code: "NUMBER_004".to_string(),
         statement: None,
         message: "too large for precise float conversion".to_string(),
-        span: Some(span),
+        span: Some(owned_span),
         label,
         help: None,
         notes: vec![

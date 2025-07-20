@@ -8,7 +8,7 @@ use std::any::TypeId;
 use std::num::IntErrorKind;
 use std::str::FromStr;
 
-pub fn parse_int<T>(span: &Span) -> Result<T, Error>
+pub fn parse_int<T>(span: impl Span) -> Result<T, Error>
 where
     T: IsInt + 'static,
 {
@@ -27,7 +27,7 @@ where
     }
 }
 
-pub fn parse_uint<T>(span: &Span) -> Result<T, Error>
+pub fn parse_uint<T>(span: impl Span) -> Result<T, Error>
 where
     T: IsUint + 'static,
 {
@@ -46,11 +46,11 @@ where
     }
 }
 
-pub fn parse_float<T>(span: &Span) -> Result<T, Error>
+pub fn parse_float<T>(span: impl Span) -> Result<T, Error>
 where
     T: IsFloat + 'static,
 {
-    if span.fragment.to_lowercase().contains("nan") {
+    if span.fragment().to_lowercase().contains("nan") {
         return Err(Error(nan_not_allowed()));
     }
 
@@ -161,21 +161,21 @@ impl TypeInfo for f64 {
 }
 
 #[inline]
-fn parse_signed_generic<T>(span: &Span) -> Result<T, Error>
+fn parse_signed_generic<T>(span: impl Span) -> Result<T, Error>
 where
     T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
-    let value = span.fragment.replace("_", "");
+    let value = span.fragment().replace("_", "");
     let value = value.trim();
 
     if value.is_empty() {
-        return Err(Error(invalid_number_format(span.clone(), T::type_enum())));
+        return Err(Error(invalid_number_format(span.to_owned(), T::type_enum())));
     }
 
     match value.parse::<T>() {
         Ok(v) => Ok(v),
         Err(err) => match err.kind() {
-            IntErrorKind::Empty => Err(Error(invalid_number_format(span.clone(), T::type_enum()))),
+            IntErrorKind::Empty => Err(Error(invalid_number_format(span.to_owned(), T::type_enum()))),
             IntErrorKind::InvalidDigit => {
                 if let Ok(f) = value.parse::<f64>() {
                     let truncated = f.trunc();
@@ -193,34 +193,34 @@ where
                     if in_range {
                         Ok(cast_float_to_int::<T>(truncated))
                     } else {
-                        Err(Error(number_out_of_range(span.clone(), type_enum)))
+                        Err(Error(number_out_of_range(span.to_owned(), type_enum)))
                     }
                 } else {
-                    Err(Error(invalid_number_format(span.clone(), T::type_enum())))
+                    Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
                 }
             }
             IntErrorKind::PosOverflow => {
-                Err(Error(number_out_of_range(span.clone(), T::type_enum())))
+                Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
             }
             IntErrorKind::NegOverflow => {
-                Err(Error(number_out_of_range(span.clone(), T::type_enum())))
+                Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
             }
-            IntErrorKind::Zero => Err(Error(invalid_number_format(span.clone(), T::type_enum()))),
+            IntErrorKind::Zero => Err(Error(invalid_number_format(span.to_owned(), T::type_enum()))),
             &_ => unreachable!("{}", err),
         },
     }
 }
 
 #[inline]
-fn parse_unsigned_generic<T>(span: &Span) -> Result<T, Error>
+fn parse_unsigned_generic<T>(span: impl Span) -> Result<T, Error>
 where
     T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
-    let value = span.fragment.replace("_", "");
+    let value = span.fragment().replace("_", "");
     let value = value.trim();
 
     if value.is_empty() {
-        return Err(Error(invalid_number_format(span.clone(), T::type_enum())));
+        return Err(Error(invalid_number_format(span.to_owned(), T::type_enum())));
     }
 
     match value.parse::<T>() {
@@ -228,13 +228,13 @@ where
         Err(err) => {
             match err.kind() {
                 IntErrorKind::Empty => {
-                    Err(Error(invalid_number_format(span.clone(), T::type_enum())))
+                    Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
                 }
                 IntErrorKind::InvalidDigit => {
                     if let Ok(f) = value.parse::<f64>() {
                         // For unsigned types, reject negative values
                         if f < 0.0 {
-                            return Err(Error(number_out_of_range(span.clone(), T::type_enum())));
+                            return Err(Error(number_out_of_range(span.to_owned(), T::type_enum())));
                         }
                         let truncated = f.trunc();
                         let type_enum = T::type_enum();
@@ -249,24 +249,24 @@ where
                         if in_range {
                             Ok(cast_float_to_int::<T>(truncated))
                         } else {
-                            Err(Error(number_out_of_range(span.clone(), type_enum)))
+                            Err(Error(number_out_of_range(span.to_owned(), type_enum)))
                         }
                     } else {
                         if value.contains("-") {
-                            Err(Error(number_out_of_range(span.clone(), T::type_enum())))
+                            Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
                         } else {
-                            Err(Error(invalid_number_format(span.clone(), T::type_enum())))
+                            Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
                         }
                     }
                 }
                 IntErrorKind::PosOverflow => {
-                    Err(Error(number_out_of_range(span.clone(), T::type_enum())))
+                    Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
                 }
                 IntErrorKind::NegOverflow => {
-                    Err(Error(number_out_of_range(span.clone(), T::type_enum())))
+                    Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
                 }
                 IntErrorKind::Zero => {
-                    Err(Error(invalid_number_format(span.clone(), T::type_enum())))
+                    Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
                 }
                 &_ => unreachable!("{}", err),
             }
@@ -275,15 +275,15 @@ where
 }
 
 #[inline]
-fn parse_float_generic<T>(span: &Span) -> Result<T, Error>
+fn parse_float_generic<T>(span: impl Span) -> Result<T, Error>
 where
     T: FromStr<Err = std::num::ParseFloatError> + Copy + TypeInfo + PartialEq + 'static,
 {
-    let value = span.fragment.replace("_", "");
+    let value = span.fragment().replace("_", "");
     let value = value.trim();
 
     if value.is_empty() {
-        return Err(Error(invalid_number_format(span.clone(), T::type_enum())));
+        return Err(Error(invalid_number_format(span.to_owned(), T::type_enum())));
     }
 
     match value.parse::<T>() {
@@ -291,226 +291,226 @@ where
             if TypeId::of::<T>() == TypeId::of::<f32>() {
                 let v_f32 = cast::<f32, T>(v);
                 if v_f32 == f32::INFINITY || v_f32 == f32::NEG_INFINITY {
-                    return Err(Error(number_out_of_range(span.clone(), T::type_enum())));
+                    return Err(Error(number_out_of_range(span.to_owned(), T::type_enum())));
                 }
             } else if TypeId::of::<T>() == TypeId::of::<f64>() {
                 let v_f64 = cast::<f64, T>(v);
                 if v_f64 == f64::INFINITY || v_f64 == f64::NEG_INFINITY {
-                    return Err(Error(number_out_of_range(span.clone(), T::type_enum())));
+                    return Err(Error(number_out_of_range(span.to_owned(), T::type_enum())));
                 }
             }
             Ok(v)
         }
-        Err(_) => Err(Error(invalid_number_format(span.clone(), T::type_enum()))),
+        Err(_) => Err(Error(invalid_number_format(span.to_owned(), T::type_enum()))),
     }
 }
 
 #[inline]
-fn parse_f32(span: &Span) -> Result<f32, Error> {
+fn parse_f32(span: impl Span) -> Result<f32, Error> {
     parse_float_generic::<f32>(span)
 }
 
 #[inline]
-fn parse_f64(span: &Span) -> Result<f64, Error> {
+fn parse_f64(span: impl Span) -> Result<f64, Error> {
     parse_float_generic::<f64>(span)
 }
 
 #[inline]
-fn parse_i8(span: &Span) -> Result<i8, Error> {
+fn parse_i8(span: impl Span) -> Result<i8, Error> {
     parse_signed_generic::<i8>(span)
 }
 
 #[inline]
-fn parse_i16(span: &Span) -> Result<i16, Error> {
+fn parse_i16(span: impl Span) -> Result<i16, Error> {
     parse_signed_generic::<i16>(span)
 }
 
 #[inline]
-fn parse_i32(span: &Span) -> Result<i32, Error> {
+fn parse_i32(span: impl Span) -> Result<i32, Error> {
     parse_signed_generic::<i32>(span)
 }
 
 #[inline]
-fn parse_i64(span: &Span) -> Result<i64, Error> {
+fn parse_i64(span: impl Span) -> Result<i64, Error> {
     parse_signed_generic::<i64>(span)
 }
 
 #[inline]
-fn parse_i128(span: &Span) -> Result<i128, Error> {
+fn parse_i128(span: impl Span) -> Result<i128, Error> {
     parse_signed_generic::<i128>(span)
 }
 
 #[inline]
-fn parse_u8(span: &Span) -> Result<u8, Error> {
+fn parse_u8(span: impl Span) -> Result<u8, Error> {
     parse_unsigned_generic::<u8>(span)
 }
 
 #[inline]
-fn parse_u16(span: &Span) -> Result<u16, Error> {
+fn parse_u16(span: impl Span) -> Result<u16, Error> {
     parse_unsigned_generic::<u16>(span)
 }
 
 #[inline]
-fn parse_u32(span: &Span) -> Result<u32, Error> {
+fn parse_u32(span: impl Span) -> Result<u32, Error> {
     parse_unsigned_generic::<u32>(span)
 }
 
 #[inline]
-fn parse_u64(span: &Span) -> Result<u64, Error> {
+fn parse_u64(span: impl Span) -> Result<u64, Error> {
     parse_unsigned_generic::<u64>(span)
 }
 
 #[inline]
-fn parse_u128(span: &Span) -> Result<u128, Error> {
+fn parse_u128(span: impl Span) -> Result<u128, Error> {
     parse_unsigned_generic::<u128>(span)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Span;
+    use crate::OwnedSpan;
 
     mod i8 {
         use super::*;
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_int::<i8>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_int::<i8>(&Span::testing("42")), Ok(42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("42")), Ok(42));
         }
 
         #[test]
         fn test_valid_negative() {
-            assert_eq!(parse_int::<i8>(&Span::testing("-42")), Ok(-42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("-42")), Ok(-42));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_int::<i8>(&Span::testing("127")), Ok(127));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("127")), Ok(127));
         }
 
         #[test]
         fn test_valid_min() {
-            assert_eq!(parse_int::<i8>(&Span::testing("-128")), Ok(-128));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("-128")), Ok(-128));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_int::<i8>(&Span::testing("128")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("128")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_int::<i8>(&Span::testing("-129")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("-129")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_int::<i8>(&Span::testing("abc")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("abc")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_int::<i8>(&Span::testing("")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_invalid_whitespace() {
-            assert!(parse_int::<i8>(&Span::testing("   ")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("   ")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_int::<i8>(&Span::testing("42.9")), Ok(42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("42.9")), Ok(42));
         }
 
         #[test]
         fn test_float_truncation_negative() {
-            assert_eq!(parse_int::<i8>(&Span::testing("-42.9")), Ok(-42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("-42.9")), Ok(-42));
         }
 
         #[test]
         fn test_float_truncation_zero() {
-            assert_eq!(parse_int::<i8>(&Span::testing("0.0")), Ok(0));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("0.0")), Ok(0));
         }
 
         #[test]
         fn test_float_truncation_negative_zero() {
-            assert_eq!(parse_int::<i8>(&Span::testing("-0.0")), Ok(0));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("-0.0")), Ok(0));
         }
 
         #[test]
         fn test_float_truncation_max() {
-            assert_eq!(parse_int::<i8>(&Span::testing("127.9")), Ok(127));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("127.9")), Ok(127));
         }
 
         #[test]
         fn test_float_truncation_min() {
-            assert_eq!(parse_int::<i8>(&Span::testing("-128.9")), Ok(-128));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("-128.9")), Ok(-128));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_int::<i8>(&Span::testing("1e+2")), Ok(100));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("1e+2")), Ok(100));
         }
 
         #[test]
         fn test_float_scientific_small() {
-            assert_eq!(parse_int::<i8>(&Span::testing("1.23e-1")), Ok(0));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("1.23e-1")), Ok(0));
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_int::<i8>(&Span::testing("128.0")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("128.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_negative() {
-            assert!(parse_int::<i8>(&Span::testing("-129.0")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("-129.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_scientific() {
-            assert!(parse_int::<i8>(&Span::testing("1e3")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("1e3")).is_err());
         }
 
         #[test]
         fn test_invalid_float_format() {
-            assert!(parse_int::<i8>(&Span::testing("1.2.3")).is_err());
+            assert!(parse_int::<i8>(OwnedSpan::testing("1.2.3")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_int::<i8>(&Span::testing(" 42")), Ok(42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing(" 42")), Ok(42));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_int::<i8>(&Span::testing("42 ")), Ok(42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("42 ")), Ok(42));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_int::<i8>(&Span::testing(" 42 ")), Ok(42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing(" 42 ")), Ok(42));
         }
 
         #[test]
         fn trimming_negative_leading_space() {
-            assert_eq!(parse_int::<i8>(&Span::testing(" -42")), Ok(-42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing(" -42")), Ok(-42));
         }
 
         #[test]
         fn trimming_negative_trailing_space() {
-            assert_eq!(parse_int::<i8>(&Span::testing("-42 ")), Ok(-42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing("-42 ")), Ok(-42));
         }
 
         #[test]
         fn trimming_negative_both_spaces() {
-            assert_eq!(parse_int::<i8>(&Span::testing(" -42 ")), Ok(-42));
+            assert_eq!(parse_int::<i8>(OwnedSpan::testing(" -42 ")), Ok(-42));
         }
     }
 
@@ -519,117 +519,117 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_int::<i16>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_int::<i16>(&Span::testing("1000")), Ok(1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("1000")), Ok(1000));
         }
 
         #[test]
         fn test_valid_negative() {
-            assert_eq!(parse_int::<i16>(&Span::testing("-1000")), Ok(-1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("-1000")), Ok(-1000));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_int::<i16>(&Span::testing("32767")), Ok(32767));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("32767")), Ok(32767));
         }
 
         #[test]
         fn test_valid_min() {
-            assert_eq!(parse_int::<i16>(&Span::testing("-32768")), Ok(-32768));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("-32768")), Ok(-32768));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_int::<i16>(&Span::testing("32768")).is_err());
+            assert!(parse_int::<i16>(OwnedSpan::testing("32768")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_int::<i16>(&Span::testing("-32769")).is_err());
+            assert!(parse_int::<i16>(OwnedSpan::testing("-32769")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_int::<i16>(&Span::testing("hello")).is_err());
+            assert!(parse_int::<i16>(OwnedSpan::testing("hello")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_int::<i16>(&Span::testing("")).is_err());
+            assert!(parse_int::<i16>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_int::<i16>(&Span::testing("1000.7")), Ok(1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("1000.7")), Ok(1000));
         }
 
         #[test]
         fn test_float_truncation_negative() {
-            assert_eq!(parse_int::<i16>(&Span::testing("-1000.7")), Ok(-1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("-1000.7")), Ok(-1000));
         }
 
         #[test]
         fn test_float_truncation_max() {
-            assert_eq!(parse_int::<i16>(&Span::testing("32767.9")), Ok(32767));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("32767.9")), Ok(32767));
         }
 
         #[test]
         fn test_float_truncation_min() {
-            assert_eq!(parse_int::<i16>(&Span::testing("-32768.9")), Ok(-32768));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("-32768.9")), Ok(-32768));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_int::<i16>(&Span::testing("1.5e3")), Ok(1500));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("1.5e3")), Ok(1500));
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_int::<i16>(&Span::testing("32768.0")).is_err());
+            assert!(parse_int::<i16>(OwnedSpan::testing("32768.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_negative() {
-            assert!(parse_int::<i16>(&Span::testing("-32769.0")).is_err());
+            assert!(parse_int::<i16>(OwnedSpan::testing("-32769.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_scientific() {
-            assert!(parse_int::<i16>(&Span::testing("1e5")).is_err());
+            assert!(parse_int::<i16>(OwnedSpan::testing("1e5")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_int::<i16>(&Span::testing(" 1000")), Ok(1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing(" 1000")), Ok(1000));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_int::<i16>(&Span::testing("1000 ")), Ok(1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("1000 ")), Ok(1000));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_int::<i16>(&Span::testing(" 1000 ")), Ok(1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing(" 1000 ")), Ok(1000));
         }
 
         #[test]
         fn trimming_negative_leading_space() {
-            assert_eq!(parse_int::<i16>(&Span::testing(" -1000")), Ok(-1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing(" -1000")), Ok(-1000));
         }
 
         #[test]
         fn trimming_negative_trailing_space() {
-            assert_eq!(parse_int::<i16>(&Span::testing("-1000 ")), Ok(-1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing("-1000 ")), Ok(-1000));
         }
 
         #[test]
         fn trimming_negative_both_spaces() {
-            assert_eq!(parse_int::<i16>(&Span::testing(" -1000 ")), Ok(-1000));
+            assert_eq!(parse_int::<i16>(OwnedSpan::testing(" -1000 ")), Ok(-1000));
         }
     }
 
@@ -638,147 +638,147 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_int::<i32>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_int::<i32>(&Span::testing("1000000")), Ok(1000000));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("1000000")), Ok(1000000));
         }
 
         #[test]
         fn test_valid_negative() {
-            assert_eq!(parse_int::<i32>(&Span::testing("-1000000")), Ok(-1000000));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("-1000000")), Ok(-1000000));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_int::<i32>(&Span::testing("2147483647")), Ok(2147483647));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("2147483647")), Ok(2147483647));
         }
 
         #[test]
         fn test_valid_min() {
-            assert_eq!(parse_int::<i32>(&Span::testing("-2147483648")), Ok(-2147483648));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("-2147483648")), Ok(-2147483648));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_int::<i32>(&Span::testing("2147483648")).is_err());
+            assert!(parse_int::<i32>(OwnedSpan::testing("2147483648")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_int::<i32>(&Span::testing("-2147483649")).is_err());
+            assert!(parse_int::<i32>(OwnedSpan::testing("-2147483649")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_int::<i32>(&Span::testing("not_a_number")).is_err());
+            assert!(parse_int::<i32>(OwnedSpan::testing("not_a_number")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_int::<i32>(&Span::testing("")).is_err());
+            assert!(parse_int::<i32>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_int::<i32>(&Span::testing("3.14")), Ok(3));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("3.14")), Ok(3));
         }
 
         #[test]
         fn test_float_truncation_negative() {
-            assert_eq!(parse_int::<i32>(&Span::testing("-3.14")), Ok(-3));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("-3.14")), Ok(-3));
         }
 
         #[test]
         fn test_float_truncation_zero() {
-            assert_eq!(parse_int::<i32>(&Span::testing("0.0")), Ok(0));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("0.0")), Ok(0));
         }
 
         #[test]
         fn test_float_truncation_negative_zero() {
-            assert_eq!(parse_int::<i32>(&Span::testing("-0.0")), Ok(0));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("-0.0")), Ok(0));
         }
 
         #[test]
         fn test_float_truncation_large() {
-            assert_eq!(parse_int::<i32>(&Span::testing("42.999")), Ok(42));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("42.999")), Ok(42));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_int::<i32>(&Span::testing("1e+2")), Ok(100));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("1e+2")), Ok(100));
         }
 
         #[test]
         fn test_float_scientific_decimal() {
-            assert_eq!(parse_int::<i32>(&Span::testing("2.5e3")), Ok(2500));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("2.5e3")), Ok(2500));
         }
 
         #[test]
         fn test_float_scientific_negative() {
-            assert_eq!(parse_int::<i32>(&Span::testing("-1.5e2")), Ok(-150));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("-1.5e2")), Ok(-150));
         }
 
         #[test]
         fn test_float_scientific_small() {
-            assert_eq!(parse_int::<i32>(&Span::testing("1.23e-1")), Ok(0));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("1.23e-1")), Ok(0));
         }
 
         #[test]
         fn test_float_scientific_very_small() {
-            assert_eq!(parse_int::<i32>(&Span::testing("9.9e-1")), Ok(0));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("9.9e-1")), Ok(0));
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_int::<i32>(&Span::testing("2147483648.0")).is_err());
+            assert!(parse_int::<i32>(OwnedSpan::testing("2147483648.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_negative() {
-            assert!(parse_int::<i32>(&Span::testing("-2147483649.0")).is_err());
+            assert!(parse_int::<i32>(OwnedSpan::testing("-2147483649.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_scientific() {
-            assert!(parse_int::<i32>(&Span::testing("1e10")).is_err());
+            assert!(parse_int::<i32>(OwnedSpan::testing("1e10")).is_err());
         }
 
         #[test]
         fn test_invalid_float_format() {
-            assert!(parse_int::<i32>(&Span::testing("1.2.3")).is_err());
+            assert!(parse_int::<i32>(OwnedSpan::testing("1.2.3")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_int::<i32>(&Span::testing(" 123")), Ok(123));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing(" 123")), Ok(123));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_int::<i32>(&Span::testing("123 ")), Ok(123));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("123 ")), Ok(123));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_int::<i32>(&Span::testing(" 123 ")), Ok(123));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing(" 123 ")), Ok(123));
         }
 
         #[test]
         fn trimming_negative_leading_space() {
-            assert_eq!(parse_int::<i32>(&Span::testing(" -456")), Ok(-456));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing(" -456")), Ok(-456));
         }
 
         #[test]
         fn trimming_negative_trailing_space() {
-            assert_eq!(parse_int::<i32>(&Span::testing("-456 ")), Ok(-456));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing("-456 ")), Ok(-456));
         }
 
         #[test]
         fn trimming_negative_both_spaces() {
-            assert_eq!(parse_int::<i32>(&Span::testing(" -456 ")), Ok(-456));
+            assert_eq!(parse_int::<i32>(OwnedSpan::testing(" -456 ")), Ok(-456));
         }
     }
 
@@ -787,107 +787,107 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_int::<i64>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_int::<i64>(&Span::testing("1000000000")), Ok(1000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("1000000000")), Ok(1000000000));
         }
 
         #[test]
         fn test_valid_negative() {
-            assert_eq!(parse_int::<i64>(&Span::testing("-1000000000")), Ok(-1000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("-1000000000")), Ok(-1000000000));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_int::<i64>(&Span::testing("9223372036854775807")), Ok(i64::MAX));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("9223372036854775807")), Ok(i64::MAX));
         }
 
         #[test]
         fn test_valid_min() {
-            assert_eq!(parse_int::<i64>(&Span::testing("-9223372036854775808")), Ok(i64::MIN));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("-9223372036854775808")), Ok(i64::MIN));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_int::<i64>(&Span::testing("9223372036854775808")).is_err());
+            assert!(parse_int::<i64>(OwnedSpan::testing("9223372036854775808")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_int::<i64>(&Span::testing("-9223372036854775809")).is_err());
+            assert!(parse_int::<i64>(OwnedSpan::testing("-9223372036854775809")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_int::<i64>(&Span::testing("invalid")).is_err());
+            assert!(parse_int::<i64>(OwnedSpan::testing("invalid")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_int::<i64>(&Span::testing("")).is_err());
+            assert!(parse_int::<i64>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_int::<i64>(&Span::testing("12345.67")), Ok(12345));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("12345.67")), Ok(12345));
         }
 
         #[test]
         fn test_float_truncation_negative() {
-            assert_eq!(parse_int::<i64>(&Span::testing("-12345.67")), Ok(-12345));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("-12345.67")), Ok(-12345));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_int::<i64>(&Span::testing("1e10")), Ok(10000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("1e10")), Ok(10000000000));
         }
 
         #[test]
         fn test_float_scientific_large() {
-            assert_eq!(parse_int::<i64>(&Span::testing("9.223e18")), Ok(9223000000000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("9.223e18")), Ok(9223000000000000000));
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_int::<i64>(&Span::testing("1e19")).is_err());
+            assert!(parse_int::<i64>(OwnedSpan::testing("1e19")).is_err());
         }
 
         #[test]
         fn test_float_overflow_negative() {
-            assert!(parse_int::<i64>(&Span::testing("-1e19")).is_err());
+            assert!(parse_int::<i64>(OwnedSpan::testing("-1e19")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_int::<i64>(&Span::testing(" 1000000000")), Ok(1000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing(" 1000000000")), Ok(1000000000));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_int::<i64>(&Span::testing("1000000000 ")), Ok(1000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("1000000000 ")), Ok(1000000000));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_int::<i64>(&Span::testing(" 1000000000 ")), Ok(1000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing(" 1000000000 ")), Ok(1000000000));
         }
 
         #[test]
         fn trimming_negative_leading_space() {
-            assert_eq!(parse_int::<i64>(&Span::testing(" -1000000000")), Ok(-1000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing(" -1000000000")), Ok(-1000000000));
         }
 
         #[test]
         fn trimming_negative_trailing_space() {
-            assert_eq!(parse_int::<i64>(&Span::testing("-1000000000 ")), Ok(-1000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing("-1000000000 ")), Ok(-1000000000));
         }
 
         #[test]
         fn trimming_negative_both_spaces() {
-            assert_eq!(parse_int::<i64>(&Span::testing(" -1000000000 ")), Ok(-1000000000));
+            assert_eq!(parse_int::<i64>(OwnedSpan::testing(" -1000000000 ")), Ok(-1000000000));
         }
     }
 
@@ -896,102 +896,102 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_int::<i128>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_int::<i128>(&Span::testing("12345678901234567890")), Ok(12345678901234567890));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing("12345678901234567890")), Ok(12345678901234567890));
         }
 
         #[test]
         fn test_valid_negative() {
-            assert_eq!(parse_int::<i128>(&Span::testing("-12345678901234567890")), Ok(-12345678901234567890));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing("-12345678901234567890")), Ok(-12345678901234567890));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_int::<i128>(&Span::testing(&i128::MAX.to_string())), Ok(i128::MAX));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing(&i128::MAX.to_string())), Ok(i128::MAX));
         }
 
         #[test]
         fn test_valid_min() {
-            assert_eq!(parse_int::<i128>(&Span::testing(&i128::MIN.to_string())), Ok(i128::MIN));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing(&i128::MIN.to_string())), Ok(i128::MIN));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_int::<i128>(&Span::testing("170141183460469231731687303715884105728")).is_err());
+            assert!(parse_int::<i128>(OwnedSpan::testing("170141183460469231731687303715884105728")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_int::<i128>(&Span::testing("-170141183460469231731687303715884105729")).is_err());
+            assert!(parse_int::<i128>(OwnedSpan::testing("-170141183460469231731687303715884105729")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_int::<i128>(&Span::testing("abc")).is_err());
+            assert!(parse_int::<i128>(OwnedSpan::testing("abc")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_int::<i128>(&Span::testing("")).is_err());
+            assert!(parse_int::<i128>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_int::<i128>(&Span::testing("123456789.123")), Ok(123456789));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing("123456789.123")), Ok(123456789));
         }
 
         #[test]
         fn test_float_truncation_negative() {
-            assert_eq!(parse_int::<i128>(&Span::testing("-123456789.123")), Ok(-123456789));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing("-123456789.123")), Ok(-123456789));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_int::<i128>(&Span::testing("1e20")), Ok(100000000000000000000));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing("1e20")), Ok(100000000000000000000));
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_int::<i128>(&Span::testing("1e40")).is_err());
+            assert!(parse_int::<i128>(OwnedSpan::testing("1e40")).is_err());
         }
 
         #[test]
         fn test_float_overflow_negative() {
-            assert!(parse_int::<i128>(&Span::testing("-1e40")).is_err());
+            assert!(parse_int::<i128>(OwnedSpan::testing("-1e40")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_int::<i128>(&Span::testing(" 12345678901234567890")), Ok(12345678901234567890));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing(" 12345678901234567890")), Ok(12345678901234567890));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_int::<i128>(&Span::testing("12345678901234567890 ")), Ok(12345678901234567890));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing("12345678901234567890 ")), Ok(12345678901234567890));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_int::<i128>(&Span::testing(" 12345678901234567890 ")), Ok(12345678901234567890));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing(" 12345678901234567890 ")), Ok(12345678901234567890));
         }
 
         #[test]
         fn trimming_negative_leading_space() {
-            assert_eq!(parse_int::<i128>(&Span::testing(" -12345678901234567890")), Ok(-12345678901234567890));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing(" -12345678901234567890")), Ok(-12345678901234567890));
         }
 
         #[test]
         fn trimming_negative_trailing_space() {
-            assert_eq!(parse_int::<i128>(&Span::testing("-12345678901234567890 ")), Ok(-12345678901234567890));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing("-12345678901234567890 ")), Ok(-12345678901234567890));
         }
 
         #[test]
         fn trimming_negative_both_spaces() {
-            assert_eq!(parse_int::<i128>(&Span::testing(" -12345678901234567890 ")), Ok(-12345678901234567890));
+            assert_eq!(parse_int::<i128>(OwnedSpan::testing(" -12345678901234567890 ")), Ok(-12345678901234567890));
         }
     }
 
@@ -1000,102 +1000,102 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("128")), Ok(128));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("128")), Ok(128));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("255")), Ok(255));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("255")), Ok(255));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_uint::<u8>(&Span::testing("256")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("256")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_uint::<u8>(&Span::testing("-1")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("-1")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_uint::<u8>(&Span::testing("abc")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("abc")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_uint::<u8>(&Span::testing("")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("128.9")), Ok(128));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("128.9")), Ok(128));
         }
 
         #[test]
         fn test_float_truncation_zero() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("0.0")), Ok(0));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("0.0")), Ok(0));
         }
 
         #[test]
         fn test_float_truncation_max() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("255.9")), Ok(255));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("255.9")), Ok(255));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("2e2")), Ok(200));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("2e2")), Ok(200));
         }
 
         #[test]
         fn test_float_scientific_small() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("1.23e-1")), Ok(0));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("1.23e-1")), Ok(0));
         }
 
         #[test]
         fn test_float_negative() {
-            assert!(parse_uint::<u8>(&Span::testing("-1.5")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("-1.5")).is_err());
         }
 
         #[test]
         fn test_float_negative_zero() {
-            assert!(parse_uint::<u8>(&Span::testing("-0.1")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("-0.1")).is_err());
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_uint::<u8>(&Span::testing("256.0")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("256.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_scientific() {
-            assert!(parse_uint::<u8>(&Span::testing("1e3")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("1e3")).is_err());
         }
 
         #[test]
         fn test_invalid_float_format() {
-            assert!(parse_uint::<u8>(&Span::testing("1.2.3")).is_err());
+            assert!(parse_uint::<u8>(OwnedSpan::testing("1.2.3")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_uint::<u8>(&Span::testing(" 128")), Ok(128));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing(" 128")), Ok(128));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_uint::<u8>(&Span::testing("128 ")), Ok(128));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing("128 ")), Ok(128));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_uint::<u8>(&Span::testing(" 128 ")), Ok(128));
+            assert_eq!(parse_uint::<u8>(OwnedSpan::testing(" 128 ")), Ok(128));
         }
     }
 
@@ -1104,82 +1104,82 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_uint::<u16>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_uint::<u16>(&Span::testing("32768")), Ok(32768));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing("32768")), Ok(32768));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_uint::<u16>(&Span::testing("65535")), Ok(65535));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing("65535")), Ok(65535));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_uint::<u16>(&Span::testing("65536")).is_err());
+            assert!(parse_uint::<u16>(OwnedSpan::testing("65536")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_uint::<u16>(&Span::testing("-1")).is_err());
+            assert!(parse_uint::<u16>(OwnedSpan::testing("-1")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_uint::<u16>(&Span::testing("invalid")).is_err());
+            assert!(parse_uint::<u16>(OwnedSpan::testing("invalid")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_uint::<u16>(&Span::testing("")).is_err());
+            assert!(parse_uint::<u16>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_uint::<u16>(&Span::testing("32768.7")), Ok(32768));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing("32768.7")), Ok(32768));
         }
 
         #[test]
         fn test_float_truncation_max() {
-            assert_eq!(parse_uint::<u16>(&Span::testing("65535.9")), Ok(65535));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing("65535.9")), Ok(65535));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_uint::<u16>(&Span::testing("6.5e4")), Ok(65000));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing("6.5e4")), Ok(65000));
         }
 
         #[test]
         fn test_float_negative() {
-            assert!(parse_uint::<u16>(&Span::testing("-100.0")).is_err());
+            assert!(parse_uint::<u16>(OwnedSpan::testing("-100.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_uint::<u16>(&Span::testing("65536.0")).is_err());
+            assert!(parse_uint::<u16>(OwnedSpan::testing("65536.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_scientific() {
-            assert!(parse_uint::<u16>(&Span::testing("1e5")).is_err());
+            assert!(parse_uint::<u16>(OwnedSpan::testing("1e5")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_uint::<u16>(&Span::testing(" 32768")), Ok(32768));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing(" 32768")), Ok(32768));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_uint::<u16>(&Span::testing("32768 ")), Ok(32768));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing("32768 ")), Ok(32768));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_uint::<u16>(&Span::testing(" 32768 ")), Ok(32768));
+            assert_eq!(parse_uint::<u16>(OwnedSpan::testing(" 32768 ")), Ok(32768));
         }
     }
 
@@ -1188,112 +1188,112 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("1000000")), Ok(1000000));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("1000000")), Ok(1000000));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("4294967295")), Ok(4294967295));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("4294967295")), Ok(4294967295));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_uint::<u32>(&Span::testing("4294967296")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("4294967296")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_uint::<u32>(&Span::testing("-1")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("-1")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_uint::<u32>(&Span::testing("text")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("text")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_uint::<u32>(&Span::testing("")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("3.14")), Ok(3));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("3.14")), Ok(3));
         }
 
         #[test]
         fn test_float_truncation_zero() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("0.0")), Ok(0));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("0.0")), Ok(0));
         }
 
         #[test]
         fn test_float_truncation_large() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("42.999")), Ok(42));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("42.999")), Ok(42));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("1e+2")), Ok(100));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("1e+2")), Ok(100));
         }
 
         #[test]
         fn test_float_scientific_decimal() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("2.5e3")), Ok(2500));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("2.5e3")), Ok(2500));
         }
 
         #[test]
         fn test_float_scientific_small() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("1.23e-1")), Ok(0));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("1.23e-1")), Ok(0));
         }
 
         #[test]
         fn test_float_negative() {
-            assert!(parse_uint::<u32>(&Span::testing("-3.14")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("-3.14")).is_err());
         }
 
         #[test]
         fn test_float_negative_small() {
-            assert!(parse_uint::<u32>(&Span::testing("-0.1")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("-0.1")).is_err());
         }
 
         #[test]
         fn test_float_negative_scientific() {
-            assert!(parse_uint::<u32>(&Span::testing("-1e2")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("-1e2")).is_err());
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_uint::<u32>(&Span::testing("4294967296.0")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("4294967296.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_scientific() {
-            assert!(parse_uint::<u32>(&Span::testing("1e10")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("1e10")).is_err());
         }
 
         #[test]
         fn test_invalid_float_format() {
-            assert!(parse_uint::<u32>(&Span::testing("1.2.3")).is_err());
+            assert!(parse_uint::<u32>(OwnedSpan::testing("1.2.3")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_uint::<u32>(&Span::testing(" 1000000")), Ok(1000000));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing(" 1000000")), Ok(1000000));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_uint::<u32>(&Span::testing("1000000 ")), Ok(1000000));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing("1000000 ")), Ok(1000000));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_uint::<u32>(&Span::testing(" 1000000 ")), Ok(1000000));
+            assert_eq!(parse_uint::<u32>(OwnedSpan::testing(" 1000000 ")), Ok(1000000));
         }
     }
 
@@ -1302,77 +1302,77 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_uint::<u64>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_uint::<u64>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_uint::<u64>(&Span::testing("1000000000000")), Ok(1000000000000));
+            assert_eq!(parse_uint::<u64>(OwnedSpan::testing("1000000000000")), Ok(1000000000000));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_uint::<u64>(&Span::testing("18446744073709551615")), Ok(u64::MAX));
+            assert_eq!(parse_uint::<u64>(OwnedSpan::testing("18446744073709551615")), Ok(u64::MAX));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_uint::<u64>(&Span::testing("18446744073709551616")).is_err());
+            assert!(parse_uint::<u64>(OwnedSpan::testing("18446744073709551616")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_uint::<u64>(&Span::testing("-1")).is_err());
+            assert!(parse_uint::<u64>(OwnedSpan::testing("-1")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_uint::<u64>(&Span::testing("not_valid")).is_err());
+            assert!(parse_uint::<u64>(OwnedSpan::testing("not_valid")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_uint::<u64>(&Span::testing("")).is_err());
+            assert!(parse_uint::<u64>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_uint::<u64>(&Span::testing("123456789.123")), Ok(123456789));
+            assert_eq!(parse_uint::<u64>(OwnedSpan::testing("123456789.123")), Ok(123456789));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_uint::<u64>(&Span::testing("1e12")), Ok(1000000000000));
+            assert_eq!(parse_uint::<u64>(OwnedSpan::testing("1e12")), Ok(1000000000000));
         }
 
         #[test]
         fn test_float_negative() {
-            assert!(parse_uint::<u64>(&Span::testing("-1.0")).is_err());
+            assert!(parse_uint::<u64>(OwnedSpan::testing("-1.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_uint::<u64>(&Span::testing("2e19")).is_err());
+            assert!(parse_uint::<u64>(OwnedSpan::testing("2e19")).is_err());
         }
 
         #[test]
         fn test_float_overflow_scientific() {
-            assert!(parse_uint::<u64>(&Span::testing("1e20")).is_err());
+            assert!(parse_uint::<u64>(OwnedSpan::testing("1e20")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_uint::<u64>(&Span::testing(" 1000000000000")), Ok(1000000000000));
+            assert_eq!(parse_uint::<u64>(OwnedSpan::testing(" 1000000000000")), Ok(1000000000000));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_uint::<u64>(&Span::testing("1000000000000 ")), Ok(1000000000000));
+            assert_eq!(parse_uint::<u64>(OwnedSpan::testing("1000000000000 ")), Ok(1000000000000));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_uint::<u64>(&Span::testing(" 1000000000000 ")), Ok(1000000000000));
+            assert_eq!(parse_uint::<u64>(OwnedSpan::testing(" 1000000000000 ")), Ok(1000000000000));
         }
     }
 
@@ -1381,77 +1381,77 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_uint::<u128>(&Span::testing("0")), Ok(0));
+            assert_eq!(parse_uint::<u128>(OwnedSpan::testing("0")), Ok(0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_uint::<u128>(&Span::testing("12345678901234567890")), Ok(12345678901234567890));
+            assert_eq!(parse_uint::<u128>(OwnedSpan::testing("12345678901234567890")), Ok(12345678901234567890));
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_uint::<u128>(&Span::testing(&u128::MAX.to_string())), Ok(u128::MAX));
+            assert_eq!(parse_uint::<u128>(OwnedSpan::testing(&u128::MAX.to_string())), Ok(u128::MAX));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_uint::<u128>(&Span::testing("340282366920938463463374607431768211456")).is_err());
+            assert!(parse_uint::<u128>(OwnedSpan::testing("340282366920938463463374607431768211456")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_uint::<u128>(&Span::testing("-1")).is_err());
+            assert!(parse_uint::<u128>(OwnedSpan::testing("-1")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_uint::<u128>(&Span::testing("abc")).is_err());
+            assert!(parse_uint::<u128>(OwnedSpan::testing("abc")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_uint::<u128>(&Span::testing("")).is_err());
+            assert!(parse_uint::<u128>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_float_truncation_positive() {
-            assert_eq!(parse_uint::<u128>(&Span::testing("123456789.999")), Ok(123456789));
+            assert_eq!(parse_uint::<u128>(OwnedSpan::testing("123456789.999")), Ok(123456789));
         }
 
         #[test]
         fn test_float_scientific_notation() {
-            assert_eq!(parse_uint::<u128>(&Span::testing("1e20")), Ok(100000000000000000000));
+            assert_eq!(parse_uint::<u128>(OwnedSpan::testing("1e20")), Ok(100000000000000000000));
         }
 
         #[test]
         fn test_float_negative() {
-            assert!(parse_uint::<u128>(&Span::testing("-1.0")).is_err());
+            assert!(parse_uint::<u128>(OwnedSpan::testing("-1.0")).is_err());
         }
 
         #[test]
         fn test_float_overflow_positive() {
-            assert!(parse_uint::<u128>(&Span::testing("1e40")).is_err());
+            assert!(parse_uint::<u128>(OwnedSpan::testing("1e40")).is_err());
         }
 
         #[test]
         fn test_float_overflow_scientific() {
-            assert!(parse_uint::<u128>(&Span::testing("1e50")).is_err());
+            assert!(parse_uint::<u128>(OwnedSpan::testing("1e50")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_uint::<u128>(&Span::testing(" 12345678901234567890")), Ok(12345678901234567890));
+            assert_eq!(parse_uint::<u128>(OwnedSpan::testing(" 12345678901234567890")), Ok(12345678901234567890));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_uint::<u128>(&Span::testing("12345678901234567890 ")), Ok(12345678901234567890));
+            assert_eq!(parse_uint::<u128>(OwnedSpan::testing("12345678901234567890 ")), Ok(12345678901234567890));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_uint::<u128>(&Span::testing(" 12345678901234567890 ")), Ok(12345678901234567890));
+            assert_eq!(parse_uint::<u128>(OwnedSpan::testing(" 12345678901234567890 ")), Ok(12345678901234567890));
         }
     }
 
@@ -1460,102 +1460,102 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_float::<f32>(&Span::testing("0.0")), Ok(0.0));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing("0.0")), Ok(0.0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_float::<f32>(&Span::testing("1.5")), Ok(1.5));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing("1.5")), Ok(1.5));
         }
 
         #[test]
         fn test_valid_negative() {
-            assert_eq!(parse_float::<f32>(&Span::testing("-3.14")), Ok(-3.14));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing("-3.14")), Ok(-3.14));
         }
 
         #[test]
         fn test_valid_integer() {
-            assert_eq!(parse_float::<f32>(&Span::testing("42")), Ok(42.0));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing("42")), Ok(42.0));
         }
 
         #[test]
         fn test_valid_scientific() {
-            assert_eq!(parse_float::<f32>(&Span::testing("1e2")), Ok(100.0));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing("1e2")), Ok(100.0));
         }
 
         #[test]
         fn test_valid_scientific_negative() {
-            assert_eq!(parse_float::<f32>(&Span::testing("1e-2")), Ok(0.01));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing("1e-2")), Ok(0.01));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_float::<f32>(&Span::testing("3.5e38")).is_err());
+            assert!(parse_float::<f32>(OwnedSpan::testing("3.5e38")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_float::<f32>(&Span::testing("-3.5e38")).is_err());
+            assert!(parse_float::<f32>(OwnedSpan::testing("-3.5e38")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_float::<f32>(&Span::testing("abc")).is_err());
+            assert!(parse_float::<f32>(OwnedSpan::testing("abc")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_float::<f32>(&Span::testing("")).is_err());
+            assert!(parse_float::<f32>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_invalid_whitespace() {
-            assert!(parse_float::<f32>(&Span::testing("   ")).is_err());
+            assert!(parse_float::<f32>(OwnedSpan::testing("   ")).is_err());
         }
 
         #[test]
         fn test_invalid_nan() {
-            assert!(parse_float::<f32>(&Span::testing("NaN")).is_err());
+            assert!(parse_float::<f32>(OwnedSpan::testing("NaN")).is_err());
         }
 
         #[test]
         fn test_invalid_nan_lowercase() {
-            assert!(parse_float::<f32>(&Span::testing("nan")).is_err());
+            assert!(parse_float::<f32>(OwnedSpan::testing("nan")).is_err());
         }
 
         #[test]
         fn test_invalid_multiple_dots() {
-            assert!(parse_float::<f32>(&Span::testing("1.2.3")).is_err());
+            assert!(parse_float::<f32>(OwnedSpan::testing("1.2.3")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_float::<f32>(&Span::testing(" 1.5")), Ok(1.5));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing(" 1.5")), Ok(1.5));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_float::<f32>(&Span::testing("1.5 ")), Ok(1.5));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing("1.5 ")), Ok(1.5));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_float::<f32>(&Span::testing(" 1.5 ")), Ok(1.5));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing(" 1.5 ")), Ok(1.5));
         }
 
         #[test]
         fn trimming_negative_leading_space() {
-            assert_eq!(parse_float::<f32>(&Span::testing(" -3.14")), Ok(-3.14));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing(" -3.14")), Ok(-3.14));
         }
 
         #[test]
         fn trimming_negative_trailing_space() {
-            assert_eq!(parse_float::<f32>(&Span::testing("-3.14 ")), Ok(-3.14));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing("-3.14 ")), Ok(-3.14));
         }
 
         #[test]
         fn trimming_negative_both_spaces() {
-            assert_eq!(parse_float::<f32>(&Span::testing(" -3.14 ")), Ok(-3.14));
+            assert_eq!(parse_float::<f32>(OwnedSpan::testing(" -3.14 ")), Ok(-3.14));
         }
     }
 
@@ -1564,102 +1564,102 @@ mod tests {
 
         #[test]
         fn test_valid_zero() {
-            assert_eq!(parse_float::<f64>(&Span::testing("0.0")), Ok(0.0));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing("0.0")), Ok(0.0));
         }
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_float::<f64>(&Span::testing("1.23")), Ok(1.23));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing("1.23")), Ok(1.23));
         }
 
         #[test]
         fn test_valid_negative() {
-            assert_eq!(parse_float::<f64>(&Span::testing("-0.001")), Ok(-0.001));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing("-0.001")), Ok(-0.001));
         }
 
         #[test]
         fn test_valid_integer() {
-            assert_eq!(parse_float::<f64>(&Span::testing("42")), Ok(42.0));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing("42")), Ok(42.0));
         }
 
         #[test]
         fn test_valid_scientific() {
-            assert_eq!(parse_float::<f64>(&Span::testing("1e10")), Ok(1e10));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing("1e10")), Ok(1e10));
         }
 
         #[test]
         fn test_valid_scientific_negative() {
-            assert_eq!(parse_float::<f64>(&Span::testing("1e-10")), Ok(1e-10));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing("1e-10")), Ok(1e-10));
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_float::<f64>(&Span::testing("1e400")).is_err());
+            assert!(parse_float::<f64>(OwnedSpan::testing("1e400")).is_err());
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_float::<f64>(&Span::testing("-1e400")).is_err());
+            assert!(parse_float::<f64>(OwnedSpan::testing("-1e400")).is_err());
         }
 
         #[test]
         fn test_invalid_text() {
-            assert!(parse_float::<f64>(&Span::testing("abc")).is_err());
+            assert!(parse_float::<f64>(OwnedSpan::testing("abc")).is_err());
         }
 
         #[test]
         fn test_invalid_empty() {
-            assert!(parse_float::<f64>(&Span::testing("")).is_err());
+            assert!(parse_float::<f64>(OwnedSpan::testing("")).is_err());
         }
 
         #[test]
         fn test_invalid_whitespace() {
-            assert!(parse_float::<f64>(&Span::testing("   ")).is_err());
+            assert!(parse_float::<f64>(OwnedSpan::testing("   ")).is_err());
         }
 
         #[test]
         fn test_invalid_nan() {
-            assert!(parse_float::<f64>(&Span::testing("NaN")).is_err());
+            assert!(parse_float::<f64>(OwnedSpan::testing("NaN")).is_err());
         }
 
         #[test]
         fn test_invalid_nan_mixed_case() {
-            assert!(parse_float::<f64>(&Span::testing("NaN")).is_err());
+            assert!(parse_float::<f64>(OwnedSpan::testing("NaN")).is_err());
         }
 
         #[test]
         fn test_invalid_multiple_dots() {
-            assert!(parse_float::<f64>(&Span::testing("1.2.3")).is_err());
+            assert!(parse_float::<f64>(OwnedSpan::testing("1.2.3")).is_err());
         }
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_float::<f64>(&Span::testing(" 1.23")), Ok(1.23));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing(" 1.23")), Ok(1.23));
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_float::<f64>(&Span::testing("1.23 ")), Ok(1.23));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing("1.23 ")), Ok(1.23));
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_float::<f64>(&Span::testing(" 1.23 ")), Ok(1.23));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing(" 1.23 ")), Ok(1.23));
         }
 
         #[test]
         fn trimming_negative_leading_space() {
-            assert_eq!(parse_float::<f64>(&Span::testing(" -0.001")), Ok(-0.001));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing(" -0.001")), Ok(-0.001));
         }
 
         #[test]
         fn trimming_negative_trailing_space() {
-            assert_eq!(parse_float::<f64>(&Span::testing("-0.001 ")), Ok(-0.001));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing("-0.001 ")), Ok(-0.001));
         }
 
         #[test]
         fn trimming_negative_both_spaces() {
-            assert_eq!(parse_float::<f64>(&Span::testing(" -0.001 ")), Ok(-0.001));
+            assert_eq!(parse_float::<f64>(OwnedSpan::testing(" -0.001 ")), Ok(-0.001));
         }
     }
 }

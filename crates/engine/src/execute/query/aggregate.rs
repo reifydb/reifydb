@@ -5,15 +5,15 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{AggregateFunction, FunctionError, Functions};
 use reifydb_core::interface::Rx;
-use reifydb_core::Span;
+use reifydb_core::OwnedSpan;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 enum Projection {
-    Aggregate { column: String, alias: Span, function: Box<dyn AggregateFunction> },
-    Group { column: String, alias: Span },
+    Aggregate { column: String, alias: OwnedSpan, function: Box<dyn AggregateFunction> },
+    Group { column: String, alias: OwnedSpan },
 }
 
 pub(crate) struct AggregateNode {

@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn, Push};
-use reifydb_core::Span;
+use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{Promote, SafeAdd};
 use reifydb_core::{BitVec, CowVec, GetType, Type};
@@ -496,7 +496,7 @@ fn add_numeric<L, R>(
     lv: &BitVec,
     rv: &BitVec,
     ty: Type,
-    span: Span,
+    span: OwnedSpan,
 ) -> crate::evaluate::Result<FrameColumn>
 where
     L: GetType + Promote<R> + Copy,

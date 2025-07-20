@@ -11,7 +11,7 @@ use crate::table::{Table, TableId};
 use crate::{Catalog, Error};
 use reifydb_core::diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Span, Type};
+use reifydb_core::{OwnedSpan, Type};
 
 #[derive(Debug, Clone)]
 pub struct ColumnToCreate {
@@ -22,7 +22,7 @@ pub struct ColumnToCreate {
 
 #[derive(Debug, Clone)]
 pub struct TableToCreate {
-    pub span: Option<Span>,
+    pub span: Option<OwnedSpan>,
     pub table: String,
     pub schema: String,
     pub columns: Vec<ColumnToCreate>,

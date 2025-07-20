@@ -5,13 +5,13 @@ use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::diagnostic::number::{integer_precision_loss, number_out_of_range};
 use reifydb_core::value::number::SafeConvert;
-use reifydb_core::{GetType, IntoSpan};
+use reifydb_core::{GetType, IntoOwnedSpan};
 
 pub trait Convert {
     fn convert<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
@@ -22,7 +22,7 @@ impl Convert for EvaluationContext {
     fn convert<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
@@ -36,7 +36,7 @@ impl Convert for &EvaluationContext {
     fn convert<From, To>(
         &self,
         from: From,
-        span: impl IntoSpan,
+        span: impl IntoOwnedSpan,
     ) -> crate::evaluate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,

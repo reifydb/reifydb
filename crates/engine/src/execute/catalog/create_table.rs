@@ -63,7 +63,7 @@ mod tests {
     use crate::execute_tx;
     use crate::execute::catalog::create_table::CreateTablePlan;
     use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
-    use reifydb_core::{Span, Value};
+    use reifydb_core::{OwnedSpan, Value};
     use reifydb_rql::plan::physical::PhysicalPlan;
     use reifydb_transaction::test_utils::TestTransaction;
 
@@ -74,8 +74,8 @@ mod tests {
         ensure_test_schema(&mut tx);
 
         let mut plan = CreateTablePlan {
-            schema: Span::testing("test_schema"),
-            table: Span::testing("test_table"),
+            schema: OwnedSpan::testing("test_schema"),
+            table: OwnedSpan::testing("test_table"),
             if_not_exists: false,
             columns: vec![],
         };
@@ -107,8 +107,8 @@ mod tests {
         create_schema(&mut tx, "another_schema");
 
         let plan = CreateTablePlan {
-            schema: Span::testing("test_schema"),
-            table: Span::testing("test_table"),
+            schema: OwnedSpan::testing("test_schema"),
+            table: OwnedSpan::testing("test_table"),
             if_not_exists: false,
             columns: vec![],
         };
@@ -119,8 +119,8 @@ mod tests {
         assert_eq!(result.row(0)[2], Value::Bool(true));
 
         let plan = CreateTablePlan {
-            schema: Span::testing("another_schema"),
-            table: Span::testing("test_table"),
+            schema: OwnedSpan::testing("another_schema"),
+            table: OwnedSpan::testing("test_table"),
             if_not_exists: false,
             columns: vec![],
         };
@@ -136,8 +136,8 @@ mod tests {
         let mut tx = TestTransaction::new();
 
         let plan = CreateTablePlan {
-            schema: Span::testing("missing_schema"),
-            table: Span::testing("my_table"),
+            schema: OwnedSpan::testing("missing_schema"),
+            table: OwnedSpan::testing("my_table"),
             if_not_exists: false,
             columns: vec![],
         };

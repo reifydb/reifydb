@@ -3,7 +3,7 @@
 
 use crate::grpc::client::grpc;
 use reifydb_core::diagnostic::{Diagnostic, DiagnosticColumn};
-use reifydb_core::{Date, DateTime, Interval, Span, SpanColumn, SpanLine, Time, Type};
+use reifydb_core::{Date, DateTime, Interval, OwnedSpan, SpanColumn, SpanLine, Time, Type};
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::collections::HashMap;
 
@@ -12,7 +12,7 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
         code: grpc.code,
         statement: grpc.statement,
         message: grpc.message,
-        span: grpc.span.map(|s| Span {
+        span: grpc.span.map(|s| OwnedSpan {
             column: SpanColumn(s.offset),
             line: SpanLine(s.line),
             fragment: s.fragment,

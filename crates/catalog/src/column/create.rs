@@ -9,10 +9,10 @@ use crate::table::TableId;
 use crate::{Catalog, Error};
 use reifydb_core::diagnostic::catalog::column_already_exists;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Span, Type};
+use reifydb_core::{OwnedSpan, Type};
 
 pub struct ColumnToCreate<'a> {
-    pub span: Option<Span>,
+    pub span: Option<OwnedSpan>,
     pub schema_name: &'a str,
     pub table: TableId,
     pub table_name: &'a str,
@@ -32,7 +32,7 @@ impl Catalog {
         // FIXME policies
         if let Some(column) = Catalog::get_column_by_name(tx, table, &column_to_create.column)? {
             return Err(Error(column_already_exists(
-                None,
+                None::<OwnedSpan>,
                 column_to_create.schema_name,
                 column_to_create.table_name,
                 &column.name,

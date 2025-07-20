@@ -7,14 +7,14 @@ use crate::frame::ColumnValues;
 use crate::frame::column::cast::{convert_vec, demote_vec, number, promote_vec};
 use reifydb_core::diagnostic::cast;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
-use reifydb_core::{BitVec, Span, Type};
+use reifydb_core::{BitVec, OwnedSpan, Span, Type};
 
 impl ColumnValues {
     pub(crate) fn to_number(
         &self,
         target: Type,
         ctx: impl Promote + Demote + Convert,
-        span: impl Fn() -> Span,
+        span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         if self.get_type().is_number() {
             return self.number_to_number(target, ctx, span);
@@ -133,71 +133,74 @@ impl ColumnValues {
     pub(crate) fn text_to_numeric_vec(
         &self,
         target: Type,
-        span: impl Fn() -> Span,
+        span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         match self {
             ColumnValues::Utf8(values, bitvec) => {
+                // Create base span once for efficiency
+                let base_span = span();
                 let mut out = ColumnValues::with_capacity(target, values.len());
                 for (idx, val) in values.iter().enumerate() {
                     if bitvec.get(idx) {
-                        // Create a temporary span for parsing
-                        let temp_span = Span {
-                            fragment: val.clone(),
-                            line: span().line,
-                            column: span().column,
-                        };
+                        // Create efficient borrowed span for parsing
+                        use reifydb_core::BorrowedSpan;
+                        let temp_span = BorrowedSpan::with_position(
+                            val,
+                            base_span.line(),
+                            base_span.column(),
+                        );
 
                         // Try to parse based on the target type
                         match target {
                             Type::Int1 => {
-                                out.push::<i8>(parse_int::<i8>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Int1, e.diagnostic()))
+                                out.push::<i8>(parse_int::<i8>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Int1, e.diagnostic()))
                                 })?)
                             }
                             Type::Int2 => {
-                                out.push::<i16>(parse_int::<i16>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Int2, e.diagnostic()))
+                                out.push::<i16>(parse_int::<i16>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Int2, e.diagnostic()))
                                 })?)
                             }
                             Type::Int4 => {
-                                out.push::<i32>(parse_int::<i32>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Int4, e.diagnostic()))
+                                out.push::<i32>(parse_int::<i32>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Int4, e.diagnostic()))
                                 })?)
                             }
                             Type::Int8 => {
-                                out.push::<i64>(parse_int::<i64>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Int8, e.diagnostic()))
+                                out.push::<i64>(parse_int::<i64>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Int8, e.diagnostic()))
                                 })?)
                             }
                             Type::Int16 => {
-                                out.push::<i128>(parse_int::<i128>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Int16, e.diagnostic()))
+                                out.push::<i128>(parse_int::<i128>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Int16, e.diagnostic()))
                                 })?)
                             }
                             Type::Uint1 => {
-                                out.push::<u8>(parse_uint::<u8>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Uint1, e.diagnostic()))
+                                out.push::<u8>(parse_uint::<u8>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Uint1, e.diagnostic()))
                                 })?)
                             }
                             Type::Uint2 => {
-                                out.push::<u16>(parse_uint::<u16>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Uint2, e.diagnostic()))
+                                out.push::<u16>(parse_uint::<u16>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Uint2, e.diagnostic()))
                                 })?)
                             }
                             Type::Uint4 => {
-                                out.push::<u32>(parse_uint::<u32>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Uint4, e.diagnostic()))
+                                out.push::<u32>(parse_uint::<u32>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Uint4, e.diagnostic()))
                                 })?)
                             }
                             Type::Uint8 => {
-                                out.push::<u64>(parse_uint::<u64>(&temp_span).map_err(|e| {
-                                    Error(cast::invalid_number(span(), Type::Uint8, e.diagnostic()))
+                                out.push::<u64>(parse_uint::<u64>(temp_span).map_err(|e| {
+                                    Error(cast::invalid_number(base_span.clone(), Type::Uint8, e.diagnostic()))
                                 })?)
                             }
                             Type::Uint16 => {
-                                out.push::<u128>(parse_uint::<u128>(&temp_span).map_err(|e| {
+                                out.push::<u128>(parse_uint::<u128>(temp_span).map_err(|e| {
                                     Error(cast::invalid_number(
-                                        span(),
+                                        base_span.clone(),
                                         Type::Uint16,
                                         e.diagnostic(),
                                     ))
@@ -221,21 +224,28 @@ pub fn text_to_float_vec(
     values: &[String],
     bitvec: &BitVec,
     target: Type,
-    span: impl Fn() -> Span,
+    span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnValues> {
+    // Create base span once for efficiency  
+    let base_span = span();
     let mut out = ColumnValues::with_capacity(target, values.len());
     for (idx, val) in values.iter().enumerate() {
         if bitvec.get(idx) {
-            let temp_span =
-                Span { fragment: val.clone(), line: span().line, column: span().column };
+            // Create efficient borrowed span for parsing
+            use reifydb_core::BorrowedSpan;
+            let temp_span = BorrowedSpan::with_position(
+                val,
+                base_span.line(),
+                base_span.column(),
+            );
 
             match target {
-                Type::Float4 => out.push::<f32>(parse_float::<f32>(&temp_span).map_err(|e| {
-                    Error(cast::invalid_number(span(), Type::Float4, e.diagnostic()))
+                Type::Float4 => out.push::<f32>(parse_float::<f32>(temp_span).map_err(|e| {
+                    Error(cast::invalid_number(base_span.clone(), Type::Float4, e.diagnostic()))
                 })?),
 
-                Type::Float8 => out.push::<f64>(parse_float::<f64>(&temp_span).map_err(|e| {
-                    Error(cast::invalid_number(span(), Type::Float8, e.diagnostic()))
+                Type::Float8 => out.push::<f64>(parse_float::<f64>(temp_span).map_err(|e| {
+                    Error(cast::invalid_number(base_span.clone(), Type::Float8, e.diagnostic()))
                 })?),
                 _ => unreachable!(),
             }
@@ -593,7 +603,7 @@ impl ColumnValues {
         &self,
         target: Type,
         ctx: impl Promote + Demote + Convert,
-        span: impl Fn() -> Span,
+        span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         if !target.is_number() {
             return Err(error::Error::Evaluation(Error(

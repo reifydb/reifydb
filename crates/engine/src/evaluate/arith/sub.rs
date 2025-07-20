@@ -3,7 +3,7 @@
 
 use crate::evaluate::{Evaluator, EvaluationContext};
 use crate::frame::{FrameColumn, ColumnValues, Push};
-use reifydb_core::Span;
+use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeSub};
 use reifydb_core::{Type, BitVec, CowVec, GetType};
@@ -496,7 +496,7 @@ fn sub_numeric<L, R>(
     lv: &BitVec,
     rv: &BitVec,
     ty: Type,
-    span: Span,
+    span: OwnedSpan,
 ) -> crate::evaluate::Result<FrameColumn>
 where
     L: GetType + Promote<R> + Copy,
