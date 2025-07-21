@@ -18,7 +18,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         plan: CreateTablePlan,
     ) -> crate::Result<Frame> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? else {
-            return Err(Error::execution(schema_not_found(
+            return Err(reifydb_core::Error(schema_not_found(
                 Some(plan.schema.clone()),
                 &plan.schema.as_ref(),
             )));
@@ -33,7 +33,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 ]));
             }
 
-            return Err(Error::execution(table_already_exists(
+            return Err(reifydb_core::Error(table_already_exists(
                 Some(plan.table.clone()),
                 &schema.name,
                 &table.name,

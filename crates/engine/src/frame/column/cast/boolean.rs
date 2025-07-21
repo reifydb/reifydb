@@ -46,7 +46,7 @@ where
                 None => {
                     let mut span = span();
                     span.fragment = val.to_string();
-                    return Err(error::Error::Evaluation(Error(invalid_number_boolean(span))));
+                    return Err(reifydb_core::Error(invalid_number_boolean(span)));
                 }
             }
         } else {

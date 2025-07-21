@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use error::Error;
+pub use error::*;
 use nom::branch::alt;
 use nom::character::multispace0;
 use nom::multi::many0;
@@ -91,7 +91,7 @@ pub enum Literal {
 pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> Result<Vec<Token>> {
     match many0(token).parse(input.into()) {
         Ok((_, tokens)) => Ok(tokens),
-        Err(err) => Err(Error(format!("{}", err))),
+        Err(err) => Err(lex_error(format!("{}", err))),
     }
 }
 

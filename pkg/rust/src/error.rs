@@ -50,25 +50,9 @@ impl From<tonic::transport::Error> for Error {
     }
 }
 
-impl From<reifydb_engine::Error> for Error {
-    fn from(err: reifydb_engine::Error) -> Self {
-        Self::EngineError { message: err.to_string() }
-    }
-}
-
+// All crates now use reifydb_core::Error, so we only need one From implementation
 impl From<reifydb_core::Error> for Error {
     fn from(err: reifydb_core::Error) -> Self {
         Self::ExecutionError { diagnostic: err.diagnostic() }
-    }
-}
-
-#[cfg(any(feature = "server", feature = "client"))]
-impl From<reifydb_network::NetworkError> for Error {
-    fn from(value: NetworkError) -> Self {
-        match value {
-            NetworkError::ConnectionError { message } => Self::ConnectionError { message },
-            NetworkError::EngineError { message } => Self::EngineError { message },
-            NetworkError::ExecutionError { diagnostic } => Self::ExecutionError { diagnostic },
-        }
     }
 }

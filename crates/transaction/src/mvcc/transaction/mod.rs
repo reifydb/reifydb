@@ -31,7 +31,7 @@ pub mod serializable;
 mod write;
 
 use crate::mvcc::conflict::Conflict;
-use crate::mvcc::error::TransactionError;
+use crate::mvcc::error::*;
 use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 
@@ -62,7 +62,7 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    pub fn write(&self) -> Result<TransactionManagerTx<C, L, P>, TransactionError> {
+    pub fn write(&self) -> Result<TransactionManagerTx<C, L, P>, reifydb_core::Error> {
         Ok(TransactionManagerTx {
             oracle: self.inner.clone(),
             version: self.inner.version(),

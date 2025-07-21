@@ -4,7 +4,7 @@
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
-use crate::ast::parse::{Error, Parser, Precedence};
+use crate::ast::parse::{Parser, Precedence, passthrough_error};
 use crate::ast::{AstAggregate, parse};
 use reifydb_core::diagnostic::parse::multiple_expressions_without_braces;
 
@@ -46,9 +46,9 @@ impl Parser {
             }
 
             if projections.len() > 1 && !has_projections_braces {
-                return Err(Error::Passthrough {
-                    diagnostic: multiple_expressions_without_braces(token.span),
-                });
+                return Err(passthrough_error(
+                    multiple_expressions_without_braces(token.span)
+                ));
             }
         }
 
@@ -83,9 +83,9 @@ impl Parser {
         }
 
         if by.len() > 1 && !has_by_braces {
-            return Err(Error::Passthrough {
-                diagnostic: multiple_expressions_without_braces(token.span),
-            });
+            return Err(passthrough_error(
+                multiple_expressions_without_braces(token.span)
+            ));
         }
 
         Ok(AstAggregate { token, by, map: projections })

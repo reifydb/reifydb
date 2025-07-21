@@ -345,11 +345,11 @@ impl ColumnValues {
         span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         if !target.is_number() {
-            return Err(error::Error::Evaluation(Error(cast::unsupported_cast(
+            return Err(reifydb_core::Error(cast::unsupported_cast(
                 span(),
                 self.get_type(),
                 target,
-            ))));
+            )));
         }
 
         macro_rules! cast {

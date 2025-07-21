@@ -29,7 +29,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
         let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
-            return Err(Error::execution(table_not_found(
+            return Err(reifydb_core::Error(table_not_found(
                 span.clone(),
                 schema_name,
                 &span.fragment,

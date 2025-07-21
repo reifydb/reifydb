@@ -3,7 +3,7 @@
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
-use crate::function::{AggregateFunction, FunctionError, Functions};
+use crate::function::{AggregateFunction, Functions};
 use reifydb_core::interface::Rx;
 use reifydb_core::OwnedSpan;
 use reifydb_core::{BitVec, Value};
@@ -150,7 +150,7 @@ fn align_column_values(
     group_key_order: &[Vec<Value>],
     keys: &[Vec<Value>],
     values: &mut ColumnValues,
-) -> Result<(), FunctionError> {
+) -> Result<(), reifydb_core::Error> {
     let mut key_to_index = HashMap::new();
     for (i, key) in keys.iter().enumerate() {
         key_to_index.insert(key, i);
@@ -162,8 +162,8 @@ fn align_column_values(
             key_to_index
                 .get(k)
                 .copied()
-                // .ok_or_else(|| FunctionError::Internal(format!("Group key {:?} missing in aggregate output", k)))
-                .ok_or_else(|| panic!("Group key {:?} missing in aggregate output", k))
+                // .ok_or_else(|| reifydb_core::ErrorInternal(format!("Group key {:?} missing in aggregate output", k)))
+                .ok_or_else(|| reifydb_core::Error::from(format!("Group key {:?} missing in aggregate output", k)))
         })
         .collect::<Result<_, _>>()?;
 

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Operator, TokenKind};
-use crate::ast::parse::{Error, Parser, Precedence};
+use crate::ast::parse::{Parser, Precedence, unsupported_token_error};
 use crate::ast::{Ast, AstInfix, InfixOperator, parse};
 
 impl Parser {
@@ -49,9 +49,9 @@ impl Parser {
                 Operator::Dot => Ok(InfixOperator::AccessTable(token)),
                 Operator::DoubleColon => Ok(InfixOperator::AccessExtension(token)),
                 Operator::As => Ok(InfixOperator::As(token)),
-                _ => Err(Error::unsupported(token)),
+                _ => Err(unsupported_token_error(token)),
             },
-            _ => Err(Error::unsupported(token)),
+            _ => Err(unsupported_token_error(token)),
         }
     }
 }

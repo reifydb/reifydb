@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::mvcc::error::{MvccError, TransactionError};
+use crate::mvcc::error::*;
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::iter::TransactionIter;
@@ -42,13 +42,13 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
     ///
     /// 1. If there are no writes, return immediately.
     ///
-    /// 2. Check if read rows were updated since txn started. If so, return `TransactionError::Conflict`.
+    /// 2. Check if read rows were updated since txn started. If so, return `transaction_conflict()`.
     ///
     /// 3. If no conflict, generate a commit timestamp and update written rows' commit ts.
     ///
     /// 4. Batch up all writes, write them to database.
     ///
-    pub fn commit(&mut self) -> Result<(), MvccError> {
+    pub fn commit(&mut self) -> Result<(), reifydb_core::Error> {
         self.tm.commit(|pending| {
             let mut grouped: HashMap<Version, CowVec<Delta>> = HashMap::new();
 
@@ -88,11 +88,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         self.tm.as_of_version(version);
     }
 
-    pub fn rollback(&mut self) -> Result<(), TransactionError> {
+    pub fn rollback(&mut self) -> Result<(), reifydb_core::Error> {
         self.tm.rollback()
     }
 
-    pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, TransactionError> {
+    pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_core::Error> {
         let version = self.tm.version();
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
@@ -101,7 +101,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         }
     }
 
-    pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, TransactionError> {
+    pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, reifydb_core::Error> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {
@@ -115,15 +115,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         }
     }
 
-    pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), reifydb_core::Error> {
         self.tm.set(key, row)
     }
 
-    pub fn remove(&mut self, key: &EncodedKey) -> Result<(), TransactionError> {
+    pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_core::Error> {
         self.tm.remove(key)
     }
 
-    pub fn scan(&mut self) -> Result<TransactionIter<'_, VS, BTreeConflict>, TransactionError> {
+    pub fn scan(&mut self) -> Result<TransactionIter<'_, VS, BTreeConflict>, reifydb_core::Error> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter();
@@ -134,7 +134,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
 
     pub fn scan_rev(
         &mut self,
-    ) -> Result<TransactionIterRev<'_, VS, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionIterRev<'_, VS, BTreeConflict>, reifydb_core::Error> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter().rev();
@@ -146,7 +146,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
     pub fn scan_range(
         &mut self,
         range: EncodedKeyRange,
-    ) -> Result<TransactionRange<'_, VS, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRange<'_, VS, BTreeConflict>, reifydb_core::Error> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -160,7 +160,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
     pub fn scan_range_rev(
         &mut self,
         range: EncodedKeyRange,
-    ) -> Result<TransactionRangeRev<'_, VS, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRangeRev<'_, VS, BTreeConflict>, reifydb_core::Error> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -174,14 +174,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
     pub fn scan_prefix<'a>(
         &'a mut self,
         prefix: &EncodedKey,
-    ) -> Result<TransactionRange<'a, VS, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRange<'a, VS, BTreeConflict>, reifydb_core::Error> {
         self.scan_range(EncodedKeyRange::prefix(prefix))
     }
 
     pub fn scan_prefix_rev<'a>(
         &'a mut self,
         prefix: &EncodedKey,
-    ) -> Result<TransactionRangeRev<'a, VS, BTreeConflict>, TransactionError> {
+    ) -> Result<TransactionRangeRev<'a, VS, BTreeConflict>, reifydb_core::Error> {
         self.scan_range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

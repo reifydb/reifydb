@@ -25,7 +25,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 ]));
             }
 
-            return Err(Error::execution(schema_already_exists(
+            return Err(reifydb_core::Error(schema_already_exists(
                 Some(plan.schema),
                 &schema.name,
             )));

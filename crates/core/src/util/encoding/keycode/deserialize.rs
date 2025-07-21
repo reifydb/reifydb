@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::util::encoding::Error;
-use crate::{util::encoding, error};
+use crate::util::encoding;
 use serde::de::{DeserializeSeed, EnumAccess, IntoDeserializer, SeqAccess, VariantAccess, Visitor};
 
 pub(crate) struct Deserializer<'de> {
@@ -16,7 +16,7 @@ impl<'de> Deserializer<'de> {
 
     fn take_bytes(&mut self, len: usize) -> encoding::Result<&[u8]> {
         if self.input.len() < len {
-            return error!("insufficient bytes, expected {len} bytes for {:x?}", self.input);
+            return Err(crate::Error::from(format!("insufficient bytes, expected {len} bytes for {:x?}", self.input)));
         }
         let bytes = &self.input[..len];
         self.input = &self.input[len..];
@@ -31,10 +31,10 @@ impl<'de> Deserializer<'de> {
                 Some((_, 0xff)) => match iter.next() {
                     Some((i, 0xff)) => break i + 1,        // terminator
                     Some((_, 0x00)) => decoded.push(0xff), // escaped 0xff
-                    _ => return error!("invalid escape sequence"),
+                    _ => return Err(crate::Error::from("invalid escape sequence")),
                 },
                 Some((_, b)) => decoded.push(*b),
-                None => return error!("unexpected end of input"),
+                None => return Err(crate::Error::from("unexpected end of input")),
             }
         };
         self.input = &self.input[taken..];
@@ -53,7 +53,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
         visitor.visit_bool(match self.take_bytes(1)?[0] {
             0x01 => false,
             0x00 => true,
-            b => return error!("invalid boolean value {b}"),
+            b => return Err(crate::Error::from(format!("invalid boolean value {b}"))),
         })
     }
 

@@ -9,76 +9,64 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-pub use std::error::Error;
+// Re-export core::Error as the unified error type for this module
+pub use reifydb_core::Error;
 
-/// Error type for the transaction.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TransactionError {
-    /// Returned when a transaction conflicts with another transaction. This can
-    /// happen if the read rows had been updated concurrently by another transaction.
-    Conflict,
-    /// Returned if a previously discarded transaction is re-used.
-    Discarded,
-    /// Returned if too many writes are fit into a single transaction.
-    LargeTxn,
+// Helper functions to create specific transaction errors
+use reifydb_core::diagnostic::Diagnostic;
+
+pub fn transaction_conflict() -> reifydb_core::Error {
+    reifydb_core::Error(Diagnostic {
+        code: "TXN_001".to_string(),
+        statement: None,
+        message: "Transaction conflict detected - another transaction modified the same data".to_string(),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Retry the transaction".to_string()),
+        notes: vec![],
+        cause: None,
+    })
 }
 
-impl core::fmt::Display for TransactionError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Conflict => write!(f, "transaction conflict, please try again"),
-            Self::Discarded => write!(f, "transaction has been discarded, please create a new one"),
-            Self::LargeTxn => write!(f, "transaction is too large"),
-        }
-    }
+pub fn transaction_discarded() -> reifydb_core::Error {
+    reifydb_core::Error(Diagnostic {
+        code: "TXN_002".to_string(),
+        statement: None,
+        message: "Transaction has been discarded and cannot be reused".to_string(),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Create a new transaction".to_string()),
+        notes: vec![],
+        cause: None,
+    })
 }
 
-#[derive(Debug, PartialEq)]
-/// Error type for mvcc transactions.
-pub enum MvccError {
-    /// Returned if something goes wrong during the commit
-    Commit(String),
-    /// Returned if the transaction error occurs.
-    Transaction(TransactionError),
+pub fn transaction_too_large() -> reifydb_core::Error {
+    reifydb_core::Error(Diagnostic {
+        code: "TXN_003".to_string(),
+        statement: None,
+        message: "Transaction contains too many writes and exceeds size limits".to_string(),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Split the transaction into smaller batches".to_string()),
+        notes: vec![],
+        cause: None,
+    })
 }
 
-impl core::fmt::Display for MvccError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Transaction(err) => write!(f, "transaction error: {err}"),
-            Self::Commit(err) => write!(f, "commit error: {err}"),
-        }
-    }
-}
-
-impl Error for MvccError {}
-
-impl From<TransactionError> for MvccError {
-    fn from(err: TransactionError) -> Self {
-        Self::Transaction(err)
-    }
-}
-
-impl MvccError {
-    /// Create a new error from the transaction error.
-    pub fn transaction(err: TransactionError) -> Self {
-        Self::Transaction(err)
-    }
-
-    /// Create a new error from the commit error.
-    pub fn commit(err: Box<dyn Error + 'static>) -> Self {
-        Self::Commit(err.to_string())
-    }
-}
-
-impl From<TransactionError> for reifydb_core::Error {
-    fn from(_err: TransactionError) -> Self {
-        todo!()
-    }
-}
-
-impl From<MvccError> for reifydb_core::Error {
-    fn from(_err: MvccError) -> Self {
-        todo!()
-    }
+pub fn commit_failed(reason: String) -> reifydb_core::Error {
+    reifydb_core::Error(Diagnostic {
+        code: "TXN_004".to_string(),
+        statement: None,
+        message: format!("Transaction commit failed: {}", reason),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Check transaction state and retry if appropriate".to_string()),
+        notes: vec![],
+        cause: None,
+    })
 }

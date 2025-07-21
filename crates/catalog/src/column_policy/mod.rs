@@ -131,15 +131,7 @@ impl Default for ColumnSaturationPolicy {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ColumnPolicyError {
-    Saturation(Diagnostic),
-}
-
-impl ColumnPolicyError {
-    pub fn diagnostic(self) -> Diagnostic {
-        match self {
-            ColumnPolicyError::Saturation(diagnostic) => diagnostic,
-        }
-    }
+// Helper function to create column policy errors
+pub fn saturation_error(diagnostic: Diagnostic) -> reifydb_core::Error {
+    reifydb_core::Error(diagnostic)
 }

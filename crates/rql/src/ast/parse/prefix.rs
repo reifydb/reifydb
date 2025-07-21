@@ -3,7 +3,7 @@
 
 use crate::ast::lex::Literal::Number;
 use crate::ast::lex::Operator;
-use crate::ast::parse::{Error, Parser, Precedence};
+use crate::ast::parse::{Parser, Precedence, unsupported_token_error};
 use crate::ast::{
     Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind, parse,
 };
@@ -37,9 +37,9 @@ impl Parser {
                 Operator::Plus => Ok(AstPrefixOperator::Plus(token)),
                 Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
                 Operator::Bang => Ok(AstPrefixOperator::Not(token)),
-                _ => Err(Error::unsupported(token)),
+                _ => Err(unsupported_token_error(token)),
             },
-            _ => Err(Error::unsupported(token)),
+            _ => Err(unsupported_token_error(token)),
         }
     }
 }

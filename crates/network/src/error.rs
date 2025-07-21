@@ -1,61 +1,72 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::diagnostic::{DefaultRenderer, Diagnostic};
-use std::fmt::{Display, Formatter};
-use tonic::Status;
+// Re-export core::Error as the unified error type for this crate
+pub use reifydb_core::Error;
 
-#[derive(Debug)]
-pub enum NetworkError {
-    ConnectionError { message: String },
-    EngineError { message: String },
-    ExecutionError { diagnostic: Diagnostic },
+// Type alias for backward compatibility
+pub type NetworkError = reifydb_core::Error;
+
+// Helper functions to create specific network errors
+use reifydb_core::diagnostic::Diagnostic;
+
+pub fn connection_error(message: String) -> reifydb_core::Error {
+    reifydb_core::Error(Diagnostic {
+        code: "NET_001".to_string(),
+        statement: None,
+        message: format!("Connection error: {}", message),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Check network connectivity and server status".to_string()),
+        notes: vec![],
+        cause: None,
+    })
 }
 
-impl Display for NetworkError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NetworkError::ConnectionError { message } => write!(f, "connection error: {}", message),
-            NetworkError::EngineError { message } => write!(f, "engine error: {}", message),
-            NetworkError::ExecutionError { diagnostic } => {
-                f.write_str(&DefaultRenderer::render_string(&diagnostic))
-            }
-        }
-    }
+pub fn engine_error(message: String) -> reifydb_core::Error {
+    reifydb_core::Error(Diagnostic {
+        code: "NET_002".to_string(),
+        statement: None,
+        message: format!("Engine error: {}", message),
+        column: None,
+        span: None,
+        label: None,
+        help: None,
+        notes: vec![],
+        cause: None,
+    })
 }
 
-impl std::error::Error for NetworkError {}
-
-impl NetworkError {
-    pub fn connection_error(message: impl Into<String>) -> Self {
-        Self::ConnectionError { message: message.into() }
-    }
-
-    pub fn execution_error(diagnostic: Diagnostic) -> Self {
-        Self::ExecutionError { diagnostic }
-    }
+pub fn execution_error(diagnostic: reifydb_core::diagnostic::Diagnostic) -> reifydb_core::Error {
+    reifydb_core::Error(diagnostic)
 }
 
-impl From<Status> for NetworkError {
-    fn from(err: Status) -> Self {
-        Self::ConnectionError { message: err.to_string() }
-    }
+// Network-specific error conversion functions
+pub fn transport_error(err: tonic::transport::Error) -> reifydb_core::Error {
+    reifydb_core::Error(Diagnostic {
+        code: "NET_003".to_string(),
+        statement: None,
+        message: format!("Transport error: {}", err),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Check network connectivity".to_string()),
+        notes: vec![],
+        cause: None,
+    })
 }
 
-impl From<tonic::transport::Error> for NetworkError {
-    fn from(err: tonic::transport::Error) -> Self {
-        Self::ConnectionError { message: err.to_string() }
-    }
-}
-
-impl From<reifydb_engine::Error> for NetworkError {
-    fn from(err: reifydb_engine::Error) -> Self {
-        Self::EngineError { message: err.to_string() }
-    }
-}
-
-impl From<reifydb_core::Error> for NetworkError {
-    fn from(err: reifydb_core::Error) -> Self {
-        Self::ExecutionError { diagnostic: err.diagnostic() }
-    }
+pub fn status_error(err: tonic::Status) -> reifydb_core::Error {
+    reifydb_core::Error(Diagnostic {
+        code: "NET_004".to_string(),
+        statement: None,
+        message: format!("gRPC status error: {}", err.message()),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Check gRPC service status".to_string()),
+        notes: vec![],
+        cause: None,
+    })
 }

@@ -4,7 +4,7 @@
 use crate::ast::lex::Literal::{False, Number, Temporal, Text, True, Undefined};
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Operator, TokenKind};
-use crate::ast::parse::{Error, Parser};
+use crate::ast::parse::{Parser, unsupported_token_error};
 use crate::ast::{Ast, AstWildcard, parse};
 
 impl Parser {
@@ -29,7 +29,7 @@ impl Parser {
                 Operator::OpenBracket => Ok(Ast::List(self.parse_list()?)),
                 Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
                 Operator::OpenCurly => Ok(Ast::Inline(self.parse_inline()?)),
-                _ => Err(Error::unsupported(self.advance()?)),
+                _ => Err(unsupported_token_error(self.advance()?)),
             },
             TokenKind::Keyword(keyword) => match keyword {
                 Keyword::From => Ok(Ast::From(self.parse_from()?)),
@@ -44,7 +44,7 @@ impl Parser {
                 Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
                 Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
                 Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
-                _ => Err(Error::unsupported(self.advance()?)),
+                _ => Err(unsupported_token_error(self.advance()?)),
             },
             _ => match current {
                 _ if current.is_literal(Number) => Ok(Ast::Literal(self.parse_literal_number()?)),
@@ -56,7 +56,7 @@ impl Parser {
                     Ok(Ast::Literal(self.parse_literal_undefined()?))
                 }
                 _ if current.is_identifier() => Ok(Ast::Identifier(self.parse_identifier()?)),
-                _ => Err(Error::unsupported(self.advance()?)),
+                _ => Err(unsupported_token_error(self.advance()?)),
             },
         }
     }

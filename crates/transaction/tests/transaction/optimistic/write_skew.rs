@@ -13,12 +13,8 @@ use crate::transaction::FromRow;
 use crate::transaction::IntoRow;
 use crate::transaction::keycode;
 use crate::{as_key, as_row, from_row};
-use MvccError::Transaction;
-use TransactionError::Conflict;
 use reifydb_core::EncodedKey;
 use reifydb_storage::memory::Memory;
-use reifydb_transaction::mvcc::MvccError;
-use reifydb_transaction::mvcc::error::TransactionError;
 use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
 
 #[test]
@@ -73,7 +69,7 @@ fn test_write_skew() {
     // Commit both now.
     txn1.commit().unwrap();
     let err = txn2.commit().unwrap_err();
-    assert_eq!(err, Transaction(Conflict));
+    assert!(err.to_string().contains("conflict"));
 
     assert_eq!(2, engine.version());
 }
@@ -122,7 +118,7 @@ fn test_black_white() {
 
     black.commit().unwrap();
     let err = white.commit().unwrap_err();
-    assert_eq!(err, Transaction(Conflict));
+    assert!(err.to_string().contains("conflict"));
 
     let rx = engine.begin_rx();
     let result: Vec<_> = rx.scan().collect();
@@ -157,7 +153,7 @@ fn test_overdraft_protection() {
 
     txn1.commit().unwrap();
     let err = txn2.commit().unwrap_err();
-    assert_eq!(err, Transaction(Conflict));
+    assert!(err.to_string().contains("conflict"));
 
     let rx = engine.begin_rx();
     let money = from_row!(i32, *rx.get(&key).unwrap().row());
@@ -220,10 +216,10 @@ fn test_primary_colors() {
 
     red.commit().unwrap();
     let err = red_two.commit().unwrap_err();
-    assert_eq!(err, Transaction(Conflict));
+    assert!(err.to_string().contains("conflict"));
 
     let err = yellow.commit().unwrap_err();
-    assert_eq!(err, Transaction(Conflict));
+    assert!(err.to_string().contains("conflict"));
 
     let rx = engine.begin_rx();
     let result: Vec<_> = rx.scan().collect();

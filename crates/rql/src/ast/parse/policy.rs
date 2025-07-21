@@ -3,11 +3,11 @@
 
 use crate::ast::lex::Keyword::Policy;
 use crate::ast::lex::{Literal, Operator, Separator};
-use crate::ast::parse::{Parser, Precedence};
+use crate::ast::parse::{Parser, Precedence, invalid_policy_error};
 use crate::ast::{AstPolicy, AstPolicyBlock, AstPolicyKind, Token, TokenKind, parse};
 use Separator::Comma;
 use TokenKind::Identifier;
-use parse::Error;
+
 
 impl Parser {
     pub(crate) fn parse_policy_block(&mut self) -> parse::Result<AstPolicyBlock> {
@@ -39,7 +39,7 @@ impl Parser {
                 self.consume_literal(Literal::Undefined)?;
                 AstPolicyKind::NotUndefined
             }
-            _ => return Err(Error::invalid_policy(identifier)),
+            _ => return Err(invalid_policy_error(identifier)),
         };
 
         Ok((identifier, ty))
@@ -49,7 +49,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use crate::ast::lex::lex;
-    use crate::ast::parse::Parser;
+    use crate::ast::parse::{Parser, invalid_policy_error};
     use crate::ast::{AstCreate, AstCreateTable, AstPolicyKind};
 
     #[test]

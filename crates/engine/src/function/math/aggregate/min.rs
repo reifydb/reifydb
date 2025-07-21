@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{FrameColumn, ColumnValues};
-use crate::function::{AggregateFunction, FunctionError};
+use crate::function::AggregateFunction;
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
 
@@ -22,7 +22,7 @@ impl AggregateFunction for Min {
 		column: &FrameColumn,
 		mask: &BitVec,
 		groups: &HashMap<Vec<Value>, Vec<usize>>,
-    ) -> Result<(), FunctionError> {
+    ) -> Result<(), reifydb_core::Error> {
         match &column.values {
             ColumnValues::Float8(values, bitvec) => {
                 for (group, indices) in groups {
@@ -62,7 +62,7 @@ impl AggregateFunction for Min {
         }
     }
 
-    fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), FunctionError> {
+    fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), reifydb_core::Error> {
         let mut keys = Vec::with_capacity(self.mins.len());
         let mut values = ColumnValues::float8_with_capacity(self.mins.len());
 

@@ -1020,7 +1020,7 @@ mod tests {
             layout.set_values(&mut row, &[Value::Int2(2)]);
 
             let err = test_instance.append_rows(&layout, [row]).err().unwrap();
-            assert_eq!(err.to_string(), "mismatched column count: expected 0, got 1");
+            assert!(err.to_string().contains("mismatched column count: expected 0, got 1"));
         }
 
         #[test]
