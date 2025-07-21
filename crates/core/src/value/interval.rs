@@ -7,9 +7,9 @@ use std::fmt::{Display, Formatter};
 /// An interval value representing a duration between two points in time.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Interval {
-    months: i32,    // Store years*12 + months
-    days: i32,      // Separate days (don't normalize to months due to variable month length)
-    nanos: i64,     // All time components as nanoseconds
+    months: i32, // Store years*12 + months
+    days: i32,   // Separate days (don't normalize to months due to variable month length)
+    nanos: i64,  // All time components as nanoseconds
 }
 
 impl Default for Interval {
@@ -24,83 +24,43 @@ impl Interval {
     }
 
     pub fn from_seconds(seconds: i64) -> Self {
-        Self { 
-            months: 0, 
-            days: 0, 
-            nanos: seconds * 1_000_000_000 
-        }
+        Self { months: 0, days: 0, nanos: seconds * 1_000_000_000 }
     }
 
     pub fn from_milliseconds(milliseconds: i64) -> Self {
-        Self { 
-            months: 0, 
-            days: 0, 
-            nanos: milliseconds * 1_000_000 
-        }
+        Self { months: 0, days: 0, nanos: milliseconds * 1_000_000 }
     }
 
     pub fn from_microseconds(microseconds: i64) -> Self {
-        Self { 
-            months: 0, 
-            days: 0, 
-            nanos: microseconds * 1_000 
-        }
+        Self { months: 0, days: 0, nanos: microseconds * 1_000 }
     }
 
     pub fn from_nanoseconds(nanoseconds: i64) -> Self {
-        Self { 
-            months: 0, 
-            days: 0, 
-            nanos: nanoseconds 
-        }
+        Self { months: 0, days: 0, nanos: nanoseconds }
     }
 
     pub fn from_minutes(minutes: i64) -> Self {
-        Self { 
-            months: 0, 
-            days: 0, 
-            nanos: minutes * 60 * 1_000_000_000 
-        }
+        Self { months: 0, days: 0, nanos: minutes * 60 * 1_000_000_000 }
     }
 
     pub fn from_hours(hours: i64) -> Self {
-        Self { 
-            months: 0, 
-            days: 0, 
-            nanos: hours * 60 * 60 * 1_000_000_000 
-        }
+        Self { months: 0, days: 0, nanos: hours * 60 * 60 * 1_000_000_000 }
     }
 
     pub fn from_days(days: i64) -> Self {
-        Self { 
-            months: 0, 
-            days: days as i32, 
-            nanos: 0 
-        }
+        Self { months: 0, days: days as i32, nanos: 0 }
     }
 
     pub fn from_weeks(weeks: i64) -> Self {
-        Self { 
-            months: 0, 
-            days: (weeks * 7) as i32, 
-            nanos: 0 
-        }
+        Self { months: 0, days: (weeks * 7) as i32, nanos: 0 }
     }
 
     pub fn from_months(months: i64) -> Self {
-        Self { 
-            months: months as i32, 
-            days: 0, 
-            nanos: 0 
-        }
+        Self { months: months as i32, days: 0, nanos: 0 }
     }
 
     pub fn from_years(years: i64) -> Self {
-        Self { 
-            months: (years * 12) as i32, 
-            days: 0, 
-            nanos: 0 
-        }
+        Self { months: (years * 12) as i32, days: 0, nanos: 0 }
     }
 
     pub fn zero() -> Self {
@@ -144,19 +104,11 @@ impl Interval {
     }
 
     pub fn abs(&self) -> Self {
-        Self { 
-            months: self.months.abs(),
-            days: self.days.abs(),
-            nanos: self.nanos.abs()
-        }
+        Self { months: self.months.abs(), days: self.days.abs(), nanos: self.nanos.abs() }
     }
 
     pub fn negate(&self) -> Self {
-        Self { 
-            months: -self.months,
-            days: -self.days,
-            nanos: -self.nanos
-        }
+        Self { months: -self.months, days: -self.days, nanos: -self.nanos }
     }
 }
 
@@ -177,24 +129,11 @@ impl Ord for Interval {
                         // Finally nanos
                         self.nanos.cmp(&other.nanos)
                     }
-                    other_order => other_order
+                    other_order => other_order,
                 }
             }
-            other_order => other_order
+            other_order => other_order,
         }
-    }
-}
-
-impl Interval {
-    /// Convert to nanoseconds (time component only)
-    /// This only returns the sub-day nanoseconds component
-    pub fn to_nanos(&self) -> i64 {
-        self.nanos
-    }
-
-    /// Create from nanoseconds (time component only)
-    pub fn from_nanos(nanos: i64) -> Self {
-        Self { months: 0, days: 0, nanos }
     }
 }
 
@@ -222,11 +161,11 @@ impl Display for Interval {
         // Time components from nanos with normalization
         let total_seconds = self.nanos / 1_000_000_000;
         let remaining_nanos = self.nanos % 1_000_000_000;
-        
+
         // Normalize to days if hours >= 24
         let extra_days = total_seconds / 86400; // 24 * 60 * 60
         let remaining_seconds = total_seconds % 86400;
-        
+
         let display_days = self.days + extra_days as i32;
         let hours = remaining_seconds / 3600;
         let minutes = (remaining_seconds % 3600) / 60;
@@ -442,19 +381,13 @@ mod tests {
     #[test]
     fn test_interval_display_complex_intervals() {
         // Complex interval with all components
-        let interval = Interval::new(
-            0, 
-            1, 
-            (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 + 123 * 1_000_000
-        );
+        let interval =
+            Interval::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 + 123 * 1_000_000);
         assert_eq!(format!("{}", interval), "P1DT2H30M45.123S");
 
         // Another complex interval
-        let interval = Interval::new(
-            0, 
-            7, 
-            (12 * 60 * 60 + 45 * 60 + 30) * 1_000_000_000 + 456789 * 1_000
-        );
+        let interval =
+            Interval::new(0, 7, (12 * 60 * 60 + 45 * 60 + 30) * 1_000_000_000 + 456789 * 1_000);
         assert_eq!(format!("{}", interval), "P7DT12H45M30.456789S");
     }
 
@@ -564,10 +497,10 @@ mod tests {
     #[test]
     fn test_interval_display_from_nanos() {
         // Test the from_nanos method
-        let interval = Interval::from_nanos(123456789);
+        let interval = Interval::from_nanoseconds(123456789);
         assert_eq!(format!("{}", interval), "PT0.123456789S");
 
-        let interval = Interval::from_nanos(3661000000000); // 1 hour 1 minute 1 second
+        let interval = Interval::from_nanoseconds(3661000000000); // 1 hour 1 minute 1 second
         assert_eq!(format!("{}", interval), "PT1H1M1S");
     }
 

@@ -368,8 +368,8 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
-                        Some(GrpcType::IntervalValue(grpc::Interval { nanos })) => {
-                            data.push(Interval::from_nanos(nanos));
+                        Some(GrpcType::IntervalValue(grpc::Interval { months, days, nanos })) => {
+                            data.push(Interval::new(months, days, nanos));
                             bitvec.push(true);
                         }
                         _ => {

@@ -102,8 +102,12 @@ message Time {
 }
 
 message Interval {
-  // Duration in nanoseconds (can be negative)
-  int64 nanos = 1;
+  // Number of months (can be negative)
+  int32 months = 1;
+  // Number of days (can be negative)
+  int32 days = 2;
+  // Duration in nanoseconds for sub-day precision (can be negative)
+  int64 nanos = 3;
 }
 
 message Diagnostic {
