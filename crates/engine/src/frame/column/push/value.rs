@@ -677,4 +677,189 @@ mod tests {
             assert_eq!(bitvec.to_vec(), vec![true, false]);
         }
     }
+
+    #[test]
+    fn test_date() {
+        use reifydb_core::Date;
+        let date1 = Date::from_ymd(2023, 1, 1).unwrap();
+        let date2 = Date::from_ymd(2023, 12, 31).unwrap();
+        let mut col = ColumnValues::date(vec![date1]);
+        col.push_value(Value::Date(date2));
+        if let ColumnValues::Date(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![date1, date2]);
+            assert_eq!(bitvec.to_vec(), vec![true, true]);
+        }
+    }
+
+    #[test]
+    fn test_undefined_date() {
+        use reifydb_core::Date;
+        let date1 = Date::from_ymd(2023, 1, 1).unwrap();
+        let mut col = ColumnValues::date(vec![date1]);
+        col.push_value(Value::Undefined);
+        if let ColumnValues::Date(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![date1, Date::default()]);
+            assert_eq!(bitvec.to_vec(), vec![true, false]);
+        }
+    }
+
+    #[test]
+    fn test_push_value_to_undefined_date() {
+        use reifydb_core::Date;
+        let date = Date::from_ymd(2023, 6, 15).unwrap();
+        let mut col = ColumnValues::Undefined(1);
+        col.push_value(Value::Date(date));
+        if let ColumnValues::Date(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![Date::default(), date]);
+            assert_eq!(bitvec.to_vec(), vec![false, true]);
+        }
+    }
+
+    #[test]
+    fn test_datetime() {
+        use reifydb_core::DateTime;
+        let dt1 = DateTime::from_timestamp(1672531200).unwrap(); // 2023-01-01 00:00:00 UTC
+        let dt2 = DateTime::from_timestamp(1704067200).unwrap(); // 2024-01-01 00:00:00 UTC
+        let mut col = ColumnValues::datetime(vec![dt1]);
+        col.push_value(Value::DateTime(dt2));
+        if let ColumnValues::DateTime(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![dt1, dt2]);
+            assert_eq!(bitvec.to_vec(), vec![true, true]);
+        }
+    }
+
+    #[test]
+    fn test_undefined_datetime() {
+        use reifydb_core::DateTime;
+        let dt1 = DateTime::from_timestamp(1672531200).unwrap();
+        let mut col = ColumnValues::datetime(vec![dt1]);
+        col.push_value(Value::Undefined);
+        if let ColumnValues::DateTime(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![dt1, DateTime::default()]);
+            assert_eq!(bitvec.to_vec(), vec![true, false]);
+        }
+    }
+
+    #[test]
+    fn test_push_value_to_undefined_datetime() {
+        use reifydb_core::DateTime;
+        let dt = DateTime::from_timestamp(1672531200).unwrap();
+        let mut col = ColumnValues::Undefined(1);
+        col.push_value(Value::DateTime(dt));
+        if let ColumnValues::DateTime(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![DateTime::default(), dt]);
+            assert_eq!(bitvec.to_vec(), vec![false, true]);
+        }
+    }
+
+    #[test]
+    fn test_time() {
+        use reifydb_core::Time;
+        let time1 = Time::from_hms(12, 30, 0).unwrap();
+        let time2 = Time::from_hms(18, 45, 30).unwrap();
+        let mut col = ColumnValues::time(vec![time1]);
+        col.push_value(Value::Time(time2));
+        if let ColumnValues::Time(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![time1, time2]);
+            assert_eq!(bitvec.to_vec(), vec![true, true]);
+        }
+    }
+
+    #[test]
+    fn test_undefined_time() {
+        use reifydb_core::Time;
+        let time1 = Time::from_hms(12, 30, 0).unwrap();
+        let mut col = ColumnValues::time(vec![time1]);
+        col.push_value(Value::Undefined);
+        if let ColumnValues::Time(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![time1, Time::default()]);
+            assert_eq!(bitvec.to_vec(), vec![true, false]);
+        }
+    }
+
+    #[test]
+    fn test_push_value_to_undefined_time() {
+        use reifydb_core::Time;
+        let time = Time::from_hms(15, 20, 10).unwrap();
+        let mut col = ColumnValues::Undefined(1);
+        col.push_value(Value::Time(time));
+        if let ColumnValues::Time(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![Time::default(), time]);
+            assert_eq!(bitvec.to_vec(), vec![false, true]);
+        }
+    }
+
+    #[test]
+    fn test_interval() {
+        use reifydb_core::Interval;
+        let interval1 = Interval::from_days(30);
+        let interval2 = Interval::from_hours(24);
+        let mut col = ColumnValues::interval(vec![interval1]);
+        col.push_value(Value::Interval(interval2));
+        if let ColumnValues::Interval(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![interval1, interval2]);
+            assert_eq!(bitvec.to_vec(), vec![true, true]);
+        }
+    }
+
+    #[test]
+    fn test_undefined_interval() {
+        use reifydb_core::Interval;
+        let interval1 = Interval::from_days(30);
+        let mut col = ColumnValues::interval(vec![interval1]);
+        col.push_value(Value::Undefined);
+        if let ColumnValues::Interval(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![interval1, Interval::default()]);
+            assert_eq!(bitvec.to_vec(), vec![true, false]);
+        }
+    }
+
+    #[test]
+    fn test_push_value_to_undefined_interval() {
+        use reifydb_core::Interval;
+        let interval = Interval::from_minutes(90);
+        let mut col = ColumnValues::Undefined(1);
+        col.push_value(Value::Interval(interval));
+        if let ColumnValues::Interval(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![Interval::default(), interval]);
+            assert_eq!(bitvec.to_vec(), vec![false, true]);
+        }
+    }
+
+    #[test]
+    fn test_row_id() {
+        use reifydb_core::RowId;
+        let row_id1 = RowId::new(1);
+        let row_id2 = RowId::new(2);
+        let mut col = ColumnValues::row_id(vec![row_id1]);
+        col.push_value(Value::RowId(row_id2));
+        if let ColumnValues::RowId(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![row_id1, row_id2]);
+            assert_eq!(bitvec.to_vec(), vec![true, true]);
+        }
+    }
+
+    #[test]
+    fn test_undefined_row_id() {
+        use reifydb_core::RowId;
+        let row_id1 = RowId::new(1);
+        let mut col = ColumnValues::row_id(vec![row_id1]);
+        col.push_value(Value::Undefined);
+        if let ColumnValues::RowId(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![row_id1, RowId::default()]);
+            assert_eq!(bitvec.to_vec(), vec![true, false]);
+        }
+    }
+
+    #[test]
+    fn test_push_value_to_undefined_row_id() {
+        use reifydb_core::RowId;
+        let row_id = RowId::new(42);
+        let mut col = ColumnValues::Undefined(1);
+        col.push_value(Value::RowId(row_id));
+        if let ColumnValues::RowId(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![RowId::default(), row_id]);
+            assert_eq!(bitvec.to_vec(), vec![false, true]);
+        }
+    }
 }
