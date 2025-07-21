@@ -6,6 +6,9 @@ use std::ops::Deref;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Visitor;
 
+/// Standard column name for RowId columns
+pub static ROW_ID_COLUMN_NAME: &str = "__ROW__ID__";
+
 /// A row identifier - a unique 64-bit unsigned integer for a table row
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Default)]
