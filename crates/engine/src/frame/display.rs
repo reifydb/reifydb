@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{ColumnValues, Frame};
+use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::fmt::{self, Display, Formatter};
 use unicode_width::UnicodeWidthStr;
 
@@ -16,6 +17,19 @@ fn display_width(s: &str) -> usize {
 /// Replaces '\n' with "\\n" and '\t' with "\\t".
 fn escape_control_chars(s: &str) -> String {
     s.replace('\n', "\\n").replace('\t', "\\t")
+}
+
+/// Create a column display order that puts RowId column first if it exists
+fn get_column_display_order(frame: &Frame) -> Vec<usize> {
+    let mut indices: Vec<usize> = (0..frame.columns.len()).collect();
+    
+    // Find the RowId column and move it to the front
+    if let Some(row_id_pos) = frame.columns.iter().position(|col| col.name == ROW_ID_COLUMN_NAME) {
+        indices.remove(row_id_pos);
+        indices.insert(0, row_id_pos);
+    }
+    
+    indices
 }
 
 /// Extract string value from column at given row index, with proper escaping
@@ -157,17 +171,22 @@ impl Display for Frame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let row_count = self.columns.first().map_or(0, |c| c.values.len());
         let col_count = self.columns.len();
+        
+        // Get the display order with RowId column first
+        let column_order = get_column_display_order(self);
 
         let mut col_widths = vec![0; col_count];
 
-        for (i, col) in self.columns.iter().enumerate() {
-            col_widths[i] = display_width(&col.name);
+        for (display_idx, &col_idx) in column_order.iter().enumerate() {
+            let col = &self.columns[col_idx];
+            col_widths[display_idx] = display_width(&col.name);
         }
 
         for row_idx in 0..row_count {
-            for (i, col) in self.columns.iter().enumerate() {
+            for (display_idx, &col_idx) in column_order.iter().enumerate() {
+                let col = &self.columns[col_idx];
                 let s = extract_string_value(col, row_idx);
-                col_widths[i] = col_widths[i].max(display_width(&s));
+                col_widths[display_idx] = col_widths[display_idx].max(display_width(&s));
             }
         }
 
@@ -182,12 +201,12 @@ impl Display for Frame {
         );
         writeln!(f, "{}", sep)?;
 
-        let header = self
-            .columns
+        let header = column_order
             .iter()
             .enumerate()
-            .map(|(i, col)| {
-                let w = col_widths[i];
+            .map(|(display_idx, &col_idx)| {
+                let col = &self.columns[col_idx];
+                let w = col_widths[display_idx];
                 let name = &col.name;
                 let pad = w - display_width(name);
                 let l = pad / 2;
@@ -200,12 +219,12 @@ impl Display for Frame {
         writeln!(f, "{}", sep)?;
 
         for row_idx in 0..row_count {
-            let row = self
-                .columns
+            let row = column_order
                 .iter()
                 .enumerate()
-                .map(|(i, col)| {
-                    let w = col_widths[i];
+                .map(|(display_idx, &col_idx)| {
+                    let col = &self.columns[col_idx];
+                    let w = col_widths[display_idx];
                     let s = extract_string_value(col, row_idx);
                     let pad = w - display_width(&s);
                     let l = pad / 2;
@@ -579,5 +598,41 @@ mod tests {
 +-------------+
 ";
         assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_row_id_column_ordering() {
+        use reifydb_core::{CowVec, RowId};
+        
+        // Create a frame with regular columns and a RowId column
+        let regular_column = FrameColumn {
+            name: "name".to_string(),
+            values: ColumnValues::utf8(vec!["Alice".to_string(), "Bob".to_string()]),
+        };
+        
+        let age_column = FrameColumn {
+            name: "age".to_string(),
+            values: ColumnValues::int4(vec![25, 30]),
+        };
+        
+        let row_id_column = FrameColumn {
+            name: ROW_ID_COLUMN_NAME.to_string(),
+            values: ColumnValues::RowId(CowVec::new(vec![RowId::new(1), RowId::new(2)])),
+        };
+        
+        // Create frame with RowId column NOT first (it should be reordered)
+        let frame = Frame::new(vec![regular_column, age_column, row_id_column]);
+        let output = format!("{}", frame);
+        
+        // Verify that __ROW__ID__ appears as the first column in the output
+        let lines: Vec<&str> = output.lines().collect();
+        let header_line = lines[1]; // Second line contains the header
+        
+        // The header should start with __ROW__ID__ column
+        assert!(header_line.contains("__ROW__ID__"));
+        
+        // Check that the first data value in the first row is from the RowId column
+        let first_data_line = lines[3]; // Fourth line contains first data row
+        assert!(first_data_line.contains("1")); // First RowId value
     }
 }
