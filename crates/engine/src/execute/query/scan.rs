@@ -20,32 +20,14 @@ pub(crate) struct ScanFrameNode {
     row_layout: Layout,
     last_key: Option<TableRowKey>,
     exhausted: bool,
-    include_row_id: bool,
 }
 
 impl ScanFrameNode {
-    /// Create a new scan node with RowId column included by default
     pub fn new(table: Table, context: Arc<ExecutionContext>) -> crate::Result<Self> {
-        Self::new_with_row_id(table, context, true)
-    }
-
-    /// Create a new scan node with optional RowId column inclusion
-    /// When include_row_id is true, adds a "__row_id" column containing the table row identifiers
-    pub fn new_with_row_id(table: Table, context: Arc<ExecutionContext>, include_row_id: bool) -> crate::Result<Self> {
         let values = table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
         let row_layout = Layout::new(&values);
 
-        let mut frame = create_empty_frame(&table);
-        
-        // Add RowId column to layout if requested
-        if include_row_id {
-            let row_id_column = FrameColumn {
-                name: ROW_ID_COLUMN_NAME.to_string(),
-                values: ColumnValues::row_id(vec![]),
-            };
-            frame.columns.push(row_id_column);
-            frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);
-        }
+        let frame = create_empty_frame(&table);
 
         Ok(Self {
             table,
@@ -54,13 +36,12 @@ impl ScanFrameNode {
             row_layout,
             last_key: None,
             exhausted: false,
-            include_row_id,
         })
     }
 }
 
 impl ExecutionPlan for ScanFrameNode {
-    fn next(&mut self, _ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.exhausted {
             return Ok(None);
         }
@@ -76,7 +57,7 @@ impl ExecutionPlan for ScanFrameNode {
         };
 
         let mut batch_rows = Vec::new();
-        let mut row_ids = if self.include_row_id { Some(Vec::new()) } else { None };
+        let mut row_ids = if ctx.preserve_row_ids { Some(Vec::new()) } else { None };
         let mut rows_collected = 0;
         let mut new_last_key = None;
 

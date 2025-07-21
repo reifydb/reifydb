@@ -22,7 +22,11 @@ impl MapNode {
 }
 
 impl ExecutionPlan for MapNode {
-    fn next(&mut self, exec_ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(
+        &mut self,
+        exec_ctx: &ExecutionContext,
+        rx: &mut dyn Rx,
+    ) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mask }) = self.input.next(exec_ctx, rx)? {
             let row_count = frame.row_count();
 
@@ -38,9 +42,11 @@ impl ExecutionPlan for MapNode {
 
             // Only preserve RowId column if the execution context requires it
             if exec_ctx.preserve_row_ids {
-                if let Some(row_id_column) = frame.columns.iter().find(|col| col.name == ROW_ID_COLUMN_NAME) {
+                if let Some(row_id_column) =
+                    frame.columns.iter().find(|col| col.name == ROW_ID_COLUMN_NAME)
+                {
                     let mut filtered_row_id_column = row_id_column.clone();
-                    filtered_row_id_column.filter(&mask).unwrap();
+                    filtered_row_id_column.filter(&mask)?;
                     columns.push(filtered_row_id_column);
                 }
             }

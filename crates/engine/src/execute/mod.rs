@@ -139,11 +139,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     batch_size: 1024,
                     preserve_row_ids: false,
                 });
-                let mut node = compile(
-                    plan,
-                    rx,
-                    context.clone(),
-                );
+                let mut node = compile(plan, rx, context.clone());
                 let mut result: Option<Frame> = None;
 
                 while let Some(Batch { mut frame, mask }) = node.next(&context, rx)? {
