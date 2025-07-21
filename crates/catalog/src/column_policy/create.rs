@@ -8,7 +8,7 @@ use crate::key::{ColumnPolicyKey, EncodableKey};
 use crate::sequence::SystemSequence;
 use crate::{Catalog, Error};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::diagnostic::catalog::column_policy_already_exists;
+use reifydb_core::error::diagnostic::catalog::column_policy_already_exists;
 
 impl Catalog {
     pub(crate) fn create_column_policy<VS: VersionedStorage, US: UnversionedStorage>(

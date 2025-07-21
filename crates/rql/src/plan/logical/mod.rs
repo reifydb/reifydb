@@ -12,7 +12,7 @@ use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use crate::Error;
 use reifydb_core::{Type, SortKey, OwnedSpan};
-use reifydb_core::diagnostic::parse::unrecognized_type;
+use reifydb_core::error::diagnostic::parse::unrecognized_type;
 
 struct Compiler {}
 

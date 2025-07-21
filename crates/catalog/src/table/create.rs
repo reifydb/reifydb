@@ -9,7 +9,7 @@ use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
 use crate::{Catalog, Error};
-use reifydb_core::diagnostic::catalog::{schema_not_found, table_already_exists};
+use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{OwnedSpan, Type};
 

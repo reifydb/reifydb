@@ -4,7 +4,7 @@
 
 // Helper functions to create specific parse errors
 use crate::ast::lex::{Token, TokenKind};
-use reifydb_core::diagnostic::Diagnostic;
+use reifydb_core::error::diagnostic::Diagnostic;
 
 
 // Error for when we expect an identifier token specifically  
@@ -65,6 +65,6 @@ pub fn unsupported_token_error(got: Token) -> reifydb_core::Error {
     })
 }
 
-pub fn passthrough_error(diagnostic: reifydb_core::diagnostic::Diagnostic) -> reifydb_core::Error {
+pub fn passthrough_error(diagnostic: reifydb_core::error::diagnostic::Diagnostic) -> reifydb_core::Error {
     reifydb_core::Error(diagnostic)
 }

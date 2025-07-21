@@ -4,7 +4,7 @@
 use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::IntoOwnedSpan;
-use reifydb_core::diagnostic::number::number_out_of_range;
+use reifydb_core::error::diagnostic::number::number_out_of_range;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder, SafeSub};
 

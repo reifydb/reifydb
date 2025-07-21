@@ -36,7 +36,7 @@ macro_rules! keyword {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
-                    _ => Err(reifydb_core::Error(reifydb_core::diagnostic::ast::lex_error("not a keyword".to_string())))
+                    _ => Err(reifydb_core::Error(reifydb_core::error::diagnostic::ast::lex_error("not a keyword".to_string())))
                 }
             }
         }

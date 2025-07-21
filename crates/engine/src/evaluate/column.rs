@@ -4,7 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
-use reifydb_core::diagnostic::query::column_not_found;
+use reifydb_core::error::diagnostic::query::column_not_found;
 use reifydb_core::{Date, DateTime, Interval, Time, Value};
 use reifydb_rql::expression::ColumnExpression;
 

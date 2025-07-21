@@ -12,14 +12,14 @@ use tonic::metadata::MetadataValue;
 impl GrpcClient {
     pub async fn tx(&self, query: &str) -> Result<Vec<Frame>, NetworkError> {
         let uri = format!("http://{}", self.socket_addr);
-        let mut client = grpc::db_client::DbClient::connect(uri).await.map_err(|e| reifydb_core::Error(reifydb_core::diagnostic::network::transport_error(e)))?;
+        let mut client = grpc::db_client::DbClient::connect(uri).await.map_err(|e| reifydb_core::Error(reifydb_core::error::diagnostic::network::transport_error(e)))?;
         let mut request = tonic::Request::new(grpc::TxRequest { query: query.into() });
 
         request
             .metadata_mut()
             .insert("authorization", MetadataValue::from_str("Bearer mysecrettoken").unwrap());
 
-        let mut stream = client.tx(request).await.map_err(|e| reifydb_core::Error(reifydb_core::diagnostic::network::status_error(e)))?.into_inner();
+        let mut stream = client.tx(request).await.map_err(|e| reifydb_core::Error(reifydb_core::error::diagnostic::network::status_error(e)))?.into_inner();
 
         let mut results = Vec::new();
         while let Some(msg) = stream.message().await.unwrap() {

@@ -10,7 +10,7 @@ use tonic::{Request, Response, Status};
 use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
-use reifydb_core::diagnostic::Diagnostic;
+use reifydb_core::error::diagnostic::Diagnostic;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;

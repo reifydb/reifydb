@@ -6,7 +6,7 @@ use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence, passthrough_error};
 use crate::ast::{AstAggregate, parse};
-use reifydb_core::diagnostic::parse::multiple_expressions_without_braces;
+use reifydb_core::error::diagnostic::parse::multiple_expressions_without_braces;
 
 impl Parser {
     pub(crate) fn parse_aggregate(&mut self) -> parse::Result<AstAggregate> {

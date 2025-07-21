@@ -4,10 +4,12 @@
 use std::fmt::{Display, Formatter};
 use serde::{de, ser};
 
-#[derive(Debug, PartialEq)]
-pub struct Error(pub Diagnostic);
+pub mod diagnostic;
 
-use crate::diagnostic::{DefaultRenderer, Diagnostic};
+#[derive(Debug, PartialEq)]
+pub struct Error(pub diagnostic::Diagnostic);
+
+use diagnostic::{DefaultRenderer, Diagnostic};
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -162,4 +164,3 @@ impl From<std::num::TryFromIntError> for Error {
         })
     }
 }
-

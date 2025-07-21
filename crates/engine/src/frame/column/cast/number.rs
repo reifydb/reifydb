@@ -3,7 +3,7 @@
 
 use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::number::{
     SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,
 };

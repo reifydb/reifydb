@@ -6,7 +6,7 @@ mod layout;
 mod list;
 
 use crate::column::ColumnId;
-use reifydb_core::diagnostic::Diagnostic;
+use reifydb_core::error::diagnostic::Diagnostic;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;

@@ -3,7 +3,7 @@
 
 use crate::Error;
 use once_cell::sync::Lazy;
-use reifydb_core::diagnostic::sequence::sequence_exhausted;
+use reifydb_core::error::diagnostic::sequence::sequence_exhausted;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{EncodedKey, Type};
@@ -46,7 +46,7 @@ impl SequenceGeneratorU64 {
 #[cfg(test)]
 mod tests {
     use crate::sequence::u64::{LAYOUT, SequenceGeneratorU64};
-    use reifydb_core::diagnostic::sequence::sequence_exhausted;
+    use reifydb_core::error::diagnostic::sequence::sequence_exhausted;
     use reifydb_core::interface::{Unversioned, UnversionedScan, UnversionedSet};
     use reifydb_core::{EncodedKey, Type};
     use reifydb_transaction::test_utils::TestTransaction;

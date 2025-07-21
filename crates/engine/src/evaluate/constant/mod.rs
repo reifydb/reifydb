@@ -4,9 +4,9 @@
 use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
-use reifydb_core::diagnostic::cast;
-use reifydb_core::diagnostic::number;
-use reifydb_core::diagnostic::temporal;
+use reifydb_core::error::diagnostic::cast;
+use reifydb_core::error::diagnostic::number;
+use reifydb_core::error::diagnostic::temporal;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};

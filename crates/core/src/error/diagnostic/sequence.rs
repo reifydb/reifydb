@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::Type;
-use crate::diagnostic::Diagnostic;
-use crate::diagnostic::util::value_max;
+use crate::error::diagnostic::Diagnostic;
+use crate::error::diagnostic::util::value_max;
 
 pub fn sequence_exhausted(value: Type) -> Diagnostic {
     Diagnostic {

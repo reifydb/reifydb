@@ -2,7 +2,7 @@
 // This file is licensed under the MIT
 
 use crate::grpc::client::grpc;
-use reifydb_core::diagnostic::{Diagnostic, DiagnosticColumn};
+use reifydb_core::error::diagnostic::{Diagnostic, DiagnosticColumn};
 use reifydb_core::{Date, DateTime, Interval, OwnedSpan, SpanColumn, SpanLine, Time, Type};
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::collections::HashMap;

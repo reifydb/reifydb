@@ -7,7 +7,7 @@ use crate::key::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
 use crate::table::TableId;
 use crate::{Catalog, Error};
-use reifydb_core::diagnostic::catalog::column_already_exists;
+use reifydb_core::error::diagnostic::catalog::column_already_exists;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{OwnedSpan, Type};
 

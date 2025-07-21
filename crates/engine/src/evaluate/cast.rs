@@ -4,7 +4,7 @@
 use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::cast;
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 

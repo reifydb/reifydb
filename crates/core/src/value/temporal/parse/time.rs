@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::diagnostic::temporal;
+use crate::error::diagnostic::temporal;
 use crate::{BorrowedSpan, Error, Span, Time};
 
 pub fn parse_time(span: impl Span) -> Result<Time, Error> {

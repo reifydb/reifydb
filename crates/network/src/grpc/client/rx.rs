@@ -12,7 +12,7 @@ use tonic::metadata::MetadataValue;
 impl GrpcClient {
     pub async fn rx(&self, query: &str) -> Result<Vec<Frame>, NetworkError> {
         let uri = format!("http://{}", self.socket_addr);
-        let mut client = grpc::db_client::DbClient::connect(uri).await.map_err(|e| reifydb_core::Error(reifydb_core::diagnostic::network::transport_error(e)))?;
+        let mut client = grpc::db_client::DbClient::connect(uri).await.map_err(|e| reifydb_core::Error(reifydb_core::error::diagnostic::network::transport_error(e)))?;
 
         let mut request = tonic::Request::new(grpc::RxRequest { query: query.into() });
 
@@ -22,7 +22,7 @@ impl GrpcClient {
 
         let mut results = Vec::new();
 
-        let mut stream = client.rx(request).await.map_err(|e| reifydb_core::Error(reifydb_core::diagnostic::network::status_error(e)))?.into_inner();
+        let mut stream = client.rx(request).await.map_err(|e| reifydb_core::Error(reifydb_core::error::diagnostic::network::status_error(e)))?.into_inner();
         while let Some(msg) = stream.message().await.unwrap() {
             if let Some(result) = msg.result {
                 results.push(convert_result(result, query)?);

@@ -19,7 +19,7 @@ impl Evaluator {
         let functor = self
             .functions
             .get_scalar(function.as_str())
-            .ok_or(reifydb_core::Error(reifydb_core::diagnostic::function::unknown_function(function.clone())))
+            .ok_or(reifydb_core::Error(reifydb_core::error::diagnostic::function::unknown_function(function.clone())))
             .unwrap();
 
         let row_count = ctx.row_count;

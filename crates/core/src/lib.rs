@@ -15,8 +15,7 @@ pub use value::{Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, Time,
 
 pub mod clock;
 pub mod delta;
-pub mod diagnostic;
-mod error;
+pub mod error;
 pub mod hook;
 pub mod interface;
 pub mod row;

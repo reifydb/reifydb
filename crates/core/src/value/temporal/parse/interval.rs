@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{Error, Interval, Span};
-use crate::diagnostic::temporal;
+use crate::error::diagnostic::temporal;
 
 pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
     let fragment = span.fragment();

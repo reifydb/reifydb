@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::IntoOwnedSpan;
-use crate::diagnostic::Diagnostic;
+use crate::error::diagnostic::Diagnostic;
 
 pub fn invalid_date_format(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();

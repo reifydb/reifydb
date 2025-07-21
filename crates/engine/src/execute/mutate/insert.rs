@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::{Tx, UnversionedStorage, VersionedStorage},
 	row::Layout,
 };
-use reifydb_core::diagnostic::catalog::table_not_found;
+use reifydb_core::error::diagnostic::catalog::table_not_found;
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
 
