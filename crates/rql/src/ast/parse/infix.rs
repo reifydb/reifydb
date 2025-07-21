@@ -2,8 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Operator, TokenKind};
-use crate::ast::parse::{Parser, Precedence, unsupported_token_error};
+use crate::ast::parse::error::unsupported_token_error;
+use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{Ast, AstInfix, InfixOperator, parse};
+use reifydb_core::return_error;
 
 impl Parser {
     pub(crate) fn parse_infix(&mut self, left: Ast) -> parse::Result<AstInfix> {
@@ -49,9 +51,9 @@ impl Parser {
                 Operator::Dot => Ok(InfixOperator::AccessTable(token)),
                 Operator::DoubleColon => Ok(InfixOperator::AccessExtension(token)),
                 Operator::As => Ok(InfixOperator::As(token)),
-                _ => Err(unsupported_token_error(token)),
+                _ => return_error!(unsupported_token_error(token)),
             },
-            _ => Err(unsupported_token_error(token)),
+            _ => return_error!(unsupported_token_error(token)),
         }
     }
 }

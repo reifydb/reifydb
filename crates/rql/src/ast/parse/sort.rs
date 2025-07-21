@@ -4,9 +4,10 @@
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
-use crate::ast::parse::{Parser, passthrough_error};
+use crate::ast::parse::Parser;
 use crate::ast::{AstSort, parse};
-use reifydb_core::error::diagnostic::parse::multiple_expressions_without_braces;
+use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
+use reifydb_core::return_error;
 
 impl Parser {
     pub(crate) fn parse_sort(&mut self) -> parse::Result<AstSort> {
@@ -52,9 +53,7 @@ impl Parser {
         }
 
         if columns.len() > 1 && !has_braces {
-            return Err(passthrough_error(
-                multiple_expressions_without_braces(token.span)
-            ));
+            return_error!(multiple_expressions_without_braces(token.span));
         }
 
         Ok(AstSort { token, columns, directions })

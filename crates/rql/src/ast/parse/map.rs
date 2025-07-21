@@ -4,9 +4,10 @@
 use crate::ast::lex::Operator::{CloseCurly, Colon, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, TokenKind};
-use crate::ast::parse::{error, Parser, Precedence, passthrough_error};
+use crate::ast::parse::{Parser, Precedence, error};
 use crate::ast::{Ast, AstInfix, AstMap, InfixOperator, parse};
-use reifydb_core::error::diagnostic::parse::multiple_expressions_without_braces;
+use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
+use reifydb_core::return_error;
 
 impl Parser {
     pub(crate) fn parse_map(&mut self) -> parse::Result<AstMap> {
@@ -47,9 +48,7 @@ impl Parser {
         }
 
         if nodes.len() > 1 && !has_braces {
-            return Err(passthrough_error(
-                multiple_expressions_without_braces(token.span)
-            ));
+            return_error!(multiple_expressions_without_braces(token.span));
         }
 
         Ok(AstMap { token, nodes })
@@ -61,18 +60,18 @@ impl Parser {
 
         // Look ahead to see if we have "identifier: expression" pattern
         if len < 2 {
-            return Err(error::unsupported_token_error(self.current()?.clone()));
+            return_error!(error::unsupported_token_error(self.current()?.clone()));
         }
 
         // Check if next token is identifier
         match &self.tokens[len - 1].kind {
             TokenKind::Identifier => {}
-            _ => return Err(error::unsupported_token_error(self.current()?.clone())),
+            _ => return_error!(error::unsupported_token_error(self.current()?.clone())),
         };
 
         // Check if second token is colon
         if !self.tokens[len - 2].is_operator(Colon) {
-            return Err(error::unsupported_token_error(self.current()?.clone()));
+            return_error!(error::unsupported_token_error(self.current()?.clone()));
         }
 
         let identifier = self.parse_identifier()?;

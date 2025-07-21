@@ -3,11 +3,12 @@
 
 use crate::ast::lex::Keyword::Policy;
 use crate::ast::lex::{Literal, Operator, Separator};
-use crate::ast::parse::{Parser, Precedence, invalid_policy_error};
+use crate::ast::parse::error::invalid_policy_error;
+use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{AstPolicy, AstPolicyBlock, AstPolicyKind, Token, TokenKind, parse};
 use Separator::Comma;
 use TokenKind::Identifier;
-
+use reifydb_core::return_error;
 
 impl Parser {
     pub(crate) fn parse_policy_block(&mut self) -> parse::Result<AstPolicyBlock> {
@@ -39,7 +40,7 @@ impl Parser {
                 self.consume_literal(Literal::Undefined)?;
                 AstPolicyKind::NotUndefined
             }
-            _ => return Err(invalid_policy_error(identifier)),
+            _ => return_error!(invalid_policy_error(identifier)),
         };
 
         Ok((identifier, ty))

@@ -20,6 +20,7 @@ use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
 use reifydb_core::{SpanLine, SpanColumn, OwnedSpan};
+use reifydb_core::error::diagnostic::ast;
 
 mod display;
 mod identifier;
@@ -89,7 +90,7 @@ pub enum Literal {
 pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> Result<Vec<Token>> {
     match many0(token).parse(input.into()) {
         Ok((_, tokens)) => Ok(tokens),
-        Err(err) => Err(reifydb_core::error::Error(reifydb_core::error::diagnostic::ast::lex_error(format!("{}", err)))),
+        Err(err) => Err(reifydb_core::error::Error(ast::lex_error(format!("{}", err)))),
     }
 }
 

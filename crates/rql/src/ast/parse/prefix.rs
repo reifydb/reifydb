@@ -3,11 +3,13 @@
 
 use crate::ast::lex::Literal::Number;
 use crate::ast::lex::Operator;
-use crate::ast::parse::{Parser, Precedence, unsupported_token_error};
+use crate::ast::parse::error::unsupported_token_error;
+use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{
     Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind, parse,
 };
 use reifydb_core::OwnedSpan;
+use reifydb_core::return_error;
 
 impl Parser {
     pub(crate) fn parse_prefix(&mut self) -> parse::Result<Ast> {
@@ -37,9 +39,9 @@ impl Parser {
                 Operator::Plus => Ok(AstPrefixOperator::Plus(token)),
                 Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
                 Operator::Bang => Ok(AstPrefixOperator::Not(token)),
-                _ => Err(unsupported_token_error(token)),
+                _ => return_error!(unsupported_token_error(token)),
             },
-            _ => Err(unsupported_token_error(token)),
+            _ => return_error!(unsupported_token_error(token)),
         }
     }
 }

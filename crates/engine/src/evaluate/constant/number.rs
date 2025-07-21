@@ -6,7 +6,7 @@ use crate::frame::ColumnValues;
 use reifydb_core::error::diagnostic::{cast, number};
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
-use reifydb_core::{Span, Type};
+use reifydb_core::{return_error, Span, Type};
 
 pub(crate) struct NumberParser;
 
@@ -31,18 +31,18 @@ impl NumberParser {
             Type::Uint4 => Self::parse_uint4(span, target, row_count),
             Type::Uint8 => Self::parse_uint8(span, target, row_count),
             Type::Uint16 => Self::parse_uint16(span, target, row_count),
-            _ => Err(reifydb_core::Error(cast::unsupported_cast(
+            _ => return_error!(cast::unsupported_cast(
                 span.to_owned(),
                 Type::Float8, // Numbers are treated as float8 by default
                 target,
-            ))),
+            )),
         }
     }
 
     fn parse_bool(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
         match parse_bool(span.clone()) {
             Ok(v) => Ok(ColumnValues::bool(vec![v; row_count])),
-            Err(err) => Err(reifydb_core::Error(cast::invalid_boolean(span.to_owned(), err.diagnostic()))),
+            Err(err) => return_error!(cast::invalid_boolean(span.to_owned(), err.diagnostic())),
         }
     }
 
@@ -50,7 +50,7 @@ impl NumberParser {
         match parse_float::<f32>(span.clone()) {
             Ok(v) => Ok(ColumnValues::float4(vec![v; row_count])),
             Err(err) => {
-                Err(reifydb_core::Error(cast::invalid_number(span.to_owned(), Type::Float4, err.diagnostic())))
+                return_error!(cast::invalid_number(span.to_owned(), Type::Float4, err.diagnostic()))
             }
         }
     }
@@ -59,7 +59,7 @@ impl NumberParser {
         match parse_float::<f64>(span.clone()) {
             Ok(v) => Ok(ColumnValues::float8(vec![v; row_count])),
             Err(err) => {
-                Err(reifydb_core::Error(cast::invalid_number(span.to_owned(), Type::Float8, err.diagnostic())))
+                return_error!(cast::invalid_number(span.to_owned(), Type::Float8, err.diagnostic()))
             }
         }
     }
@@ -72,16 +72,16 @@ impl NumberParser {
             if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
                 Ok(ColumnValues::int1(vec![truncated as i8; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
             match parse_int::<i8>(span.clone()) {
                 Ok(_) => unreachable!(),
-                Err(err) => Err(reifydb_core::Error(cast::invalid_number(span.to_owned(), ty, err.diagnostic()))),
+                Err(err) => return_error!(cast::invalid_number(span.to_owned(), ty, err.diagnostic())),
             }
         }
     }
@@ -94,18 +94,18 @@ impl NumberParser {
             if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
                 Ok(ColumnValues::int2(vec![truncated as i16; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 
@@ -117,18 +117,18 @@ impl NumberParser {
             if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
                 Ok(ColumnValues::int4(vec![truncated as i32; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 
@@ -140,18 +140,18 @@ impl NumberParser {
             if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
                 Ok(ColumnValues::int8(vec![truncated as i64; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 
@@ -163,18 +163,18 @@ impl NumberParser {
             if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
                 Ok(ColumnValues::int16(vec![truncated as i128; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 
@@ -186,18 +186,18 @@ impl NumberParser {
             if truncated >= 0.0 && truncated <= u8::MAX as f64 {
                 Ok(ColumnValues::uint1(vec![truncated as u8; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 
@@ -209,18 +209,18 @@ impl NumberParser {
             if truncated >= 0.0 && truncated <= u16::MAX as f64 {
                 Ok(ColumnValues::uint2(vec![truncated as u16; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 
@@ -232,18 +232,18 @@ impl NumberParser {
             if truncated >= 0.0 && truncated <= u32::MAX as f64 {
                 Ok(ColumnValues::uint4(vec![truncated as u32; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 
@@ -255,18 +255,18 @@ impl NumberParser {
             if truncated >= 0.0 && truncated <= u64::MAX as f64 {
                 Ok(ColumnValues::uint8(vec![truncated as u64; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 
@@ -278,18 +278,18 @@ impl NumberParser {
             if truncated >= 0.0 && truncated <= u128::MAX as f64 {
                 Ok(ColumnValues::uint16(vec![truncated as u128; row_count]))
             } else {
-                Err(reifydb_core::Error(cast::invalid_number(
+                return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
                     number::number_out_of_range(span.clone().to_owned(), ty),
-                )))
+                ))
             }
         } else {
-            Err(reifydb_core::Error(cast::invalid_number(
+            return_error!(cast::invalid_number(
                 span.clone().to_owned(),
                 ty,
                 number::invalid_number_format(span.to_owned(), ty),
-            )))
+            ))
         }
     }
 }

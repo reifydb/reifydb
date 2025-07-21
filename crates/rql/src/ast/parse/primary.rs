@@ -4,8 +4,10 @@
 use crate::ast::lex::Literal::{False, Number, Temporal, Text, True, Undefined};
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Operator, TokenKind};
-use crate::ast::parse::{Parser, unsupported_token_error};
+use crate::ast::parse::Parser;
+use crate::ast::parse::error::unsupported_token_error;
 use crate::ast::{Ast, AstWildcard, parse};
+use reifydb_core::return_error;
 
 impl Parser {
     pub(crate) fn parse_primary(&mut self) -> parse::Result<Ast> {
@@ -29,7 +31,7 @@ impl Parser {
                 Operator::OpenBracket => Ok(Ast::List(self.parse_list()?)),
                 Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
                 Operator::OpenCurly => Ok(Ast::Inline(self.parse_inline()?)),
-                _ => Err(unsupported_token_error(self.advance()?)),
+                _ => return_error!(unsupported_token_error(self.advance()?)),
             },
             TokenKind::Keyword(keyword) => match keyword {
                 Keyword::From => Ok(Ast::From(self.parse_from()?)),
@@ -45,19 +47,21 @@ impl Parser {
                 Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
                 Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
                 Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
-                _ => Err(unsupported_token_error(self.advance()?)),
+                _ => return_error!(unsupported_token_error(self.advance()?)),
             },
             _ => match current {
                 _ if current.is_literal(Number) => Ok(Ast::Literal(self.parse_literal_number()?)),
                 _ if current.is_literal(True) => Ok(Ast::Literal(self.parse_literal_true()?)),
                 _ if current.is_literal(False) => Ok(Ast::Literal(self.parse_literal_false()?)),
                 _ if current.is_literal(Text) => Ok(Ast::Literal(self.parse_literal_text()?)),
-                _ if current.is_literal(Temporal) => Ok(Ast::Literal(self.parse_literal_temporal()?)),
+                _ if current.is_literal(Temporal) => {
+                    Ok(Ast::Literal(self.parse_literal_temporal()?))
+                }
                 _ if current.is_literal(Undefined) => {
                     Ok(Ast::Literal(self.parse_literal_undefined()?))
                 }
                 _ if current.is_identifier() => Ok(Ast::Identifier(self.parse_identifier()?)),
-                _ => Err(unsupported_token_error(self.advance()?)),
+                _ => return_error!(unsupported_token_error(self.advance()?)),
             },
         }
     }

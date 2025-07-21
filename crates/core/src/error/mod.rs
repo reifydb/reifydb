@@ -10,7 +10,7 @@ mod r#macro;
 #[derive(Debug, PartialEq)]
 pub struct Error(pub diagnostic::Diagnostic);
 
-use diagnostic::{DefaultRenderer, Diagnostic};
+use diagnostic::{Diagnostic, render::DefaultRenderer};
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

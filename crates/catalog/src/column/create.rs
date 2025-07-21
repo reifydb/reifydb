@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::Catalog;
 use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnIndex, ColumnPolicyKind};
 use crate::key::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
 use crate::table::TableId;
-use crate::{Catalog, Error};
 use reifydb_core::error::diagnostic::catalog::column_already_exists;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{OwnedSpan, Type};
+use reifydb_core::{OwnedSpan, Type, return_error};
 
 pub struct ColumnToCreate<'a> {
     pub span: Option<OwnedSpan>,
@@ -31,12 +31,12 @@ impl Catalog {
     ) -> crate::Result<Column> {
         // FIXME policies
         if let Some(column) = Catalog::get_column_by_name(tx, table, &column_to_create.column)? {
-            return Err(Error(column_already_exists(
+            return_error!(column_already_exists(
                 None::<OwnedSpan>,
                 column_to_create.schema_name,
                 column_to_create.table_name,
                 &column.name,
-            )));
+            ));
         }
 
         let id = SystemSequence::next_column_id(tx)?;
@@ -73,10 +73,10 @@ impl Catalog {
 #[cfg(test)]
 mod test {
     use crate::Catalog;
-    use reifydb_core::Type;
     use crate::column::{ColumnId, ColumnIndex, ColumnToCreate};
     use crate::table::TableId;
     use crate::test_utils::ensure_test_table;
+    use reifydb_core::Type;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

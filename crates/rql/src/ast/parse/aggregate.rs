@@ -4,9 +4,10 @@
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
-use crate::ast::parse::{Parser, Precedence, passthrough_error};
+use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{AstAggregate, parse};
-use reifydb_core::error::diagnostic::parse::multiple_expressions_without_braces;
+use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
+use reifydb_core::return_error;
 
 impl Parser {
     pub(crate) fn parse_aggregate(&mut self) -> parse::Result<AstAggregate> {
@@ -46,9 +47,7 @@ impl Parser {
             }
 
             if projections.len() > 1 && !has_projections_braces {
-                return Err(passthrough_error(
-                    multiple_expressions_without_braces(token.span)
-                ));
+                return_error!(multiple_expressions_without_braces(token.span));
             }
         }
 
@@ -83,9 +82,7 @@ impl Parser {
         }
 
         if by.len() > 1 && !has_by_braces {
-            return Err(passthrough_error(
-                multiple_expressions_without_braces(token.span)
-            ));
+            return Err(reifydb_core::Error(multiple_expressions_without_braces(token.span)));
         }
 
         Ok(AstAggregate { token, by, map: projections })
