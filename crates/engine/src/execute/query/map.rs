@@ -6,6 +6,7 @@ use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
 use reifydb_core::interface::Rx;
+use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct MapNode {
@@ -34,6 +35,11 @@ impl ExecutionPlan for MapNode {
             };
 
             let mut columns = Vec::with_capacity(self.expressions.len());
+
+            // First, check if input frame has a RowId column and preserve it
+            if let Some(row_id_column) = frame.columns.iter().find(|col| col.name == ROW_ID_COLUMN_NAME) {
+                columns.push(row_id_column.clone());
+            }
 
             for expr in &self.expressions {
                 let column = evaluate(expr, &ctx)?;

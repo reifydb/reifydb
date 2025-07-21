@@ -5,6 +5,7 @@ use crate::frame::iterator::FrameIter;
 use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::Type::Undefined;
 use reifydb_core::Value;
+use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -44,6 +45,9 @@ impl Frame {
                 Value::RowId(v) => ColumnValues::row_id([v]),
             };
 
+            if name == ROW_ID_COLUMN_NAME {
+                panic!("Column name '{}' is reserved for RowId columns", ROW_ID_COLUMN_NAME);
+            }
             columns.push(FrameColumn { name: name.to_string(), values });
             index.insert(name.to_string(), idx);
         }
@@ -209,5 +213,18 @@ mod tests {
         assert_eq!(frame.column("date_col").unwrap().values.get(0), Value::Date(date));
         assert_eq!(frame.column("time_col").unwrap().values.get(0), Value::Time(time));
         assert_eq!(frame.column("undefined_col").unwrap().values.get(0), Value::Undefined);
+    }
+
+    #[test]
+    #[should_panic(expected = "Column name '__ROW__ID__' is reserved for RowId columns")]
+    fn test_single_row_reserved_column_name_panic() {
+        Frame::single_row([(ROW_ID_COLUMN_NAME, Value::Int4(42))]);
+    }
+
+    #[test]
+    fn test_single_row_normal_column_names_work() {
+        let frame = Frame::single_row([("normal_column", Value::Int4(42))]);
+        assert_eq!(frame.columns.len(), 1);
+        assert_eq!(frame.column("normal_column").unwrap().values.get(0), Value::Int4(42));
     }
 }

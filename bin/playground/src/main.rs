@@ -15,16 +15,29 @@ fn main() {
     db.tx_as(&root, r#"create table test.abc(id: int1, col: float4)"#).unwrap();
     db.tx_as(&root, r#"from [{ id: 1, col: 128.0 }] insert test.abc"#).unwrap();
 
-      let l = db
-          .tx_as(
-              &root,
-              r#"
-            from test.abc
-            map { id, col - 10 }
-            update test.abc;
-          "#,
-          )
-          .unwrap();
-      println!("{}", l.first().unwrap());
+    // let l = db
+    //     .tx_as(
+    //         &root,
+    //         r#"
+    //       from test.abc
+    //     "#,
+    //     )
+    //     .unwrap();
+    // println!("{}", l.first().unwrap());
 
+    for l in db
+        .tx_as(
+            &root,
+            r#"
+            from test.abc
+            map { id, cast(col - 123, float4) as col }
+            update test.abc;
+
+            from test.abc;
+          "#,
+        )
+        .unwrap()
+    {
+        println!("{}", l);
+    }
 }
