@@ -5,6 +5,7 @@ use crate::error;
 use crate::evaluate::Error;
 use crate::frame::ColumnValues;
 use reifydb_core::diagnostic::boolean::invalid_number_boolean;
+use reifydb_core::diagnostic::cast;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::{BitVec, OwnedSpan, Type};
 
@@ -24,7 +25,10 @@ impl ColumnValues {
             ColumnValues::Float4(values, bitvec) => from_float4(values, bitvec, &span),
             ColumnValues::Float8(values, bitvec) => from_float8(values, bitvec, &span),
             ColumnValues::Utf8(values, bitvec) => from_utf8(values, bitvec, span),
-            _ => unreachable!(),
+            _ => {
+                let source_type = self.get_type();
+                Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, Type::Bool))))
+            },
         }
     }
 }

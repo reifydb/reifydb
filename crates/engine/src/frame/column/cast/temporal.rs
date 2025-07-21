@@ -19,10 +19,14 @@ impl ColumnValues {
                 Type::DateTime => to_datetime(values, bitvec, span),
                 Type::Time => to_time(values, bitvec, span),
                 Type::Interval => to_interval(values, bitvec, span),
-                _ => unreachable!(),
+                _ => {
+                    let source_type = self.get_type();
+                    Err(crate::error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                },
             }
         } else {
-            unreachable!()
+            let source_type = self.get_type();
+            Err(crate::error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
         }
     }
 }

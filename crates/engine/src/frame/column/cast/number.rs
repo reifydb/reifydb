@@ -18,7 +18,8 @@ impl ColumnValues {
         span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         if !target.is_number() {
-            unreachable!()
+            let source_type = self.get_type();
+            return Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))));
         }
 
         if self.get_type().is_number() {
@@ -26,7 +27,7 @@ impl ColumnValues {
         }
 
         if self.is_bool() {
-            return self.bool_to_number(target);
+            return self.bool_to_number(target, span);
         }
 
         if self.is_utf8() {
@@ -37,15 +38,16 @@ impl ColumnValues {
         }
 
         if self.is_float() {
-            return self.float_to_integer(target);
+            return self.float_to_integer(target, span);
         }
 
-        unreachable!()
+        let source_type = self.get_type();
+        Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
     }
 }
 
 impl ColumnValues {
-    fn bool_to_number(&self, target: Type) -> crate::Result<ColumnValues> {
+    fn bool_to_number(&self, target: Type, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
         macro_rules! bool_to_number {
             ($target_ty:ty, $true_val:expr, $false_val:expr) => {{
                 |out: &mut ColumnValues, val: bool| {
@@ -56,37 +58,46 @@ impl ColumnValues {
 
         match self {
             ColumnValues::Bool(values, bitvec) => {
+                // Check if target type is supported
+                let converter = match target {
+                    Type::Int1 => bool_to_number!(i8, 1i8, 0i8),
+                    Type::Int2 => bool_to_number!(i16, 1i16, 0i16),
+                    Type::Int4 => bool_to_number!(i32, 1i32, 0i32),
+                    Type::Int8 => bool_to_number!(i64, 1i64, 0i64),
+                    Type::Int16 => bool_to_number!(i128, 1i128, 0i128),
+                    Type::Uint1 => bool_to_number!(u8, 1u8, 0u8),
+                    Type::Uint2 => bool_to_number!(u16, 1u16, 0u16),
+                    Type::Uint4 => bool_to_number!(u32, 1u32, 0u32),
+                    Type::Uint8 => bool_to_number!(u64, 1u64, 0u64),
+                    Type::Uint16 => bool_to_number!(u128, 1u128, 0u128),
+                    Type::Float4 => bool_to_number!(f32, 1.0f32, 0.0f32),
+                    Type::Float8 => bool_to_number!(f64, 1.0f64, 0.0f64),
+                    _ => {
+                        let source_type = self.get_type();
+                        return Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))));
+                    }
+                };
+
                 let mut out = ColumnValues::with_capacity(target, values.len());
                 for (idx, &val) in values.iter().enumerate() {
                     if bitvec.get(idx) {
-                        match target {
-                            Type::Int1 => bool_to_number!(i8, 1i8, 0i8)(&mut out, val),
-                            Type::Int2 => bool_to_number!(i16, 1i16, 0i16)(&mut out, val),
-                            Type::Int4 => bool_to_number!(i32, 1i32, 0i32)(&mut out, val),
-                            Type::Int8 => bool_to_number!(i64, 1i64, 0i64)(&mut out, val),
-                            Type::Int16 => bool_to_number!(i128, 1i128, 0i128)(&mut out, val),
-                            Type::Uint1 => bool_to_number!(u8, 1u8, 0u8)(&mut out, val),
-                            Type::Uint2 => bool_to_number!(u16, 1u16, 0u16)(&mut out, val),
-                            Type::Uint4 => bool_to_number!(u32, 1u32, 0u32)(&mut out, val),
-                            Type::Uint8 => bool_to_number!(u64, 1u64, 0u64)(&mut out, val),
-                            Type::Uint16 => bool_to_number!(u128, 1u128, 0u128)(&mut out, val),
-                            Type::Float4 => bool_to_number!(f32, 1.0f32, 0.0f32)(&mut out, val),
-                            Type::Float8 => bool_to_number!(f64, 1.0f64, 0.0f64)(&mut out, val),
-                            _ => unreachable!(),
-                        }
+                        converter(&mut out, val);
                     } else {
                         out.push_undefined();
                     }
                 }
                 Ok(out)
             }
-            _ => unreachable!(),
+            _ => {
+                let source_type = self.get_type();
+                Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+            },
         }
     }
 }
 
 impl ColumnValues {
-    fn float_to_integer(&self, target: Type) -> crate::Result<ColumnValues> {
+    fn float_to_integer(&self, target: Type, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
         match self {
             ColumnValues::Float4(values, bitvec) => match target {
                 Type::Int1 => f32_to_i8_vec(values, bitvec),
@@ -99,7 +110,10 @@ impl ColumnValues {
                 Type::Uint4 => f32_to_u32_vec(values, bitvec),
                 Type::Uint8 => f32_to_u64_vec(values, bitvec),
                 Type::Uint16 => f32_to_u128_vec(values, bitvec),
-                _ => unreachable!(),
+                _ => {
+                    let source_type = self.get_type();
+                    Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                },
             },
             ColumnValues::Float8(values, bitvec) => match target {
                 Type::Int1 => f64_to_i8_vec(values, bitvec),
@@ -112,9 +126,15 @@ impl ColumnValues {
                 Type::Uint4 => f64_to_u32_vec(values, bitvec),
                 Type::Uint8 => f64_to_u64_vec(values, bitvec),
                 Type::Uint16 => f64_to_u128_vec(values, bitvec),
-                _ => unreachable!(),
+                _ => {
+                    let source_type = self.get_type();
+                    Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                },
             },
-            _ => unreachable!(),
+            _ => {
+                let source_type = self.get_type();
+                Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+            },
         }
     }
 }
@@ -231,7 +251,10 @@ impl ColumnValues {
                                 temp_span,
                                 base_span
                             ),
-                            _ => unreachable!(),
+                            _ => {
+                                let source_type = self.get_type();
+                                return Err(error::Error::Evaluation(Error(cast::unsupported_cast(base_span.clone(), source_type, target))));
+                            }
                         }
                     } else {
                         out.push_undefined();
@@ -239,7 +262,10 @@ impl ColumnValues {
                 }
                 Ok(out)
             }
-            _ => unreachable!(),
+            _ => {
+                let source_type = self.get_type();
+                Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+            },
         }
     }
 }
@@ -281,7 +307,10 @@ impl ColumnValues {
                                 ))
                             })?)
                         }
-                        _ => unreachable!(),
+                        _ => {
+                            let source_type = self.get_type();
+                            return Err(error::Error::Evaluation(Error(cast::unsupported_cast(base_span.clone(), source_type, target))));
+                        }
                     }
                 } else {
                     out.push_undefined();
@@ -289,7 +318,8 @@ impl ColumnValues {
             }
             Ok(out)
         } else {
-            unreachable!()
+            let source_type = self.get_type();
+            Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
         }
     }
 }
@@ -469,11 +499,8 @@ impl ColumnValues {
             convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
         );
 
-        unreachable!(
-            "number_to_number: unhandled conversion from {:?} to {:?}",
-            self.get_type(),
-            target
-        )
+        let source_type = self.get_type();
+        Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
     }
 }
 

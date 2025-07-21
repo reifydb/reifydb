@@ -10,8 +10,8 @@ mod owned;
 mod borrowed;
 
 // Trait for types that can provide span information for parsing
-pub trait Span {
-    type SubSpan: Span + IntoOwnedSpan + Clone;
+pub trait Span : Clone{
+    type SubSpan: Span + IntoOwnedSpan;
 
     fn fragment(&self) -> &str;
     fn line(&self) -> SpanLine;
