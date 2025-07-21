@@ -161,7 +161,13 @@ fn extract_string_value(col: &crate::frame::FrameColumn, row_idx: usize) -> Stri
                 "Undefined".into()
             }
         }
-        ColumnValues::RowId(v) => v[row_idx].to_string(),
+        ColumnValues::RowId(v, b) => {
+            if b.get(row_idx) {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
         ColumnValues::Undefined(_) => "Undefined".into(),
     };
     escape_control_chars(&s)
@@ -244,7 +250,7 @@ impl Display for Frame {
 mod tests {
     use super::*;
     use crate::frame::FrameColumn;
-    use reifydb_core::BitVec;
+    use reifydb_core::{BitVec, CowVec, RowId};
 
     #[test]
     fn test_bool() {
@@ -600,9 +606,29 @@ mod tests {
         assert_eq!(output, expected);
     }
 
+
+    #[test]
+    fn test_row_id() {
+        let ids = vec![RowId(1234), RowId(5678)];
+        let frame = Frame::new(vec![FrameColumn {
+            name: "ROW_ID".to_string(),
+            values: ColumnValues::RowId(CowVec::new(ids), BitVec::from_slice(&[true, false])),
+        }]);
+        let output = format!("{}", frame);
+        let expected = "\
++-------------+
+|   ROW_ID    |
++-------------+
+|    1234     |
+|  Undefined  |
++-------------+
+";
+        assert_eq!(output, expected);
+    }
+
     #[test]
     fn test_row_id_column_ordering() {
-        use reifydb_core::{CowVec, RowId};
+        use reifydb_core::RowId;
         
         // Create a frame with regular columns and a RowId column
         let regular_column = FrameColumn {
@@ -617,7 +643,7 @@ mod tests {
         
         let row_id_column = FrameColumn {
             name: ROW_ID_COLUMN_NAME.to_string(),
-            values: ColumnValues::RowId(CowVec::new(vec![RowId::new(1), RowId::new(2)])),
+            values: ColumnValues::row_id(vec![RowId::new(1), RowId::new(2)]),
         };
         
         // Create frame with RowId column NOT first (it should be reordered)
@@ -634,5 +660,30 @@ mod tests {
         // Check that the first data value in the first row is from the RowId column
         let first_data_line = lines[3]; // Fourth line contains first data row
         assert!(first_data_line.contains("1")); // First RowId value
+    }
+
+    #[test]
+    fn test_row_id_undefined_display() {
+        use reifydb_core::{BitVec, RowId};
+        
+        // Create a RowId column with one undefined value
+        let row_id_column = FrameColumn {
+            name: ROW_ID_COLUMN_NAME.to_string(),
+            values: ColumnValues::row_id_with_bitvec(
+                vec![RowId::new(1), RowId::new(2)],
+                BitVec::from_slice(&[true, false]) // Second value is undefined
+            ),
+        };
+        
+        let frame = Frame::new(vec![row_id_column]);
+        let output = format!("{}", frame);
+        
+        // Verify that undefined RowId displays as "Undefined"
+        let lines: Vec<&str> = output.lines().collect();
+        let first_data_line = lines[3]; // First data row
+        let second_data_line = lines[4]; // Second data row
+        
+        assert!(first_data_line.contains("1")); // First RowId value
+        assert!(second_data_line.contains("Undefined")); // Second value should be undefined
     }
 }

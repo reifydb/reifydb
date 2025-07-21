@@ -272,7 +272,7 @@ impl ColumnValues {
                     *self = ColumnValues::interval_with_bitvec(values, bitvec);
                 }
                 ColumnValues::Undefined(_) => {}
-                ColumnValues::RowId(_) => {
+                ColumnValues::RowId(_, _) => {
                     panic!("Cannot extend RowId column from Undefined")
                 }
             },
@@ -352,8 +352,9 @@ impl ColumnValues {
                     lb.extend(&std::iter::repeat(false).take(r_len).collect::<Vec<_>>().into());
                 }
                 ColumnValues::Undefined(_) => unreachable!(),
-                ColumnValues::RowId(l) => {
+                ColumnValues::RowId(l, lb) => {
                     l.extend(std::iter::repeat(Default::default()).take(r_len));
+                    lb.extend(&std::iter::repeat(false).take(r_len).collect::<Vec<_>>().into());
                 }
             },
 

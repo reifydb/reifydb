@@ -9,7 +9,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::diagnostic::Diagnostic;
-use reifydb_core::{CowVec, Date, DateTime, Error, Interval, Time, Type};
+use reifydb_core::{CowVec, Date, DateTime, Error, Interval, RowId, Time, Type};
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -319,7 +319,7 @@ fn parse_interval_string(s: &str) -> Result<Interval, ()> {
     Ok(Interval::from_nanos(total_nanos))
 }
 
-fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
+fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
     let bitvec: Vec<bool> = data.iter().map(|s| s != "⟪undefined⟫").collect();
 
     macro_rules! parse {
@@ -338,7 +338,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
         }};
     }
 
-    match ty {
+    match target {
         Type::Bool => {
             let values: Vec<bool> = data
                 .iter()
@@ -499,14 +499,18 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
             let values: Vec<_> = data
                 .into_iter()
                 .map(|s| {
-                    if let Ok(id) = s.parse::<u64>() {
-                        reifydb_core::RowId::new(id)
+                    if s == "⟪undefined⟫" {
+                        RowId::default()
                     } else {
-                        reifydb_core::RowId::default()
+                        if let Ok(id) = s.parse::<u64>() {
+                            RowId::new(id)
+                        } else {
+                            RowId::default()
+                        }
                     }
                 })
                 .collect();
-            ColumnValues::row_id(values)
+            ColumnValues::RowId(CowVec::new(values), bitvec.into())
         }
     }
 }

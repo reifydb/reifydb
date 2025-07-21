@@ -82,10 +82,11 @@ impl ColumnValues {
             ColumnValues::Undefined(len) => {
                 *len = indices.len();
             }
-            ColumnValues::RowId(values) => {
+            ColumnValues::RowId(values, bitvec) => {
                 let old_values = values.clone();
                 let new_values: Vec<_> = indices.iter().map(|&i| old_values[i]).collect();
                 *values = CowVec::new(new_values);
+                bitvec.reorder(indices);
             }
         }
     }

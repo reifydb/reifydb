@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
-use reifydb_core::{BitVec, Date, DateTime, Interval, Time, Value};
+use reifydb_core::{BitVec, Date, DateTime, Interval, RowId, Time, Value};
 
 impl ColumnValues {
     pub fn push_value(&mut self, value: Value) {
@@ -224,14 +224,20 @@ impl ColumnValues {
             },
 
             Value::Undefined => self.push_undefined(),
-            Value::RowId(row_id) => {
-                match self {
-                    ColumnValues::RowId(values) => {
-                        values.push(row_id);
-                    }
-                    _ => unimplemented!(),
+            Value::RowId(row_id) => match self {
+                ColumnValues::RowId(values, bitvec) => {
+                    values.push(row_id);
+                    bitvec.push(true);
                 }
-            }
+                ColumnValues::Undefined(len) => {
+                    let mut values = vec![RowId::default(); *len];
+                    let mut bitvec = BitVec::new(*len, false);
+                    values.push(row_id);
+                    bitvec.push(true);
+                    *self = ColumnValues::row_id_with_bitvec(values, bitvec);
+                }
+                _ => unimplemented!(),
+            },
         }
     }
 }
@@ -633,7 +639,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string() {
+    fn test_utf8() {
         let mut col = ColumnValues::utf8(vec!["hello".to_string()]);
         col.push_value(Value::Utf8("world".to_string()));
         if let ColumnValues::Utf8(v, bitvec) = col {
@@ -643,7 +649,7 @@ mod tests {
     }
 
     #[test]
-    fn test_undefined_string() {
+    fn test_undefined_utf8() {
         let mut col = ColumnValues::utf8(vec!["hello".to_string()]);
         col.push_value(Value::Undefined);
         if let ColumnValues::Utf8(v, bitvec) = col {
@@ -653,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    fn test_push_value_to_undefined_string() {
+    fn test_push_value_to_undefined_utf8() {
         let mut col = ColumnValues::Undefined(1);
         col.push_value(Value::Utf8("ok".to_string()));
         if let ColumnValues::Utf8(v, bitvec) = col {
