@@ -3,6 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
+use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_rql::expression::AliasExpression;
 
 impl Evaluator {
@@ -12,6 +13,10 @@ impl Evaluator {
 		ctx: &EvaluationContext,
     ) -> crate::evaluate::Result<FrameColumn> {
         let evaluated = self.evaluate(&expr.expression, ctx)?;
-        Ok(FrameColumn { name: expr.alias.0.fragment.clone(), values: evaluated.values })
+        let alias_name = &expr.alias.0.fragment;
+        if alias_name == ROW_ID_COLUMN_NAME {
+            panic!("Column name '{}' is reserved for RowId columns", ROW_ID_COLUMN_NAME);
+        }
+        Ok(FrameColumn { name: alias_name.clone(), values: evaluated.values })
     }
 }

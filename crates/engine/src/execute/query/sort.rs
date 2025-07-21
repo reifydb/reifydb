@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::Error;
-use crate::execute::{Batch, ExecutionPlan};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::SortDirection::{Asc, Desc};
 use reifydb_core::interface::Rx;
@@ -22,11 +22,11 @@ impl SortNode {
 }
 
 impl ExecutionPlan for SortNode {
-    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         let mut frame_opt: Option<Frame> = None;
         let mut mask_opt: Option<BitVec> = None;
 
-        while let Some(Batch { frame, mask }) = self.input.next(rx)? {
+        while let Some(Batch { frame, mask }) = self.input.next(ctx, rx)? {
             if let Some(existing_frame) = &mut frame_opt {
                 for (i, col) in frame.columns.into_iter().enumerate() {
                     existing_frame.columns[i].values.extend(col.values)?;

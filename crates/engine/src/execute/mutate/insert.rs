@@ -47,13 +47,19 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
                 batch_size: 1024,
+                preserve_row_ids: false,
             }),
         );
 
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame, mask }) = input_node.next(tx)? {
+        while let Some(Batch { frame, mask }) = input_node.next(&Arc::new(ExecutionContext {
+            functions: self.functions.clone(),
+            table: Some(table.clone()),
+            batch_size: 1024,
+            preserve_row_ids: false,
+        }), tx)? {
             let row_count = frame.row_count();
 
             for row_idx in 0..row_count {

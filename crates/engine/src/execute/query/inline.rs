@@ -37,7 +37,7 @@ impl InlineDataNode {
 }
 
 impl ExecutionPlan for InlineDataNode {
-    fn next(&mut self, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.executed {
             return Ok(None);
         }

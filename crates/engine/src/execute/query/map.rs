@@ -2,10 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, evaluate};
-use crate::execute::{Batch, ExecutionPlan};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
 use reifydb_core::interface::Rx;
+use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct MapNode {
@@ -21,11 +22,11 @@ impl MapNode {
 }
 
 impl ExecutionPlan for MapNode {
-    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame, mask }) = self.input.next(rx)? {
+    fn next(&mut self, exec_ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mask }) = self.input.next(exec_ctx, rx)? {
             let row_count = frame.row_count();
 
-            let ctx = EvaluationContext {
+            let eval_ctx = EvaluationContext {
                 column: None,
                 mask: mask.clone(),
                 columns: frame.columns.clone(),
@@ -35,8 +36,17 @@ impl ExecutionPlan for MapNode {
 
             let mut columns = Vec::with_capacity(self.expressions.len());
 
+            // Only preserve RowId column if the execution context requires it
+            if exec_ctx.preserve_row_ids {
+                if let Some(row_id_column) = frame.columns.iter().find(|col| col.name == ROW_ID_COLUMN_NAME) {
+                    let mut filtered_row_id_column = row_id_column.clone();
+                    filtered_row_id_column.filter(&mask).unwrap();
+                    columns.push(filtered_row_id_column);
+                }
+            }
+
             for expr in &self.expressions {
-                let column = evaluate(expr, &ctx)?;
+                let column = evaluate(expr, &eval_ctx)?;
                 columns
                     .push(crate::frame::FrameColumn { name: column.name, values: column.values });
             }
@@ -67,7 +77,7 @@ impl MapWithoutInputNode {
 }
 
 impl ExecutionPlan for MapWithoutInputNode {
-    fn next(&mut self, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }
