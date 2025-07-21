@@ -3,7 +3,7 @@
 
 use crate::grpc::client::grpc;
 use reifydb_core::diagnostic::{Diagnostic, DiagnosticColumn};
-use reifydb_core::{Date, DateTime, Interval, OwnedSpan, SpanColumn, SpanLine, Time, Type};
+use reifydb_core::{Date, DateTime, Interval, OwnedSpan, RowId, SpanColumn, SpanLine, Time, Type};
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::collections::HashMap;
 
@@ -384,17 +384,20 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
             Type::Undefined => ColumnValues::undefined(values.len()),
             Type::RowId => {
                 let mut data = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::RowIdValue(row_id)) => {
-                            data.push(reifydb_core::RowId::new(row_id));
+                            data.push(RowId::new(row_id));
+                            bitvec.push(true);
                         }
                         _ => {
-                            data.push(reifydb_core::RowId::default());
+                            data.push(RowId::default());
+                            bitvec.push(false);
                         }
                     }
                 }
-                ColumnValues::row_id(data)
+                ColumnValues::row_id_with_bitvec(data, bitvec)
             }
         };
 

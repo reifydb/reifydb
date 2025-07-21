@@ -34,7 +34,7 @@ impl FrameColumnLayout {
                 ColumnValues::Time(_, _) => Type::Time,
                 ColumnValues::Interval(_, _) => Type::Interval,
                 ColumnValues::Undefined(_) => Type::Undefined,
-                ColumnValues::RowId(_) => Type::RowId,
+                ColumnValues::RowId(_, _) => Type::RowId,
             },
         }
     }

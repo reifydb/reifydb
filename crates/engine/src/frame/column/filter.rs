@@ -287,14 +287,17 @@ impl ColumnValues {
                 *len = mask.count_ones();
             }
 
-            ColumnValues::RowId(values) => {
+            ColumnValues::RowId(values, bitvec) => {
                 let mut new_values = Vec::new();
+                let mut new_valid = Vec::new();
                 for (i, _) in values.iter().enumerate() {
                     if mask.get(i) {
                         new_values.push(values[i]);
+                        new_valid.push(bitvec.get(i));
                     }
                 }
                 *values = CowVec::new(new_values);
+                *bitvec = new_valid.into();
             }
         }
 

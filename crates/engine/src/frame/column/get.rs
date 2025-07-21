@@ -135,7 +135,13 @@ impl ColumnValues {
                 }
             }
             ColumnValues::Undefined(_) => Value::Undefined,
-            ColumnValues::RowId(v) => Value::RowId(v[index]),
+            ColumnValues::RowId(v, b) => {
+                if b.get(index) {
+                    Value::RowId(v[index])
+                } else {
+                    Value::Undefined
+                }
+            }
         }
     }
 }

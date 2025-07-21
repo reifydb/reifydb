@@ -153,7 +153,13 @@ impl<'df> Iterator for FrameIter<'df> {
                         ValueRef::Undefined
                     }
                 }
-                ColumnValues::RowId(data) => ValueRef::RowId(&data[i]),
+                ColumnValues::RowId(data, bitvec) => {
+                    if bitvec.get(i) {
+                        ValueRef::RowId(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
                 ColumnValues::Undefined(_) => ValueRef::Undefined,
             })
             .collect();
