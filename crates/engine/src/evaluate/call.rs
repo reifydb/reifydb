@@ -4,6 +4,8 @@
 use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
+use reifydb_core::error::diagnostic::function;
+use reifydb_core::error;
 use reifydb_rql::expression::{CallExpression, Expression};
 
 impl Evaluator {
@@ -19,8 +21,7 @@ impl Evaluator {
         let functor = self
             .functions
             .get_scalar(function.as_str())
-            .ok_or(reifydb_core::Error(reifydb_core::error::diagnostic::function::unknown_function(function.clone())))
-            .unwrap();
+            .ok_or(error!(function::unknown_function(function.clone())))?;
 
         let row_count = ctx.row_count;
         Ok(FrameColumn {

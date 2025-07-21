@@ -73,8 +73,7 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> Result<FrameColum
         let mut column = evaluator.evaluate(expr, ctx)?;
         column.values = column
             .values
-            .cast(ty, ctx, expr.lazy_span())
-            .map_err(|e| reifydb_core::Error(e.diagnostic()))?;
+            .cast(ty, ctx, expr.lazy_span())?;
         Ok(column)
     } else {
         evaluator.evaluate(expr, ctx)

@@ -5,6 +5,7 @@ use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
 use reifydb_core::error::diagnostic::cast;
+use reifydb_core::error;
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 
@@ -29,7 +30,7 @@ impl Evaluator {
                         .values
                         .cast(cast.to.ty, ctx, cast.expression.lazy_span())
                         .map_err(|e| {
-                            reifydb_core::Error(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
+                            error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
                         })?,
                 })
             } // FIXME
