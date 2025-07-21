@@ -3,7 +3,7 @@
 
 use crate::value::{OrderedF32, OrderedF64};
 use crate::row::{EncodedRow, Layout};
-use crate::{Type, Value};
+use crate::{RowId, Type, Value};
 
 impl Layout {
     pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
@@ -105,6 +105,7 @@ impl Layout {
             Type::DateTime => Value::DateTime(self.get_datetime(row, index)),
             Type::Time => Value::Time(self.get_time(row, index)),
             Type::Interval => Value::Interval(self.get_interval(row, index)),
+            Type::RowId => Value::RowId(RowId::new(self.get_u64(row, index))),
             Type::Undefined => Value::Undefined,
         }
     }

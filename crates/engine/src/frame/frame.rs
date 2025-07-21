@@ -41,6 +41,7 @@ impl Frame {
                 Value::DateTime(ref v) => ColumnValues::datetime([v.clone()]),
                 Value::Time(ref v) => ColumnValues::time([v.clone()]),
                 Value::Interval(ref v) => ColumnValues::interval([v.clone()]),
+                Value::RowId(v) => ColumnValues::row_id([v]),
             };
 
             columns.push(FrameColumn { name: name.to_string(), values });

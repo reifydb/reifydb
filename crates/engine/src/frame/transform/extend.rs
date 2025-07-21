@@ -124,6 +124,9 @@ impl Frame {
                         BitVec::new(size, false),
                     ),
                     Type::Undefined => column.values.clone(),
+                    Type::RowId => ColumnValues::row_id(
+                        CowVec::new(vec![Default::default(); size])
+                    ),
                 };
 
                 column.values = new_data;

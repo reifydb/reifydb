@@ -92,6 +92,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
                         Value::Time(v) => layout.set_time(&mut row, table_idx, v),
                         Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
+                        Value::RowId(v) => layout.set_u64(&mut row, table_idx, v.value()),
                         Value::Undefined => layout.set_undefined(&mut row, table_idx),
                     }
                 }

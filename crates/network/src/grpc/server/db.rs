@@ -202,6 +202,7 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                                 GrpcType::IntervalValue(Interval { nanos: i.to_nanos() })
                             }
                             Value::Undefined => GrpcType::UndefinedValue(false),
+                            Value::RowId(row_id) => GrpcType::RowIdValue(row_id.value()),
                         };
                         GrpcValue { r#type: Some(data_type) }
                     })

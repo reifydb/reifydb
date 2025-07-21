@@ -129,6 +129,7 @@ fn create_empty_frame(table: &Table) -> Frame {
                 Type::DateTime => ColumnValues::datetime(vec![]),
                 Type::Time => ColumnValues::time(vec![]),
                 Type::Interval => ColumnValues::interval(vec![]),
+                Type::RowId => ColumnValues::row_id(vec![]),
                 Type::Undefined => ColumnValues::Undefined(0),
             };
             FrameColumn { name, values: data }

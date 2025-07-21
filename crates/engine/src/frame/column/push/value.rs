@@ -224,6 +224,14 @@ impl ColumnValues {
             },
 
             Value::Undefined => self.push_undefined(),
+            Value::RowId(row_id) => {
+                match self {
+                    ColumnValues::RowId(values) => {
+                        values.push(row_id);
+                    }
+                    _ => unimplemented!(),
+                }
+            }
         }
     }
 }

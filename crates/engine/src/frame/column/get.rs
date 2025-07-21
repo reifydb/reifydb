@@ -135,6 +135,7 @@ impl ColumnValues {
                 }
             }
             ColumnValues::Undefined(_) => Value::Undefined,
+            ColumnValues::RowId(v) => Value::RowId(v[index]),
         }
     }
 }

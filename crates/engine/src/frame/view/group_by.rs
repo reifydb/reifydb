@@ -158,6 +158,7 @@ impl Frame {
                         }
                     }
                     ColumnValues::Undefined(_) => Value::Undefined,
+                    ColumnValues::RowId(data) => Value::RowId(data[row_idx]),
                 };
 
                 values.push(value);

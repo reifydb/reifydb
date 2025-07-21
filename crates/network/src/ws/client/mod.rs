@@ -495,5 +495,18 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
             ColumnValues::Interval(CowVec::new(values), bitvec.into())
         }
         Type::Undefined => ColumnValues::Undefined(data.len()),
+        Type::RowId => {
+            let values: Vec<_> = data
+                .into_iter()
+                .map(|s| {
+                    if let Ok(id) = s.parse::<u64>() {
+                        reifydb_core::RowId::new(id)
+                    } else {
+                        reifydb_core::RowId::default()
+                    }
+                })
+                .collect();
+            ColumnValues::row_id(values)
+        }
     }
 }
