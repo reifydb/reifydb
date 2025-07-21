@@ -147,6 +147,7 @@ fn extract_string_value(col: &crate::frame::FrameColumn, row_idx: usize) -> Stri
                 "Undefined".into()
             }
         }
+        ColumnValues::RowId(v) => v[row_idx].to_string(),
         ColumnValues::Undefined(_) => "Undefined".into(),
     };
     escape_control_chars(&s)

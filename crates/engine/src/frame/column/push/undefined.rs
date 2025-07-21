@@ -82,6 +82,9 @@ impl ColumnValues {
             ColumnValues::Undefined(len) => {
                 *len += 1;
             }
+            ColumnValues::RowId(_) => {
+                panic!("RowId columns cannot have undefined values")
+            }
         }
     }
 }

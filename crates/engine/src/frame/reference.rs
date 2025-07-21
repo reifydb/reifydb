@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Value, Date, DateTime, Time, Interval};
+use reifydb_core::{Value, Date, DateTime, Time, Interval, RowId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -37,6 +37,7 @@ pub enum ValueRef<'a> {
     DateTime(&'a DateTime),
     Time(&'a Time),
     Interval(&'a Interval),
+    RowId(&'a RowId),
     Undefined,
 }
 
@@ -61,6 +62,7 @@ impl<'a> ValueRef<'a> {
             ValueRef::DateTime(v) => Value::DateTime((*v).clone()),
             ValueRef::Time(v) => Value::Time((*v).clone()),
             ValueRef::Interval(v) => Value::Interval((*v).clone()),
+            ValueRef::RowId(v) => Value::RowId(**v),
             ValueRef::Undefined => Value::Undefined,
         }
     }
@@ -87,6 +89,7 @@ impl<'a> ToString for ValueRef<'a> {
             ValueRef::DateTime(v) => v.to_string(),
             ValueRef::Time(v) => v.to_string(),
             ValueRef::Interval(v) => v.to_string(),
+            ValueRef::RowId(v) => v.to_string(),
             ValueRef::Undefined => "Undefined".to_string(),
         }
     }

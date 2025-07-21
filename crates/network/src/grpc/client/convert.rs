@@ -382,6 +382,20 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
             }
 
             Type::Undefined => ColumnValues::undefined(values.len()),
+            Type::RowId => {
+                let mut data = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.r#type {
+                        Some(GrpcType::RowIdValue(row_id)) => {
+                            data.push(reifydb_core::RowId::new(row_id));
+                        }
+                        _ => {
+                            data.push(reifydb_core::RowId::default());
+                        }
+                    }
+                }
+                ColumnValues::row_id(data)
+            }
         };
 
         columns.push(FrameColumn { name: name.clone(), values: column_values });

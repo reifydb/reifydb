@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
+use reifydb_core::CowVec;
 
 impl ColumnValues {
     pub fn reorder(&mut self, indices: &[usize]) {
@@ -80,6 +81,11 @@ impl ColumnValues {
             }
             ColumnValues::Undefined(len) => {
                 *len = indices.len();
+            }
+            ColumnValues::RowId(values) => {
+                let old_values = values.clone();
+                let new_values: Vec<_> = indices.iter().map(|&i| old_values[i]).collect();
+                *values = CowVec::new(new_values);
             }
         }
     }

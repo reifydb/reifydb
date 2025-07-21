@@ -239,6 +239,9 @@ impl Evaluator {
             ColumnValues::Interval(_, _) => {
                 unimplemented!()
             }
+            ColumnValues::RowId(_) => {
+                unimplemented!("Cannot apply prefix operator to RowId")
+            }
         }
     }
 }

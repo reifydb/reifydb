@@ -286,6 +286,16 @@ impl ColumnValues {
             ColumnValues::Undefined(len) => {
                 *len = mask.count_ones();
             }
+
+            ColumnValues::RowId(values) => {
+                let mut new_values = Vec::new();
+                for (i, _) in values.iter().enumerate() {
+                    if mask.get(i) {
+                        new_values.push(values[i]);
+                    }
+                }
+                *values = CowVec::new(new_values);
+            }
         }
 
         Ok(())

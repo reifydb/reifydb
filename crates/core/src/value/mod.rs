@@ -13,6 +13,7 @@ mod is;
 pub mod number;
 mod ordered_f32;
 mod ordered_f64;
+pub mod row_id;
 pub mod temporal;
 mod time;
 mod r#type;
@@ -23,6 +24,7 @@ pub use interval::Interval;
 pub use is::*;
 pub use ordered_f32::OrderedF32;
 pub use ordered_f64::OrderedF64;
+pub use row_id::RowId;
 pub use time::Time;
 pub use r#type::{GetType, Type};
 
@@ -67,6 +69,8 @@ pub enum Value {
     Time(Time),
     /// An interval representing a duration
     Interval(Interval),
+    /// A row identifier (8-byte unsigned integer)
+    RowId(RowId),
 }
 
 impl Value {
@@ -103,7 +107,8 @@ impl Value {
             | Value::Uint2(_)
             | Value::Uint4(_)
             | Value::Uint8(_)
-            | Value::Uint16(_) => Value::Undefined,
+            | Value::Uint16(_)
+            | Value::RowId(_) => Value::Undefined,
         }
     }
 }
@@ -129,6 +134,7 @@ impl PartialOrd for Value {
             (Value::DateTime(l), Value::DateTime(r)) => l.partial_cmp(r),
             (Value::Time(l), Value::Time(r)) => l.partial_cmp(r),
             (Value::Interval(l), Value::Interval(r)) => l.partial_cmp(r),
+            (Value::RowId(l), Value::RowId(r)) => l.partial_cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -155,6 +161,7 @@ impl Ord for Value {
             (Value::DateTime(l), Value::DateTime(r)) => l.cmp(r),
             (Value::Time(l), Value::Time(r)) => l.cmp(r),
             (Value::Interval(l), Value::Interval(r)) => l.cmp(r),
+            (Value::RowId(l), Value::RowId(r)) => l.cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -182,6 +189,7 @@ impl Display for Value {
             Value::DateTime(value) => Display::fmt(value, f),
             Value::Time(value) => Display::fmt(value, f),
             Value::Interval(value) => Display::fmt(value, f),
+            Value::RowId(value) => Display::fmt(value, f),
             Value::Undefined => f.write_str("undefined"),
         }
     }
@@ -209,6 +217,7 @@ impl Value {
             Value::DateTime(_) => Type::DateTime,
             Value::Time(_) => Type::Time,
             Value::Interval(_) => Type::Interval,
+            Value::RowId(_) => Type::RowId,
         }
     }
 }

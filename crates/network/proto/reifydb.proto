@@ -70,6 +70,7 @@ message Value {
     DateTime datetime_value = 17;
     Time time_value = 18;
     Interval interval_value = 19;
+    uint64 row_id_value = 20;
   }
 }
 
@@ -148,4 +149,5 @@ enum Type {
   DATETIME = 0x10;
   TIME = 0x11;
   INTERVAL = 0x12;
+  ROW_ID = 0x13;
 }
