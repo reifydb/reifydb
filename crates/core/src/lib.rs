@@ -13,6 +13,8 @@ pub use interface::{BorrowedSpan, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, Sp
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
 pub use value::{Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, Time, Type, Value};
 
+// Note: error! and return_error! macros are automatically available due to #[macro_export]
+
 pub mod clock;
 pub mod delta;
 pub mod error;

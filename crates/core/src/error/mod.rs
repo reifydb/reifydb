@@ -5,6 +5,7 @@ use std::fmt::{Display, Formatter};
 use serde::{de, ser};
 
 pub mod diagnostic;
+mod r#macro;
 
 #[derive(Debug, PartialEq)]
 pub struct Error(pub diagnostic::Diagnostic);
