@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::Error;
 use crate::execute::{Batch, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::SortDirection::{Asc, Desc};
@@ -55,8 +54,8 @@ impl ExecutionPlan for SortNode {
                     .columns
                     .iter()
                     .find(|c| c.name == key.column.fragment)
-                    .ok_or_else(|| Error(query::column_not_found(key.column.clone())))?;
-                Ok::<_, crate::Error>((&col.values, &key.direction))
+                    .ok_or_else(|| reifydb_core::Error(query::column_not_found(key.column.clone())))?;
+                Ok::<_, reifydb_core::Error>((&col.values, &key.direction))
             })
             .collect::<Result<Vec<_>, _>>()?;
 

@@ -47,14 +47,14 @@ impl Convert for &EvaluationContext {
                 .checked_convert()
                 .ok_or_else(|| {
                     if From::get_type().is_integer() && To::get_type().is_floating_point() {
-                        return crate::evaluate::Error(integer_precision_loss(
+                        return reifydb_core::Error(integer_precision_loss(
                             span.into_span(),
                             From::get_type(),
                             To::get_type(),
                         ));
                     };
 
-                    return crate::evaluate::Error(number_out_of_range(
+                    return reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         To::get_type(),
                     ));

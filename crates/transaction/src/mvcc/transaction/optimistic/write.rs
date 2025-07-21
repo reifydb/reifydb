@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::mvcc::error::*;
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
 use crate::mvcc::transaction::iter::TransactionIter;

@@ -24,7 +24,7 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(number_out_of_range(
+                    return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         R::get_type(),
                     )));
@@ -32,7 +32,7 @@ impl EvaluationContext {
 
                 lp.checked_add(rp)
                     .ok_or_else(|| {
-                        return crate::evaluate::Error(number_out_of_range(
+                        return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
                             R::get_type(),
                         ));
@@ -69,7 +69,7 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(number_out_of_range(
+                    return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         R::get_type(),
                     )));
@@ -77,7 +77,7 @@ impl EvaluationContext {
 
                 lp.checked_sub(rp)
                     .ok_or_else(|| {
-                        return crate::evaluate::Error(number_out_of_range(
+                        return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
                             R::get_type(),
                         ));
@@ -114,7 +114,7 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(number_out_of_range(
+                    return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         R::get_type(),
                     )));
@@ -122,7 +122,7 @@ impl EvaluationContext {
 
                 lp.checked_mul(rp)
                     .ok_or_else(|| {
-                        return crate::evaluate::Error(number_out_of_range(
+                        return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
                             R::get_type(),
                         ));
@@ -159,7 +159,7 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(number_out_of_range(
+                    return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         R::get_type(),
                     )));
@@ -167,7 +167,7 @@ impl EvaluationContext {
 
                 lp.checked_div(rp)
                     .ok_or_else(|| {
-                        return crate::evaluate::Error(number_out_of_range(
+                        return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
                             R::get_type(),
                         ));
@@ -204,7 +204,7 @@ impl EvaluationContext {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(crate::evaluate::Error(number_out_of_range(
+                    return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         R::get_type(),
                     )));
@@ -212,7 +212,7 @@ impl EvaluationContext {
 
                 lp.checked_rem(rp)
                     .ok_or_else(|| {
-                        return crate::evaluate::Error(number_out_of_range(
+                        return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
                             R::get_type(),
                         ));

@@ -117,7 +117,7 @@ fn parse_keys_and_aggregates<'a>(
                 keys.push(c.0.fragment.as_str());
                 projections
                     .push(Projection::Group { column: c.0.fragment.to_string(), alias: c.span() })
-            } // _ => return Err(crate::Error::Unsupported("Non-column group by not supported".into())),
+            } // _ => return Err(reifydb_core::Error::Unsupported("Non-column group by not supported".into())),
             _ => panic!("Non-column group by not supported"),
         }
     }
@@ -135,11 +135,11 @@ fn parse_keys_and_aggregates<'a>(
                             function,
                         });
                     }
-                    // _ => return Err(crate::Error::Unsupported("Aggregate args must be columns".into())),
+                    // _ => return Err(reifydb_core::Error::Unsupported("Aggregate args must be columns".into())),
                     _ => panic!(),
                 }
             }
-            // _ => return Err(crate::Error::Unsupported("Expected aggregate call expression".into())),
+            // _ => return Err(reifydb_core::Error::Unsupported("Expected aggregate call expression".into())),
             _ => panic!(),
         }
     }

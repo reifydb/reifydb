@@ -2,8 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::diagnostic::{DefaultRenderer, Diagnostic};
-#[cfg(any(feature = "server", feature = "client"))]
-use reifydb_network::NetworkError;
 use std::fmt::{Display, Formatter};
 use tonic::Status;
 

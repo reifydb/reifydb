@@ -2,12 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{FrameColumn, ColumnValues};
-pub use error::*;
 pub use registry::Functions;
 use reifydb_core::{BitVec, Value, Error};
 use std::collections::HashMap;
-
-mod error;
 pub mod math;
 mod registry;
 

@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::error;
-use crate::evaluate::Error;
 use crate::frame::ColumnValues;
 use reifydb_core::diagnostic::boolean::invalid_number_boolean;
 use reifydb_core::value::boolean::parse_bool;

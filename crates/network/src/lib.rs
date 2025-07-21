@@ -6,11 +6,9 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use error::NetworkError;
+pub type NetworkError = reifydb_core::Error;
 
 #[cfg(feature = "grpc")]
 pub mod grpc;
-
-mod error;
 #[cfg(feature = "websocket")]
 pub mod ws;

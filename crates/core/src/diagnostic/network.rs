@@ -1,17 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-// Re-export core::Error as the unified error type for this crate
-pub use reifydb_core::Error;
+use crate::diagnostic::Diagnostic;
 
-// Type alias for backward compatibility
-pub type NetworkError = reifydb_core::Error;
-
-// Helper functions to create specific network errors
-use reifydb_core::diagnostic::Diagnostic;
-
-pub fn connection_error(message: String) -> reifydb_core::Error {
-    reifydb_core::Error(Diagnostic {
+/// Network connection error occurred
+pub fn connection_error(message: String) -> Diagnostic {
+    Diagnostic {
         code: "NET_001".to_string(),
         statement: None,
         message: format!("Connection error: {}", message),
@@ -21,11 +15,12 @@ pub fn connection_error(message: String) -> reifydb_core::Error {
         help: Some("Check network connectivity and server status".to_string()),
         notes: vec![],
         cause: None,
-    })
+    }
 }
 
-pub fn engine_error(message: String) -> reifydb_core::Error {
-    reifydb_core::Error(Diagnostic {
+/// Engine processing error on the network layer
+pub fn engine_error(message: String) -> Diagnostic {
+    Diagnostic {
         code: "NET_002".to_string(),
         statement: None,
         message: format!("Engine error: {}", message),
@@ -35,16 +30,12 @@ pub fn engine_error(message: String) -> reifydb_core::Error {
         help: None,
         notes: vec![],
         cause: None,
-    })
+    }
 }
 
-pub fn execution_error(diagnostic: reifydb_core::diagnostic::Diagnostic) -> reifydb_core::Error {
-    reifydb_core::Error(diagnostic)
-}
-
-// Network-specific error conversion functions
-pub fn transport_error(err: tonic::transport::Error) -> reifydb_core::Error {
-    reifydb_core::Error(Diagnostic {
+/// gRPC transport layer error
+pub fn transport_error(err: impl std::fmt::Display) -> Diagnostic {
+    Diagnostic {
         code: "NET_003".to_string(),
         statement: None,
         message: format!("Transport error: {}", err),
@@ -54,19 +45,20 @@ pub fn transport_error(err: tonic::transport::Error) -> reifydb_core::Error {
         help: Some("Check network connectivity".to_string()),
         notes: vec![],
         cause: None,
-    })
+    }
 }
 
-pub fn status_error(err: tonic::Status) -> reifydb_core::Error {
-    reifydb_core::Error(Diagnostic {
+/// gRPC status error
+pub fn status_error(err: impl std::fmt::Display) -> Diagnostic {
+    Diagnostic {
         code: "NET_004".to_string(),
         statement: None,
-        message: format!("gRPC status error: {}", err.message()),
+        message: format!("gRPC status error: {}", err),
         column: None,
         span: None,
         label: None,
         help: Some("Check gRPC service status".to_string()),
         notes: vec![],
         cause: None,
-    })
+    }
 }

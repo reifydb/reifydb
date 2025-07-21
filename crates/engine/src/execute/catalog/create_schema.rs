@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Error;
 use crate::execute::Executor;
 use crate::frame::Frame;
 use reifydb_catalog::Catalog;

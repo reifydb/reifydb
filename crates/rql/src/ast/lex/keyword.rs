@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::{Token, TokenKind, as_span, Error};
-use crate::ast::lex::error::lex_error;
+use crate::ast::lex::{Token, TokenKind, as_span};
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::tag_no_case;
@@ -31,13 +30,13 @@ macro_rules! keyword {
         }
 
         impl TryFrom<&str> for Keyword {
-            type Error = Error;
+            type Error = reifydb_core::Error;
 
             fn try_from(value: &str) -> Result<Self, Self::Error> {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
-                    _ => Err(lex_error("not a keyword".to_string()))
+                    _ => Err(reifydb_core::Error(reifydb_core::diagnostic::ast::lex_error("not a keyword".to_string())))
                 }
             }
         }

@@ -49,7 +49,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use crate::ast::lex::lex;
-    use crate::ast::parse::{Parser, invalid_policy_error};
+    use crate::ast::parse::Parser;
     use crate::ast::{AstCreate, AstCreateTable, AstPolicyKind};
 
     #[test]

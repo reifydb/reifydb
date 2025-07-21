@@ -45,7 +45,7 @@ pub(crate) enum Precedence {
     Primary,
 }
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, reifydb_core::Error>;
 
 pub(crate) fn parse<'a>(tokens: Vec<Token>) -> Result<Vec<AstStatement>> {
     let mut parser = Parser::new(tokens);
@@ -125,7 +125,7 @@ impl Parser {
     }
 
     pub(crate) fn advance(&mut self) -> Result<Token> {
-        self.tokens.pop().ok_or(unexpected_eof_error())
+        self.tokens.pop().ok_or(reifydb_core::Error(reifydb_core::diagnostic::ast::unexpected_eof_error()))
     }
 
     pub(crate) fn consume(&mut self, expected: TokenKind) -> Result<Token> {
@@ -166,7 +166,7 @@ impl Parser {
     }
 
     pub(crate) fn current(&self) -> Result<&Token> {
-        self.tokens.last().ok_or(unexpected_eof_error())
+        self.tokens.last().ok_or(reifydb_core::Error(reifydb_core::diagnostic::ast::unexpected_eof_error()))
     }
 
     pub(crate) fn current_expect(&self, expected: TokenKind) -> Result<()> {
@@ -228,13 +228,13 @@ mod tests {
     use crate::ast::lex::{TokenKind, lex};
     // unexpected_eof_error() variant no longer exists - using helper function instead
     use crate::ast::parse::Precedence::Term;
-    use crate::ast::parse::{Error, Parser, Precedence, error::unexpected_eof_error};
+    use crate::ast::parse::{Parser, Precedence};
 
     #[test]
     fn test_advance_but_eof() {
         let mut parser = Parser::new(vec![]);
         let result = parser.advance();
-        assert_eq!(result, Err(unexpected_eof_error()))
+        assert_eq!(result, Err(reifydb_core::Error(reifydb_core::diagnostic::ast::unexpected_eof_error())))
     }
 
     #[test]
@@ -260,7 +260,7 @@ mod tests {
         let tokens = lex("").unwrap();
         let mut parser = Parser::new(tokens);
         let err = parser.consume(Identifier).err().unwrap();
-        assert_eq!(err, unexpected_eof_error())
+        assert_eq!(err, reifydb_core::Error(reifydb_core::diagnostic::ast::unexpected_eof_error()))
     }
 
     #[test]
@@ -318,7 +318,7 @@ mod tests {
         let tokens = lex("").unwrap();
         let parser = Parser::new(tokens);
         let result = parser.current();
-        assert_eq!(result, Err(unexpected_eof_error()))
+        assert_eq!(result, Err(reifydb_core::Error(reifydb_core::diagnostic::ast::unexpected_eof_error())))
     }
 
     #[test]
@@ -340,7 +340,7 @@ mod tests {
         let tokens = lex("").unwrap();
         let parser = Parser::new(tokens);
         let result = parser.current_expect(Separator(Semicolon));
-        assert_eq!(result, Err(unexpected_eof_error()))
+        assert_eq!(result, Err(reifydb_core::Error(reifydb_core::diagnostic::ast::unexpected_eof_error())))
     }
 
     #[test]

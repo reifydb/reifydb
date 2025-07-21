@@ -1,14 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+pub mod ast;
+pub mod auth;
 pub mod boolean;
 pub mod cast;
 pub mod catalog;
+pub mod engine;
+pub mod function;
+pub mod network;
 pub mod number;
 pub mod parse;
 pub mod query;
 pub mod sequence;
+pub mod serialization;
 pub mod temporal;
+pub mod transaction;
 mod util;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

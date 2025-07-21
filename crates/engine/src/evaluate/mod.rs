@@ -5,8 +5,6 @@ use crate::frame::FrameColumn;
 use reifydb_rql::expression::Expression;
 
 use crate::function::{Functions, math};
-pub use error::Error;
-
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
 
 mod access;
@@ -18,10 +16,9 @@ mod column;
 mod compare;
 pub(crate) mod constant;
 mod context;
-mod error;
 mod prefix;
 
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, reifydb_core::Error>;
 
 pub(crate) struct Evaluator {
     functions: Functions,
@@ -77,7 +74,7 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> Result<FrameColum
         column.values = column
             .values
             .cast(ty, ctx, expr.lazy_span())
-            .map_err(|e| Error(e.diagnostic()))?;
+            .map_err(|e| reifydb_core::Error(e.diagnostic()))?;
         Ok(column)
     } else {
         evaluator.evaluate(expr, ctx)

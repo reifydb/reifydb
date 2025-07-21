@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::error;
-use crate::evaluate::{Convert, Demote, Error, Promote};
+use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::diagnostic::cast;
 use reifydb_core::value::number::{
@@ -122,13 +121,13 @@ impl ColumnValues {
 macro_rules! parse_and_push {
     (parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
         let result = parse_int::<$ty>($temp_span).map_err(|e| {
-            Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
+            reifydb_core::Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
         })?;
         $out.push::<$ty>(result);
     }};
     (parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
         let result = parse_uint::<$ty>($temp_span).map_err(|e| {
-            Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
+            reifydb_core::Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
         })?;
         $out.push::<$ty>(result);
     }};
@@ -264,7 +263,7 @@ impl ColumnValues {
                     match target {
                         Type::Float4 => {
                             out.push::<f32>(parse_float::<f32>(temp_span).map_err(|e| {
-                                Error(cast::invalid_number(
+                                reifydb_core::Error(cast::invalid_number(
                                     base_span.clone(),
                                     Type::Float4,
                                     e.diagnostic(),
@@ -274,7 +273,7 @@ impl ColumnValues {
 
                         Type::Float8 => {
                             out.push::<f64>(parse_float::<f64>(temp_span).map_err(|e| {
-                                Error(cast::invalid_number(
+                                reifydb_core::Error(cast::invalid_number(
                                     base_span.clone(),
                                     Type::Float8,
                                     e.diagnostic(),

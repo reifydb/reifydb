@@ -46,7 +46,7 @@ impl Demote for &EvaluationContext {
             ColumnSaturationPolicy::Error => from
                 .checked_demote()
                 .ok_or_else(|| {
-                    return crate::evaluate::Error(number_out_of_range(
+                    return reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         To::get_type(),
                     ));

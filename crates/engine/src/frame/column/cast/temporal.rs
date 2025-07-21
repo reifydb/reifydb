@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::evaluate::Error;
 use crate::frame::ColumnValues;
 use reifydb_core::diagnostic::cast;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
@@ -50,7 +49,7 @@ macro_rules! impl_to_temporal {
                         }
 
                         e.0.update_spans(&proper_span);
-                        Error(cast::invalid_temporal(proper_span, $target_type, e.0))
+                        reifydb_core::Error(cast::invalid_temporal(proper_span, $target_type, e.0))
                     })?;
 
                     out.push::<$type>(parsed);

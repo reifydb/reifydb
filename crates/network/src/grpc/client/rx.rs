@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use crate::error::NetworkError;
+use crate::NetworkError;
 use crate::grpc::client::convert::{convert_diagnostic, convert_frame};
 use crate::grpc::client::{GrpcClient, grpc};
 use grpc::rx_result::Result as RxResultEnum;
@@ -12,7 +12,7 @@ use tonic::metadata::MetadataValue;
 impl GrpcClient {
     pub async fn rx(&self, query: &str) -> Result<Vec<Frame>, NetworkError> {
         let uri = format!("http://{}", self.socket_addr);
-        let mut client = grpc::db_client::DbClient::connect(uri).await.map_err(crate::error::transport_error)?;
+        let mut client = grpc::db_client::DbClient::connect(uri).await.map_err(|e| reifydb_core::Error(reifydb_core::diagnostic::network::transport_error(e)))?;
 
         let mut request = tonic::Request::new(grpc::RxRequest { query: query.into() });
 
@@ -22,7 +22,7 @@ impl GrpcClient {
 
         let mut results = Vec::new();
 
-        let mut stream = client.rx(request).await.map_err(crate::error::status_error)?.into_inner();
+        let mut stream = client.rx(request).await.map_err(|e| reifydb_core::Error(reifydb_core::diagnostic::network::status_error(e)))?.into_inner();
         while let Some(msg) = stream.message().await.unwrap() {
             if let Some(result) = msg.result {
                 results.push(convert_result(result, query)?);
@@ -37,7 +37,7 @@ pub fn convert_result(result: RxResultEnum, query: &str) -> Result<Frame, Networ
         RxResultEnum::Error(diagnostic) => {
             let mut diag = convert_diagnostic(diagnostic);
             diag.set_statement(query.to_string());
-            Err(crate::error::execution_error(diag))
+            Err(reifydb_core::Error(diag))
         }
         RxResultEnum::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),
     }
