@@ -11,7 +11,7 @@ pub use row::key::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
 pub use interface::{BorrowedSpan, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine};
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
-pub use value::{Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, Time, Type, Value};
+pub use value::{Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, RowId, Time, Type, Value};
 
 // Note: error! and return_error! macros are automatically available due to #[macro_export]
 

@@ -9,7 +9,8 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::{CowVec, Date, DateTime, Error, Interval, Time, Type};
+use reifydb_core::{CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type};
+use reifydb_core::value::temporal::parse_interval;
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -234,92 +235,13 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
     result
 }
 
-// FIXME this is duplicated - move this into a the core crate - like promote, demote, convert
-/// Parse interval from ISO 8601 duration string (e.g., P1D, PT2H30M, P428DT4H5M6S)
+/// Parse interval from ISO 8601 duration string using core parser (eliminates approximation)
 fn parse_interval_string(s: &str) -> Result<Interval, ()> {
-    if s.len() < 2 || !s.starts_with('P') {
-        return Err(());
-    }
-
-    let mut chars = s.chars().skip(1); // Skip 'P'
-    let mut total_nanos = 0i64;
-    let mut current_number = String::new();
-    let mut in_time_part = false;
-
-    while let Some(c) = chars.next() {
-        match c {
-            'T' => {
-                in_time_part = true;
-            }
-            '0'..='9' => {
-                current_number.push(c);
-            }
-            'Y' => {
-                if in_time_part || current_number.is_empty() {
-                    return Err(());
-                }
-                let years: i64 = current_number.parse().map_err(|_| ())?;
-                total_nanos += years * 365 * 24 * 60 * 60 * 1_000_000_000; // Approximate
-                current_number.clear();
-            }
-            'M' => {
-                if current_number.is_empty() {
-                    return Err(());
-                }
-                let value: i64 = current_number.parse().map_err(|_| ())?;
-                if in_time_part {
-                    total_nanos += value * 60 * 1_000_000_000; // Minutes
-                } else {
-                    total_nanos += value * 30 * 24 * 60 * 60 * 1_000_000_000; // Months (approximate)
-                }
-                current_number.clear();
-            }
-            'W' => {
-                if in_time_part || current_number.is_empty() {
-                    return Err(());
-                }
-                let weeks: i64 = current_number.parse().map_err(|_| ())?;
-                total_nanos += weeks * 7 * 24 * 60 * 60 * 1_000_000_000;
-                current_number.clear();
-            }
-            'D' => {
-                if in_time_part || current_number.is_empty() {
-                    return Err(());
-                }
-                let days: i64 = current_number.parse().map_err(|_| ())?;
-                total_nanos += days * 24 * 60 * 60 * 1_000_000_000;
-                current_number.clear();
-            }
-            'H' => {
-                if !in_time_part || current_number.is_empty() {
-                    return Err(());
-                }
-                let hours: i64 = current_number.parse().map_err(|_| ())?;
-                total_nanos += hours * 60 * 60 * 1_000_000_000;
-                current_number.clear();
-            }
-            'S' => {
-                if !in_time_part || current_number.is_empty() {
-                    return Err(());
-                }
-                let seconds: i64 = current_number.parse().map_err(|_| ())?;
-                total_nanos += seconds * 1_000_000_000;
-                current_number.clear();
-            }
-            _ => {
-                return Err(());
-            }
-        }
-    }
-
-    if !current_number.is_empty() {
-        return Err(());
-    }
-
-    Ok(Interval::from_nanos(total_nanos))
+    let span = OwnedSpan::testing(s);
+    parse_interval(span).map_err(|_| ())
 }
 
-fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
+fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
     let bitvec: Vec<bool> = data.iter().map(|s| s != "⟪undefined⟫").collect();
 
     macro_rules! parse {
@@ -338,7 +260,7 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
         }};
     }
 
-    match ty {
+    match target {
         Type::Bool => {
             let values: Vec<bool> = data
                 .iter()
@@ -495,5 +417,22 @@ fn convert_column_values(ty: Type, data: Vec<String>) -> ColumnValues {
             ColumnValues::Interval(CowVec::new(values), bitvec.into())
         }
         Type::Undefined => ColumnValues::Undefined(data.len()),
+        Type::RowId => {
+            let values: Vec<_> = data
+                .into_iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        RowId::default()
+                    } else {
+                        if let Ok(id) = s.parse::<u64>() {
+                            RowId::new(id)
+                        } else {
+                            RowId::default()
+                        }
+                    }
+                })
+                .collect();
+            ColumnValues::RowId(CowVec::new(values), bitvec.into())
+        }
     }
 }

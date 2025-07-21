@@ -51,6 +51,7 @@ pub enum Ast {
     Infix(AstInfix),
     Inline(AstInline),
     AstInsert(AstInsert),
+    AstUpdate(AstUpdate),
     Join(AstJoin),
     Take(AstTake),
     List(AstList),
@@ -86,6 +87,7 @@ impl Ast {
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
             Ast::AstInsert(node) => &node.token,
+            Ast::AstUpdate(node) => &node.token,
             Ast::Take(node) => &node.token,
             Ast::List(node) => &node.token,
             Ast::Literal(node) => match node {
@@ -183,6 +185,13 @@ impl Ast {
     }
     pub fn as_insert(&self) -> &AstInsert {
         if let Ast::AstInsert(result) = self { result } else { panic!("not insert") }
+    }
+
+    pub fn is_update(&self) -> bool {
+        matches!(self, Ast::AstUpdate(_))
+    }
+    pub fn as_update(&self) -> &AstUpdate {
+        if let Ast::AstUpdate(result) = self { result } else { panic!("not update") }
     }
 
     pub fn is_join(&self) -> bool {
@@ -551,6 +560,13 @@ pub struct AstInfix {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstInsert {
+    pub token: Token,
+    pub schema: Option<AstIdentifier>,
+    pub table: AstIdentifier,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstUpdate {
     pub token: Token,
     pub schema: Option<AstIdentifier>,
     pub table: AstIdentifier,

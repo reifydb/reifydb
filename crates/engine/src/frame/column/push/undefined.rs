@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
-use reifydb_core::{Date, DateTime, Interval, Time};
+use reifydb_core::{Date, DateTime, Interval, Time, RowId};
 
 impl ColumnValues {
     pub fn push_undefined(&mut self) {
@@ -81,6 +81,10 @@ impl ColumnValues {
             }
             ColumnValues::Undefined(len) => {
                 *len += 1;
+            }
+            ColumnValues::RowId(values, bitvec) => {
+                values.push(RowId::default());
+                bitvec.push(false);
             }
         }
     }

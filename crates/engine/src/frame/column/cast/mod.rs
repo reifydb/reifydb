@@ -9,6 +9,7 @@ pub mod text;
 use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::{OwnedSpan, Type};
+use reifydb_core::error::diagnostic::cast;
 
 impl ColumnValues {
     pub fn cast(
@@ -21,9 +22,12 @@ impl ColumnValues {
             _ if target == self.get_type() => Ok(self.clone()),
             _ if target.is_number() => self.to_number(target, ctx, span),
             _ if target.is_bool() => self.to_boolean(span),
-            _ if target.is_utf8() => self.to_text(),
+            _ if target.is_utf8() => self.to_text(span),
             _ if target.is_temporal() => self.to_temporal(target, span),
-            _ => unreachable!(),
+            _ => {
+                let source_type = self.get_type();
+                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
+            },
         }
     }
 }

@@ -53,6 +53,7 @@ fn render_physical_plan_inner(
         PhysicalPlan::CreateSchema(_) => unimplemented!(),
         PhysicalPlan::CreateTable(_) => unimplemented!(),
         PhysicalPlan::Insert(_) => unimplemented!(),
+        PhysicalPlan::Update(_) => unimplemented!(),
         PhysicalPlan::Aggregate(physical::AggregateNode { by, map, input }) => {
             let label = format!(
                 "Aggregate by: [{}], map: [{}]",

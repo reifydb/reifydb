@@ -199,60 +199,6 @@ impl Span for &OwnedSpan {
     }
 }
 
-impl Span for &mut OwnedSpan {
-    type SubSpan = OwnedSpan;
-
-    fn fragment(&self) -> &str {
-        &self.fragment
-    }
-
-    fn line(&self) -> SpanLine {
-        self.line
-    }
-
-    fn column(&self) -> SpanColumn {
-        self.column
-    }
-
-    fn split(&self, delimiter: char) -> Vec<Self::SubSpan> {
-        let parts: Vec<&str> = self.fragment.split(delimiter).collect();
-        let mut result = Vec::new();
-        let mut current_column = self.column.0;
-
-        for part in parts {
-            let part_span = OwnedSpan {
-                column: SpanColumn(current_column),
-                line: self.line,
-                fragment: part.to_string(),
-            };
-            result.push(part_span);
-            // Move column forward by part length + 1 (for the delimiter)
-            current_column += part.len() as u32 + 1;
-        }
-
-        result
-    }
-
-    fn to_owned(self) -> OwnedSpan {
-        self.clone()
-    }
-
-    fn sub_span(&self, offset: usize, length: usize) -> Self::SubSpan {
-        let end = std::cmp::min(offset + length, self.fragment.len());
-        let fragment = if offset < self.fragment.len() {
-            self.fragment[offset..end].to_string()
-        } else {
-            String::new()
-        };
-
-        OwnedSpan {
-            column: SpanColumn(self.column.0 + offset as u32),
-            line: self.line,
-            fragment,
-        }
-    }
-}
-
 impl PartialOrd for OwnedSpan {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))

@@ -158,6 +158,13 @@ impl Frame {
                         }
                     }
                     ColumnValues::Undefined(_) => Value::Undefined,
+                    ColumnValues::RowId(data, bitvec) => {
+                        if bitvec.get(row_idx) {
+                            Value::RowId(data[row_idx])
+                        } else {
+                            Value::Undefined
+                        }
+                    }
                 };
 
                 values.push(value);

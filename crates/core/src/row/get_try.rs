@@ -456,6 +456,7 @@ mod tests {
 
         let test_interval = Interval::from_days(30);
         layout.set_interval(&mut row, 0, test_interval.clone());
+        // With the new storage format, the exact structure is preserved
         assert_eq!(layout.try_get_interval(&row, 0), Some(test_interval));
     }
 
@@ -514,6 +515,7 @@ mod tests {
         assert_eq!(layout.try_get_date(&row, 0), Some(test_date));
         assert_eq!(layout.try_get_datetime(&row, 1), Some(test_datetime.clone()));
         assert_eq!(layout.try_get_time(&row, 2), Some(test_time));
+        // With the new storage format, the exact structure is preserved
         assert_eq!(layout.try_get_interval(&row, 3), Some(test_interval.clone()));
 
         // Set some fields as undefined

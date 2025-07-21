@@ -10,6 +10,7 @@ use reifydb_core::Type;
 use reifydb_core::EncodedKeyRange;
 use reifydb_core::interface::Rx;
 use reifydb_core::row::Layout;
+use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::sync::Arc;
 
 pub(crate) struct ScanFrameNode {
@@ -40,7 +41,7 @@ impl ScanFrameNode {
 }
 
 impl ExecutionPlan for ScanFrameNode {
-    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.exhausted {
             return Ok(None);
         }
@@ -56,32 +57,37 @@ impl ExecutionPlan for ScanFrameNode {
         };
 
         let mut batch_rows = Vec::new();
+        let mut row_ids = if ctx.preserve_row_ids { Some(Vec::new()) } else { None };
         let mut rows_collected = 0;
         let mut new_last_key = None;
 
         let versioned_rows: Vec<_> = rx.scan_range(range)?.into_iter().collect();
 
         for versioned in versioned_rows.into_iter() {
+            // Decode the table row key to extract the RowId
+            let table_row_key = Key::decode(&versioned.key).and_then(|k| match k {
+                Key::TableRow(tr_key) => Some(tr_key),
+                _ => None,
+            });
+
             // Skip the first row if it matches our last_key (to avoid duplicates)
             if let Some(last_key) = &self.last_key {
-                if Key::decode(&versioned.key).and_then(|k| match k {
-                    Key::TableRow(tr_key) => Some(tr_key),
-                    _ => None,
-                }) == Some(last_key.clone())
-                {
+                if table_row_key == Some(last_key.clone()) {
                     continue;
                 }
             }
 
-            batch_rows.push(versioned.row);
-            new_last_key = Key::decode(&versioned.key).and_then(|k| match k {
-                Key::TableRow(tr_key) => Some(tr_key),
-                _ => None,
-            });
-            rows_collected += 1;
+            if let Some(tr_key) = &table_row_key {
+                batch_rows.push(versioned.row);
+                if let Some(ref mut row_ids_vec) = row_ids {
+                    row_ids_vec.push(tr_key.row);
+                }
+                new_last_key = table_row_key;
+                rows_collected += 1;
 
-            if rows_collected >= batch_size {
-                break;
+                if rows_collected >= batch_size {
+                    break;
+                }
             }
         }
 
@@ -94,6 +100,18 @@ impl ExecutionPlan for ScanFrameNode {
 
         let mut frame = create_empty_frame(&self.table);
         frame.append_rows(&self.row_layout, batch_rows.into_iter())?;
+
+        // Add the RowId column to the frame if requested
+        if let Some(row_ids_vec) = row_ids {
+            if !row_ids_vec.is_empty() {
+                let row_id_column = FrameColumn {
+                    name: ROW_ID_COLUMN_NAME.to_string(),
+                    values: ColumnValues::row_id(row_ids_vec),
+                };
+                frame.columns.push(row_id_column);
+                frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);
+            }
+        }
 
         let mask = BitVec::new(frame.row_count(), true);
         Ok(Some(Batch { frame, mask }))
@@ -129,6 +147,7 @@ fn create_empty_frame(table: &Table) -> Frame {
                 Type::DateTime => ColumnValues::datetime(vec![]),
                 Type::Time => ColumnValues::time(vec![]),
                 Type::Interval => ColumnValues::interval(vec![]),
+                Type::RowId => ColumnValues::row_id(vec![]),
                 Type::Undefined => ColumnValues::Undefined(0),
             };
             FrameColumn { name, values: data }

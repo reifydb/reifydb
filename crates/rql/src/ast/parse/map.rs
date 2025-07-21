@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::Keyword;
-use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
+use crate::ast::lex::Operator::{CloseCurly, Colon, OpenCurly};
 use crate::ast::lex::Separator::Comma;
-use crate::ast::parse::{Parser, Precedence, passthrough_error};
-use crate::ast::{AstMap, parse};
+use crate::ast::lex::{Keyword, TokenKind};
+use crate::ast::parse::{error, Parser, Precedence, passthrough_error};
+use crate::ast::{Ast, AstInfix, AstMap, InfixOperator, parse};
 use reifydb_core::error::diagnostic::parse::multiple_expressions_without_braces;
 
 impl Parser {
@@ -21,7 +21,12 @@ impl Parser {
 
         let mut nodes = Vec::new();
         loop {
-            nodes.push(self.parse_node(Precedence::None)?);
+            // Try to parse colon-based syntax first (e.g., "col: expression")
+            if let Ok(alias_expr) = self.try_parse_colon_alias() {
+                nodes.push(alias_expr);
+            } else {
+                nodes.push(self.parse_node(Precedence::None)?);
+            }
 
             if self.is_eof() {
                 break;
@@ -48,6 +53,39 @@ impl Parser {
         }
 
         Ok(AstMap { token, nodes })
+    }
+
+    /// Try to parse "identifier: expression" syntax and convert it to "expression AS identifier"
+    fn try_parse_colon_alias(&mut self) -> parse::Result<Ast> {
+        let len = self.tokens.len();
+
+        // Look ahead to see if we have "identifier: expression" pattern
+        if len < 2 {
+            return Err(error::unsupported_token_error(self.current()?.clone()));
+        }
+
+        // Check if next token is identifier
+        match &self.tokens[len - 1].kind {
+            TokenKind::Identifier => {}
+            _ => return Err(error::unsupported_token_error(self.current()?.clone())),
+        };
+
+        // Check if second token is colon
+        if !self.tokens[len - 2].is_operator(Colon) {
+            return Err(error::unsupported_token_error(self.current()?.clone()));
+        }
+
+        let identifier = self.parse_identifier()?;
+        let colon_token = self.advance()?; // consume colon
+
+        let expression = self.parse_node(Precedence::None)?;
+
+        Ok(Ast::Infix(AstInfix {
+            token: expression.token().clone(),
+            left: Box::new(expression),
+            operator: InfixOperator::As(colon_token),
+            right: Box::new(Ast::Identifier(identifier)),
+        }))
     }
 }
 
@@ -191,5 +229,103 @@ mod tests {
         assert_eq!(map.nodes.len(), 1);
         assert!(matches!(map.nodes[0], Ast::Identifier(_)));
         assert_eq!(map.nodes[0].value(), "name");
+    }
+
+    #[test]
+    fn test_colon_syntax_single() {
+        let tokens = lex("MAP col: 1 + 2").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.nodes.len(), 1);
+
+        // Should be parsed as "1 + 2 as col"
+        let infix = map.nodes[0].as_infix();
+        assert!(matches!(infix.operator, InfixOperator::As(_)));
+
+        // Left side should be "1 + 2"
+        let left_infix = infix.left.as_infix();
+        assert!(matches!(left_infix.operator, InfixOperator::Add(_)));
+        assert_eq!(left_infix.left.as_literal_number().value(), "1");
+        assert_eq!(left_infix.right.as_literal_number().value(), "2");
+
+        // Right side should be identifier "col"
+        let right = infix.right.as_identifier();
+        assert_eq!(right.value(), "col");
+    }
+
+    #[test]
+    fn test_colon_syntax_with_braces() {
+        let tokens = lex("MAP {name: id, age: years}").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.nodes.len(), 2);
+
+        // First expression: "id as name"
+        let first_infix = map.nodes[0].as_infix();
+        assert!(matches!(first_infix.operator, InfixOperator::As(_)));
+        assert_eq!(first_infix.left.as_identifier().value(), "id");
+        assert_eq!(first_infix.right.as_identifier().value(), "name");
+
+        // Second expression: "years as age"
+        let second_infix = map.nodes[1].as_infix();
+        assert!(matches!(second_infix.operator, InfixOperator::As(_)));
+        assert_eq!(second_infix.left.as_identifier().value(), "years");
+        assert_eq!(second_infix.right.as_identifier().value(), "age");
+    }
+
+    #[test]
+    fn test_colon_syntax_complex_expression() {
+        let tokens = lex("MAP total: price * quantity").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.nodes.len(), 1);
+
+        // Should be parsed as "price * quantity as total"
+        let infix = map.nodes[0].as_infix();
+        assert!(matches!(infix.operator, InfixOperator::As(_)));
+
+        // Left side should be "price * quantity"
+        let left_infix = infix.left.as_infix();
+        assert!(matches!(left_infix.operator, InfixOperator::Multiply(_)));
+        assert_eq!(left_infix.left.as_identifier().value(), "price");
+        assert_eq!(left_infix.right.as_identifier().value(), "quantity");
+
+        // Right side should be identifier "total"
+        let right = infix.right.as_identifier();
+        assert_eq!(right.value(), "total");
+    }
+
+    #[test]
+    fn test_mixed_syntax() {
+        let tokens = lex("MAP {name, total: price * quantity, age}").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.nodes.len(), 3);
+
+        // First: plain identifier
+        assert!(matches!(map.nodes[0], Ast::Identifier(_)));
+        assert_eq!(map.nodes[0].value(), "name");
+
+        // Second: colon syntax
+        let middle_infix = map.nodes[1].as_infix();
+        assert!(matches!(middle_infix.operator, InfixOperator::As(_)));
+        assert_eq!(middle_infix.right.as_identifier().value(), "total");
+
+        // Third: plain identifier
+        assert!(matches!(map.nodes[2], Ast::Identifier(_)));
+        assert_eq!(map.nodes[2].value(), "age");
     }
 }

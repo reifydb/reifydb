@@ -3,6 +3,7 @@
 
 use reifydb_core::{BitVec, CowVec, Type, Value};
 use reifydb_core::{Date, DateTime, Interval, Time};
+use reifydb_core::RowId;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
@@ -24,6 +25,7 @@ pub enum ColumnValues {
     DateTime(CowVec<DateTime>, BitVec),
     Time(CowVec<Time>, BitVec),
     Interval(CowVec<Interval>, BitVec),
+    RowId(CowVec<RowId>, BitVec),
     // special case: all undefined
     Undefined(usize),
 }
@@ -49,6 +51,7 @@ impl ColumnValues {
             ColumnValues::DateTime(_, _) => Type::DateTime,
             ColumnValues::Time(_, _) => Type::Time,
             ColumnValues::Interval(_, _) => Type::Interval,
+            ColumnValues::RowId(_, _) => Type::RowId,
             ColumnValues::Undefined(_) => Type::Undefined,
         }
     }
@@ -87,6 +90,7 @@ impl ColumnValues {
             ColumnValues::DateTime(_, bitvec) => bitvec,
             ColumnValues::Time(_, bitvec) => bitvec,
             ColumnValues::Interval(_, bitvec) => bitvec,
+            ColumnValues::RowId(_, bitvec) => bitvec,
             ColumnValues::Undefined(_) => unreachable!(),
         }
     }
@@ -113,6 +117,7 @@ impl ColumnValues {
             Type::DateTime => Self::datetime_with_capacity(capacity),
             Type::Time => Self::time_with_capacity(capacity),
             Type::Interval => Self::interval_with_capacity(capacity),
+            Type::RowId => Self::row_id_with_capacity(capacity),
             Type::Undefined => Self::undefined(capacity),
         }
     }
@@ -244,6 +249,13 @@ impl ColumnValues {
                     .iter()
                     .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Interval(v.clone()) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::RowId(values, bitvec) => Box::new(
+                values
+                    .iter()
+                    .zip(bitvec.iter())
+                    .map(|(v, b)| if b { Value::RowId(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Undefined(size) => {
@@ -640,6 +652,7 @@ impl ColumnValues {
             Value::DateTime(v) => ColumnValues::datetime(vec![v; row_count]),
             Value::Time(v) => ColumnValues::time(vec![v; row_count]),
             Value::Interval(v) => ColumnValues::interval(vec![v; row_count]),
+            Value::RowId(v) => ColumnValues::row_id(vec![v; row_count]),
             Value::Undefined => ColumnValues::undefined(row_count),
         }
     }
@@ -672,7 +685,44 @@ impl ColumnValues {
             ColumnValues::DateTime(_, b) => b.len(),
             ColumnValues::Time(_, b) => b.len(),
             ColumnValues::Interval(_, b) => b.len(),
+            ColumnValues::RowId(_, b) => b.len(),
             ColumnValues::Undefined(n) => *n,
+        }
+    }
+}
+
+impl ColumnValues {
+    pub fn row_id(row_ids: impl IntoIterator<Item = RowId>) -> Self {
+        let values = row_ids.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::RowId(CowVec::new(values), BitVec::new(len, true))
+    }
+
+    pub fn row_id_with_capacity(capacity: usize) -> Self {
+        ColumnValues::RowId(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
+    }
+
+    pub fn row_id_with_bitvec(
+        row_ids: impl IntoIterator<Item = RowId>,
+        bitvec: impl Into<BitVec>,
+    ) -> Self {
+        let values = row_ids.into_iter().collect::<Vec<_>>();
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::RowId(CowVec::new(values), bitvec)
+    }
+
+    pub fn as_row_id(&self) -> &[RowId] {
+        match self {
+            ColumnValues::RowId(values, _) => values,
+            _ => panic!("not a row id column"),
+        }
+    }
+
+    pub fn as_row_id_mut(&mut self) -> &mut CowVec<RowId> {
+        match self {
+            ColumnValues::RowId(values, _) => values,
+            _ => panic!("not a row id column"),
         }
     }
 }

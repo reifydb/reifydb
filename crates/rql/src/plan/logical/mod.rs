@@ -31,6 +31,7 @@ impl Compiler {
             match node {
                 Ast::Create(node) => result.push(Self::compile_create(node)?),
                 Ast::AstInsert(node) => result.push(Self::compile_insert(node)?),
+                Ast::AstUpdate(node) => result.push(Self::compile_update(node)?),
 
                 Ast::Aggregate(node) => result.push(Self::compile_aggregate(node)?),
                 Ast::Filter(node) => result.push(Self::compile_filter(node)?),
@@ -54,6 +55,7 @@ pub enum LogicalPlan {
     CreateTable(CreateTableNode),
     // Mutate
     Insert(InsertNode),
+    Update(UpdateNode),
     // Query
     Aggregate(AggregateNode),
     Filter(FilterNode),
@@ -95,6 +97,12 @@ pub struct CreateTableNode {
 
 #[derive(Debug)]
 pub struct InsertNode {
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
+}
+
+#[derive(Debug)]
+pub struct UpdateNode {
     pub schema: Option<OwnedSpan>,
     pub table: OwnedSpan,
 }

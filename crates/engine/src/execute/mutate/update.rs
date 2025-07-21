@@ -2,26 +2,26 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
-use crate::frame::Frame;
+use crate::frame::{Frame, ColumnValues};
 use reifydb_catalog::{
     Catalog,
     key::{EncodableKey, TableRowKey},
-    sequence::TableRowSequence,
 };
 use reifydb_core::{
-	Type, IntoOwnedSpan, Value,
-	interface::{Tx, UnversionedStorage, VersionedStorage},
-	row::Layout,
+    Type, IntoOwnedSpan, Value,
+    interface::{Tx, UnversionedStorage, VersionedStorage},
+    row::Layout,
+    value::row_id::ROW_ID_COLUMN_NAME,
 };
 use reifydb_core::error::diagnostic::catalog::table_not_found;
-use reifydb_rql::plan::physical::InsertPlan;
+use reifydb_rql::plan::physical::UpdatePlan;
 use std::sync::Arc;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
-    pub(crate) fn insert(
+    pub(crate) fn update(
         &mut self,
         tx: &mut impl Tx<VS, US>,
-        plan: InsertPlan,
+        plan: UpdatePlan,
     ) -> crate::Result<Frame> {
         let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME
 
@@ -46,19 +46,39 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
                 batch_size: 1024,
-                preserve_row_ids: false,
+                preserve_row_ids: true,
             }),
         );
 
-        let mut inserted_count = 0;
+        let mut updated_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame, mask }) = input_node.next(&Arc::new(ExecutionContext {
+        let context = ExecutionContext {
             functions: self.functions.clone(),
             table: Some(table.clone()),
             batch_size: 1024,
-            preserve_row_ids: false,
-        }), tx)? {
+            preserve_row_ids: true,
+        };
+        while let Some(Batch { frame, mask }) = input_node.next(&context, tx)? {
+            // Find the RowId column - panic if not found
+            let row_id_column = frame.columns.iter()
+                .find(|col| col.name == ROW_ID_COLUMN_NAME)
+                .expect("Frame must have a __ROW__ID__ column for UPDATE operations");
+
+            // Extract RowId values - panic if any are undefined
+            let row_ids = match &row_id_column.values {
+                ColumnValues::RowId(row_ids, bitvec) => {
+                    // Check that all row IDs are defined
+                    for i in 0..row_ids.len() {
+                        if !bitvec.get(i) {
+                            panic!("All RowId values must be defined for UPDATE operations");
+                        }
+                    }
+                    row_ids
+                }
+                _ => panic!("RowId column must contain RowId values"),
+            };
+
             let row_count = frame.row_count();
 
             for row_idx in 0..row_count {
@@ -77,6 +97,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     } else {
                         Value::Undefined
                     };
+
+                    dbg!(&value);
 
                     match value {
                         Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),
@@ -102,11 +124,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     }
                 }
 
-                // Insert the row into the database
-                let row_id = TableRowSequence::next_row_id(tx, table.id)?;
+                // Update the row using the existing RowId from the frame
+                let row_id = row_ids[row_idx];
                 tx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
 
-                inserted_count += 1;
+                updated_count += 1;
             }
         }
 
@@ -114,7 +136,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         Ok(Frame::single_row([
             ("schema", Value::Utf8(schema.name)),
             ("table", Value::Utf8(table.name)),
-            ("inserted", Value::Uint8(inserted_count as u64)),
+            ("updated", Value::Uint8(updated_count as u64)),
         ]))
     }
 }

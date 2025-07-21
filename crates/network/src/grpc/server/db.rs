@@ -199,9 +199,14 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                                 nanos_since_midnight: t.to_nanos_since_midnight(),
                             }),
                             Value::Interval(i) => {
-                                GrpcType::IntervalValue(Interval { nanos: i.to_nanos() })
+                                GrpcType::IntervalValue(Interval { 
+                                    months: i.get_months(),
+                                    days: i.get_days(),
+                                    nanos: i.get_nanos()
+                                })
                             }
                             Value::Undefined => GrpcType::UndefinedValue(false),
+                            Value::RowId(row_id) => GrpcType::RowIdValue(row_id.value()),
                         };
                         GrpcValue { r#type: Some(data_type) }
                     })

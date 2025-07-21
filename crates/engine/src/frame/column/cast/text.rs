@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::frame::ColumnValues;
-use reifydb_core::{BitVec, Type};
+use reifydb_core::error::diagnostic::cast;
+use reifydb_core::{BitVec, Type, OwnedSpan};
 use std::fmt::Display;
 
 impl ColumnValues {
-    pub(crate) fn to_text(&self) -> crate::Result<ColumnValues> {
+    pub(crate) fn to_text(&self, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
         match self {
             ColumnValues::Bool(values, bitvec) => from(values, bitvec),
             ColumnValues::Int1(values, bitvec) => from(values, bitvec),
@@ -25,7 +26,10 @@ impl ColumnValues {
             ColumnValues::DateTime(values, bitvec) => from(values, bitvec),
             ColumnValues::Time(values, bitvec) => from(values, bitvec),
             ColumnValues::Interval(values, bitvec) => from(values, bitvec),
-            _ => unreachable!(),
+            _ => {
+                let source_type = self.get_type();
+                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, Type::Utf8)))
+            },
         }
     }
 }

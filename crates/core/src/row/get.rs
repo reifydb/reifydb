@@ -158,7 +158,13 @@ impl Layout {
         debug_assert!(row.len() >= self.total_static_size());
         debug_assert_eq!(field.value, Type::Interval);
         unsafe {
-            Interval::from_nanos((row.as_ptr().add(field.offset) as *const i64).read_unaligned())
+            // Read months (i32) from offset
+            let months = (row.as_ptr().add(field.offset) as *const i32).read_unaligned();
+            // Read days (i32) from offset + 4
+            let days = (row.as_ptr().add(field.offset + 4) as *const i32).read_unaligned();
+            // Read nanos (i64) from offset + 8
+            let nanos = (row.as_ptr().add(field.offset + 8) as *const i64).read_unaligned();
+            Interval::new(months, days, nanos)
         }
     }
 }

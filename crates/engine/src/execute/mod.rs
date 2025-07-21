@@ -19,6 +19,7 @@ pub struct ExecutionContext {
     pub functions: Functions,
     pub table: Option<Table>,
     pub batch_size: usize,
+    pub preserve_row_ids: bool,
 }
 
 #[derive(Debug)]
@@ -28,7 +29,7 @@ pub(crate) struct Batch {
 }
 
 pub(crate) trait ExecutionPlan {
-    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>>;
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>>;
     fn layout(&self) -> Option<FrameLayout>;
 }
 
@@ -89,6 +90,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::Map(_)
             | PhysicalPlan::InlineData(_)
             | PhysicalPlan::Insert(_)
+            | PhysicalPlan::Update(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
 
             PhysicalPlan::CreateDeferredView(_)
@@ -107,6 +109,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
             PhysicalPlan::Insert(plan) => self.insert(tx, plan),
+            PhysicalPlan::Update(plan) => self.update(tx, plan),
 
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
@@ -128,18 +131,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             //     Ok(ExecutionResult::DescribeQuery { columns })
             // }
             _ => {
-                let mut node = compile(
-                    plan,
-                    rx,
-                    Arc::new(ExecutionContext {
-                        functions: self.functions,
-                        table: None,
-                        batch_size: 1024,
-                    }),
-                );
+                let context = Arc::new(ExecutionContext {
+                    functions: self.functions,
+                    table: None,
+                    batch_size: 1024,
+                    preserve_row_ids: false,
+                });
+                let mut node = compile(plan, rx, context.clone());
                 let mut result: Option<Frame> = None;
 
-                while let Some(Batch { mut frame, mask }) = node.next(rx)? {
+                while let Some(Batch { mut frame, mask }) = node.next(&context, rx)? {
                     frame.filter(&mask)?;
                     if let Some(mut result_frame) = result.take() {
                         result_frame.append_frame(frame)?;

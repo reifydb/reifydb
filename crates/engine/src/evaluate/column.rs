@@ -5,7 +5,7 @@ use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::error::diagnostic::query::column_not_found;
-use reifydb_core::{Date, DateTime, Interval, Time, Value};
+use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value};
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
@@ -473,7 +473,30 @@ impl Evaluator {
                 }
                 Ok(FrameColumn { name, values: ColumnValues::interval_with_bitvec(values, bitvec) })
             }
-
+            Value::RowId(_) => {
+                let mut values = Vec::new();
+                let mut bitvec = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.values.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        match v {
+                            Value::RowId(i) => {
+                                values.push(i.clone());
+                                bitvec.push(true);
+                            }
+                            _ => {
+                                values.push(RowId::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(FrameColumn { name, values: ColumnValues::row_id_with_bitvec(values, bitvec) })
+            }
             _ => unimplemented!(),
         }
     }

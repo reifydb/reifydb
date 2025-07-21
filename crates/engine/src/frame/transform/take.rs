@@ -83,6 +83,10 @@ impl Frame {
                     bitvec.take(n),
                 ),
                 ColumnValues::Undefined(len) => ColumnValues::Undefined(n.min(*len)),
+                ColumnValues::RowId(values, bitvec) => ColumnValues::RowId(
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    bitvec.take(n),
+                ),
             };
 
             columns.push(FrameColumn { name: col.name.clone(), values: data });

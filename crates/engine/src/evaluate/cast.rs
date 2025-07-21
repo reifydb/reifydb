@@ -171,4 +171,63 @@ mod tests {
 
         assert_eq!(result.values, ColumnValues::float8([-1.1]));
     }
+
+    #[test]
+    fn test_cast_string_to_bool() {
+        let ctx = EvaluationContext::testing();
+        let result = evaluate(
+            &Cast(CastExpression {
+                span: OwnedSpan::testing_empty(),
+                expression: Box::new(Constant(ConstantExpression::Text { span: OwnedSpan::testing("0") })),
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Bool },
+            }),
+            &ctx,
+        )
+        .unwrap();
+
+        assert_eq!(result.values, ColumnValues::bool([false]));
+    }
+
+    #[test]
+    fn test_cast_string_neg_one_to_bool_should_fail() {
+        let ctx = EvaluationContext::testing();
+        let result = evaluate(
+            &Cast(CastExpression {
+                span: OwnedSpan::testing_empty(),
+                expression: Box::new(Constant(ConstantExpression::Text { span: OwnedSpan::testing("-1") })),
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Bool },
+            }),
+            &ctx,
+        );
+
+        assert!(result.is_err());
+        
+        // Check that the error is the expected CAST_004 (invalid_boolean) error
+        let err = result.unwrap_err();
+        let diagnostic = err.0;
+        assert_eq!(diagnostic.code, "CAST_004");
+        assert!(diagnostic.cause.is_some());
+        let cause = diagnostic.cause.unwrap();
+        assert_eq!(cause.code, "BOOLEAN_003"); // invalid_number_boolean
+    }
+
+    #[test]
+    fn test_cast_bool_to_date_should_fail() {
+        let ctx = EvaluationContext::testing();
+        let result = evaluate(
+            &Cast(CastExpression {
+                span: OwnedSpan::testing_empty(),
+                expression: Box::new(Constant(ConstantExpression::Bool { span: OwnedSpan::testing("true") })),
+                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Date },
+            }),
+            &ctx,
+        );
+
+        assert!(result.is_err());
+        
+        // Check that the error is the expected CAST_001 (unsupported_cast) error  
+        let err = result.unwrap_err();
+        let diagnostic = err.0;
+        assert_eq!(diagnostic.code, "CAST_001");
+    }
 }
