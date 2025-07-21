@@ -60,7 +60,7 @@ impl ScanFrameNode {
 }
 
 impl ExecutionPlan for ScanFrameNode {
-    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, _ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.exhausted {
             return Ok(None);
         }

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, evaluate};
-use crate::execute::{Batch, ExecutionPlan};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{ColumnValues, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_rql::expression::Expression;
@@ -20,8 +20,8 @@ impl FilterNode {
 }
 
 impl ExecutionPlan for FilterNode {
-    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame, mut mask }) = self.input.next(rx)? {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mut mask }) = self.input.next(ctx, rx)? {
             let row_count = frame.row_count(); // FIXME add a delegate - batch.row_count()
 
             let mut ctx = EvaluationContext {

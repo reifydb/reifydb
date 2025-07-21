@@ -47,13 +47,20 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
                 batch_size: 1024,
+                preserve_row_ids: true,
             }),
         );
 
         let mut updated_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame, mask }) = input_node.next(tx)? {
+        let context = ExecutionContext {
+            functions: self.functions.clone(),
+            table: Some(table.clone()),
+            batch_size: 1024,
+            preserve_row_ids: true,
+        };
+        while let Some(Batch { frame, mask }) = input_node.next(&context, tx)? {
             // Find the RowId column - panic if not found
             let row_id_column = frame.columns.iter()
                 .find(|col| col.name == ROW_ID_COLUMN_NAME)

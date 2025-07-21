@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::{Batch, ExecutionPlan};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::FrameLayout;
 use reifydb_core::interface::Rx;
 
@@ -18,8 +18,8 @@ impl TakeNode {
 }
 
 impl ExecutionPlan for TakeNode {
-    fn next(&mut self, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame, mut mask }) = self.input.next(rx)? {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+        while let Some(Batch { frame, mut mask }) = self.input.next(ctx, rx)? {
             let visible: usize = mask.count_ones();
             if visible == 0 {
                 continue;
