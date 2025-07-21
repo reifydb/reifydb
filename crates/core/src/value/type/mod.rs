@@ -174,7 +174,7 @@ impl Type {
             Type::Date => 4,
             Type::DateTime => 12, // seconds: i64 + nanos: u32
             Type::Time => 8,
-            Type::Interval => 8,
+            Type::Interval => 16, // months: i32 + days: i32 + nanos: i64
             Type::Undefined => 0,
         }
     }
@@ -198,7 +198,7 @@ impl Type {
             Type::Date => 4,
             Type::DateTime => 8,
             Type::Time => 8,
-            Type::Interval => 8,
+            Type::Interval => 8, // Align to largest field (i64 nanos)
             Type::Undefined => 0,
         }
     }

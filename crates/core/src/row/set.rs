@@ -242,10 +242,21 @@ impl Layout {
         debug_assert_eq!(field.value, Type::Interval);
         row.set_valid(index, true);
         unsafe {
+            // Store months (i32) at offset
             ptr::write_unaligned(
-                row.make_mut().as_mut_ptr().add(field.offset) as *mut i64,
-                value.to_nanos(),
-            )
+                row.make_mut().as_mut_ptr().add(field.offset) as *mut i32,
+                value.get_months(),
+            );
+            // Store days (i32) at offset + 4
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset + 4) as *mut i32,
+                value.get_days(),
+            );
+            // Store nanos (i64) at offset + 8
+            ptr::write_unaligned(
+                row.make_mut().as_mut_ptr().add(field.offset + 8) as *mut i64,
+                value.get_nanos(),
+            );
         }
     }
 

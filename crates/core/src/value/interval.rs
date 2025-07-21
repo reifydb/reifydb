@@ -1,97 +1,162 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 /// An interval value representing a duration between two points in time.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Interval {
-    inner: Duration,
+    months: i32,    // Store years*12 + months
+    days: i32,      // Separate days (don't normalize to months due to variable month length)
+    nanos: i64,     // All time components as nanoseconds
 }
 
 impl Default for Interval {
     fn default() -> Self {
-        Self::from_seconds(0)
+        Self::zero()
     }
 }
 
 impl Interval {
-    pub fn new(duration: Duration) -> Self {
-        Self { inner: duration }
+    pub fn new(months: i32, days: i32, nanos: i64) -> Self {
+        Self { months, days, nanos }
     }
 
     pub fn from_seconds(seconds: i64) -> Self {
-        Self { inner: Duration::seconds(seconds) }
+        Self { 
+            months: 0, 
+            days: 0, 
+            nanos: seconds * 1_000_000_000 
+        }
     }
 
     pub fn from_milliseconds(milliseconds: i64) -> Self {
-        Self { inner: Duration::milliseconds(milliseconds) }
+        Self { 
+            months: 0, 
+            days: 0, 
+            nanos: milliseconds * 1_000_000 
+        }
     }
 
     pub fn from_microseconds(microseconds: i64) -> Self {
-        Self { inner: Duration::microseconds(microseconds) }
+        Self { 
+            months: 0, 
+            days: 0, 
+            nanos: microseconds * 1_000 
+        }
     }
 
     pub fn from_nanoseconds(nanoseconds: i64) -> Self {
-        Self { inner: Duration::nanoseconds(nanoseconds) }
+        Self { 
+            months: 0, 
+            days: 0, 
+            nanos: nanoseconds 
+        }
     }
 
     pub fn from_minutes(minutes: i64) -> Self {
-        Self { inner: Duration::minutes(minutes) }
+        Self { 
+            months: 0, 
+            days: 0, 
+            nanos: minutes * 60 * 1_000_000_000 
+        }
     }
 
     pub fn from_hours(hours: i64) -> Self {
-        Self { inner: Duration::hours(hours) }
+        Self { 
+            months: 0, 
+            days: 0, 
+            nanos: hours * 60 * 60 * 1_000_000_000 
+        }
     }
 
     pub fn from_days(days: i64) -> Self {
-        Self { inner: Duration::days(days) }
+        Self { 
+            months: 0, 
+            days: days as i32, 
+            nanos: 0 
+        }
     }
 
     pub fn from_weeks(weeks: i64) -> Self {
-        Self { inner: Duration::weeks(weeks) }
+        Self { 
+            months: 0, 
+            days: (weeks * 7) as i32, 
+            nanos: 0 
+        }
+    }
+
+    pub fn from_months(months: i64) -> Self {
+        Self { 
+            months: months as i32, 
+            days: 0, 
+            nanos: 0 
+        }
+    }
+
+    pub fn from_years(years: i64) -> Self {
+        Self { 
+            months: (years * 12) as i32, 
+            days: 0, 
+            nanos: 0 
+        }
     }
 
     pub fn zero() -> Self {
-        Self { inner: Duration::zero() }
+        Self { months: 0, days: 0, nanos: 0 }
     }
 
     pub fn seconds(&self) -> i64 {
-        self.inner.num_seconds()
+        self.nanos / 1_000_000_000
     }
 
     pub fn milliseconds(&self) -> i64 {
-        self.inner.num_milliseconds()
+        self.nanos / 1_000_000
     }
 
     pub fn microseconds(&self) -> i64 {
-        self.inner.num_microseconds().unwrap_or(0)
+        self.nanos / 1_000
     }
 
     pub fn nanoseconds(&self) -> i64 {
-        self.inner.num_nanoseconds().unwrap_or(0)
+        self.nanos
     }
 
-    pub fn inner(&self) -> &Duration {
-        &self.inner
+    pub fn get_months(&self) -> i32 {
+        self.months
+    }
+
+    pub fn get_days(&self) -> i32 {
+        self.days
+    }
+
+    pub fn get_nanos(&self) -> i64 {
+        self.nanos
     }
 
     pub fn is_positive(&self) -> bool {
-        self.inner > Duration::zero()
+        self.months > 0 || self.days > 0 || self.nanos > 0
     }
 
     pub fn is_negative(&self) -> bool {
-        self.inner < Duration::zero()
+        self.months < 0 || self.days < 0 || self.nanos < 0
     }
 
     pub fn abs(&self) -> Self {
-        Self { inner: self.inner.abs() }
+        Self { 
+            months: self.months.abs(),
+            days: self.days.abs(),
+            nanos: self.nanos.abs()
+        }
     }
 
     pub fn negate(&self) -> Self {
-        Self { inner: -self.inner }
+        Self { 
+            months: -self.months,
+            days: -self.days,
+            nanos: -self.nanos
+        }
     }
 }
 
@@ -103,43 +168,75 @@ impl PartialOrd for Interval {
 
 impl Ord for Interval {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.inner.cmp(&other.inner)
+        // Compare months first
+        match self.months.cmp(&other.months) {
+            std::cmp::Ordering::Equal => {
+                // Then days
+                match self.days.cmp(&other.days) {
+                    std::cmp::Ordering::Equal => {
+                        // Finally nanos
+                        self.nanos.cmp(&other.nanos)
+                    }
+                    other_order => other_order
+                }
+            }
+            other_order => other_order
+        }
     }
 }
 
 impl Interval {
-    /// Convert to nanoseconds for storage
+    /// Convert to nanoseconds (time component only)
+    /// This only returns the sub-day nanoseconds component
     pub fn to_nanos(&self) -> i64 {
-        self.inner.num_nanoseconds().unwrap_or(0)
+        self.nanos
     }
 
-    /// Create from nanoseconds for storage
+    /// Create from nanoseconds (time component only)
     pub fn from_nanos(nanos: i64) -> Self {
-        Self { inner: Duration::nanoseconds(nanos) }
+        Self { months: 0, days: 0, nanos }
     }
 }
 
 impl Display for Interval {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let total_seconds = self.inner.num_seconds();
-        let days = total_seconds / 86400;
-        let hours = (total_seconds % 86400) / 3600;
-        let minutes = (total_seconds % 3600) / 60;
-        let seconds = total_seconds % 60;
-        let nanos = self.inner.subsec_nanos();
-
         // ISO 8601 duration format: P[n]Y[n]M[n]DT[n]H[n]M[n.n]S
-        if total_seconds == 0 && nanos == 0 {
+        if self.months == 0 && self.days == 0 && self.nanos == 0 {
             return write!(f, "PT0S");
         }
 
         write!(f, "P")?;
 
-        if days != 0 {
-            write!(f, "{}D", days)?;
+        // Extract years and months
+        let years = self.months / 12;
+        let months = self.months % 12;
+
+        if years != 0 {
+            write!(f, "{}Y", years)?;
         }
 
-        if hours != 0 || minutes != 0 || seconds != 0 || nanos != 0 {
+        if months != 0 {
+            write!(f, "{}M", months)?;
+        }
+
+        // Time components from nanos with normalization
+        let total_seconds = self.nanos / 1_000_000_000;
+        let remaining_nanos = self.nanos % 1_000_000_000;
+        
+        // Normalize to days if hours >= 24
+        let extra_days = total_seconds / 86400; // 24 * 60 * 60
+        let remaining_seconds = total_seconds % 86400;
+        
+        let display_days = self.days + extra_days as i32;
+        let hours = remaining_seconds / 3600;
+        let minutes = (remaining_seconds % 3600) / 60;
+        let seconds = remaining_seconds % 60;
+
+        if display_days != 0 {
+            write!(f, "{}D", display_days)?;
+        }
+
+        if hours != 0 || minutes != 0 || seconds != 0 || remaining_nanos != 0 {
             write!(f, "T")?;
 
             if hours != 0 {
@@ -150,10 +247,10 @@ impl Display for Interval {
                 write!(f, "{}M", minutes)?;
             }
 
-            if seconds != 0 || nanos != 0 {
-                if nanos != 0 {
+            if seconds != 0 || remaining_nanos != 0 {
+                if remaining_nanos != 0 {
                     // Format fractional seconds with trailing zeros removed
-                    let fractional = nanos as f64 / 1_000_000_000.0;
+                    let fractional = remaining_nanos as f64 / 1_000_000_000.0;
                     let total_seconds_f = seconds as f64 + fractional;
                     // Remove trailing zeros from fractional part
                     let formatted_str = format!("{:.9}", total_seconds_f);
@@ -172,7 +269,6 @@ impl Display for Interval {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Duration;
 
     #[test]
     fn test_interval_display_zero() {
@@ -252,38 +348,34 @@ mod tests {
     #[test]
     fn test_interval_display_combined_time() {
         // Hours and minutes
-        let interval = Interval::new(Duration::hours(1) + Duration::minutes(30));
+        let interval = Interval::new(0, 0, (1 * 60 * 60 + 30 * 60) * 1_000_000_000);
         assert_eq!(format!("{}", interval), "PT1H30M");
 
         // Minutes and seconds
-        let interval = Interval::new(Duration::minutes(5) + Duration::seconds(45));
+        let interval = Interval::new(0, 0, (5 * 60 + 45) * 1_000_000_000);
         assert_eq!(format!("{}", interval), "PT5M45S");
 
         // Hours, minutes, and seconds
-        let interval =
-            Interval::new(Duration::hours(2) + Duration::minutes(30) + Duration::seconds(45));
+        let interval = Interval::new(0, 0, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000);
         assert_eq!(format!("{}", interval), "PT2H30M45S");
     }
 
     #[test]
     fn test_interval_display_combined_date_time() {
         // Days and hours
-        let interval = Interval::new(Duration::days(1) + Duration::hours(2));
+        let interval = Interval::new(0, 1, 2 * 60 * 60 * 1_000_000_000);
         assert_eq!(format!("{}", interval), "P1DT2H");
 
         // Days and minutes
-        let interval = Interval::new(Duration::days(1) + Duration::minutes(30));
+        let interval = Interval::new(0, 1, 30 * 60 * 1_000_000_000);
         assert_eq!(format!("{}", interval), "P1DT30M");
 
         // Days, hours, and minutes
-        let interval =
-            Interval::new(Duration::days(1) + Duration::hours(2) + Duration::minutes(30));
+        let interval = Interval::new(0, 1, (2 * 60 * 60 + 30 * 60) * 1_000_000_000);
         assert_eq!(format!("{}", interval), "P1DT2H30M");
 
         // Days, hours, minutes, and seconds
-        let interval = Interval::new(
-            Duration::days(1) + Duration::hours(2) + Duration::minutes(30) + Duration::seconds(45),
-        );
+        let interval = Interval::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000);
         assert_eq!(format!("{}", interval), "P1DT2H30M45S");
     }
 
@@ -335,15 +427,15 @@ mod tests {
     #[test]
     fn test_interval_display_fractional_seconds_with_integers() {
         // Seconds with milliseconds
-        let interval = Interval::new(Duration::seconds(1) + Duration::milliseconds(500));
+        let interval = Interval::new(0, 0, 1 * 1_000_000_000 + 500 * 1_000_000);
         assert_eq!(format!("{}", interval), "PT1.5S");
 
         // Seconds with microseconds
-        let interval = Interval::new(Duration::seconds(2) + Duration::microseconds(123456));
+        let interval = Interval::new(0, 0, 2 * 1_000_000_000 + 123456 * 1_000);
         assert_eq!(format!("{}", interval), "PT2.123456S");
 
         // Seconds with nanoseconds
-        let interval = Interval::new(Duration::seconds(3) + Duration::nanoseconds(123456789));
+        let interval = Interval::new(0, 0, 3 * 1_000_000_000 + 123456789);
         assert_eq!(format!("{}", interval), "PT3.123456789S");
     }
 
@@ -351,21 +443,17 @@ mod tests {
     fn test_interval_display_complex_intervals() {
         // Complex interval with all components
         let interval = Interval::new(
-            Duration::days(1)
-                + Duration::hours(2)
-                + Duration::minutes(30)
-                + Duration::seconds(45)
-                + Duration::milliseconds(123),
+            0, 
+            1, 
+            (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 + 123 * 1_000_000
         );
         assert_eq!(format!("{}", interval), "P1DT2H30M45.123S");
 
         // Another complex interval
         let interval = Interval::new(
-            Duration::days(7)
-                + Duration::hours(12)
-                + Duration::minutes(45)
-                + Duration::seconds(30)
-                + Duration::microseconds(456789),
+            0, 
+            7, 
+            (12 * 60 * 60 + 45 * 60 + 30) * 1_000_000_000 + 456789 * 1_000
         );
         assert_eq!(format!("{}", interval), "P7DT12H45M30.456789S");
     }
