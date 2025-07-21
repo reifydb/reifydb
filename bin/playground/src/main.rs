@@ -30,7 +30,7 @@ fn main() {
             &root,
             r#"
             from test.abc
-            map { id, col: cast(123, float4) }
+            map { id, col: '2222222222222222222222222222222' }
             update test.abc;
 
             from test.abc;

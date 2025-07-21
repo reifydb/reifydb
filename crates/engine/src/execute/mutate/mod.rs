@@ -3,3 +3,4 @@
 
 mod insert;
 mod update;
+mod coerce;
