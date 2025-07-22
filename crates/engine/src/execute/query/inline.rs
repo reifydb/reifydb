@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout};
 use reifydb_core::interface::Rx;
-use reifydb_core::{BitVec, Value};
+use reifydb_core::{BitVec, ColumnDescriptor, Value};
 use reifydb_rql::expression::KeyedExpression;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -94,7 +94,8 @@ impl InlineDataNode {
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_name) {
                     let ctx = EvaluationContext {
-                        column: None,
+                        target_column: None,
+                        column_policies: Vec::new(),
                         mask: BitVec::new(1, true),
                         columns: Vec::new(),
                         row_count: 1,
@@ -156,8 +157,16 @@ impl InlineDataNode {
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_layout.name) {
+                    // Create ColumnDescriptor with table context
+                    let column_descriptor = ColumnDescriptor::new()
+                        .with_table(&table.name)
+                        .with_column(&table_column.name)
+                        .with_column_type(table_column.ty)
+                        .with_policies(table_column.policies.iter().map(|cp| cp.policy.clone()).collect());
+
                     let ctx = EvaluationContext {
-                        column: Some(table_column.clone().into()),
+                        target_column: Some(column_descriptor),
+                        column_policies: table_column.policies.iter().map(|cp| cp.policy.clone()).collect(),
                         mask: BitVec::new(1, true),
                         columns: Vec::new(),
                         row_count: 1,

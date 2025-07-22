@@ -79,7 +79,8 @@ impl ExecutionPlan for LeftJoinNode {
                     left_row.iter().cloned().chain(right_row.iter().cloned()).collect::<Vec<_>>();
 
                 let ctx = EvaluationContext {
-                    column: None,
+                    target_column: None,
+                    column_policies: Vec::new(),
                     mask: BitVec::new(1, true),
                     columns: all_values
                         .iter()

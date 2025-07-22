@@ -3,7 +3,7 @@
 
 use crate::ast::AstCreateDeferredView;
 use crate::plan::logical::{convert_data_type, convert_policy, Compiler, CreateDeferredViewNode, LogicalPlan};
-use reifydb_catalog::column_policy::ColumnPolicyKind;
+use reifydb_core::interface::ColumnPolicyKind;
 use reifydb_catalog::table::ColumnToCreate;
 
 impl Compiler {

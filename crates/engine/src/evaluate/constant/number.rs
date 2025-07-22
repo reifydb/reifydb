@@ -74,7 +74,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -96,7 +96,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -119,7 +119,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -142,7 +142,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -165,7 +165,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -188,7 +188,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -211,7 +211,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -234,7 +234,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -257,7 +257,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {
@@ -280,7 +280,7 @@ impl NumberParser {
                 return_error!(cast::invalid_number(
                     span.clone().to_owned(),
                     ty,
-                    number::number_out_of_range(span.clone().to_owned(), ty),
+                    number::number_out_of_range(span.clone().to_owned(), ty, None),
                 ))
             }
         } else {

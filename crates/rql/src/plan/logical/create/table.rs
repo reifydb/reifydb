@@ -5,7 +5,7 @@ use crate::ast::AstCreateTable;
 use crate::plan::logical::{
     Compiler, CreateTableNode, LogicalPlan, convert_data_type, convert_policy,
 };
-use reifydb_catalog::column_policy::ColumnPolicyKind;
+use reifydb_core::interface::ColumnPolicyKind;
 use reifydb_catalog::table::ColumnToCreate;
 
 impl Compiler {

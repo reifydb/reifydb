@@ -8,7 +8,7 @@ mod query;
 
 use crate::ast::{Ast, AstIdentifier, AstPolicy, AstPolicyKind, AstStatement};
 use crate::expression::{Expression, KeyedExpression};
-use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
+use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::error::diagnostic::ast::unrecognized_type;
 use reifydb_core::{OwnedSpan, SortKey, Type, return_error};

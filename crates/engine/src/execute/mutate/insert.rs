@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use crate::frame::Frame;
 use reifydb_catalog::{
@@ -8,12 +9,12 @@ use reifydb_catalog::{
     key::{EncodableKey, TableRowKey},
     sequence::TableRowSequence,
 };
-use reifydb_core::{
-	Type, IntoOwnedSpan, Value,
-	interface::{Tx, UnversionedStorage, VersionedStorage},
-	row::Layout,
-};
 use reifydb_core::error::diagnostic::catalog::table_not_found;
+use reifydb_core::{
+    ColumnDescriptor, IntoOwnedSpan, Type, Value,
+    interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
+    row::Layout,
+};
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
 
@@ -38,7 +39,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
         let layout = Layout::new(&table_types);
 
-        // Compile the input plan into an execution node with table context
         let mut input_node = compile(
             *plan.input,
             tx,
@@ -52,13 +52,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
         let mut inserted_count = 0;
 
-        // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame, mask }) = input_node.next(&Arc::new(ExecutionContext {
-            functions: self.functions.clone(),
-            table: Some(table.clone()),
-            batch_size: 1024,
-            preserve_row_ids: false,
-        }), tx)? {
+        while let Some(Batch { frame, mask }) = input_node.next(
+            &Arc::new(ExecutionContext {
+                functions: self.functions.clone(),
+                table: Some(table.clone()),
+                batch_size: 1024,
+                preserve_row_ids: false,
+            }),
+            tx,
+        )? {
             let row_count = frame.row_count();
 
             for row_idx in 0..row_count {
@@ -70,13 +72,27 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
                 // For each table column, find if it exists in the input frame
                 for (table_idx, table_column) in table.columns.iter().enumerate() {
-                    let value = if let Some(input_column) =
+                    let mut value = if let Some(input_column) =
                         frame.columns.iter().find(|col| col.name == table_column.name)
                     {
                         input_column.values.get(row_idx)
                     } else {
                         Value::Undefined
                     };
+
+                    let policies: Vec<ColumnPolicyKind> =
+                        table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
+
+                    value = coerce_value_to_column_type(
+                        value,
+                        table_column.ty,
+                        ColumnDescriptor::new()
+                            .with_schema(&schema.name)
+                            .with_table(&table.name)
+                            .with_column(&table_column.name)
+                            .with_column_type(table_column.ty)
+                            .with_policies(policies),
+                    )?;
 
                     match value {
                         Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),
