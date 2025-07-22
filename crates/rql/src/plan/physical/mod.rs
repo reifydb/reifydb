@@ -8,7 +8,7 @@ use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::Rx;
-use reifydb_core::{SortKey, OwnedSpan};
+use reifydb_core::{OwnedSpan, SortKey};
 
 struct Compiler {}
 
@@ -58,9 +58,9 @@ impl Compiler {
                 }
 
                 LogicalPlan::Delete(delete) => {
-                    let input = stack.pop().unwrap();
+                    let input = stack.pop().map(|i| Box::new(i));
                     stack.push(PhysicalPlan::Delete(DeletePlan {
-                        input: Box::new(input),
+                        input,
                         schema: delete.schema,
                         table: delete.table,
                     }))
@@ -191,7 +191,7 @@ pub struct FilterNode {
 
 #[derive(Debug, Clone)]
 pub struct DeletePlan {
-    pub input: Box<PhysicalPlan>,
+    pub input: Option<Box<PhysicalPlan>>,
     pub schema: Option<OwnedSpan>,
     pub table: OwnedSpan,
 }

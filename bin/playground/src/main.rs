@@ -29,7 +29,6 @@ fn main() {
         .tx_as(
             &root,
             r#"
-            from test.abc
             delete test.abc;
 
             from test.abc;
