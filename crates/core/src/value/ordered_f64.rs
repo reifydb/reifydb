@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Error;
+use crate::{err, Error};
 use crate::error::diagnostic::number::nan_not_allowed;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
@@ -122,7 +122,7 @@ impl TryFrom<f64> for OrderedF64 {
     fn try_from(f: f64) -> Result<Self, Self::Error> {
         // normalize -0.0 and +0.0
         let normalized = if f == 0.0 { 0.0 } else { f };
-        if f.is_nan() { Err(Error(nan_not_allowed())) } else { Ok(OrderedF64(normalized)) }
+        if f.is_nan() { err!(nan_not_allowed()) } else { Ok(OrderedF64(normalized)) }
     }
 }
 

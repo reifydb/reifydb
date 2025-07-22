@@ -8,8 +8,8 @@ pub mod text;
 
 use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
-use reifydb_core::{OwnedSpan, Type};
 use reifydb_core::error::diagnostic::cast;
+use reifydb_core::{err, OwnedSpan, Type};
 
 impl ColumnValues {
     pub fn cast(
@@ -26,8 +26,8 @@ impl ColumnValues {
             _ if target.is_temporal() => self.to_temporal(target, span),
             _ => {
                 let source_type = self.get_type();
-                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
-            },
+                err!(cast::unsupported_cast(span(), source_type, target))
+            }
         }
     }
 }

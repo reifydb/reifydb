@@ -13,6 +13,7 @@ use reifydb_core::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
     interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
+    return_error,
     row::Layout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
@@ -29,11 +30,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
         let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
-            return Err(reifydb_core::Error(table_not_found(
-                span.clone(),
-                schema_name,
-                &span.fragment,
-            )));
+            return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
 
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
@@ -52,6 +49,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
         let mut inserted_count = 0;
 
+        // Process all input batches using volcano iterator pattern
         while let Some(Batch { frame, mask }) = input_node.next(
             &Arc::new(ExecutionContext {
                 functions: self.functions.clone(),

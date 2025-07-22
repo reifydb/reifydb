@@ -5,14 +5,10 @@ use crate::evaluate::EvaluationContext;
 use reifydb_core::interface::ColumnSaturationPolicy;
 use reifydb_core::error::diagnostic::number::number_out_of_range;
 use reifydb_core::value::number::SafeDemote;
-use reifydb_core::{GetType, IntoOwnedSpan};
+use reifydb_core::{GetType, IntoOwnedSpan, error};
 
 pub trait Demote {
-    fn demote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn demote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType;
@@ -46,7 +42,7 @@ impl Demote for &EvaluationContext<'_> {
             ColumnSaturationPolicy::Error => from
                 .checked_demote()
                 .ok_or_else(|| {
-                    return reifydb_core::Error(number_out_of_range(
+                    return error!(number_out_of_range(
                         span.into_span(),
                         To::get_type(),
                         self.target_column.as_ref(),
@@ -98,7 +94,8 @@ mod tests {
         ctx.target_column = Some(ColumnDescriptor::new().with_column_type(Type::Int1));
         ctx.column_policies = vec![Saturation(Undefined)];
 
-        let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || OwnedSpan::testing_empty()).unwrap();
+        let result =
+            ctx.demote::<TestI16, TestI8>(TestI16 {}, || OwnedSpan::testing_empty()).unwrap();
         assert!(result.is_none());
     }
 

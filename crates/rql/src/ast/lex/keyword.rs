@@ -37,7 +37,7 @@ macro_rules! keyword {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
-                    _ => Err(reifydb_core::Error(ast::lex_error("not a keyword".to_string())))
+                    _ => reifydb_core::err!(ast::lex_error("not a keyword".to_string()))
                 }
             }
         }
@@ -241,10 +241,10 @@ mod tests {
             let (remaining, token) = result;
 
             assert_eq!(
-				TokenKind::Keyword(keyword),
-				token.kind,
-				"ty mismatch for keyword: {}",
-				repr
+                TokenKind::Keyword(keyword),
+                token.kind,
+                "ty mismatch for keyword: {}",
+                repr
             );
             assert_eq!(token.span.fragment.to_lowercase(), repr.to_lowercase());
             assert_eq!(token.span.column, 1);

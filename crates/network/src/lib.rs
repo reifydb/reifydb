@@ -6,7 +6,6 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub type NetworkError = reifydb_core::Error;
 
 #[cfg(feature = "grpc")]
 pub mod grpc;

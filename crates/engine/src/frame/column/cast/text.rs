@@ -3,7 +3,7 @@
 
 use crate::frame::ColumnValues;
 use reifydb_core::error::diagnostic::cast;
-use reifydb_core::{BitVec, Type, OwnedSpan};
+use reifydb_core::{BitVec, OwnedSpan, Type};
 use std::fmt::Display;
 
 impl ColumnValues {
@@ -28,8 +28,8 @@ impl ColumnValues {
             ColumnValues::Interval(values, bitvec) => from(values, bitvec),
             _ => {
                 let source_type = self.get_type();
-                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, Type::Utf8)))
-            },
+                reifydb_core::err!(cast::unsupported_cast(span(), source_type, Type::Utf8))
+            }
         }
     }
 }

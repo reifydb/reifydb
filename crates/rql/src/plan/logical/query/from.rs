@@ -4,7 +4,7 @@
 use crate::ast::{Ast, AstFrom};
 use crate::expression::{IdentExpression, KeyedExpression};
 use crate::plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode};
-use reifydb_core::Error;
+use reifydb_core::err;
 use reifydb_core::error::diagnostic::Diagnostic;
 
 impl Compiler {
@@ -32,7 +32,7 @@ impl Compiler {
                             rows.push(keyed_fields);
                         }
                         _ => {
-                            return Err(Error(Diagnostic {
+                            return err!(Diagnostic {
                                 code: "E0001".to_string(),
                                 statement: None,
                                 message: "Expected row in static data".to_string(),
@@ -42,7 +42,7 @@ impl Compiler {
                                 help: None,
                                 notes: vec![],
                                 cause: None,
-                            }));
+                            });
                         }
                     }
                 }

@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::error::diagnostic::query::column_not_found;
-use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value};
+use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
@@ -18,7 +18,7 @@ impl Evaluator {
             .columns
             .iter()
             .find(|c| &c.name == name.as_str())
-            .ok_or(reifydb_core::Error(column_not_found(column.0.clone())))?;
+            .ok_or(error!(column_not_found(column.0.clone())))?;
 
         let take = ctx.take.unwrap_or(usize::MAX);
 
