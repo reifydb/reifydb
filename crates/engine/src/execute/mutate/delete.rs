@@ -1,17 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Error;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use crate::frame::{ColumnValues, Frame};
 use reifydb_catalog::{
     Catalog,
     key::{EncodableKey, TableRowKey},
 };
-use reifydb_core::diagnostic::catalog::table_not_found;
+use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
+use reifydb_core::error::diagnostic::engine;
 use reifydb_core::{
     IntoOwnedSpan, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},
+    return_error,
     value::row_id::ROW_ID_COLUMN_NAME,
 };
 use reifydb_rql::plan::physical::DeletePlan;
@@ -23,16 +24,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         tx: &mut impl Tx<VS, US>,
         plan: DeletePlan,
     ) -> crate::Result<Frame> {
-        let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME
+        let Some(schema_ref) = plan.schema.as_ref() else {
+            return_error!(schema_not_found(None::<reifydb_core::OwnedSpan>, "default"));
+        };
+        let schema_name = schema_ref.fragment.as_str();
 
         let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
         let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
-            return Err(Error::execution(table_not_found(
-                span.clone(),
-                schema_name,
-                &span.fragment,
-            )));
+            return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
 
         let mut input_node = compile(
@@ -56,22 +56,25 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         };
 
         while let Some(Batch { frame, mask }) = input_node.next(&context, tx)? {
-            let row_id_column = frame
-                .columns
-                .iter()
-                .find(|col| col.name == ROW_ID_COLUMN_NAME)
-                .expect("Frame must have a __ROW__ID__ column for DELETE operations");
+            // Find the RowId column - return error if not found
+            let Some(row_id_column) =
+                frame.columns.iter().find(|col| col.name == ROW_ID_COLUMN_NAME)
+            else {
+                return_error!(engine::missing_row_id_column());
+            };
 
+            // Extract RowId values - return error if any are undefined
             let row_ids = match &row_id_column.values {
                 ColumnValues::RowId(row_ids, bitvec) => {
+                    // Check that all row IDs are defined
                     for i in 0..row_ids.len() {
                         if !bitvec.get(i) {
-                            panic!("All RowId values must be defined for DELETE operations");
+                            return_error!(engine::invalid_row_id_values());
                         }
                     }
                     row_ids
                 }
-                _ => panic!("RowId column must contain RowId values"),
+                _ => return_error!(engine::invalid_row_id_values()),
             };
 
             for row_idx in 0..frame.row_count() {
@@ -81,7 +84,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
                 // Delete the row using the existing RowId from the frame
                 let row_id = row_ids[row_idx];
-                tx.remove(&TableRowKey { table: table.id, row: row_id }.encode()).unwrap();
+                tx.remove(&TableRowKey { table: table.id, row: row_id }.encode())?;
 
                 deleted_count += 1;
             }

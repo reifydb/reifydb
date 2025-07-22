@@ -3,10 +3,10 @@
 
 use crate::ast::lex::{Keyword, Operator};
 use crate::ast::parse::Parser;
-use crate::ast::{AstDelete, parse};
+use crate::ast::AstDelete;
 
 impl Parser {
-    pub(crate) fn parse_delete(&mut self) -> parse::Result<AstDelete> {
+    pub(crate) fn parse_delete(&mut self) -> crate::Result<AstDelete> {
         let token = self.consume_keyword(Keyword::Delete)?;
 
         let identifier = self.parse_identifier()?;
