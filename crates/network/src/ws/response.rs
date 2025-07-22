@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::Type;
-use reifydb_core::diagnostic::Diagnostic;
+use reifydb_core::error::diagnostic::Diagnostic;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]

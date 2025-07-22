@@ -8,11 +8,10 @@ mod query;
 
 use crate::ast::{Ast, AstIdentifier, AstPolicy, AstPolicyKind, AstStatement};
 use crate::expression::{Expression, KeyedExpression};
-use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
+use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
-use crate::Error;
-use reifydb_core::{Type, SortKey, OwnedSpan};
-use reifydb_core::diagnostic::parse::unrecognized_type;
+use reifydb_core::error::diagnostic::ast::unrecognized_type;
+use reifydb_core::{OwnedSpan, SortKey, Type, return_error};
 
 struct Compiler {}
 
@@ -178,7 +177,7 @@ pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<Type> {
         "datetime" => Type::DateTime,
         "time" => Type::Time,
         "interval" => Type::Interval,
-        _ => return Err(Error(unrecognized_type(ast.span.clone()))),
+        _ => return_error!(unrecognized_type(ast.span.clone())),
     })
 }
 

@@ -10,11 +10,11 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::mvcc::error::MvccError;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
 use reifydb_core::clock::LogicalClock;
 use reifydb_core::delta::Delta;
+use reifydb_core::error::diagnostic::transaction;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
 
@@ -114,9 +114,9 @@ where
     P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
-    pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
+    pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), reifydb_core::Error> {
         if self.discarded {
-            return Err(TransactionError::Discarded);
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
 
         self.set_internal(key, row)
@@ -127,17 +127,17 @@ where
     /// This is done by adding a delete marker for the key at commit timestamp.  Any
     /// reads happening before this timestamp would be unaffected. Any reads after
     /// this commit would see the deletion.
-    pub fn remove(&mut self, key: &EncodedKey) -> Result<(), TransactionError> {
+    pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_core::Error> {
         if self.discarded {
-            return Err(TransactionError::Discarded);
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
         self.modify(Pending { delta: Delta::Remove { key: key.clone() }, version: 0 })
     }
 
     /// Rolls back the transaction.
-    pub fn rollback(&mut self) -> Result<(), TransactionError> {
+    pub fn rollback(&mut self) -> Result<(), reifydb_core::Error> {
         if self.discarded {
-            return Err(TransactionError::Discarded);
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
 
         self.pending_writes.rollback();
@@ -146,9 +146,9 @@ where
     }
 
     /// Returns `true` if the pending writes contains the key.
-    pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>, TransactionError> {
+    pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>, reifydb_core::Error> {
         if self.discarded {
-            return Err(TransactionError::Discarded);
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
 
         match self.pending_writes.get(key) {
@@ -173,9 +173,9 @@ where
     pub fn get<'a, 'b: 'a>(
         &'a mut self,
         key: &'b EncodedKey,
-    ) -> Result<Option<Pending>, TransactionError> {
+    ) -> Result<Option<Pending>, reifydb_core::Error> {
         if self.discarded {
-            return Err(TransactionError::Discarded);
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
 
         if let Some(v) = self.pending_writes.get(key) {
@@ -211,7 +211,7 @@ where
     ///
     /// 1. If there are no writes, return immediately.
     ///
-    /// 2. Check if read rows were updated since txn started. If so, return `TransactionError::Conflict`.
+    /// 2. Check if read rows were updated since txn started. If so, return `transaction_conflict()`.
     ///
     /// 3. If no conflict, generate a commit timestamp and update written rows' commit ts.
     ///
@@ -222,12 +222,12 @@ where
     ///    there is a conflict, an error will be returned and the callback will not
     ///    run. If there are no conflicts, the callback will be called in the
     ///    background upon successful completion of writes or any error during write.
-    pub fn commit<F>(&mut self, apply: F) -> Result<(), MvccError>
+    pub fn commit<F>(&mut self, apply: F) -> Result<(), reifydb_core::Error>
     where
         F: FnOnce(Vec<Pending>) -> Result<(), Box<dyn std::error::Error>>,
     {
         if self.discarded {
-            return Err(TransactionError::Discarded.into());
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
 
         if self.pending_writes.is_empty() {
@@ -236,9 +236,11 @@ where
             return Ok(());
         }
 
-        let (commit_ts, entries) = self.commit_pending().map_err(|e| match e {
-            TransactionError::Conflict => e,
-            _ => {
+        let (commit_ts, entries) = self.commit_pending().map_err(|e| {
+            // Check if this is a conflict error by examining the error code
+            if e.0.code == "TXN_001" {
+                e // Don't discard on conflict, let caller handle retry
+            } else {
                 self.discard();
                 e
             }
@@ -252,7 +254,7 @@ where
             .map_err(|e| {
                 self.oracle().done_commit(commit_ts);
                 self.discard();
-                MvccError::commit(e)
+                reifydb_core::Error(transaction::commit_failed(e.to_string()))
             })
     }
 }
@@ -263,17 +265,21 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    fn set_internal(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), TransactionError> {
+    fn set_internal(
+        &mut self,
+        key: &EncodedKey,
+        row: EncodedRow,
+    ) -> Result<(), reifydb_core::Error> {
         if self.discarded {
-            return Err(TransactionError::Discarded);
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
 
         self.modify(Pending { delta: Delta::Set { key: key.clone(), row }, version: self.version })
     }
 
-    fn modify(&mut self, pending: Pending) -> Result<(), TransactionError> {
+    fn modify(&mut self, pending: Pending) -> Result<(), reifydb_core::Error> {
         if self.discarded {
-            return Err(TransactionError::Discarded);
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
 
         let pending_writes = &mut self.pending_writes;
@@ -282,7 +288,7 @@ where
         // Extra row for the version in key.
         let size = self.size + pending_writes.estimate_size(&pending);
         if cnt >= pending_writes.max_batch_entries() || size >= pending_writes.max_batch_size() {
-            return Err(TransactionError::LargeTxn);
+            return Err(reifydb_core::Error(transaction::transaction_too_large()));
         }
 
         self.count = cnt;
@@ -320,9 +326,9 @@ where
     L: LogicalClock,
     P: PendingWrites,
 {
-    fn commit_pending(&mut self) -> Result<(Version, Vec<Pending>), TransactionError> {
+    fn commit_pending(&mut self) -> Result<(Version, Vec<Pending>), reifydb_core::Error> {
         if self.discarded {
-            return Err(TransactionError::Discarded);
+            return Err(reifydb_core::Error(transaction::transaction_rolled_back()));
         }
 
         // Ensure that the order in which we get the commit timestamp is the same as
@@ -338,7 +344,7 @@ where
                 // If there is a conflict, we should not send the updates to the write channel.
                 // Instead, we should return the conflict error to the user.
                 self.conflicts = conflicts;
-                Err(TransactionError::Conflict)
+                Err(reifydb_core::Error(transaction::transaction_conflict()))
             }
             CreateCommitResult::Success(version) => {
                 let pending_writes = mem::take(&mut self.pending_writes);

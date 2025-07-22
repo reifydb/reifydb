@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use error::Error;
 use nom::branch::alt;
 use nom::character::multispace0;
 use nom::multi::many0;
@@ -21,16 +20,15 @@ use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
 use reifydb_core::{SpanLine, SpanColumn, OwnedSpan};
+use reifydb_core::error::diagnostic::ast;
 
 mod display;
-mod error;
 mod identifier;
 mod keyword;
 mod literal;
 mod operator;
 mod separator;
 
-pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
@@ -88,10 +86,10 @@ pub enum Literal {
     Undefined,
 }
 
-pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> Result<Vec<Token>> {
+pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> crate::Result<Vec<Token>> {
     match many0(token).parse(input.into()) {
         Ok((_, tokens)) => Ok(tokens),
-        Err(err) => Err(Error(format!("{}", err))),
+        Err(err) => Err(reifydb_core::error::Error(ast::lex_error(format!("{}", err)))),
     }
 }
 

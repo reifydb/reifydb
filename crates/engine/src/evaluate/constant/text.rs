@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{self, Error};
 use crate::frame::ColumnValues;
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
-use reifydb_core::{Span, Type};
+use reifydb_core::{return_error, Span, Type};
 use temporal::TemporalParser;
 use super::temporal;
 
@@ -18,7 +17,7 @@ impl TextParser {
         span: impl Span,
         target: Type,
         row_count: usize,
-    ) -> evaluate::Result<ColumnValues> {
+    ) -> crate::Result<ColumnValues> {
         match target {
             Type::Bool => Self::parse_bool(span, row_count),
             Type::Float4 => Self::parse_float4(span, row_count),
@@ -45,121 +44,131 @@ impl TextParser {
             Type::Interval => {
                 TemporalParser::parse_temporal_type(span, Type::Interval, row_count)
             }
-            _ => Err(Error(cast::unsupported_cast(span.to_owned(), Type::Utf8, target))),
+            _ => return_error!(cast::unsupported_cast(span.to_owned(), Type::Utf8, target)),
         }
     }
 
-    fn parse_bool(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_bool(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         match parse_bool(span.clone()) {
             Ok(value) => Ok(ColumnValues::bool(vec![value; row_count])),
-            Err(err) => Err(Error(cast::invalid_boolean(span.to_owned(), err.diagnostic()))),
+            Err(err) => return_error!(cast::invalid_boolean(span.to_owned(), err.diagnostic())),
         }
     }
 
-    fn parse_float4(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_float4(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         match parse_float::<f32>(span.clone()) {
             Ok(v) => Ok(ColumnValues::float4(vec![v; row_count])),
             Err(err) => {
-                Err(Error(cast::invalid_number(span.to_owned(), Type::Float4, err.diagnostic())))
+                return_error!(cast::invalid_number(span.to_owned(), Type::Float4, err.diagnostic()))
             }
         }
     }
 
-    fn parse_float8(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_float8(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         match parse_float::<f64>(span.clone()) {
             Ok(v) => Ok(ColumnValues::float8(vec![v; row_count])),
             Err(err) => {
-                Err(Error(cast::invalid_number(span.to_owned(), Type::Float8, err.diagnostic())))
+                return_error!(cast::invalid_number(span.to_owned(), Type::Float8, err.diagnostic()))
             }
         }
     }
 
-    fn parse_int1(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int1(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::int1(vec![
-            parse_int::<i8>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Int1, e.diagnostic())
-            ))?;
+            match parse_int::<i8>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Int1, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_int2(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int2(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::int2(vec![
-            parse_int::<i16>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Int2, e.diagnostic())
-            ))?;
+            match parse_int::<i16>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Int2, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_int4(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int4(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::int4(vec![
-            parse_int::<i32>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Int4, e.diagnostic())
-            ))?;
+            match parse_int::<i32>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Int4, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_int8(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int8(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::int8(vec![
-            parse_int::<i64>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Int8, e.diagnostic())
-            ))?;
+            match parse_int::<i64>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Int8, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_int16(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int16(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::int16(vec![
-            parse_int::<i128>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Int16, e.diagnostic())
-            ))?;
+            match parse_int::<i128>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Int16, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_uint1(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint1(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::uint1(vec![
-            parse_uint::<u8>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Uint1, e.diagnostic())
-            ))?;
+            match parse_uint::<u8>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Uint1, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_uint2(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint2(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::uint2(vec![
-            parse_uint::<u16>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Uint2, e.diagnostic())
-            ))?;
+            match parse_uint::<u16>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Uint2, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_uint4(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint4(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::uint4(vec![
-            parse_uint::<u32>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Uint4, e.diagnostic())
-            ))?;
+            match parse_uint::<u32>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Uint4, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_uint8(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint8(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::uint8(vec![
-            parse_uint::<u64>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Uint8, e.diagnostic())
-            ))?;
+            match parse_uint::<u64>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Uint8, e.diagnostic())),
+            };
             row_count
         ]))
     }
 
-    fn parse_uint16(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint16(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(ColumnValues::uint16(vec![
-            parse_uint::<u128>(span.clone()).map_err(|e| Error(
-                cast::invalid_number(span.to_owned(), Type::Uint16, e.diagnostic())
-            ))?;
+            match parse_uint::<u128>(span.clone()) {
+                Ok(v) => v,
+                Err(e) => return_error!(cast::invalid_number(span.to_owned(), Type::Uint16, e.diagnostic())),
+            };
             row_count
         ]))
     }

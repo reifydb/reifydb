@@ -8,7 +8,7 @@ use crate::ws::{
     TxRequest, TxResponse,
 };
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::diagnostic::Diagnostic;
+use reifydb_core::error::diagnostic::Diagnostic;
 use reifydb_core::{CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type};
 use reifydb_core::value::temporal::parse_interval;
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};

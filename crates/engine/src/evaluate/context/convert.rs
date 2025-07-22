@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::EvaluationContext;
-use reifydb_catalog::column_policy::ColumnSaturationPolicy;
-use reifydb_core::diagnostic::number::{integer_precision_loss, number_out_of_range};
+use reifydb_core::interface::ColumnSaturationPolicy;
+use reifydb_core::error::diagnostic::number::{integer_precision_loss, number_out_of_range};
 use reifydb_core::value::number::SafeConvert;
 use reifydb_core::{GetType, IntoOwnedSpan};
 
@@ -12,18 +12,18 @@ pub trait Convert {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType;
 }
 
-impl Convert for EvaluationContext {
+impl Convert for EvaluationContext<'_> {
     fn convert<From, To>(
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType,
@@ -32,12 +32,12 @@ impl Convert for EvaluationContext {
     }
 }
 
-impl Convert for &EvaluationContext {
+impl Convert for &EvaluationContext<'_> {
     fn convert<From, To>(
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType,
@@ -47,16 +47,17 @@ impl Convert for &EvaluationContext {
                 .checked_convert()
                 .ok_or_else(|| {
                     if From::get_type().is_integer() && To::get_type().is_floating_point() {
-                        return crate::evaluate::Error(integer_precision_loss(
+                        return reifydb_core::Error(integer_precision_loss(
                             span.into_span(),
                             From::get_type(),
                             To::get_type(),
                         ));
                     };
 
-                    return crate::evaluate::Error(number_out_of_range(
+                    return reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         To::get_type(),
+                        self.target_column.as_ref(),
                     ));
                 })
                 .map(Some),

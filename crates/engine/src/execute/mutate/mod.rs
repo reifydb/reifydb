@@ -4,3 +4,4 @@
 mod delete;
 mod insert;
 mod update;
+mod coerce;

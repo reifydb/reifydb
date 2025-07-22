@@ -4,14 +4,11 @@
 pub use crate::ast::ast::*;
 use crate::ast::lex::lex;
 pub use crate::ast::lex::{Token, TokenKind};
-pub use error::Error;
-
 mod ast;
-mod error;
 pub(crate) mod lex;
 pub(crate) mod parse;
 
-pub fn parse(str: &str) -> Result<Vec<AstStatement>, Error> {
+pub fn parse(str: &str) -> crate::Result<Vec<AstStatement>> {
     let tokens = lex(str)?;
     let statements = parse::parse(tokens)?;
     Ok(statements)

@@ -1,29 +1,29 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::diagnostic::temporal;
-use crate::{Date, Error, Span};
+use crate::error::diagnostic::temporal;
+use crate::{return_error, Date, Error, Span};
 
 pub fn parse_date(span: impl Span) -> Result<Date, Error> {
     let span_parts = span.split('-');
     if span_parts.len() != 3 {
-        return Err(Error(temporal::invalid_date_format(span.to_owned())));
+        return_error!(temporal::invalid_date_format(span.to_owned()));
     }
 
     // Check for empty parts
     if span_parts[0].trimmed_fragment().is_empty() {
-        return Err(Error(temporal::empty_date_component(span_parts[0].clone())));
+        return_error!(temporal::empty_date_component(span_parts[0].clone()));
     }
     if span_parts[1].trimmed_fragment().is_empty() {
-        return Err(Error(temporal::empty_date_component(span_parts[1].clone())));
+        return_error!(temporal::empty_date_component(span_parts[1].clone()));
     }
     if span_parts[2].trimmed_fragment().is_empty() {
-        return Err(Error(temporal::empty_date_component(span_parts[2].clone())));
+        return_error!(temporal::empty_date_component(span_parts[2].clone()));
     }
 
     let year_str = span_parts[0].trimmed_fragment();
     if year_str.len() != 4 {
-        return Err(Error(temporal::invalid_year(span_parts[0].clone())));
+        return_error!(temporal::invalid_year(span_parts[0].clone()));
     }
 
     let year = year_str
@@ -32,7 +32,7 @@ pub fn parse_date(span: impl Span) -> Result<Date, Error> {
 
     let month_str = span_parts[1].trimmed_fragment();
     if month_str.len() != 2 {
-        return Err(Error(temporal::invalid_month(span_parts[1].clone())));
+        return_error!(temporal::invalid_month(span_parts[1].clone()));
     }
 
     let month = month_str
@@ -41,7 +41,7 @@ pub fn parse_date(span: impl Span) -> Result<Date, Error> {
 
     let day_str = span_parts[2].trimmed_fragment();
     if day_str.len() != 2 {
-        return Err(Error(temporal::invalid_day(span_parts[2].clone())));
+        return_error!(temporal::invalid_day(span_parts[2].clone()));
     }
 
     let day =

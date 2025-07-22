@@ -6,7 +6,6 @@ use crate::expression::Expression;
 
 use crate::plan::logical::compile_logical;
 use crate::plan::physical::{PhysicalPlan, compile_physical};
-use reifydb_core::Error;
 use reifydb_core::interface::Rx;
 
 pub mod logical;
@@ -14,9 +13,10 @@ pub mod physical;
 
 pub type RowToInsert = Vec<Expression>;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-pub fn plan(rx: &mut impl Rx, statement: AstStatement) -> Result<Option<PhysicalPlan>> {
+pub fn plan(
+    rx: &mut impl Rx,
+    statement: AstStatement,
+) -> crate::Result<Option<PhysicalPlan>> {
     let logical = compile_logical(statement)?;
     let physical = compile_physical(rx, logical)?;
     Ok(physical)

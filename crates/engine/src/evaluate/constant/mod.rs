@@ -5,14 +5,13 @@ mod number;
 mod temporal;
 mod text;
 
-use crate::evaluate;
-use crate::evaluate::{Error, EvaluationContext, Evaluator};
+use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
 use number::NumberParser;
-use reifydb_core::Type;
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
+use reifydb_core::{Type, return_error};
 use reifydb_rql::expression::ConstantExpression;
 use temporal::TemporalParser;
 use text::TextParser;
@@ -22,7 +21,7 @@ impl Evaluator {
         &mut self,
         expr: &ConstantExpression,
         ctx: &EvaluationContext,
-    ) -> evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
         Ok(FrameColumn {
             name: expr.span().fragment,
@@ -35,7 +34,7 @@ impl Evaluator {
         expr: &ConstantExpression,
         target: Type,
         ctx: &EvaluationContext,
-    ) -> evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
         let values = Self::constant_value(&expr, row_count)?;
         let casted_values = {
@@ -67,20 +66,17 @@ impl Evaluator {
         Ok(FrameColumn { name: expr.span().fragment, values: casted_values })
     }
 
-    fn constant_value(
-        expr: &ConstantExpression,
-        row_count: usize,
-    ) -> evaluate::Result<ColumnValues> {
+    fn constant_value(expr: &ConstantExpression, row_count: usize) -> crate::Result<ColumnValues> {
         Ok(match expr {
             ConstantExpression::Bool { span } => match parse_bool(span.clone()) {
                 Ok(v) => return Ok(ColumnValues::bool(vec![v; row_count])),
-                Err(err) => return Err(Error(err.diagnostic())),
+                Err(err) => return_error!(err.diagnostic()),
             },
             ConstantExpression::Number { span } => {
                 if span.fragment.contains(".") || span.fragment.contains("e") {
                     return match parse_float(span.clone()) {
                         Ok(v) => Ok(ColumnValues::float8(vec![v; row_count])),
-                        Err(err) => Err(Error(err.diagnostic())),
+                        Err(err) => return_error!(err.diagnostic()),
                     };
                 }
 
@@ -98,7 +94,7 @@ impl Evaluator {
                     match parse_uint::<u128>(span.clone()) {
                         Ok(v) => ColumnValues::uint16(vec![v; row_count]),
                         Err(err) => {
-                            return Err(Error(err.diagnostic()));
+                            return_error!(err.diagnostic());
                         }
                     }
                 }
@@ -117,7 +113,7 @@ impl Evaluator {
         expr: &ConstantExpression,
         target: Type,
         row_count: usize,
-    ) -> evaluate::Result<ColumnValues> {
+    ) -> crate::Result<ColumnValues> {
         Ok(match (expr, target) {
             (ConstantExpression::Number { span }, target) => {
                 NumberParser::from_number(span.clone(), target, row_count)?
@@ -139,7 +135,7 @@ impl Evaluator {
                     ConstantExpression::Temporal { .. } => Type::DateTime,
                     ConstantExpression::Undefined { .. } => Type::Undefined,
                 };
-                return Err(Error(cast::unsupported_cast(expr.span(), source_type, target)));
+                return_error!(cast::unsupported_cast(expr.span(), source_type, target));
             }
         })
     }

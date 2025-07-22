@@ -4,16 +4,16 @@
 use crate::ast::lex::Operator::CloseParen;
 use crate::ast::lex::{Operator, Separator, Token, TokenKind};
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstTuple, parse};
+use crate::ast::AstTuple;
 use Separator::Comma;
 
 impl Parser {
-    pub(crate) fn parse_tuple(&mut self) -> parse::Result<AstTuple> {
+    pub(crate) fn parse_tuple(&mut self) -> crate::Result<AstTuple> {
         let token = self.consume_operator(Operator::OpenParen)?;
         self.parse_tuple_call(token)
     }
 
-    pub(crate) fn parse_tuple_call(&mut self, operator: Token) -> parse::Result<AstTuple> {
+    pub(crate) fn parse_tuple_call(&mut self, operator: Token) -> crate::Result<AstTuple> {
         let mut nodes = Vec::new();
         loop {
             self.skip_new_line()?;

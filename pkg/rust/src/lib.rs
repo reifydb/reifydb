@@ -24,9 +24,9 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use error::Error;
 pub use reifydb_auth as auth;
 pub use reifydb_core as core;
+pub use reifydb_core::{Error, Result};
 pub use reifydb_engine as engine;
 #[cfg(any(feature = "server", feature = "client"))]
 pub use reifydb_network as network;
@@ -58,15 +58,11 @@ pub mod embedded;
 #[cfg(feature = "embedded_blocking")]
 pub mod embedded_blocking;
 
-mod error;
-
 #[cfg(feature = "server")]
 pub mod server;
 mod session;
 
 pub struct ReifyDB {}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait DB<'a>: Sized {
     fn tx_as(

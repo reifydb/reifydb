@@ -1,14 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Error;
 use crate::execute::Executor;
 use crate::frame::Frame;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;
 use reifydb_core::Value;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::diagnostic::catalog::schema_already_exists;
+use reifydb_core::error::diagnostic::catalog::schema_already_exists;
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
@@ -25,7 +24,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 ]));
             }
 
-            return Err(Error::execution(schema_already_exists(
+            return Err(reifydb_core::Error(schema_already_exists(
                 Some(plan.schema),
                 &schema.name,
             )));

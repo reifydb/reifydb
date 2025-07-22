@@ -3,10 +3,10 @@
 
 use crate::ast::lex::Keyword;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstFilter, parse};
+use crate::ast::AstFilter;
 
 impl Parser {
-    pub(crate) fn parse_filter(&mut self) -> parse::Result<AstFilter> {
+    pub(crate) fn parse_filter(&mut self) -> crate::Result<AstFilter> {
         let token = self.consume_keyword(Keyword::Filter)?;
         let node = self.parse_node(Precedence::None)?;
         Ok(AstFilter { token, node: Box::new(node) })

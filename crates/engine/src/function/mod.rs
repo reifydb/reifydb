@@ -1,27 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{FrameColumn, ColumnValues};
-pub use error::FunctionError;
+use crate::frame::{ColumnValues, FrameColumn};
 pub use registry::Functions;
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
-
-mod error;
 pub mod math;
 mod registry;
 
 pub trait ScalarFunction: Send + Sync {
-    fn scalar(&self, columns: &[FrameColumn], row_count: usize) -> Result<ColumnValues, FunctionError>;
+    fn scalar(&self, columns: &[FrameColumn], row_count: usize) -> crate::Result<ColumnValues>;
 }
 
 pub trait AggregateFunction: Send + Sync {
     fn aggregate(
-		&mut self,
-		column: &FrameColumn,
-		mask: &BitVec,
-		groups: &HashMap<Vec<Value>, Vec<usize>>,
-    ) -> Result<(), FunctionError>;
+        &mut self,
+        column: &FrameColumn,
+        mask: &BitVec,
+        groups: &HashMap<Vec<Value>, Vec<usize>>,
+    ) -> crate::Result<()>;
 
-    fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), FunctionError>;
+    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnValues)>;
 }

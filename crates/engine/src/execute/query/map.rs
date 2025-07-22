@@ -31,7 +31,8 @@ impl ExecutionPlan for MapNode {
             let row_count = frame.row_count();
 
             let eval_ctx = EvaluationContext {
-                column: None,
+                target_column: None,
+                column_policies: Vec::new(),
                 mask: mask.clone(),
                 columns: frame.columns.clone(),
                 row_count,
@@ -94,7 +95,8 @@ impl ExecutionPlan for MapWithoutInputNode {
             let column = evaluate(
                 &expr,
                 &EvaluationContext {
-                    column: None,
+                    target_column: None,
+                    column_policies: Vec::new(),
                     mask: BitVec::new(1, true),
                     columns: Vec::new(),
                     row_count: 1,

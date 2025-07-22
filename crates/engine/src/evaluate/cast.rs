@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
-use crate::evaluate::{Error, EvaluationContext, Evaluator};
+use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::cast;
+use reifydb_core::error;
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 
@@ -13,7 +13,7 @@ impl Evaluator {
         &mut self,
         cast: &CastExpression,
         ctx: &EvaluationContext,
-    ) -> evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let cast_span = cast.lazy_span();
 
         // FIXME optimization does not apply for prefix expressions, like cast(-2 as int1) at the moment
@@ -29,7 +29,7 @@ impl Evaluator {
                         .values
                         .cast(cast.to.ty, ctx, cast.expression.lazy_span())
                         .map_err(|e| {
-                            Error(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
+                            error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
                         })?,
                 })
             } // FIXME

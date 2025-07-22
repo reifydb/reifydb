@@ -6,7 +6,8 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-use reifydb_core::Error;
+pub use reifydb_core::Result;
+
 
 pub mod column;
 pub mod column_policy;
@@ -17,6 +18,5 @@ pub mod sequence;
 pub mod table;
 pub mod test_utils;
 
-pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct Catalog {}

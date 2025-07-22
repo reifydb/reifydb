@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
-use crate::function::FunctionError;
+use reifydb_core::error::diagnostic::function;
+use reifydb_core::error;
 use reifydb_rql::expression::{CallExpression, Expression};
 
 impl Evaluator {
@@ -12,7 +12,7 @@ impl Evaluator {
 		&mut self,
 		call: &CallExpression,
 		ctx: &EvaluationContext,
-    ) -> evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let virtual_columns = self.evaluate_virtual_column(&call.args, ctx).unwrap();
 
         let function = &call.func.0.fragment;
@@ -20,8 +20,7 @@ impl Evaluator {
         let functor = self
             .functions
             .get_scalar(function.as_str())
-            .ok_or(FunctionError::UnknownFunction(function.clone()))
-            .unwrap();
+            .ok_or(error!(function::unknown_function(function.clone())))?;
 
         let row_count = ctx.row_count;
         Ok(FrameColumn {

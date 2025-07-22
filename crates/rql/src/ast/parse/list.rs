@@ -4,10 +4,10 @@
 use crate::ast::lex::Operator::CloseBracket;
 use crate::ast::lex::{Operator, Separator};
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstList, TokenKind, parse};
+use crate::ast::{AstList, TokenKind};
 
 impl Parser {
-    pub(crate) fn parse_list(&mut self) -> parse::Result<AstList> {
+    pub(crate) fn parse_list(&mut self) -> crate::Result<AstList> {
         let token = self.consume_operator(Operator::OpenBracket)?;
 
         let mut nodes = Vec::new();

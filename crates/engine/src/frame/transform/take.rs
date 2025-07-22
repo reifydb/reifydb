@@ -5,7 +5,7 @@ use crate::frame::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::CowVec;
 
 impl Frame {
-    pub fn take(&mut self, n: usize) -> crate::frame::Result<()> {
+    pub fn take(&mut self, n: usize) -> crate::Result<()> {
         let mut columns = Vec::with_capacity(self.columns.len());
 
         for col in &self.columns {

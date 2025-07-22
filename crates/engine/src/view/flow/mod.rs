@@ -15,7 +15,6 @@ use reifydb_core::interface::VersionedStorage;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 
-mod error;
 
 pub type NodeId = usize;
 

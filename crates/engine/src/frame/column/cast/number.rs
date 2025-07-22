@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::error;
-use crate::evaluate::{Convert, Demote, Error, Promote};
+use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::number::{
     SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,
 };
@@ -19,7 +18,7 @@ impl ColumnValues {
     ) -> crate::Result<ColumnValues> {
         if !target.is_number() {
             let source_type = self.get_type();
-            return Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))));
+            return Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)));
         }
 
         if self.get_type().is_number() {
@@ -42,7 +41,7 @@ impl ColumnValues {
         }
 
         let source_type = self.get_type();
-        Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+        Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
     }
 }
 
@@ -74,7 +73,7 @@ impl ColumnValues {
                     Type::Float8 => bool_to_number!(f64, 1.0f64, 0.0f64),
                     _ => {
                         let source_type = self.get_type();
-                        return Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))));
+                        return Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)));
                     }
                 };
 
@@ -90,7 +89,7 @@ impl ColumnValues {
             }
             _ => {
                 let source_type = self.get_type();
-                Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
             },
         }
     }
@@ -112,7 +111,7 @@ impl ColumnValues {
                 Type::Uint16 => f32_to_u128_vec(values, bitvec),
                 _ => {
                     let source_type = self.get_type();
-                    Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                    Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
                 },
             },
             ColumnValues::Float8(values, bitvec) => match target {
@@ -128,12 +127,12 @@ impl ColumnValues {
                 Type::Uint16 => f64_to_u128_vec(values, bitvec),
                 _ => {
                     let source_type = self.get_type();
-                    Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                    Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
                 },
             },
             _ => {
                 let source_type = self.get_type();
-                Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
             },
         }
     }
@@ -142,13 +141,13 @@ impl ColumnValues {
 macro_rules! parse_and_push {
     (parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
         let result = parse_int::<$ty>($temp_span).map_err(|e| {
-            Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
+            reifydb_core::Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
         })?;
         $out.push::<$ty>(result);
     }};
     (parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
         let result = parse_uint::<$ty>($temp_span).map_err(|e| {
-            Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
+            reifydb_core::Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
         })?;
         $out.push::<$ty>(result);
     }};
@@ -253,7 +252,7 @@ impl ColumnValues {
                             ),
                             _ => {
                                 let source_type = self.get_type();
-                                return Err(error::Error::Evaluation(Error(cast::unsupported_cast(base_span.clone(), source_type, target))));
+                                return Err(reifydb_core::Error(cast::unsupported_cast(base_span.clone(), source_type, target)));
                             }
                         }
                     } else {
@@ -264,7 +263,7 @@ impl ColumnValues {
             }
             _ => {
                 let source_type = self.get_type();
-                Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
             },
         }
     }
@@ -290,7 +289,7 @@ impl ColumnValues {
                     match target {
                         Type::Float4 => {
                             out.push::<f32>(parse_float::<f32>(temp_span).map_err(|e| {
-                                Error(cast::invalid_number(
+                                reifydb_core::Error(cast::invalid_number(
                                     base_span.clone(),
                                     Type::Float4,
                                     e.diagnostic(),
@@ -300,7 +299,7 @@ impl ColumnValues {
 
                         Type::Float8 => {
                             out.push::<f64>(parse_float::<f64>(temp_span).map_err(|e| {
-                                Error(cast::invalid_number(
+                                reifydb_core::Error(cast::invalid_number(
                                     base_span.clone(),
                                     Type::Float8,
                                     e.diagnostic(),
@@ -309,7 +308,7 @@ impl ColumnValues {
                         }
                         _ => {
                             let source_type = self.get_type();
-                            return Err(error::Error::Evaluation(Error(cast::unsupported_cast(base_span.clone(), source_type, target))));
+                            return Err(reifydb_core::Error(cast::unsupported_cast(base_span.clone(), source_type, target)));
                         }
                     }
                 } else {
@@ -319,7 +318,7 @@ impl ColumnValues {
             Ok(out)
         } else {
             let source_type = self.get_type();
-            Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+            Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
         }
     }
 }
@@ -375,11 +374,11 @@ impl ColumnValues {
         span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         if !target.is_number() {
-            return Err(error::Error::Evaluation(Error(cast::unsupported_cast(
+            return Err(reifydb_core::Error(cast::unsupported_cast(
                 span(),
                 self.get_type(),
                 target,
-            ))));
+            )));
         }
 
         macro_rules! cast {
@@ -500,7 +499,7 @@ impl ColumnValues {
         );
 
         let source_type = self.get_type();
-        Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+        Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
     }
 }
 
@@ -688,7 +687,7 @@ mod tests {
                 &self,
                 val: From,
                 _span: impl IntoOwnedSpan,
-            ) -> crate::evaluate::Result<Option<To>>
+            ) -> crate::Result<Option<To>>
             where
                 From: SafePromote<To>,
             {
@@ -807,7 +806,7 @@ mod tests {
                 &self,
                 val: From,
                 _span: impl IntoOwnedSpan,
-            ) -> crate::evaluate::Result<Option<To>>
+            ) -> crate::Result<Option<To>>
             where
                 From: SafeDemote<To>,
             {

@@ -4,7 +4,7 @@
 use crate::frame::Frame;
 
 impl Frame {
-    pub fn select(&mut self, names: &[&str]) -> crate::frame::Result<()> {
+    pub fn select(&mut self, names: &[&str]) -> crate::Result<()> {
         let mut selected: Vec<usize> =
             names.into_iter().filter_map(|&name| self.index.get(name).cloned()).collect();
 

@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::evaluate::EvaluationContext;
-use reifydb_catalog::column_policy::ColumnSaturationPolicy;
-use reifydb_core::diagnostic::number::number_out_of_range;
+use reifydb_core::interface::ColumnSaturationPolicy;
+use reifydb_core::error::diagnostic::number::number_out_of_range;
 use reifydb_core::value::number::SafeDemote;
 use reifydb_core::{GetType, IntoOwnedSpan};
 
@@ -12,18 +12,18 @@ pub trait Demote {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType;
 }
 
-impl Demote for EvaluationContext {
+impl Demote for EvaluationContext<'_> {
     fn demote<From, To>(
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,
@@ -32,12 +32,12 @@ impl Demote for EvaluationContext {
     }
 }
 
-impl Demote for &EvaluationContext {
+impl Demote for &EvaluationContext<'_> {
     fn demote<From, To>(
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,
@@ -46,9 +46,10 @@ impl Demote for &EvaluationContext {
             ColumnSaturationPolicy::Error => from
                 .checked_demote()
                 .ok_or_else(|| {
-                    return crate::evaluate::Error(number_out_of_range(
+                    return reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         To::get_type(),
+                        self.target_column.as_ref(),
                     ));
                 })
                 .map(Some),
@@ -62,19 +63,17 @@ impl Demote for &EvaluationContext {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluate::context::EvaluationColumn;
     use crate::evaluate::{Demote, EvaluationContext};
-    use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
-    use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
-    use reifydb_core::Type;
+    use reifydb_core::interface::ColumnPolicyKind::Saturation;
+    use reifydb_core::interface::ColumnSaturationPolicy::{Error, Undefined};
     use reifydb_core::value::number::SafeDemote;
-    use reifydb_core::{GetType, OwnedSpan};
+    use reifydb_core::{ColumnDescriptor, GetType, OwnedSpan, Type};
 
     #[test]
     fn test_demote_ok() {
         let mut ctx = EvaluationContext::testing();
-        ctx.column =
-            Some(EvaluationColumn { ty: Some(Type::Int1), policies: vec![Saturation(Error)] });
+        ctx.target_column = Some(ColumnDescriptor::new().with_column_type(Type::Int1));
+        ctx.column_policies = vec![Saturation(Error)];
 
         let result = ctx.demote::<i16, i8>(1i16, || OwnedSpan::testing_empty());
         assert_eq!(result, Ok(Some(1i8)));
@@ -83,8 +82,8 @@ mod tests {
     #[test]
     fn test_demote_fail_with_error_policy() {
         let mut ctx = EvaluationContext::testing();
-        ctx.column =
-            Some(EvaluationColumn { ty: Some(Type::Int1), policies: vec![Saturation(Error)] });
+        ctx.target_column = Some(ColumnDescriptor::new().with_column_type(Type::Int1));
+        ctx.column_policies = vec![Saturation(Error)];
 
         let err =
             ctx.demote::<TestI16, TestI8>(TestI16 {}, || OwnedSpan::testing_empty()).err().unwrap();
@@ -96,8 +95,8 @@ mod tests {
     #[test]
     fn test_demote_fail_with_undefined_policy() {
         let mut ctx = EvaluationContext::testing();
-        ctx.column =
-            Some(EvaluationColumn { ty: Some(Type::Int1), policies: vec![Saturation(Undefined)] });
+        ctx.target_column = Some(ColumnDescriptor::new().with_column_type(Type::Int1));
+        ctx.column_policies = vec![Saturation(Undefined)];
 
         let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || OwnedSpan::testing_empty()).unwrap();
         assert!(result.is_none());

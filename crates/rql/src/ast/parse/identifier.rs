@@ -3,11 +3,10 @@
 
 use crate::ast::ast::AstIdentifier;
 use crate::ast::lex::TokenKind;
-use crate::ast::parse;
 use crate::ast::parse::Parser;
 
 impl Parser {
-    pub(crate) fn parse_identifier(&mut self) -> parse::Result<AstIdentifier> {
+    pub(crate) fn parse_identifier(&mut self) -> crate::Result<AstIdentifier> {
         let token = self.consume(TokenKind::Identifier)?;
         Ok(AstIdentifier(token))
     }

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{DB, Error};
+use crate::DB;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
@@ -51,10 +51,9 @@ where
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.tx_as(&principal, &rql).map_err(|err| {
-                let mut diagnostic = err.diagnostic();
-                diagnostic.set_statement(rql.to_string());
-                Error::ExecutionError { diagnostic }
+            engine.tx_as(&principal, &rql).map_err(|mut err| {
+                err.0.set_statement(rql.to_string());
+                err
             })
         })
         .await
@@ -67,10 +66,9 @@ where
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.rx_as(&principal, &rql).map_err(|err| {
-                let mut diagnostic = err.diagnostic();
-                diagnostic.set_statement(rql.to_string());
-                Error::ExecutionError { diagnostic }
+            engine.rx_as(&principal, &rql).map_err(|mut err| {
+                err.0.set_statement(rql.to_string());
+                err
             })
         })
         .await

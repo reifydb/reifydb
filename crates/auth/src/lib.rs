@@ -6,8 +6,6 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
-pub use error::Error;
+pub use reifydb_core::Result;
 
-mod error;
 
-pub type Result<T> = std::result::Result<T, Error>;

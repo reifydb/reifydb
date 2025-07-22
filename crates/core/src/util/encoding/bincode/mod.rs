@@ -18,7 +18,6 @@
 
 use std::io::{Read, Write};
 
-use crate::util::encoding;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -32,18 +31,18 @@ pub fn serialize<T: Serialize>(value: &T) -> Vec<u8> {
 }
 
 /// Deserializes a value using Bincode.
-pub fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> encoding::Result<T> {
+pub fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> crate::Result<T> {
     Ok(bincode::serde::borrow_decode_from_slice(bytes, CONFIG)?.0)
 }
 
 /// Serializes a value to a writer using Bincode.
-pub fn serialize_into<W: Write, T: Serialize>(mut writer: W, value: &T) -> encoding::Result<()> {
+pub fn serialize_into<W: Write, T: Serialize>(mut writer: W, value: &T) -> crate::Result<()> {
     bincode::serde::encode_into_std_write(value, &mut writer, CONFIG)?;
     Ok(())
 }
 
 /// Deserializes a value from a reader using Bincode.
-pub fn deserialize_from<R: Read, T: DeserializeOwned>(mut reader: R) -> encoding::Result<T> {
+pub fn deserialize_from<R: Read, T: DeserializeOwned>(mut reader: R) -> crate::Result<T> {
     Ok(bincode::serde::decode_from_std_read(&mut reader, CONFIG)?)
 }
 
@@ -51,7 +50,7 @@ pub fn deserialize_from<R: Read, T: DeserializeOwned>(mut reader: R) -> encoding
 /// reader is closed.
 pub fn maybe_deserialize_from<R: Read, T: DeserializeOwned>(
     mut reader: R,
-) -> encoding::Result<Option<T>> {
+) -> crate::Result<Option<T>> {
     match bincode::serde::decode_from_std_read(&mut reader, CONFIG) {
         Ok(t) => Ok(Some(t)),
         Err(bincode::error::DecodeError::Io { inner, .. })

@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::diagnostic::Diagnostic;
-use crate::diagnostic::util::value_range;
-use crate::{Type, IntoOwnedSpan};
+use crate::error::diagnostic::Diagnostic;
+use crate::error::diagnostic::util::value_range;
+use crate::{ColumnDescriptor, IntoOwnedSpan, Type};
 
 pub fn invalid_number_format(span: impl IntoOwnedSpan, target: Type) -> Diagnostic {
     let owned_span = span.into_span();
@@ -54,25 +54,52 @@ pub fn invalid_number_format(span: impl IntoOwnedSpan, target: Type) -> Diagnost
     }
 }
 
-pub fn number_out_of_range(span: impl IntoOwnedSpan, target: Type) -> Diagnostic {
+pub fn number_out_of_range(
+    span: impl IntoOwnedSpan,
+    target: Type,
+    descriptor: Option<&ColumnDescriptor>,
+) -> Diagnostic {
     let owned_span = span.into_span();
-    let range = value_range(target);
-    let label = Some(format!(
-        "value '{}' exceeds the valid range for type {} ({})",
-        owned_span.fragment, target, range
-    ));
 
+    let range = value_range(target);
+
+    let label = if let Some(desc) = descriptor {
+        Some(format!(
+            "value '{}' exceeds the valid range for {} column {}",
+            owned_span.fragment,
+            desc.column_type.as_ref().unwrap_or(&target),
+            desc.location_string()
+        ))
+    } else {
+        Some(format!(
+            "value '{}' exceeds the valid range for type {} ({})",
+            owned_span.fragment, target, range
+        ))
+    };
+
+    let help = if let Some(desc) = descriptor {
+        if desc.schema.is_some() && desc.table.is_some() {
+            Some(format!(
+                "use a value within range {} or modify column {}",
+                range,
+                desc.location_string()
+            ))
+        } else {
+            Some(format!("use a value within range {} or use a wider type", range))
+        }
+    } else {
+        Some(format!("use a value within range {} or use a wider type", range))
+    };
+
+    let notes = vec![format!("valid range: {}", range)];
     Diagnostic {
         code: "NUMBER_002".to_string(),
         statement: None,
         message: "number out of range".to_string(),
         span: Some(owned_span),
         label,
-        help: Some(format!(
-            "use a value within the valid range for {} or use a wider type",
-            target
-        )),
-        notes: vec![format!("valid range: {}", range)],
+        help,
+        notes,
         column: None,
         cause: None,
     }
@@ -94,7 +121,11 @@ pub fn nan_not_allowed() -> Diagnostic {
     }
 }
 
-pub fn integer_precision_loss(span: impl IntoOwnedSpan, source_type: Type, target: Type) -> Diagnostic {
+pub fn integer_precision_loss(
+    span: impl IntoOwnedSpan,
+    source_type: Type,
+    target: Type,
+) -> Diagnostic {
     let owned_span = span.into_span();
     let is_signed = source_type.is_signed_integer();
 

@@ -1500,6 +1500,9 @@ dependencies = [
 [[package]]
 name = "reifydb-auth"
 version = "0.0.1"
+dependencies = [
+ "reifydb-core",
+]
 
 [[package]]
 name = "reifydb-catalog"

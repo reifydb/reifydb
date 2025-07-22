@@ -5,7 +5,7 @@ use crate::frame::Frame;
 use reifydb_core::BitVec;
 
 impl Frame {
-    pub fn filter(&mut self, mask: &BitVec) -> crate::frame::Result<()> {
+    pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
         for column in self.columns.iter_mut() {
             column.filter(mask)?;
         }

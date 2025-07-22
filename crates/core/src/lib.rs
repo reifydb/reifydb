@@ -9,14 +9,14 @@
 pub use error::Error;
 pub use row::key::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
-pub use interface::{BorrowedSpan, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine};
+pub use interface::{BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine};
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
 pub use value::{Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, RowId, Time, Type, Value};
 
+pub type Result<T> = std::result::Result<T, Error>;
 pub mod clock;
 pub mod delta;
-pub mod diagnostic;
-mod error;
+pub mod error;
 pub mod hook;
 pub mod interface;
 pub mod row;

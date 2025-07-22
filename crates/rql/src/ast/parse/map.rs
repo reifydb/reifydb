@@ -4,12 +4,13 @@
 use crate::ast::lex::Operator::{CloseCurly, Colon, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, TokenKind};
-use crate::ast::parse::{Error, Parser, Precedence};
-use crate::ast::{Ast, AstInfix, AstMap, InfixOperator, parse};
-use reifydb_core::diagnostic::parse::multiple_expressions_without_braces;
+use crate::ast::parse::{Parser, Precedence, error};
+use crate::ast::{Ast, AstInfix, AstMap, InfixOperator};
+use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
+use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_map(&mut self) -> parse::Result<AstMap> {
+    pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap> {
         let token = self.consume_keyword(Keyword::Map)?;
 
         // Check if we have an opening brace
@@ -47,32 +48,30 @@ impl Parser {
         }
 
         if nodes.len() > 1 && !has_braces {
-            return Err(Error::Passthrough {
-                diagnostic: multiple_expressions_without_braces(token.span),
-            });
+            return_error!(multiple_expressions_without_braces(token.span));
         }
 
         Ok(AstMap { token, nodes })
     }
 
     /// Try to parse "identifier: expression" syntax and convert it to "expression AS identifier"
-    fn try_parse_colon_alias(&mut self) -> parse::Result<Ast> {
+    fn try_parse_colon_alias(&mut self) -> crate::Result<Ast> {
         let len = self.tokens.len();
 
         // Look ahead to see if we have "identifier: expression" pattern
         if len < 2 {
-            return Err(Error::unsupported(self.current()?.clone()));
+            return_error!(error::unsupported_token_error(self.current()?.clone()));
         }
 
         // Check if next token is identifier
         match &self.tokens[len - 1].kind {
             TokenKind::Identifier => {}
-            _ => return Err(Error::unsupported(self.current()?.clone())),
+            _ => return_error!(error::unsupported_token_error(self.current()?.clone())),
         };
 
         // Check if second token is colon
         if !self.tokens[len - 2].is_operator(Colon) {
-            return Err(Error::unsupported(self.current()?.clone()));
+            return_error!(error::unsupported_token_error(self.current()?.clone()));
         }
 
         let identifier = self.parse_identifier()?;

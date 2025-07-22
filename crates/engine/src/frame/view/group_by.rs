@@ -10,7 +10,7 @@ pub type GroupByKey = Vec<Value>;
 pub type GroupByView = HashMap<GroupByKey, Vec<usize>>;
 
 impl Frame {
-    pub fn group_by_view(&self, keys: &[&str]) -> crate::frame::Result<GroupByView> {
+    pub fn group_by_view(&self, keys: &[&str]) -> crate::Result<GroupByView> {
         let row_count = self.columns.first().map_or(0, |c| c.values.len());
 
         let mut key_columns: Vec<&ColumnValues> = Vec::with_capacity(keys.len());

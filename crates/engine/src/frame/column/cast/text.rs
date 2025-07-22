@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::frame::ColumnValues;
-use crate::evaluate::Error;
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::cast;
 use reifydb_core::{BitVec, Type, OwnedSpan};
 use std::fmt::Display;
 
@@ -29,7 +28,7 @@ impl ColumnValues {
             ColumnValues::Interval(values, bitvec) => from(values, bitvec),
             _ => {
                 let source_type = self.get_type();
-                Err(crate::error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, Type::Utf8))))
+                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, Type::Utf8)))
             },
         }
     }

@@ -2,11 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Operator, TokenKind};
-use crate::ast::parse::{Error, Parser, Precedence};
-use crate::ast::{Ast, AstInfix, InfixOperator, parse};
+use crate::ast::parse::error::unsupported_token_error;
+use crate::ast::parse::{Parser, Precedence};
+use crate::ast::{Ast, AstInfix, InfixOperator};
+use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_infix(&mut self, left: Ast) -> parse::Result<AstInfix> {
+    pub(crate) fn parse_infix(&mut self, left: Ast) -> crate::Result<AstInfix> {
         let precedence = self.current_precedence()?;
 
         let operator = self.parse_infix_operator()?;
@@ -27,7 +29,7 @@ impl Parser {
         })
     }
 
-    pub(crate) fn parse_infix_operator(&mut self) -> parse::Result<InfixOperator> {
+    pub(crate) fn parse_infix_operator(&mut self) -> crate::Result<InfixOperator> {
         let token = self.advance()?;
         match &token.kind {
             TokenKind::Operator(operator) => match operator {
@@ -49,9 +51,9 @@ impl Parser {
                 Operator::Dot => Ok(InfixOperator::AccessTable(token)),
                 Operator::DoubleColon => Ok(InfixOperator::AccessExtension(token)),
                 Operator::As => Ok(InfixOperator::As(token)),
-                _ => Err(Error::unsupported(token)),
+                _ => return_error!(unsupported_token_error(token)),
             },
-            _ => Err(Error::unsupported(token)),
+            _ => return_error!(unsupported_token_error(token)),
         }
     }
 }

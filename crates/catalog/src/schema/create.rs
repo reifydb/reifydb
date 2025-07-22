@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::Catalog;
 use crate::key::{EncodableKey, SchemaKey};
 use crate::schema::Schema;
 use crate::schema::layout::schema;
 use crate::sequence::SystemSequence;
-use crate::{Catalog, Error};
-use reifydb_core::OwnedSpan;
+use reifydb_core::error::diagnostic::catalog::schema_already_exists;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::diagnostic::catalog::schema_already_exists;
+use reifydb_core::{OwnedSpan, return_error};
 
 #[derive(Debug, Clone)]
 pub struct SchemaToCreate {
@@ -22,7 +22,7 @@ impl Catalog {
         to_create: SchemaToCreate,
     ) -> crate::Result<Schema> {
         if let Some(schema) = Catalog::get_schema_by_name(tx, &to_create.name)? {
-            return Err(Error(schema_already_exists(to_create.schema_span, &schema.name)));
+            return_error!(schema_already_exists(to_create.schema_span, &schema.name));
         }
 
         let schema_id = SystemSequence::next_schema_id(tx)?;

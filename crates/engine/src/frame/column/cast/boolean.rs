@@ -1,11 +1,9 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::error;
-use crate::evaluate::Error;
 use crate::frame::ColumnValues;
-use reifydb_core::diagnostic::boolean::invalid_number_boolean;
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::boolean::invalid_number_boolean;
+use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::{BitVec, OwnedSpan, Type};
 
@@ -27,7 +25,7 @@ impl ColumnValues {
             ColumnValues::Utf8(values, bitvec) => from_utf8(values, bitvec, span),
             _ => {
                 let source_type = self.get_type();
-                Err(error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, Type::Bool))))
+                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, Type::Bool)))
             },
         }
     }
@@ -50,7 +48,7 @@ where
                 None => {
                     let mut span = span();
                     span.fragment = val.to_string();
-                    return Err(error::Error::Evaluation(Error(invalid_number_boolean(span))));
+                    return Err(reifydb_core::Error(invalid_number_boolean(span)));
                 }
             }
         } else {

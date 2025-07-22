@@ -1,14 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Error;
 use crate::execute::Executor;
 use crate::frame::Frame;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::table::TableToCreate;
 use reifydb_core::Value;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::diagnostic::catalog::{schema_not_found, table_already_exists};
+use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_rql::plan::physical::CreateTablePlan;
 
@@ -19,7 +18,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         plan: CreateTablePlan,
     ) -> crate::Result<Frame> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? else {
-            return Err(Error::execution(schema_not_found(
+            return Err(reifydb_core::Error(schema_not_found(
                 Some(plan.schema.clone()),
                 &plan.schema.as_ref(),
             )));
@@ -34,7 +33,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 ]));
             }
 
-            return Err(Error::execution(table_already_exists(
+            return Err(reifydb_core::Error(table_already_exists(
                 Some(plan.table.clone()),
                 &schema.name,
                 &table.name,

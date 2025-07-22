@@ -6,10 +6,10 @@ pub mod number;
 pub mod temporal;
 pub mod text;
 
-use crate::evaluate::{Convert, Demote, Promote, Error};
+use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::{OwnedSpan, Type};
-use reifydb_core::diagnostic::cast;
+use reifydb_core::error::diagnostic::cast;
 
 impl ColumnValues {
     pub fn cast(
@@ -26,7 +26,7 @@ impl ColumnValues {
             _ if target.is_temporal() => self.to_temporal(target, span),
             _ => {
                 let source_type = self.get_type();
-                Err(crate::error::Error::Evaluation(Error(cast::unsupported_cast(span(), source_type, target))))
+                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
             },
         }
     }

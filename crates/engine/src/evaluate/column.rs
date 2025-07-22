@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
-use crate::evaluate::{Error, EvaluationContext, Evaluator};
+use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
-use reifydb_core::diagnostic::query::column_not_found;
+use reifydb_core::error::diagnostic::query::column_not_found;
 use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value};
 use reifydb_rql::expression::ColumnExpression;
 
@@ -13,13 +12,13 @@ impl Evaluator {
         &mut self,
         column: &ColumnExpression,
         ctx: &EvaluationContext,
-    ) -> evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let name = column.0.fragment.to_string();
         let col = ctx
             .columns
             .iter()
             .find(|c| &c.name == name.as_str())
-            .ok_or(Error(column_not_found(column.0.clone())))?;
+            .ok_or(reifydb_core::Error(column_not_found(column.0.clone())))?;
 
         let take = ctx.take.unwrap_or(usize::MAX);
 

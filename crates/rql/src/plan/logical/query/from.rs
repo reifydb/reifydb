@@ -5,7 +5,7 @@ use crate::ast::{Ast, AstFrom};
 use crate::expression::{IdentExpression, KeyedExpression};
 use crate::plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode};
 use reifydb_core::Error;
-use reifydb_core::diagnostic::Diagnostic;
+use reifydb_core::error::diagnostic::Diagnostic;
 
 impl Compiler {
     pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalPlan> {

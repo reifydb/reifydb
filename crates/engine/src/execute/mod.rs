@@ -3,7 +3,6 @@
 
 use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{Functions, math};
-pub use error::Error;
 use query::compile::compile;
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
@@ -13,7 +12,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 mod catalog;
-mod error;
 mod mutate;
 mod query;
 

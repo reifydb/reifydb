@@ -1,13 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::Error;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{Frame, FrameLayout};
 use reifydb_core::SortDirection::{Asc, Desc};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, SortKey};
-use reifydb_core::diagnostic::query;
+use reifydb_core::error::diagnostic::query;
 use std::cmp::Ordering::Equal;
 
 pub(crate) struct SortNode {
@@ -55,10 +54,10 @@ impl ExecutionPlan for SortNode {
                     .columns
                     .iter()
                     .find(|c| c.name == key.column.fragment)
-                    .ok_or_else(|| Error(query::column_not_found(key.column.clone())))?;
-                Ok::<_, crate::Error>((&col.values, &key.direction))
+                    .ok_or_else(|| reifydb_core::Error(query::column_not_found(key.column.clone())))?;
+                Ok::<_, reifydb_core::Error>((&col.values, &key.direction))
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<crate::Result<Vec<_>>>()?;
 
         let row_count = frame.row_count();
         let mut indices: Vec<usize> = (0..row_count).collect();

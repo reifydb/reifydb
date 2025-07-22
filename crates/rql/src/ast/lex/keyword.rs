@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::{Error, Token, TokenKind, as_span};
+use crate::ast::lex::{Token, TokenKind, as_span};
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::tag_no_case;
@@ -10,6 +10,7 @@ use nom::combinator::{map, not, peek};
 use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
+use reifydb_core::error::diagnostic::ast;
 
 macro_rules! keyword {
     (
@@ -30,13 +31,13 @@ macro_rules! keyword {
         }
 
         impl TryFrom<&str> for Keyword {
-            type Error = Error;
+            type Error = reifydb_core::Error;
 
-            fn try_from(value: &str) -> Result<Self, Self::Error> {
+            fn try_from(value: &str) -> crate::Result<Self> {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
-                    _ => Err(Error("not a keyword".to_string()))
+                    _ => Err(reifydb_core::Error(ast::lex_error("not a keyword".to_string())))
                 }
             }
         }
