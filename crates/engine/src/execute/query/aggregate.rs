@@ -160,7 +160,7 @@ fn align_column_values(
         .iter()
         .map(|k| {
             key_to_index.get(k).copied().ok_or_else(|| {
-                reifydb_core::Error::from(format!("Group key {:?} missing in aggregate output", k))
+                reifydb_core::error!(reifydb_core::error::diagnostic::engine::frame_error(format!("Group key {:?} missing in aggregate output", k)))
             })
         })
         .collect::<crate::Result<Vec<_>>>()?;

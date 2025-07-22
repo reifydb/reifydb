@@ -59,7 +59,7 @@ pub fn maybe_deserialize_from<R: Read, T: DeserializeOwned>(
         {
             Ok(None)
         }
-        Err(err) => Err(err.into()),
+        Err(err) => Err(crate::error!(crate::error::diagnostic::serialization::bincode_decode_error(err))),
     }
 }
 

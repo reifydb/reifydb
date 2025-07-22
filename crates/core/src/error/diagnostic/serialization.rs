@@ -48,7 +48,7 @@ pub fn bincode_encode_error(err: bincode::error::EncodeError) -> Diagnostic {
     }
 }
 
-/// Bincode decoding error  
+/// Bincode decoding error
 pub fn bincode_decode_error(err: bincode::error::DecodeError) -> Diagnostic {
     Diagnostic {
         code: "SER_004".to_string(),
@@ -73,6 +73,36 @@ pub fn keycode_serialization_error(msg: String) -> Diagnostic {
         span: None,
         label: None,
         help: Some("Check keycode data and format".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}
+
+/// Serde deserialization error
+pub fn serde_deserialize_error(msg: String) -> Diagnostic {
+    Diagnostic {
+        code: "SERDE_001".to_string(),
+        statement: None,
+        message: format!("Serde deserialization error: {}", msg),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Check data format and structure".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}
+
+/// Serde serialization error
+pub fn serde_serialize_error(msg: String) -> Diagnostic {
+    Diagnostic {
+        code: "SERDE_002".to_string(),
+        statement: None,
+        message: format!("Serde serialization error: {}", msg),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Check data format and structure".to_string()),
         notes: vec![],
         cause: None,
     }
