@@ -2,18 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
-use crate::frame::{Frame, ColumnValues};
+use crate::frame::{ColumnValues, Frame};
 use reifydb_catalog::{
     Catalog,
     key::{EncodableKey, TableRowKey},
 };
+use reifydb_core::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
-    Type, IntoOwnedSpan, Value,
+    IntoOwnedSpan, Type, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},
+    return_error,
     row::Layout,
     value::row_id::ROW_ID_COLUMN_NAME,
 };
-use reifydb_core::error::diagnostic::catalog::table_not_found;
 use reifydb_rql::plan::physical::UpdatePlan;
 use std::sync::Arc;
 
@@ -28,11 +29,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
         let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
-            return Err(reifydb_core::Error(table_not_found(
-                span.clone(),
-                schema_name,
-                &span.fragment,
-            )));
+            return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
 
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
@@ -61,7 +58,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         };
         while let Some(Batch { frame, mask }) = input_node.next(&context, tx)? {
             // Find the RowId column - panic if not found
-            let row_id_column = frame.columns.iter()
+            let row_id_column = frame
+                .columns
+                .iter()
                 .find(|col| col.name == ROW_ID_COLUMN_NAME)
                 .expect("Frame must have a __ROW__ID__ column for UPDATE operations");
 

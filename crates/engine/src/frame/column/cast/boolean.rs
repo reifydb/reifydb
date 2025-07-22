@@ -5,7 +5,7 @@ use crate::frame::ColumnValues;
 use reifydb_core::error::diagnostic::boolean::invalid_number_boolean;
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::boolean::parse_bool;
-use reifydb_core::{BitVec, OwnedSpan, Type};
+use reifydb_core::{BitVec, OwnedSpan, Type, return_error};
 
 impl ColumnValues {
     pub fn to_boolean(&self, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
@@ -25,8 +25,8 @@ impl ColumnValues {
             ColumnValues::Utf8(values, bitvec) => from_utf8(values, bitvec, span),
             _ => {
                 let source_type = self.get_type();
-                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, Type::Bool)))
-            },
+                return_error!(cast::unsupported_cast(span(), source_type, Type::Bool))
+            }
         }
     }
 }
@@ -48,7 +48,7 @@ where
                 None => {
                     let mut span = span();
                     span.fragment = val.to_string();
-                    return Err(reifydb_core::Error(invalid_number_boolean(span)));
+                    return_error!(invalid_number_boolean(span));
                 }
             }
         } else {

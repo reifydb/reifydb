@@ -27,10 +27,23 @@ macro_rules! return_error {
     };
 }
 
+/// Macro to create an Err(Error()) from a diagnostic function call
+///
+/// Usage: `err!(diagnostic_function(args))`
+/// Expands to: `Err(Error(diagnostic_function(args)))`
+///
+/// Example: `err!(sequence_exhausted(Type::Uint8))`
+#[macro_export]
+macro_rules! err {
+    ($diagnostic:expr) => {
+        Err($crate::error::Error($diagnostic))
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use crate::error::diagnostic::sequence::sequence_exhausted;
-    use crate::{Type, error, return_error};
+    use crate::{Type, err, error, return_error};
 
     #[test]
     fn test_error_macro() {
@@ -52,6 +65,19 @@ mod tests {
         }
 
         let result = test_fn();
+        assert!(result.is_err());
+
+        if let Err(err) = result {
+            let diagnostic = err.diagnostic();
+            assert!(diagnostic.message.contains("exhausted"));
+        }
+    }
+
+    #[test]
+    fn test_err_macro() {
+        // Test that err! macro creates correct Result type with Err
+        let result: Result<(), crate::Error> = err!(sequence_exhausted(Type::Uint8));
+
         assert!(result.is_err());
 
         if let Err(err) = result {

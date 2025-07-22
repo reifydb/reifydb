@@ -8,12 +8,13 @@ use reifydb_catalog::{
     key::{EncodableKey, TableRowKey},
     sequence::TableRowSequence,
 };
-use reifydb_core::{
-	Type, IntoOwnedSpan, Value,
-	interface::{Tx, UnversionedStorage, VersionedStorage},
-	row::Layout,
-};
 use reifydb_core::error::diagnostic::catalog::table_not_found;
+use reifydb_core::{
+    IntoOwnedSpan, Type, Value,
+    interface::{Tx, UnversionedStorage, VersionedStorage},
+    return_error,
+    row::Layout,
+};
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
 
@@ -28,11 +29,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
         let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
-            return Err(reifydb_core::Error(table_not_found(
-                span.clone(),
-                schema_name,
-                &span.fragment,
-            )));
+            return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
 
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
@@ -53,12 +50,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame, mask }) = input_node.next(&Arc::new(ExecutionContext {
-            functions: self.functions.clone(),
-            table: Some(table.clone()),
-            batch_size: 1024,
-            preserve_row_ids: false,
-        }), tx)? {
+        while let Some(Batch { frame, mask }) = input_node.next(
+            &Arc::new(ExecutionContext {
+                functions: self.functions.clone(),
+                table: Some(table.clone()),
+                batch_size: 1024,
+                preserve_row_ids: false,
+            }),
+            tx,
+        )? {
             let row_count = frame.row_count();
 
             for row_idx in 0..row_count {

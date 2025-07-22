@@ -5,25 +5,17 @@ use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::error::diagnostic::number::number_out_of_range;
 use reifydb_core::value::number::SafeDemote;
-use reifydb_core::{GetType, IntoOwnedSpan};
+use reifydb_core::{GetType, IntoOwnedSpan, error};
 
 pub trait Demote {
-    fn demote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn demote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType;
 }
 
 impl Demote for EvaluationContext {
-    fn demote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn demote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,
@@ -33,11 +25,7 @@ impl Demote for EvaluationContext {
 }
 
 impl Demote for &EvaluationContext {
-    fn demote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn demote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,
@@ -46,10 +34,7 @@ impl Demote for &EvaluationContext {
             ColumnSaturationPolicy::Error => from
                 .checked_demote()
                 .ok_or_else(|| {
-                    return reifydb_core::Error(number_out_of_range(
-                        span.into_span(),
-                        To::get_type(),
-                    ));
+                    return error!(number_out_of_range(span.into_span(), To::get_type(),));
                 })
                 .map(Some),
             ColumnSaturationPolicy::Undefined => match from.checked_demote() {
@@ -99,7 +84,8 @@ mod tests {
         ctx.column =
             Some(EvaluationColumn { ty: Some(Type::Int1), policies: vec![Saturation(Undefined)] });
 
-        let result = ctx.demote::<TestI16, TestI8>(TestI16 {}, || OwnedSpan::testing_empty()).unwrap();
+        let result =
+            ctx.demote::<TestI16, TestI8>(TestI16 {}, || OwnedSpan::testing_empty()).unwrap();
         assert!(result.is_none());
     }
 

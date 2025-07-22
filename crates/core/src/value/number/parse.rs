@@ -3,7 +3,7 @@
 
 use crate::error::diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range};
 use crate::value::is::{IsFloat, IsInt, IsUint};
-use crate::{return_error, Error, Span, Type};
+use crate::{err, return_error, Error, Span, Type};
 use std::any::TypeId;
 use std::num::IntErrorKind;
 use std::str::FromStr;
@@ -175,7 +175,7 @@ where
     match value.parse::<T>() {
         Ok(v) => Ok(v),
         Err(err) => match err.kind() {
-            IntErrorKind::Empty => Err(Error(invalid_number_format(span.to_owned(), T::type_enum()))),
+            IntErrorKind::Empty => err!(invalid_number_format(span.to_owned(), T::type_enum())),
             IntErrorKind::InvalidDigit => {
                 if let Ok(f) = value.parse::<f64>() {
                     let truncated = f.trunc();
@@ -193,19 +193,19 @@ where
                     if in_range {
                         Ok(cast_float_to_int::<T>(truncated))
                     } else {
-                        Err(Error(number_out_of_range(span.to_owned(), type_enum)))
+                        err!(number_out_of_range(span.to_owned(), type_enum))
                     }
                 } else {
-                    Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
+                    err!(invalid_number_format(span.to_owned(), T::type_enum()))
                 }
             }
             IntErrorKind::PosOverflow => {
-                Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                err!(number_out_of_range(span.to_owned(), T::type_enum()))
             }
             IntErrorKind::NegOverflow => {
-                Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                err!(number_out_of_range(span.to_owned(), T::type_enum()))
             }
-            IntErrorKind::Zero => Err(Error(invalid_number_format(span.to_owned(), T::type_enum()))),
+            IntErrorKind::Zero => err!(invalid_number_format(span.to_owned(), T::type_enum())),
             &_ => unreachable!("{}", err),
         },
     }
@@ -228,7 +228,7 @@ where
         Err(err) => {
             match err.kind() {
                 IntErrorKind::Empty => {
-                    Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
+                    err!(invalid_number_format(span.to_owned(), T::type_enum()))
                 }
                 IntErrorKind::InvalidDigit => {
                     if let Ok(f) = value.parse::<f64>() {
@@ -249,24 +249,24 @@ where
                         if in_range {
                             Ok(cast_float_to_int::<T>(truncated))
                         } else {
-                            Err(Error(number_out_of_range(span.to_owned(), type_enum)))
+                            err!(number_out_of_range(span.to_owned(), type_enum))
                         }
                     } else {
                         if value.contains("-") {
-                            Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                            err!(number_out_of_range(span.to_owned(), T::type_enum()))
                         } else {
-                            Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
+                            err!(invalid_number_format(span.to_owned(), T::type_enum()))
                         }
                     }
                 }
                 IntErrorKind::PosOverflow => {
-                    Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                    err!(number_out_of_range(span.to_owned(), T::type_enum()))
                 }
                 IntErrorKind::NegOverflow => {
-                    Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                    err!(number_out_of_range(span.to_owned(), T::type_enum()))
                 }
                 IntErrorKind::Zero => {
-                    Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
+                    err!(invalid_number_format(span.to_owned(), T::type_enum()))
                 }
                 &_ => unreachable!("{}", err),
             }
@@ -301,7 +301,7 @@ where
             }
             Ok(v)
         }
-        Err(_) => Err(Error(invalid_number_format(span.to_owned(), T::type_enum()))),
+        Err(_) => err!(invalid_number_format(span.to_owned(), T::type_enum())),
     }
 }
 

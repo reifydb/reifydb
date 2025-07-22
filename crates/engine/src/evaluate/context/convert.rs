@@ -5,25 +5,17 @@ use crate::evaluate::EvaluationContext;
 use reifydb_catalog::column_policy::ColumnSaturationPolicy;
 use reifydb_core::error::diagnostic::number::{integer_precision_loss, number_out_of_range};
 use reifydb_core::value::number::SafeConvert;
-use reifydb_core::{GetType, IntoOwnedSpan};
+use reifydb_core::{GetType, IntoOwnedSpan, error};
 
 pub trait Convert {
-    fn convert<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn convert<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType;
 }
 
 impl Convert for EvaluationContext {
-    fn convert<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn convert<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType,
@@ -33,11 +25,7 @@ impl Convert for EvaluationContext {
 }
 
 impl Convert for &EvaluationContext {
-    fn convert<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn convert<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType,
@@ -47,17 +35,14 @@ impl Convert for &EvaluationContext {
                 .checked_convert()
                 .ok_or_else(|| {
                     if From::get_type().is_integer() && To::get_type().is_floating_point() {
-                        return reifydb_core::Error(integer_precision_loss(
+                        return error!(integer_precision_loss(
                             span.into_span(),
                             From::get_type(),
                             To::get_type(),
                         ));
                     };
 
-                    return reifydb_core::Error(number_out_of_range(
-                        span.into_span(),
-                        To::get_type(),
-                    ));
+                    return error!(number_out_of_range(span.into_span(), To::get_type(),));
                 })
                 .map(Some),
             ColumnSaturationPolicy::Undefined => match from.checked_convert() {

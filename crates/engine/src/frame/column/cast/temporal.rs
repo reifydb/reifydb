@@ -4,7 +4,7 @@
 use crate::frame::ColumnValues;
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
-use reifydb_core::{BitVec, BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type};
+use reifydb_core::{error, BitVec, BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type};
 
 impl ColumnValues {
     pub(crate) fn to_temporal(
@@ -20,12 +20,12 @@ impl ColumnValues {
                 Type::Interval => to_interval(values, bitvec, span),
                 _ => {
                     let source_type = self.get_type();
-                    Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
-                },
+                    reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
+                }
             }
         } else {
             let source_type = self.get_type();
-            Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
+            reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
         }
     }
 }
@@ -53,7 +53,7 @@ macro_rules! impl_to_temporal {
                         }
 
                         e.0.update_spans(&proper_span);
-                        reifydb_core::Error(cast::invalid_temporal(proper_span, $target_type, e.0))
+                        error!(cast::invalid_temporal(proper_span, $target_type, e.0))
                     })?;
 
                     out.push::<$type>(parsed);

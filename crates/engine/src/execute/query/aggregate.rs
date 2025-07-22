@@ -4,8 +4,8 @@
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{AggregateFunction, Functions};
-use reifydb_core::interface::Rx;
 use reifydb_core::OwnedSpan;
+use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
 use std::collections::{HashMap, HashSet};
@@ -159,11 +159,9 @@ fn align_column_values(
     let reorder_indices: Vec<usize> = group_key_order
         .iter()
         .map(|k| {
-            key_to_index
-                .get(k)
-                .copied()
-                // .ok_or_else(|| reifydb_core::ErrorInternal(format!("Group key {:?} missing in aggregate output", k)))
-                .ok_or_else(|| reifydb_core::Error::from(format!("Group key {:?} missing in aggregate output", k)))
+            key_to_index.get(k).copied().ok_or_else(|| {
+                reifydb_core::Error::from(format!("Group key {:?} missing in aggregate output", k))
+            })
         })
         .collect::<crate::Result<Vec<_>>>()?;
 
