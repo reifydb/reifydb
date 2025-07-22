@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::EvaluationContext;
-use reifydb_catalog::column_policy::ColumnSaturationPolicy;
-use reifydb_core::IntoOwnedSpan;
+use reifydb_core::interface::ColumnSaturationPolicy;
+use reifydb_core::{GetType, IntoOwnedSpan};
 use reifydb_core::error::diagnostic::number::number_out_of_range;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder, SafeSub};
 
-impl EvaluationContext {
+impl EvaluationContext<'_> {
     pub(crate) fn add<L, R>(
         &self,
         l: L,
@@ -26,7 +26,8 @@ impl EvaluationContext {
                 let Some((lp, rp)) = l.checked_promote(r) else {
                     return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
-                        R::get_type(),
+                        <L as Promote<R>>::Output::get_type(),
+                        self.target_column.as_ref(),
                     )));
                 };
 
@@ -34,7 +35,8 @@ impl EvaluationContext {
                     .ok_or_else(|| {
                         return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
-                            R::get_type(),
+                            <L as Promote<R>>::Output::get_type(),
+                            self.target_column.as_ref(),
                         ));
                     })
                     .map(Some)
@@ -53,7 +55,7 @@ impl EvaluationContext {
     }
 }
 
-impl EvaluationContext {
+impl EvaluationContext<'_> {
     pub(crate) fn sub<L, R>(
         &self,
         l: L,
@@ -71,7 +73,8 @@ impl EvaluationContext {
                 let Some((lp, rp)) = l.checked_promote(r) else {
                     return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
-                        R::get_type(),
+                        <L as Promote<R>>::Output::get_type(),
+                        self.target_column.as_ref(),
                     )));
                 };
 
@@ -79,7 +82,8 @@ impl EvaluationContext {
                     .ok_or_else(|| {
                         return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
-                            R::get_type(),
+                            <L as Promote<R>>::Output::get_type(),
+                            self.target_column.as_ref(),
                         ));
                     })
                     .map(Some)
@@ -98,7 +102,7 @@ impl EvaluationContext {
     }
 }
 
-impl EvaluationContext {
+impl EvaluationContext<'_> {
     pub(crate) fn mul<L, R>(
         &self,
         l: L,
@@ -116,7 +120,8 @@ impl EvaluationContext {
                 let Some((lp, rp)) = l.checked_promote(r) else {
                     return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
-                        R::get_type(),
+                        <L as Promote<R>>::Output::get_type(),
+                        self.target_column.as_ref(),
                     )));
                 };
 
@@ -124,7 +129,8 @@ impl EvaluationContext {
                     .ok_or_else(|| {
                         return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
-                            R::get_type(),
+                            <L as Promote<R>>::Output::get_type(),
+                            self.target_column.as_ref(),
                         ));
                     })
                     .map(Some)
@@ -143,7 +149,7 @@ impl EvaluationContext {
     }
 }
 
-impl EvaluationContext {
+impl EvaluationContext<'_> {
     pub(crate) fn div<L, R>(
         &self,
         l: L,
@@ -161,7 +167,8 @@ impl EvaluationContext {
                 let Some((lp, rp)) = l.checked_promote(r) else {
                     return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
-                        R::get_type(),
+                        <L as Promote<R>>::Output::get_type(),
+                        self.target_column.as_ref(),
                     )));
                 };
 
@@ -169,7 +176,8 @@ impl EvaluationContext {
                     .ok_or_else(|| {
                         return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
-                            R::get_type(),
+                            <L as Promote<R>>::Output::get_type(),
+                            self.target_column.as_ref(),
                         ));
                     })
                     .map(Some)
@@ -188,7 +196,7 @@ impl EvaluationContext {
     }
 }
 
-impl EvaluationContext {
+impl EvaluationContext<'_> {
     pub(crate) fn remainder<L, R>(
         &self,
         l: L,
@@ -206,7 +214,8 @@ impl EvaluationContext {
                 let Some((lp, rp)) = l.checked_promote(r) else {
                     return Err(reifydb_core::Error(number_out_of_range(
                         span.into_span(),
-                        R::get_type(),
+                        <L as Promote<R>>::Output::get_type(),
+                        self.target_column.as_ref(),
                     )));
                 };
 
@@ -214,7 +223,8 @@ impl EvaluationContext {
                     .ok_or_else(|| {
                         return reifydb_core::Error(number_out_of_range(
                             span.into_span(),
-                            R::get_type(),
+                            <L as Promote<R>>::Output::get_type(),
+                            self.target_column.as_ref(),
                         ));
                     })
                     .map(Some)

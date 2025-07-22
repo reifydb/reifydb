@@ -193,17 +193,17 @@ where
                     if in_range {
                         Ok(cast_float_to_int::<T>(truncated))
                     } else {
-                        Err(Error(number_out_of_range(span.to_owned(), type_enum)))
+                        Err(Error(number_out_of_range(span.to_owned(), type_enum, None)))
                     }
                 } else {
                     Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
                 }
             }
             IntErrorKind::PosOverflow => {
-                Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)))
             }
             IntErrorKind::NegOverflow => {
-                Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)))
             }
             IntErrorKind::Zero => Err(Error(invalid_number_format(span.to_owned(), T::type_enum()))),
             &_ => unreachable!("{}", err),
@@ -234,7 +234,7 @@ where
                     if let Ok(f) = value.parse::<f64>() {
                         // For unsigned types, reject negative values
                         if f < 0.0 {
-                            return Err(Error(number_out_of_range(span.to_owned(), T::type_enum())));
+                            return Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)));
                         }
                         let truncated = f.trunc();
                         let type_enum = T::type_enum();
@@ -249,21 +249,21 @@ where
                         if in_range {
                             Ok(cast_float_to_int::<T>(truncated))
                         } else {
-                            Err(Error(number_out_of_range(span.to_owned(), type_enum)))
+                            Err(Error(number_out_of_range(span.to_owned(), type_enum, None)))
                         }
                     } else {
                         if value.contains("-") {
-                            Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                            Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)))
                         } else {
                             Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
                         }
                     }
                 }
                 IntErrorKind::PosOverflow => {
-                    Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                    Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)))
                 }
                 IntErrorKind::NegOverflow => {
-                    Err(Error(number_out_of_range(span.to_owned(), T::type_enum())))
+                    Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)))
                 }
                 IntErrorKind::Zero => {
                     Err(Error(invalid_number_format(span.to_owned(), T::type_enum())))
@@ -291,12 +291,12 @@ where
             if TypeId::of::<T>() == TypeId::of::<f32>() {
                 let v_f32 = cast::<f32, T>(v);
                 if v_f32 == f32::INFINITY || v_f32 == f32::NEG_INFINITY {
-                    return Err(Error(number_out_of_range(span.to_owned(), T::type_enum())));
+                    return Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)));
                 }
             } else if TypeId::of::<T>() == TypeId::of::<f64>() {
                 let v_f64 = cast::<f64, T>(v);
                 if v_f64 == f64::INFINITY || v_f64 == f64::NEG_INFINITY {
-                    return Err(Error(number_out_of_range(span.to_owned(), T::type_enum())));
+                    return Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)));
                 }
             }
             Ok(v)

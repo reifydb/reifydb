@@ -69,7 +69,7 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> Result<FrameColum
     };
 
     // Ensures that result column data type matches the expected target column type
-    if let Some(ty) = ctx.column.as_ref().and_then(|c| c.ty) {
+    if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type) {
         let mut column = evaluator.evaluate(expr, ctx)?;
         column.values = column
             .values

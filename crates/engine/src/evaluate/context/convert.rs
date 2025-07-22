@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::EvaluationContext;
-use reifydb_catalog::column_policy::ColumnSaturationPolicy;
+use reifydb_core::interface::ColumnSaturationPolicy;
 use reifydb_core::error::diagnostic::number::{integer_precision_loss, number_out_of_range};
 use reifydb_core::value::number::SafeConvert;
 use reifydb_core::{GetType, IntoOwnedSpan};
@@ -18,7 +18,7 @@ pub trait Convert {
         To: GetType;
 }
 
-impl Convert for EvaluationContext {
+impl Convert for EvaluationContext<'_> {
     fn convert<From, To>(
         &self,
         from: From,
@@ -32,7 +32,7 @@ impl Convert for EvaluationContext {
     }
 }
 
-impl Convert for &EvaluationContext {
+impl Convert for &EvaluationContext<'_> {
     fn convert<From, To>(
         &self,
         from: From,
@@ -57,6 +57,7 @@ impl Convert for &EvaluationContext {
                     return reifydb_core::Error(number_out_of_range(
                         span.into_span(),
                         To::get_type(),
+                        self.target_column.as_ref(),
                     ));
                 })
                 .map(Some),

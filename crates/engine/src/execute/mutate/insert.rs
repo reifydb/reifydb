@@ -11,8 +11,8 @@ use reifydb_catalog::{
 };
 use reifydb_core::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
-    IntoOwnedSpan, Type, Value,
-    interface::{Tx, UnversionedStorage, VersionedStorage},
+    ColumnDescriptor, IntoOwnedSpan, Type, Value,
+    interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
     row::Layout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
@@ -39,7 +39,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
         let layout = Layout::new(&table_types);
 
-        // Compile the input plan into an execution node with table context
         let mut input_node = compile(
             *plan.input,
             tx,
@@ -53,7 +52,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
         let mut inserted_count = 0;
 
-        // Process all input batches using volcano iterator pattern
         while let Some(Batch { frame, mask }) = input_node.next(
             &Arc::new(ExecutionContext {
                 functions: self.functions.clone(),
@@ -82,8 +80,19 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         Value::Undefined
                     };
 
-                    // Apply automatic type coercion
-                    value = coerce_value_to_column_type(value, table_column.ty, &plan.table)?;
+                    let policies: Vec<ColumnPolicyKind> =
+                        table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
+
+                    value = coerce_value_to_column_type(
+                        value,
+                        table_column.ty,
+                        ColumnDescriptor::new()
+                            .with_schema(&schema.name)
+                            .with_table(&table.name)
+                            .with_column(&table_column.name)
+                            .with_column_type(table_column.ty)
+                            .with_policies(policies),
+                    )?;
 
                     match value {
                         Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),

@@ -11,8 +11,8 @@ use reifydb_catalog::{
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::error::diagnostic::engine;
 use reifydb_core::{
-    IntoOwnedSpan, Type, Value,
-    interface::{Tx, UnversionedStorage, VersionedStorage},
+    ColumnDescriptor, IntoOwnedSpan, Type, Value,
+    interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
     return_error,
     row::Layout,
     value::row_id::ROW_ID_COLUMN_NAME,
@@ -103,7 +103,20 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     };
 
                     // Apply automatic type coercion
-                    value = coerce_value_to_column_type(value, table_column.ty, &plan.table)?;
+                    // Extract policies (no conversion needed since types are now unified)
+                    let policies: Vec<ColumnPolicyKind> =
+                        table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
+
+                    value = coerce_value_to_column_type(
+                        value,
+                        table_column.ty,
+                        ColumnDescriptor::new()
+                            .with_schema(&schema.name)
+                            .with_table(&table.name)
+                            .with_column(&table_column.name)
+                            .with_column_type(table_column.ty)
+                            .with_policies(policies),
+                    )?;
 
                     match value {
                         Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),

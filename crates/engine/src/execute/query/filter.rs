@@ -25,7 +25,8 @@ impl ExecutionPlan for FilterNode {
             let row_count = frame.row_count(); // FIXME add a delegate - batch.row_count()
 
             let mut ctx = EvaluationContext {
-                column: None,
+                target_column: None,
+                column_policies: Vec::new(),
                 mask,
                 columns: frame.columns.clone(),
                 row_count,
