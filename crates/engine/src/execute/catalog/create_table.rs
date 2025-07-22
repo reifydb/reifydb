@@ -5,10 +5,10 @@ use crate::execute::Executor;
 use crate::frame::Frame;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::table::TableToCreate;
-use reifydb_core::Value;
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_already_exists};
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
+use reifydb_core::{Value, return_error};
 use reifydb_rql::plan::physical::CreateTablePlan;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
@@ -18,10 +18,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         plan: CreateTablePlan,
     ) -> crate::Result<Frame> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? else {
-            return Err(reifydb_core::Error(schema_not_found(
-                Some(plan.schema.clone()),
-                &plan.schema.as_ref(),
-            )));
+            return_error!(schema_not_found(Some(plan.schema.clone()), &plan.schema.as_ref(),));
         };
 
         if let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table)? {
@@ -33,11 +30,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 ]));
             }
 
-            return Err(reifydb_core::Error(table_already_exists(
+            return_error!(table_already_exists(
                 Some(plan.table.clone()),
                 &schema.name,
                 &table.name,
-            )));
+            ));
         }
 
         // Check for reserved column names
@@ -67,8 +64,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute_tx;
     use crate::execute::catalog::create_table::CreateTablePlan;
+    use crate::execute_tx;
     use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
     use reifydb_core::{OwnedSpan, Value};
     use reifydb_rql::plan::physical::PhysicalPlan;

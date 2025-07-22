@@ -2,22 +2,22 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{ColumnValues, Frame};
+use reifydb_core::error::diagnostic::engine;
 use reifydb_core::row::{EncodedRow, Layout};
-use reifydb_core::{BitVec, CowVec, Date, DateTime, Interval, Time, Type};
+use reifydb_core::{BitVec, CowVec, Date, DateTime, Interval, Time, Type, return_error};
 
 impl Frame {
     pub fn append_frame(&mut self, other: Frame) -> crate::Result<()> {
         if self.columns.len() != other.columns.len() {
-            return Err("mismatched column count".into());
+            return_error!(engine::frame_error("mismatched column count".to_string()));
         }
 
         for (i, (l, r)) in self.columns.iter_mut().zip(other.columns.into_iter()).enumerate() {
             if l.name != r.name {
-                return Err(format!(
+                return_error!(engine::frame_error(format!(
                     "column name mismatch at index {}: '{}' vs '{}'",
                     i, l.name, r.name
-                )
-                .into());
+                )));
             }
 
             l.extend(r)?;
@@ -34,12 +34,11 @@ impl Frame {
         rows: impl IntoIterator<Item = EncodedRow>,
     ) -> crate::Result<()> {
         if self.columns.len() != layout.fields.len() {
-            return Err(format!(
+            return_error!(engine::frame_error(format!(
                 "mismatched column count: expected {}, got {}",
                 self.columns.len(),
                 layout.fields.len()
-            )
-            .into());
+            )));
         }
 
         let rows: Vec<EncodedRow> = rows.into_iter().collect();
@@ -124,9 +123,9 @@ impl Frame {
                         BitVec::new(size, false),
                     ),
                     Type::Undefined => column.values.clone(),
-                    Type::RowId => ColumnValues::row_id(
-                        CowVec::new(vec![Default::default(); size])
-                    ),
+                    Type::RowId => {
+                        ColumnValues::row_id(CowVec::new(vec![Default::default(); size]))
+                    }
                 };
 
                 column.values = new_data;
@@ -146,11 +145,7 @@ impl Frame {
         Ok(())
     }
 
-    fn append_all_defined(
-        &mut self,
-        layout: &Layout,
-        row: &EncodedRow,
-    ) -> crate::Result<()> {
+    fn append_all_defined(&mut self, layout: &Layout, row: &EncodedRow) -> crate::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
             match (&mut column.values, layout.value(index)) {
                 (ColumnValues::Bool(vec, bitvec), Type::Bool) => {
@@ -226,13 +221,12 @@ impl Frame {
                     bitvec.push(true);
                 }
                 (_, v) => {
-                    return Err(format!(
+                    return_error!(engine::frame_error(format!(
                         "type mismatch for column '{}'({}): incompatible with value {}",
                         column.name,
                         column.values.get_type(),
                         v
-                    )
-                    .into());
+                    )));
                 }
             }
         }

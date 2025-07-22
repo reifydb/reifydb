@@ -9,7 +9,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::{CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type};
+use reifydb_core::{CowVec, Date, DateTime, err, Error, Interval, OwnedSpan, RowId, Time, Type};
 use reifydb_core::value::temporal::parse_interval;
 use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -146,7 +146,7 @@ impl WsClient {
 
         match resp.payload {
             ResponsePayload::Tx(payload) => Ok(payload),
-            ResponsePayload::Err(payload) => Err(Error(payload.diagnostic)),
+            ResponsePayload::Err(payload) => err!(payload.diagnostic),
             other => {
                 eprintln!("Unexpected execute response: {:?}", other);
                 panic!("Unexpected execute response type")
@@ -174,7 +174,7 @@ impl WsClient {
 
         match resp.payload {
             ResponsePayload::Rx(payload) => Ok(payload),
-            ResponsePayload::Err(payload) => Err(Error(payload.diagnostic)),
+            ResponsePayload::Err(payload) => err!(payload.diagnostic),
             other => {
                 eprintln!("Unexpected query response: {:?}", other);
                 panic!("Unexpected query response type")

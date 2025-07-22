@@ -7,6 +7,7 @@ use reifydb_core::{GetType, IntoOwnedSpan};
 use reifydb_core::error::diagnostic::number::number_out_of_range;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder, SafeSub};
+use reifydb_core::{ return_error};
 
 impl EvaluationContext<'_> {
     pub(crate) fn add<L, R>(
@@ -24,20 +25,20 @@ impl EvaluationContext<'_> {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(reifydb_core::Error(number_out_of_range(
+                    return_error!(number_out_of_range(
                         span.into_span(),
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
-                    )));
+                    ));
                 };
 
                 lp.checked_add(rp)
                     .ok_or_else(|| {
-                        return reifydb_core::Error(number_out_of_range(
+                        reifydb_core::error::Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
-                        ));
+                        ))
                     })
                     .map(Some)
             }
@@ -71,20 +72,20 @@ impl EvaluationContext<'_> {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(reifydb_core::Error(number_out_of_range(
+                    return_error!(number_out_of_range(
                         span.into_span(),
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
-                    )));
+                    ));
                 };
 
                 lp.checked_sub(rp)
                     .ok_or_else(|| {
-                        return reifydb_core::Error(number_out_of_range(
+                        reifydb_core::error::Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
-                        ));
+                        ))
                     })
                     .map(Some)
             }
@@ -118,20 +119,20 @@ impl EvaluationContext<'_> {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(reifydb_core::Error(number_out_of_range(
+                    return_error!(number_out_of_range(
                         span.into_span(),
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
-                    )));
+                    ));
                 };
 
                 lp.checked_mul(rp)
                     .ok_or_else(|| {
-                        return reifydb_core::Error(number_out_of_range(
+                        reifydb_core::error::Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
-                        ));
+                        ))
                     })
                     .map(Some)
             }
@@ -165,20 +166,20 @@ impl EvaluationContext<'_> {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(reifydb_core::Error(number_out_of_range(
+                    return_error!(number_out_of_range(
                         span.into_span(),
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
-                    )));
+                    ));
                 };
 
                 lp.checked_div(rp)
                     .ok_or_else(|| {
-                        return reifydb_core::Error(number_out_of_range(
+                        reifydb_core::error::Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
-                        ));
+                        ))
                     })
                     .map(Some)
             }
@@ -212,20 +213,20 @@ impl EvaluationContext<'_> {
         match self.saturation_policy() {
             ColumnSaturationPolicy::Error => {
                 let Some((lp, rp)) = l.checked_promote(r) else {
-                    return Err(reifydb_core::Error(number_out_of_range(
+                    return_error!(number_out_of_range(
                         span.into_span(),
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
-                    )));
+                    ));
                 };
 
                 lp.checked_rem(rp)
                     .ok_or_else(|| {
-                        return reifydb_core::Error(number_out_of_range(
+                        reifydb_core::error::Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
-                        ));
+                        ))
                     })
                     .map(Some)
             }
