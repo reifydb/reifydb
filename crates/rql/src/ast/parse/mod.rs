@@ -4,6 +4,7 @@
 mod aggregate;
 mod cast;
 mod create;
+mod delete;
 mod describe;
 // mod diagnostic; // Removed - cannot implement methods on external types
 mod error;

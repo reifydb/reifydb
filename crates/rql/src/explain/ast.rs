@@ -33,6 +33,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::From(_) => "From",
         Ast::Identifier(_) => "Identifier",
         Ast::Infix(_) => "Infix",
+        Ast::AstDelete(_) => "Delete",
         Ast::AstInsert(_) => "Insert",
         Ast::AstUpdate(_) => "Update",
         Ast::Join(_) => "Join",

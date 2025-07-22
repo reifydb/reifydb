@@ -34,6 +34,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
         LogicalPlan::CreateSchema(_) => unimplemented!(),
         LogicalPlan::CreateSequence(_) => unimplemented!(),
         LogicalPlan::CreateTable(_) => unimplemented!(),
+        LogicalPlan::Delete(_) => unimplemented!(),
         LogicalPlan::Insert(_) => unimplemented!(),
         LogicalPlan::Update(_) => unimplemented!(),
 
