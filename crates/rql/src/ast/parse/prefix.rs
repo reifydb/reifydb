@@ -6,13 +6,13 @@ use crate::ast::lex::Operator;
 use crate::ast::parse::error::unsupported_token_error;
 use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{
-    Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind, parse,
+    Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind,
 };
 use reifydb_core::OwnedSpan;
 use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_prefix(&mut self) -> parse::Result<Ast> {
+    pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast> {
         let operator = self.parse_prefix_operator()?;
         let expr = self.parse_node(Precedence::Prefix)?;
 
@@ -32,7 +32,7 @@ impl Parser {
         Ok(Ast::Prefix(AstPrefix { operator, node: Box::new(expr) }))
     }
 
-    fn parse_prefix_operator(&mut self) -> parse::Result<AstPrefixOperator> {
+    fn parse_prefix_operator(&mut self) -> crate::Result<AstPrefixOperator> {
         let token = self.advance()?;
         match &token.kind {
             TokenKind::Operator(operator) => match operator {

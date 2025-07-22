@@ -3,10 +3,10 @@
 
 use crate::ast::lex::Keyword::Cast;
 use crate::ast::parse::Parser;
-use crate::ast::{AstCast, parse};
+use crate::ast::AstCast;
 
 impl Parser {
-    pub(crate) fn parse_cast(&mut self) -> parse::Result<AstCast> {
+    pub(crate) fn parse_cast(&mut self) -> crate::Result<AstCast> {
         let token = self.consume_keyword(Cast)?;
         let tuple = self.parse_tuple()?;
         Ok(AstCast { token, tuple })

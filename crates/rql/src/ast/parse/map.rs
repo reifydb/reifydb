@@ -5,12 +5,12 @@ use crate::ast::lex::Operator::{CloseCurly, Colon, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, TokenKind};
 use crate::ast::parse::{Parser, Precedence, error};
-use crate::ast::{Ast, AstInfix, AstMap, InfixOperator, parse};
+use crate::ast::{Ast, AstInfix, AstMap, InfixOperator};
 use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_map(&mut self) -> parse::Result<AstMap> {
+    pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap> {
         let token = self.consume_keyword(Keyword::Map)?;
 
         // Check if we have an opening brace
@@ -55,7 +55,7 @@ impl Parser {
     }
 
     /// Try to parse "identifier: expression" syntax and convert it to "expression AS identifier"
-    fn try_parse_colon_alias(&mut self) -> parse::Result<Ast> {
+    fn try_parse_colon_alias(&mut self) -> crate::Result<Ast> {
         let len = self.tokens.len();
 
         // Look ahead to see if we have "identifier: expression" pattern

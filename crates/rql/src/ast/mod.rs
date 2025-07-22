@@ -8,7 +8,7 @@ mod ast;
 pub(crate) mod lex;
 pub(crate) mod parse;
 
-pub fn parse(str: &str) -> Result<Vec<AstStatement>, reifydb_core::Error> {
+pub fn parse(str: &str) -> crate::Result<Vec<AstStatement>> {
     let tokens = lex(str)?;
     let statements = parse::parse(tokens)?;
     Ok(statements)

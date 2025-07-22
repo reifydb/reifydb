@@ -7,12 +7,12 @@ use crate::plan::logical::{AggregateNode, Compiler, LogicalPlan};
 impl Compiler {
     pub(crate) fn compile_aggregate(ast: AstAggregate) -> crate::Result<LogicalPlan> {
         Ok(LogicalPlan::Aggregate(AggregateNode {
-            by: ast.by.into_iter().map(Self::compile_expression).collect::<Result<Vec<_>, _>>()?,
+            by: ast.by.into_iter().map(Self::compile_expression).collect::<crate::Result<Vec<_>>>()?,
             map: ast
                 .map
                 .into_iter()
                 .map(Self::compile_expression)
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<crate::Result<Vec<_>>>()?,
         }))
     }
 }

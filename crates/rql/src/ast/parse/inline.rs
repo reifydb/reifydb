@@ -5,10 +5,10 @@ use crate::ast::lex::Operator;
 use crate::ast::lex::Operator::{CloseCurly, Colon};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstInline, AstInlineKeyedValue, TokenKind, parse};
+use crate::ast::{AstInline, AstInlineKeyedValue, TokenKind};
 
 impl Parser {
-    pub(crate) fn parse_inline(&mut self) -> parse::Result<AstInline> {
+    pub(crate) fn parse_inline(&mut self) -> crate::Result<AstInline> {
         let token = self.consume_operator(Operator::OpenCurly)?;
 
         let mut keyed_values = Vec::new();

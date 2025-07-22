@@ -11,7 +11,7 @@ impl Evaluator {
 		&mut self,
 		expr: &AliasExpression,
 		ctx: &EvaluationContext,
-    ) -> crate::evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let evaluated = self.evaluate(&expr.expression, ctx)?;
         let alias_name = &expr.alias.0.fragment;
         if alias_name == ROW_ID_COLUMN_NAME {

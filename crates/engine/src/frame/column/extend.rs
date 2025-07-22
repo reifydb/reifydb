@@ -5,13 +5,13 @@ use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::{BitVec, CowVec, Date, DateTime, Interval, Time};
 
 impl FrameColumn {
-    pub fn extend(&mut self, other: FrameColumn) -> crate::frame::Result<()> {
+    pub fn extend(&mut self, other: FrameColumn) -> crate::Result<()> {
         self.values.extend(other.values)
     }
 }
 
 impl ColumnValues {
-    pub fn extend(&mut self, other: ColumnValues) -> crate::frame::Result<()> {
+    pub fn extend(&mut self, other: ColumnValues) -> crate::Result<()> {
         match (&mut *self, other) {
             (ColumnValues::Bool(l, lb), ColumnValues::Bool(r, rb)) => {
                 l.extend(r);

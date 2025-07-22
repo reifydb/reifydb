@@ -11,7 +11,7 @@ impl Evaluator {
 		&mut self,
 		expr: &AccessTableExpression,
 		ctx: &EvaluationContext,
-    ) -> crate::evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         self.evaluate(
             &Expression::Column(ColumnExpression(OwnedSpan {
                 column: expr.table.column,

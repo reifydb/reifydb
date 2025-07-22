@@ -14,7 +14,7 @@ impl EvaluationContext {
         l: L,
         r: R,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<<L as Promote<R>>::Output>>
+    ) -> crate::Result<Option<<L as Promote<R>>::Output>>
     where
         L: Promote<R>,
         R: IsNumber,
@@ -59,7 +59,7 @@ impl EvaluationContext {
         l: L,
         r: R,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<<L as Promote<R>>::Output>>
+    ) -> crate::Result<Option<<L as Promote<R>>::Output>>
     where
         L: Promote<R>,
         R: IsNumber,
@@ -104,7 +104,7 @@ impl EvaluationContext {
         l: L,
         r: R,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<<L as Promote<R>>::Output>>
+    ) -> crate::Result<Option<<L as Promote<R>>::Output>>
     where
         L: Promote<R>,
         R: IsNumber,
@@ -149,7 +149,7 @@ impl EvaluationContext {
         l: L,
         r: R,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<<L as Promote<R>>::Output>>
+    ) -> crate::Result<Option<<L as Promote<R>>::Output>>
     where
         L: Promote<R>,
         R: IsNumber,
@@ -194,7 +194,7 @@ impl EvaluationContext {
         l: L,
         r: R,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<<L as Promote<R>>::Output>>
+    ) -> crate::Result<Option<<L as Promote<R>>::Output>>
     where
         L: Promote<R>,
         R: IsNumber,

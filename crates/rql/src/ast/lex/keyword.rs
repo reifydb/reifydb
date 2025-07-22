@@ -33,7 +33,7 @@ macro_rules! keyword {
         impl TryFrom<&str> for Keyword {
             type Error = reifydb_core::Error;
 
-            fn try_from(value: &str) -> Result<Self, Self::Error> {
+            fn try_from(value: &str) -> crate::Result<Self> {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,

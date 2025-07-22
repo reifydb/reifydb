@@ -14,7 +14,7 @@ impl Evaluator {
         &mut self,
         sub: &SubExpression,
         ctx: &EvaluationContext,
-    ) -> crate::evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let left = self.evaluate(&sub.left, ctx)?;
         let right = self.evaluate(&sub.right, ctx)?;
         let ty = Type::promote(left.get_type(), right.get_type());
@@ -497,7 +497,7 @@ fn sub_numeric<L, R>(
     rv: &BitVec,
     ty: Type,
     span: OwnedSpan,
-) -> crate::evaluate::Result<FrameColumn>
+) -> crate::Result<FrameColumn>
 where
     L: GetType + Promote<R> + Copy,
     R: GetType + IsNumber + Copy,

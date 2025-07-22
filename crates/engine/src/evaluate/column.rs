@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::error::diagnostic::query::column_not_found;
@@ -13,7 +12,7 @@ impl Evaluator {
         &mut self,
         column: &ColumnExpression,
         ctx: &EvaluationContext,
-    ) -> evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let name = column.0.fragment.to_string();
         let col = ctx
             .columns

@@ -5,12 +5,12 @@ use crate::ast::lex::Keyword::{Join, Left, On, With};
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstJoin, parse};
+use crate::ast::AstJoin;
 use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_left_join(&mut self) -> parse::Result<AstJoin> {
+    pub(crate) fn parse_left_join(&mut self) -> crate::Result<AstJoin> {
         let token = self.consume_keyword(Left)?;
         self.consume_keyword(Join)?;
 

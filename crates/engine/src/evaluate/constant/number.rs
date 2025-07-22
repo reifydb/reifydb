@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
 use crate::frame::ColumnValues;
 use reifydb_core::error::diagnostic::{cast, number};
 use reifydb_core::value::boolean::parse_bool;
@@ -16,7 +15,7 @@ impl NumberParser {
         span: impl Span,
         target: Type,
         row_count: usize,
-    ) -> evaluate::Result<ColumnValues> {
+    ) -> crate::Result<ColumnValues> {
         match target {
             Type::Bool => Self::parse_bool(span, row_count),
             Type::Float4 => Self::parse_float4(span, row_count),
@@ -39,14 +38,14 @@ impl NumberParser {
         }
     }
 
-    fn parse_bool(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_bool(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         match parse_bool(span.clone()) {
             Ok(v) => Ok(ColumnValues::bool(vec![v; row_count])),
             Err(err) => return_error!(cast::invalid_boolean(span.to_owned(), err.diagnostic())),
         }
     }
 
-    fn parse_float4(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_float4(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         match parse_float::<f32>(span.clone()) {
             Ok(v) => Ok(ColumnValues::float4(vec![v; row_count])),
             Err(err) => {
@@ -55,7 +54,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_float8(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_float8(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         match parse_float::<f64>(span.clone()) {
             Ok(v) => Ok(ColumnValues::float8(vec![v; row_count])),
             Err(err) => {
@@ -64,7 +63,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_int1(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int1(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_int::<i8>(span.clone()) {
             Ok(ColumnValues::int1(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -86,7 +85,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_int2(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int2(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_int::<i16>(span.clone()) {
             Ok(ColumnValues::int2(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -109,7 +108,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_int4(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int4(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_int::<i32>(span.clone()) {
             Ok(ColumnValues::int4(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -132,7 +131,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_int8(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int8(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_int::<i64>(span.clone()) {
             Ok(ColumnValues::int8(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -155,7 +154,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_int16(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_int16(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_int::<i128>(span.clone()) {
             Ok(ColumnValues::int16(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -178,7 +177,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_uint1(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint1(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_uint::<u8>(span.clone()) {
             Ok(ColumnValues::uint1(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -201,7 +200,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_uint2(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint2(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_uint::<u16>(span.clone()) {
             Ok(ColumnValues::uint2(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -224,7 +223,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_uint4(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint4(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_uint::<u32>(span.clone()) {
             Ok(ColumnValues::uint4(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -247,7 +246,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_uint8(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint8(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_uint::<u64>(span.clone()) {
             Ok(ColumnValues::uint8(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {
@@ -270,7 +269,7 @@ impl NumberParser {
         }
     }
 
-    fn parse_uint16(span: impl Span, ty: Type, row_count: usize) -> evaluate::Result<ColumnValues> {
+    fn parse_uint16(span: impl Span, ty: Type, row_count: usize) -> crate::Result<ColumnValues> {
         if let Ok(v) = parse_uint::<u128>(span.clone()) {
             Ok(ColumnValues::uint16(vec![v; row_count]))
         } else if let Ok(f) = parse_float::<f64>(span.clone()) {

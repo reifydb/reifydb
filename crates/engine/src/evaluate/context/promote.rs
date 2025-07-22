@@ -12,7 +12,7 @@ pub trait Promote {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafePromote<To>,
         To: GetType;
@@ -23,7 +23,7 @@ impl Promote for EvaluationContext {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafePromote<To>,
         To: GetType,
@@ -37,7 +37,7 @@ impl Promote for &EvaluationContext {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafePromote<To>,
         To: GetType,

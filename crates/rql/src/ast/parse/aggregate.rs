@@ -1,16 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::ast::AstAggregate;
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstAggregate, parse};
 use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_aggregate(&mut self) -> parse::Result<AstAggregate> {
+    pub(crate) fn parse_aggregate(&mut self) -> crate::Result<AstAggregate> {
         let token = self.consume_keyword(Keyword::Aggregate)?;
 
         let mut projections = Vec::new();

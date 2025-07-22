@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::frame::FrameColumn;
 use reifydb_core::error::diagnostic::function;
@@ -13,7 +12,7 @@ impl Evaluator {
 		&mut self,
 		call: &CallExpression,
 		ctx: &EvaluationContext,
-    ) -> evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let virtual_columns = self.evaluate_virtual_column(&call.args, ctx).unwrap();
 
         let function = &call.func.0.fragment;

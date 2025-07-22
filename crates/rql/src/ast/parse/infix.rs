@@ -4,11 +4,11 @@
 use crate::ast::lex::{Operator, TokenKind};
 use crate::ast::parse::error::unsupported_token_error;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{Ast, AstInfix, InfixOperator, parse};
+use crate::ast::{Ast, AstInfix, InfixOperator};
 use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_infix(&mut self, left: Ast) -> parse::Result<AstInfix> {
+    pub(crate) fn parse_infix(&mut self, left: Ast) -> crate::Result<AstInfix> {
         let precedence = self.current_precedence()?;
 
         let operator = self.parse_infix_operator()?;
@@ -29,7 +29,7 @@ impl Parser {
         })
     }
 
-    pub(crate) fn parse_infix_operator(&mut self) -> parse::Result<InfixOperator> {
+    pub(crate) fn parse_infix_operator(&mut self) -> crate::Result<InfixOperator> {
         let token = self.advance()?;
         match &token.kind {
             TokenKind::Operator(operator) => match operator {

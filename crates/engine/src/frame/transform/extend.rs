@@ -6,7 +6,7 @@ use reifydb_core::row::{EncodedRow, Layout};
 use reifydb_core::{BitVec, CowVec, Date, DateTime, Interval, Time, Type};
 
 impl Frame {
-    pub fn append_frame(&mut self, other: Frame) -> crate::frame::Result<()> {
+    pub fn append_frame(&mut self, other: Frame) -> crate::Result<()> {
         if self.columns.len() != other.columns.len() {
             return Err("mismatched column count".into());
         }
@@ -32,7 +32,7 @@ impl Frame {
         &mut self,
         layout: &Layout,
         rows: impl IntoIterator<Item = EncodedRow>,
-    ) -> crate::frame::Result<()> {
+    ) -> crate::Result<()> {
         if self.columns.len() != layout.fields.len() {
             return Err(format!(
                 "mismatched column count: expected {}, got {}",
@@ -150,7 +150,7 @@ impl Frame {
         &mut self,
         layout: &Layout,
         row: &EncodedRow,
-    ) -> crate::frame::Result<()> {
+    ) -> crate::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
             match (&mut column.values, layout.value(index)) {
                 (ColumnValues::Bool(vec, bitvec), Type::Bool) => {
@@ -239,7 +239,7 @@ impl Frame {
         Ok(())
     }
 
-    fn append_fallback(&mut self, layout: &Layout, row: &EncodedRow) -> crate::frame::Result<()> {
+    fn append_fallback(&mut self, layout: &Layout, row: &EncodedRow) -> crate::Result<()> {
         for (index, column) in self.columns.iter_mut().enumerate() {
             match (&mut column.values, layout.value(index)) {
                 (ColumnValues::Bool(vec, bitvec), Type::Bool) => {

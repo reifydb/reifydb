@@ -47,9 +47,8 @@ pub(crate) enum Precedence {
     Primary,
 }
 
-pub type Result<T> = core::result::Result<T, reifydb_core::Error>;
 
-pub(crate) fn parse<'a>(tokens: Vec<Token>) -> Result<Vec<AstStatement>> {
+pub(crate) fn parse<'a>(tokens: Vec<Token>) -> crate::Result<Vec<AstStatement>> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
@@ -92,7 +91,7 @@ impl Parser {
         Self { tokens, precedence_map }
     }
 
-    fn parse(&mut self) -> Result<Vec<AstStatement>> {
+    fn parse(&mut self) -> crate::Result<Vec<AstStatement>> {
         let mut result = Vec::new();
         loop {
             if self.is_eof() {
@@ -117,7 +116,7 @@ impl Parser {
         Ok(result)
     }
 
-    pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast> {
+    pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast> {
         let mut left = self.parse_primary()?;
 
         while !self.is_eof() && precedence < self.current_precedence()? {
@@ -126,18 +125,18 @@ impl Parser {
         Ok(left)
     }
 
-    pub(crate) fn advance(&mut self) -> Result<Token> {
+    pub(crate) fn advance(&mut self) -> crate::Result<Token> {
         self.tokens.pop().ok_or(reifydb_core::Error(
             ast::unexpected_eof_error(),
         ))
     }
 
-    pub(crate) fn consume(&mut self, expected: TokenKind) -> Result<Token> {
+    pub(crate) fn consume(&mut self, expected: TokenKind) -> crate::Result<Token> {
         self.current_expect(expected)?;
         self.advance()
     }
 
-    pub(crate) fn consume_if(&mut self, expected: TokenKind) -> Result<Option<Token>> {
+    pub(crate) fn consume_if(&mut self, expected: TokenKind) -> crate::Result<Option<Token>> {
         if self.is_eof() || self.current()?.kind != expected {
             return Ok(None);
         }
@@ -145,7 +144,7 @@ impl Parser {
         Ok(Some(self.consume(expected)?))
     }
 
-    pub(crate) fn consume_while(&mut self, expected: TokenKind) -> Result<()> {
+    pub(crate) fn consume_while(&mut self, expected: TokenKind) -> crate::Result<()> {
         loop {
             if self.is_eof() || self.current()?.kind != expected {
                 return Ok(());
@@ -154,28 +153,28 @@ impl Parser {
         }
     }
 
-    pub(crate) fn consume_literal(&mut self, expected: Literal) -> Result<Token> {
+    pub(crate) fn consume_literal(&mut self, expected: Literal) -> crate::Result<Token> {
         self.current_expect_literal(expected)?;
         self.advance()
     }
 
-    pub(crate) fn consume_operator(&mut self, expected: Operator) -> Result<Token> {
+    pub(crate) fn consume_operator(&mut self, expected: Operator) -> crate::Result<Token> {
         self.current_expect_operator(expected)?;
         self.advance()
     }
 
-    pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> Result<Token> {
+    pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> crate::Result<Token> {
         self.current_expect_keyword(expected)?;
         self.advance()
     }
 
-    pub(crate) fn current(&self) -> Result<&Token> {
+    pub(crate) fn current(&self) -> crate::Result<&Token> {
         self.tokens.last().ok_or(reifydb_core::Error(
             ast::unexpected_eof_error(),
         ))
     }
 
-    pub(crate) fn current_expect(&self, expected: TokenKind) -> Result<()> {
+    pub(crate) fn current_expect(&self, expected: TokenKind) -> crate::Result<()> {
         let got = self.current()?;
         if got.kind == expected {
             Ok(())
@@ -189,19 +188,19 @@ impl Parser {
         }
     }
 
-    pub(crate) fn current_expect_literal(&self, literal: Literal) -> Result<()> {
+    pub(crate) fn current_expect_literal(&self, literal: Literal) -> crate::Result<()> {
         self.current_expect(TokenKind::Literal(literal))
     }
 
-    pub(crate) fn current_expect_operator(&self, operator: Operator) -> Result<()> {
+    pub(crate) fn current_expect_operator(&self, operator: Operator) -> crate::Result<()> {
         self.current_expect(TokenKind::Operator(operator))
     }
 
-    pub(crate) fn current_expect_keyword(&self, keyword: Keyword) -> Result<()> {
+    pub(crate) fn current_expect_keyword(&self, keyword: Keyword) -> crate::Result<()> {
         self.current_expect(TokenKind::Keyword(keyword))
     }
 
-    pub(crate) fn current_precedence(&self) -> Result<Precedence> {
+    pub(crate) fn current_precedence(&self) -> crate::Result<Precedence> {
         if self.is_eof() {
             return Ok(Precedence::None);
         };
@@ -219,7 +218,7 @@ impl Parser {
         self.tokens.is_empty()
     }
 
-    pub(crate) fn skip_new_line(&mut self) -> Result<()> {
+    pub(crate) fn skip_new_line(&mut self) -> crate::Result<()> {
         self.consume_while(TokenKind::Separator(NewLine))?;
         Ok(())
     }

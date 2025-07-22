@@ -17,7 +17,7 @@ impl ScalarFunction for Avg {
         &self,
         columns: &[FrameColumn],
         row_count: usize,
-    ) -> Result<ColumnValues, reifydb_core::Error> {
+    ) -> crate::Result<ColumnValues> {
         let mut sum = vec![0.0f64; row_count];
         let mut count = vec![0u32; row_count];
 

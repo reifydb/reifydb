@@ -12,7 +12,7 @@ pub trait Convert {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType;
@@ -23,7 +23,7 @@ impl Convert for EvaluationContext {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType,
@@ -37,7 +37,7 @@ impl Convert for &EvaluationContext {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeConvert<To> + GetType,
         To: GetType,

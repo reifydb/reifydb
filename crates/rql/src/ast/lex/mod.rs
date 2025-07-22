@@ -29,7 +29,6 @@ mod literal;
 mod operator;
 mod separator;
 
-pub type Result<T> = std::result::Result<T, reifydb_core::Error>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
@@ -87,7 +86,7 @@ pub enum Literal {
     Undefined,
 }
 
-pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> Result<Vec<Token>> {
+pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> crate::Result<Vec<Token>> {
     match many0(token).parse(input.into()) {
         Ok((_, tokens)) => Ok(tokens),
         Err(err) => Err(reifydb_core::error::Error(ast::lex_error(format!("{}", err)))),

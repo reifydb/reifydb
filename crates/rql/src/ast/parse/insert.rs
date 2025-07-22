@@ -3,10 +3,10 @@
 
 use crate::ast::lex::{Keyword, Operator};
 use crate::ast::parse::Parser;
-use crate::ast::{AstInsert, parse};
+use crate::ast::AstInsert;
 
 impl Parser {
-    pub(crate) fn parse_insert(&mut self) -> parse::Result<AstInsert> {
+    pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert> {
         let token = self.consume_keyword(Keyword::Insert)?;
 
         let identifier = self.parse_identifier()?;

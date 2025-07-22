@@ -6,9 +6,8 @@ use crate::plan::logical::{
     AggregateNode, FilterNode, InlineDataNode, JoinLeftNode, TakeNode, LogicalPlan, OrderNode, MapNode,
     TableScanNode, compile_logical,
 };
-use reifydb_core::Error;
 
-pub fn explain_logical_plan(query: &str) -> Result<String, Error> {
+pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
     let statements = parse(query).unwrap(); // FIXME
 
     let mut plans = Vec::new();

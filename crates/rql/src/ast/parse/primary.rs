@@ -6,11 +6,11 @@ use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Operator, TokenKind};
 use crate::ast::parse::Parser;
 use crate::ast::parse::error::unsupported_token_error;
-use crate::ast::{Ast, AstWildcard, parse};
+use crate::ast::{Ast, AstWildcard};
 use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_primary(&mut self) -> parse::Result<Ast> {
+    pub(crate) fn parse_primary(&mut self) -> crate::Result<Ast> {
         loop {
             if self.is_eof() {
                 return Ok(Ast::Nop);
