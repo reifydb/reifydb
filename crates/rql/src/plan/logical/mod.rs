@@ -30,6 +30,7 @@ impl Compiler {
         for node in ast {
             match node {
                 Ast::Create(node) => result.push(Self::compile_create(node)?),
+                Ast::AstDelete(node) => result.push(Self::compile_delete(node)?),
                 Ast::AstInsert(node) => result.push(Self::compile_insert(node)?),
                 Ast::AstUpdate(node) => result.push(Self::compile_update(node)?),
 
@@ -54,6 +55,7 @@ pub enum LogicalPlan {
     CreateSequence(CreateSequenceNode),
     CreateTable(CreateTableNode),
     // Mutate
+    Delete(DeleteNode),
     Insert(InsertNode),
     Update(UpdateNode),
     // Query
@@ -93,6 +95,12 @@ pub struct CreateTableNode {
     pub table: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
+}
+
+#[derive(Debug)]
+pub struct DeleteNode {
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
 }
 
 #[derive(Debug)]

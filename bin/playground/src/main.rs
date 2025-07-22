@@ -30,8 +30,7 @@ fn main() {
             &root,
             r#"
             from test.abc
-            map { id, col: cast(123, float4) }
-            update test.abc;
+            delete test.abc;
 
             from test.abc;
           "#,

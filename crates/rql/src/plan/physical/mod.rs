@@ -57,6 +57,15 @@ impl Compiler {
                     stack.push(PhysicalPlan::InlineData(InlineDataNode { rows: inline.rows }));
                 }
 
+                LogicalPlan::Delete(delete) => {
+                    let input = stack.pop().unwrap();
+                    stack.push(PhysicalPlan::Delete(DeletePlan {
+                        input: Box::new(input),
+                        schema: delete.schema,
+                        table: delete.table,
+                    }))
+                }
+
                 LogicalPlan::Insert(insert) => {
                     let input = stack.pop().unwrap();
                     stack.push(PhysicalPlan::Insert(InsertPlan {
@@ -130,6 +139,7 @@ pub enum PhysicalPlan {
     CreateSchema(CreateSchemaPlan),
     CreateTable(CreateTablePlan),
     // Mutate
+    Delete(DeletePlan),
     Insert(InsertPlan),
     Update(UpdatePlan),
 
@@ -177,6 +187,13 @@ pub struct AggregateNode {
 pub struct FilterNode {
     pub input: Box<PhysicalPlan>,
     pub conditions: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeletePlan {
+    pub input: Box<PhysicalPlan>,
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
 }
 
 #[derive(Debug, Clone)]

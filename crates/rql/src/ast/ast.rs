@@ -50,6 +50,7 @@ pub enum Ast {
     Identifier(AstIdentifier),
     Infix(AstInfix),
     Inline(AstInline),
+    AstDelete(AstDelete),
     AstInsert(AstInsert),
     AstUpdate(AstUpdate),
     Join(AstJoin),
@@ -86,6 +87,7 @@ impl Ast {
             Ast::Aggregate(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
+            Ast::AstDelete(node) => &node.token,
             Ast::AstInsert(node) => &node.token,
             Ast::AstUpdate(node) => &node.token,
             Ast::Take(node) => &node.token,
@@ -178,6 +180,13 @@ impl Ast {
     }
     pub fn as_infix(&self) -> &AstInfix {
         if let Ast::Infix(result) = self { result } else { panic!("not infix") }
+    }
+
+    pub fn is_delete(&self) -> bool {
+        matches!(self, Ast::AstDelete(_))
+    }
+    pub fn as_delete(&self) -> &AstDelete {
+        if let Ast::AstDelete(result) = self { result } else { panic!("not delete") }
     }
 
     pub fn is_insert(&self) -> bool {
@@ -556,6 +565,13 @@ pub struct AstInfix {
     pub left: Box<Ast>,
     pub operator: InfixOperator,
     pub right: Box<Ast>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDelete {
+    pub token: Token,
+    pub schema: Option<AstIdentifier>,
+    pub table: AstIdentifier,
 }
 
 #[derive(Debug, Clone, PartialEq)]

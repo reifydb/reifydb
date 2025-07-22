@@ -4,6 +4,7 @@
 mod aggregate;
 mod cast;
 mod create;
+mod delete;
 mod describe;
 mod diagnostic;
 mod error;
