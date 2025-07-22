@@ -3,7 +3,7 @@
 
 use crate::error::diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range};
 use crate::value::is::{IsFloat, IsInt, IsUint};
-use crate::{Error, Span, Type};
+use crate::{return_error, Error, Span, Type};
 use std::any::TypeId;
 use std::num::IntErrorKind;
 use std::str::FromStr;
@@ -51,7 +51,7 @@ where
     T: IsFloat + 'static,
 {
     if span.fragment().to_lowercase().contains("nan") {
-        return Err(Error(nan_not_allowed()));
+        return_error!(nan_not_allowed());
     }
 
     if TypeId::of::<T>() == TypeId::of::<f32>() {
@@ -169,7 +169,7 @@ where
     let value = value.trim();
 
     if value.is_empty() {
-        return Err(Error(invalid_number_format(span.to_owned(), T::type_enum())));
+        return_error!(invalid_number_format(span.to_owned(), T::type_enum()));
     }
 
     match value.parse::<T>() {
@@ -220,7 +220,7 @@ where
     let value = value.trim();
 
     if value.is_empty() {
-        return Err(Error(invalid_number_format(span.to_owned(), T::type_enum())));
+        return_error!(invalid_number_format(span.to_owned(), T::type_enum()));
     }
 
     match value.parse::<T>() {
@@ -234,7 +234,7 @@ where
                     if let Ok(f) = value.parse::<f64>() {
                         // For unsigned types, reject negative values
                         if f < 0.0 {
-                            return Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)));
+                            return_error!(number_out_of_range(span.to_owned(), T::type_enum(), None));
                         }
                         let truncated = f.trunc();
                         let type_enum = T::type_enum();
@@ -283,7 +283,7 @@ where
     let value = value.trim();
 
     if value.is_empty() {
-        return Err(Error(invalid_number_format(span.to_owned(), T::type_enum())));
+        return_error!(invalid_number_format(span.to_owned(), T::type_enum()));
     }
 
     match value.parse::<T>() {
@@ -291,12 +291,12 @@ where
             if TypeId::of::<T>() == TypeId::of::<f32>() {
                 let v_f32 = cast::<f32, T>(v);
                 if v_f32 == f32::INFINITY || v_f32 == f32::NEG_INFINITY {
-                    return Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)));
+                    return_error!(number_out_of_range(span.to_owned(), T::type_enum(), None));
                 }
             } else if TypeId::of::<T>() == TypeId::of::<f64>() {
                 let v_f64 = cast::<f64, T>(v);
                 if v_f64 == f64::INFINITY || v_f64 == f64::NEG_INFINITY {
-                    return Err(Error(number_out_of_range(span.to_owned(), T::type_enum(), None)));
+                    return_error!(number_out_of_range(span.to_owned(), T::type_enum(), None));
                 }
             }
             Ok(v)

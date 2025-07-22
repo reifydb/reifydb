@@ -5,13 +5,13 @@ use crate::frame::{ColumnValues, FrameColumn};
 use reifydb_core::{BitVec, CowVec};
 
 impl FrameColumn {
-    pub fn filter(&mut self, mask: &BitVec) -> crate::frame::Result<()> {
+    pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
         self.values.filter(mask)
     }
 }
 
 impl ColumnValues {
-    pub fn filter(&mut self, mask: &BitVec) -> crate::frame::Result<()> {
+    pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
         match self {
             ColumnValues::Bool(values, bitvec) => {
                 let mut new_values = Vec::with_capacity(mask.count_ones());

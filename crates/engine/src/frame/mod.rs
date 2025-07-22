@@ -15,4 +15,3 @@ mod reference;
 mod transform;
 mod view;
 
-pub type Result<T> = std::result::Result<T, reifydb_core::Error>;

@@ -22,7 +22,7 @@ impl AggregateFunction for Min {
 		column: &FrameColumn,
 		mask: &BitVec,
 		groups: &HashMap<Vec<Value>, Vec<usize>>,
-    ) -> Result<(), reifydb_core::Error> {
+    ) -> crate::Result<()> {
         match &column.values {
             ColumnValues::Float8(values, bitvec) => {
                 for (group, indices) in groups {
@@ -62,7 +62,7 @@ impl AggregateFunction for Min {
         }
     }
 
-    fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), reifydb_core::Error> {
+    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnValues)> {
         let mut keys = Vec::with_capacity(self.mins.len());
         let mut values = ColumnValues::float8_with_capacity(self.mins.len());
 

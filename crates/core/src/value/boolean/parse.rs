@@ -5,13 +5,13 @@ use crate::error::diagnostic::boolean::{
     empty_boolean_value, invalid_boolean_format, invalid_number_boolean,
 };
 
-use crate::{Error, Span};
+use crate::{Error, Span, return_error};
 
 pub fn parse_bool(span: impl Span) -> Result<bool, Error> {
     let value = span.fragment().trim();
 
     if value.is_empty() {
-        return Err(Error(empty_boolean_value(span.to_owned())));
+        return_error!(empty_boolean_value(span.to_owned()));
     }
 
     match value.to_lowercase().as_str() {

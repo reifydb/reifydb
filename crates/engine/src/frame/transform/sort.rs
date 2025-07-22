@@ -5,7 +5,7 @@ use crate::frame::{ColumnValues, Error, Frame};
 use reifydb_core::{SortDirection, SortKey};
 
 impl Frame {
-    pub fn sort(&mut self, keys: &[SortKey]) -> crate::frame::Result<()> {
+    pub fn sort(&mut self, keys: &[SortKey]) -> crate::Result<()> {
         let row_count = self.columns.first().map_or(0, |c| c.data.len());
 
         // 1. Create index indirection (0..n)
@@ -22,7 +22,7 @@ impl Frame {
                     .ok_or_else(|| format!("Column '{}' not found", key.column))?;
                 Ok::<_, Error>((&col.data, &key.direction))
             })
-            .collect::<Result<_, _>>()?;
+            .collect::<crate::Result<_, _>>()?;
 
         // 3. Sort the indices using comparator
         indices.sort_unstable_by(|&a, &b| {

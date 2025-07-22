@@ -12,7 +12,7 @@ pub trait Demote {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType;
@@ -23,7 +23,7 @@ impl Demote for EvaluationContext<'_> {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,
@@ -37,7 +37,7 @@ impl Demote for &EvaluationContext<'_> {
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,

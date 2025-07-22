@@ -5,10 +5,10 @@ use crate::ast::ast::AstFrom;
 use crate::ast::lex::Operator::{CloseBracket, OpenBracket};
 use crate::ast::lex::{Keyword, Operator, Separator};
 use crate::ast::parse::Parser;
-use crate::ast::{Ast, AstList, TokenKind, parse};
+use crate::ast::{Ast, AstList, TokenKind};
 
 impl Parser {
-    pub(crate) fn parse_from(&mut self) -> parse::Result<AstFrom> {
+    pub(crate) fn parse_from(&mut self) -> crate::Result<AstFrom> {
         let token = self.consume_keyword(Keyword::From)?;
 
         if self.current()?.is_operator(OpenBracket) {
@@ -28,7 +28,7 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_static(&mut self) -> parse::Result<AstList> {
+    pub(crate) fn parse_static(&mut self) -> crate::Result<AstList> {
         let token = self.consume_operator(OpenBracket)?;
 
         let mut nodes = Vec::new();

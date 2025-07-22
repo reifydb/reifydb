@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Error, Interval, Span};
+use crate::{return_error, Error, Interval, Span};
 use crate::error::diagnostic::temporal;
 
 pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
@@ -9,7 +9,7 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
     // Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
     if fragment.len() == 1 || !fragment.starts_with('P')  || fragment == "PT"{
-        return Err(Error(temporal::invalid_interval_format(span.to_owned())));
+        return_error!(temporal::invalid_interval_format(span.to_owned()));
     }
 
     let mut chars = fragment.chars().skip(1); // Skip 'P'
@@ -33,11 +33,11 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
             'Y' => {
                 if in_time_part {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'Y', true)));
+                    return_error!(temporal::invalid_unit_in_context(unit_span, 'Y', true));
                 }
                 if current_number.is_empty() {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                    return_error!(temporal::incomplete_interval_specification(unit_span));
                 }
                 let years: i32 = current_number.parse().map_err(|_| {
                     let number_span = span
@@ -51,7 +51,7 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
             'M' => {
                 if current_number.is_empty() {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                    return_error!(temporal::incomplete_interval_specification(unit_span));
                 }
                 let value: i64 = current_number.parse().map_err(|_| {
                     let number_span = span
@@ -69,11 +69,11 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
             'W' => {
                 if in_time_part {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'W', true)));
+                    return_error!(temporal::invalid_unit_in_context(unit_span, 'W', true));
                 }
                 if current_number.is_empty() {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                    return_error!(temporal::incomplete_interval_specification(unit_span));
                 }
                 let weeks: i32 = current_number.parse().map_err(|_| {
                     let number_span = span
@@ -87,11 +87,11 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
             'D' => {
                 if in_time_part {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'D', true)));
+                    return_error!(temporal::invalid_unit_in_context(unit_span, 'D', true));
                 }
                 if current_number.is_empty() {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                    return_error!(temporal::incomplete_interval_specification(unit_span));
                 }
                 let day_value: i32 = current_number.parse().map_err(|_| {
                     let number_span = span
@@ -105,11 +105,11 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
             'H' => {
                 if !in_time_part {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'H', false)));
+                    return_error!(temporal::invalid_unit_in_context(unit_span, 'H', false));
                 }
                 if current_number.is_empty() {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                    return_error!(temporal::incomplete_interval_specification(unit_span));
                 }
                 let hours: i64 = current_number.parse().map_err(|_| {
                     let number_span = span
@@ -123,11 +123,11 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
             'S' => {
                 if !in_time_part {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::invalid_unit_in_context(unit_span, 'S', false)));
+                    return_error!(temporal::invalid_unit_in_context(unit_span, 'S', false));
                 }
                 if current_number.is_empty() {
                     let unit_span = span.sub_span(current_position, 1);
-                    return Err(Error(temporal::incomplete_interval_specification(unit_span)));
+                    return_error!(temporal::incomplete_interval_specification(unit_span));
                 }
                 let seconds: i64 = current_number.parse().map_err(|_| {
                     let number_span = span
@@ -140,7 +140,7 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
             }
             _ => {
                 let char_span = span.sub_span(current_position, 1);
-                return Err(Error(temporal::invalid_interval_character(char_span)));
+                return_error!(temporal::invalid_interval_character(char_span));
             }
         }
     }
@@ -148,7 +148,7 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
     if !current_number.is_empty() {
         let number_span =
             span.sub_span(current_position - current_number.len(), current_number.len());
-        return Err(Error(temporal::incomplete_interval_specification(number_span)));
+        return_error!(temporal::incomplete_interval_specification(number_span));
     }
 
     Ok(Interval::new(months, days, nanos))

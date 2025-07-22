@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::error::diagnostic::temporal;
-use crate::{BorrowedSpan, Error, Span, Time};
+use crate::{BorrowedSpan, Error, Span, Time, return_error};
 
 pub fn parse_time(span: impl Span) -> Result<Time, Error> {
     // Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
@@ -19,18 +19,18 @@ pub fn parse_time(span: impl Span) -> Result<Time, Error> {
     let time_span_parts = time_span.split(':');
 
     if time_span_parts.len() != 3 {
-        return Err(Error(temporal::invalid_time_format(time_span)));
+        return_error!(temporal::invalid_time_format(time_span));
     }
 
     // Check for empty time parts
     if time_span_parts[0].trimmed_fragment().is_empty() {
-        return Err(Error(temporal::empty_time_component(time_span_parts[0].to_owned())));
+        return_error!(temporal::empty_time_component(time_span_parts[0].to_owned()));
     }
     if time_span_parts[1].trimmed_fragment().is_empty() {
-        return Err(Error(temporal::empty_time_component(time_span_parts[1].to_owned())));
+        return_error!(temporal::empty_time_component(time_span_parts[1].to_owned()));
     }
     if time_span_parts[2].trimmed_fragment().is_empty() {
-        return Err(Error(temporal::empty_time_component(time_span_parts[2].to_owned())));
+        return_error!(temporal::empty_time_component(time_span_parts[2].to_owned()));
     }
 
     let hour = time_span_parts[0]
@@ -48,7 +48,7 @@ pub fn parse_time(span: impl Span) -> Result<Time, Error> {
     let (second, nanosecond) = if seconds_with_fraction.contains('.') {
         let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
         if second_parts.len() != 2 {
-            return Err(Error(temporal::invalid_fractional_seconds(time_span_parts[2].to_owned())));
+            return_error!(temporal::invalid_fractional_seconds(time_span_parts[2].to_owned()));
         }
 
         let second = second_parts[0]
@@ -63,9 +63,9 @@ pub fn parse_time(span: impl Span) -> Result<Time, Error> {
             fraction_str[..9].to_string()
         };
 
-        let nanosecond = padded_fraction
-            .parse::<u32>()
-            .map_err(|_| Error(temporal::invalid_fractional_seconds(time_span_parts[2].to_owned())))?;
+        let nanosecond = padded_fraction.parse::<u32>().map_err(|_| {
+            Error(temporal::invalid_fractional_seconds(time_span_parts[2].to_owned()))
+        })?;
         (second, nanosecond)
     } else {
         let second = seconds_with_fraction

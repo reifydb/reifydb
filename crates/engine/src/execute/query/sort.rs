@@ -57,7 +57,7 @@ impl ExecutionPlan for SortNode {
                     .ok_or_else(|| reifydb_core::Error(query::column_not_found(key.column.clone())))?;
                 Ok::<_, reifydb_core::Error>((&col.values, &key.direction))
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<crate::Result<Vec<_>>>()?;
 
         let row_count = frame.row_count();
         let mut indices: Vec<usize> = (0..row_count).collect();

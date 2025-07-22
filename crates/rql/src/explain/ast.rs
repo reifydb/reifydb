@@ -4,9 +4,8 @@
 use crate::ast::lex::lex;
 use crate::ast::parse::parse;
 use crate::ast::{Ast, AstFrom, AstJoin};
-use reifydb_core::Error;
 
-pub fn explain_ast(query: &str) -> Result<String, Error> {
+pub fn explain_ast(query: &str) -> crate::Result<String> {
     let token = lex(query).unwrap();
     let statements = parse(token).unwrap();
 

@@ -10,6 +10,7 @@ use nom::combinator::{map, not, peek};
 use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
+use reifydb_core::error::diagnostic::ast;
 
 macro_rules! keyword {
     (
@@ -32,11 +33,11 @@ macro_rules! keyword {
         impl TryFrom<&str> for Keyword {
             type Error = reifydb_core::Error;
 
-            fn try_from(value: &str) -> Result<Self, Self::Error> {
+            fn try_from(value: &str) -> crate::Result<Self> {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
-                    _ => Err(reifydb_core::Error(reifydb_core::error::diagnostic::ast::lex_error("not a keyword".to_string())))
+                    _ => Err(reifydb_core::Error(ast::lex_error("not a keyword".to_string())))
                 }
             }
         }

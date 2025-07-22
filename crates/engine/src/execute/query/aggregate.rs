@@ -150,7 +150,7 @@ fn align_column_values(
     group_key_order: &[Vec<Value>],
     keys: &[Vec<Value>],
     values: &mut ColumnValues,
-) -> Result<(), reifydb_core::Error> {
+) -> crate::Result<()> {
     let mut key_to_index = HashMap::new();
     for (i, key) in keys.iter().enumerate() {
         key_to_index.insert(key, i);
@@ -165,7 +165,7 @@ fn align_column_values(
                 // .ok_or_else(|| reifydb_core::ErrorInternal(format!("Group key {:?} missing in aggregate output", k)))
                 .ok_or_else(|| reifydb_core::Error::from(format!("Group key {:?} missing in aggregate output", k)))
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<crate::Result<Vec<_>>>()?;
 
     values.reorder(&reorder_indices);
     Ok(())

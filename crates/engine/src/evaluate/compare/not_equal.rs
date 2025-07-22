@@ -13,7 +13,7 @@ impl Evaluator {
         &mut self,
         ne: &NotEqualExpression,
         ctx: &EvaluationContext,
-    ) -> crate::evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let left = self.evaluate(&ne.left, ctx)?;
         let right = self.evaluate(&ne.right, ctx)?;
 

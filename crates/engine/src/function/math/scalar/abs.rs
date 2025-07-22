@@ -17,7 +17,7 @@ impl ScalarFunction for Abs {
         &self,
         columns: &[FrameColumn],
         row_count: usize,
-    ) -> Result<ColumnValues, reifydb_core::Error> {
+    ) -> crate::Result<ColumnValues> {
         let column = columns.get(0).unwrap();
 
         match &column.values {

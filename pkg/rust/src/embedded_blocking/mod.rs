@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Error;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_engine::frame::Frame;
@@ -45,10 +44,9 @@ where
     T: Transaction<VS, US>,
 {
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.tx_as(principal, rql).map_err(|err| {
-            let mut diagnostic = err.diagnostic();
-            diagnostic.set_statement(rql.to_string());
-            Error::ExecutionError { diagnostic }
+        self.engine.tx_as(principal, rql).map_err(|mut err| {
+            err.0.set_statement(rql.to_string());
+            err
         })
     }
 

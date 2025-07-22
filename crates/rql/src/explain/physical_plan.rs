@@ -5,11 +5,10 @@ use crate::ast::parse;
 use crate::plan::logical::compile_logical;
 use crate::plan::physical;
 use crate::plan::physical::{PhysicalPlan, compile_physical};
-use reifydb_core::Error;
 use reifydb_core::interface::Rx;
 use std::fmt::Write;
 
-pub fn explain_physical_plan(rx: &mut impl Rx, query: &str) -> Result<String, Error> {
+pub fn explain_physical_plan(rx: &mut impl Rx, query: &str) -> crate::Result<String> {
     let statements = parse(query).unwrap(); // FIXME
 
     let mut plans = Vec::new();

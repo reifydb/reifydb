@@ -1,14 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::Catalog;
 use crate::column::ColumnId;
 use crate::column_policy::layout::column_policy;
 use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 use crate::key::{ColumnPolicyKey, EncodableKey};
 use crate::sequence::SystemSequence;
-use crate::{Catalog, Error};
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::error::diagnostic::catalog::column_policy_already_exists;
+use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::return_error;
 
 impl Catalog {
     pub(crate) fn create_column_policy<VS: VersionedStorage, US: UnversionedStorage>(
@@ -22,7 +23,7 @@ impl Catalog {
             if existing_kind == policy_kind {
                 let column =
                     Catalog::get_column(tx, column)?.map(|col| col.name).unwrap_or("".to_string());
-                return Err(Error(column_policy_already_exists(&policy.to_string(), &column)));
+                return_error!(column_policy_already_exists(&policy.to_string(), &column));
             }
         }
 

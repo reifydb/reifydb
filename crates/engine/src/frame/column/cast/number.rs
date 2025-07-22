@@ -687,7 +687,7 @@ mod tests {
                 &self,
                 val: From,
                 _span: impl IntoOwnedSpan,
-            ) -> crate::evaluate::Result<Option<To>>
+            ) -> crate::Result<Option<To>>
             where
                 From: SafePromote<To>,
             {
@@ -806,7 +806,7 @@ mod tests {
                 &self,
                 val: From,
                 _span: impl IntoOwnedSpan,
-            ) -> crate::evaluate::Result<Option<To>>
+            ) -> crate::Result<Option<To>>
             where
                 From: SafeDemote<To>,
             {

@@ -3,10 +3,10 @@
 
 use crate::ast::lex::Keyword;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{Ast, AstTake, AstLiteral, parse};
+use crate::ast::{Ast, AstTake, AstLiteral};
 
 impl Parser {
-    pub(crate) fn parse_take(&mut self) -> parse::Result<AstTake> {
+    pub(crate) fn parse_take(&mut self) -> crate::Result<AstTake> {
         let token = self.consume_keyword(Keyword::Take)?;
         let take = self.parse_node(Precedence::None)?;
         match take {
