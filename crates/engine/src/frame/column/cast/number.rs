@@ -7,7 +7,7 @@ use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::number::{
     SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,
 };
-use reifydb_core::{BitVec, GetType, OwnedSpan, Span, Type};
+use reifydb_core::{BitVec, GetType, OwnedSpan, Span, Type, error, return_error};
 
 impl ColumnValues {
     pub(crate) fn to_number(
@@ -18,7 +18,7 @@ impl ColumnValues {
     ) -> crate::Result<ColumnValues> {
         if !target.is_number() {
             let source_type = self.get_type();
-            return Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)));
+            return_error!(cast::unsupported_cast(span(), source_type, target));
         }
 
         if self.get_type().is_number() {
@@ -41,12 +41,16 @@ impl ColumnValues {
         }
 
         let source_type = self.get_type();
-        Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
+        return_error!(cast::unsupported_cast(span(), source_type, target))
     }
 }
 
 impl ColumnValues {
-    fn bool_to_number(&self, target: Type, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
+    fn bool_to_number(
+        &self,
+        target: Type,
+        span: impl Fn() -> OwnedSpan,
+    ) -> crate::Result<ColumnValues> {
         macro_rules! bool_to_number {
             ($target_ty:ty, $true_val:expr, $false_val:expr) => {{
                 |out: &mut ColumnValues, val: bool| {
@@ -73,7 +77,7 @@ impl ColumnValues {
                     Type::Float8 => bool_to_number!(f64, 1.0f64, 0.0f64),
                     _ => {
                         let source_type = self.get_type();
-                        return Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)));
+                        return_error!(cast::unsupported_cast(span(), source_type, target));
                     }
                 };
 
@@ -89,14 +93,18 @@ impl ColumnValues {
             }
             _ => {
                 let source_type = self.get_type();
-                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
-            },
+                return_error!(cast::unsupported_cast(span(), source_type, target))
+            }
         }
     }
 }
 
 impl ColumnValues {
-    fn float_to_integer(&self, target: Type, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
+    fn float_to_integer(
+        &self,
+        target: Type,
+        span: impl Fn() -> OwnedSpan,
+    ) -> crate::Result<ColumnValues> {
         match self {
             ColumnValues::Float4(values, bitvec) => match target {
                 Type::Int1 => f32_to_i8_vec(values, bitvec),
@@ -111,8 +119,8 @@ impl ColumnValues {
                 Type::Uint16 => f32_to_u128_vec(values, bitvec),
                 _ => {
                     let source_type = self.get_type();
-                    Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
-                },
+                    return_error!(cast::unsupported_cast(span(), source_type, target))
+                }
             },
             ColumnValues::Float8(values, bitvec) => match target {
                 Type::Int1 => f64_to_i8_vec(values, bitvec),
@@ -127,13 +135,13 @@ impl ColumnValues {
                 Type::Uint16 => f64_to_u128_vec(values, bitvec),
                 _ => {
                     let source_type = self.get_type();
-                    Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
-                },
+                    return_error!(cast::unsupported_cast(span(), source_type, target))
+                }
             },
             _ => {
                 let source_type = self.get_type();
-                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
-            },
+                return_error!(cast::unsupported_cast(span(), source_type, target))
+            }
         }
     }
 }
@@ -141,13 +149,13 @@ impl ColumnValues {
 macro_rules! parse_and_push {
     (parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
         let result = parse_int::<$ty>($temp_span).map_err(|e| {
-            reifydb_core::Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
+            error!(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic(),))
         })?;
         $out.push::<$ty>(result);
     }};
     (parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
         let result = parse_uint::<$ty>($temp_span).map_err(|e| {
-            reifydb_core::Error(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic()))
+            error!(cast::invalid_number($base_span.clone(), $target_type, e.diagnostic(),))
         })?;
         $out.push::<$ty>(result);
     }};
@@ -252,7 +260,11 @@ impl ColumnValues {
                             ),
                             _ => {
                                 let source_type = self.get_type();
-                                return Err(reifydb_core::Error(cast::unsupported_cast(base_span.clone(), source_type, target)));
+                                return_error!(cast::unsupported_cast(
+                                    base_span.clone(),
+                                    source_type,
+                                    target
+                                ));
                             }
                         }
                     } else {
@@ -263,8 +275,8 @@ impl ColumnValues {
             }
             _ => {
                 let source_type = self.get_type();
-                Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
-            },
+                return_error!(cast::unsupported_cast(span(), source_type, target))
+            }
         }
     }
 }
@@ -289,7 +301,7 @@ impl ColumnValues {
                     match target {
                         Type::Float4 => {
                             out.push::<f32>(parse_float::<f32>(temp_span).map_err(|e| {
-                                reifydb_core::Error(cast::invalid_number(
+                                error!(cast::invalid_number(
                                     base_span.clone(),
                                     Type::Float4,
                                     e.diagnostic(),
@@ -299,7 +311,7 @@ impl ColumnValues {
 
                         Type::Float8 => {
                             out.push::<f64>(parse_float::<f64>(temp_span).map_err(|e| {
-                                reifydb_core::Error(cast::invalid_number(
+                                error!(cast::invalid_number(
                                     base_span.clone(),
                                     Type::Float8,
                                     e.diagnostic(),
@@ -308,7 +320,11 @@ impl ColumnValues {
                         }
                         _ => {
                             let source_type = self.get_type();
-                            return Err(reifydb_core::Error(cast::unsupported_cast(base_span.clone(), source_type, target)));
+                            return_error!(cast::unsupported_cast(
+                                base_span.clone(),
+                                source_type,
+                                target
+                            ));
                         }
                     }
                 } else {
@@ -318,7 +334,7 @@ impl ColumnValues {
             Ok(out)
         } else {
             let source_type = self.get_type();
-            Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
+            return_error!(cast::unsupported_cast(span(), source_type, target))
         }
     }
 }
@@ -374,11 +390,7 @@ impl ColumnValues {
         span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
         if !target.is_number() {
-            return Err(reifydb_core::Error(cast::unsupported_cast(
-                span(),
-                self.get_type(),
-                target,
-            )));
+            return_error!(cast::unsupported_cast(span(), self.get_type(), target,));
         }
 
         macro_rules! cast {
@@ -499,7 +511,7 @@ impl ColumnValues {
         );
 
         let source_type = self.get_type();
-        Err(reifydb_core::Error(cast::unsupported_cast(span(), source_type, target)))
+        return_error!(cast::unsupported_cast(span(), source_type, target))
     }
 }
 

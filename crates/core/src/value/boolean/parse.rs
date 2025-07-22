@@ -5,7 +5,7 @@ use crate::error::diagnostic::boolean::{
     empty_boolean_value, invalid_boolean_format, invalid_number_boolean,
 };
 
-use crate::{Error, Span, return_error};
+use crate::{err, Error, Span, return_error};
 
 pub fn parse_bool(span: impl Span) -> Result<bool, Error> {
     let value = span.fragment().trim();
@@ -22,9 +22,9 @@ pub fn parse_bool(span: impl Span) -> Result<bool, Error> {
         _ => {
             // Check if the value contains numbers - if so, use numeric boolean diagnostic
             if value.chars().any(|c| c.is_ascii_digit()) {
-                Err(Error(invalid_number_boolean(span.to_owned())))
+                err!(invalid_number_boolean(span.to_owned()))
             } else {
-                Err(Error(invalid_boolean_format(span.to_owned())))
+                err!(invalid_boolean_format(span.to_owned()))
             }
         }
     }

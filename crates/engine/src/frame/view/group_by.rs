@@ -20,7 +20,7 @@ impl Frame {
                 .columns
                 .iter()
                 .find(|c| c.name == key)
-                .ok_or_else(|| format!("Column '{}' not found", key))?;
+                .ok_or_else(|| reifydb_core::error!(reifydb_core::error::diagnostic::engine::frame_error(format!("Column '{}' not found", key))))?;
             key_columns.push(&column.values);
         }
 

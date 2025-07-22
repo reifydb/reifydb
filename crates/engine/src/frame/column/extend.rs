@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{ColumnValues, FrameColumn};
-use reifydb_core::{BitVec, CowVec, Date, DateTime, Interval, Time};
+use reifydb_core::{return_error, BitVec, CowVec, Date, DateTime, Interval, Time};
 
 impl FrameColumn {
     pub fn extend(&mut self, other: FrameColumn) -> crate::Result<()> {
@@ -359,7 +359,7 @@ impl ColumnValues {
             },
 
             (_, _) => {
-                return Err("column type mismatch".to_string().into());
+                return_error!(reifydb_core::error::diagnostic::engine::frame_error("column type mismatch".to_string()));
             }
         }
 

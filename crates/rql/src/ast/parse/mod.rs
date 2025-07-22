@@ -28,13 +28,12 @@ mod update;
 
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
-// unexpected_eof_error() variant no longer exists - using helper function instead
+use crate::ast::parse::error::{expected_identifier_error, unexpected_token_error};
 use crate::ast::{Ast, AstStatement};
+use reifydb_core::error::diagnostic::ast;
 use reifydb_core::return_error;
 use std::cmp::PartialOrd;
 use std::collections::HashMap;
-use reifydb_core::error::diagnostic::ast;
-use crate::ast::parse::error::{expected_identifier_error, unexpected_token_error};
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub(crate) enum Precedence {
@@ -47,7 +46,6 @@ pub(crate) enum Precedence {
     Call,
     Primary,
 }
-
 
 pub(crate) fn parse<'a>(tokens: Vec<Token>) -> crate::Result<Vec<AstStatement>> {
     let mut parser = Parser::new(tokens);
@@ -127,9 +125,7 @@ impl Parser {
     }
 
     pub(crate) fn advance(&mut self) -> crate::Result<Token> {
-        self.tokens.pop().ok_or(reifydb_core::Error(
-            ast::unexpected_eof_error(),
-        ))
+        self.tokens.pop().ok_or(reifydb_core::Error(ast::unexpected_eof_error()))
     }
 
     pub(crate) fn consume(&mut self, expected: TokenKind) -> crate::Result<Token> {
@@ -170,9 +166,7 @@ impl Parser {
     }
 
     pub(crate) fn current(&self) -> crate::Result<&Token> {
-        self.tokens.last().ok_or(reifydb_core::Error(
-            ast::unexpected_eof_error(),
-        ))
+        self.tokens.last().ok_or(reifydb_core::Error(ast::unexpected_eof_error()))
     }
 
     pub(crate) fn current_expect(&self, expected: TokenKind) -> crate::Result<()> {
@@ -227,8 +221,6 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use diagnostic::ast;
-    use reifydb_core::error::diagnostic;
     use crate::ast::lex::Literal::{False, Number, True};
     use crate::ast::lex::Operator::Plus;
     use crate::ast::lex::Separator::Semicolon;
@@ -237,15 +229,14 @@ mod tests {
     // unexpected_eof_error() variant no longer exists - using helper function instead
     use crate::ast::parse::Precedence::Term;
     use crate::ast::parse::{Parser, Precedence};
+    use diagnostic::ast;
+    use reifydb_core::error::diagnostic;
 
     #[test]
     fn test_advance_but_eof() {
         let mut parser = Parser::new(vec![]);
         let result = parser.advance();
-        assert_eq!(
-            result,
-            Err(reifydb_core::Error(ast::unexpected_eof_error()))
-        )
+        assert_eq!(result, reifydb_core::err!(ast::unexpected_eof_error()))
     }
 
     #[test]
@@ -271,10 +262,7 @@ mod tests {
         let tokens = lex("").unwrap();
         let mut parser = Parser::new(tokens);
         let err = parser.consume(Identifier).err().unwrap();
-        assert_eq!(
-            err,
-            reifydb_core::Error(ast::unexpected_eof_error())
-        )
+        assert_eq!(err, reifydb_core::Error(ast::unexpected_eof_error()))
     }
 
     #[test]
@@ -332,10 +320,7 @@ mod tests {
         let tokens = lex("").unwrap();
         let parser = Parser::new(tokens);
         let result = parser.current();
-        assert_eq!(
-            result,
-            Err(reifydb_core::Error(ast::unexpected_eof_error()))
-        )
+        assert_eq!(result, reifydb_core::err!(ast::unexpected_eof_error()))
     }
 
     #[test]
@@ -357,10 +342,7 @@ mod tests {
         let tokens = lex("").unwrap();
         let parser = Parser::new(tokens);
         let result = parser.current_expect(Separator(Semicolon));
-        assert_eq!(
-            result,
-            Err(reifydb_core::Error(ast::unexpected_eof_error()))
-        )
+        assert_eq!(result, reifydb_core::err!(ast::unexpected_eof_error()))
     }
 
     #[test]

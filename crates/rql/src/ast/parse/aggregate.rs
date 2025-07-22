@@ -82,7 +82,7 @@ impl Parser {
         }
 
         if by.len() > 1 && !has_by_braces {
-            return Err(reifydb_core::Error(multiple_expressions_without_braces(token.span)));
+            return_error!(multiple_expressions_without_braces(token.span));
         }
 
         Ok(AstAggregate { token, by, map: projections })
