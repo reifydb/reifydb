@@ -81,23 +81,37 @@ impl Evaluator {
                 }
 
                 if let Ok(v) = parse_int::<i8>(span.clone()) {
-                    ColumnValues::int1(vec![v; row_count])
-                } else if let Ok(v) = parse_int::<i16>(span.clone()) {
-                    ColumnValues::int2(vec![v; row_count])
-                } else if let Ok(v) = parse_int::<i32>(span.clone()) {
-                    ColumnValues::int4(vec![v; row_count])
-                } else if let Ok(v) = parse_int::<i64>(span.clone()) {
-                    ColumnValues::int8(vec![v; row_count])
-                } else if let Ok(v) = parse_int::<i128>(span.clone()) {
-                    ColumnValues::int16(vec![v; row_count])
-                } else {
-                    match parse_uint::<u128>(span.clone()) {
-                        Ok(v) => ColumnValues::uint16(vec![v; row_count]),
-                        Err(err) => {
-                            return_error!(err.diagnostic());
+                    return Ok(ColumnValues::int1(vec![v; row_count]));
+                }
+
+                if let Ok(v) = parse_int::<i16>(span.clone()) {
+                    return Ok(ColumnValues::int2(vec![v; row_count]));
+                }
+
+                if let Ok(v) = parse_int::<i32>(span.clone()) {
+                    return Ok(ColumnValues::int4(vec![v; row_count]));
+                }
+
+                if let Ok(v) = parse_int::<i64>(span.clone()) {
+                    return Ok(ColumnValues::int8(vec![v; row_count]));
+                }
+
+                // if parsing as i128 fails and its a negative number, we are maxed out and can stop
+                match parse_int::<i128>(span.clone()) {
+                    Ok(v) => return Ok(ColumnValues::int16(vec![v; row_count])),
+                    Err(err) => {
+                        if span.fragment.starts_with("-") {
+                            return Err(err);
                         }
                     }
                 }
+
+                return match parse_uint::<u128>(span.clone()) {
+                    Ok(v) => Ok(ColumnValues::uint16(vec![v; row_count])),
+                    Err(err) => {
+                        return_error!(err.diagnostic());
+                    }
+                };
             }
             ConstantExpression::Text { span } => {
                 ColumnValues::utf8(std::iter::repeat(span.fragment.clone()).take(row_count))
