@@ -67,8 +67,6 @@ impl MapNode {
 impl ExecutionPlan for MapNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mask }) = self.input.next(ctx, rx)? {
-            let row_count = frame.row_count();
-
             let mut columns = Vec::with_capacity(self.expressions.len());
 
             // Only preserve RowId column if the execution context requires it
@@ -82,6 +80,8 @@ impl ExecutionPlan for MapNode {
                 }
             }
 
+            let filtered_row_count = mask.count_ones();
+            
             for expr in &self.expressions {
                 columns.push(evaluate(
                     expr,
@@ -90,7 +90,7 @@ impl ExecutionPlan for MapNode {
                         ctx,
                         mask.clone(),
                         frame.columns.clone(),
-                        row_count,
+                        filtered_row_count,
                     ),
                 )?);
             }

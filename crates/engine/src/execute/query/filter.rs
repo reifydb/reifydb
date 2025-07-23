@@ -38,7 +38,9 @@ impl ExecutionPlan for FilterNode {
                 match result.values {
                     ColumnValues::Bool(values, bitvec) => {
                         for i in 0..row_count {
-                            ctx.mask.set(i, ctx.mask.get(i) & bitvec.get(i) & values[i]);
+                            if i < values.len() && i < bitvec.len() && i < ctx.mask.len() {
+                                ctx.mask.set(i, ctx.mask.get(i) & bitvec.get(i) & values[i]);
+                            }
                         }
                     }
                     _ => panic!("filter expression must evaluate to a boolean column"),
