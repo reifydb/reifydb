@@ -4,9 +4,8 @@
 use crate::Catalog;
 use crate::column::layout::table_column;
 use crate::column::{Column, ColumnId};
-use crate::key::TableColumnKey;
-use crate::table::TableId;
 use reifydb_core::interface::Rx;
+use reifydb_core::interface::{TableColumnKey, TableId};
 
 impl Catalog {
     pub fn list_columns(rx: &mut impl Rx, table: TableId) -> crate::Result<Vec<Column>> {

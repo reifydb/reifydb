@@ -3,67 +3,14 @@
 
 use crate::column::ColumnId;
 use crate::column_policy::ColumnPolicyId;
-use crate::key::{EncodableKey, SystemSequenceKey};
 use crate::schema::SchemaId;
 use crate::sequence::u64::SequenceGeneratorU64;
-use crate::table::TableId;
 use once_cell::sync::Lazy;
 use reifydb_core::EncodedKey;
+use reifydb_core::interface::{EncodableKey, SystemSequenceKey, TableId};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use serde::de::Visitor;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
-use std::ops::Deref;
 
-#[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct SystemSequenceId(pub u32);
-
-impl Deref for SystemSequenceId {
-    type Target = u32;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl PartialEq<u32> for SystemSequenceId {
-    fn eq(&self, other: &u32) -> bool {
-        self.0.eq(other)
-    }
-}
-
-impl Serialize for SystemSequenceId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u32(self.0)
-    }
-}
-
-impl<'de> Deserialize<'de> for SystemSequenceId {
-    fn deserialize<D>(deserializer: D) -> Result<SystemSequenceId, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct U32Visitor;
-
-        impl Visitor<'_> for U32Visitor {
-            type Value = SystemSequenceId;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("an unsigned 32-bit number")
-            }
-
-            fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E> {
-                Ok(SystemSequenceId(value))
-            }
-        }
-
-        deserializer.deserialize_u32(U32Visitor)
-    }
-}
+pub use reifydb_core::interface::SystemSequenceId;
 
 pub(crate) const SCHEMA_SEQUENCE_ID: SystemSequenceId = SystemSequenceId(1);
 pub(crate) const TABLE_SEQUENCE_ID: SystemSequenceId = SystemSequenceId(2);

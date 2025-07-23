@@ -4,9 +4,9 @@
 // Column policy types have been moved to reifydb_core::interface::catalog::policy
 // Please use those types instead of the ones that were previously defined here.
 
+pub use reifydb_core::interface::{ColumnId, ColumnPolicyId};
 pub use reifydb_core::interface::{
-    ColumnId, ColumnPolicy, ColumnPolicyId, ColumnPolicyKind, ColumnSaturationPolicy,
-    DEFAULT_COLUMN_SATURATION_POLICY,
+    ColumnPolicy, ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY,
 };
 
 mod create;

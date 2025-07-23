@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::Catalog;
-use crate::key::{EncodableKey, SchemaKey};
 use crate::schema::layout::schema;
 use crate::schema::{Schema, SchemaId};
+use reifydb_core::interface::{EncodableKey, SchemaKey};
 use reifydb_core::interface::{Rx, Versioned};
 use reifydb_core::row::EncodedRow;
 

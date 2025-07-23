@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::key::{EncodableKey, KeyKind};
-use crate::row::RowId;
-use crate::table::TableId;
-use reifydb_core::util::encoding::keycode;
-use reifydb_core::{EncodedKey, EncodedKeyRange};
+use super::{EncodableKey, KeyKind};
+use crate::RowId;
+use crate::interface::catalog::TableId;
+use crate::util::encoding::keycode;
+use crate::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug, Clone,PartialEq)]
 pub struct TableRowKey {
@@ -66,9 +66,9 @@ impl TableRowKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, TableRowKey};
-    use crate::row::RowId;
-    use crate::table::TableId;
+    use super::{EncodableKey, TableRowKey};
+    use crate::RowId;
+    use crate::interface::catalog::TableId;
 
     #[test]
     fn test_encode_decode() {

@@ -3,8 +3,8 @@
 
 use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 pub use create::ColumnToCreate;
-pub use reifydb_core::interface::ColumnId;
 use reifydb_core::Type;
+pub use reifydb_core::interface::ColumnId;
 use std::ops::Deref;
 
 mod create;
