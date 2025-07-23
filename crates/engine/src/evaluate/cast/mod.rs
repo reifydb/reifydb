@@ -6,10 +6,10 @@ pub mod number;
 pub mod temporal;
 pub mod text;
 
-use crate::evaluate::{EvaluationContext, Evaluator, Convert, Demote, Promote};
-use reifydb_core::frame::{ColumnValues, FrameColumn};
+use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
 use reifydb_core::error::diagnostic::cast;
-use reifydb_core::{err, error, OwnedSpan, Type};
+use reifydb_core::frame::{ColumnValues, FrameColumn};
+use reifydb_core::{OwnedSpan, Type, err, error};
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 
@@ -28,7 +28,7 @@ impl Evaluator {
             Expression::Constant(expr) => self.constant_of(expr, cast.to.ty, ctx),
             expr => {
                 let column = self.evaluate(expr, ctx)?;
-                
+
                 // Re-enable cast functionality using the moved cast module
                 Ok(FrameColumn {
                     name: column.name,
@@ -36,8 +36,9 @@ impl Evaluator {
                         &column.values,
                         cast.to.ty,
                         ctx,
-                        cast.expression.lazy_span()
-                    ).map_err(|e| {
+                        cast.expression.lazy_span(),
+                    )
+                    .map_err(|e| {
                         error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
                     })?,
                 })
@@ -46,13 +47,19 @@ impl Evaluator {
     }
 }
 
-// Standalone cast function that works with ColumnValues references
 pub fn cast_column_values(
     values: &ColumnValues,
     target: Type,
     ctx: impl Promote + Demote + Convert,
     span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnValues> {
+    if let ColumnValues::Undefined(size) = values {
+        let mut result = ColumnValues::with_capacity(target, *size);
+        for _ in 0..*size {
+            result.push_undefined();
+        }
+        return Ok(result);
+    }
     match target {
         _ if target == values.get_type() => Ok(values.clone()),
         _ if target.is_number() => number::to_number(values, target, ctx, span),
@@ -71,9 +78,9 @@ mod tests {
     use crate::evaluate::EvaluationContext;
     use crate::evaluate::Expression;
     use crate::evaluate::evaluate;
-    use reifydb_core::frame::ColumnValues;
     use ConstantExpression::Number;
     use Expression::{Cast, Constant};
+    use reifydb_core::frame::ColumnValues;
     use reifydb_core::{OwnedSpan, Type};
     use reifydb_rql::expression::Expression::Prefix;
     use reifydb_rql::expression::{
@@ -206,7 +213,9 @@ mod tests {
         let result = evaluate(
             &Cast(CastExpression {
                 span: OwnedSpan::testing_empty(),
-                expression: Box::new(Constant(ConstantExpression::Text { span: OwnedSpan::testing("0") })),
+                expression: Box::new(Constant(ConstantExpression::Text {
+                    span: OwnedSpan::testing("0"),
+                })),
                 to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Bool },
             }),
             &ctx,
@@ -222,14 +231,16 @@ mod tests {
         let result = evaluate(
             &Cast(CastExpression {
                 span: OwnedSpan::testing_empty(),
-                expression: Box::new(Constant(ConstantExpression::Text { span: OwnedSpan::testing("-1") })),
+                expression: Box::new(Constant(ConstantExpression::Text {
+                    span: OwnedSpan::testing("-1"),
+                })),
                 to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Bool },
             }),
             &ctx,
         );
 
         assert!(result.is_err());
-        
+
         // Check that the error is the expected CAST_004 (invalid_boolean) error
         let err = result.unwrap_err();
         let diagnostic = err.0;
@@ -245,15 +256,17 @@ mod tests {
         let result = evaluate(
             &Cast(CastExpression {
                 span: OwnedSpan::testing_empty(),
-                expression: Box::new(Constant(ConstantExpression::Bool { span: OwnedSpan::testing("true") })),
+                expression: Box::new(Constant(ConstantExpression::Bool {
+                    span: OwnedSpan::testing("true"),
+                })),
                 to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Date },
             }),
             &ctx,
         );
 
         assert!(result.is_err());
-        
-        // Check that the error is the expected CAST_001 (unsupported_cast) error  
+
+        // Check that the error is the expected CAST_001 (unsupported_cast) error
         let err = result.unwrap_err();
         let diagnostic = err.0;
         assert_eq!(diagnostic.code, "CAST_001");
