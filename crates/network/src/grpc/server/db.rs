@@ -14,7 +14,7 @@ use reifydb_core::error::diagnostic::Diagnostic;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
-use reifydb_engine::frame::Frame;
+use reifydb_core::frame::Frame;
 
 pub struct DbService<VS, US, T>
 where

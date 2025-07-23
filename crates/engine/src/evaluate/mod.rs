@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::FrameColumn;
+use reifydb_core::frame::FrameColumn;
 use reifydb_rql::expression::Expression;
 
 use crate::function::{Functions, math};
@@ -70,9 +70,12 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Fra
     // Ensures that result column data type matches the expected target column type
     if let Some(ty) = ctx.column.as_ref().and_then(|c| c.ty) {
         let mut column = evaluator.evaluate(expr, ctx)?;
-        column.values = column
-            .values
-            .cast(ty, ctx, expr.lazy_span())?;
+        column.values = cast::cast_column_values(
+            &column.values,
+            ty,
+            ctx,
+            expr.lazy_span()
+        )?;
         Ok(column)
     } else {
         evaluator.evaluate(expr, ctx)

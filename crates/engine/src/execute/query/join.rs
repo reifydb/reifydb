@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;

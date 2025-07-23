@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{Frame, FrameLayout};
+use reifydb_core::frame::{Frame, FrameLayout};
 use reifydb_core::BitVec;
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
@@ -54,7 +54,7 @@ impl ExecutionPlan for MapNode {
             for expr in &self.expressions {
                 let column = evaluate(expr, &eval_ctx)?;
                 columns
-                    .push(crate::frame::FrameColumn { name: column.name, values: column.values });
+                    .push(reifydb_core::frame::FrameColumn { name: column.name, values: column.values });
             }
 
             self.layout = Some(FrameLayout::from_frame(&frame));

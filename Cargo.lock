@@ -1542,10 +1542,10 @@ dependencies = [
  "bincode 2.0.1",
  "chrono",
  "hex",
- "rand 0.9.1",
  "regex",
  "serde",
  "serde_bytes",
+ "unicode-width",
 ]
 
 [[package]]

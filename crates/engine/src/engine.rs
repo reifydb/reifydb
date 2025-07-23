@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{execute_rx, execute_tx};
-use crate::frame::Frame;
+use reifydb_core::frame::Frame;
 use crate::system::SystemBootHook;
 use crate::view;
 use reifydb_core::hook::Hooks;
@@ -94,16 +94,15 @@ where
     T: Transaction<VS, US>,
 {
     pub fn boot(&self) -> crate::Result<()> {
-        self.hooks
-            .lifecycle()
-            .after_boot()
-            .for_each(|hook| {
-                todo!()
-                // Ok(hook.on_after_boot(OnAfterBootHookContext::new(
-                //     self.transaction.begin_unversioned_tx(),
-                // ))?)
-            })
-            .unwrap(); // FIXME
+        // self.hooks
+        //     .lifecycle()
+        //     .after_boot()
+        //     .for_each(|hook| {
+        //         // Ok(hook.on_after_boot(OnAfterBootHookContext::new(
+        //         //     self.transaction.begin_unversioned_tx(),
+        //         // ))?)
+        //     })
+        //     .unwrap(); // FIXME
         Ok(())
     }
 }

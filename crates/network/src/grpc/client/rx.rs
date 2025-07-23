@@ -7,7 +7,7 @@ use crate::grpc::client::{GrpcClient, grpc};
 use grpc::rx_result::Result as RxResultEnum;
 use reifydb_core::error;
 use reifydb_core::error::diagnostic::network;
-use reifydb_engine::frame::Frame;
+use reifydb_core::frame::Frame;
 use std::str::FromStr;
 use tonic::metadata::MetadataValue;
 

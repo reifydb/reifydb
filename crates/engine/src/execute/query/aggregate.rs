@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;
 use reifydb_core::interface::Rx;

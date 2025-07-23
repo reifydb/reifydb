@@ -20,6 +20,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub mod clock;
 pub mod delta;
 pub mod error;
+pub mod frame;
 pub mod hook;
 pub mod interface;
 pub mod row;

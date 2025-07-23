@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_catalog::table::Table;

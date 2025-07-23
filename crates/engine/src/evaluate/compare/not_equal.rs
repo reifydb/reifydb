@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::frame::{ColumnValues, FrameColumn};
+use reifydb_core::frame::{ColumnValues, FrameColumn};
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::value::number::Promote;
 use reifydb_core::{BitVec, CowVec, OwnedSpan, value};

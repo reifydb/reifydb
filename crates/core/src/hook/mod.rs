@@ -3,7 +3,7 @@
 
 use crate::hook::lifecycle::LifecycleHookRegistry;
 use crate::hook::transaction::TransactionHookRegistry;
-use crate::interface::{Engine, Transaction, UnversionedStorage, VersionedStorage};
+use crate::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use std::ops::Deref;
 use std::sync::Arc;
 

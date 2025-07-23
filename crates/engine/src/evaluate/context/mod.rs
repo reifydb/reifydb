@@ -14,7 +14,7 @@ mod convert;
 mod demote;
 mod promote;
 
-use crate::frame::FrameColumn;
+use reifydb_core::frame::FrameColumn;
 use reifydb_core::{BitVec, Type};
 
 #[derive(Clone, Debug)]
