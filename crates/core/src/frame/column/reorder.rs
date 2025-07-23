@@ -88,6 +88,14 @@ impl ColumnValues {
                 *values = CowVec::new(new_values);
                 bitvec.reorder(indices);
             }
+            ColumnValues::Uuid4(values, bitvec) => {
+                values.reorder(indices);
+                bitvec.reorder(indices);
+            }
+            ColumnValues::Uuid7(values, bitvec) => {
+                values.reorder(indices);
+                bitvec.reorder(indices);
+            }
         }
     }
 }

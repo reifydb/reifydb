@@ -299,6 +299,36 @@ impl ColumnValues {
                 *values = CowVec::new(new_values);
                 *bitvec = new_valid.into();
             }
+
+            ColumnValues::Uuid4(values, bitvec) => {
+                let mut new_values = Vec::with_capacity(mask.count_ones());
+                let mut new_valid = Vec::with_capacity(mask.count_ones());
+
+                for i in 0..values.len().min(mask.len()) {
+                    if mask.get(i) {
+                        new_values.push(values[i]);
+                        new_valid.push(bitvec.get(i));
+                    }
+                }
+
+                *values = CowVec::new(new_values);
+                *bitvec = new_valid.into();
+            }
+
+            ColumnValues::Uuid7(values, bitvec) => {
+                let mut new_values = Vec::with_capacity(mask.count_ones());
+                let mut new_valid = Vec::with_capacity(mask.count_ones());
+
+                for i in 0..values.len().min(mask.len()) {
+                    if mask.get(i) {
+                        new_values.push(values[i]);
+                        new_valid.push(bitvec.get(i));
+                    }
+                }
+
+                *values = CowVec::new(new_values);
+                *bitvec = new_valid.into();
+            }
         }
 
         Ok(())

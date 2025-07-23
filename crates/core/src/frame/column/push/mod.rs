@@ -16,6 +16,7 @@ mod u32;
 mod u64;
 mod u8;
 mod undefined;
+mod uuid;
 mod value;
 
 pub trait Push<T> {

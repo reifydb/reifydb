@@ -207,6 +207,8 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                             }
                             Value::Undefined => GrpcType::UndefinedValue(false),
                             Value::RowId(row_id) => GrpcType::RowIdValue(row_id.value()),
+                            Value::Uuid4(uuid) => GrpcType::Uuid4Value(uuid.as_bytes().to_vec()),
+                            Value::Uuid7(uuid) => GrpcType::Uuid7Value(uuid.as_bytes().to_vec()),
                         };
                         GrpcValue { r#type: Some(data_type) }
                     })

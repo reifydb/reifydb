@@ -4,6 +4,7 @@
 use crate::Type;
 use crate::row::{EncodedRow, Layout};
 use crate::value::{Date, DateTime, Interval, Time};
+use uuid::Uuid;
 
 impl Layout {
     pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
@@ -165,6 +166,17 @@ impl Layout {
             // Read nanos (i64) from offset + 8
             let nanos = (row.as_ptr().add(field.offset + 8) as *const i64).read_unaligned();
             Interval::new(months, days, nanos)
+        }
+    }
+
+    pub fn get_uuid(&self, row: &EncodedRow, index: usize) -> Uuid {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert!(field.value == Type::Uuid4 || field.value == Type::Uuid7);
+        unsafe {
+            // UUIDs are 16 bytes
+            let bytes: [u8; 16] = std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
+            Uuid::from_bytes(bytes)
         }
     }
 }

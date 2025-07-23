@@ -165,6 +165,20 @@ impl Frame {
                             Value::Undefined
                         }
                     }
+                    ColumnValues::Uuid4(data, bitvec) => {
+                        if bitvec.get(row_idx) {
+                            Value::Uuid4(crate::value::uuid::Uuid4::from(data[row_idx]))
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Uuid7(data, bitvec) => {
+                        if bitvec.get(row_idx) {
+                            Value::Uuid7(crate::value::uuid::Uuid7::from(data[row_idx]))
+                        } else {
+                            Value::Undefined
+                        }
+                    }
                 };
 
                 values.push(value);

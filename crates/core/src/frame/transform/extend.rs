@@ -126,6 +126,14 @@ impl Frame {
                     Type::RowId => {
                         ColumnValues::row_id(CowVec::new(vec![Default::default(); size]))
                     }
+                    Type::Uuid4 => ColumnValues::uuid4_with_bitvec(
+                        vec![crate::value::uuid::Uuid4::from(uuid::Uuid::nil()); size],
+                        BitVec::new(size, false),
+                    ),
+                    Type::Uuid7 => ColumnValues::uuid7_with_bitvec(
+                        vec![crate::value::uuid::Uuid7::from(uuid::Uuid::nil()); size],
+                        BitVec::new(size, false),
+                    ),
                 };
 
                 column.values = new_data;

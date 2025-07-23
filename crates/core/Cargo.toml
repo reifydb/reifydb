@@ -14,3 +14,7 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 unicode-width = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+rand = {workspace = true}

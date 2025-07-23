@@ -51,6 +51,10 @@ pub enum Type {
     Interval,
     /// A row identifier (8-byte unsigned integer)
     RowId,
+    /// A UUID version 4 (random)
+    Uuid4,
+    /// A UUID version 7 (timestamp-based)
+    Uuid7,
     /// Value is not defined (think null in common programming languages)
     Undefined,
 }
@@ -101,6 +105,10 @@ impl Type {
     pub fn is_temporal(&self) -> bool {
         matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Interval)
     }
+
+    pub fn is_uuid(&self) -> bool {
+        matches!(self, Type::Uuid4 | Type::Uuid7)
+    }
 }
 
 impl Type {
@@ -125,6 +133,8 @@ impl Type {
             Type::Time => 0x11,
             Type::Interval => 0x12,
             Type::RowId => 0x13,
+            Type::Uuid4 => 0x14,
+            Type::Uuid7 => 0x15,
             Type::Undefined => 0x00,
         }
     }
@@ -153,6 +163,8 @@ impl Type {
             0x11 => Type::Time,
             0x12 => Type::Interval,
             0x13 => Type::RowId,
+            0x14 => Type::Uuid4,
+            0x15 => Type::Uuid7,
             _ => unreachable!(),
         }
     }
@@ -180,6 +192,8 @@ impl Type {
             Type::Time => 8,
             Type::Interval => 16, // months: i32 + days: i32 + nanos: i64
             Type::RowId => 8,
+            Type::Uuid4 => 16,
+            Type::Uuid7 => 16,
             Type::Undefined => 0,
         }
     }
@@ -205,6 +219,8 @@ impl Type {
             Type::Time => 8,
             Type::Interval => 8,
             Type::RowId => 8,
+            Type::Uuid4 => 8,
+            Type::Uuid7 => 8,
             Type::Undefined => 0,
         }
     }
@@ -232,6 +248,8 @@ impl Display for Type {
             Type::Time => f.write_str("TIME"),
             Type::Interval => f.write_str("INTERVAL"),
             Type::RowId => f.write_str("ROWID"),
+            Type::Uuid4 => f.write_str("UUID4"),
+            Type::Uuid7 => f.write_str("UUID7"),
             Type::Undefined => f.write_str("UNDEFINED"),
         }
     }
@@ -260,6 +278,8 @@ impl From<&Value> for Type {
             Value::Time(_) => Type::Time,
             Value::Interval(_) => Type::Interval,
             Value::RowId(_) => Type::RowId,
+            Value::Uuid4(_) => Type::Uuid4,
+            Value::Uuid7(_) => Type::Uuid7,
         }
     }
 }

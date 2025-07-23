@@ -168,6 +168,20 @@ fn extract_string_value(col: &crate::frame::FrameColumn, row_idx: usize) -> Stri
                 "Undefined".into()
             }
         }
+        ColumnValues::Uuid4(v, b) => {
+            if b.get(row_idx) {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Uuid7(v, b) => {
+            if b.get(row_idx) {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
         ColumnValues::Undefined(_) => "Undefined".into(),
     };
     escape_control_chars(&s)

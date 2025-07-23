@@ -43,6 +43,8 @@ impl Frame {
                 Value::Time(ref v) => ColumnValues::time([v.clone()]),
                 Value::Interval(ref v) => ColumnValues::interval([v.clone()]),
                 Value::RowId(v) => ColumnValues::row_id([v]),
+                Value::Uuid4(v) => ColumnValues::uuid4([v]),
+                Value::Uuid7(v) => ColumnValues::uuid7([v]),
             };
 
             if name == ROW_ID_COLUMN_NAME {

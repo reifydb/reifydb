@@ -10,6 +10,7 @@ use crate::ws::{
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
 use reifydb_core::{CowVec, Date, DateTime, err, Error, Interval, OwnedSpan, RowId, Time, Type};
+use uuid::Uuid;
 use reifydb_core::value::temporal::parse_interval;
 use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,7 +26,6 @@ use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream, connect_async,
     tungstenite::{Error as WsError, protocol::Message},
 };
-use uuid::Uuid;
 
 pub type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -433,6 +433,32 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                 })
                 .collect();
             ColumnValues::RowId(CowVec::new(values), bitvec.into())
+        }
+        Type::Uuid4 => {
+            let values: Vec<reifydb_core::value::uuid::Uuid4> = data
+                .into_iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        reifydb_core::value::uuid::Uuid4::from(Uuid::nil())
+                    } else {
+                        reifydb_core::value::uuid::Uuid4::from(Uuid::parse_str(&s).unwrap_or(Uuid::nil()))
+                    }
+                })
+                .collect();
+            ColumnValues::Uuid4(CowVec::new(values), bitvec.into())
+        }
+        Type::Uuid7 => {
+            let values: Vec<reifydb_core::value::uuid::Uuid7> = data
+                .into_iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        reifydb_core::value::uuid::Uuid7::from(Uuid::nil())
+                    } else {
+                        reifydb_core::value::uuid::Uuid7::from(Uuid::parse_str(&s).unwrap_or(Uuid::nil()))
+                    }
+                })
+                .collect();
+            ColumnValues::Uuid7(CowVec::new(values), bitvec.into())
         }
     }
 }

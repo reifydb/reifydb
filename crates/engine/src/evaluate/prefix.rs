@@ -241,6 +241,12 @@ impl Evaluator {
             ColumnValues::RowId(_, _) => {
                 unimplemented!("Cannot apply prefix operator to RowId")
             }
+            ColumnValues::Uuid4(_, _) => {
+                unimplemented!("Cannot apply prefix operator to Uuid4")
+            }
+            ColumnValues::Uuid7(_, _) => {
+                unimplemented!("Cannot apply prefix operator to Uuid7")
+            }
         }
     }
 }

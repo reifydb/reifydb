@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
-use crate::{Date, DateTime, Interval, Time, RowId};
+use crate::value::uuid::{Uuid4, Uuid7};
+use crate::{Date, DateTime, Interval, RowId, Time};
 
 impl ColumnValues {
     pub fn push_undefined(&mut self) {
@@ -84,6 +85,14 @@ impl ColumnValues {
             }
             ColumnValues::RowId(values, bitvec) => {
                 values.push(RowId::default());
+                bitvec.push(false);
+            }
+            ColumnValues::Uuid4(values, bitvec) => {
+                values.push(Uuid4::default());
+                bitvec.push(false);
+            }
+            ColumnValues::Uuid7(values, bitvec) => {
+                values.push(Uuid7::default());
                 bitvec.push(false);
             }
         }

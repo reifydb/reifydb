@@ -106,6 +106,8 @@ impl Layout {
             Type::Time => Value::Time(self.get_time(row, index)),
             Type::Interval => Value::Interval(self.get_interval(row, index)),
             Type::RowId => Value::RowId(RowId::new(self.get_u64(row, index))),
+            Type::Uuid4 => Value::Uuid4(crate::value::uuid::Uuid4::from(self.get_uuid(row, index))),
+            Type::Uuid7 => Value::Uuid7(crate::value::uuid::Uuid7::from(self.get_uuid(row, index))),
             Type::Undefined => Value::Undefined,
         }
     }

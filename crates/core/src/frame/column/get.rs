@@ -142,6 +142,20 @@ impl ColumnValues {
                     Value::Undefined
                 }
             }
+            ColumnValues::Uuid4(v, b) => {
+                if b.get(index) {
+                    Value::Uuid4(v[index])
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::Uuid7(v, b) => {
+                if b.get(index) {
+                    Value::Uuid7(v[index])
+                } else {
+                    Value::Undefined
+                }
+            }
         }
     }
 }

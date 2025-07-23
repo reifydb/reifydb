@@ -17,6 +17,7 @@ pub mod sequence;
 pub mod serialization;
 pub mod temporal;
 pub mod transaction;
+pub mod uuid;
 mod util;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

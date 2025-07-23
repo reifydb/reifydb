@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::ColumnValues;
+use crate::value::uuid::{Uuid4, Uuid7};
 use crate::{BitVec, Date, DateTime, Interval, RowId, Time, Value};
 
 impl ColumnValues {
@@ -223,6 +224,30 @@ impl ColumnValues {
                 _ => unimplemented!(),
             },
 
+            Value::Uuid4(v) => match self {
+                ColumnValues::Uuid4(_, _) => self.push(v),
+                ColumnValues::Undefined(len) => {
+                    let mut values = vec![Uuid4::default(); *len];
+                    let mut bitvec = BitVec::new(*len, false);
+                    values.push(v);
+                    bitvec.push(true);
+                    *self = ColumnValues::uuid4_with_bitvec(values, bitvec);
+                }
+                _ => unimplemented!(),
+            },
+
+            Value::Uuid7(v) => match self {
+                ColumnValues::Uuid7(_, _) => self.push(v),
+                ColumnValues::Undefined(len) => {
+                    let mut values = vec![Uuid7::default(); *len];
+                    let mut bitvec = BitVec::new(*len, false);
+                    values.push(v);
+                    bitvec.push(true);
+                    *self = ColumnValues::uuid7_with_bitvec(values, bitvec);
+                }
+                _ => unimplemented!(),
+            },
+
             Value::Undefined => self.push_undefined(),
             Value::RowId(row_id) => match self {
                 ColumnValues::RowId(values, bitvec) => {
@@ -244,9 +269,11 @@ impl ColumnValues {
 
 #[cfg(test)]
 mod tests {
-    use crate::frame::ColumnValues;
     use crate::Value;
+    use crate::frame::ColumnValues;
+    use crate::value::uuid::{Uuid4, Uuid7};
     use crate::{OrderedF32, OrderedF64};
+    use uuid::Uuid;
 
     #[test]
     fn test_bool() {
@@ -859,6 +886,74 @@ mod tests {
         col.push_value(Value::RowId(row_id));
         if let ColumnValues::RowId(v, bitvec) = col {
             assert_eq!(v.to_vec(), vec![RowId::default(), row_id]);
+            assert_eq!(bitvec.to_vec(), vec![false, true]);
+        }
+    }
+
+    #[test]
+    fn test_uuid4() {
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
+        let mut col = ColumnValues::uuid4(vec![uuid1]);
+        col.push_value(Value::Uuid4(uuid2));
+        if let ColumnValues::Uuid4(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![uuid1, uuid2]);
+            assert_eq!(bitvec.to_vec(), vec![true, true]);
+        }
+    }
+
+    #[test]
+    fn test_undefined_uuid4() {
+        let uuid1 = Uuid4::generate();
+        let mut col = ColumnValues::uuid4(vec![uuid1]);
+        col.push_value(Value::Undefined);
+        if let ColumnValues::Uuid4(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![uuid1, Uuid4::from(Uuid::nil())]);
+            assert_eq!(bitvec.to_vec(), vec![true, false]);
+        }
+    }
+
+    #[test]
+    fn test_push_value_to_undefined_uuid4() {
+        let uuid = Uuid4::generate();
+        let mut col = ColumnValues::Undefined(1);
+        col.push_value(Value::Uuid4(uuid));
+        if let ColumnValues::Uuid4(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![Uuid4::from(Uuid::nil()), uuid]);
+            assert_eq!(bitvec.to_vec(), vec![false, true]);
+        }
+    }
+
+    #[test]
+    fn test_uuid7() {
+        let uuid1 = Uuid7::generate();
+        let uuid2 = Uuid7::generate();
+        let mut col = ColumnValues::uuid7(vec![uuid1]);
+        col.push_value(Value::Uuid7(uuid2));
+        if let ColumnValues::Uuid7(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![uuid1, uuid2]);
+            assert_eq!(bitvec.to_vec(), vec![true, true]);
+        }
+    }
+
+    #[test]
+    fn test_undefined_uuid7() {
+        let uuid1 = Uuid7::generate();
+        let mut col = ColumnValues::uuid7(vec![uuid1]);
+        col.push_value(Value::Undefined);
+        if let ColumnValues::Uuid7(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![uuid1, Uuid7::from(Uuid::nil())]);
+            assert_eq!(bitvec.to_vec(), vec![true, false]);
+        }
+    }
+
+    #[test]
+    fn test_push_value_to_undefined_uuid7() {
+        let uuid = Uuid7::generate();
+        let mut col = ColumnValues::Undefined(1);
+        col.push_value(Value::Uuid7(uuid));
+        if let ColumnValues::Uuid7(v, bitvec) = col {
+            assert_eq!(v.to_vec(), vec![Uuid7::from(Uuid::nil()), uuid]);
             assert_eq!(bitvec.to_vec(), vec![false, true]);
         }
     }

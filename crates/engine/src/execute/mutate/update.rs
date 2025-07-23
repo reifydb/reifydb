@@ -136,6 +136,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         Value::Time(v) => layout.set_time(&mut row, table_idx, v),
                         Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
                         Value::RowId(v) => layout.set_u64(&mut row, table_idx, v.value()),
+                        Value::Uuid4(v) => layout.set_uuid(&mut row, table_idx, *v),
+                        Value::Uuid7(v) => layout.set_uuid(&mut row, table_idx, *v),
                         Value::Undefined => layout.set_undefined(&mut row, table_idx),
                     }
                 }

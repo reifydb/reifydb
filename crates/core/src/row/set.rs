@@ -5,6 +5,7 @@ use crate::Type;
 use crate::row::{EncodedRow, Layout};
 use crate::value::{Date, DateTime, Interval, Time};
 use std::ptr;
+use uuid::Uuid;
 
 impl Layout {
     pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
@@ -256,6 +257,22 @@ impl Layout {
             ptr::write_unaligned(
                 row.make_mut().as_mut_ptr().add(field.offset + 8) as *mut i64,
                 value.get_nanos(),
+            );
+        }
+    }
+
+    pub fn set_uuid(&self, row: &mut EncodedRow, index: usize, value: Uuid) {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert!(field.value == Type::Uuid4 || field.value == Type::Uuid7);
+        row.set_valid(index, true);
+        unsafe {
+            // UUIDs are 16 bytes
+            let bytes = value.as_bytes();
+            ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                row.make_mut().as_mut_ptr().add(field.offset),
+                16,
             );
         }
     }

@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{ColumnValues, FrameColumn};
-use crate::{return_error, BitVec, CowVec, Date, DateTime, Interval, Time};
+use crate::value::{Uuid4, Uuid7};
+use crate::{BitVec, CowVec, Date, DateTime, Interval, Time, return_error};
 
 impl FrameColumn {
     pub fn extend(&mut self, other: FrameColumn) -> crate::Result<()> {
@@ -99,6 +100,16 @@ impl ColumnValues {
             }
 
             (ColumnValues::Interval(l, lb), ColumnValues::Interval(r, rb)) => {
+                l.extend(r);
+                lb.extend(&rb);
+            }
+
+            (ColumnValues::Uuid4(l, lb), ColumnValues::Uuid4(r, rb)) => {
+                l.extend(r);
+                lb.extend(&rb);
+            }
+
+            (ColumnValues::Uuid7(l, lb), ColumnValues::Uuid7(r, rb)) => {
                 l.extend(r);
                 lb.extend(&rb);
             }
@@ -271,6 +282,32 @@ impl ColumnValues {
 
                     *self = ColumnValues::interval_with_bitvec(values, bitvec);
                 }
+                ColumnValues::Uuid4(r, rb) => {
+                    let mut values =
+                        CowVec::new(vec![
+                            crate::value::uuid::Uuid4::from(uuid::Uuid::nil());
+                            *l_len
+                        ]);
+                    values.extend(r);
+
+                    let mut bitvec = BitVec::new(*l_len, false);
+                    bitvec.extend(&rb);
+
+                    *self = ColumnValues::uuid4_with_bitvec(values, bitvec);
+                }
+                ColumnValues::Uuid7(r, rb) => {
+                    let mut values =
+                        CowVec::new(vec![
+                            crate::value::uuid::Uuid7::from(uuid::Uuid::nil());
+                            *l_len
+                        ]);
+                    values.extend(r);
+
+                    let mut bitvec = BitVec::new(*l_len, false);
+                    bitvec.extend(&rb);
+
+                    *self = ColumnValues::uuid7_with_bitvec(values, bitvec);
+                }
                 ColumnValues::Undefined(_) => {}
                 ColumnValues::RowId(_, _) => {
                     panic!("Cannot extend RowId column from Undefined")
@@ -356,10 +393,20 @@ impl ColumnValues {
                     l.extend(std::iter::repeat(Default::default()).take(r_len));
                     lb.extend(&std::iter::repeat(false).take(r_len).collect::<Vec<_>>().into());
                 }
+                ColumnValues::Uuid4(l, lb) => {
+                    l.extend(std::iter::repeat(Uuid4::default()).take(r_len));
+                    lb.extend(&std::iter::repeat(false).take(r_len).collect::<Vec<_>>().into());
+                }
+                ColumnValues::Uuid7(l, lb) => {
+                    l.extend(std::iter::repeat(Uuid7::default()).take(r_len));
+                    lb.extend(&std::iter::repeat(false).take(r_len).collect::<Vec<_>>().into());
+                }
             },
 
             (_, _) => {
-                return_error!(crate::error::diagnostic::engine::frame_error("column type mismatch".to_string()));
+                return_error!(crate::error::diagnostic::engine::frame_error(
+                    "column type mismatch".to_string()
+                ));
             }
         }
 

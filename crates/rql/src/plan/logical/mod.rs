@@ -177,6 +177,8 @@ pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<Type> {
         "datetime" => Type::DateTime,
         "time" => Type::Time,
         "interval" => Type::Interval,
+        "uuid4" => Type::Uuid4,
+        "uuid7" => Type::Uuid7,
         _ => return_error!(unrecognized_type(ast.span.clone())),
     })
 }

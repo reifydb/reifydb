@@ -160,6 +160,20 @@ impl<'df> Iterator for FrameIter<'df> {
                         ValueRef::Undefined
                     }
                 }
+                ColumnValues::Uuid4(data, bitvec) => {
+                    if bitvec.get(i) {
+                        ValueRef::Uuid4(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
+                ColumnValues::Uuid7(data, bitvec) => {
+                    if bitvec.get(i) {
+                        ValueRef::Uuid7(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
                 ColumnValues::Undefined(_) => ValueRef::Undefined,
             })
             .collect();

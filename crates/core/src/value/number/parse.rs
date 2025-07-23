@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::error::diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range};
+use crate::error::diagnostic::number::{
+    invalid_number_format, nan_not_allowed, number_out_of_range,
+};
 use crate::value::is::{IsFloat, IsInt, IsUint};
-use crate::{err, return_error, Error, Span, Type};
+use crate::{Error, Span, Type, err, return_error};
 use std::any::TypeId;
 use std::num::IntErrorKind;
 use std::str::FromStr;
@@ -234,7 +236,11 @@ where
                     if let Ok(f) = value.parse::<f64>() {
                         // For unsigned types, reject negative values
                         if f < 0.0 {
-                            return_error!(number_out_of_range(span.to_owned(), T::type_enum(), None));
+                            return_error!(number_out_of_range(
+                                span.to_owned(),
+                                T::type_enum(),
+                                None
+                            ));
                         }
                         let truncated = f.trunc();
                         let type_enum = T::type_enum();
@@ -901,32 +907,50 @@ mod tests {
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing("12345678901234567890")), Ok(12345678901234567890));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing("12345678901234567890")),
+                Ok(12345678901234567890)
+            );
         }
 
         #[test]
         fn test_valid_negative() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing("-12345678901234567890")), Ok(-12345678901234567890));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing("-12345678901234567890")),
+                Ok(-12345678901234567890)
+            );
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing(&i128::MAX.to_string())), Ok(i128::MAX));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing(&i128::MAX.to_string())),
+                Ok(i128::MAX)
+            );
         }
 
         #[test]
         fn test_valid_min() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing(&i128::MIN.to_string())), Ok(i128::MIN));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing(&i128::MIN.to_string())),
+                Ok(i128::MIN)
+            );
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_int::<i128>(OwnedSpan::testing("170141183460469231731687303715884105728")).is_err());
+            assert!(
+                parse_int::<i128>(OwnedSpan::testing("170141183460469231731687303715884105728"))
+                    .is_err()
+            );
         }
 
         #[test]
         fn test_overflow_negative() {
-            assert!(parse_int::<i128>(OwnedSpan::testing("-170141183460469231731687303715884105729")).is_err());
+            assert!(
+                parse_int::<i128>(OwnedSpan::testing("-170141183460469231731687303715884105729"))
+                    .is_err()
+            );
         }
 
         #[test]
@@ -966,32 +990,50 @@ mod tests {
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing(" 12345678901234567890")), Ok(12345678901234567890));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing(" 12345678901234567890")),
+                Ok(12345678901234567890)
+            );
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing("12345678901234567890 ")), Ok(12345678901234567890));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing("12345678901234567890 ")),
+                Ok(12345678901234567890)
+            );
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing(" 12345678901234567890 ")), Ok(12345678901234567890));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing(" 12345678901234567890 ")),
+                Ok(12345678901234567890)
+            );
         }
 
         #[test]
         fn trimming_negative_leading_space() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing(" -12345678901234567890")), Ok(-12345678901234567890));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing(" -12345678901234567890")),
+                Ok(-12345678901234567890)
+            );
         }
 
         #[test]
         fn trimming_negative_trailing_space() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing("-12345678901234567890 ")), Ok(-12345678901234567890));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing("-12345678901234567890 ")),
+                Ok(-12345678901234567890)
+            );
         }
 
         #[test]
         fn trimming_negative_both_spaces() {
-            assert_eq!(parse_int::<i128>(OwnedSpan::testing(" -12345678901234567890 ")), Ok(-12345678901234567890));
+            assert_eq!(
+                parse_int::<i128>(OwnedSpan::testing(" -12345678901234567890 ")),
+                Ok(-12345678901234567890)
+            );
         }
     }
 
@@ -1386,17 +1428,26 @@ mod tests {
 
         #[test]
         fn test_valid_positive() {
-            assert_eq!(parse_uint::<u128>(OwnedSpan::testing("12345678901234567890")), Ok(12345678901234567890));
+            assert_eq!(
+                parse_uint::<u128>(OwnedSpan::testing("12345678901234567890")),
+                Ok(12345678901234567890)
+            );
         }
 
         #[test]
         fn test_valid_max() {
-            assert_eq!(parse_uint::<u128>(OwnedSpan::testing(&u128::MAX.to_string())), Ok(u128::MAX));
+            assert_eq!(
+                parse_uint::<u128>(OwnedSpan::testing(&u128::MAX.to_string())),
+                Ok(u128::MAX)
+            );
         }
 
         #[test]
         fn test_overflow_positive() {
-            assert!(parse_uint::<u128>(OwnedSpan::testing("340282366920938463463374607431768211456")).is_err());
+            assert!(
+                parse_uint::<u128>(OwnedSpan::testing("340282366920938463463374607431768211456"))
+                    .is_err()
+            );
         }
 
         #[test]
@@ -1441,17 +1492,26 @@ mod tests {
 
         #[test]
         fn trimming_leading_space() {
-            assert_eq!(parse_uint::<u128>(OwnedSpan::testing(" 12345678901234567890")), Ok(12345678901234567890));
+            assert_eq!(
+                parse_uint::<u128>(OwnedSpan::testing(" 12345678901234567890")),
+                Ok(12345678901234567890)
+            );
         }
 
         #[test]
         fn trimming_trailing_space() {
-            assert_eq!(parse_uint::<u128>(OwnedSpan::testing("12345678901234567890 ")), Ok(12345678901234567890));
+            assert_eq!(
+                parse_uint::<u128>(OwnedSpan::testing("12345678901234567890 ")),
+                Ok(12345678901234567890)
+            );
         }
 
         #[test]
         fn trimming_both_spaces() {
-            assert_eq!(parse_uint::<u128>(OwnedSpan::testing(" 12345678901234567890 ")), Ok(12345678901234567890));
+            assert_eq!(
+                parse_uint::<u128>(OwnedSpan::testing(" 12345678901234567890 ")),
+                Ok(12345678901234567890)
+            );
         }
     }
 

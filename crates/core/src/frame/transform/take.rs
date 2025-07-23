@@ -87,6 +87,14 @@ impl Frame {
                     CowVec::new(values[..n.min(values.len())].to_vec()),
                     bitvec.take(n),
                 ),
+                ColumnValues::Uuid4(values, bitvec) => ColumnValues::Uuid4(
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    bitvec.take(n),
+                ),
+                ColumnValues::Uuid7(values, bitvec) => ColumnValues::Uuid7(
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    bitvec.take(n),
+                ),
             };
 
             columns.push(FrameColumn { name: col.name.clone(), values: data });

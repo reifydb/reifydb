@@ -24,6 +24,8 @@ pub(crate) fn value_max<'a>(value: Type) -> &'a str {
         Type::Time => unreachable!(),
         Type::Interval => unreachable!(),
         Type::RowId => "18_446_744_073_709_551_615",
+        Type::Uuid4 => unreachable!(),
+        Type::Uuid7 => unreachable!(),
         Type::Undefined => unreachable!(),
     }
 }
@@ -51,6 +53,8 @@ pub(crate) fn value_range<'a>(value: Type) -> &'a str {
         Type::Time => unreachable!(),
         Type::Interval => unreachable!(),
         Type::RowId => "0 to 18_446_744_073_709_551_615",
+        Type::Uuid4 => unreachable!(),
+        Type::Uuid7 => unreachable!(),
         Type::Undefined => unreachable!(),
     }
 }
