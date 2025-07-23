@@ -1,19 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::{compile, Batch, ExecutionContext, Executor};
+use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use crate::frame::{ColumnValues, Frame};
-use reifydb_catalog::{
-    key::{EncodableKey, TableRowKey},
-    Catalog,
-};
+use reifydb_catalog::Catalog;
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::error::diagnostic::engine;
+use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::{
+    IntoOwnedSpan, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},
     return_error,
     value::row_id::ROW_ID_COLUMN_NAME,
-    IntoOwnedSpan, Value,
 };
 use reifydb_rql::plan::physical::DeletePlan;
 use std::sync::Arc;
@@ -93,7 +91,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }
         } else {
             // Delete entire table - scan all rows and delete them
-            let keys = tx.scan_range(TableRowKey::full_scan(table.id))?.map(|versioned| versioned.key).collect::<Vec<_>>();
+            let keys = tx
+                .scan_range(TableRowKey::full_scan(table.id))?
+                .map(|versioned| versioned.key)
+                .collect::<Vec<_>>();
             for key in keys {
                 tx.remove(&key)?;
                 deleted_count += 1;

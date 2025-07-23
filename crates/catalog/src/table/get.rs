@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::Catalog;
-use crate::key::{EncodableKey, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
+use reifydb_core::interface::{EncodableKey, SchemaTableKey, TableKey};
 use reifydb_core::interface::{Rx, Versioned};
 
 impl Catalog {

@@ -4,10 +4,9 @@
 use crate::Catalog;
 use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnId, ColumnIndex};
-use crate::key::{ColumnKey, EncodableKey, TableColumnKey};
-use crate::table::TableId;
 use reifydb_core::Type;
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::{ColumnKey, EncodableKey, TableColumnKey};
+use reifydb_core::interface::{Rx, TableId};
 
 impl Catalog {
     pub fn get_column(rx: &mut impl Rx, column: ColumnId) -> crate::Result<Option<Column>> {
@@ -82,9 +81,9 @@ mod tests {
 
     mod get_column_by_name {
         use crate::Catalog;
-        use crate::table::TableId;
         use crate::test_utils::create_test_table_column;
         use reifydb_core::Type;
+        use reifydb_core::interface::TableId;
         use reifydb_transaction::test_utils::TestTransaction;
 
         #[test]

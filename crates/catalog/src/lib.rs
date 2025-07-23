@@ -11,7 +11,6 @@ pub use reifydb_core::Result;
 
 pub mod column;
 pub mod column_policy;
-pub mod key;
 pub mod row;
 pub mod schema;
 pub mod sequence;

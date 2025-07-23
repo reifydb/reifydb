@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::key::{EncodableKey, KeyKind};
-use reifydb_core::EncodedKey;
-use reifydb_core::util::encoding::keycode;
+use super::{EncodableKey, KeyKind};
+use crate::EncodedKey;
+use crate::util::encoding::keycode;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug,Clone, PartialEq)]
@@ -61,8 +61,8 @@ impl EncodableKey for SystemVersionKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::system_version::SystemVersion;
-    use crate::key::{EncodableKey, SystemVersionKey};
+    use super::SystemVersion;
+    use super::{EncodableKey, SystemVersionKey};
 
     #[test]
     fn test_encode_decode_storage_version() {

@@ -4,11 +4,10 @@
 use crate::Catalog;
 use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnIndex, ColumnPolicyKind};
-use crate::key::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use crate::sequence::SystemSequence;
-use crate::table::TableId;
 use reifydb_core::error::diagnostic::catalog::column_already_exists;
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{ColumnKey, EncodableKey, Key, TableColumnKey};
+use reifydb_core::interface::{TableId, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{OwnedSpan, Type, return_error};
 
 pub struct ColumnToCreate<'a> {
@@ -73,10 +72,10 @@ impl Catalog {
 #[cfg(test)]
 mod test {
     use crate::Catalog;
-    use crate::column::{ColumnId, ColumnIndex, ColumnToCreate};
-    use crate::table::TableId;
+    use crate::column::{ColumnIndex, ColumnToCreate};
     use crate::test_utils::ensure_test_table;
     use reifydb_core::Type;
+    use reifydb_core::interface::{ColumnId, TableId};
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

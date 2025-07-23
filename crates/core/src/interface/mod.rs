@@ -4,6 +4,7 @@
 pub use auth::*;
 pub use catalog::*;
 pub use hook::*;
+pub use key::*;
 pub use span::*;
 pub use storage::*;
 pub use transaction::*;
@@ -11,6 +12,7 @@ pub use transaction::*;
 mod auth;
 mod catalog;
 mod hook;
+mod key;
 mod span;
 mod storage;
 mod transaction;
