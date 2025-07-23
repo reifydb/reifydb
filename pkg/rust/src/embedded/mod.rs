@@ -4,7 +4,7 @@
 use crate::DB;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
-use reifydb_engine::frame::Frame;
+use reifydb_core::frame::Frame;
 use tokio::task::spawn_blocking;
 
 pub struct Embedded<VS, US, T>

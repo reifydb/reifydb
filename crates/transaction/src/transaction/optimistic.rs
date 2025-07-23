@@ -22,7 +22,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optim
         Ok(self.begin_tx())
     }
 
-    fn hooks(&self) -> Hooks<US> {
+    fn hooks(&self) -> Hooks<VS, US, Self> {
         self.hooks.clone()
     }
 

@@ -21,7 +21,7 @@ pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
 
     fn begin_unversioned_tx(&self) -> RwLockWriteGuard<US>;
 
-    fn hooks(&self) -> Hooks<US>;
+    fn hooks(&self) -> Hooks<VS,US, Self>;
 
     fn versioned(&self) -> VS;
 }

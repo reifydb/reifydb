@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::frame::FrameColumn;
+use reifydb_core::frame::FrameColumn;
 use reifydb_core::OwnedSpan;
 use reifydb_rql::expression::{AccessTableExpression, ColumnExpression, Expression};
 

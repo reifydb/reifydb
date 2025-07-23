@@ -3,43 +3,54 @@
 
 use crate::hook::lifecycle::LifecycleHookRegistry;
 use crate::hook::transaction::TransactionHookRegistry;
-use crate::interface::UnversionedStorage;
-pub use lifecycle::{OnAfterBootHook, OnAfterBootHookContext};
+use crate::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use std::ops::Deref;
 use std::sync::Arc;
-pub use transaction::{PostCommitHook, PreCommitHook};
 
+mod context;
 mod lifecycle;
 mod registry;
 mod transaction;
 
-#[derive(Clone)]
-pub struct Hooks<US>(Arc<HooksInner<US>>)
-where
-    US: UnversionedStorage;
+pub use context::*;
+pub use lifecycle::{OnAfterBootHook, OnBeforeBootstrapHook, OnCreateHook};
+pub use transaction::{PostCommitHook, PreCommitHook};
 
-pub struct HooksInner<US>
+#[derive(Clone)]
+pub struct Hooks<VS, US, T>(Arc<HooksInner<VS, US, T>>)
 where
+    VS: VersionedStorage,
     US: UnversionedStorage,
+    T: Transaction<VS, US>;
+
+pub struct HooksInner<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
-    lifecycle: LifecycleHookRegistry<US>,
+    lifecycle: LifecycleHookRegistry<VS, US, T>,
     transaction: TransactionHookRegistry,
 }
 
-impl<US> Deref for Hooks<US>
+impl<VS, US, T> Deref for Hooks<VS, US, T>
 where
+    VS: VersionedStorage,
     US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
-    type Target = HooksInner<US>;
+    type Target = HooksInner<VS, US, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<US> Default for Hooks<US>
+impl<VS, US, T> Default for Hooks<VS, US, T>
 where
+    VS: VersionedStorage,
     US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
     fn default() -> Self {
         Self(Arc::new(HooksInner {
@@ -49,11 +60,13 @@ where
     }
 }
 
-impl<US> Hooks<US>
+impl<VS, US, T> Hooks<VS, US, T>
 where
+    VS: VersionedStorage,
     US: UnversionedStorage,
+    T: Transaction<VS, US>,
 {
-    pub fn lifecycle(&self) -> &LifecycleHookRegistry<US> {
+    pub fn lifecycle(&self) -> &LifecycleHookRegistry<VS, US, T> {
         &self.lifecycle
     }
 

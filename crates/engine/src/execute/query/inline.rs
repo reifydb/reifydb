@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, ColumnDescriptor, Value};
 use reifydb_rql::expression::KeyedExpression;
@@ -89,7 +89,7 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_name in all_columns {
-            let mut column_values = crate::frame::ColumnValues::undefined(0);
+            let mut column_values = reifydb_core::frame::ColumnValues::undefined(0);
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_name) {
@@ -118,7 +118,7 @@ impl InlineDataNode {
             }
 
             frame_columns
-                .push(crate::frame::FrameColumn { name: column_name, values: column_values });
+                .push(reifydb_core::frame::FrameColumn { name: column_name, values: column_values });
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");
@@ -179,7 +179,7 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(crate::frame::FrameColumn {
+            frame_columns.push(reifydb_core::frame::FrameColumn {
                 name: column_layout.name.clone(),
                 values: column_values,
             });

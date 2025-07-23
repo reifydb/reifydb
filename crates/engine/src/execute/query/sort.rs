@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{Frame, FrameLayout};
+use reifydb_core::frame::{Frame, FrameLayout};
 use reifydb_core::SortDirection::{Asc, Desc};
 use reifydb_core::error::diagnostic::query;
 use reifydb_core::interface::Rx;

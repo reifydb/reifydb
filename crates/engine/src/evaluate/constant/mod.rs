@@ -6,7 +6,7 @@ mod temporal;
 mod text;
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::frame::{ColumnValues, FrameColumn};
+use reifydb_core::frame::{ColumnValues, FrameColumn};
 use number::NumberParser;
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::boolean::parse_bool;
@@ -51,6 +51,10 @@ impl Evaluator {
                 || (source == Type::Bool && target.is_number())
             {
                 // These cases work well with ColumnValues.cast() and provide good diagnostics
+                // TODO: Re-enable cast functionality after resolving circular dependency
+                // For now, fall back to constant_value_of
+                Self::constant_value_of(&expr, target, row_count)?
+                /*
                 match values.cast(target, ctx, || expr.span().into()) {
                     Ok(casted) => casted,
                     Err(_) => {
@@ -58,6 +62,7 @@ impl Evaluator {
                         Self::constant_value_of(&expr, target, row_count)?
                     }
                 }
+                */
             } else {
                 // For all other cases, use the original detailed logic
                 Self::constant_value_of(&expr, target, row_count)?

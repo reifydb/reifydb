@@ -30,7 +30,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Seria
         self.unversioned.write().unwrap()
     }
 
-    fn hooks(&self) -> Hooks<US> {
+    fn hooks(&self) -> Hooks<VS, US, Self> {
         self.hooks.clone()
     }
 

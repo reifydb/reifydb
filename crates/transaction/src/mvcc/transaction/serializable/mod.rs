@@ -34,7 +34,7 @@ pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
     pub(crate) versioned: VS,
     pub(crate) unversioned: RwLock<US>,
-    pub(crate) hooks: Hooks<US>,
+    pub(crate) hooks: Hooks<VS, US, Serializable<VS, US>>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Deref for Serializable<VS, US> {
@@ -52,7 +52,12 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Clone for Serializable<VS, US
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
-    fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks<US>) -> Self {
+    fn new(
+        name: &str,
+        versioned: VS,
+        unversioned: US,
+        hooks: Hooks<VS, US, Serializable<VS, US>>,
+    ) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
         Self { tm, versioned, unversioned: RwLock::new(unversioned), hooks }
     }
@@ -69,7 +74,7 @@ impl Serializable<Memory, Memory> {
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
-    pub fn new(versioned: VS, unversioned: US, hooks: Hooks<US>) -> Self {
+    pub fn new(versioned: VS, unversioned: US, hooks: Hooks<VS, US, Serializable<VS, US>>) -> Self {
         Self(Arc::new(Inner::new(core::any::type_name::<Self>(), versioned, unversioned, hooks)))
     }
 }

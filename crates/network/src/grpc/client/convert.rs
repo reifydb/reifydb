@@ -4,7 +4,7 @@
 use crate::grpc::client::grpc;
 use reifydb_core::error::diagnostic::{Diagnostic, DiagnosticColumn};
 use reifydb_core::{Date, DateTime, Interval, OwnedSpan, RowId, SpanColumn, SpanLine, Time, Type};
-use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
 use std::collections::HashMap;
 
 pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {

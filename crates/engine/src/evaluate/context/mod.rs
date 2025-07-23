@@ -10,10 +10,10 @@ mod convert;
 mod demote;
 mod promote;
 
-use crate::frame::FrameColumn;
+use reifydb_core::frame::FrameColumn;
 use reifydb_core::{
     BitVec, ColumnDescriptor,
-    interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY}
+    interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 };
 
 #[derive(Debug)]
@@ -38,7 +38,7 @@ impl<'a> EvaluationContext<'a> {
             take: None,
         }
     }
-    
+
     pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
         self.column_policies
             .iter()

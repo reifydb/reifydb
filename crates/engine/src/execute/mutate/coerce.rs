@@ -1,5 +1,6 @@
 use crate::evaluate::EvaluationContext;
-use crate::frame::ColumnValues;
+use crate::evaluate::cast::cast_column_values;
+use reifydb_core::frame::ColumnValues;
 use reifydb_core::{BitVec, BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 
 /// Attempts to coerce a single Value to match the target column type using the existing casting infrastructure
@@ -30,7 +31,8 @@ pub(crate) fn coerce_value_to_column_type(
 
     let column_policies = column.policies.clone();
 
-    let coerced_column = temp_column_values.cast(
+    let coerced_column = cast_column_values(
+        &temp_column_values,
         target,
         &EvaluationContext {
             target_column: Some(column),

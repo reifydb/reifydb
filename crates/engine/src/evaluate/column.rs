@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::frame::{ColumnValues, FrameColumn};
+use reifydb_core::frame::{ColumnValues, FrameColumn};
 use reifydb_core::error::diagnostic::query::column_not_found;
 use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
 use reifydb_rql::expression::ColumnExpression;

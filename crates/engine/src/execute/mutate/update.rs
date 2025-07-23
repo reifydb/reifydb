@@ -3,7 +3,7 @@
 
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
-use crate::frame::{ColumnValues, Frame};
+use reifydb_core::frame::{ColumnValues, Frame};
 use reifydb_catalog::{
     Catalog,
     key::{EncodableKey, TableRowKey},

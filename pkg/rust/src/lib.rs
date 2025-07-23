@@ -42,7 +42,7 @@ use crate::embedded::Embedded;
 use crate::server::Server;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_engine::frame::Frame;
+use reifydb_core::frame::Frame;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
 /// The underlying persistence responsible for data access.

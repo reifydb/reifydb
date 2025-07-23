@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_catalog::key::{EncodableKey, Key, TableRowKey};
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
