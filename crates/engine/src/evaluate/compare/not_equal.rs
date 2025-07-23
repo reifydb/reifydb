@@ -480,7 +480,13 @@ impl Evaluator {
             (ColumnValues::Utf8(l, lv), ColumnValues::Utf8(r, rv)) => {
                 Ok(compare_utf8(l, r, lv, rv, ne.span()))
             }
-            _ => unimplemented!(),
+            (l,r) => {
+                let span = ne.span();
+                Ok(FrameColumn {
+                    name: span.fragment,
+                    values: ColumnValues::bool(vec![false; l.len().min(r.len())]),
+                })
+            },
         }
     }
 }

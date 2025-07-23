@@ -22,25 +22,48 @@ impl FilterNode {
 impl ExecutionPlan for FilterNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         while let Some(Batch { frame, mut mask }) = self.input.next(ctx, rx)? {
-            let row_count = frame.row_count(); // FIXME add a delegate - batch.row_count()
+            let row_count = frame.row_count();
 
-            let mut ctx = EvaluationContext {
-                target_column: None,
-                column_policies: Vec::new(),
-                mask,
-                columns: frame.columns.clone(),
-                row_count,
-                take: None,
-            };
-
+            // Apply filters lazily - stop early if mask becomes empty
             for filter_expr in &self.expressions {
-                let result = evaluate(filter_expr, &ctx)?;
+                // Early exit if no rows remain
+                if !mask.any() {
+                    break;
+                }
+
+                // Create evaluation context with current mask state
+                let eval_ctx = EvaluationContext {
+                    target_column: None,
+                    column_policies: Vec::new(),
+                    mask: mask.clone(),
+                    columns: frame.columns.clone(),
+                    row_count,
+                    take: None,
+                };
+
+                // Evaluate the filter expression
+                let result = evaluate(filter_expr, &eval_ctx)?;
+                
+                // Apply the filter result to the mask
                 match result.values {
                     ColumnValues::Bool(values, bitvec) => {
+                        // The result only contains values for rows where mask was true
+                        // We need to map these back to the original row indices
+                        let mut result_idx = 0;
                         for i in 0..row_count {
-                            if i < values.len() && i < bitvec.len() && i < ctx.mask.len() {
-                                ctx.mask.set(i, ctx.mask.get(i) & bitvec.get(i) & values[i]);
+                            if i < mask.len() && mask.get(i) {
+                                // This row was visible to the filter evaluation
+                                if result_idx < values.len() && result_idx < bitvec.len() {
+                                    let valid = bitvec.get(result_idx);
+                                    let filter_result = values[result_idx];
+                                    mask.set(i, valid & filter_result);
+                                } else {
+                                    // Safety: if result is shorter than expected, exclude this row
+                                    mask.set(i, false);
+                                }
+                                result_idx += 1;
                             }
+                            // If mask.get(i) was false, this row stays false (no change needed)
                         }
                     }
                     _ => panic!("filter expression must evaluate to a boolean column"),
@@ -49,7 +72,7 @@ impl ExecutionPlan for FilterNode {
 
             self.layout = Some(FrameLayout::from_frame(&frame));
 
-            mask = ctx.mask;
+            // Only return batch if any rows remain after filtering
             if mask.any() {
                 return Ok(Some(Batch { frame, mask }));
             }

@@ -97,8 +97,8 @@ impl ColumnValues {
 }
 
 impl ColumnValues {
-    pub fn with_capacity(value: Type, capacity: usize) -> Self {
-        match value {
+    pub fn with_capacity(target: Type, capacity: usize) -> Self {
+        match target {
             Type::Bool => Self::bool_with_capacity(capacity),
             Type::Float4 => Self::float4_with_capacity(capacity),
             Type::Float8 => Self::float8_with_capacity(capacity),

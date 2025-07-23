@@ -12,14 +12,16 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
 
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.products(id: int4, name: utf8, price: int4, status: utf8)"#).unwrap();
-    db.tx_as(&root, r#"  from [
-    { id: 1, name: "Widget", price: 100, status: "active" },
-    { id: 2, name: "Gadget", price: 200, status: "inactive" },
-    { id: 3, name: "Tool", price: 150, status: "active" },
-    { id: 4, name: "Device", price: 300, status: "active" },
-    { id: 5, name: "Component", price: 75, status: "inactive" }
-  ] insert test.products"#).unwrap();
+    db.tx_as(&root, r#"create table test.nulls(id: int4, value: int4, name: utf8)"#).unwrap();
+    db.tx_as(&root, r#"
+      from [
+        { id: 1, value: 10, name: "valid" },
+        { id: 2, value: undefined, name: "partial" },
+        { id: 3, value: 20, name: undefined },
+        { id: 4, value: undefined, name: undefined },
+        { id: 5, value: 0, name: "zero" }
+      ] insert test.nulls
+    "#).unwrap();
 
     // let l = db
     //     .tx_as(
@@ -31,25 +33,14 @@ fn main() {
     //     .unwrap();
     // println!("{}", l.first().unwrap());
 
-    println!("=== Just first filter ===");
-    for l in db
-        .tx_as(
-            &root,
-            r#"from test.products filter status == "active""#,
-        )
-        .unwrap()
-    {
-        println!("{}", l);
-    }
-    
-    println!("\n=== Both filters ===");
-    for l in db
-        .tx_as(
-            &root,
-            r#"from test.products filter status == "active" filter price < 200"#,
-        )
-        .unwrap()
-    {
-        println!("{}", l);
-    }
+//     for l in db
+//         .tx_as(
+//             &root,
+//             r#"from test.nulls filter value > 0
+// }"#,
+//         )
+//         .unwrap()
+//     {
+//         println!("{}", l);
+//     }
 }

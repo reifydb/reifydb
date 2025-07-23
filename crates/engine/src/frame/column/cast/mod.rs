@@ -9,7 +9,7 @@ pub mod text;
 use crate::evaluate::{Convert, Demote, Promote};
 use crate::frame::ColumnValues;
 use reifydb_core::error::diagnostic::cast;
-use reifydb_core::{err, OwnedSpan, Type};
+use reifydb_core::{OwnedSpan, Type, err};
 
 impl ColumnValues {
     pub fn cast(
@@ -18,6 +18,14 @@ impl ColumnValues {
         ctx: impl Promote + Demote + Convert,
         span: impl Fn() -> OwnedSpan,
     ) -> crate::Result<ColumnValues> {
+        if let ColumnValues::Undefined(rows) = self {
+            let mut result = ColumnValues::with_capacity(target, *rows);
+            for _ in 0..*rows {
+                result.push_undefined()
+            }
+            return Ok(result);
+        }
+
         match target {
             _ if target == self.get_type() => Ok(self.clone()),
             _ if target.is_number() => self.to_number(target, ctx, span),
