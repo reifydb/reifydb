@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::key::{EncodableKey, SystemVersion, SystemVersionKey};
 use reifydb_core::Type;
 use reifydb_core::hook::{HookContext, OnAfterBootHook};
+use reifydb_core::interface::{EncodableKey, SystemVersion, SystemVersionKey};
 use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use std::error::Error;

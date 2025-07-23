@@ -1,0 +1,28 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+!tx 'map{
+      cast(1, int1) + cast(1, int1),
+      cast(1, int1) + cast(-1, int1),
+      cast(-1, int1) + cast(-1, int1),
+      cast(127, int1) + cast(1, int1),
+      cast(cast(-128, int1) + cast(-1, int1), int1)
+}'
+---
+>  Error CAST_002: failed to cast to INT1
+>   at "(-128+-1int1" (line 6, column 11)
+> 
+>   6 │       cast(cast(-128, int1) + cast(-1, int1), int1)
+>     │            ~~~~~~~~~~~~
+>     │       failed to cast to INT1
+> 
+>   ↳  Error NUMBER_002: number out of range
+>     at "-128+-1" (line 6, column 17)
+> 
+>     6 │       cast(cast(-128, int1) + cast(-1, int1), int1)
+>       │                  ~~~~~~~
+>       │ value '-128+-1' exceeds the valid range for type INT1 (-128 to 127)
+> 
+>     help: use a value within range -128 to 127 or use a wider type
+>     note: valid range: -128 to 127
+> 

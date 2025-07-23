@@ -1,49 +1,49 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::key::{EncodableKey, KeyKind};
-use crate::schema::SchemaId;
-use reifydb_core::util::encoding::keycode;
-use reifydb_core::{EncodedKey, EncodedKeyRange};
+use super::{EncodableKey, KeyKind};
+use crate::interface::catalog::TableId;
+use crate::util::encoding::keycode;
+use crate::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SchemaKey {
-    pub schema: SchemaId,
+pub struct TableRowSequenceKey {
+    pub table: TableId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for SchemaKey {
-    const KIND: KeyKind = KeyKind::Schema;
+impl EncodableKey for TableRowSequenceKey {
+    const KIND: KeyKind = KeyKind::TableRowSequence;
 
     fn encode(&self) -> EncodedKey {
         let mut out = Vec::with_capacity(10);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&keycode::serialize(&self.schema));
+        out.extend(&keycode::serialize(&self.table));
         EncodedKey::new(out)
     }
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
         assert_eq!(payload.len(), 8);
-        keycode::deserialize(&payload[..8]).ok().map(|schema| Self { schema })
+        keycode::deserialize(&payload[..8]).ok().map(|table| Self { table })
     }
 }
 
-impl SchemaKey {
+impl TableRowSequenceKey {
     pub fn full_scan() -> EncodedKeyRange {
-        EncodedKeyRange::start_end(Some(Self::schema_start()), Some(Self::schema_end()))
+        EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
     }
 
-    fn schema_start() -> EncodedKey {
+    fn sequence_start() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
         EncodedKey::new(out)
     }
 
-    fn schema_end() -> EncodedKey {
+    fn sequence_end() -> EncodedKey {
         let mut out = Vec::with_capacity(2);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
@@ -53,17 +53,21 @@ impl SchemaKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, SchemaKey};
-    use crate::schema::SchemaId;
+    use super::{EncodableKey, TableRowSequenceKey};
+    use crate::interface::catalog::TableId;
 
     #[test]
     fn test_encode_decode() {
-        let key = SchemaKey { schema: SchemaId(0xABCD) };
+        let key = TableRowSequenceKey { table: TableId(0xABCD) };
         let encoded = key.encode();
-        let expected = vec![0xFE, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32];
+        let expected = vec![
+            0xFE, // version
+            0xF7, // kind
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32,
+        ];
         assert_eq!(encoded.as_slice(), expected);
 
-        let key = SchemaKey::decode(1, &encoded[2..]).unwrap();
-        assert_eq!(key.schema, 0xABCD);
+        let key = TableRowSequenceKey::decode(1, &encoded[2..]).unwrap();
+        assert_eq!(key.table, 0xABCD);
     }
 }

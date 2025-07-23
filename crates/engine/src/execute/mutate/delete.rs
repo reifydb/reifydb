@@ -2,13 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
-use reifydb_catalog::{
-    Catalog,
-    key::{EncodableKey, TableRowKey},
-};
+use reifydb_catalog::Catalog;
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::error::diagnostic::engine;
 use reifydb_core::frame::{ColumnValues, Frame};
+use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::{
     IntoOwnedSpan, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},

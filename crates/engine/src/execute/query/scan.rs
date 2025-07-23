@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
-use reifydb_catalog::key::{EncodableKey, Key, TableRowKey};
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
-use reifydb_core::Type;
 use reifydb_core::EncodedKeyRange;
+use reifydb_core::Type;
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
+use reifydb_core::interface::{EncodableKey, Key, TableRowKey};
 use reifydb_core::row::Layout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::sync::Arc;

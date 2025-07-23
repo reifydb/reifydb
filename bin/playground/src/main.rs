@@ -12,8 +12,16 @@ fn main() {
     let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
 
     db.tx_as(&root, r#"create schema test"#).unwrap();
-    db.tx_as(&root, r#"create table test.abc(id: int1, col: float4)"#).unwrap();
-    db.tx_as(&root, r#"from [{ id: 1, col: 128.0 }] insert test.abc"#).unwrap();
+    db.tx_as(&root, r#"create table test.nulls(id: int4, value: int4, name: utf8)"#).unwrap();
+    db.tx_as(&root, r#"
+      from [
+        { id: 1, value: 10, name: "valid" },
+        { id: 2, value: undefined, name: "partial" },
+        { id: 3, value: 20, name: undefined },
+        { id: 4, value: undefined, name: undefined },
+        { id: 5, value: 0, name: "zero" }
+      ] insert test.nulls
+    "#).unwrap();
 
     // let l = db
     //     .tx_as(
@@ -25,17 +33,14 @@ fn main() {
     //     .unwrap();
     // println!("{}", l.first().unwrap());
 
-    for l in db
-        .tx_as(
-            &root,
-            r#"
-            delete test.abc;
-
-            from test.abc;
-          "#,
-        )
-        .unwrap()
-    {
-        println!("{}", l);
-    }
+//     for l in db
+//         .tx_as(
+//             &root,
+//             r#"from test.nulls filter value > 0
+// }"#,
+//         )
+//         .unwrap()
+//     {
+//         println!("{}", l);
+//     }
 }

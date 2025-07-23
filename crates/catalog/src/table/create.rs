@@ -4,12 +4,12 @@
 use crate::Catalog;
 use crate::column::ColumnIndex;
 use crate::column_policy::ColumnPolicyKind;
-use crate::key::{EncodableKey, Key, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
 use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_already_exists};
+use reifydb_core::interface::{EncodableKey, Key, SchemaTableKey, TableKey};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{OwnedSpan, Type, return_error};
 
@@ -108,12 +108,12 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
     use crate::Catalog;
-    use crate::key::SchemaTableKey;
     use crate::schema::SchemaId;
     use crate::table::TableToCreate;
     use crate::table::layout::table_schema;
     use crate::test_utils::ensure_test_schema;
     use reifydb_core::interface::Rx;
+    use reifydb_core::interface::SchemaTableKey;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

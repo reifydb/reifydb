@@ -4,8 +4,8 @@
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use kind::KeyKind;
-use reifydb_core::EncodedKey;
-use reifydb_core::util::encoding::keycode;
+use crate::EncodedKey;
+use crate::util::encoding::keycode;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
 pub use system_sequence::SystemSequenceKey;
@@ -99,18 +99,14 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
-    use crate::column::ColumnId;
-    use crate::column_policy::ColumnPolicyId;
-    use crate::key::column_policy::ColumnPolicyKey;
-    use crate::key::table_row_sequence::TableRowSequenceKey;
-    use crate::key::{
+    use crate::interface::catalog::{ColumnId, ColumnPolicyId, SchemaId, SystemSequenceId, TableId};
+    use super::ColumnPolicyKey;
+    use super::TableRowSequenceKey;
+    use super::{
         ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableKey,
         TableRowKey,
     };
-    use crate::row::RowId;
-    use crate::schema::SchemaId;
-    use crate::sequence::SystemSequenceId;
-    use crate::table::TableId;
+    use crate::RowId;
 
     #[test]
     fn test_column() {

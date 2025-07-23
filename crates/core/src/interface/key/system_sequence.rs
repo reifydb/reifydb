@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::key::{EncodableKey, KeyKind};
-use crate::sequence::SystemSequenceId;
-use reifydb_core::util::encoding::keycode;
-use reifydb_core::{EncodedKey, EncodedKeyRange};
+use super::{EncodableKey, KeyKind};
+use crate::interface::catalog::SystemSequenceId;
+use crate::util::encoding::keycode;
+use crate::{EncodedKey, EncodedKeyRange};
 
 #[derive(Debug,Clone, PartialEq)]
 pub struct SystemSequenceKey {
@@ -53,8 +53,8 @@ impl SystemSequenceKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::key::{EncodableKey, SystemSequenceKey};
-    use crate::sequence::SystemSequenceId;
+    use super::{EncodableKey, SystemSequenceKey};
+    use crate::interface::catalog::SystemSequenceId;
 
     #[test]
     fn test_encode_decode() {
