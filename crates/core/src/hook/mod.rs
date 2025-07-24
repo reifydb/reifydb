@@ -3,7 +3,7 @@
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 pub mod lifecycle;
 pub mod transaction;
@@ -64,14 +64,48 @@ where
     }
 }
 
-#[derive(Default, Clone)]
+struct HookPool {
+    pool: Mutex<Vec<Vec<Box<dyn Hook>>>>,
+}
+
+impl HookPool {
+    fn new() -> Self {
+        Self { pool: Mutex::new(Vec::new()) }
+    }
+
+    fn get_queue(&self) -> Vec<Box<dyn Hook>> {
+        self.pool.lock().unwrap().pop().unwrap_or_default()
+    }
+
+    fn return_queue(&self, mut queue: Vec<Box<dyn Hook>>) {
+        queue.clear();
+        if queue.capacity() <= 64 {
+            self.pool.lock().unwrap().push(queue);
+        }
+    }
+}
+
+impl Default for HookPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone)]
 pub struct Hooks {
     callbacks: Arc<RwLock<HashMap<TypeId, Box<dyn CallbackList>>>>,
+    pool: Arc<HookPool>,
+}
+
+impl Default for Hooks {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Hooks {
     pub fn new() -> Self {
-        Self { callbacks: Arc::new(RwLock::new(HashMap::new())) }
+        Self { callbacks: Arc::new(RwLock::new(HashMap::new())), pool: Arc::new(HookPool::new()) }
     }
 
     pub fn register<H, C>(&self, callback: C)
@@ -96,7 +130,9 @@ impl Hooks {
     where
         H: Hook,
     {
-        let mut queue: Vec<Box<dyn Hook>> = vec![Box::new(hook)];
+        let mut queue = self.pool.get_queue();
+        queue.push(Box::new(hook));
+
         while let Some(hook) = queue.pop() {
             let type_id = (*hook).type_id();
             let callbacks = self.callbacks.read().unwrap();
@@ -106,6 +142,8 @@ impl Hooks {
                 queue.extend(new_hooks);
             }
         }
+
+        self.pool.return_queue(queue);
         Ok(())
     }
 }
@@ -349,6 +387,65 @@ mod tests {
         assert!(iter.next().is_some());
         assert!(iter.next().is_some());
         assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_hook_pool_reuse() {
+        use crate::hook::HookPool;
+
+        let pool = HookPool::new();
+        let mut queue1 = pool.get_queue();
+        let capacity1 = queue1.capacity();
+
+        queue1.push(Box::new(TestHook {}));
+        pool.return_queue(queue1);
+
+        let queue2 = pool.get_queue();
+        let capacity2 = queue2.capacity();
+
+        assert!(capacity2 > 0);
+        assert_eq!(queue2.len(), 0);
+    }
+
+    #[test]
+    fn test_hook_pool_capacity_limit() {
+        use crate::hook::HookPool;
+
+        let pool = HookPool::new();
+        let mut large_queue = Vec::with_capacity(100);
+        for _ in 0..100 {
+            large_queue.push(Box::new(TestHook {}) as Box<dyn Hook>);
+        }
+
+        pool.return_queue(large_queue);
+
+        let reused_queue = pool.get_queue();
+        assert_eq!(reused_queue.capacity(), 0);
+    }
+
+    #[test]
+    fn test_hook_pool_concurrent_access() {
+        use crate::hook::HookPool;
+        use std::thread;
+
+        let pool = Arc::new(HookPool::new());
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let pool = pool.clone();
+                thread::spawn(move || {
+                    let mut queue = pool.get_queue();
+                    queue.push(Box::new(TestHook {}) as Box<dyn Hook>);
+                    pool.return_queue(queue);
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let final_queue = pool.get_queue();
+        assert_eq!(final_queue.len(), 0);
     }
 
     #[test]
