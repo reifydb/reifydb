@@ -30,6 +30,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::float4_with_bitvec(result, bitvec),
                 })
@@ -48,6 +49,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::float8_with_bitvec(result, bitvec),
                 })
@@ -66,6 +68,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int1_with_bitvec(result, bitvec),
                 })
@@ -84,6 +87,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int2_with_bitvec(result, bitvec),
                 })
@@ -102,6 +106,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int4_with_bitvec(result, bitvec),
                 })
@@ -120,6 +125,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int8_with_bitvec(result, bitvec),
                 })
@@ -138,6 +144,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int16_with_bitvec(result, bitvec),
                 })
@@ -156,6 +163,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int1_with_bitvec(result, bitvec),
                 })
@@ -171,6 +179,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int2_with_bitvec(result, bitvec),
                 })
@@ -186,6 +195,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int4_with_bitvec(result, bitvec),
                 })
@@ -201,6 +211,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int8_with_bitvec(result, bitvec),
                 })
@@ -215,6 +226,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int16_with_bitvec(result, bitvec),
                 })

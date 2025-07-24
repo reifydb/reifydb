@@ -24,10 +24,10 @@ impl Evaluator {
         ctx: &EvaluationContext,
     ) -> crate::Result<FrameColumn> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
-        Ok(FrameColumn {
-            name: expr.span().fragment,
-            values: Self::constant_value(&expr, row_count)?,
-        })
+        Ok(crate::create_frame_column(
+            expr.span().fragment,
+            Self::constant_value(&expr, row_count)?
+        ))
     }
 
     pub(crate) fn constant_of(
@@ -46,7 +46,7 @@ impl Evaluator {
                 Self::constant_value_of(&expr, target, row_count)?
             }
         };
-        Ok(FrameColumn { name: expr.span().fragment, values: casted_values })
+        Ok(crate::create_frame_column(expr.span().fragment, casted_values))
     }
 
     fn constant_value(expr: &ConstantExpression, row_count: usize) -> crate::Result<ColumnValues> {

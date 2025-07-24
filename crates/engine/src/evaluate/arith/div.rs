@@ -520,5 +520,5 @@ where
             data.push_undefined()
         }
     }
-    Ok(FrameColumn { name: span.fragment, values: data })
+    Ok(crate::create_frame_column(span.fragment, data))
 }

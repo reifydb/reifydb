@@ -12,19 +12,14 @@ fn main() {
     let db = ReifyDB::embedded_blocking_with(serializable(memory()));
 
     db.tx_as_root(r#"create schema test"#).unwrap();
-    db.tx_as_root(r#"create table test.nulls(id: int4, value: int4, name: utf8)"#).unwrap();
-    db.tx_as_root(
-        r#"
-      from [
-        { id: 1, value: 10, name: "valid" },
-        { id: 2, value: undefined, name: "partial" },
-        { id: 3, value: 20, name: undefined },
-        { id: 4, value: undefined, name: undefined },
-        { id: 5, value: 0, name: "zero" }
-      ] insert test.nulls
-    "#,
-    )
-    .unwrap();
+    db.tx_as_root(r#"create table test.item(field: int1)"#).unwrap();
+    db.tx_as_root(r#"from [{field: -1 -2}] insert test.item"#).unwrap();
+    //     db.tx_as_root(
+    //         r#"
+    // from test.item map field
+    //     "#,
+    //     )
+    //     .unwrap();
 
     let l = db
         .tx_as_root(

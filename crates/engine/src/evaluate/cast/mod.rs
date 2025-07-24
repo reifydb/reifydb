@@ -32,6 +32,7 @@ impl Evaluator {
 
                 // Re-enable cast functionality using the moved cast module
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: cast_column_values(
                         &column.values,

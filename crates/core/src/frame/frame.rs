@@ -13,7 +13,8 @@ use std::sync::Arc;
 pub struct Frame {
     pub name: String,
     pub columns: Vec<FrameColumn>,
-    pub index: HashMap<String, usize>,
+    pub index: HashMap<String, usize>, // Maps qualified_name -> column index
+    pub frame_index: HashMap<(String, String), usize>, // Maps (frame, name) -> index
 }
 
 impl Frame {
@@ -50,11 +51,14 @@ impl Frame {
             if name == ROW_ID_COLUMN_NAME {
                 panic!("Column name '{}' is reserved for RowId columns", ROW_ID_COLUMN_NAME);
             }
-            columns.push(FrameColumn { name: name.to_string(), values });
-            index.insert(name.to_string(), idx);
+            let column =
+                FrameColumn { frame: Some("frame".to_string()), name: name.to_string(), values };
+            index.insert(column.qualified_name(), idx);
+            columns.push(column);
         }
 
-        Frame { name: "frame".to_string(), columns, index }
+        let (final_index, frame_index) = build_indices(&columns);
+        Frame { name: "frame".to_string(), columns, index: final_index, frame_index }
     }
 }
 
@@ -63,22 +67,25 @@ impl Frame {
         let n = columns.first().map_or(0, |c| c.values.len());
         assert!(columns.iter().all(|c| c.values.len() == n));
 
-        let index = columns.iter().enumerate().map(|(i, col)| (col.name.clone(), i)).collect();
-
-        Self { name: "frame".to_string(), columns, index }
+        let (index, frame_index) = build_indices(&columns);
+        Self { name: "frame".to_string(), columns, index, frame_index }
     }
 
     pub fn new_with_name(columns: Vec<FrameColumn>, name: impl Into<String>) -> Self {
         let n = columns.first().map_or(0, |c| c.values.len());
         assert!(columns.iter().all(|c| c.values.len() == n));
 
-        let index = columns.iter().enumerate().map(|(i, col)| (col.name.clone(), i)).collect();
-
-        Self { name: name.into(), columns, index }
+        let (index, frame_index) = build_indices(&columns);
+        Self { name: name.into(), columns, index, frame_index }
     }
 
     pub fn empty() -> Self {
-        Self { name: "frame".to_string(), columns: vec![], index: HashMap::new() }
+        Self {
+            name: "frame".to_string(),
+            columns: vec![],
+            index: HashMap::new(),
+            frame_index: HashMap::new(),
+        }
     }
 
     pub fn shape(&self) -> (usize, usize) {
@@ -94,19 +101,37 @@ impl Frame {
     }
 
     pub fn column(&self, name: &str) -> Option<&FrameColumn> {
-        self.index.get(name).map(|&i| &self.columns[i])
+        // Try qualified name first, then try as original name
+        self.index
+            .get(name)
+            .map(|&i| &self.columns[i])
+            .or_else(|| self.columns.iter().find(|col| col.name == name))
+    }
+
+    pub fn column_by_source(&self, frame: &str, name: &str) -> Option<&FrameColumn> {
+        self.frame_index.get(&(frame.to_string(), name.to_string())).map(|&i| &self.columns[i])
     }
 
     pub fn column_values(&self, name: &str) -> Option<&ColumnValues> {
-        self.index.get(name).map(|&i| &self.columns[i].values)
+        // Try qualified name first, then try as original name
+        self.index
+            .get(name)
+            .map(|&i| &self.columns[i].values)
+            .or_else(|| self.columns.iter().find(|col| col.name == name).map(|col| &col.values))
     }
 
     pub fn column_values_mut(&mut self, name: &str) -> Option<&mut ColumnValues> {
-        self.index.get(name).map(|&i| &mut self.columns[i].values)
+        // Try qualified name first, then try as original name
+        if let Some(&i) = self.index.get(name) {
+            Some(&mut self.columns[i].values)
+        } else {
+            let pos = self.columns.iter().position(|col| col.name == name)?;
+            Some(&mut self.columns[pos].values)
+        }
     }
 
     pub fn iter(&self) -> FrameIter<'_> {
-        let col_names = self.columns.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
+        let col_names = self.columns.iter().map(|c| c.qualified_name()).collect::<Vec<_>>();
         FrameIter {
             df: self,
             row_index: 0,
@@ -129,20 +154,13 @@ impl Frame {
 }
 
 impl Frame {
-    pub fn qualify_columns(&mut self) {
-        for col in &mut self.columns {
-            col.name = format!("{}_{}", self.name, col.name);
-        }
-    }
-}
-
-impl Frame {
     pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
         let column_count = names.len();
 
         let mut columns: Vec<FrameColumn> = names
             .iter()
             .map(|name| FrameColumn {
+                frame: Some("unknown".to_string()),
                 name: name.to_string(),
                 values: ColumnValues::with_capacity(Undefined, 0),
             })
@@ -157,6 +175,18 @@ impl Frame {
 
         Frame::new(columns)
     }
+}
+
+fn build_indices(
+    columns: &[FrameColumn],
+) -> (HashMap<String, usize>, HashMap<(String, String), usize>) {
+    let index = columns.iter().enumerate().map(|(i, col)| (col.qualified_name(), i)).collect();
+    let frame_index = columns
+        .iter()
+        .enumerate()
+        .filter_map(|(i, col)| col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i)))
+        .collect();
+    (index, frame_index)
 }
 
 #[cfg(test)]

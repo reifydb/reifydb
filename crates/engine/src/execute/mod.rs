@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
@@ -155,20 +155,36 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 if let Some(frame) = result {
                     Ok(frame.into())
                 } else {
-                    Ok(Frame {
-                        name: "frame".to_string(),
-                        columns: node
-                            .layout()
-                            .unwrap_or(FrameLayout { columns: vec![] })
-                            .columns
-                            .into_iter()
-                            .map(|cl| FrameColumn {
-                                name: cl.name,
-                                values: ColumnValues::with_capacity(cl.ty, 0),
-                            })
-                            .collect(),
-                        index: Default::default(),
-                    })
+                    // empty frame - reconstruct table, for better UX
+                    let columns: Vec<FrameColumn> = node
+                        .layout()
+                        .unwrap_or(FrameLayout { columns: vec![] })
+                        .columns
+                        .into_iter()
+                        .map(|layout| FrameColumn {
+                            frame: layout.frame,
+                            name: layout.name,
+                            values: ColumnValues::with_capacity(layout.ty, 0),
+                        })
+                        .collect();
+
+                    let index = columns
+                        .iter()
+                        .enumerate()
+                        .map(|(i, col)| (col.qualified_name(), i))
+                        .collect();
+
+                    let frame_index = columns
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, col)| {
+                            col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i))
+                        })
+                        .collect();
+
+                    dbg!(&columns);
+
+                    Ok(Frame { name: "".to_string(), columns, index, frame_index })
                 }
             }
         }

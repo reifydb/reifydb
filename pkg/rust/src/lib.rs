@@ -25,7 +25,6 @@ use crate::server::Server;
 use reifydb_core::frame::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_engine::Engine;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
 /// The underlying persistence responsible for data access.
@@ -123,7 +122,7 @@ impl ReifyDB {
     #[cfg(feature = "server")]
     pub fn server() -> Server<Memory, Memory, Serializable<Memory, Memory>> {
         let (transaction, hooks) = serializable(memory());
-        let engine = Engine::new(transaction, hooks).unwrap();
+        let engine = engine::Engine::new(transaction, hooks).unwrap();
         Server::new(engine)
     }
 
@@ -135,7 +134,7 @@ impl ReifyDB {
         T: Transaction<VS, US>,
     {
         let (transaction, hooks) = input;
-        let engine = Engine::new(transaction, hooks).unwrap();
+        let engine = engine::Engine::new(transaction, hooks).unwrap();
         Server::new(engine)
     }
 }

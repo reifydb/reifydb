@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{ColumnValues, FrameColumn};
 use crate::Type;
+use crate::frame::{ColumnValues, FrameColumn};
 
 #[derive(Debug, Clone)]
 pub struct FrameColumnLayout {
     pub name: String,
+    pub frame: Option<String>,
     pub ty: Type,
 }
 
@@ -14,6 +15,7 @@ impl FrameColumnLayout {
     pub fn from_column(column: &FrameColumn) -> Self {
         Self {
             name: column.name.clone(),
+            frame: column.frame.clone(),
             ty: match column.values {
                 ColumnValues::Bool(_, _) => Type::Bool,
                 ColumnValues::Float4(_, _) => Type::Float4,

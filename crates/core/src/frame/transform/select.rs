@@ -5,8 +5,16 @@ use crate::frame::Frame;
 
 impl Frame {
     pub fn select(&mut self, names: &[&str]) -> crate::Result<()> {
-        let mut selected: Vec<usize> =
-            names.into_iter().filter_map(|&name| self.index.get(name).cloned()).collect();
+        let mut selected: Vec<usize> = names
+            .into_iter()
+            .filter_map(|&name| {
+                // Try qualified name first, then try as original name
+                self.index.get(name).cloned().or_else(|| {
+                    // Search by original name in source_index
+                    self.columns.iter().position(|col| col.name == name)
+                })
+            })
+            .collect();
 
         if selected.is_empty() {
             self.columns = vec![];
@@ -90,9 +98,9 @@ mod tests {
 
     fn make_test_instance() -> Frame {
         Frame::new(vec![
-			FrameColumn::int2("id", [1, 2]),
-			FrameColumn::utf8("name", ["Alice", "Bob"]),
-			FrameColumn::int2("score", [23, 32]),
+			FrameColumn::int2("test_frame", "id", [1, 2]),
+			FrameColumn::utf8("test_frame", "name", ["Alice", "Bob"]),
+			FrameColumn::int2("test_frame", "score", [23, 32]),
         ])
     }
 }

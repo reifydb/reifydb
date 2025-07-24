@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frames::{ColumnValues, Error, Frame};
+use crate::frame::{ColumnValues, Frame};
 use crate::{SortDirection, SortKey};
 
 impl Frame {
     pub fn sort(&mut self, keys: &[SortKey]) -> crate::Result<()> {
-        let row_count = self.columns.first().map_or(0, |c| c.data.len());
+        let row_count = self.columns.first().map_or(0, |c| c.values.len());
 
         // 1. Create index indirection (0..n)
         let mut indices: Vec<usize> = (0..row_count).collect();
@@ -18,9 +18,9 @@ impl Frame {
                 let col = self
                     .columns
                     .iter()
-                    .find(|c| c.name == key.column)
+                    .find(|c| c.qualified_name == key.column || c.name == key.column)
                     .ok_or_else(|| format!("Column '{}' not found", key.column))?;
-                Ok::<_, Error>((&col.data, &key.direction))
+                Ok::<_, crate::Error>((&col.values, &key.direction))
             })
             .collect::<crate::Result<_, _>>()?;
 
@@ -43,7 +43,7 @@ impl Frame {
 
         // 4. Reorder all columns in place using the sorted index
         for col in &mut self.columns {
-            col.data.reorder(&indices);
+            col.values.reorder(&indices);
         }
 
         Ok(())

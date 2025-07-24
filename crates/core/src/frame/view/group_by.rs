@@ -19,7 +19,7 @@ impl Frame {
             let column = self
                 .columns
                 .iter()
-                .find(|c| c.name == key)
+                .find(|c| c.qualified_name() == key || c.name == key)
                 .ok_or_else(|| crate::error!(crate::error::diagnostic::engine::frame_error(format!("Column '{}' not found", key))))?;
             key_columns.push(&column.values);
         }

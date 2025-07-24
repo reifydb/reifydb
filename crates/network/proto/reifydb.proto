@@ -41,6 +41,7 @@ message Column {
   string name = 1;
   Type ty = 2;
   repeated Value values = 3;
+  optional string frame = 4;
 }
 
 message Value {

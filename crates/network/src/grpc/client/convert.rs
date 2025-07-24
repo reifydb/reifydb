@@ -34,9 +34,11 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
 
     let mut columns = Vec::with_capacity(frame.columns.len());
     let mut index = HashMap::with_capacity(frame.columns.len());
+    let mut source_index = HashMap::with_capacity(frame.columns.len());
 
     for (i, grpc_col) in frame.columns.into_iter().enumerate() {
         let data_type = Type::from_u8(grpc_col.ty as u8);
+        let frame = grpc_col.frame;
         let name = grpc_col.name;
 
         let values = grpc_col.values;
@@ -449,9 +451,27 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
             }
         };
 
-        columns.push(FrameColumn { name: name.clone(), values: column_values });
-        index.insert(name, i);
+        // Use the provided metadata, fallback to name if fields are empty
+        let name = if name.is_empty() { name.clone() } else { name };
+
+        columns.push(FrameColumn {
+            frame: frame.clone(),
+            name: name.clone(),
+            values: column_values,
+        });
+        let qualified_name = if name.contains('.') {
+            name.clone()
+        } else {
+            match &frame {
+                Some(sf) => format!("{}.{}", sf, name),
+                None => name.clone(),
+            }
+        };
+        index.insert(qualified_name, i);
+        if let Some(sf) = &frame {
+            source_index.insert((sf.clone(), name.clone()), i);
+        }
     }
 
-    Frame { name: frame.name, columns, index }
+    Frame { name: frame.name, columns, index, frame_index: source_index }
 }

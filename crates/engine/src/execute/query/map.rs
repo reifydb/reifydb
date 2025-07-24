@@ -83,7 +83,7 @@ impl ExecutionPlan for MapNode {
             let filtered_row_count = mask.count_ones();
             
             for expr in &self.expressions {
-                columns.push(evaluate(
+                let column = evaluate(
                     expr,
                     &self.create_evaluation_context(
                         expr,
@@ -92,7 +92,9 @@ impl ExecutionPlan for MapNode {
                         frame.columns.clone(),
                         filtered_row_count,
                     ),
-                )?);
+                )?;
+                
+                columns.push(column);
             }
 
             self.layout = Some(FrameLayout::from_frame(&frame));
