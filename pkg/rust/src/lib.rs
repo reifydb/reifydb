@@ -24,9 +24,7 @@ use crate::embedded::Embedded;
 use crate::server::Server;
 use reifydb_core::frame::Frame;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
-};
+use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
@@ -56,25 +54,29 @@ pub trait DB<'a>: Sized {
         rql: &str,
     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
+    fn tx_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+
     fn rx_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+
+    fn rx_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 }
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> (Embedded<Memory, Memory, Serializable<Memory, Memory>>, Principal) {
-        let hooks = Hooks::default();
-        Embedded::new(serializable(memory(), hooks.clone()), hooks)
+    pub fn embedded() -> Embedded<Memory, Memory, Serializable<Memory, Memory>> {
+        let (transaction, hooks) = serializable(memory());
+        Embedded::new(transaction, hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking()
-    -> (embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>>, Principal) {
-        let hooks = Hooks::default();
-        embedded_blocking::Embedded::new(serializable(memory(), hooks.clone()), hooks).unwrap()
+    -> embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>> {
+        let (transaction, hooks) = serializable(memory());
+        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
@@ -90,10 +92,7 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<VS, US, T>(
-        transaction: T,
-        hooks: Hooks,
-    ) -> (Embedded<VS, US, T>, Principal)
+    pub fn embedded_with<VS, US, T>(transaction: T, hooks: Hooks) -> Embedded<VS, US, T>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
@@ -106,7 +105,7 @@ impl ReifyDB {
     pub fn embedded_with<VS, US, T>(
         transaction: T,
         hooks: Hooks,
-    ) -> (embedded_blocking::Embedded<VS, US, T>, Principal)
+    ) -> embedded_blocking::Embedded<VS, US, T>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
@@ -117,14 +116,14 @@ impl ReifyDB {
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking_with<VS, US, T>(
-        transaction: T,
-        hooks: Hooks,
-    ) -> (embedded_blocking::Embedded<VS, US, T>, Principal)
+        input: (T, Hooks),
+    ) -> embedded_blocking::Embedded<VS, US, T>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
     {
+        let (transaction, hooks) = input;
         embedded_blocking::Embedded::new(transaction, hooks).unwrap()
     }
 
@@ -133,52 +132,51 @@ impl ReifyDB {
         Memory,
         Memory,
         Serializable<Memory, Memory>,
-        Engine<Memory, Memory, Serializable<Memory, Memory>>,
     > {
-        let hooks = Hooks::default();
-        let transaction = serializable(memory(), hooks.clone());
+        let (transaction, hooks) = serializable(memory());
         let engine = Engine::new(transaction, hooks).unwrap();
         Server::new(engine)
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<VS, US, T, E>(engine: E) -> Server<VS, US, T, E>
+    pub fn server_with<VS, US, T>(input: (T, Hooks)) -> Server<VS, US, T>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
-        E: EngineInterface<VS, US, T>,
     {
+        let (transaction, hooks) = input;
+        let engine = Engine::new(transaction, hooks).unwrap();
         Server::new(engine)
     }
 }
 
-pub fn serializable<VS, US>(storage: (VS, US), hooks: Hooks) -> Serializable<VS, US>
+pub fn serializable<VS, US>(input: (VS, US, Hooks)) -> (Serializable<VS, US>, Hooks)
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
 {
-    Serializable::new(storage.0, storage.1, hooks)
+    (Serializable::new(input.0, input.1, input.2.clone()), input.2)
 }
 
-pub fn optimistic<VS, US>(storage: (VS, US), hooks: Hooks) -> Optimistic<VS, US>
+pub fn optimistic<VS, US>(input: (VS, US, Hooks)) -> (Optimistic<VS, US>, Hooks)
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
 {
-    Optimistic::new(storage.0, storage.1, hooks)
+    (Optimistic::new(input.0, input.1, input.2.clone()), input.2)
 }
 
-pub fn memory() -> (Memory, Memory) {
-    (Memory::default(), Memory::default())
+pub fn memory() -> (Memory, Memory, Hooks) {
+    (Memory::default(), Memory::default(), Hooks::default())
 }
 
-pub fn lmdb(path: &Path) -> (Lmdb, Lmdb) {
+pub fn lmdb(path: &Path) -> (Lmdb, Lmdb, Hooks) {
     let result = Lmdb::new(path);
-    (result.clone(), result)
+    (result.clone(), result, Hooks::default())
 }
 
-pub fn sqlite(path: &Path) -> (Sqlite, Sqlite) {
+pub fn sqlite(path: &Path) -> (Sqlite, Sqlite, Hooks) {
     let result = Sqlite::new(path);
-    (result.clone(), result)
+    (result.clone(), result, Hooks::default())
 }

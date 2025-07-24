@@ -4,7 +4,8 @@
 use crate::grpc::server::db::DbService;
 use crate::grpc::server::grpc::db_server::DbServer;
 use reifydb_core::Error;
-use reifydb_core::interface::{Engine, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
@@ -34,48 +35,44 @@ impl Default for GrpcConfig {
 }
 
 #[derive(Clone)]
-pub struct GrpcServer<VS, US, T, E>(Arc<Inner<VS, US, T, E>>)
+pub struct GrpcServer<VS, US, T>(Arc<Inner<VS, US, T>>)
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
-    E: Engine<VS, US, T>;
+    T: Transaction<VS, US>;
 
-pub struct Inner<VS, US, T, E>
+pub struct Inner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: Engine<VS, US, T>,
 {
     config: GrpcConfig,
-    engine: E,
+    engine: Engine<VS, US, T>,
     socket_addr: OnceCell<SocketAddr>,
     _phantom: std::marker::PhantomData<(VS, US, T)>,
 }
 
-impl<VS, US, T, E> Deref for GrpcServer<VS, US, T, E>
+impl<VS, US, T> Deref for GrpcServer<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: Engine<VS, US, T>,
 {
-    type Target = Inner<VS, US, T, E>;
+    type Target = Inner<VS, US, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<VS, US, T, E> GrpcServer<VS, US, T, E>
+impl<VS, US, T> GrpcServer<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: Engine<VS, US, T>,
 {
-    pub fn new(config: GrpcConfig, engine: E) -> Self {
+    pub fn new(config: GrpcConfig, engine: Engine<VS, US, T>) -> Self {
         Self(Arc::new(Inner { config, engine, socket_addr: OnceCell::new(), _phantom: std::marker::PhantomData }))
     }
 
@@ -102,12 +99,11 @@ where
 }
 
 // FIXME return result
-pub fn db_service<VS, US, T, E>(engine: E) -> DbServer<DbService<VS, US, T, E>>
+pub fn db_service<VS, US, T>(engine: Engine<VS, US, T>) -> DbServer<DbService<VS, US, T>>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: Engine<VS, US, T>,
 {
     DbServer::new(DbService::new(engine))
 }

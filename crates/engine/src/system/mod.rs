@@ -4,28 +4,45 @@
 use reifydb_core::hook::lifecycle::OnStartHook;
 use reifydb_core::hook::{BoxedHookIter, Callback};
 use reifydb_core::interface::{EncodableKey, SystemVersion, SystemVersionKey};
-use reifydb_core::interface::{
-    Engine as EngineInterface, Transaction, UnversionedStorage, VersionedStorage,
-};
+use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{Type, return_hooks};
+use std::marker::PhantomData;
 
-pub struct SystemStartCallback {}
-
-const CURRENT_STORAGE_VERSION: u8 = 0x01;
-
-impl<VS, US, T, E> Callback<OnStartHook<VS, US, T, E>> for SystemStartCallback
+pub(crate) struct SystemStartCallback<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
 {
-    fn on(&self, hook: &OnStartHook<VS, US, T, E>) -> Result<BoxedHookIter, reifydb_core::Error> {
+    transaction: T,
+    _phantom: PhantomData<(VS, US)>,
+}
+
+impl<VS, US, T> SystemStartCallback<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
+    pub(crate) fn new(transaction: T) -> Self {
+        Self { transaction, _phantom: PhantomData }
+    }
+}
+
+const CURRENT_STORAGE_VERSION: u8 = 0x01;
+
+impl<VS, US, T> Callback<OnStartHook> for SystemStartCallback<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
+    fn on(&self, _hook: &OnStartHook) -> Result<BoxedHookIter, reifydb_core::Error> {
         let layout = Layout::new(&[Type::Uint1]);
         let key = SystemVersionKey { version: SystemVersion::Storage }.encode();
 
-        let mut unversioned = hook.engine.begin_unversioned_tx();
+        let mut unversioned = self.transaction.begin_unversioned_tx();
 
         if let None = unversioned.get(&key).unwrap() {
             let mut row = layout.allocate_row();

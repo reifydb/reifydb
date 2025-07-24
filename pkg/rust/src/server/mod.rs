@@ -8,6 +8,7 @@ use reifydb_core::interface::{
     Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::return_hooks;
+use reifydb_engine::Engine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use reifydb_network::ws::server::{WsConfig, WsServer};
 use std::marker::PhantomData;
@@ -17,55 +18,51 @@ use tokio::select;
 use tokio::sync::oneshot::Receiver;
 use tokio::task::JoinSet;
 
-struct OnCreateCallback<VS, US, T, E, F>
+struct OnCreateCallback<VS, US, T, F>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
-    F: Fn(&OnCreateContext<VS, US, T, E>) -> crate::Result<()> + Send + Sync + 'static,
+    F: Fn(&OnCreateContext<VS, US, T>) -> crate::Result<()> + Send + Sync + 'static,
 {
     callback: F,
-    _phantom: PhantomData<(VS, US, T, E)>,
+    engine: Engine<VS, US, T>,
 }
 
-impl<VS, US, T, E, F> Callback<OnCreateHook<VS, US, T, E>> for OnCreateCallback<VS, US, T, E, F>
+impl<VS, US, T, F> Callback<OnCreateHook> for OnCreateCallback<VS, US, T, F>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
-    F: Fn(&OnCreateContext<VS, US, T, E>) -> crate::Result<()> + Send + Sync + 'static,
+    F: Fn(&OnCreateContext<VS, US, T>) -> crate::Result<()> + Send + Sync + 'static,
 {
-    fn on(&self, hook: &OnCreateHook<VS, US, T, E>) -> Result<BoxedHookIter, reifydb_core::Error> {
-        let context = OnCreateContext::new(hook.engine.clone());
+    fn on(&self, _hook: &OnCreateHook) -> Result<BoxedHookIter, reifydb_core::Error> {
+        let context = OnCreateContext::new(self.engine.clone());
         (self.callback)(&context)?;
         return_hooks!()
     }
 }
 
-pub struct Server<VS, US, T, E>
+pub struct Server<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
 {
-    pub(crate) engine: E,
+    pub(crate) engine: Engine<VS, US, T>,
     pub(crate) grpc_config: Option<GrpcConfig>,
-    pub(crate) grpc: Option<GrpcServer<VS, US, T, E>>,
+    pub(crate) grpc: Option<GrpcServer<VS, US, T>>,
     pub(crate) ws_config: Option<WsConfig>,
-    pub(crate) ws: Option<WsServer<VS, US, T, E>>,
+    pub(crate) ws: Option<WsServer<VS, US, T>>,
 }
 
-impl<VS, US, T, E> Server<VS, US, T, E>
+impl<VS, US, T> Server<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
 {
-    pub fn with_engine(mut self, engine: E) -> Self {
+    pub fn with_engine(mut self, engine: Engine<VS, US, T>) -> Self {
         self.engine = engine;
         self
     }
@@ -81,14 +78,13 @@ where
     }
 }
 
-impl<VS, US, T, E> Server<VS, US, T, E>
+impl<VS, US, T> Server<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
 {
-    pub fn new(engine: E) -> Self {
+    pub fn new(engine: Engine<VS, US, T>) -> Self {
         Self { engine, grpc_config: None, grpc: None, ws_config: None, ws: None }
     }
 
@@ -108,14 +104,8 @@ where
     // }
 
     pub fn serve(&mut self, rt: &Runtime) -> crate::Result<()> {
-        self.engine.hooks().trigger(OnCreateHook {
-            engine: self.engine.clone(),
-            _phantom: PhantomData::default(),
-        })?; // FIXME this must be triggered by storage
-        self.engine.hooks().trigger(OnStartHook {
-            engine: self.engine.clone(),
-            _phantom: PhantomData::default(),
-        })?;
+        self.engine.hooks().trigger(OnCreateHook {})?; // FIXME this must be triggered by storage
+        self.engine.hooks().trigger(OnStartHook {})?;
 
         if let Some(config) = self.ws_config.take() {
             let engine = self.engine.clone();
@@ -139,15 +129,8 @@ where
         rt: &Runtime,
         signal: Receiver<()>,
     ) -> Result<(), reifydb_core::Error> {
-        self.engine.hooks().trigger(OnCreateHook {
-            engine: self.engine.clone(),
-            _phantom: PhantomData::default(),
-        })?; // FIXME this must be triggered by storage
-
-        self.engine.hooks().trigger(OnStartHook {
-            engine: self.engine.clone(),
-            _phantom: PhantomData::default(),
-        })?;
+        self.engine.hooks().trigger(OnCreateHook {})?; // FIXME this must be triggered by storage
+        self.engine.hooks().trigger(OnStartHook {})?;
 
         rt.block_on(async {
             let mut handles = JoinSet::new();
@@ -215,62 +198,25 @@ where
     }
 }
 
-// struct HookClosure<VS, US, T, F>
-// where
-//     VS: VersionedStorage,
-//     US: UnversionedStorage,
-//     T: Transaction<VS, US>,
-//     F: Fn(&HookContext<VS, US, T>) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
-// {
-//     f: F,
-//     _maker: PhantomData<(VS, US, T)>,
-// }
-//
-// impl<VS, US, T, F> OnCreateHook<VS, US, T> for HookClosure<VS, US, T, F>
-// where
-//     VS: VersionedStorage,
-//     US: UnversionedStorage,
-//     T: Transaction<VS, US>,
-//     F: Fn(&HookContext<VS, US, T>) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
-// {
-//     fn on_create(&self, ctx: &HookContext<VS, US, T>) -> Result<(), Box<dyn Error>> {
-//         (self.f)(ctx)
-//     }
-// }
-//
-pub struct OnCreateContext<VS, US, T, E>
+pub struct OnCreateContext<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
 {
-    pub engine: E,
+    pub engine: Engine<VS, US, T>,
     _phantom: PhantomData<(VS, US, T)>,
 }
 
-impl<'a, VS, US, T, E> OnCreateContext<VS, US, T, E>
+impl<'a, VS, US, T> OnCreateContext<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
 {
-    pub fn new(engine: E) -> Self {
+    pub fn new(engine: Engine<VS, US, T>) -> Self {
         Self { engine, _phantom: PhantomData }
     }
-
-    /// Execute a transactional query as root user
-    pub fn tx_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
-        let principal = Principal::System { id: 0, name: "root".to_string() };
-        self.engine.tx_as(&principal, rql)
-    }
-    //
-    // /// Execute a read-only query as root user
-    // pub fn rx_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
-    //     let principal = Principal::System { id: 0, name: "root".to_string() };
-    //     self.engine.rx_as(&principal, rql)
-    // }
 
     /// Execute a transactional query as the specified principal
     pub fn tx_as(
@@ -280,35 +226,41 @@ where
     ) -> Result<Vec<Frame>, reifydb_core::Error> {
         self.engine.tx_as(principal, rql)
     }
-    //
-    // /// Execute a read-only query as the specified principal
-    // pub fn rx_as(
-    //     &self,
-    //     principal: &Principal,
-    //     rql: &str,
-    // ) -> Result<Vec<Frame>, reifydb_core::Error> {
-    //     self.engine.rx_as(principal, rql)
-    // }
-    //
-    // /// Get access to the hooks registry for registering callbacks
-    // pub fn hooks(&self) -> &Hooks {
-    //     self.engine.hooks()
-    // }
+
+    /// Execute a transactional query as root user
+    pub fn tx_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
+        let principal = Principal::System { id: 0, name: "root".to_string() };
+        self.engine.tx_as(&principal, rql)
+    }
+
+    /// Execute a read-only query as the specified principal
+    pub fn rx_as(
+        &self,
+        principal: &Principal,
+        rql: &str,
+    ) -> Result<Vec<Frame>, reifydb_core::Error> {
+        self.engine.rx_as(principal, rql)
+    }
+
+    /// Execute a read-only query as root user
+    pub fn rx_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
+        let principal = Principal::root();
+        self.engine.rx_as(&principal, rql)
+    }
 }
 
-impl<VS, US, T, E> Server<VS, US, T, E>
+impl<VS, US, T> Server<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: EngineInterface<VS, US, T>,
 {
     pub fn on_create<F>(self, f: F) -> Self
     where
-        F: Fn(&OnCreateContext<VS, US, T, E>) -> crate::Result<()> + Send + Sync + 'static,
+        F: Fn(&OnCreateContext<VS, US, T>) -> crate::Result<()> + Send + Sync + 'static,
     {
-        let callback = OnCreateCallback { callback: f, _phantom: PhantomData };
-        self.engine.hooks().register::<OnCreateHook<VS, US, T, E>, _>(callback);
+        let callback = OnCreateCallback { callback: f, engine: self.engine.clone() };
+        self.engine.hooks().register::<OnCreateHook, _>(callback);
         self
     }
 }

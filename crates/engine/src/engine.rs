@@ -3,7 +3,6 @@
 
 use crate::execute::{execute_rx, execute_tx};
 use crate::system::SystemStartCallback;
-use crate::view;
 use reifydb_core::frame::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnStartHook;
@@ -12,6 +11,7 @@ use reifydb_core::interface::{
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, RwLockWriteGuard};
 
@@ -120,7 +120,7 @@ where
 {
     transaction: T,
     hooks: Hooks,
-    deferred_view: Arc<view::deferred::Engine<VS, US>>,
+    _phantom: PhantomData<(VS, US)>,
 }
 
 impl<VS, US, T> Engine<VS, US, T>
@@ -130,9 +130,7 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(transaction: T, hooks: Hooks) -> crate::Result<Self> {
-        let storage = transaction.versioned();
-        let deferred_view = view::deferred::Engine::new(storage);
-        let result = Self(Arc::new(EngineInner { transaction, hooks, deferred_view }));
+        let result = Self(Arc::new(EngineInner { transaction, hooks, _phantom: PhantomData }));
         result.setup_hooks();
         Ok(result)
     }
@@ -145,8 +143,9 @@ where
     T: Transaction<VS, US>,
 {
     pub fn setup_hooks(&self) {
-        self.hooks
-            .register::<OnStartHook<VS, US, T, Self>, SystemStartCallback>(SystemStartCallback {});
+        self.hooks.register::<OnStartHook, SystemStartCallback<VS, US, T>>(
+            SystemStartCallback::new(self.transaction.clone()),
+        );
     }
 }
 

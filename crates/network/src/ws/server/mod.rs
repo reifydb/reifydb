@@ -5,8 +5,9 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{
-    Engine, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
+use reifydb_engine::Engine;
 use reifydb_core::{Error, Value};
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -35,50 +36,46 @@ impl Default for WsConfig {
 }
 
 #[derive(Clone)]
-pub struct WsServer<VS, US, T, E>(Arc<Inner<VS, US, T, E>>)
+pub struct WsServer<VS, US, T>(Arc<Inner<VS, US, T>>)
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
-    E: Engine<VS, US, T>;
+    T: Transaction<VS, US>;
 
-pub struct Inner<VS, US, T, E>
+pub struct Inner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: Engine<VS, US, T>,
 {
     config: WsConfig,
-    engine: E,
+    engine: Engine<VS, US, T>,
     shutdown: Arc<Notify>,
     shutdown_complete: AtomicBool,
     socket_addr: OnceCell<SocketAddr>,
     _phantom: std::marker::PhantomData<(VS, US, T)>,
 }
 
-impl<VS, US, T, E> Deref for WsServer<VS, US, T, E>
+impl<VS, US, T> Deref for WsServer<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: Engine<VS, US, T>,
 {
-    type Target = Inner<VS, US, T, E>;
+    type Target = Inner<VS, US, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<VS, US, T, E> WsServer<VS, US, T, E>
+impl<VS, US, T> WsServer<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    E: Engine<VS, US, T>,
 {
-    pub fn new(config: WsConfig, engine: E) -> Self {
+    pub fn new(config: WsConfig, engine: Engine<VS, US, T>) -> Self {
         Self(Arc::new(Inner {
             config,
             engine,
@@ -190,10 +187,7 @@ where
         }
     }
 
-    async fn handle<EN>(engine: EN, stream: TcpStream, shutdown: Arc<Notify>) 
-    where 
-        EN: Engine<VS, US, T>,
-    {
+    async fn handle(engine: Engine<VS, US, T>, stream: TcpStream, shutdown: Arc<Notify>) {
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "unknown".parse().unwrap());
 
         let ws_stream = match accept_async(stream).await {

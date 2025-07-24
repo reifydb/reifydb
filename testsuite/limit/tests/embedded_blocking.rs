@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb::core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::hook::Hooks;
+use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::embedded_blocking::Embedded;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
@@ -18,7 +19,6 @@ where
     T: Transaction<VS, US>,
 {
     engine: Embedded<VS, US, T>,
-    root: Principal,
 }
 
 impl<VS, US, T> Runner<VS, US, T>
@@ -27,9 +27,8 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> Self {
-        let (engine, root) = ReifyDB::embedded_blocking_with(transaction);
-        Self { engine, root }
+    pub fn new(input: (T, Hooks)) -> Self {
+        Self { engine: ReifyDB::embedded_blocking_with(input) }
     }
 }
 
@@ -48,8 +47,8 @@ where
 
                 println!("tx: {query}");
 
-                for line in self.engine.tx_as(&self.root, query.as_str())? {
-                    writeln!(output, "{}", line)?;
+                for frame in self.engine.tx_as_root(query.as_str())? {
+                    writeln!(output, "{}", frame)?;
                 }
             }
             "rx" => {
@@ -58,8 +57,8 @@ where
 
                 println!("rx: {query}");
 
-                for line in self.engine.rx_as(&self.root, query.as_str()) {
-                    writeln!(output, "{}", line)?;
+                for frame in self.engine.rx_as_root(query.as_str())? {
+                    writeln!(output, "{}", frame)?;
                 }
             }
             name => return Err(format!("invalid command {name}").into()),
