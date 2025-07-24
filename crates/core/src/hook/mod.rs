@@ -136,7 +136,9 @@ macro_rules! return_hooks {
 
 #[cfg(test)]
 mod tests {
-    use crate::hook::{BoxedHookIter, Callback, Hooks};
+    use crate::error::diagnostic::Diagnostic;
+    use crate::hook::{BoxedHookIter, Callback, Hook, Hooks};
+    use crate::return_error;
     use std::sync::{Arc, Mutex};
 
     #[derive(Debug)]
@@ -171,6 +173,182 @@ mod tests {
             *x *= 2;
             return_hooks!()
         }
+    }
+
+    #[test]
+    fn test_hooks_new() {
+        let hooks = Hooks::new();
+        let result = hooks.trigger(TestHook {});
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_hooks_default() {
+        let hooks = Hooks::default();
+        let result = hooks.trigger(TestHook {});
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_register_single_callback() {
+        let hooks = Hooks::new();
+        let callback = TestCallback::default();
+
+        hooks.register::<TestHook, TestCallback>(callback.clone());
+        hooks.trigger(TestHook {}).unwrap();
+        assert_eq!(*callback.0.counter.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_trigger_unregistered_hook() {
+        let hooks = Hooks::new();
+        let result = hooks.trigger(TestHook {});
+        assert!(result.is_ok());
+    }
+
+    #[derive(Debug)]
+    pub struct ErrorHook {}
+
+    impl_hook!(ErrorHook);
+
+    #[derive(Default, Debug, Clone)]
+    pub struct ErrorCallback;
+
+    impl Callback<ErrorHook> for ErrorCallback {
+        fn on(&self, _hook: &ErrorHook) -> crate::Result<BoxedHookIter> {
+            return_error!(Diagnostic {
+                code: "".to_string(),
+                statement: None,
+                message: "".to_string(),
+                column: None,
+                span: None,
+                label: None,
+                help: None,
+                notes: vec![],
+                cause: None,
+            })
+        }
+    }
+
+    #[test]
+    fn test_callback_error_propagation() {
+        let hooks = Hooks::new();
+        let callback = ErrorCallback::default();
+
+        hooks.register::<ErrorHook, ErrorCallback>(callback);
+        let result = hooks.trigger(ErrorHook {});
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_multiple_callbacks_same_hook() {
+        let hooks = Hooks::new();
+        let callback1 = TestCallback::default();
+        let callback2 = TestCallback::default();
+
+        hooks.register::<TestHook, TestCallback>(callback1.clone());
+        hooks.register::<TestHook, TestCallback>(callback2.clone());
+
+        hooks.trigger(TestHook {}).unwrap();
+        assert_eq!(*callback1.0.counter.lock().unwrap(), 1);
+        assert_eq!(*callback2.0.counter.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_hooks_clone() {
+        let hooks1 = Hooks::new();
+        let callback = TestCallback::default();
+        hooks1.register::<TestHook, TestCallback>(callback.clone());
+
+        let hooks2 = hooks1.clone();
+        hooks2.trigger(TestHook {}).unwrap();
+        assert_eq!(*callback.0.counter.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_concurrent_registration() {
+        use std::thread;
+
+        let hooks = Arc::new(Hooks::new());
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let hooks = hooks.clone();
+                thread::spawn(move || {
+                    let callback = TestCallback::default();
+                    hooks.register::<TestHook, TestCallback>(callback);
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let result = hooks.trigger(TestHook {});
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_concurrent_triggering() {
+        use std::thread;
+
+        let hooks = Arc::new(Hooks::new());
+        let callback = TestCallback::default();
+        hooks.register::<TestHook, TestCallback>(callback.clone());
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let hooks = hooks.clone();
+                thread::spawn(move || {
+                    hooks.trigger(TestHook {}).unwrap();
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert!(*callback.0.counter.lock().unwrap() >= 10);
+    }
+
+    #[derive(Debug)]
+    pub struct MacroTestHook {
+        pub value: i32,
+    }
+
+    impl_hook!(MacroTestHook);
+
+    #[test]
+    fn test_impl_hook_macro() {
+        let hook = MacroTestHook { value: 42 };
+        let any_ref = hook.as_any();
+        assert!(any_ref.downcast_ref::<MacroTestHook>().is_some());
+        assert_eq!(any_ref.downcast_ref::<MacroTestHook>().unwrap().value, 42);
+    }
+
+    #[test]
+    fn test_return_hooks_macro_empty() {
+        let result: crate::Result<BoxedHookIter> = return_hooks!();
+        let mut iter = result.unwrap();
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_return_hooks_macro_single() {
+        let result: crate::Result<BoxedHookIter> = return_hooks!(TestHook {});
+        let mut iter = result.unwrap();
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn test_return_hooks_macro_multiple() {
+        let result: crate::Result<BoxedHookIter> = return_hooks!(TestHook {}, AnotherHook {});
+        let mut iter = result.unwrap();
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_none());
     }
 
     #[test]
