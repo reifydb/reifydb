@@ -9,10 +9,9 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::{CowVec, Date, DateTime, err, Error, Interval, OwnedSpan, RowId, Time, Type};
-use uuid::Uuid;
-use reifydb_core::value::temporal::parse_interval;
 use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::value::temporal::parse_interval;
+use reifydb_core::{CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
@@ -26,6 +25,7 @@ use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream, connect_async,
     tungstenite::{Error as WsError, protocol::Message},
 };
+use uuid::Uuid;
 
 pub type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -204,11 +204,20 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn { name: col.name, values: convert_column_values(col.ty, col.data) }
+                FrameColumn {
+                    name: col.name,
+                    frame: col.frame,
+                    values: convert_column_values(col.ty, col.data),
+                }
             })
             .collect();
 
-        result.push(Frame { name: frame.name, columns, index })
+        result.push(Frame {
+            name: frame.name,
+            columns,
+            index,
+            frame_index: std::collections::HashMap::new(),
+        })
     }
 
     result
@@ -225,11 +234,20 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn { name: col.name, values: convert_column_values(col.ty, col.data) }
+                FrameColumn {
+                    frame: col.frame,
+                    name: col.name,
+                    values: convert_column_values(col.ty, col.data),
+                }
             })
             .collect();
 
-        result.push(Frame { name: frame.name, columns, index })
+        result.push(Frame {
+            name: frame.name,
+            columns,
+            index,
+            frame_index: std::collections::HashMap::new(),
+        })
     }
 
     result
@@ -441,7 +459,9 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     if s == "⟪undefined⟫" {
                         reifydb_core::value::uuid::Uuid4::from(Uuid::nil())
                     } else {
-                        reifydb_core::value::uuid::Uuid4::from(Uuid::parse_str(&s).unwrap_or(Uuid::nil()))
+                        reifydb_core::value::uuid::Uuid4::from(
+                            Uuid::parse_str(&s).unwrap_or(Uuid::nil()),
+                        )
                     }
                 })
                 .collect();
@@ -454,7 +474,9 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     if s == "⟪undefined⟫" {
                         reifydb_core::value::uuid::Uuid7::from(Uuid::nil())
                     } else {
-                        reifydb_core::value::uuid::Uuid7::from(Uuid::parse_str(&s).unwrap_or(Uuid::nil()))
+                        reifydb_core::value::uuid::Uuid7::from(
+                            Uuid::parse_str(&s).unwrap_or(Uuid::nil()),
+                        )
                     }
                 })
                 .collect();

@@ -479,10 +479,10 @@ impl Evaluator {
             }
             (l,r) => {
                 let span = gte.span();
-                Ok(FrameColumn {
-                    name: span.fragment,
-                    values: ColumnValues::bool(vec![false; l.len().min(r.len())]),
-                })
+                Ok(crate::create_frame_column(
+                    span.fragment,
+                    ColumnValues::bool(vec![false; l.len().min(r.len())])
+                ))
             },
         }
     }
@@ -513,7 +513,7 @@ where
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
+    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
 }
 
 fn compare_temporal<T>(
@@ -539,7 +539,7 @@ where
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
+    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
 }
 
 fn compare_utf8(
@@ -562,5 +562,5 @@ fn compare_utf8(
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
+    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
 }

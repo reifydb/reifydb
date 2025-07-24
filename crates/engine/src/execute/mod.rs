@@ -155,19 +155,46 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 if let Some(frame) = result {
                     Ok(frame.into())
                 } else {
+                    let columns: Vec<FrameColumn> = node
+                        .layout()
+                        .unwrap_or(FrameLayout { columns: vec![] })
+                        .columns
+                        .into_iter()
+                        .map(|cl| {
+                            // Parse qualified column names (e.g., "table.column" -> source="table", name="column")
+                            // If not qualified, use the name as-is with no source frame
+                            if let Some(dot_pos) = cl.name.rfind('.') {
+                                let (frame, name) = cl.name.split_at(dot_pos);
+                                let name = &name[1..]; // Skip the dot
+                                FrameColumn {
+                                    frame: Some(frame.to_string()),
+                                    name: name.to_string(),
+                                    values: ColumnValues::with_capacity(cl.ty, 0),
+                                }
+                            } else {
+                                FrameColumn {
+                                    frame: None,
+                                    name: cl.name,
+                                    values: ColumnValues::with_capacity(cl.ty, 0),
+                                }
+                            }
+                        })
+                        .collect();
+                    
+                    let index = columns.iter().enumerate()
+                        .map(|(i, col)| (col.qualified_name(), i))
+                        .collect();
+                    let source_index = columns.iter().enumerate()
+                        .filter_map(|(i, col)| {
+                            col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i))
+                        })
+                        .collect();
+                    
                     Ok(Frame {
                         name: "frame".to_string(),
-                        columns: node
-                            .layout()
-                            .unwrap_or(FrameLayout { columns: vec![] })
-                            .columns
-                            .into_iter()
-                            .map(|cl| FrameColumn {
-                                name: cl.name,
-                                values: ColumnValues::with_capacity(cl.ty, 0),
-                            })
-                            .collect(),
-                        index: Default::default(),
+                        columns,
+                        index,
+						frame_index: source_index,
                     })
                 }
             }

@@ -15,8 +15,8 @@ use reifydb_core::frame::Frame;
 use reifydb_core::interface::{
     Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
-use reifydb_engine::Engine;
 use reifydb_core::{Type, Value};
+use reifydb_engine::Engine;
 
 pub struct DbService<VS, US, T>
 where
@@ -215,7 +215,12 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                     })
                     .collect();
 
-                Column { name: col.name, ty: Type::to_u8(&data_type) as i32, values }
+                Column {
+                    name: col.name,
+                    ty: Type::to_u8(&data_type) as i32,
+                    values,
+                    frame: col.frame,
+                }
             })
             .collect(),
     }

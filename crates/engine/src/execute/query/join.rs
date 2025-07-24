@@ -39,8 +39,7 @@ impl LeftJoinNode {
                 result = Some(frame);
             }
         }
-        let mut result = result.unwrap_or_else(Frame::empty);
-        result.qualify_columns();
+        let result = result.unwrap_or_else(Frame::empty);
         Ok(result)
     }
 }
@@ -58,11 +57,12 @@ impl ExecutionPlan for LeftJoinNode {
         let right_rows = right_frame.row_count();
         let right_width = right_frame.column_count();
 
-        let names: Vec<&str> = left_frame
+        // Build qualified column names for the join result
+        let qualified_names: Vec<String> = left_frame
             .columns
             .iter()
             .chain(&right_frame.columns)
-            .map(|col| col.name.as_str())
+            .map(|col| col.qualified_name())
             .collect();
 
         let mut result_rows = Vec::new();
@@ -85,9 +85,10 @@ impl ExecutionPlan for LeftJoinNode {
                     columns: all_values
                         .iter()
                         .cloned()
-                        .zip(names.iter().cloned())
-                        .map(|(v, name)| FrameColumn {
-                            name: name.to_string(),
+                        .zip(left_frame.columns.iter().chain(&right_frame.columns))
+                        .map(|(v, col)| FrameColumn {
+                            frame: col.frame.clone(),
+                            name: col.name.clone(),
                             values: ColumnValues::from(v),
                         })
                         .collect(),
@@ -117,7 +118,28 @@ impl ExecutionPlan for LeftJoinNode {
             }
         }
 
-        let frame = Frame::from_rows(&names, &result_rows);
+        // Create frame with proper qualified column structure
+        let column_metadata: Vec<_> = left_frame.columns.iter().chain(&right_frame.columns).collect();
+        let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
+        let mut frame = Frame::from_rows(&names_refs, &result_rows);
+        
+        // Update frame columns with proper metadata
+        for (i, col_meta) in column_metadata.iter().enumerate() {
+            frame.columns[i].frame = col_meta.frame.clone();
+            frame.columns[i].name = col_meta.name.clone();
+        }
+        
+        // Rebuild indexes with updated column info
+        frame.index = frame.columns.iter().enumerate()
+            .map(|(i, col)| (col.qualified_name(), i))
+            .collect();
+
+        frame.frame_index = frame.columns.iter().enumerate()
+            .filter_map(|(i, col)| {
+                col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i))
+            })
+            .collect();
+            
         self.layout = Some(FrameLayout::from_frame(&frame));
         Ok(Some(Batch { frame, mask }))
     }

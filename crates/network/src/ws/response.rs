@@ -50,4 +50,5 @@ pub struct WebsocketColumn {
     pub name: String,
     pub ty: Type,
     pub data: Vec<String>,
+    pub frame: Option<String>,
 }

@@ -17,6 +17,17 @@ impl Evaluator {
         if alias_name == ROW_ID_COLUMN_NAME {
             panic!("Column name '{}' is reserved for RowId columns", ROW_ID_COLUMN_NAME);
         }
-        Ok(FrameColumn { name: alias_name.clone(), values: evaluated.values })
+        // Use the same source frame as other expressions in this context
+        let frame = if let Some(first_col) = ctx.columns.first() {
+            first_col.frame.clone()
+        } else {
+            Some("alias".to_string())
+        };
+        
+        Ok(FrameColumn { 
+            frame,
+            name: alias_name.clone(),
+            values: evaluated.values 
+        })
     }
 }

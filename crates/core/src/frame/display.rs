@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{ColumnValues, Frame};
+use crate::frame::{ColumnValues, Frame, FrameColumn};
 use crate::value::row_id::ROW_ID_COLUMN_NAME;
 use std::fmt::{self, Display, Formatter};
 use unicode_width::UnicodeWidthStr;
@@ -22,18 +22,38 @@ fn escape_control_chars(s: &str) -> String {
 /// Create a column display order that puts RowId column first if it exists
 fn get_column_display_order(frame: &Frame) -> Vec<usize> {
     let mut indices: Vec<usize> = (0..frame.columns.len()).collect();
-    
+
     // Find the RowId column and move it to the front
     if let Some(row_id_pos) = frame.columns.iter().position(|col| col.name == ROW_ID_COLUMN_NAME) {
         indices.remove(row_id_pos);
         indices.insert(0, row_id_pos);
     }
-    
+
     indices
 }
 
+/// Determine if the frame contains columns from multiple source frames
+/// Only shows qualified names when there are actually multiple table sources
+fn has_multiple_frames(frame: &Frame) -> bool {
+    if frame.columns.len() < 2 {
+        return false;
+    }
+
+    // Collect unique table source frames (only those that have a source frame)
+    let table_sources: std::collections::HashSet<&String> =
+        frame.columns.iter().filter_map(|col| col.frame.as_ref()).collect();
+
+    // Only show qualified names if there are 2 or more actual table sources
+    table_sources.len() > 1
+}
+
+/// Get the appropriate display name for a column based on whether multiple frames are present
+fn get_column_display_name(col: &FrameColumn, use_qualified: bool) -> String {
+    if use_qualified { col.qualified_name() } else { col.name.clone() }
+}
+
 /// Extract string value from column at given row index, with proper escaping
-fn extract_string_value(col: &crate::frame::FrameColumn, row_idx: usize) -> String {
+fn extract_string_value(col: &FrameColumn, row_idx: usize) -> String {
     let s = match &col.values {
         ColumnValues::Bool(v, bitvec) => {
             if bitvec.get(row_idx) {
@@ -191,15 +211,19 @@ impl Display for Frame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let row_count = self.columns.first().map_or(0, |c| c.values.len());
         let col_count = self.columns.len();
-        
+
         // Get the display order with RowId column first
         let column_order = get_column_display_order(self);
+
+        // Determine if we should show qualified names (when multiple source frames are present)
+        let use_qualified_names = has_multiple_frames(self);
 
         let mut col_widths = vec![0; col_count];
 
         for (display_idx, &col_idx) in column_order.iter().enumerate() {
             let col = &self.columns[col_idx];
-            col_widths[display_idx] = display_width(&col.name);
+            let display_name = get_column_display_name(col, use_qualified_names);
+            col_widths[display_idx] = display_width(&display_name);
         }
 
         for row_idx in 0..row_count {
@@ -227,8 +251,8 @@ impl Display for Frame {
             .map(|(display_idx, &col_idx)| {
                 let col = &self.columns[col_idx];
                 let w = col_widths[display_idx];
-                let name = &col.name;
-                let pad = w - display_width(name);
+                let name = get_column_display_name(col, use_qualified_names);
+                let pad = w - display_width(&name);
                 let l = pad / 2;
                 let r = pad - l;
                 format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r)
@@ -268,8 +292,12 @@ mod tests {
 
     #[test]
     fn test_bool() {
-        let frame =
-            Frame::new(vec![FrameColumn::bool_with_bitvec("bool", [true, false], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::bool_with_bitvec(
+            "test_frame",
+            "bool",
+            [true, false],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -285,6 +313,7 @@ mod tests {
     #[test]
     fn test_float4() {
         let frame = Frame::new(vec![FrameColumn::float4_with_bitvec(
+            "test_frame",
             "float4",
             [1.2, 2.5],
             [true, false],
@@ -304,6 +333,7 @@ mod tests {
     #[test]
     fn test_float8() {
         let frame = Frame::new(vec![FrameColumn::float8_with_bitvec(
+            "test_frame",
             "float8",
             [3.14, 6.28],
             [true, false],
@@ -322,8 +352,12 @@ mod tests {
 
     #[test]
     fn test_int1() {
-        let frame =
-            Frame::new(vec![FrameColumn::int1_with_bitvec("int1", [1, -1], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::int1_with_bitvec(
+            "test_frame",
+            "int1",
+            [1, -1],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -338,8 +372,12 @@ mod tests {
 
     #[test]
     fn test_int2() {
-        let frame =
-            Frame::new(vec![FrameColumn::int2_with_bitvec("int2", [100, 200], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::int2_with_bitvec(
+            "test_frame",
+            "int2",
+            [100, 200],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -354,8 +392,12 @@ mod tests {
 
     #[test]
     fn test_int4() {
-        let frame =
-            Frame::new(vec![FrameColumn::int4_with_bitvec("int4", [1000, 2000], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::int4_with_bitvec(
+            "test_frame",
+            "int4",
+            [1000, 2000],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -371,6 +413,7 @@ mod tests {
     #[test]
     fn test_int8() {
         let frame = Frame::new(vec![FrameColumn::int8_with_bitvec(
+            "test_frame",
             "int8",
             [10000, 20000],
             [true, false],
@@ -390,6 +433,7 @@ mod tests {
     #[test]
     fn test_int16() {
         let frame = Frame::new(vec![FrameColumn::int16_with_bitvec(
+            "test_frame",
             "int16",
             [100000, 200000],
             [true, false],
@@ -408,8 +452,12 @@ mod tests {
 
     #[test]
     fn test_uint1() {
-        let frame =
-            Frame::new(vec![FrameColumn::uint1_with_bitvec("uint1", [1, 2], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::uint1_with_bitvec(
+            "test_frame",
+            "uint1",
+            [1, 2],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -424,8 +472,12 @@ mod tests {
 
     #[test]
     fn test_uint2() {
-        let frame =
-            Frame::new(vec![FrameColumn::uint2_with_bitvec("uint2", [100, 200], [true, false])]);
+        let frame = Frame::new(vec![FrameColumn::uint2_with_bitvec(
+            "test_frame",
+            "uint2",
+            [100, 200],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -441,6 +493,7 @@ mod tests {
     #[test]
     fn test_uint4() {
         let frame = Frame::new(vec![FrameColumn::uint4_with_bitvec(
+            "test_frame",
             "uint4",
             [1000, 2000],
             [true, false],
@@ -460,6 +513,7 @@ mod tests {
     #[test]
     fn test_uint8() {
         let frame = Frame::new(vec![FrameColumn::uint8_with_bitvec(
+            "test_frame",
             "uint8",
             [10000, 20000],
             [true, false],
@@ -479,6 +533,7 @@ mod tests {
     #[test]
     fn test_uint16() {
         let frame = Frame::new(vec![FrameColumn::uint16_with_bitvec(
+            "test_frame",
             "uint16",
             [100000, 200000],
             [true, false],
@@ -498,6 +553,7 @@ mod tests {
     #[test]
     fn test_string() {
         let frame = Frame::new(vec![FrameColumn::utf8_with_bitvec(
+            "test_frame",
             "string",
             ["foo", "bar"],
             [true, false],
@@ -516,7 +572,7 @@ mod tests {
 
     #[test]
     fn test_undefined() {
-        let frame = Frame::new(vec![FrameColumn::undefined("undefined", 2)]);
+        let frame = Frame::new(vec![FrameColumn::undefined("test_frame", "undefined", 2)]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -535,6 +591,7 @@ mod tests {
         let dates =
             vec![Date::from_ymd(2025, 1, 15).unwrap(), Date::from_ymd(2025, 12, 25).unwrap()];
         let frame = Frame::new(vec![FrameColumn {
+            frame: Some("test".to_string()),
             name: "date".to_string(),
             values: ColumnValues::Date(CowVec::new(dates), BitVec::from_slice(&[true, false])),
         }]);
@@ -558,6 +615,7 @@ mod tests {
             DateTime::from_timestamp(1735142400).unwrap(),
         ];
         let frame = Frame::new(vec![FrameColumn {
+            frame: Some("test".to_string()),
             name: "datetime".to_string(),
             values: ColumnValues::DateTime(
                 CowVec::new(datetimes),
@@ -581,6 +639,7 @@ mod tests {
         use crate::{CowVec, Time};
         let times = vec![Time::from_hms(14, 30, 45).unwrap(), Time::from_hms(9, 15, 30).unwrap()];
         let frame = Frame::new(vec![FrameColumn {
+            frame: Some("test".to_string()),
             name: "time".to_string(),
             values: ColumnValues::Time(CowVec::new(times), BitVec::from_slice(&[true, false])),
         }]);
@@ -601,6 +660,7 @@ mod tests {
         use crate::{CowVec, Interval};
         let intervals = vec![Interval::from_days(30), Interval::from_hours(24)];
         let frame = Frame::new(vec![FrameColumn {
+            frame: Some("test".to_string()),
             name: "interval".to_string(),
             values: ColumnValues::Interval(
                 CowVec::new(intervals),
@@ -620,11 +680,11 @@ mod tests {
         assert_eq!(output, expected);
     }
 
-
     #[test]
     fn test_row_id() {
         let ids = vec![RowId(1234), RowId(5678)];
         let frame = Frame::new(vec![FrameColumn {
+            frame: Some("test".to_string()),
             name: "ROW_ID".to_string(),
             values: ColumnValues::RowId(CowVec::new(ids), BitVec::from_slice(&[true, false])),
         }]);
@@ -643,34 +703,37 @@ mod tests {
     #[test]
     fn test_row_id_column_ordering() {
         use crate::RowId;
-        
+
         // Create a frame with regular columns and a RowId column
         let regular_column = FrameColumn {
+            frame: Some("test".to_string()),
             name: "name".to_string(),
             values: ColumnValues::utf8(vec!["Alice".to_string(), "Bob".to_string()]),
         };
-        
+
         let age_column = FrameColumn {
+            frame: Some("test".to_string()),
             name: "age".to_string(),
             values: ColumnValues::int4(vec![25, 30]),
         };
-        
+
         let row_id_column = FrameColumn {
+            frame: Some("test".to_string()),
             name: ROW_ID_COLUMN_NAME.to_string(),
             values: ColumnValues::row_id(vec![RowId::new(1), RowId::new(2)]),
         };
-        
+
         // Create frame with RowId column NOT first (it should be reordered)
         let frame = Frame::new(vec![regular_column, age_column, row_id_column]);
         let output = format!("{}", frame);
-        
+
         // Verify that __ROW__ID__ appears as the first column in the output
         let lines: Vec<&str> = output.lines().collect();
         let header_line = lines[1]; // Second line contains the header
-        
+
         // The header should start with __ROW__ID__ column
         assert!(header_line.contains("__ROW__ID__"));
-        
+
         // Check that the first data value in the first row is from the RowId column
         let first_data_line = lines[3]; // Fourth line contains first data row
         assert!(first_data_line.contains("1")); // First RowId value
@@ -679,24 +742,25 @@ mod tests {
     #[test]
     fn test_row_id_undefined_display() {
         use crate::{BitVec, RowId};
-        
+
         // Create a RowId column with one undefined value
         let row_id_column = FrameColumn {
+            frame: Some("test".to_string()),
             name: ROW_ID_COLUMN_NAME.to_string(),
             values: ColumnValues::row_id_with_bitvec(
                 vec![RowId::new(1), RowId::new(2)],
-                BitVec::from_slice(&[true, false]) // Second value is undefined
+                BitVec::from_slice(&[true, false]), // Second value is undefined
             ),
         };
-        
+
         let frame = Frame::new(vec![row_id_column]);
         let output = format!("{}", frame);
-        
+
         // Verify that undefined RowId displays as "Undefined"
         let lines: Vec<&str> = output.lines().collect();
         let first_data_line = lines[3]; // First data row
         let second_data_line = lines[4]; // Second data row
-        
+
         assert!(first_data_line.contains("1")); // First RowId value
         assert!(second_data_line.contains("Undefined")); // Second value should be undefined
     }

@@ -13,7 +13,7 @@ pub struct FrameColumnLayout {
 impl FrameColumnLayout {
     pub fn from_column(column: &FrameColumn) -> Self {
         Self {
-            name: column.name.clone(),
+            name: column.qualified_name(),
             ty: match column.values {
                 ColumnValues::Bool(_, _) => Type::Bool,
                 ColumnValues::Float4(_, _) => Type::Float4,

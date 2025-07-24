@@ -23,10 +23,10 @@ impl Evaluator {
             .ok_or(error!(function::unknown_function(function.clone())))?;
 
         let row_count = ctx.row_count;
-        Ok(FrameColumn {
-            name: call.span().fragment,
-            values: functor.scalar(&virtual_columns, row_count).unwrap(),
-        })
+        Ok(crate::create_frame_column(
+            call.span().fragment,
+            functor.scalar(&virtual_columns, row_count).unwrap()
+        ))
     }
 
     fn evaluate_virtual_column<'a>(

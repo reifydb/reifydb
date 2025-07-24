@@ -118,7 +118,11 @@ impl InlineDataNode {
             }
 
             frame_columns
-                .push(reifydb_core::frame::FrameColumn { name: column_name, values: column_values });
+                .push(reifydb_core::frame::FrameColumn { 
+                    frame: Some("inline".to_string()),
+                    name: column_name,
+                    values: column_values 
+                });
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");
@@ -180,6 +184,7 @@ impl InlineDataNode {
             }
 
             frame_columns.push(reifydb_core::frame::FrameColumn {
+                frame: Some("inline".to_string()),
                 name: column_layout.name.clone(),
                 values: column_values,
             });

@@ -53,7 +53,7 @@ impl ExecutionPlan for SortNode {
                 let col = frame
                     .columns
                     .iter()
-                    .find(|c| c.name == key.column.fragment)
+                    .find(|c| c.qualified_name() == key.column.fragment || c.name == key.column.fragment)
                     .ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
                 Ok::<_, reifydb_core::Error>((&col.values, &key.direction))
             })

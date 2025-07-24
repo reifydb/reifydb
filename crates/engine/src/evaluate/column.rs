@@ -8,6 +8,14 @@ use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
+    fn create_result_column(source_col: &FrameColumn, values: ColumnValues) -> FrameColumn {
+        FrameColumn {
+            frame: source_col.frame.clone(),
+            name: source_col.name.clone(),
+            values,
+        }
+    }
+
     pub(crate) fn column(
         &mut self,
         column: &ColumnExpression,
@@ -17,7 +25,7 @@ impl Evaluator {
         let col = ctx
             .columns
             .iter()
-            .find(|c| &c.name == name.as_str())
+            .find(|c| &c.qualified_name() == name.as_str() || &c.name == name.as_str())
             .ok_or(error!(column_not_found(column.0.clone())))?;
 
         let take = ctx.take.unwrap_or(usize::MAX);
@@ -45,7 +53,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::bool_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::bool_with_bitvec(values, bitvec)))
             }
 
             Value::Float4(_) => {
@@ -70,7 +78,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::float4_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::float4_with_bitvec(values, bitvec)))
             }
 
             Value::Float8(_) => {
@@ -95,7 +103,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::float8_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::float8_with_bitvec(values, bitvec)))
             }
 
             Value::Int1(_) => {
@@ -120,7 +128,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::int1_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::int1_with_bitvec(values, bitvec)))
             }
 
             Value::Int2(_) => {
@@ -145,7 +153,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::int2_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::int2_with_bitvec(values, bitvec)))
             }
 
             Value::Int4(_) => {
@@ -170,7 +178,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::int4_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::int4_with_bitvec(values, bitvec)))
             }
 
             Value::Int8(_) => {
@@ -195,7 +203,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::int8_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::int8_with_bitvec(values, bitvec)))
             }
 
             Value::Int16(_) => {
@@ -220,7 +228,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::int16_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::int16_with_bitvec(values, bitvec)))
             }
 
             Value::Utf8(_) => {
@@ -245,7 +253,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::utf8_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::utf8_with_bitvec(values, bitvec)))
             }
 
             Value::Uint1(_) => {
@@ -270,7 +278,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::uint1_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::uint1_with_bitvec(values, bitvec)))
             }
 
             Value::Uint2(_) => {
@@ -295,7 +303,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::uint2_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::uint2_with_bitvec(values, bitvec)))
             }
 
             Value::Uint4(_) => {
@@ -320,7 +328,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::uint4_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::uint4_with_bitvec(values, bitvec)))
             }
 
             Value::Uint8(_) => {
@@ -345,7 +353,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::uint8_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::uint8_with_bitvec(values, bitvec)))
             }
 
             Value::Uint16(_) => {
@@ -370,7 +378,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::uint16_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::uint16_with_bitvec(values, bitvec)))
             }
 
             Value::Date(_) => {
@@ -395,7 +403,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::date_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::date_with_bitvec(values, bitvec)))
             }
 
             Value::DateTime(_) => {
@@ -420,7 +428,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::datetime_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::datetime_with_bitvec(values, bitvec)))
             }
 
             Value::Time(_) => {
@@ -445,7 +453,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::time_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::time_with_bitvec(values, bitvec)))
             }
 
             Value::Interval(_) => {
@@ -470,7 +478,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::interval_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::interval_with_bitvec(values, bitvec)))
             }
             Value::RowId(_) => {
                 let mut values = Vec::new();
@@ -494,7 +502,7 @@ impl Evaluator {
                         count += 1;
                     }
                 }
-                Ok(FrameColumn { name, values: ColumnValues::row_id_with_bitvec(values, bitvec) })
+                Ok(Self::create_result_column(col, ColumnValues::row_id_with_bitvec(values, bitvec)))
             }
             _ => unimplemented!(),
         }

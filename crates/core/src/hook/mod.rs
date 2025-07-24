@@ -395,7 +395,6 @@ mod tests {
 
         let pool = HookPool::new();
         let mut queue1 = pool.get_queue();
-        let capacity1 = queue1.capacity();
 
         queue1.push(Box::new(TestHook {}));
         pool.return_queue(queue1);
