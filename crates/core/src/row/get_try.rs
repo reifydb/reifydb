@@ -3,6 +3,7 @@
 
 use crate::row::{EncodedRow, Layout};
 use crate::{Date, DateTime, Interval, Time};
+use crate::value::{Uuid4, Uuid7};
 
 impl Layout {
     pub fn try_get_bool(&self, row: &EncodedRow, index: usize) -> Option<bool> {
@@ -76,12 +77,21 @@ impl Layout {
     pub fn try_get_interval(&self, row: &EncodedRow, index: usize) -> Option<Interval> {
         if row.is_defined(index) { Some(self.get_interval(row, index)) } else { None }
     }
+
+    pub fn try_get_uuid4(&self, row: &EncodedRow, index: usize) -> Option<Uuid4> {
+        if row.is_defined(index) { Some(self.get_uuid4(row, index)) } else { None }
+    }
+
+    pub fn try_get_uuid7(&self, row: &EncodedRow, index: usize) -> Option<Uuid7> {
+        if row.is_defined(index) { Some(self.get_uuid7(row, index)) } else { None }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::row::Layout;
     use crate::{Type, Date, DateTime, Interval, Time};
+    use crate::value::{Uuid4, Uuid7};
 
     #[test]
     fn test_try_get_bool() {
@@ -526,5 +536,81 @@ mod tests {
         assert_eq!(layout.try_get_datetime(&row, 1), Some(test_datetime));
         assert_eq!(layout.try_get_time(&row, 2), None);
         assert_eq!(layout.try_get_interval(&row, 3), Some(test_interval));
+    }
+
+    #[test]
+    fn test_try_get_uuid4() {
+        let layout = Layout::new(&[Type::Uuid4]);
+        let mut row = layout.allocate_row();
+
+        assert_eq!(layout.try_get_uuid4(&row, 0), None);
+
+        let uuid = Uuid4::generate();
+        layout.set_uuid4(&mut row, 0, uuid.clone());
+        assert_eq!(layout.try_get_uuid4(&row, 0), Some(uuid));
+    }
+
+    #[test]
+    fn test_try_get_uuid7() {
+        let layout = Layout::new(&[Type::Uuid7]);
+        let mut row = layout.allocate_row();
+
+        assert_eq!(layout.try_get_uuid7(&row, 0), None);
+
+        let uuid = Uuid7::generate();
+        layout.set_uuid7(&mut row, 0, uuid.clone());
+        assert_eq!(layout.try_get_uuid7(&row, 0), Some(uuid));
+    }
+
+    #[test]
+    fn test_try_get_mixed_uuid_types() {
+        let layout = Layout::new(&[Type::Uuid4, Type::Bool, Type::Uuid7, Type::Int4]);
+        let mut row = layout.allocate_row();
+
+        // Initially all fields undefined
+        assert_eq!(layout.try_get_uuid4(&row, 0), None);
+        assert_eq!(layout.try_get_bool(&row, 1), None);
+        assert_eq!(layout.try_get_uuid7(&row, 2), None);
+        assert_eq!(layout.try_get_i32(&row, 3), None);
+
+        // Set only some fields
+        let uuid4 = Uuid4::generate();
+        let uuid7 = Uuid7::generate();
+
+        layout.set_uuid4(&mut row, 0, uuid4.clone());
+        layout.set_bool(&mut row, 1, true);
+        // Skip UUID7 field
+        layout.set_i32(&mut row, 3, 42);
+
+        assert_eq!(layout.try_get_uuid4(&row, 0), Some(uuid4));
+        assert_eq!(layout.try_get_bool(&row, 1), Some(true));
+        assert_eq!(layout.try_get_uuid7(&row, 2), None); // Still undefined
+        assert_eq!(layout.try_get_i32(&row, 3), Some(42));
+
+        // Set the remaining field
+        layout.set_uuid7(&mut row, 2, uuid7.clone());
+        assert_eq!(layout.try_get_uuid7(&row, 2), Some(uuid7));
+    }
+
+    #[test]
+    fn test_try_get_uuid_after_set_undefined() {
+        let layout = Layout::new(&[Type::Uuid4, Type::Uuid7]);
+        let mut row = layout.allocate_row();
+
+        let uuid4 = Uuid4::generate();
+        let uuid7 = Uuid7::generate();
+
+        // Set both UUID fields
+        layout.set_uuid4(&mut row, 0, uuid4.clone());
+        layout.set_uuid7(&mut row, 1, uuid7.clone());
+
+        assert_eq!(layout.try_get_uuid4(&row, 0), Some(uuid4));
+        assert_eq!(layout.try_get_uuid7(&row, 1), Some(uuid7.clone()));
+
+        // Set UUID4 field as undefined
+        layout.set_undefined(&mut row, 0);
+
+        assert_eq!(layout.try_get_uuid4(&row, 0), None);
+        assert_eq!(layout.try_get_uuid7(&row, 1), Some(uuid7)); // Still defined
     }
 }

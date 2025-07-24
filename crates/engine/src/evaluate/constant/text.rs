@@ -8,6 +8,7 @@ use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::{return_error, Span, Type};
 use temporal::TemporalParser;
 use super::temporal;
+use super::uuid::UuidParser;
 
 pub(crate) struct TextParser;
 
@@ -43,6 +44,12 @@ impl TextParser {
             }
             Type::Interval => {
                 TemporalParser::parse_temporal_type(span, Type::Interval, row_count)
+            }
+            Type::Uuid4 => {
+                UuidParser::from_text(span, Type::Uuid4, row_count)
+            }
+            Type::Uuid7 => {
+                UuidParser::from_text(span, Type::Uuid7, row_count)
             }
             _ => return_error!(cast::unsupported_cast(span.to_owned(), Type::Utf8, target)),
         }

@@ -4,11 +4,12 @@
 mod number;
 mod temporal;
 mod text;
+mod uuid;
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::{ColumnValues, FrameColumn};
 use number::NumberParser;
 use reifydb_core::error::diagnostic::cast;
+use reifydb_core::frame::{ColumnValues, FrameColumn};
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::{Type, return_error};
@@ -39,32 +40,9 @@ impl Evaluator {
         let values = Self::constant_value(&expr, row_count)?;
         let casted_values = {
             let source = values.get_type();
-            // Only use ColumnValues.cast() for cases where we know it works well
             if source == target {
                 values
-            } else if (source.is_number() && target.is_number())
-                || (source.is_number() && target.is_bool())
-                || (source == Type::Utf8 && target.is_temporal())
-                || (source == Type::Bool && target == Type::Bool)
-                || (source == Type::Utf8 && target == Type::Utf8)
-                || (source == Type::Undefined)
-                || (source == Type::Bool && target.is_number())
-            {
-                // These cases work well with ColumnValues.cast() and provide good diagnostics
-                // TODO: Re-enable cast functionality after resolving circular dependency
-                // For now, fall back to constant_value_of
-                Self::constant_value_of(&expr, target, row_count)?
-                /*
-                match values.cast(target, ctx, || expr.span().into()) {
-                    Ok(casted) => casted,
-                    Err(_) => {
-                        // Even in "good" cases, fall back if cast fails
-                        Self::constant_value_of(&expr, target, row_count)?
-                    }
-                }
-                */
             } else {
-                // For all other cases, use the original detailed logic
                 Self::constant_value_of(&expr, target, row_count)?
             }
         };
@@ -138,7 +116,10 @@ impl Evaluator {
                 NumberParser::from_number(span.clone(), target, row_count)?
             }
             (ConstantExpression::Text { span }, target)
-                if target.is_bool() || target.is_number() || target.is_temporal() =>
+                if target.is_bool()
+                    || target.is_number()
+                    || target.is_temporal()
+                    || target.is_uuid() =>
             {
                 TextParser::from_text(span.clone(), target, row_count)?
             }

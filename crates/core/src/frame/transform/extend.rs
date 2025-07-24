@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{ColumnValues, Frame};
 use crate::error::diagnostic::engine;
+use crate::frame::{ColumnValues, Frame};
 use crate::row::{EncodedRow, Layout};
 use crate::{BitVec, CowVec, Date, DateTime, Interval, Time, Type, return_error};
 
@@ -226,6 +226,14 @@ impl Frame {
                 }
                 (ColumnValues::Interval(vec, bitvec), Type::Interval) => {
                     vec.push(layout.get_interval(&row, index));
+                    bitvec.push(true);
+                }
+                (ColumnValues::Uuid4(vec, bitvec), Type::Uuid4) => {
+                    vec.push(layout.get_uuid4(&row, index));
+                    bitvec.push(true);
+                }
+                (ColumnValues::Uuid7(vec, bitvec), Type::Uuid7) => {
+                    vec.push(layout.get_uuid7(&row, index));
                     bitvec.push(true);
                 }
                 (_, v) => {

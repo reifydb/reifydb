@@ -5,6 +5,7 @@ pub mod boolean;
 pub mod number;
 pub mod temporal;
 pub mod text;
+pub mod uuid;
 
 use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
 use reifydb_core::error::diagnostic::cast;
@@ -60,14 +61,16 @@ pub fn cast_column_values(
         }
         return Ok(result);
     }
-    match target {
-        _ if target == values.get_type() => Ok(values.clone()),
-        _ if target.is_number() => number::to_number(values, target, ctx, span),
-        _ if target.is_bool() => boolean::to_boolean(values, span),
-        _ if target.is_utf8() => text::to_text(values, span),
-        _ if target.is_temporal() => temporal::to_temporal(values, target, span),
+    let source_type = values.get_type();
+    match (source_type, target) {
+        _ if target == source_type => Ok(values.clone()),
+        (_, target) if target.is_number() => number::to_number(values, target, ctx, span),
+        (_, target) if target.is_bool() => boolean::to_boolean(values, span),
+        (_, target) if target.is_utf8() => text::to_text(values, span),
+        (_, target) if target.is_temporal() => temporal::to_temporal(values, target, span),
+        (_, target) if target.is_uuid() => uuid::to_uuid(values, target, span),
+        (source, target) if source.is_uuid() || target.is_uuid() => uuid::to_uuid(values, target, span),
         _ => {
-            let source_type = values.get_type();
             err!(cast::unsupported_cast(span(), source_type, target))
         }
     }

@@ -80,14 +80,7 @@ impl ReifyDB {
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded() -> (
-        embedded_blocking::Embedded<
-            Memory,
-            Memory,
-            ::reifydb_transaction::mvcc::transaction::serializable::Serializable<Memory, Memory>,
-        >,
-        Principal,
-    ) {
+    pub fn embedded() -> embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>> {
         Self::embedded_blocking()
     }
 
@@ -128,11 +121,7 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "server")]
-    pub fn server() -> Server<
-        Memory,
-        Memory,
-        Serializable<Memory, Memory>,
-    > {
+    pub fn server() -> Server<Memory, Memory, Serializable<Memory, Memory>> {
         let (transaction, hooks) = serializable(memory());
         let engine = Engine::new(transaction, hooks).unwrap();
         Server::new(engine)

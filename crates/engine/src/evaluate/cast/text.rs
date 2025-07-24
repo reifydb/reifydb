@@ -25,6 +25,8 @@ pub fn to_text(values: &ColumnValues, span: impl Fn() -> OwnedSpan) -> crate::Re
         ColumnValues::DateTime(vals, bitvec) => from(vals, bitvec),
         ColumnValues::Time(vals, bitvec) => from(vals, bitvec),
         ColumnValues::Interval(vals, bitvec) => from(vals, bitvec),
+        ColumnValues::Uuid4(vals, bitvec) => from(vals, bitvec),
+        ColumnValues::Uuid7(vals, bitvec) => from(vals, bitvec),
         _ => {
             let source_type = values.get_type();
             reifydb_core::err!(cast::unsupported_cast(span(), source_type, Type::Utf8))

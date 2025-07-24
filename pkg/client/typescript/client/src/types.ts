@@ -11,6 +11,7 @@ export type DataType =
     | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"
     | "Utf8"
     | "Date" | "DateTime" | "Time" | "Interval"
+    | "Uuid4" | "Uuid7"
     | "Undefined";
 
 export interface WebsocketFrame {

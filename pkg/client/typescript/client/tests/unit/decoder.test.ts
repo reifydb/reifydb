@@ -13,7 +13,7 @@ const UNDEFINED_VALUE = "⟪undefined⟫";
 describe('decodeValue', () => {
     describe('undefined value handling', () => {
         it('should return undefined for ⟪undefined⟫ regardless of type', () => {
-            const types: DataType[] = ['Bool', 'Float4', 'Int1', 'Utf8', 'Date', 'DateTime', 'Time', 'Interval', 'Undefined'];
+            const types: DataType[] = ['Bool', 'Float4', 'Int1', 'Utf8', 'Date', 'DateTime', 'Time', 'Interval', 'Uuid4', 'Uuid7', 'Undefined'];
 
             types.forEach(ty => {
                 expect(decodeValue(ty, UNDEFINED_VALUE)).toBeUndefined();
@@ -339,6 +339,40 @@ describe('decodeValue', () => {
             expect(interval.totalHours).toBe(BigInt(26)); // 1 day + 2 hours
             expect(interval.totalMinutes).toBe(BigInt(1590)); // 26 hours + 30 minutes
             expect(interval.totalSeconds).toBe(BigInt(95445)); // 1590 minutes + 45 seconds
+        });
+    });
+
+    describe('UUID types (Uuid4, Uuid7)', () => {
+        const uuidTypes: DataType[] = ['Uuid4', 'Uuid7'];
+
+        uuidTypes.forEach(ty => {
+            describe(`${ty}`, () => {
+                it('should return UUID string as-is', () => {
+                    const uuid4 = '550e8400-e29b-41d4-a716-446655440000';
+                    const uuid7 = '018fad5d-f37a-7c94-a716-446655440000';
+                    
+                    if (ty === 'Uuid4') {
+                        expect(decodeValue(ty, uuid4)).toBe(uuid4);
+                    } else {
+                        expect(decodeValue(ty, uuid7)).toBe(uuid7);
+                    }
+                });
+
+                it('should handle uppercase UUIDs', () => {
+                    const uppercaseUuid = '550E8400-E29B-41D4-A716-446655440000';
+                    expect(decodeValue(ty, uppercaseUuid)).toBe(uppercaseUuid);
+                });
+
+                it('should handle empty string', () => {
+                    expect(decodeValue(ty, '')).toBe('');
+                });
+
+                it('should handle malformed UUID strings', () => {
+                    // The decoder doesn't validate UUID format, just returns the string
+                    expect(decodeValue(ty, 'not-a-uuid')).toBe('not-a-uuid');
+                    expect(decodeValue(ty, '123')).toBe('123');
+                });
+            });
         });
     });
 

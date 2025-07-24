@@ -3,7 +3,7 @@
 
 use crate::Type;
 use crate::row::{EncodedRow, Layout};
-use crate::value::{Date, DateTime, Interval, Time};
+use crate::value::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
 use std::ptr;
 use uuid::Uuid;
 
@@ -277,6 +277,40 @@ impl Layout {
         }
     }
 
+    pub fn set_uuid4(&self, row: &mut EncodedRow, index: usize, value: Uuid4) {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert_eq!(field.value, Type::Uuid4);
+        row.set_valid(index, true);
+        unsafe {
+            // UUIDs are 16 bytes
+            let uuid: Uuid = value.into();
+            let bytes = uuid.as_bytes();
+            ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                row.make_mut().as_mut_ptr().add(field.offset),
+                16,
+            );
+        }
+    }
+
+    pub fn set_uuid7(&self, row: &mut EncodedRow, index: usize, value: Uuid7) {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert_eq!(field.value, Type::Uuid7);
+        row.set_valid(index, true);
+        unsafe {
+            // UUIDs are 16 bytes
+            let uuid: Uuid = value.into();
+            let bytes = uuid.as_bytes();
+            ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                row.make_mut().as_mut_ptr().add(field.offset),
+                16,
+            );
+        }
+    }
+
     pub fn set_undefined(&self, row: &mut EncodedRow, index: usize) {
         debug_assert!(row.len() >= self.total_static_size());
         let field = &self.fields[index];
@@ -294,7 +328,7 @@ impl Layout {
 mod tests {
     use crate::Type;
     use crate::row::Layout;
-    use crate::value::{Date, DateTime, Interval, Time};
+    use crate::value::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
 
     #[test]
     fn test_bool_and_clone_on_write() {
@@ -876,5 +910,48 @@ mod tests {
         assert_eq!(layout.get_time(&row, 4), time);
         assert_eq!(layout.get_i32(&row, 5), 42);
         assert_eq!(layout.get_interval(&row, 6), interval);
+    }
+
+    #[test]
+    fn test_uuid4_set_and_get() {
+        let layout = Layout::new(&[Type::Uuid4]);
+        let mut row = layout.allocate_row();
+
+        let uuid = Uuid4::generate();
+        layout.set_uuid4(&mut row, 0, uuid.clone());
+
+        assert!(row.is_defined(0));
+        assert_eq!(layout.get_uuid4(&row, 0), uuid);
+    }
+
+    #[test]
+    fn test_uuid7_set_and_get() {
+        let layout = Layout::new(&[Type::Uuid7]);
+        let mut row = layout.allocate_row();
+
+        let uuid = Uuid7::generate();
+        layout.set_uuid7(&mut row, 0, uuid.clone());
+
+        assert!(row.is_defined(0));
+        assert_eq!(layout.get_uuid7(&row, 0), uuid);
+    }
+
+    #[test]
+    fn test_uuid_clone_on_write() {
+        let layout = Layout::new(&[Type::Uuid4]);
+        let row1 = layout.allocate_row();
+        let mut row2 = row1.clone();
+
+        assert!(!row1.is_defined(0));
+        assert!(!row2.is_defined(0));
+
+        let uuid = Uuid4::generate();
+        layout.set_uuid4(&mut row2, 0, uuid.clone());
+
+        assert!(row2.is_defined(0));
+        assert_eq!(layout.get_uuid4(&row2, 0), uuid);
+
+        assert!(!row1.is_defined(0));
+        assert_ne!(row1.as_ptr(), row2.as_ptr());
     }
 }

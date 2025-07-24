@@ -5,6 +5,7 @@ use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::frame::{ColumnValues, FrameColumn};
 use reifydb_core::error::diagnostic::query::column_not_found;
 use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
+use reifydb_core::value::{Uuid4, Uuid7};
 use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
@@ -495,6 +496,54 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn { name, values: ColumnValues::row_id_with_bitvec(values, bitvec) })
+            }
+            Value::Uuid4(_) => {
+                let mut values = Vec::new();
+                let mut bitvec = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.values.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        match v {
+                            Value::Uuid4(i) => {
+                                values.push(i.clone());
+                                bitvec.push(true);
+                            }
+                            _ => {
+                                values.push(Uuid4::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(FrameColumn { name, values: ColumnValues::uuid4_with_bitvec(values, bitvec) })
+            }
+            Value::Uuid7(_) => {
+                let mut values = Vec::new();
+                let mut bitvec = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.values.iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        match v {
+                            Value::Uuid7(i) => {
+                                values.push(i.clone());
+                                bitvec.push(true);
+                            }
+                            _ => {
+                                values.push(Uuid7::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(FrameColumn { name, values: ColumnValues::uuid7_with_bitvec(values, bitvec) })
             }
             _ => unimplemented!(),
         }

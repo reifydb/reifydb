@@ -231,6 +231,26 @@ describe('Websocket Data Type', () => {
             const expected = BigInt((24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000);
             expect(result.totalNanoseconds).toBe(expected);
         }, 1000);
+
+        it('uuid4', async () => {
+            const frames = await wsClient.tx<[{ result: string }]>(
+                "map cast('550e8400-e29b-41d4-a716-446655440000', uuid4) as result;"
+            );
+
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toHaveLength(1);
+            expect(frames[0][0].result).toBe('550e8400-e29b-41d4-a716-446655440000');
+        }, 1000);
+
+        it('uuid7', async () => {
+            const frames = await wsClient.tx<[{ result: string }]>(
+                "map cast('018fad5d-f37a-7c94-a716-446655440000', uuid7) as result;"
+            );
+
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toHaveLength(1);
+            expect(frames[0][0].result).toBe('018fad5d-f37a-7c94-a716-446655440000');
+        }, 1000);
     });
 
 
@@ -425,6 +445,26 @@ describe('Websocket Data Type', () => {
             // 1 day + 2 hours + 30 minutes = (24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000 nanos
             const expected = BigInt((24 * 60 * 60 + 2 * 60 * 60 + 30 * 60) * 1_000_000_000);
             expect(result.totalNanoseconds).toBe(expected);
+        }, 1000);
+
+        it('uuid4', async () => {
+            const frames = await wsClient.rx<[{ result: string }]>(
+                "map cast('550e8400-e29b-41d4-a716-446655440000', uuid4) as result;"
+            );
+
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toHaveLength(1);
+            expect(frames[0][0].result).toBe('550e8400-e29b-41d4-a716-446655440000');
+        }, 1000);
+
+        it('uuid7', async () => {
+            const frames = await wsClient.rx<[{ result: string }]>(
+                "map cast('018fad5d-f37a-7c94-a716-446655440000', uuid7) as result;"
+            );
+
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toHaveLength(1);
+            expect(frames[0][0].result).toBe('018fad5d-f37a-7c94-a716-446655440000');
         }, 1000);
     });
 

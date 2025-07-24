@@ -26,15 +26,14 @@ fn main() {
     )
     .unwrap();
 
-    // let l = db
-    //     .tx_as(
-    //         &root,
-    //         r#"
-    //       from test.abc
-    //     "#,
-    //     )
-    //     .unwrap();
-    // println!("{}", l.first().unwrap());
+    let l = db
+        .tx_as_root(
+            r#"
+          map cast('550e8400-e29b-41d4-a716-44665544', UUID4) as uuid
+        "#,
+        )
+        .unwrap();
+    println!("{}", l.first().unwrap());
 
     //     for l in db
     //         .tx_as(
