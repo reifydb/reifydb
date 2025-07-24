@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::client::GrpcClient;
-use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::interface::{Engine, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::retry;
 use reifydb::network::grpc::server::GrpcConfig;
 use reifydb::server::Server;
@@ -16,22 +16,24 @@ use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
-pub struct GrpcRunner<VS, US, T>
+pub struct GrpcRunner<VS, US, T, E>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
 {
-    server: Option<Server<VS, US, T>>,
+    server: Option<Server<VS, US, T, E>>,
     client: Option<GrpcClient>,
     runtime: Option<Runtime>,
 }
 
-impl<VS, US, T> GrpcRunner<VS, US, T>
+impl<VS, US, T, E> GrpcRunner<VS, US, T, E>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
 {
     pub fn new(transaction: T) -> Self {
         let server = ReifyDB::server_with(transaction)

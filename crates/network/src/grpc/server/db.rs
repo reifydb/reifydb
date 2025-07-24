@@ -11,28 +11,32 @@ use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Type, Value};
-use reifydb_engine::Engine;
 use reifydb_core::frame::Frame;
+use reifydb_core::interface::{
+    Engine, Principal, Transaction, UnversionedStorage, VersionedStorage,
+};
+use reifydb_core::{Type, Value};
 
-pub struct DbService<VS, US, T>
+pub struct DbService<VS, US, T, E>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
 {
-    pub(crate) engine: Arc<Engine<VS, US, T>>,
+    pub(crate) engine: Arc<E>,
+    _phantom: std::marker::PhantomData<(VS, US, T)>,
 }
 
-impl<VS, US, T> DbService<VS, US, T>
+impl<VS, US, T, E> DbService<VS, US, T, E>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
 {
-    pub fn new(engine: Engine<VS, US, T>) -> Self {
-        Self { engine: Arc::new(engine) }
+    pub fn new(engine: E) -> Self {
+        Self { engine: Arc::new(engine), _phantom: std::marker::PhantomData }
     }
 }
 
@@ -40,11 +44,12 @@ pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc::TxResult, Statu
 pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc::RxResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<VS, US, T> grpc::db_server::Db for DbService<VS, US, T>
+impl<VS, US, T, E> grpc::db_server::Db for DbService<VS, US, T, E>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
 {
     type TxStream = TxResultStream;
 
@@ -198,13 +203,11 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                             Value::Time(t) => GrpcType::TimeValue(Time {
                                 nanos_since_midnight: t.to_nanos_since_midnight(),
                             }),
-                            Value::Interval(i) => {
-                                GrpcType::IntervalValue(Interval { 
-                                    months: i.get_months(),
-                                    days: i.get_days(),
-                                    nanos: i.get_nanos()
-                                })
-                            }
+                            Value::Interval(i) => GrpcType::IntervalValue(Interval {
+                                months: i.get_months(),
+                                days: i.get_days(),
+                                nanos: i.get_nanos(),
+                            }),
                             Value::Undefined => GrpcType::UndefinedValue(false),
                             Value::RowId(row_id) => GrpcType::RowIdValue(row_id.value()),
                         };

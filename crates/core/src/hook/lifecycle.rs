@@ -1,79 +1,52 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::hook::context::HookContext;
-use crate::hook::registry::Registry;
-use crate::interface::{Transaction, UnversionedStorage, VersionedStorage};
-use std::error::Error;
+use crate::hook::Hook;
+use crate::interface::{Engine, Transaction, UnversionedStorage, VersionedStorage};
+use std::any::Any;
 
-pub trait OnAfterBootHook<VS, US, T>: Send + Sync + 'static
+pub struct OnStartHook<VS, US, T, E>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
 {
-    fn on_after_boot(&self, ctx: HookContext<VS, US, T>) -> Result<(), Box<dyn Error>>;
+    pub engine: E,
+    pub _phantom: std::marker::PhantomData<(VS, US, T)>,
 }
 
-pub trait OnBeforeBootstrapHook<VS, US, T>: Send + Sync + 'static
+impl<VS, US, T, E> Hook for OnStartHook<VS, US, T, E>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
 {
-    fn on_before_bootstrap(&self, ctx: &HookContext<VS, US, T>) -> Result<(), Box<dyn Error>>;
-}
-
-pub trait OnCreateHook<VS, US, T>: Send + Sync + 'static
-where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
-{
-    fn on_create(&self, ctx: &HookContext<VS, US, T>) -> Result<(), Box<dyn Error>>;
-}
-
-pub struct LifecycleHookRegistry<VS, US, T>
-where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
-{
-    after_boot: Registry<dyn OnAfterBootHook<VS, US, T>>,
-    before_bootstrap: Registry<dyn OnBeforeBootstrapHook<VS, US, T>>,
-    on_create: Registry<dyn OnCreateHook<VS, US, T>>,
-}
-
-impl<VS, US, T> Default for LifecycleHookRegistry<VS, US, T>
-where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
-{
-    fn default() -> Self {
-        Self {
-            after_boot: Registry::default(),
-            before_bootstrap: Registry::default(),
-            on_create: Registry::default(),
-        }
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
-impl<VS, US, T> LifecycleHookRegistry<VS, US, T>
+pub struct OnCreateHook<VS, US, T, E>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
 {
-    pub fn after_boot(&self) -> &Registry<dyn OnAfterBootHook<VS, US, T>> {
-        &self.after_boot
-    }
+    pub engine: E,
+    pub _phantom: std::marker::PhantomData<(VS, US, T)>,
+}
 
-    pub fn before_bootstrap(&self) -> &Registry<dyn OnBeforeBootstrapHook<VS, US, T>> {
-        &self.before_bootstrap
-    }
-
-    pub fn on_create(&self) -> &Registry<dyn OnCreateHook<VS, US, T>> {
-        &self.on_create
+impl<VS, US, T, E> Hook for OnCreateHook<VS, US, T, E>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+    E: Engine<VS, US, T>,
+{
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

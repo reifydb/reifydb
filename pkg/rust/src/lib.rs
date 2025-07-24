@@ -1,24 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! # ReifyDB
-//!
-//! ReifyDB is an embeddable application backend engine that blends a high-level query language
-//! (RQL – Reify Query Language) with a low-level key-value store system.
-//!
-//! It is designed for rapid prototyping, persistent data manipulation, and embedding powerful
-//! logic directly into your app — without the need for a traditional database server.
-//!
-//! The system is composed of several submodules:
-//!
-//! - [`encoding`]: Handles serialization and deserialization of data types.
-//! - [`rql`]: The high-level query language layer, responsible for parsing, planning, optimizing, and executing queries.
-//! - [`store`]: The underlying key-value store responsible for persistence and data access.
-//!
-//! ReifyDB aims to be minimal, developer-first, and flexible enough to power backends, embedded analytics, and local-first systems.
-//!
-//! See also: [`testscript`] for running integration-style script tests.
-
 // #![cfg_attr(not(debug_assertions), deny(missing_docs))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
@@ -40,9 +22,12 @@ use std::path::Path;
 use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
-use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::frame::Frame;
+use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{
+    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+};
+use reifydb_engine::Engine;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
 /// The underlying persistence responsible for data access.
@@ -81,13 +66,15 @@ pub trait DB<'a>: Sized {
 impl ReifyDB {
     #[cfg(feature = "embedded")]
     pub fn embedded() -> (Embedded<Memory, Memory, Serializable<Memory, Memory>>, Principal) {
-        Embedded::new(serializable(memory()))
+        let hooks = Hooks::default();
+        Embedded::new(serializable(memory(), hooks.clone()), hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking()
     -> (embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>>, Principal) {
-        embedded_blocking::Embedded::new(serializable(memory())).unwrap()
+        let hooks = Hooks::default();
+        embedded_blocking::Embedded::new(serializable(memory(), hooks.clone()), hooks).unwrap()
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
@@ -103,69 +90,83 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<VS, US, T>(transaction: T) -> (Embedded<VS, US, T>, Principal)
+    pub fn embedded_with<VS, US, T>(
+        transaction: T,
+        hooks: Hooks,
+    ) -> (Embedded<VS, US, T>, Principal)
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
     {
-        Embedded::new(transaction)
+        Embedded::new(transaction, hooks)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
     pub fn embedded_with<VS, US, T>(
         transaction: T,
+        hooks: Hooks,
     ) -> (embedded_blocking::Embedded<VS, US, T>, Principal)
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
     {
-        embedded_blocking::Embedded::new(transaction).unwrap()
+        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking_with<VS, US, T>(
         transaction: T,
+        hooks: Hooks,
     ) -> (embedded_blocking::Embedded<VS, US, T>, Principal)
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
     {
-        embedded_blocking::Embedded::new(transaction).unwrap()
+        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
     }
 
     #[cfg(feature = "server")]
-    pub fn server() -> Server<Memory, Memory, Serializable<Memory, Memory>> {
-        Server::new(serializable(memory()))
+    pub fn server() -> Server<
+        Memory,
+        Memory,
+        Serializable<Memory, Memory>,
+        Engine<Memory, Memory, Serializable<Memory, Memory>>,
+    > {
+        let hooks = Hooks::default();
+        let transaction = serializable(memory(), hooks.clone());
+        let engine = Engine::new(transaction, hooks).unwrap();
+        Server::new(engine)
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<VS, US, T>(transaction: T) -> Server<VS, US, T>
+    pub fn server_with<VS, US, T, E>(engine: E) -> Server<VS, US, T, E>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
+        E: EngineInterface<VS, US, T>,
     {
-        Server::new(transaction)
+        Server::new(engine)
     }
 }
 
-pub fn serializable<VS, US>(storage: (VS, US)) -> Serializable<VS, US>
+pub fn serializable<VS, US>(storage: (VS, US), hooks: Hooks) -> Serializable<VS, US>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
 {
-    Serializable::new(storage.0, storage.1, Hooks::default())
+    Serializable::new(storage.0, storage.1, hooks)
 }
 
-pub fn optimistic<VS, US>(storage: (VS, US)) -> Optimistic<VS, US>
+pub fn optimistic<VS, US>(storage: (VS, US), hooks: Hooks) -> Optimistic<VS, US>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
 {
-    Optimistic::new(storage.0, storage.1, Hooks::default())
+    Optimistic::new(storage.0, storage.1, hooks)
 }
 
 pub fn memory() -> (Memory, Memory) {

@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_core::frame::Frame;
+use reifydb_core::hook::Hooks;
 
 pub struct Embedded<VS, US, T>
 where
@@ -31,9 +32,9 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> crate::Result<(Self, Principal)> {
+    pub fn new(transaction: T, hooks: Hooks) -> crate::Result<(Self, Principal)> {
         let principal = Principal::System { id: 1, name: "root".to_string() };
-        Ok((Self { engine: Engine::new(transaction)? }, principal))
+        Ok((Self { engine: Engine::new(transaction, hooks)? }, principal))
     }
 }
 

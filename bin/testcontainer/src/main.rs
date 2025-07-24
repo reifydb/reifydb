@@ -39,16 +39,16 @@ fn main() {
     ReifyDB::server()
         .with_websocket(WsConfig::default())
         .on_create(|ctx| {
-//             ctx.db.tx_as_root("create schema test")?;
-//             ctx.db.tx_as_root("create table test.arith(id: int2, value: int2, num: int2)")?;
-//             ctx.db.tx_as_root("from [
-//     { id: 1, value: 1, num: 5  },
-//     { id: 1, value: 1, num: 10 },
-//     { id: 1, value: 2, num: 15 },
-//     { id: 2, value: 1, num: 10 },
-//     { id: 2, value: 1, num: 30 }
-//   ] insert test.arith
-// ")?;
+            ctx.tx_as_root("create schema test")?;
+            ctx.tx_as_root("create table test.arith(id: int1, value: int2, num: int2)")?;
+            ctx.tx_as_root("from [
+                { id: 1, value: 1, num: 5  },
+                { id: 1, value: 1, num: 10 },
+                { id: 1, value: 2, num: 15 },
+                { id: 2, value: 1, num: 10 },
+                { id: 2, value: 1, num: 30 }
+              ] insert test.arith
+            ")?;
             Ok(())
         })
         .serve_blocking(&rt, rx)

@@ -2,9 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::DB;
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_engine::Engine;
 use reifydb_core::frame::Frame;
+use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{
+    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+};
+use reifydb_engine::Engine;
 use tokio::task::spawn_blocking;
 
 pub struct Embedded<VS, US, T>
@@ -33,9 +36,9 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> (Self, Principal) {
+    pub fn new(transaction: T, hooks: Hooks) -> (Self, Principal) {
         let principal = Principal::System { id: 1, name: "root".to_string() };
-        (Self { engine: Engine::new(transaction).unwrap() }, principal)
+        (Self { engine: Engine::new(transaction, hooks).unwrap() }, principal)
     }
 }
 

@@ -6,14 +6,18 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
+use reifydb::core::hook::Hooks;
 use reifydb::{ReifyDB, memory, serializable};
 
 fn main() {
-    let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory()));
+    let hooks = Hooks::default();
+    let (db, root) = ReifyDB::embedded_blocking_with(serializable(memory(), hooks.clone()), hooks);
 
     db.tx_as(&root, r#"create schema test"#).unwrap();
     db.tx_as(&root, r#"create table test.nulls(id: int4, value: int4, name: utf8)"#).unwrap();
-    db.tx_as(&root, r#"
+    db.tx_as(
+        &root,
+        r#"
       from [
         { id: 1, value: 10, name: "valid" },
         { id: 2, value: undefined, name: "partial" },
@@ -21,7 +25,9 @@ fn main() {
         { id: 4, value: undefined, name: undefined },
         { id: 5, value: 0, name: "zero" }
       ] insert test.nulls
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
 
     // let l = db
     //     .tx_as(
@@ -33,14 +39,14 @@ fn main() {
     //     .unwrap();
     // println!("{}", l.first().unwrap());
 
-//     for l in db
-//         .tx_as(
-//             &root,
-//             r#"from test.nulls filter value > 0
-// }"#,
-//         )
-//         .unwrap()
-//     {
-//         println!("{}", l);
-//     }
+    //     for l in db
+    //         .tx_as(
+    //             &root,
+    //             r#"from test.nulls filter value > 0
+    // }"#,
+    //         )
+    //         .unwrap()
+    //     {
+    //         println!("{}", l);
+    //     }
 }
