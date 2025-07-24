@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
-use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
     BoxedVersionedIter, Rx, Transaction, Tx, UnversionedStorage, Versioned, VersionedStorage,
 };
@@ -20,10 +19,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optim
 
     fn begin_tx(&self) -> Result<Self::Tx, Error> {
         Ok(self.begin_tx())
-    }
-
-    fn hooks(&self) -> Hooks<VS, US, Self> {
-        self.hooks.clone()
     }
 
     fn versioned(&self) -> VS {

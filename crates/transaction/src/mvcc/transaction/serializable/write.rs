@@ -19,6 +19,7 @@ use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::clock::LocalClock;
 use reifydb_core::delta::Delta;
+use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};
 use reifydb_core::interface::UnversionedStorage;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
@@ -58,8 +59,13 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
             }
 
             for (version, deltas) in grouped {
-                self.engine.versioned.apply(deltas, version);
+                self.engine.hooks.trigger(PreCommitHook { deltas: deltas.clone(), version })?;
+
+                self.engine.versioned.apply(deltas.clone(), version);
+
+                self.engine.hooks.trigger(PostCommitHook { deltas, version })?;
             }
+
             Ok(())
         })
     }
@@ -91,7 +97,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         }
     }
 
-    pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, reifydb_core::Error> {
+    pub fn get(
+        &mut self,
+        key: &EncodedKey,
+    ) -> Result<Option<TransactionValue>, reifydb_core::Error> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {

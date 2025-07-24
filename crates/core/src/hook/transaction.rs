@@ -2,36 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::delta::Delta;
-use crate::hook::registry::Registry;
-use crate::{CowVec, Version};
-use std::error::Error;
+use crate::{CowVec, Version, impl_hook};
 
-pub trait PreCommitHook: Send + Sync + 'static {
-    // if this hook fails, it rolls back the transaction
-    fn on_pre_commit(
-        &self,
-        deltas: CowVec<Delta>,
-        version: Version,
-    ) -> Result<(), Box<dyn Error>>;
+pub struct PreCommitHook {
+    pub deltas: CowVec<Delta>,
+    pub version: Version,
 }
 
-pub trait PostCommitHook: Send + Sync + 'static {
-    fn on_post_commit(&self, deltas: CowVec<Delta>, version: Version);
+impl_hook!(PreCommitHook);
+
+pub struct PostCommitHook {
+    pub deltas: CowVec<Delta>,
+    pub version: Version,
 }
 
-#[derive(Default)]
-pub struct TransactionHookRegistry {
-    pre_commit: Registry<dyn PreCommitHook>,
-    post_commit: Registry<dyn PostCommitHook>,
-}
-
-
-impl TransactionHookRegistry {
-    pub fn pre_commit(&self) -> &Registry<dyn PreCommitHook> {
-        &self.pre_commit
-    }
-
-    pub fn post_commit(&self) -> &Registry<dyn PostCommitHook> {
-        &self.post_commit
-    }
-}
+impl_hook!(PostCommitHook);

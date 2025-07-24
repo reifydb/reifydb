@@ -7,7 +7,9 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 pub use error::Error;
-pub use interface::{BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine};
+pub use interface::{
+    BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine,
+};
 pub use row::key::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};

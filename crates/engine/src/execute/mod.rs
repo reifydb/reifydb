@@ -35,7 +35,7 @@ pub(crate) trait ExecutionPlan {
 
 pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     functions: Functions,
-    _marker: PhantomData<(VS, US)>,
+    _phantom: PhantomData<(VS, US)>,
 }
 
 pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
@@ -52,7 +52,7 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),
-        _marker: PhantomData,
+        _phantom: PhantomData,
     };
 
     executor.execute_rx(rx, plan)
@@ -72,7 +72,7 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),
-        _marker: PhantomData,
+        _phantom: PhantomData,
     };
 
     executor.execute_tx(tx, plan)

@@ -48,16 +48,11 @@ pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
     pub(crate) versioned: VS,
     pub(crate) unversioned: RwLock<US>,
-    pub(crate) hooks: Hooks<VS, US, Optimistic<VS, US>>,
+    pub(crate) hooks: Hooks,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
-    fn new(
-        name: &str,
-        versioned: VS,
-        unversioned: US,
-        hooks: Hooks<VS, US, Optimistic<VS, US>>,
-    ) -> Self {
+    fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks) -> Self {
         let tm = TransactionManager::new(name, LocalClock::new());
         Self { tm, versioned, unversioned: RwLock::new(unversioned), hooks }
     }
@@ -68,7 +63,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Optimistic<VS, US> {
-    pub fn new(versioned: VS, unversioned: US, hooks: Hooks<VS, US, Optimistic<VS, US>>) -> Self {
+    pub fn new(versioned: VS, unversioned: US, hooks: Hooks) -> Self {
         Self(Arc::new(Inner::new(core::any::type_name::<Self>(), versioned, unversioned, hooks)))
     }
 }

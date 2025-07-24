@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::mvcc::transaction::serializable::{Serializable, TransactionRx, TransactionTx};
-use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
     BoxedVersionedIter, Rx, Transaction, Tx, UnversionedStorage, Versioned, VersionedStorage,
 };
@@ -28,10 +27,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Seria
 
     fn begin_unversioned_tx(&self) -> RwLockWriteGuard<US> {
         self.unversioned.write().unwrap()
-    }
-
-    fn hooks(&self) -> Hooks<VS, US, Self> {
-        self.hooks.clone()
     }
 
     fn versioned(&self) -> VS {

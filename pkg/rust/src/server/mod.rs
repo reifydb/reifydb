@@ -1,19 +1,47 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::hook::{HookContext, OnBeforeBootstrapHook, OnCreateHook};
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::frame::Frame;
+use reifydb_core::hook::lifecycle::{OnCreateHook, OnStartHook};
+use reifydb_core::hook::{BoxedHookIter, Callback};
+use reifydb_core::interface::{
+    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+};
+use reifydb_core::return_hooks;
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use reifydb_network::ws::server::{WsConfig, WsServer};
-use std::error::Error;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::select;
 use tokio::sync::oneshot::Receiver;
 use tokio::task::JoinSet;
+
+struct OnCreateCallback<VS, US, T, F>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+    F: Fn(&OnCreateContext<VS, US, T>) -> crate::Result<()> + Send + Sync + 'static,
+{
+    callback: F,
+    engine: Engine<VS, US, T>,
+}
+
+impl<VS, US, T, F> Callback<OnCreateHook> for OnCreateCallback<VS, US, T, F>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+    F: Fn(&OnCreateContext<VS, US, T>) -> crate::Result<()> + Send + Sync + 'static,
+{
+    fn on(&self, _hook: &OnCreateHook) -> Result<BoxedHookIter, reifydb_core::Error> {
+        let context = OnCreateContext::new(self.engine.clone());
+        (self.callback)(&context)?;
+        return_hooks!()
+    }
+}
 
 pub struct Server<VS, US, T>
 where
@@ -56,16 +84,8 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> Self {
-        Self {
-            engine: Engine::new(transaction).unwrap(),
-
-            grpc_config: None,
-            grpc: None,
-
-            ws_config: None,
-            ws: None,
-        }
+    pub fn new(engine: Engine<VS, US, T>) -> Self {
+        Self { engine, grpc_config: None, grpc: None, ws_config: None, ws: None }
     }
 
     pub fn ws_socket_addr(&self) -> Option<SocketAddr> {
@@ -76,45 +96,27 @@ where
         self.grpc.as_ref().and_then(|grpc| grpc.socket_addr())
     }
 
-    pub fn before_bootstrap_hook<H>(self, hook: H) -> Self
-    where
-        H: OnBeforeBootstrapHook<VS, US, T>,
-    {
-        self.engine.hooks().lifecycle().before_bootstrap().register(Arc::new(hook));
-        self
-    }
-
     /// will only be invoked when a new database gets created
-    pub fn on_create_hook<H>(self, hook: H) -> Self
-    where
-        H: OnCreateHook<VS, US, T>,
-    {
-        self.engine.hooks().lifecycle().on_create().register(Arc::new(hook));
-        self
-    }
+    // pub fn on_create_hook<H>(self, hook: OnCreateHook) -> Self {
+    //     // self.engine.hooks().lifecycle().on_create().register(Arc::new(hook));
+    //     todo!();
+    //     self
+    // }
 
-    pub fn serve(&mut self, rt: &Runtime) -> Result<(), Box<dyn Error>> {
-        // let before_ctx = OnBeforeBootstrapHookContext {};
-        // self.engine
-        //     .hooks()
-        //     .lifecycle()
-        //     .before_bootstrap()
-        //     .for_each(|hook| hook.on_before_bootstrap(&before_ctx))?;
-        //
-        // let create_ctx = OnCreateHookContext { db: &self.engine };
-        // self.engine.hooks().lifecycle().on_create().for_each(|hook| hook.on_create(&create_ctx))?;
-        todo!();
+    pub fn serve(&mut self, rt: &Runtime) -> crate::Result<()> {
+        self.engine.hooks().trigger(OnCreateHook {})?; // FIXME this must be triggered by storage
+        self.engine.hooks().trigger(OnStartHook {})?;
 
         if let Some(config) = self.ws_config.take() {
             let engine = self.engine.clone();
-            let ws = WsServer::new(config, engine);
+            let ws = WsServer::new(config, engine.clone());
             self.ws = Some(ws.clone());
             rt.spawn(async move { ws.serve().await.unwrap() });
         };
 
         if let Some(config) = self.grpc_config.take() {
             let engine = self.engine.clone();
-            let grpc = GrpcServer::new(config, engine);
+            let grpc = GrpcServer::new(config, engine.clone());
             self.grpc = Some(grpc.clone());
             rt.spawn(async move { grpc.serve().await });
         }
@@ -127,38 +129,15 @@ where
         rt: &Runtime,
         signal: Receiver<()>,
     ) -> Result<(), reifydb_core::Error> {
-        // let before_ctx = OnBeforeBootstrapHookContext {};
-        // self.engine
-        //     .hooks()
-        //     .lifecycle()
-        //     .before_bootstrap()
-        //     .for_each(|hook| hook.on_before_bootstrap(&before_ctx))
-        //     .map_err(|e| {
-        //         reifydb_core::error!(reifydb_core::error::diagnostic::engine::frame_error(
-        //             e.to_string()
-        //         ))
-        //     })?;
-        //
-        // let create_ctx = OnCreateHookContext { db: &self.engine };
-        // self.engine
-        //     .hooks()
-        //     .lifecycle()
-        //     .on_create()
-        //     .for_each(|hook| hook.on_create(&create_ctx))
-        //     .map_err(|e| {
-        //         reifydb_core::error!(reifydb_core::error::diagnostic::engine::frame_error(
-        //             e.to_string()
-        //         ))
-        //     })?;
-
-        todo!();
+        self.engine.hooks().trigger(OnCreateHook {})?; // FIXME this must be triggered by storage
+        self.engine.hooks().trigger(OnStartHook {})?;
 
         rt.block_on(async {
             let mut handles = JoinSet::new();
 
             if let Some(config) = self.ws_config.take() {
                 let engine = self.engine.clone();
-                let ws = WsServer::new(config, engine);
+                let ws = WsServer::new(config, engine.clone());
                 self.ws = Some(ws.clone());
                 handles.spawn(
                     async move { ws.serve().await.map_err(|e| format!("WebSocket: {}", e)) },
@@ -167,7 +146,7 @@ where
 
             if let Some(config) = self.grpc_config.take() {
                 let engine = self.engine.clone();
-                let grpc = GrpcServer::new(config, engine);
+                let grpc = GrpcServer::new(config, engine.clone());
                 self.grpc = Some(grpc.clone());
                 handles
                     .spawn(async move { grpc.serve().await.map_err(|e| format!("gRPC: {}", e)) });
@@ -219,26 +198,54 @@ where
     }
 }
 
-struct HookClosure<VS, US, T, F>
+pub struct OnCreateContext<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    F: Fn(&HookContext<VS, US, T>) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
 {
-    f: F,
-    _maker: PhantomData<(VS, US, T)>,
+    pub engine: Engine<VS, US, T>,
+    _phantom: PhantomData<(VS, US, T)>,
 }
 
-impl<VS, US, T, F> OnCreateHook<VS, US, T> for HookClosure<VS, US, T, F>
+impl<'a, VS, US, T> OnCreateContext<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    F: Fn(&HookContext<VS, US, T>) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
 {
-    fn on_create(&self, ctx: &HookContext<VS, US, T>) -> Result<(), Box<dyn Error>> {
-        (self.f)(ctx)
+    pub fn new(engine: Engine<VS, US, T>) -> Self {
+        Self { engine, _phantom: PhantomData }
+    }
+
+    /// Execute a transactional query as the specified principal
+    pub fn tx_as(
+        &self,
+        principal: &Principal,
+        rql: &str,
+    ) -> Result<Vec<Frame>, reifydb_core::Error> {
+        self.engine.tx_as(principal, rql)
+    }
+
+    /// Execute a transactional query as root user
+    pub fn tx_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
+        let principal = Principal::System { id: 0, name: "root".to_string() };
+        self.engine.tx_as(&principal, rql)
+    }
+
+    /// Execute a read-only query as the specified principal
+    pub fn rx_as(
+        &self,
+        principal: &Principal,
+        rql: &str,
+    ) -> Result<Vec<Frame>, reifydb_core::Error> {
+        self.engine.rx_as(principal, rql)
+    }
+
+    /// Execute a read-only query as root user
+    pub fn rx_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
+        let principal = Principal::root();
+        self.engine.rx_as(&principal, rql)
     }
 }
 
@@ -248,19 +255,12 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn before_bootstrap<F>(self, f: F) -> Self
-    where
-        F: Fn(&HookContext<VS, US, T>) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
-    {
-        // self.before_bootstrap(HookClosure { f, _maker: PhantomData::default() })
-        todo!()
-    }
-
     pub fn on_create<F>(self, f: F) -> Self
     where
-        F: Fn(&HookContext<VS, US, T>) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
+        F: Fn(&OnCreateContext<VS, US, T>) -> crate::Result<()> + Send + Sync + 'static,
     {
-        // self.on_create(HookClosure { f, _maker: PhantomData::default() })
-        todo!()
+        let callback = OnCreateCallback { callback: f, engine: self.engine.clone() };
+        self.engine.hooks().register::<OnCreateHook, _>(callback);
+        self
     }
 }

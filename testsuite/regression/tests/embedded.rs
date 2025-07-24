@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb::core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::hook::Hooks;
+use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::embedded::Embedded;
 use reifydb::{DB, ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
@@ -19,7 +20,6 @@ where
     T: Transaction<VS, US>,
 {
     engine: Embedded<VS, US, T>,
-    root: Principal,
     runtime: Runtime,
 }
 
@@ -29,9 +29,12 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> Self {
-        let (engine, root) = ReifyDB::embedded_with(transaction);
-        Self { engine, root, runtime: Runtime::new().unwrap() }
+    pub fn new(input: (T, Hooks)) -> Self {
+        let (transaction, hooks) = input;
+        Self {
+            engine: ReifyDB::embedded_with(transaction, hooks),
+            runtime: Runtime::new().unwrap(),
+        }
     }
 }
 
@@ -52,8 +55,8 @@ where
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.tx_as(&self.root, query.as_str()).await? {
-                        writeln!(output, "{}", line).unwrap();
+                    for frame in engine.tx_as_root(query.as_str()).await? {
+                        writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;
@@ -66,8 +69,8 @@ where
 
                 let engine = self.engine.clone();
                 self.runtime.block_on(async {
-                    for line in engine.rx_as(&self.root, query.as_str()).await? {
-                        writeln!(output, "{}", line).unwrap();
+                    for frame in engine.rx_as_root(query.as_str()).await? {
+                        writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;

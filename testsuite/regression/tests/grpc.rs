@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::client::GrpcClient;
+use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::retry;
 use reifydb::network::grpc::server::GrpcConfig;
@@ -33,11 +34,11 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> Self {
-        let server = ReifyDB::server_with(transaction)
+    pub fn new(input: (T, Hooks)) -> Self {
+        let engine = ReifyDB::server_with(input)
             .with_grpc(GrpcConfig { socket: Some("[::1]:0".parse().unwrap()) });
 
-        Self { server: Some(server), client: None, runtime: None }
+        Self { server: Some(engine), client: None, runtime: None }
     }
 }
 
@@ -59,8 +60,8 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.as_ref().unwrap().tx(&query).await? {
-                        writeln!(output, "{}", line).unwrap();
+                    for frame in self.client.as_ref().unwrap().tx(&query).await? {
+                        writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;
@@ -75,8 +76,8 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for line in self.client.as_ref().unwrap().rx(&query).await? {
-                        writeln!(output, "{}", line).unwrap();
+                    for frame in self.client.as_ref().unwrap().rx(&query).await? {
+                        writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;

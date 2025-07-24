@@ -9,3 +9,9 @@ pub enum Principal {
     System { id: PrincipalId, name: String },
     User { id: PrincipalId, name: String },
 }
+
+impl Principal {
+    pub fn root() -> Self {
+        Self::System { id: 0, name: "root".to_string() }
+    }
+}

@@ -11,10 +11,12 @@ use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
-use reifydb_core::{Type, Value};
-use reifydb_engine::Engine;
 use reifydb_core::frame::Frame;
+use reifydb_core::interface::{
+    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+};
+use reifydb_engine::Engine;
+use reifydb_core::{Type, Value};
 
 pub struct DbService<VS, US, T>
 where
@@ -23,6 +25,7 @@ where
     T: Transaction<VS, US>,
 {
     pub(crate) engine: Arc<Engine<VS, US, T>>,
+    _phantom: std::marker::PhantomData<(VS, US, T)>,
 }
 
 impl<VS, US, T> DbService<VS, US, T>
@@ -32,7 +35,7 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(engine: Engine<VS, US, T>) -> Self {
-        Self { engine: Arc::new(engine) }
+        Self { engine: Arc::new(engine), _phantom: std::marker::PhantomData }
     }
 }
 
@@ -198,13 +201,11 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                             Value::Time(t) => GrpcType::TimeValue(Time {
                                 nanos_since_midnight: t.to_nanos_since_midnight(),
                             }),
-                            Value::Interval(i) => {
-                                GrpcType::IntervalValue(Interval { 
-                                    months: i.get_months(),
-                                    days: i.get_days(),
-                                    nanos: i.get_nanos()
-                                })
-                            }
+                            Value::Interval(i) => GrpcType::IntervalValue(Interval {
+                                months: i.get_months(),
+                                days: i.get_days(),
+                                nanos: i.get_nanos(),
+                            }),
                             Value::Undefined => GrpcType::UndefinedValue(false),
                             Value::RowId(row_id) => GrpcType::RowIdValue(row_id.value()),
                             Value::Uuid4(uuid) => GrpcType::Uuid4Value(uuid.as_bytes().to_vec()),
