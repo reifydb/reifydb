@@ -110,3 +110,164 @@ impl VersionedStorage for Sqlite {}
 impl UnversionedStorage for Sqlite {}
 impl UnversionedSet for Sqlite {}
 impl UnversionedRemove for Sqlite {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reifydb_testing::tempdir::temp_dir;
+
+    #[test]
+    fn test_sqlite_creation_with_new_config() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::new(db_path.join("test.db"));
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_sqlite_creation_with_safe_config() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::safe(db_path.join("safe.db"));
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_sqlite_creation_with_fast_config() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::fast(db_path.join("fast.db"));
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_directory_path_handling() {
+        temp_dir(|db_path| {
+            // Test with directory path - should create reify.db inside
+            let config = SqliteConfig::new(db_path);
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+
+            // Verify the database file was created
+            assert!(db_path.join("reify.db").exists());
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_file_path_handling() {
+        temp_dir(|db_path| {
+            // Test with specific file path
+            let db_file = db_path.join("custom.db");
+            let config = SqliteConfig::new(&db_file);
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+
+            // Verify the specific database file was created
+            assert!(db_file.exists());
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_custom_flags_conversion() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::new(db_path.join("flags.db")).flags(
+                OpenFlags::new()
+                    .read_write(true)
+                    .create(true)
+                    .no_mutex(true)
+                    .shared_cache(true)
+                    .uri(true),
+            );
+
+            let storage = Sqlite::new(config);
+            let _conn = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_custom_pool_size() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::new(db_path.join("pool.db")).max_pool_size(1);
+
+            let storage = Sqlite::new(config);
+
+            // Should be able to get at least one connection
+            let _conn1 = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_pragma_settings_applied() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::new(db_path.join("pragma.db"))
+                .journal_mode(JournalMode::Delete)
+                .synchronous_mode(SynchronousMode::Extra)
+                .temp_store(TempStore::File);
+
+            let storage = Sqlite::new(config);
+            let conn = storage.get_conn();
+
+            // Verify pragma settings were applied (simplified check)
+            let journal_mode: String =
+                conn.pragma_query_value(None, "journal_mode", |row| Ok(row.get(0)?)).unwrap();
+            assert_eq!(journal_mode.to_uppercase(), "DELETE");
+
+            let synchronous: i32 =
+                conn.pragma_query_value(None, "synchronous", |row| Ok(row.get(0)?)).unwrap();
+            assert_eq!(synchronous, 3); // EXTRA = 3
+
+            let temp_store: i32 =
+                conn.pragma_query_value(None, "temp_store", |row| Ok(row.get(0)?)).unwrap();
+            assert_eq!(temp_store, 1); // FILE = 1
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_tables_created() {
+        temp_dir(|db_path| {
+			let config = SqliteConfig::new(db_path.join("tables.db"));
+			let storage = Sqlite::new(config);
+			let conn = storage.get_conn();
+
+			// Check that both tables exist
+			let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('versioned', 'unversioned')").unwrap();
+			let table_names: Vec<String> = stmt.query_map([], |row| {
+				Ok(row.get(0)?)
+			}).unwrap().map(Result::unwrap).collect();
+
+			assert_eq!(table_names.len(), 2);
+			assert!(table_names.contains(&"versioned".to_string()));
+			assert!(table_names.contains(&"unversioned".to_string()));
+			Ok(())
+		}).expect("test failed");
+    }
+}

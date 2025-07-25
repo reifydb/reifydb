@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::sqlite::Sqlite;
 use super::execute_iter_query;
+use crate::sqlite::Sqlite;
+use r2d2::PooledConnection;
+use r2d2_sqlite::SqliteConnectionManager;
+use reifydb_core::EncodedKey;
 use reifydb_core::Error;
 use reifydb_core::interface::{Unversioned, UnversionedScanRev};
-use reifydb_core::EncodedKey;
-use r2d2::{PooledConnection};
-use r2d2_sqlite::SqliteConnectionManager;
 use std::collections::VecDeque;
 
 impl UnversionedScanRev for Sqlite {
@@ -27,17 +27,8 @@ pub struct IterRev {
 }
 
 impl IterRev {
-    pub fn new(
-        conn: PooledConnection<SqliteConnectionManager>,
-        batch_size: usize,
-    ) -> Self {
-        Self {
-            conn,
-            buffer: VecDeque::new(),
-            last_key: None,
-            batch_size,
-            exhausted: false,
-        }
+    pub fn new(conn: PooledConnection<SqliteConnectionManager>, batch_size: usize) -> Self {
+        Self { conn, buffer: VecDeque::new(), last_key: None, batch_size, exhausted: false }
     }
 
     fn refill_buffer(&mut self) {
@@ -77,3 +68,4 @@ impl Iterator for IterRev {
         self.buffer.pop_front()
     }
 }
+
