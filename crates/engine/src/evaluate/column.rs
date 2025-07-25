@@ -545,7 +545,21 @@ impl Evaluator {
                 }
                 Ok(col.with_new_values(ColumnValues::uuid7_with_bitvec(values, bitvec)))
             }
-            _ => unimplemented!(),
+            Value::Undefined => {
+                // For undefined values (e.g., from left joins with no match on right side),
+                // we need to count how many rows are requested by the mask.
+                let mut count = 0;
+                for i in 0..ctx.row_count {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        count += 1;
+                    }
+                }
+                // Return an undefined column with the correct number of undefined values
+                Ok(col.with_new_values(ColumnValues::undefined(count)))
+            }
         }
     }
 }

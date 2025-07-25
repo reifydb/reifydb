@@ -16,15 +16,18 @@ fn main() {
     db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
     db.tx_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
     db.tx_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
-    db.tx_as_root(r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#).unwrap();
+    db.tx_as_root(
+        r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#,
+    )
+    .unwrap();
     db.tx_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
 
     let l = db
         .tx_as_root(
             r#"
-          from test.one 
-            natural left join { with test.two }
-            natural left join { with test.three }
+          from test.one
+            left join { with test.two on one.field == two.field }
+            left join { with test.three on two.field == three.field}
         "#,
         )
         .unwrap();
