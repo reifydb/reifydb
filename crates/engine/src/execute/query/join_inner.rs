@@ -8,14 +8,14 @@ use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
 
-pub(crate) struct LeftJoinNode {
+pub(crate) struct InnerJoinNode {
     left: Box<dyn ExecutionPlan>,
     right: Box<dyn ExecutionPlan>,
     on: Vec<Expression>,
     layout: Option<FrameLayout>,
 }
 
-impl LeftJoinNode {
+impl InnerJoinNode {
     pub fn new(
         left: Box<dyn ExecutionPlan>,
         right: Box<dyn ExecutionPlan>,
@@ -44,7 +44,7 @@ impl LeftJoinNode {
     }
 }
 
-impl ExecutionPlan for LeftJoinNode {
+impl ExecutionPlan for InnerJoinNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
@@ -55,7 +55,6 @@ impl ExecutionPlan for LeftJoinNode {
 
         let left_rows = left_frame.row_count();
         let right_rows = right_frame.row_count();
-        let right_width = right_frame.column_count();
 
         // Build qualified column names for the join result
         let qualified_names: Vec<String> = left_frame
@@ -71,7 +70,6 @@ impl ExecutionPlan for LeftJoinNode {
         for i in 0..left_rows {
             let left_row = left_frame.get_row(i);
 
-            let mut matched = false;
             for j in 0..right_rows {
                 let right_row = right_frame.get_row(j);
 
@@ -106,40 +104,33 @@ impl ExecutionPlan for LeftJoinNode {
                     combined.extend(right_row.clone());
                     result_rows.push(combined);
                     mask.push(true);
-                    matched = true;
                 }
-            }
-
-            if !matched {
-                let mut combined = left_row.clone();
-                combined.extend(vec![Value::Undefined; right_width]);
-                result_rows.push(combined);
-                mask.push(true);
             }
         }
 
         // Create frame with proper qualified column structure
-        let column_metadata: Vec<_> = left_frame.columns.iter().chain(&right_frame.columns).collect();
+        let column_metadata: Vec<_> =
+            left_frame.columns.iter().chain(&right_frame.columns).collect();
         let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
         let mut frame = Frame::from_rows(&names_refs, &result_rows);
-        
+
         // Update frame columns with proper metadata
         for (i, col_meta) in column_metadata.iter().enumerate() {
             frame.columns[i].frame = col_meta.frame.clone();
             frame.columns[i].name = col_meta.name.clone();
         }
-        
+
         // Rebuild indexes with updated column info
-        frame.index = frame.columns.iter().enumerate()
-            .map(|(i, col)| (col.qualified_name(), i))
+        frame.index =
+            frame.columns.iter().enumerate().map(|(i, col)| (col.qualified_name(), i)).collect();
+
+        frame.frame_index = frame
+            .columns
+            .iter()
+            .enumerate()
+            .filter_map(|(i, col)| col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i)))
             .collect();
 
-        frame.frame_index = frame.columns.iter().enumerate()
-            .filter_map(|(i, col)| {
-                col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i))
-            })
-            .collect();
-            
         self.layout = Some(FrameLayout::from_frame(&frame));
         Ok(Some(Batch { frame, mask }))
     }

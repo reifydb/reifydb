@@ -100,7 +100,9 @@ impl Ast {
                 AstLiteral::Undefined(node) => &node.0,
             },
             Ast::Join(node) => match node {
+                AstJoin::InnerJoin { token, .. } => token,
                 AstJoin::LeftJoin { token, .. } => token,
+                AstJoin::NaturalJoin { token, .. } => token,
             },
             Ast::Nop => unreachable!(),
             Ast::Sort(node) => &node.token,
@@ -589,8 +591,22 @@ pub struct AstUpdate {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AstJoinType {
+    Inner,
+    Left,
+}
+
+impl Default for AstJoinType {
+    fn default() -> Self {
+        AstJoinType::Left
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstJoin {
+    InnerJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },
     LeftJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },
+    NaturalJoin { token: Token, with: Box<Ast>, join_type: Option<AstJoinType> },
 }
 
 #[derive(Debug, Clone, PartialEq)]

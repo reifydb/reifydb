@@ -8,9 +8,9 @@ mod query;
 
 use crate::ast::{Ast, AstIdentifier, AstPolicy, AstPolicyKind, AstStatement};
 use crate::expression::{Expression, KeyedExpression};
-use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::error::diagnostic::ast::unrecognized_type;
+use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_core::{OwnedSpan, SortKey, Type, return_error};
 
 struct Compiler {}
@@ -60,7 +60,9 @@ pub enum LogicalPlan {
     // Query
     Aggregate(AggregateNode),
     Filter(FilterNode),
+    JoinInner(JoinInnerNode),
     JoinLeft(JoinLeftNode),
+    JoinNatural(JoinNaturalNode),
     Take(TakeNode),
     Order(OrderNode),
     Map(MapNode),
@@ -126,10 +128,30 @@ pub struct FilterNode {
 }
 
 #[derive(Debug)]
+pub struct JoinInnerNode {
+    pub with: Vec<LogicalPlan>,
+    pub on: Vec<Expression>,
+}
+
+#[derive(Debug)]
 pub struct JoinLeftNode {
     pub with: Vec<LogicalPlan>,
     pub on: Vec<Expression>,
 }
+
+#[derive(Clone, Debug)]
+pub enum NaturalJoinType {
+    Inner,
+    Left,
+    // Future: Right, Full
+}
+
+#[derive(Debug)]
+pub struct JoinNaturalNode {
+    pub with: Vec<LogicalPlan>,
+    pub join_type: NaturalJoinType,
+}
+
 #[derive(Debug)]
 pub struct TakeNode {
     pub take: usize,

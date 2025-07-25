@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod aggregate;
+pub mod compile;
 mod filter;
 mod inline;
-mod join;
+mod join_inner;
+mod join_left;
+mod join_natural;
 mod map;
 mod scan;
 mod sort;
 mod take;
-pub mod compile;
-
