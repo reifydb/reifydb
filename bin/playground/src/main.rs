@@ -12,19 +12,19 @@ fn main() {
     let db = ReifyDB::embedded_blocking_with(serializable(memory()));
 
     db.tx_as_root(r#"create schema test"#).unwrap();
-    db.tx_as_root(r#"create table test.item(field: int1)"#).unwrap();
-    db.tx_as_root(r#"from [{field: -1 -2}] insert test.item"#).unwrap();
-    //     db.tx_as_root(
-    //         r#"
-    // from test.item map field
-    //     "#,
-    //     )
-    //     .unwrap();
+    db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
+    db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
+    db.tx_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
+    db.tx_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
+    db.tx_as_root(r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#).unwrap();
+    db.tx_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
 
     let l = db
         .tx_as_root(
             r#"
-          map cast('550e8400-e29b-41d4-a716-44665544', UUID4) as uuid
+          from test.one 
+            natural left join { with test.two }
+            natural left join { with test.three }
         "#,
         )
         .unwrap();

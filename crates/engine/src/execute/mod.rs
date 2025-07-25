@@ -84,7 +84,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             // Query
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
+            | PhysicalPlan::JoinInner(_)
             | PhysicalPlan::JoinLeft(_)
+            | PhysicalPlan::JoinNatural(_)
             | PhysicalPlan::Take(_)
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
@@ -115,7 +117,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
+            | PhysicalPlan::JoinInner(_)
             | PhysicalPlan::JoinLeft(_)
+            | PhysicalPlan::JoinNatural(_)
             | PhysicalPlan::Take(_)
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)

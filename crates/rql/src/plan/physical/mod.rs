@@ -4,7 +4,7 @@
 mod create;
 
 use crate::expression::{Expression, KeyedExpression};
-use crate::plan::logical::LogicalPlan;
+use crate::plan::logical::{LogicalPlan, NaturalJoinType};
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::Rx;
@@ -84,6 +84,16 @@ impl Compiler {
                     }))
                 }
 
+                LogicalPlan::JoinInner(join) => {
+                    let left = stack.pop().unwrap(); // FIXME;
+                    let right = Self::compile(rx, join.with)?.unwrap();
+                    stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
+                        left: Box::new(left),
+                        right: Box::new(right),
+                        on: join.on,
+                    }));
+                }
+
                 LogicalPlan::JoinLeft(join) => {
                     let left = stack.pop().unwrap(); // FIXME;
                     let right = Self::compile(rx, join.with)?.unwrap();
@@ -91,6 +101,16 @@ impl Compiler {
                         left: Box::new(left),
                         right: Box::new(right),
                         on: join.on,
+                    }));
+                }
+
+                LogicalPlan::JoinNatural(join) => {
+                    let left = stack.pop().unwrap(); // FIXME;
+                    let right = Self::compile(rx, join.with)?.unwrap();
+                    stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
+                        left: Box::new(left),
+                        right: Box::new(right),
+                        join_type: join.join_type,
                     }));
                 }
 
@@ -146,7 +166,9 @@ pub enum PhysicalPlan {
     // Query
     Aggregate(AggregateNode),
     Filter(FilterNode),
+    JoinInner(JoinInnerNode),
     JoinLeft(JoinLeftNode),
+    JoinNatural(JoinNaturalNode),
     Take(TakeNode),
     Sort(SortNode),
     Map(MapNode),
@@ -211,10 +233,24 @@ pub struct UpdatePlan {
 }
 
 #[derive(Debug, Clone)]
+pub struct JoinInnerNode {
+    pub left: Box<PhysicalPlan>,
+    pub right: Box<PhysicalPlan>,
+    pub on: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
 pub struct JoinLeftNode {
     pub left: Box<PhysicalPlan>,
     pub right: Box<PhysicalPlan>,
     pub on: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct JoinNaturalNode {
+    pub left: Box<PhysicalPlan>,
+    pub right: Box<PhysicalPlan>,
+    pub join_type: NaturalJoinType,
 }
 
 #[derive(Debug, Clone)]
