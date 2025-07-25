@@ -1,11 +1,17 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
+use super::{ensure_table_exists, table_name};
 use crate::sqlite::Sqlite;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::VersionedApply;
 use reifydb_core::{CowVec, Version};
 use rusqlite::params;
+use std::collections::HashSet;
+use std::sync::{LazyLock, RwLock};
+
+static ENSURED_TABLES: LazyLock<RwLock<HashSet<String>>> =
+    LazyLock::new(|| RwLock::new(HashSet::new()));
 
 impl VersionedApply for Sqlite {
     fn apply(&self, delta: CowVec<Delta>, version: Version) {
@@ -15,18 +21,30 @@ impl VersionedApply for Sqlite {
         for delta in delta {
             match delta {
                 Delta::Set { key, row: bytes } => {
-                    tx.execute(
-                        "INSERT OR REPLACE INTO versioned (key, version, value) VALUES (?1, ?2, ?3)",
-                        params![key.to_vec(), version, bytes.to_vec()],
-                    )
-                    .unwrap();
+                    let table = table_name(&key);
+
+                    if table != "versioned" {
+                        let ensured_tables = ENSURED_TABLES.read().unwrap();
+                        if !ensured_tables.contains(table) {
+                            drop(ensured_tables);
+                            let mut ensured_tables = ENSURED_TABLES.write().unwrap();
+                            if !ensured_tables.contains(table) {
+                                ensure_table_exists(&tx, &table);
+                                ensured_tables.insert(table.to_string());
+                            }
+                        }
+                    }
+
+                    let query = format!(
+                        "INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)",
+                        table
+                    );
+                    tx.execute(&query, params![key.to_vec(), version, bytes.to_vec()]).unwrap();
                 }
                 Delta::Remove { key } => {
-                    tx.execute(
-                        "DELETE FROM versioned WHERE key = ?1 AND version = ?2",
-                        params![key.to_vec(), version],
-                    )
-                    .unwrap();
+                    let table = table_name(&key);
+                    let query = format!("DELETE FROM {} WHERE key = ?1 AND version = ?2", table);
+                    tx.execute(&query, params![key.to_vec(), version]).unwrap();
                 }
             }
         }

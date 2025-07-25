@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::sqlite::Sqlite;
+use super::table_name_for_range;
 use reifydb_core::interface::{Versioned, VersionedScanRange};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
@@ -14,37 +15,40 @@ impl VersionedScanRange for Sqlite {
     fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
         let conn = self.get_conn();
         
+        let table = table_name_for_range(&range);
+        
         // Build query and parameters based on bounds 
-        let (query, param_count) = match (&range.start, &range.end) {
+        let (query_template, param_count) = match (&range.start, &range.end) {
             (Bound::Unbounded, Bound::Unbounded) => {
-                ("SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key ASC", 1)
+                ("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC", 1)
             }
             (Bound::Included(_), Bound::Unbounded) => {
-                ("SELECT key, value, version FROM versioned WHERE key >= ? AND version <= ? ORDER BY key ASC", 2)
+                ("SELECT key, value, version FROM {} WHERE key >= ? AND version <= ? ORDER BY key ASC", 2)
             }
             (Bound::Excluded(_), Bound::Unbounded) => {
-                ("SELECT key, value, version FROM versioned WHERE key > ? AND version <= ? ORDER BY key ASC", 2)
+                ("SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key ASC", 2)
             }
             (Bound::Unbounded, Bound::Included(_)) => {
-                ("SELECT key, value, version FROM versioned WHERE key <= ? AND version <= ? ORDER BY key ASC", 2)
+                ("SELECT key, value, version FROM {} WHERE key <= ? AND version <= ? ORDER BY key ASC", 2)
             }
             (Bound::Unbounded, Bound::Excluded(_)) => {
-                ("SELECT key, value, version FROM versioned WHERE key < ? AND version <= ? ORDER BY key ASC", 2)
+                ("SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key ASC", 2)
             }
             (Bound::Included(_), Bound::Included(_)) => {
-                ("SELECT key, value, version FROM versioned WHERE key >= ? AND key <= ? AND version <= ? ORDER BY key ASC", 3)
+                ("SELECT key, value, version FROM {} WHERE key >= ? AND key <= ? AND version <= ? ORDER BY key ASC", 3)
             }
             (Bound::Included(_), Bound::Excluded(_)) => {
-                ("SELECT key, value, version FROM versioned WHERE key >= ? AND key < ? AND version <= ? ORDER BY key ASC", 3)
+                ("SELECT key, value, version FROM {} WHERE key >= ? AND key < ? AND version <= ? ORDER BY key ASC", 3)
             }
             (Bound::Excluded(_), Bound::Included(_)) => {
-                ("SELECT key, value, version FROM versioned WHERE key > ? AND key <= ? AND version <= ? ORDER BY key ASC", 3)
+                ("SELECT key, value, version FROM {} WHERE key > ? AND key <= ? AND version <= ? ORDER BY key ASC", 3)
             }
             (Bound::Excluded(_), Bound::Excluded(_)) => {
-                ("SELECT key, value, version FROM versioned WHERE key > ? AND key < ? AND version <= ? ORDER BY key ASC", 3)
+                ("SELECT key, value, version FROM {} WHERE key > ? AND key < ? AND version <= ? ORDER BY key ASC", 3)
             }
         };
         
+        let query = query_template.replace("{}", table);
         let mut stmt = conn.prepare(&query).unwrap();
         
         let rows = match param_count {

@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::util::encoding::keycode;
+use crate::EncodedKey;
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use kind::KeyKind;
-use crate::EncodedKey;
-use crate::util::encoding::keycode;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
 pub use system_sequence::SystemSequenceKey;
@@ -70,6 +70,10 @@ pub trait EncodableKey {
 
 impl Key {
     pub fn decode(key: &EncodedKey) -> Option<Self> {
+        if key.len() < 2 {
+            return None;
+        }
+
         let version = keycode::deserialize(&key[0..1]).ok()?;
         let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
         let payload = &key[2..];
@@ -99,12 +103,14 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
-    use crate::interface::catalog::{ColumnId, ColumnPolicyId, SchemaId, SystemSequenceId, TableId};
     use super::ColumnPolicyKey;
     use super::TableRowSequenceKey;
     use super::{
         ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableKey,
         TableRowKey,
+    };
+    use crate::interface::catalog::{
+        ColumnId, ColumnPolicyId, SchemaId, SystemSequenceId, TableId,
     };
     use crate::RowId;
 

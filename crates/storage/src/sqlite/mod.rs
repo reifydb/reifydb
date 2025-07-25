@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-mod versioned;
 mod unversioned;
+mod versioned;
 
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::interface::{
     UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
 };
-use reifydb_core::{EncodedKey, EncodedKeyRange};
-use std::ops::{Bound, Deref};
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -72,52 +71,7 @@ impl Sqlite {
     }
 }
 
-
 impl VersionedStorage for Sqlite {}
 impl UnversionedStorage for Sqlite {}
 impl UnversionedSet for Sqlite {}
 impl UnversionedRemove for Sqlite {}
-
-pub fn bound_to_bytes(bound: &Bound<EncodedKey>) -> Vec<u8> {
-    match bound {
-        Bound::Included(v) | Bound::Excluded(v) => v.to_vec(),
-        Bound::Unbounded => Vec::new(), // or handle it differently if needed
-    }
-}
-
-pub fn build_range_where_clause(range: &EncodedKeyRange) -> (String, Vec<Vec<u8>>) {
-    let mut conditions = Vec::new();
-    let mut params = Vec::new();
-    
-    match &range.start {
-        Bound::Included(key) => {
-            conditions.push("key >= ?".to_string());
-            params.push(key.to_vec());
-        }
-        Bound::Excluded(key) => {
-            conditions.push("key > ?".to_string());
-            params.push(key.to_vec());
-        }
-        Bound::Unbounded => {}
-    }
-    
-    match &range.end {
-        Bound::Included(key) => {
-            conditions.push("key <= ?".to_string());
-            params.push(key.to_vec());
-        }
-        Bound::Excluded(key) => {
-            conditions.push("key < ?".to_string());
-            params.push(key.to_vec());
-        }
-        Bound::Unbounded => {}
-    }
-    
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
-    
-    (where_clause, params)
-}
