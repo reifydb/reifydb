@@ -16,7 +16,7 @@ impl<'a> Iterator for UnversionedIterRev {
 }
 
 impl UnversionedScanRev for Sqlite {
-    type ScanIterRev<'a> = crate::sqlite::iter::UnversionedIter;
+    type ScanIterRev<'a> = crate::sqlite::unversioned::iter::UnversionedIter;
 
     fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>, Error> {
         todo!()

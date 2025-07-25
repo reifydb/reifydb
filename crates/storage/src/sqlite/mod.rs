@@ -1,25 +1,15 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-mod apply;
-mod contains;
-mod get;
-mod iter;
-mod iter_rev;
-mod range;
-mod range_rev;
+mod versioned;
+mod unversioned;
 
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::delta::Delta;
 use reifydb_core::interface::{
-    UnversionedRemove, UnversionedSet, UnversionedStorage, Versioned, VersionedApply,
-    VersionedContains, VersionedGet, VersionedScan, VersionedScanRange, VersionedScanRangeRev,
-    VersionedScanRev, VersionedStorage,
+    UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
 };
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
-use rusqlite::{OptionalExtension, params};
+use reifydb_core::EncodedKey;
 use std::ops::{Bound, Deref};
 use std::path::Path;
 use std::sync::Arc;
@@ -82,186 +72,6 @@ impl Sqlite {
     }
 }
 
-impl VersionedApply for Sqlite {
-    fn apply(&self, delta: CowVec<Delta>, _version: Version) {
-        let mut conn = self.get_conn();
-        let tx = conn.transaction().unwrap();
-
-        for delta in delta {
-            match delta {
-                Delta::Set { key, row: bytes } => {
-                    let version = 1; // FIXME remove this - transaction version needs to be persisted
-                    tx.execute(
-                        "INSERT OR REPLACE INTO versioned (key, version, value) VALUES (?1, ?2, ?3)",
-                        params![key.to_vec(), version, bytes.to_vec()],
-                    )
-                    .unwrap();
-                }
-                Delta::Remove { key } => {
-                    let version = 1; // FIXME remove this - transaction version needs to be persisted
-                    tx.execute(
-                        "DELETE FROM versioned WHERE key = ?1 AND version = ?2",
-                        params![key.to_vec(), version],
-                    )
-                    .unwrap();
-                }
-            }
-        }
-
-        tx.commit().unwrap();
-    }
-}
-
-impl VersionedGet for Sqlite {
-    fn get(&self, key: &EncodedKey, _version: Version) -> Option<Versioned> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        conn.query_row(
-			"SELECT key, value, version FROM versioned WHERE key = ?1 AND version <= ?2 SORT version DESC LIMIT 1",
-			params![key.to_vec(), version],
-			|row| {
-				Ok(Versioned {
-					key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-					row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-					version: row.get(2)?,
-				})
-			},
-		)
-			.optional()
-			.unwrap()
-    }
-}
-
-impl VersionedContains for Sqlite {
-    fn contains(&self, key: &EncodedKey, version: Version) -> bool {
-        // FIXME this can be done better than this
-        self.get(key, version).is_some()
-    }
-}
-
-impl VersionedScan for Sqlite {
-    type ScanIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
-
-    fn scan(&self, _version: Version) -> Self::ScanIter<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        let mut stmt = conn
-            .prepare(
-                "SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key ASC",
-            )
-            .unwrap();
-
-        let rows = stmt
-            .query_map(params![version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                    row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                    version: row.get(2)?,
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
-
-        Box::new(rows.into_iter())
-    }
-}
-
-impl VersionedScanRev for Sqlite {
-    type ScanIterRev<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
-
-    fn scan_rev(&self, _version: Version) -> Self::ScanIterRev<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        let mut stmt = conn
-            .prepare(
-                "SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key DESC",
-            )
-            .unwrap();
-
-        let rows = stmt
-            .query_map(params![version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey(CowVec::new(row.get(0)?)),
-                    row: EncodedRow(CowVec::new(row.get(1)?)),
-                    version: row.get(2)?,
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
-
-        Box::new(rows.into_iter())
-    }
-}
-
-impl VersionedScanRange for Sqlite {
-    type ScanRangeIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
-
-    fn scan_range(&self, range: EncodedKeyRange, _version: Version) -> Self::ScanRangeIter<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        let mut stmt = conn
-			.prepare("SELECT key, value, version FROM versioned WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key ASC")
-			.unwrap();
-
-        let start_bytes = bound_to_bytes(&range.start);
-        let end_bytes = bound_to_bytes(&range.end);
-
-        let rows = stmt
-            // .query_map(params![], |row| {
-            .query_map(params![start_bytes, end_bytes, version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey(CowVec::new(row.get(0)?)),
-                    row: EncodedRow(CowVec::new(row.get(1)?)),
-                    version: row.get(2)?,
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
-
-        Box::new(rows.into_iter())
-    }
-}
-
-impl VersionedScanRangeRev for Sqlite {
-    type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
-
-    fn scan_range_rev(
-        &self,
-        range: EncodedKeyRange,
-        _version: Version,
-    ) -> Self::ScanRangeIterRev<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        let mut stmt = conn
-			.prepare("SELECT key, value, version FROM versioned WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key DESC")
-			.unwrap();
-
-        let start_bytes = bound_to_bytes(&range.start);
-        let end_bytes = bound_to_bytes(&range.end);
-
-        let rows = stmt
-            .query_map(params![start_bytes, end_bytes, version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey(CowVec::new(row.get(0)?)),
-                    row: EncodedRow(CowVec::new(row.get(1)?)),
-                    version: row.get(2)?,
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
-
-        Box::new(rows.into_iter())
-    }
-}
 
 impl VersionedStorage for Sqlite {}
 impl UnversionedStorage for Sqlite {}
