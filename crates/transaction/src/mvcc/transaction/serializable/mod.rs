@@ -95,23 +95,23 @@ pub enum Transaction<VS: VersionedStorage, US: UnversionedStorage> {
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
-    pub fn get(&self, key: &EncodedKey, version: Version) -> Option<Committed> {
-        self.versioned.get(key, version).map(|sv| sv.into())
+    pub fn get(&self, key: &EncodedKey, version: Version) -> Result<Option<Committed>, reifydb_core::Error> {
+        Ok(self.versioned.get(key, version)?.map(|sv| sv.into()))
     }
 
-    pub fn contains_key(&self, key: &EncodedKey, version: Version) -> bool {
+    pub fn contains_key(&self, key: &EncodedKey, version: Version) -> Result<bool, reifydb_core::Error> {
         self.versioned.contains(key, version)
     }
 
-    pub fn scan(&self, version: Version) -> VS::ScanIter<'_> {
+    pub fn scan(&self, version: Version) -> Result<VS::ScanIter<'_>, reifydb_core::Error> {
         self.versioned.scan(version)
     }
 
-    pub fn scan_rev(&self, version: Version) -> VS::ScanIterRev<'_> {
+    pub fn scan_rev(&self, version: Version) -> Result<VS::ScanIterRev<'_>, reifydb_core::Error> {
         self.versioned.scan_rev(version)
     }
 
-    pub fn scan_range(&self, range: EncodedKeyRange, version: Version) -> VS::ScanRangeIter<'_> {
+    pub fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Result<VS::ScanRangeIter<'_>, reifydb_core::Error> {
         self.versioned.scan_range(range, version)
     }
 
@@ -119,7 +119,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> VS::ScanRangeIterRev<'_> {
+    ) -> Result<VS::ScanRangeIterRev<'_>, reifydb_core::Error> {
         self.versioned.scan_range_rev(range, version)
     }
 }

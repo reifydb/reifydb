@@ -14,15 +14,15 @@ use crate::memory::versioned::VersionedRow;
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::interface::{Unversioned, UnversionedScan, Versioned, VersionedScan};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, Error, Version};
+use reifydb_core::{EncodedKey, Result, Version};
 use std::ops::Bound;
 
 impl VersionedScan for Memory {
     type ScanIter<'a> = VersionedIter<'a>;
 
-    fn scan(&self, version: Version) -> Self::ScanIter<'_> {
+    fn scan(&self, version: Version) -> Result<Self::ScanIter<'_>> {
         let iter = self.versioned.iter();
-        VersionedIter { iter, version }
+        Ok(VersionedIter { iter, version })
     }
 }
 
@@ -55,7 +55,7 @@ impl Iterator for VersionedIter<'_> {
 impl UnversionedScan for Memory {
     type ScanIter<'a> = UnversionedIter<'a>;
 
-    fn scan(&self) -> Result<Self::ScanIter<'_>, Error> {
+    fn scan(&self) -> Result<Self::ScanIter<'_>> {
         let iter = self.unversioned.iter();
         Ok(UnversionedIter { iter })
     }

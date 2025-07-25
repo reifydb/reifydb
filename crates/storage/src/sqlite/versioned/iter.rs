@@ -4,7 +4,7 @@
 use crate::sqlite::Sqlite;
 use super::{execute_iter_query, get_table_names};
 use reifydb_core::interface::{Versioned, VersionedScan};
-use reifydb_core::{EncodedKey, Version};
+use reifydb_core::{EncodedKey, Version, Result};
 use r2d2::{PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use std::collections::VecDeque;
@@ -12,8 +12,8 @@ use std::collections::VecDeque;
 impl VersionedScan for Sqlite {
     type ScanIter<'a> = Iter;
 
-    fn scan(&self, version: Version) -> Self::ScanIter<'_> {
-        Iter::new(self.get_conn(), version, 1024)
+    fn scan(&self, version: Version) -> Result<Self::ScanIter<'_>> {
+        Ok(Iter::new(self.get_conn(), version, 1024))
     }
 }
 

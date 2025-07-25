@@ -36,7 +36,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Seria
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionRx<VS, US> {
     fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
-        Ok(TransactionRx::get(self, key).map(|tv| Versioned {
+        Ok(TransactionRx::get(self, key)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
             version: tv.version(),
@@ -44,36 +44,36 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Rx for TransactionRx<VS, US> 
     }
 
     fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
-        Ok(TransactionRx::contains_key(self, key))
+        TransactionRx::contains_key(self, key)
     }
 
     fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
-        let iter = TransactionRx::scan(self);
+        let iter = TransactionRx::scan(self)?;
         Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
-        let iter = TransactionRx::scan_rev(self);
+        let iter = TransactionRx::scan_rev(self)?;
         Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
-        let iter = TransactionRx::scan_range(self, range);
+        let iter = TransactionRx::scan_range(self, range)?;
         Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
-        let iter = TransactionRx::scan_range_rev(self, range);
+        let iter = TransactionRx::scan_range_rev(self, range)?;
         Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
-        let iter = TransactionRx::scan_prefix(self, prefix);
+        let iter = TransactionRx::scan_prefix(self, prefix)?;
         Ok(Box::new(iter.into_iter()))
     }
 
     fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
-        let iter = TransactionRx::scan_prefix_rev(self, prefix);
+        let iter = TransactionRx::scan_prefix_rev(self, prefix)?;
         Ok(Box::new(iter.into_iter()))
     }
 }

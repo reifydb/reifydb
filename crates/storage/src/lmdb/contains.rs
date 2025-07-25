@@ -3,16 +3,16 @@
 
 use crate::lmdb::Lmdb;
 use reifydb_core::interface::{UnversionedContains, VersionedContains};
-use reifydb_core::{EncodedKey, Error, Version};
+use reifydb_core::{EncodedKey, Result, Version};
 
 impl VersionedContains for Lmdb {
-    fn contains(&self, _key: &EncodedKey, _version: Version) -> bool {
+    fn contains(&self, _key: &EncodedKey, _version: Version) -> Result<bool> {
         todo!()
     }
 }
 
 impl UnversionedContains for Lmdb {
-    fn contains(&self, _key: &EncodedKey) -> Result<bool, Error> {
+    fn contains(&self, _key: &EncodedKey) -> Result<bool> {
         todo!()
     }
 }

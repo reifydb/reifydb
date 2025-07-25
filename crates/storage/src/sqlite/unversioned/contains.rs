@@ -3,11 +3,11 @@
 
 use crate::sqlite::Sqlite;
 use reifydb_core::interface::UnversionedContains;
-use reifydb_core::{EncodedKey, Error};
+use reifydb_core::{EncodedKey, Result};
 use rusqlite::params;
 
 impl UnversionedContains for Sqlite {
-    fn contains(&self, key: &EncodedKey) -> Result<bool, Error> {
+    fn contains(&self, key: &EncodedKey) -> Result<bool> {
         let conn = self.get_conn();
         let exists: bool = conn
             .query_row(

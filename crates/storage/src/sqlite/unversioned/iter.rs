@@ -3,7 +3,7 @@
 
 use crate::sqlite::Sqlite;
 use super::execute_iter_query;
-use reifydb_core::Error;
+use reifydb_core::Result;
 use reifydb_core::interface::{Unversioned, UnversionedScan};
 use reifydb_core::EncodedKey;
 use r2d2::{PooledConnection};
@@ -13,7 +13,7 @@ use std::collections::VecDeque;
 impl UnversionedScan for Sqlite {
     type ScanIter<'a> = Iter;
 
-    fn scan(&self) -> Result<Self::ScanIter<'_>, Error> {
+    fn scan(&self) -> Result<Self::ScanIter<'_>> {
         Ok(Iter::new(self.get_conn(), 1024))
     }
 }

@@ -16,15 +16,15 @@ use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
 use reifydb_core::interface::{Unversioned, UnversionedScanRev, Versioned, VersionedScanRev};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, Error, Version};
+use reifydb_core::{EncodedKey, Result, Version};
 use std::ops::Bound;
 
 impl VersionedScanRev for Memory {
     type ScanIterRev<'a> = IterRev<'a>;
 
-    fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_> {
+    fn scan_rev(&self, version: Version) -> Result<Self::ScanIterRev<'_>> {
         let iter = self.versioned.iter();
-        IterRev { iter: iter.rev(), version }
+        Ok(IterRev { iter: iter.rev(), version })
     }
 }
 
@@ -57,7 +57,7 @@ impl Iterator for IterRev<'_> {
 impl UnversionedScanRev for Memory {
     type ScanIterRev<'a> = UnversionedIterRev<'a>;
 
-    fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>, Error> {
+    fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
         let iter = self.unversioned.iter();
         Ok(UnversionedIterRev { iter })
     }

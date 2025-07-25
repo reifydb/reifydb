@@ -6,14 +6,14 @@ use crate::sqlite::Sqlite;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::interface::{Versioned, VersionedScanRev};
-use reifydb_core::{EncodedKey, Version};
+use reifydb_core::{EncodedKey, Version, Result};
 use std::collections::VecDeque;
 
 impl VersionedScanRev for Sqlite {
     type ScanIterRev<'a> = IterRev;
 
-    fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_> {
-        IterRev::new(self.get_conn(), version, 1024)
+    fn scan_rev(&self, version: Version) -> Result<Self::ScanIterRev<'_>> {
+        Ok(IterRev::new(self.get_conn(), version, 1024))
     }
 }
 

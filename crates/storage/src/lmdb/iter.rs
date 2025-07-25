@@ -3,12 +3,12 @@
 
 use crate::lmdb::Lmdb;
 use reifydb_core::interface::{Unversioned, UnversionedScan, Versioned, VersionedScan};
-use reifydb_core::{Error, Version};
+use reifydb_core::{Result, Version};
 
 impl VersionedScan for Lmdb {
     type ScanIter<'a> = Iter;
 
-    fn scan(&self, _version: Version) -> Self::ScanIter<'_> {
+    fn scan(&self, _version: Version) -> Result<Self::ScanIter<'_>> {
         todo!()
     }
 }
@@ -36,7 +36,7 @@ impl<'a> Iterator for UnversionedIter {
 impl UnversionedScan for Lmdb {
     type ScanIter<'a> = UnversionedIter;
 
-    fn scan(&self) -> Result<Self::ScanIter<'_>, Error> {
+    fn scan(&self) -> Result<Self::ScanIter<'_>> {
         todo!()
     }
 }

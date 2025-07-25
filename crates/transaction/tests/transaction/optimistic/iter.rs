@@ -29,14 +29,14 @@ fn test_iter() {
     txn.commit().unwrap();
 
     let txn = engine.begin_rx();
-    let iter = txn.scan();
+    let iter = txn.scan().unwrap();
 
     for (expected, tv) in (1..=3).rev().zip(iter) {
         assert_eq!(tv.key, as_key!(expected));
         assert_eq!(tv.row, as_row!(expected));
     }
 
-    let iter = txn.scan_rev();
+    let iter = txn.scan_rev().unwrap();
     for (expected, tv) in (1..=3).zip(iter) {
         assert_eq!(tv.key, as_key!(expected));
         assert_eq!(tv.row, as_row!(expected));

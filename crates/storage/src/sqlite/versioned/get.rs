@@ -5,11 +5,11 @@ use crate::sqlite::Sqlite;
 use super::table_name;
 use reifydb_core::interface::{Versioned, VersionedGet};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey, Version};
+use reifydb_core::{CowVec, EncodedKey, Version, Result};
 use rusqlite::{OptionalExtension, params};
 
 impl VersionedGet for Sqlite {
-    fn get(&self, key: &EncodedKey, version: Version) -> Option<Versioned> {
+    fn get(&self, key: &EncodedKey, version: Version) -> Result<Option<Versioned>> {
         let conn = self.get_conn();
         
         let table = table_name(key);
@@ -18,7 +18,7 @@ impl VersionedGet for Sqlite {
             table
         );
         
-        conn.query_row(
+        Ok(conn.query_row(
             &query,
             params![key.to_vec(), version],
             |row| {
@@ -30,6 +30,6 @@ impl VersionedGet for Sqlite {
             },
         )
         .optional()
-        .unwrap()
+        .unwrap())
     }
 }

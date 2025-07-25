@@ -32,5 +32,5 @@ fn test_rollback_different_tx() {
     txn.rollback().unwrap();
 
     let rx = engine.begin_rx();
-    assert!(rx.get(&as_key!(1)).is_none());
+    assert!(rx.get(&as_key!(1)).unwrap().is_none());
 }

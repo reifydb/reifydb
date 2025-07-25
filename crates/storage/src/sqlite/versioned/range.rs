@@ -4,7 +4,7 @@
 use crate::sqlite::Sqlite;
 use super::{build_range_query, execute_batched_range_query, table_name_for_range};
 use reifydb_core::interface::{Versioned, VersionedScanRange};
-use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Version, Result};
 use r2d2::{PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use std::collections::VecDeque;
@@ -13,8 +13,8 @@ use std::ops::Bound;
 impl VersionedScanRange for Sqlite {
     type ScanRangeIter<'a> = Range;
 
-    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
-        Range::new(self.get_conn(), range, version, 1024)
+    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Result<Self::ScanRangeIter<'_>> {
+        Ok(Range::new(self.get_conn(), range, version, 1024))
     }
 }
 

@@ -7,13 +7,12 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 use reifydb_core::delta::Delta;
-use reifydb_core::util::encoding::keycode::serialize;
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey, Version};
 use reifydb_core::interface::VersionedStorage;
+use reifydb_core::row::EncodedRow;
+use reifydb_core::util::encoding::keycode::serialize;
+use reifydb_core::{CowVec, EncodedKey, Version};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
-
 
 pub type NodeId = usize;
 
@@ -143,7 +142,12 @@ impl<VS: VersionedStorage> Node for CountNode<VS> {
                 let state_key = self.make_state_key(&key);
 
                 let current = *counters.entry(state_key.clone()).or_insert_with(|| {
-                    self.storage.get(&state_key, version).map(|v| v.row[0] as i8).unwrap_or(0)
+                    self.storage
+                        .get(&state_key, version)
+                        .ok()
+                        .flatten()
+                        .map(|v| v.row[0] as i8)
+                        .unwrap_or(0)
                 });
 
                 counters.insert(state_key, current.saturating_add(1));
@@ -154,7 +158,7 @@ impl<VS: VersionedStorage> Node for CountNode<VS> {
             updates.push(Delta::Update { key, row: EncodedRow(CowVec::new(vec![count as u8])) });
         }
 
-        self.storage.apply(updates.clone(), version);
+        self.storage.apply(updates.clone(), version).unwrap();
 
         updates
     }
@@ -253,7 +257,7 @@ impl<VS: VersionedStorage> Node for SumNode<VS> {
             updates.push(Delta::Update { key, row: EncodedRow(CowVec::new(vec![sum as u8])) });
         }
 
-        self.storage.apply(updates.clone(), version);
+        self.storage.apply(updates.clone(), version).unwrap();
         updates
     }
 }

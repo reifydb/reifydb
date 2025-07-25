@@ -5,7 +5,7 @@ use crate::lmdb::Lmdb;
 use reifydb_core::interface::{
     Unversioned, UnversionedScanRangeRev, Versioned, VersionedScanRangeRev,
 };
-use reifydb_core::{EncodedKeyRange, Error, Version};
+use reifydb_core::{EncodedKeyRange, Result, Version};
 
 impl VersionedScanRangeRev for Lmdb {
     type ScanRangeIterRev<'a> = RangeRev;
@@ -14,7 +14,7 @@ impl VersionedScanRangeRev for Lmdb {
         &self,
         _range: EncodedKeyRange,
         _version: Version,
-    ) -> Self::ScanRangeIterRev<'_> {
+    ) -> Result<Self::ScanRangeIterRev<'_>> {
         todo!()
     }
 }
@@ -35,7 +35,7 @@ impl UnversionedScanRangeRev for Lmdb {
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, _range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>, Error> {
+    fn scan_range_rev(&self, _range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>> {
         todo!()
     }
 }

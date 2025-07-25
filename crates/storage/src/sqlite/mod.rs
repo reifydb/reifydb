@@ -35,8 +35,8 @@ impl Sqlite {
         let db_path =
             if config.path.is_dir() { config.path.join("reify.db") } else { config.path.clone() };
 
-        let manager = SqliteConnectionManager::file(db_path)
-            .with_flags(Self::convert_open_flags(&config.flags));
+        let manager =
+            SqliteConnectionManager::file(db_path).with_flags(Self::convert_flags(&config.flags));
 
         let pool = Pool::builder().max_size(config.max_pool_size).build(manager).unwrap();
         {
@@ -67,7 +67,7 @@ impl Sqlite {
         Self(Arc::new(SqliteInner { pool: Arc::new(pool) }))
     }
 
-    fn convert_open_flags(flags: &OpenFlags) -> rusqlite::OpenFlags {
+    fn convert_flags(flags: &OpenFlags) -> rusqlite::OpenFlags {
         let mut rusqlite_flags = rusqlite::OpenFlags::empty();
 
         if flags.read_write {
@@ -97,7 +97,6 @@ impl Sqlite {
         if flags.uri {
             rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_URI;
         }
-
         rusqlite_flags
     }
 

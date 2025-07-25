@@ -4,11 +4,11 @@
 use crate::sqlite::Sqlite;
 use super::table_name;
 use reifydb_core::interface::VersionedContains;
-use reifydb_core::{EncodedKey, Version};
+use reifydb_core::{EncodedKey, Version, Result};
 use rusqlite::params;
 
 impl VersionedContains for Sqlite {
-    fn contains(&self, key: &EncodedKey, version: Version) -> bool {
+    fn contains(&self, key: &EncodedKey, version: Version) -> Result<bool> {
         let conn = self.get_conn();
         
         let table = table_name(key);
@@ -17,13 +17,12 @@ impl VersionedContains for Sqlite {
             table
         );
         
-        let exists: bool = conn
+        Ok(conn
             .query_row(
                 &query,
                 params![key.to_vec(), version],
                 |row| row.get(0),
             )
-            .unwrap();
-        exists
+            .unwrap())
     }
 }

@@ -6,7 +6,7 @@ use heed::types::Bytes;
 use heed::{Database, Env};
 use reifydb_core::interface::{Unversioned, UnversionedScanRange, Versioned, VersionedScanRange};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Error, Version};
+use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Result, Version};
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -14,8 +14,8 @@ use std::sync::Arc;
 impl VersionedScanRange for Lmdb {
     type ScanRangeIter<'a> = Range;
 
-    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
-        Range::new(self.env.clone(), self.db, version, range, 100)
+    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Result<Self::ScanRangeIter<'_>> {
+        Ok(Range::new(self.env.clone(), self.db, version, range, 100))
     }
 }
 
@@ -117,7 +117,7 @@ impl UnversionedScanRange for Lmdb {
     where
         Self: 'a;
 
-    fn scan_range(&self, _range: EncodedKeyRange) -> Result<Self::ScanRange<'_>, Error> {
+    fn scan_range(&self, _range: EncodedKeyRange) -> Result<Self::ScanRange<'_>> {
         todo!()
     }
 }

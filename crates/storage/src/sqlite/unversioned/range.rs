@@ -6,7 +6,7 @@ use crate::sqlite::Sqlite;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::interface::{Unversioned, UnversionedScanRange};
-use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Result};
 use std::collections::VecDeque;
 use std::ops::Bound;
 
@@ -16,7 +16,7 @@ impl UnversionedScanRange for Sqlite {
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> Result<Self::ScanRange<'_>, Error> {
+    fn scan_range(&self, range: EncodedKeyRange) -> Result<Self::ScanRange<'_>> {
         Ok(Range::new(self.get_conn(), range, 1024))
     }
 }

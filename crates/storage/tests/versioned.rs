@@ -60,7 +60,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
-                let value = self.storage.get(&key, version).map(|sv| sv.row.to_vec());
+                let value = self.storage.get(&key, version)?.map(|sv| sv.row.to_vec());
                 writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
             }
             // contains KEY [version=VERSION]
@@ -69,7 +69,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
-                let contains = self.storage.contains(&key, version);
+                let contains = self.storage.contains(&key, version)?;
                 writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
             }
 
@@ -81,9 +81,9 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan(version))
+                    print(&mut output, self.storage.scan(version)?)
                 } else {
-                    print(&mut output, self.storage.scan_rev(version))
+                    print(&mut output, self.storage.scan_rev(version)?)
                 };
             }
             // scan_range RANGE [reverse=BOOL] [version=VERSION]
@@ -97,9 +97,9 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_range(range, version))
+                    print(&mut output, self.storage.scan_range(range, version)?)
                 } else {
-                    print(&mut output, self.storage.scan_range_rev(range, version))
+                    print(&mut output, self.storage.scan_range_rev(range, version)?)
                 };
             }
 
@@ -113,9 +113,9 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_prefix(&prefix, version))
+                    print(&mut output, self.storage.scan_prefix(&prefix, version)?)
                 } else {
-                    print(&mut output, self.storage.scan_prefix_rev(&prefix, version))
+                    print(&mut output, self.storage.scan_prefix_rev(&prefix, version)?)
                 };
             }
 
@@ -128,7 +128,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)
+                self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)?
             }
 
             // remove KEY [version=VERSION]
@@ -138,7 +138,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Remove { key })], version)
+                self.storage.apply(async_cow_vec![(Delta::Remove { key })], version)?
             }
 
             name => return Err(format!("invalid command {name}").into()),

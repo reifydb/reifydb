@@ -33,14 +33,14 @@ fn test_range() {
     let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
     let txn = engine.begin_rx();
-    let iter = txn.scan_range(four_to_one.clone());
+    let iter = txn.scan_range(four_to_one.clone()).unwrap();
     for (expected, v) in (1..=3).rev().zip(iter) {
         assert_eq!(v.key, as_key!(expected));
         assert_eq!(v.row, as_row!(expected));
         assert_eq!(v.version, 1);
     }
 
-    let iter = txn.scan_range_rev(four_to_one);
+    let iter = txn.scan_range_rev(four_to_one).unwrap();
     for (expected, v) in (1..=3).zip(iter) {
         assert_eq!(v.key, as_key!(expected));
         assert_eq!(v.row, as_row!(expected));

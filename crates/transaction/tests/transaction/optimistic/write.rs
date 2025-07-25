@@ -35,7 +35,7 @@ fn test_write() {
     {
         let rx = engine.begin_rx();
         assert_eq!(rx.version(), 1);
-        let value: String = from_row!(String, *rx.get(&key).unwrap().row());
+        let value: String = from_row!(String, *rx.get(&key).unwrap().unwrap().row());
         assert_eq!(value.as_str(), "foo1");
     }
 }
@@ -66,7 +66,7 @@ fn test_multiple_write() {
     let k = 8;
     let v = 8;
     let txn = engine.begin_rx();
-    assert!(txn.contains_key(&as_key!(k)));
-    let sv = txn.get(&as_key!(k)).unwrap();
+    assert!(txn.contains_key(&as_key!(k)).unwrap());
+    let sv = txn.get(&as_key!(k)).unwrap().unwrap();
     assert_eq!(from_row!(i32, *sv.row()), v);
 }

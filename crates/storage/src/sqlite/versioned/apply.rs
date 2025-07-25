@@ -5,7 +5,7 @@ use super::{ensure_table_exists, table_name};
 use crate::sqlite::Sqlite;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::VersionedApply;
-use reifydb_core::{CowVec, Version};
+use reifydb_core::{CowVec, Version, Result};
 use rusqlite::params;
 use std::collections::HashSet;
 use std::sync::{LazyLock, RwLock};
@@ -14,7 +14,7 @@ static ENSURED_TABLES: LazyLock<RwLock<HashSet<String>>> =
     LazyLock::new(|| RwLock::new(HashSet::new()));
 
 impl VersionedApply for Sqlite {
-    fn apply(&self, delta: CowVec<Delta>, version: Version) {
+    fn apply(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 
@@ -52,5 +52,6 @@ impl VersionedApply for Sqlite {
         }
 
         tx.commit().unwrap();
+        Ok(())
     }
 }

@@ -123,7 +123,7 @@ fn test_black_white() {
     assert!(err.to_string().contains("conflict"));
 
     let rx = engine.begin_rx();
-    let result: Vec<_> = rx.scan().collect();
+    let result: Vec<_> = rx.scan().unwrap().collect();
     assert_eq!(result.len(), 10);
 
     result.iter().for_each(|sv| {
@@ -158,7 +158,7 @@ fn test_overdraft_protection() {
     assert!(err.to_string().contains("conflict"));
 
     let rx = engine.begin_rx();
-    let money = from_row!(i32, *rx.get(&key).unwrap().row());
+    let money = from_row!(i32, *rx.get(&key).unwrap().unwrap().row());
     assert_eq!(money, 500);
 }
 
@@ -224,7 +224,7 @@ fn test_primary_colors() {
     assert!(err.to_string().contains("conflict"));
 
     let rx = engine.begin_rx();
-    let result: Vec<_> = rx.scan().collect();
+    let result: Vec<_> = rx.scan().unwrap().collect();
     assert_eq!(result.len(), 9000);
 
     let mut red_count = 0;

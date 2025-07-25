@@ -104,6 +104,7 @@ impl From<Committed> for TransactionValue {
     }
 }
 
+
 #[derive(Clone, Debug)]
 pub struct Committed {
     pub(crate) key: EncodedKey,
