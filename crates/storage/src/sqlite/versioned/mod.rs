@@ -9,9 +9,10 @@ mod iter_rev;
 mod range;
 mod range_rev;
 
-use reifydb_core::interface::{Key, TableId, TableRowKey};
-use reifydb_core::{EncodedKey, EncodedKeyRange};
-use rusqlite::Connection;
+use reifydb_core::interface::{Key, TableId, TableRowKey, Versioned};
+use reifydb_core::row::EncodedRow;
+use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
+use rusqlite::{Connection, Statement};
 use std::collections::HashMap;
 use std::ops::Bound;
 use std::sync::{Mutex, OnceLock};
@@ -20,7 +21,7 @@ use std::sync::{Mutex, OnceLock};
 static TABLE_NAME_CACHE: OnceLock<Mutex<HashMap<TableId, String>>> = OnceLock::new();
 
 /// Checks if an EncodedKey represents a TableRowKey
-pub fn as_table_row_key(key: &EncodedKey) -> Option<TableRowKey> {
+pub(crate) fn as_table_row_key(key: &EncodedKey) -> Option<TableRowKey> {
     match Key::decode(key) {
         None => None,
         Some(key) => match key {
@@ -31,7 +32,7 @@ pub fn as_table_row_key(key: &EncodedKey) -> Option<TableRowKey> {
 }
 
 /// Returns the appropriate table name for a given key, with caching
-pub fn table_name(key: &EncodedKey) -> &'static str {
+pub(crate) fn table_name(key: &EncodedKey) -> &'static str {
     if let Some(key) = as_table_row_key(key) {
         let cache = TABLE_NAME_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
         let mut cache_guard = cache.lock().unwrap();
@@ -48,7 +49,7 @@ pub fn table_name(key: &EncodedKey) -> &'static str {
 }
 
 /// Ensures a table exists for the given TableId
-pub fn ensure_table_exists(conn: &Connection, table: &str) {
+pub(crate) fn ensure_table_exists(conn: &Connection, table: &str) {
     let create_sql = format!(
         "CREATE TABLE IF NOT EXISTS {} (
             key     BLOB NOT NULL,
@@ -62,7 +63,7 @@ pub fn ensure_table_exists(conn: &Connection, table: &str) {
 }
 
 /// Returns the appropriate table name for a range operation based on range bounds
-pub fn table_name_for_range(range: &EncodedKeyRange) -> &'static str {
+pub(crate) fn table_name_for_range(range: &EncodedKeyRange) -> &'static str {
     // Check if any bound is a TableRowKey and use that table
     let start_key = match &range.start {
         Bound::Included(key) | Bound::Excluded(key) => Some(key),
@@ -86,4 +87,64 @@ pub fn table_name_for_range(range: &EncodedKeyRange) -> &'static str {
     }
 
     "versioned"
+}
+
+/// Helper function to execute range queries with version parameter
+pub(crate) fn execute_range_query(
+    stmt: &mut Statement,
+    range: &EncodedKeyRange,
+    version: Version,
+    param_count: u8,
+) -> Vec<Versioned> {
+    match param_count {
+        1 => stmt
+            .query_map(rusqlite::params![version], |row| {
+                Ok(Versioned {
+                    key: EncodedKey(CowVec::new(row.get(0)?)),
+                    row: EncodedRow(CowVec::new(row.get(1)?)),
+                    version: row.get(2)?,
+                })
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>(),
+        2 => {
+            let param = match (&range.start, &range.end) {
+                (Bound::Included(key), _) | (Bound::Excluded(key), _) => key.to_vec(),
+                (_, Bound::Included(key)) | (_, Bound::Excluded(key)) => key.to_vec(),
+                _ => unreachable!(),
+            };
+            stmt.query_map(rusqlite::params![param, version], |row| {
+                Ok(Versioned {
+                    key: EncodedKey(CowVec::new(row.get(0)?)),
+                    row: EncodedRow(CowVec::new(row.get(1)?)),
+                    version: row.get(2)?,
+                })
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+        }
+        3 => {
+            let start_param = match &range.start {
+                Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
+                _ => unreachable!(),
+            };
+            let end_param = match &range.end {
+                Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
+                _ => unreachable!(),
+            };
+            stmt.query_map(rusqlite::params![start_param, end_param, version], |row| {
+                Ok(Versioned {
+                    key: EncodedKey(CowVec::new(row.get(0)?)),
+                    row: EncodedRow(CowVec::new(row.get(1)?)),
+                    version: row.get(2)?,
+                })
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+        }
+        _ => unreachable!(),
+    }
 }

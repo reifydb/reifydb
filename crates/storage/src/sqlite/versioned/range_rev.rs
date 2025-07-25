@@ -2,11 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::sqlite::Sqlite;
-use super::table_name_for_range;
+use super::{execute_range_query, table_name_for_range};
 use reifydb_core::interface::{Versioned, VersionedScanRangeRev};
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
-use rusqlite::params;
+use reifydb_core::{EncodedKeyRange, Version};
 use std::ops::Bound;
 
 impl VersionedScanRangeRev for Sqlite {
@@ -55,50 +53,7 @@ impl VersionedScanRangeRev for Sqlite {
         let query = query_template.replace("{}", table);
         let mut stmt = conn.prepare(&query).unwrap();
         
-        let rows = match param_count {
-            1 => {
-                stmt.query_map(params![version], |row| {
-                    Ok(Versioned {
-                        key: EncodedKey(CowVec::new(row.get(0)?)),
-                        row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?,
-                    })
-                }).unwrap().map(Result::unwrap).collect::<Vec<_>>()
-            }
-            2 => {
-                let param = match (&range.start, &range.end) {
-                    (Bound::Included(key), _) | (Bound::Excluded(key), _) => key.to_vec(),
-                    (_, Bound::Included(key)) | (_, Bound::Excluded(key)) => key.to_vec(),
-                    _ => unreachable!(),
-                };
-                stmt.query_map(params![param, version], |row| {
-                    Ok(Versioned {
-                        key: EncodedKey(CowVec::new(row.get(0)?)),
-                        row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?,
-                    })
-                }).unwrap().map(Result::unwrap).collect::<Vec<_>>()
-            }
-            3 => {
-                let start_param = match &range.start {
-                    Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
-                    _ => unreachable!(),
-                };
-                let end_param = match &range.end {
-                    Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
-                    _ => unreachable!(),
-                };
-                stmt.query_map(params![start_param, end_param, version], |row| {
-                    Ok(Versioned {
-                        key: EncodedKey(CowVec::new(row.get(0)?)),
-                        row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?,
-                    })
-                }).unwrap().map(Result::unwrap).collect::<Vec<_>>()
-            }
-            _ => unreachable!(),
-        };
-
+        let rows = execute_range_query(&mut stmt, &range, version, param_count);
         Box::new(rows.into_iter())
     }
 }
