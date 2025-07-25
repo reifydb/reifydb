@@ -2,10 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{Date, DateTime, GetType, Interval, Time};
+use crate::value::uuid::{Uuid4, Uuid7};
 use std::fmt::Debug;
 
 pub trait IsNumber: Copy + Debug + PartialEq + PartialOrd + GetType {}
 pub trait IsTemporal: Copy + Debug + PartialEq + PartialOrd + GetType {}
+pub trait IsUuid : Copy + Debug + PartialEq + PartialOrd + GetType {}
 
 pub trait IsFloat: IsNumber {}
 
@@ -63,3 +65,7 @@ impl IsTemporal for Time {}
 impl IsTime for Time {}
 
 impl IsTemporal for Interval {}
+
+
+impl IsUuid for Uuid4 {}
+impl IsUuid for Uuid7 {}

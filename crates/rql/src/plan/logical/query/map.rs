@@ -11,7 +11,7 @@ impl Compiler {
                 .nodes
                 .into_iter()
                 .map(Self::compile_expression)
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<crate::Result<Vec<_>>>()?,
         }))
     }
 }

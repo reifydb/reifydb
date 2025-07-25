@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::FrameColumn;
+use reifydb_core::frame::FrameColumn;
 use reifydb_rql::expression::Expression;
 
 use crate::function::{Functions, math};
@@ -11,14 +11,12 @@ mod access;
 mod alias;
 mod arith;
 mod call;
-mod cast;
+pub(crate) mod cast;
 mod column;
 mod compare;
 pub(crate) mod constant;
 mod context;
 mod prefix;
-
-pub(crate) type Result<T> = std::result::Result<T, reifydb_core::Error>;
 
 pub(crate) struct Evaluator {
     functions: Functions,
@@ -35,7 +33,7 @@ impl Evaluator {
         &mut self,
         expr: &Expression,
         ctx: &EvaluationContext,
-    ) -> Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         match expr {
             Expression::AccessTable(expr) => self.access(expr, ctx),
             Expression::Alias(expr) => self.alias(expr, ctx),
@@ -60,7 +58,7 @@ impl Evaluator {
     }
 }
 
-pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> Result<FrameColumn> {
+pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<FrameColumn> {
     let mut evaluator = Evaluator {
         functions: Functions::builder()
             .register_scalar("abs", math::scalar::Abs::new)
@@ -69,11 +67,9 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> Result<FrameColum
     };
 
     // Ensures that result column data type matches the expected target column type
-    if let Some(ty) = ctx.column.as_ref().and_then(|c| c.ty) {
+    if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type) {
         let mut column = evaluator.evaluate(expr, ctx)?;
-        column.values = column
-            .values
-            .cast(ty, ctx, expr.lazy_span())?;
+        column.values = cast::cast_column_values(&column.values, ty, ctx, expr.lazy_span())?;
         Ok(column)
     } else {
         evaluator.evaluate(expr, ctx)

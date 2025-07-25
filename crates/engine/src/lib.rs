@@ -6,18 +6,28 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
+pub use reifydb_core::Result;
+
 pub use engine::Engine;
-pub use execute::{execute_tx, execute_rx};
+pub use execute::{execute_rx, execute_tx};
+use reifydb_core::frame::ColumnValues;
 
 mod engine;
 mod evaluate;
 pub(crate) mod execute;
-pub mod frame;
+
+// Helper function for creating FrameColumn for expressions (no source frame)
+pub(crate) fn create_frame_column(name: impl Into<String>, values: ColumnValues) -> reifydb_core::frame::FrameColumn {
+    let name = name.into();
+    reifydb_core::frame::FrameColumn {
+        frame: None, // Expressions have no source frame
+        name: name,
+        values,
+    }
+}
+
 #[allow(dead_code)]
 mod function;
-mod get;
 mod system;
 #[allow(dead_code)]
 pub(crate) mod view;
-
-pub type Result<T> = std::result::Result<T, reifydb_core::Error>;

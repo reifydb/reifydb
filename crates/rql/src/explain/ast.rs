@@ -4,9 +4,8 @@
 use crate::ast::lex::lex;
 use crate::ast::parse::parse;
 use crate::ast::{Ast, AstFrom, AstJoin};
-use reifydb_core::Error;
 
-pub fn explain_ast(query: &str) -> Result<String, Error> {
+pub fn explain_ast(query: &str) -> crate::Result<String> {
     let token = lex(query).unwrap();
     let statements = parse(token).unwrap();
 
@@ -34,6 +33,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::From(_) => "From",
         Ast::Identifier(_) => "Identifier",
         Ast::Infix(_) => "Infix",
+        Ast::AstDelete(_) => "Delete",
         Ast::AstInsert(_) => "Insert",
         Ast::AstUpdate(_) => "Update",
         Ast::Join(_) => "Join",

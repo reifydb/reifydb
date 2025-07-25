@@ -3,14 +3,15 @@
 
 use crate::ast::lex::Keyword::Policy;
 use crate::ast::lex::{Literal, Operator, Separator};
-use crate::ast::parse::{Parser, Precedence, invalid_policy_error};
-use crate::ast::{AstPolicy, AstPolicyBlock, AstPolicyKind, Token, TokenKind, parse};
+use crate::ast::parse::error::invalid_policy_error;
+use crate::ast::parse::{Parser, Precedence};
+use crate::ast::{AstPolicy, AstPolicyBlock, AstPolicyKind, Token, TokenKind};
 use Separator::Comma;
 use TokenKind::Identifier;
-
+use reifydb_core::return_error;
 
 impl Parser {
-    pub(crate) fn parse_policy_block(&mut self) -> parse::Result<AstPolicyBlock> {
+    pub(crate) fn parse_policy_block(&mut self) -> crate::Result<AstPolicyBlock> {
         let token = self.consume_keyword(Policy)?;
         self.consume_operator(Operator::OpenParen)?;
 
@@ -30,7 +31,7 @@ impl Parser {
         Ok(AstPolicyBlock { token, policies })
     }
 
-    fn parse_policy_kind(&mut self) -> parse::Result<(Token, AstPolicyKind)> {
+    fn parse_policy_kind(&mut self) -> crate::Result<(Token, AstPolicyKind)> {
         let identifier = self.consume(Identifier)?;
         let ty = match identifier.span.fragment.as_str() {
             "saturation" => AstPolicyKind::Saturation,
@@ -39,7 +40,7 @@ impl Parser {
                 self.consume_literal(Literal::Undefined)?;
                 AstPolicyKind::NotUndefined
             }
-            _ => return Err(invalid_policy_error(identifier)),
+            _ => return_error!(invalid_policy_error(identifier)),
         };
 
         Ok((identifier, ty))

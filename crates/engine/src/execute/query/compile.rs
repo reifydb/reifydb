@@ -4,7 +4,9 @@
 use crate::execute::query::aggregate::AggregateNode;
 use crate::execute::query::filter::FilterNode;
 use crate::execute::query::inline::InlineDataNode;
-use crate::execute::query::join::LeftJoinNode;
+use crate::execute::query::join_inner::InnerJoinNode;
+use crate::execute::query::join_left::LeftJoinNode;
+use crate::execute::query::join_natural::NaturalJoinNode;
 use crate::execute::query::map::{MapNode, MapWithoutInputNode};
 use crate::execute::query::scan::ScanFrameNode;
 use crate::execute::query::sort::SortNode;
@@ -51,10 +53,22 @@ pub(crate) fn compile(
             }
         }
 
+        PhysicalPlan::JoinInner(physical::JoinInnerNode { left, right, on }) => {
+            let left_node = compile(*left, rx, context.clone());
+            let right_node = compile(*right, rx, context.clone());
+            Box::new(InnerJoinNode::new(left_node, right_node, on))
+        }
+
         PhysicalPlan::JoinLeft(physical::JoinLeftNode { left, right, on }) => {
             let left_node = compile(*left, rx, context.clone());
             let right_node = compile(*right, rx, context.clone());
             Box::new(LeftJoinNode::new(left_node, right_node, on))
+        }
+
+        PhysicalPlan::JoinNatural(physical::JoinNaturalNode { left, right, join_type }) => {
+            let left_node = compile(*left, rx, context.clone());
+            let right_node = compile(*right, rx, context.clone());
+            Box::new(NaturalJoinNode::new(left_node, right_node, join_type))
         }
 
         PhysicalPlan::InlineData(physical::InlineDataNode { rows }) => {
@@ -77,6 +91,7 @@ pub(crate) fn compile(
         PhysicalPlan::CreateDeferredView(_)
         | PhysicalPlan::CreateSchema(_)
         | PhysicalPlan::CreateTable(_)
+        | PhysicalPlan::Delete(_)
         | PhysicalPlan::Insert(_)
         | PhysicalPlan::Update(_) => unreachable!(),
     }

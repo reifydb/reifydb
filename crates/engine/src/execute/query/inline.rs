@@ -3,9 +3,10 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout};
+use reifydb_catalog::table::Table;
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout};
 use reifydb_core::interface::Rx;
-use reifydb_core::{BitVec, Value};
+use reifydb_core::{BitVec, ColumnDescriptor, Value};
 use reifydb_rql::expression::KeyedExpression;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,11 +26,15 @@ impl InlineDataNode {
         Self { rows, layout, context, executed: false }
     }
 
-    fn create_frame_layout_from_table(table: &reifydb_catalog::table::Table) -> FrameLayout {
+    fn create_frame_layout_from_table(table: &Table) -> FrameLayout {
         let columns = table
             .columns
             .iter()
-            .map(|col| FrameColumnLayout { name: col.name.clone(), ty: col.ty })
+            .map(|col| FrameColumnLayout {
+                name: col.name.clone(),
+                frame: Some(table.name.clone()),
+                ty: col.ty,
+            })
             .collect();
 
         FrameLayout { columns }
@@ -89,12 +94,13 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_name in all_columns {
-            let mut column_values = crate::frame::ColumnValues::undefined(0);
+            let mut column_values = reifydb_core::frame::ColumnValues::undefined(0);
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_name) {
                     let ctx = EvaluationContext {
-                        column: None,
+                        target_column: None,
+                        column_policies: Vec::new(),
                         mask: BitVec::new(1, true),
                         columns: Vec::new(),
                         row_count: 1,
@@ -116,8 +122,11 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns
-                .push(crate::frame::FrameColumn { name: column_name, values: column_values });
+            frame_columns.push(reifydb_core::frame::FrameColumn {
+                frame: Some("inline".to_string()),
+                name: column_name,
+                values: column_values,
+            });
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");
@@ -147,8 +156,7 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_layout in &layout.columns {
-            let mut column_values =
-                ColumnValues::with_capacity(column_layout.ty, self.rows.len());
+            let mut column_values = ColumnValues::with_capacity(column_layout.ty, self.rows.len());
 
             // Find the corresponding table column for policies
             let table_column =
@@ -156,8 +164,22 @@ impl InlineDataNode {
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_layout.name) {
+                    // Create ColumnDescriptor with table context
+                    let column_descriptor = ColumnDescriptor::new()
+                        .with_table(&table.name)
+                        .with_column(&table_column.name)
+                        .with_column_type(table_column.ty)
+                        .with_policies(
+                            table_column.policies.iter().map(|cp| cp.policy.clone()).collect(),
+                        );
+
                     let ctx = EvaluationContext {
-                        column: Some(table_column.clone().into()),
+                        target_column: Some(column_descriptor),
+                        column_policies: table_column
+                            .policies
+                            .iter()
+                            .map(|cp| cp.policy.clone())
+                            .collect(),
                         mask: BitVec::new(1, true),
                         columns: Vec::new(),
                         row_count: 1,
@@ -170,7 +192,8 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(crate::frame::FrameColumn {
+            frame_columns.push(reifydb_core::frame::FrameColumn {
+                frame: Some("inline".to_string()),
                 name: column_layout.name.clone(),
                 values: column_values,
             });

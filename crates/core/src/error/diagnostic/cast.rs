@@ -70,3 +70,19 @@ pub fn invalid_boolean(span: impl IntoOwnedSpan, cause: Diagnostic) -> Diagnosti
         cause: Some(Box::from(cause)),
     }
 }
+
+pub fn invalid_uuid(span: impl IntoOwnedSpan, target: Type, cause: Diagnostic) -> Diagnostic {
+    let owned_span = span.into_span();
+    let label = Some(format!("failed to cast to {}", target));
+    Diagnostic {
+        code: "CAST_005".to_string(),
+        statement: None,
+        message: format!("failed to cast to {}", target),
+        span: Some(owned_span),
+        label,
+        help: None,
+        notes: vec![],
+        column: None,
+        cause: Some(Box::from(cause)),
+    }
+}

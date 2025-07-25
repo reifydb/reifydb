@@ -8,22 +8,23 @@ pub fn transaction_conflict() -> Diagnostic {
     Diagnostic {
         code: "TXN_001".to_string(),
         statement: None,
-        message: "Transaction conflict detected - another transaction modified the same data".to_string(),
+        message: "Transaction conflict detected - another transaction modified the same data"
+            .to_string(),
         column: None,
         span: None,
         label: None,
-        help: Some("Retry the transaction or use different isolation level".to_string()),
+        help: Some("Retry the transaction".to_string()),
         notes: vec![],
         cause: None,
     }
 }
 
 /// Transaction was discarded due to rollback or abort
-pub fn transaction_discarded() -> Diagnostic {
+pub fn transaction_rolled_back() -> Diagnostic {
     Diagnostic {
         code: "TXN_002".to_string(),
         statement: None,
-        message: "Transaction was discarded and cannot be committed".to_string(),
+        message: "Transaction rolled back and cannot be committed".to_string(),
         column: None,
         span: None,
         label: None,

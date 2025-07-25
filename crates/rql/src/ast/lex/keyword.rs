@@ -10,6 +10,7 @@ use nom::combinator::{map, not, peek};
 use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
+use reifydb_core::error::diagnostic::ast;
 
 macro_rules! keyword {
     (
@@ -32,11 +33,11 @@ macro_rules! keyword {
         impl TryFrom<&str> for Keyword {
             type Error = reifydb_core::Error;
 
-            fn try_from(value: &str) -> Result<Self, Self::Error> {
+            fn try_from(value: &str) -> crate::Result<Self> {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
-                    _ => Err(reifydb_core::Error(reifydb_core::error::diagnostic::ast::lex_error("not a keyword".to_string())))
+                    _ => reifydb_core::err!(ast::lex_error("not a keyword".to_string()))
                 }
             }
         }
@@ -55,6 +56,8 @@ keyword! {
     Offset     => "OFFSET",
 
     Left       => "LEFT",
+    Inner      => "INNER",
+    Natural    => "NATURAL",
     Join       => "JOIN",
     On         => "ON",
     Using      => "USING",
@@ -158,6 +161,8 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Set, "SET"),
             keyword_tag(Keyword::Delete, "DELETE"),
             keyword_tag(Keyword::Left, "LEFT"),
+            keyword_tag(Keyword::Inner, "INNER"),
+            keyword_tag(Keyword::Natural, "NATURAL"),
             keyword_tag(Keyword::Join, "JOIN"),
             keyword_tag(Keyword::On, "ON"),
             keyword_tag(Keyword::Using, "USING"),
@@ -240,10 +245,10 @@ mod tests {
             let (remaining, token) = result;
 
             assert_eq!(
-				TokenKind::Keyword(keyword),
-				token.kind,
-				"ty mismatch for keyword: {}",
-				repr
+                TokenKind::Keyword(keyword),
+                token.kind,
+                "ty mismatch for keyword: {}",
+                repr
             );
             assert_eq!(token.span.fragment.to_lowercase(), repr.to_lowercase());
             assert_eq!(token.span.column, 1);
@@ -279,6 +284,8 @@ mod tests {
         test_keyword_set => (Set, "SET"),
         test_keyword_delete => (Delete, "DELETE"),
         test_keyword_left => (Left, "LEFT"),
+        test_keyword_inner => (Inner, "INNER"),
+        test_keyword_natural => (Natural, "NATURAL"),
         test_keyword_join => (Join, "JOIN"),
         test_keyword_on => (On, "ON"),
         test_keyword_using => (Using, "USING"),
@@ -361,6 +368,8 @@ mod tests {
         test_not_keyword_set => ( "set"),
         test_not_keyword_delete => ( "delete"),
         test_not_keyword_left => ( "left"),
+        test_not_keyword_inner => ( "inner"),
+        test_not_keyword_natural => ( "natural"),
         test_not_keyword_join => ( "join"),
         test_not_keyword_on => ( "on"),
         test_not_keyword_as => ( "as"),

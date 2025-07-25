@@ -3,9 +3,11 @@
 
 use crate::grpc::client::grpc;
 use reifydb_core::error::diagnostic::{Diagnostic, DiagnosticColumn};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::value::uuid::{Uuid4, Uuid7};
 use reifydb_core::{Date, DateTime, Interval, OwnedSpan, RowId, SpanColumn, SpanLine, Time, Type};
-use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
     Diagnostic {
@@ -32,9 +34,11 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
 
     let mut columns = Vec::with_capacity(frame.columns.len());
     let mut index = HashMap::with_capacity(frame.columns.len());
+    let mut source_index = HashMap::with_capacity(frame.columns.len());
 
     for (i, grpc_col) in frame.columns.into_iter().enumerate() {
         let data_type = Type::from_u8(grpc_col.ty as u8);
+        let frame = grpc_col.frame;
         let name = grpc_col.name;
 
         let values = grpc_col.values;
@@ -399,11 +403,75 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 }
                 ColumnValues::row_id_with_bitvec(data, bitvec)
             }
+
+            Type::Uuid4 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.r#type {
+                        Some(GrpcType::Uuid4Value(bytes)) => {
+                            if let Ok(uuid_bytes) = bytes.try_into() {
+                                data.push(Uuid4::from(Uuid::from_bytes(uuid_bytes)));
+                                bitvec.push(true);
+                            } else {
+                                data.push(Uuid4::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        _ => {
+                            data.push(Uuid4::default());
+                            bitvec.push(false);
+                        }
+                    }
+                }
+                ColumnValues::uuid4_with_bitvec(data, bitvec)
+            }
+
+            Type::Uuid7 => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.r#type {
+                        Some(GrpcType::Uuid7Value(bytes)) => {
+                            if let Ok(uuid_bytes) = bytes.try_into() {
+                                data.push(Uuid7::from(Uuid::from_bytes(uuid_bytes)));
+                                bitvec.push(true);
+                            } else {
+                                data.push(Uuid7::default());
+                                bitvec.push(false);
+                            }
+                        }
+                        _ => {
+                            data.push(Uuid7::default());
+                            bitvec.push(false);
+                        }
+                    }
+                }
+                ColumnValues::uuid7_with_bitvec(data, bitvec)
+            }
         };
 
-        columns.push(FrameColumn { name: name.clone(), values: column_values });
-        index.insert(name, i);
+        // Use the provided metadata, fallback to name if fields are empty
+        let name = if name.is_empty() { name.clone() } else { name };
+
+        columns.push(FrameColumn {
+            frame: frame.clone(),
+            name: name.clone(),
+            values: column_values,
+        });
+        let qualified_name = if name.contains('.') {
+            name.clone()
+        } else {
+            match &frame {
+                Some(sf) => format!("{}.{}", sf, name),
+                None => name.clone(),
+            }
+        };
+        index.insert(qualified_name, i);
+        if let Some(sf) = &frame {
+            source_index.insert((sf.clone(), name.clone()), i);
+        }
     }
 
-    Frame { name: frame.name, columns, index }
+    Frame { name: frame.name, columns, index, frame_index: source_index }
 }

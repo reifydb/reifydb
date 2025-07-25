@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{AggregateFunction, Functions};
-use reifydb_core::interface::Rx;
 use reifydb_core::OwnedSpan;
+use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
 use std::collections::{HashMap, HashSet};
@@ -72,7 +72,8 @@ impl ExecutionPlan for AggregateNode {
                     let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
                     let mut c = FrameColumn {
-                        name: alias.fragment,
+                        frame: Some("aggregate".to_string()),
+                        name: alias.fragment.clone(),
                         // FIXME this must be set based on the actual key
                         values: ColumnValues::int2_with_capacity(group_key_order.len()),
                     };
@@ -84,7 +85,11 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Aggregate { alias, mut function, .. } => {
                     let (keys_out, mut values) = function.finalize().unwrap();
                     align_column_values(&group_key_order, &keys_out, &mut values).unwrap();
-                    result_columns.push(FrameColumn { name: alias.fragment, values: values });
+                    result_columns.push(FrameColumn { 
+                        frame: Some("aggregate".to_string()),
+                        name: alias.fragment.clone(),
+                        values: values 
+                    });
                 }
             }
         }
@@ -150,7 +155,7 @@ fn align_column_values(
     group_key_order: &[Vec<Value>],
     keys: &[Vec<Value>],
     values: &mut ColumnValues,
-) -> Result<(), reifydb_core::Error> {
+) -> crate::Result<()> {
     let mut key_to_index = HashMap::new();
     for (i, key) in keys.iter().enumerate() {
         key_to_index.insert(key, i);
@@ -159,13 +164,11 @@ fn align_column_values(
     let reorder_indices: Vec<usize> = group_key_order
         .iter()
         .map(|k| {
-            key_to_index
-                .get(k)
-                .copied()
-                // .ok_or_else(|| reifydb_core::ErrorInternal(format!("Group key {:?} missing in aggregate output", k)))
-                .ok_or_else(|| reifydb_core::Error::from(format!("Group key {:?} missing in aggregate output", k)))
+            key_to_index.get(k).copied().ok_or_else(|| {
+                reifydb_core::error!(reifydb_core::error::diagnostic::engine::frame_error(format!("Group key {:?} missing in aggregate output", k)))
+            })
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<crate::Result<Vec<_>>>()?;
 
     values.reorder(&reorder_indices);
     Ok(())

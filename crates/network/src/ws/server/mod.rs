@@ -4,14 +4,16 @@ use crate::ws::{
     RxResponse, TxRequest, TxResponse, WebsocketColumn, WebsocketFrame,
 };
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{
+    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+};
 use reifydb_core::{Error, Value};
 use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, OnceCell};
@@ -51,6 +53,7 @@ where
     shutdown: Arc<Notify>,
     shutdown_complete: AtomicBool,
     socket_addr: OnceCell<SocketAddr>,
+    _phantom: std::marker::PhantomData<(VS, US, T)>,
 }
 
 impl<VS, US, T> Deref for WsServer<VS, US, T>
@@ -79,6 +82,7 @@ where
             shutdown: Arc::new(Notify::new()),
             shutdown_complete: AtomicBool::new(false),
             socket_addr: OnceCell::new(),
+            _phantom: std::marker::PhantomData,
         }))
     }
 
@@ -253,19 +257,24 @@ where
                                                                     let response = crate::ws::response::Response {
                                                                         id: request.id,
                                                                         payload: ResponsePayload::Tx(TxResponse {
-                                                                            frames: result.into_iter().map(|frame| WebsocketFrame {
-                                                                                name: frame.name,
-                                                                                columns: frame.columns.into_iter().map(|c| WebsocketColumn {
-                                                                                    name: c.name.clone(),
-                                                                                    ty: c.get_type(),
-                                                                                    data: c.values.iter().map(|v| {
-                                                                                        if v == Value::Undefined {
-                                                                                            "⟪undefined⟫".to_string()
-                                                                                        } else {
-                                                                                            v.to_string()
+                                                                            frames: result.into_iter().map(|frame| {
+                                                                                WebsocketFrame {
+                                                                                    name: frame.name,
+                                                                                    columns: frame.columns.into_iter().map(|c| {
+                                                                                        WebsocketColumn {
+                                                                                            ty: c.get_type(),
+                                                                                            name: c.name,
+                                                                                            frame: c.frame,
+                                                                                            data: c.values.iter().map(|v| {
+                                                                                                if v == Value::Undefined {
+                                                                                                    "⟪undefined⟫".to_string()
+                                                                                                } else {
+                                                                                                    v.to_string()
+                                                                                                }
+                                                                                            }).collect(),
                                                                                         }
                                                                                     }).collect(),
-                                                                                }).collect(),
+                                                                                }
                                                                             }).collect(),
                                                                         }),
                                                                     };
@@ -305,19 +314,24 @@ where
                                                                     let response = crate::ws::response::Response {
                                                                         id: request.id,
                                                                         payload: ResponsePayload::Rx(RxResponse {
-                                                                            frames: result.into_iter().map(|frame| WebsocketFrame {
-                                                                                name: frame.name,
-                                                                                columns: frame.columns.into_iter().map(|c| WebsocketColumn {
-                                                                                    name: c.name.clone(),
-                                                                                    ty: c.get_type(),
-                                                                                    data: c.values.iter().map(|v| {
-                                                                                        if v == Value::Undefined {
-                                                                                            "⟪undefined⟫".to_string()
-                                                                                        } else {
-                                                                                            v.to_string()
+                                                                            frames: result.into_iter().map(|frame| {
+                                                                                WebsocketFrame {
+                                                                                    name: frame.name,
+                                                                                    columns: frame.columns.into_iter().map(|c| {
+                                                                                        WebsocketColumn {
+                                                                                            ty: c.get_type(),
+                                                                                            name: c.name,
+                                                                                            frame: c.frame,
+                                                                                            data: c.values.iter().map(|v| {
+                                                                                                if v == Value::Undefined {
+                                                                                                    "⟪undefined⟫".to_string()
+                                                                                                } else {
+                                                                                                    v.to_string()
+                                                                                                }
+                                                                                            }).collect(),
                                                                                         }
                                                                                     }).collect(),
-                                                                                }).collect(),
+                                                                                }
                                                                             }).collect(),
                                                                         }),
                                                                     };

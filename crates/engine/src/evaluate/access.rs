@@ -2,23 +2,32 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::frame::FrameColumn;
 use reifydb_core::OwnedSpan;
+use reifydb_core::frame::FrameColumn;
 use reifydb_rql::expression::{AccessTableExpression, ColumnExpression, Expression};
 
 impl Evaluator {
     pub(crate) fn access(
-		&mut self,
-		expr: &AccessTableExpression,
-		ctx: &EvaluationContext,
-    ) -> crate::evaluate::Result<FrameColumn> {
-        self.evaluate(
+        &mut self,
+        expr: &AccessTableExpression,
+        ctx: &EvaluationContext,
+    ) -> crate::Result<FrameColumn> {
+        let table = expr.table.fragment.clone();
+        let column = expr.column.fragment.clone();
+
+        let mut result = self.evaluate(
             &Expression::Column(ColumnExpression(OwnedSpan {
                 column: expr.table.column,
                 line: expr.table.line,
-                fragment: format!("{}_{}", expr.table.fragment, expr.column.fragment),
+                fragment: format!("{}.{}", table, column),
             })),
             &ctx,
-        )
+        )?;
+
+        // Ensure name contains only the column name, not the qualified name
+        result.name = column;
+        result.frame = Some(table);
+
+        Ok(result)
     }
 }

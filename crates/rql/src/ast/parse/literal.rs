@@ -4,36 +4,37 @@
 use crate::ast::lex::Literal;
 use crate::ast::parse::Parser;
 use crate::ast::{
-    AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralTemporal, AstLiteralText, AstLiteralUndefined, parse,
+    AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralTemporal, AstLiteralText,
+    AstLiteralUndefined,
 };
 
 impl Parser {
-    pub(crate) fn parse_literal_number(&mut self) -> parse::Result<AstLiteral> {
+    pub(crate) fn parse_literal_number(&mut self) -> crate::Result<AstLiteral> {
         let token = self.consume_literal(Literal::Number)?;
         Ok(AstLiteral::Number(AstLiteralNumber(token)))
     }
 
-    pub(crate) fn parse_literal_text(&mut self) -> parse::Result<AstLiteral> {
+    pub(crate) fn parse_literal_text(&mut self) -> crate::Result<AstLiteral> {
         let token = self.consume_literal(Literal::Text)?;
         Ok(AstLiteral::Text(AstLiteralText(token)))
     }
 
-    pub(crate) fn parse_literal_true(&mut self) -> parse::Result<AstLiteral> {
+    pub(crate) fn parse_literal_true(&mut self) -> crate::Result<AstLiteral> {
         let token = self.consume_literal(Literal::True)?;
         Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
     }
 
-    pub(crate) fn parse_literal_false(&mut self) -> parse::Result<AstLiteral> {
+    pub(crate) fn parse_literal_false(&mut self) -> crate::Result<AstLiteral> {
         let token = self.consume_literal(Literal::False)?;
         Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
     }
 
-    pub(crate) fn parse_literal_undefined(&mut self) -> parse::Result<AstLiteral> {
+    pub(crate) fn parse_literal_undefined(&mut self) -> crate::Result<AstLiteral> {
         let token = self.consume_literal(Literal::Undefined)?;
         Ok(AstLiteral::Undefined(AstLiteralUndefined(token)))
     }
 
-    pub(crate) fn parse_literal_temporal(&mut self) -> parse::Result<AstLiteral> {
+    pub(crate) fn parse_literal_temporal(&mut self) -> crate::Result<AstLiteral> {
         let token = self.consume_literal(Literal::Temporal)?;
         Ok(AstLiteral::Temporal(AstLiteralTemporal(token)))
     }

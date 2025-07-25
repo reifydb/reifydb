@@ -9,9 +9,9 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::{CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::value::temporal::parse_interval;
-use reifydb_engine::frame::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::{CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
@@ -146,7 +146,7 @@ impl WsClient {
 
         match resp.payload {
             ResponsePayload::Tx(payload) => Ok(payload),
-            ResponsePayload::Err(payload) => Err(Error(payload.diagnostic)),
+            ResponsePayload::Err(payload) => err!(payload.diagnostic),
             other => {
                 eprintln!("Unexpected execute response: {:?}", other);
                 panic!("Unexpected execute response type")
@@ -174,7 +174,7 @@ impl WsClient {
 
         match resp.payload {
             ResponsePayload::Rx(payload) => Ok(payload),
-            ResponsePayload::Err(payload) => Err(Error(payload.diagnostic)),
+            ResponsePayload::Err(payload) => err!(payload.diagnostic),
             other => {
                 eprintln!("Unexpected query response: {:?}", other);
                 panic!("Unexpected query response type")
@@ -204,11 +204,20 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn { name: col.name, values: convert_column_values(col.ty, col.data) }
+                FrameColumn {
+                    name: col.name,
+                    frame: col.frame,
+                    values: convert_column_values(col.ty, col.data),
+                }
             })
             .collect();
 
-        result.push(Frame { name: frame.name, columns, index })
+        result.push(Frame {
+            name: frame.name,
+            columns,
+            index,
+            frame_index: std::collections::HashMap::new(),
+        })
     }
 
     result
@@ -225,11 +234,20 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn { name: col.name, values: convert_column_values(col.ty, col.data) }
+                FrameColumn {
+                    frame: col.frame,
+                    name: col.name,
+                    values: convert_column_values(col.ty, col.data),
+                }
             })
             .collect();
 
-        result.push(Frame { name: frame.name, columns, index })
+        result.push(Frame {
+            name: frame.name,
+            columns,
+            index,
+            frame_index: std::collections::HashMap::new(),
+        })
     }
 
     result
@@ -433,6 +451,36 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                 })
                 .collect();
             ColumnValues::RowId(CowVec::new(values), bitvec.into())
+        }
+        Type::Uuid4 => {
+            let values: Vec<reifydb_core::value::uuid::Uuid4> = data
+                .into_iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        reifydb_core::value::uuid::Uuid4::from(Uuid::nil())
+                    } else {
+                        reifydb_core::value::uuid::Uuid4::from(
+                            Uuid::parse_str(&s).unwrap_or(Uuid::nil()),
+                        )
+                    }
+                })
+                .collect();
+            ColumnValues::Uuid4(CowVec::new(values), bitvec.into())
+        }
+        Type::Uuid7 => {
+            let values: Vec<reifydb_core::value::uuid::Uuid7> = data
+                .into_iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        reifydb_core::value::uuid::Uuid7::from(Uuid::nil())
+                    } else {
+                        reifydb_core::value::uuid::Uuid7::from(
+                            Uuid::parse_str(&s).unwrap_or(Uuid::nil()),
+                        )
+                    }
+                })
+                .collect();
+            ColumnValues::Uuid7(CowVec::new(values), bitvec.into())
         }
     }
 }

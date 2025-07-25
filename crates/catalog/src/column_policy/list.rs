@@ -5,7 +5,7 @@ use crate::Catalog;
 use crate::column::ColumnId;
 use crate::column_policy::layout::column_policy;
 use crate::column_policy::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKind};
-use crate::key::ColumnPolicyKey;
+use reifydb_core::interface::ColumnPolicyKey;
 use reifydb_core::interface::Rx;
 
 impl Catalog {

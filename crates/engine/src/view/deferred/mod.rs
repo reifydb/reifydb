@@ -3,12 +3,13 @@
 
 mod work;
 
-use crate::view::flow::Orchestrator;
 use crate::view::deferred::work::work;
+use crate::view::flow::Orchestrator;
 use reifydb_core::delta::Delta;
-use reifydb_core::hook::PostCommitHook;
-use reifydb_core::{CowVec, Version};
+use reifydb_core::hook::transaction::PostCommitHook;
+use reifydb_core::hook::{BoxedHookIter, Callback};
 use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
+use reifydb_core::{CowVec, Error, Version, return_hooks};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, mpsc};
 use std::thread;
@@ -16,7 +17,7 @@ use std::thread;
 pub struct Engine<VS: VersionedStorage, US: UnversionedStorage> {
     tx: Sender<Work>,
     _orchestrator: Orchestrator,
-    _marker: std::marker::PhantomData<(VS, US)>,
+    _phantom: std::marker::PhantomData<(VS, US)>,
 }
 
 pub(crate) type Work = (CowVec<Delta>, Version);
@@ -31,7 +32,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Engine<VS, US> {
 
         let result = Arc::new(Engine {
             tx,
-            _marker: std::marker::PhantomData,
+            _phantom: std::marker::PhantomData,
             _orchestrator: orchestrator.clone(),
         });
 
@@ -43,10 +44,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Engine<VS, US> {
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> PostCommitHook
-    for Engine<VS, US>
-{
-    fn on_post_commit(&self, deltas: CowVec<Delta>, version: Version) {
-        let _ = self.tx.send((deltas, version));
+impl<VS: VersionedStorage, US: UnversionedStorage> Callback<PostCommitHook> for Engine<VS, US> {
+    fn on(&self, hook: &PostCommitHook) -> Result<BoxedHookIter, Error> {
+        let _ = self.tx.send((hook.deltas.clone(), hook.version));
+        return_hooks!()
     }
 }

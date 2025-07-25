@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::Executor;
-use crate::frame::Frame;
+use reifydb_core::frame::Frame;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 

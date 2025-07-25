@@ -50,6 +50,7 @@ pub enum Ast {
     Identifier(AstIdentifier),
     Infix(AstInfix),
     Inline(AstInline),
+    AstDelete(AstDelete),
     AstInsert(AstInsert),
     AstUpdate(AstUpdate),
     Join(AstJoin),
@@ -86,6 +87,7 @@ impl Ast {
             Ast::Aggregate(node) => &node.token,
             Ast::Identifier(node) => &node.0,
             Ast::Infix(node) => &node.token,
+            Ast::AstDelete(node) => &node.token,
             Ast::AstInsert(node) => &node.token,
             Ast::AstUpdate(node) => &node.token,
             Ast::Take(node) => &node.token,
@@ -98,7 +100,9 @@ impl Ast {
                 AstLiteral::Undefined(node) => &node.0,
             },
             Ast::Join(node) => match node {
+                AstJoin::InnerJoin { token, .. } => token,
                 AstJoin::LeftJoin { token, .. } => token,
+                AstJoin::NaturalJoin { token, .. } => token,
             },
             Ast::Nop => unreachable!(),
             Ast::Sort(node) => &node.token,
@@ -178,6 +182,13 @@ impl Ast {
     }
     pub fn as_infix(&self) -> &AstInfix {
         if let Ast::Infix(result) = self { result } else { panic!("not infix") }
+    }
+
+    pub fn is_delete(&self) -> bool {
+        matches!(self, Ast::AstDelete(_))
+    }
+    pub fn as_delete(&self) -> &AstDelete {
+        if let Ast::AstDelete(result) = self { result } else { panic!("not delete") }
     }
 
     pub fn is_insert(&self) -> bool {
@@ -559,6 +570,13 @@ pub struct AstInfix {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstDelete {
+    pub token: Token,
+    pub schema: Option<AstIdentifier>,
+    pub table: AstIdentifier,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstInsert {
     pub token: Token,
     pub schema: Option<AstIdentifier>,
@@ -573,8 +591,22 @@ pub struct AstUpdate {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AstJoinType {
+    Inner,
+    Left,
+}
+
+impl Default for AstJoinType {
+    fn default() -> Self {
+        AstJoinType::Left
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstJoin {
+    InnerJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },
     LeftJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },
+    NaturalJoin { token: Token, with: Box<Ast>, join_type: Option<AstJoinType> },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{BorrowedSpan, DateTime, Error, Span};
+use crate::{return_error, BorrowedSpan, DateTime, Error, Span};
 use crate::error::diagnostic::temporal;
 use super::date::parse_date;
 use super::time::parse_time;
@@ -9,7 +9,7 @@ use super::time::parse_time;
 pub fn parse_datetime(span: impl Span) -> Result<DateTime, Error> {
     let parts = span.split('T');
     if parts.len() != 2 {
-        return Err(Error(temporal::invalid_datetime_format(span.to_owned())));
+        return_error!(temporal::invalid_datetime_format(span.to_owned()));
     }
 
     let date_span = BorrowedSpan::new(parts[0].fragment());

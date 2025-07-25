@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
 use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
-use crate::frame::{ColumnValues, FrameColumn};
+use reifydb_core::frame::{ColumnValues, FrameColumn};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
@@ -11,7 +10,7 @@ impl Evaluator {
         &mut self,
         prefix: &PrefixExpression,
         ctx: &EvaluationContext,
-    ) -> evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let column = evaluate(&prefix.expression, ctx)?;
 
         match column.values {
@@ -31,6 +30,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::float4_with_bitvec(result, bitvec),
                 })
@@ -49,6 +49,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::float8_with_bitvec(result, bitvec),
                 })
@@ -67,6 +68,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int1_with_bitvec(result, bitvec),
                 })
@@ -85,6 +87,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int2_with_bitvec(result, bitvec),
                 })
@@ -103,6 +106,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int4_with_bitvec(result, bitvec),
                 })
@@ -121,6 +125,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int8_with_bitvec(result, bitvec),
                 })
@@ -139,6 +144,7 @@ impl Evaluator {
                     }
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int16_with_bitvec(result, bitvec),
                 })
@@ -157,6 +163,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int1_with_bitvec(result, bitvec),
                 })
@@ -172,6 +179,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int2_with_bitvec(result, bitvec),
                 })
@@ -187,6 +195,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int4_with_bitvec(result, bitvec),
                 })
@@ -202,6 +211,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int8_with_bitvec(result, bitvec),
                 })
@@ -216,6 +226,7 @@ impl Evaluator {
                     });
                 }
                 Ok(FrameColumn {
+                    frame: column.frame,
                     name: column.name,
                     values: ColumnValues::int16_with_bitvec(result, bitvec),
                 })
@@ -241,6 +252,12 @@ impl Evaluator {
             }
             ColumnValues::RowId(_, _) => {
                 unimplemented!("Cannot apply prefix operator to RowId")
+            }
+            ColumnValues::Uuid4(_, _) => {
+                unimplemented!("Cannot apply prefix operator to Uuid4")
+            }
+            ColumnValues::Uuid7(_, _) => {
+                unimplemented!("Cannot apply prefix operator to Uuid7")
             }
         }
     }

@@ -50,6 +50,7 @@ where
     config: GrpcConfig,
     engine: Engine<VS, US, T>,
     socket_addr: OnceCell<SocketAddr>,
+    _phantom: std::marker::PhantomData<(VS, US, T)>,
 }
 
 impl<VS, US, T> Deref for GrpcServer<VS, US, T>
@@ -72,7 +73,7 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(config: GrpcConfig, engine: Engine<VS, US, T>) -> Self {
-        Self(Arc::new(Inner { config, engine, socket_addr: OnceCell::new() }))
+        Self(Arc::new(Inner { config, engine, socket_addr: OnceCell::new(), _phantom: std::marker::PhantomData }))
     }
 
     pub async fn serve(self) -> Result<(), Error> {

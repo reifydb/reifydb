@@ -3,7 +3,8 @@
 
 use crate::Type;
 use crate::row::{EncodedRow, Layout};
-use crate::value::{Date, DateTime, Interval, Time};
+use crate::value::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
+use uuid::Uuid;
 
 impl Layout {
     pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
@@ -167,13 +168,46 @@ impl Layout {
             Interval::new(months, days, nanos)
         }
     }
+
+    pub fn get_uuid(&self, row: &EncodedRow, index: usize) -> Uuid {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert!(field.value == Type::Uuid4 || field.value == Type::Uuid7);
+        unsafe {
+            // UUIDs are 16 bytes
+            let bytes: [u8; 16] = std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
+            Uuid::from_bytes(bytes)
+        }
+    }
+
+    pub fn get_uuid4(&self, row: &EncodedRow, index: usize) -> Uuid4 {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert_eq!(field.value, Type::Uuid4);
+        unsafe {
+            // UUIDs are 16 bytes
+            let bytes: [u8; 16] = std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
+            Uuid4::from(Uuid::from_bytes(bytes))
+        }
+    }
+
+    pub fn get_uuid7(&self, row: &EncodedRow, index: usize) -> Uuid7 {
+        let field = &self.fields[index];
+        debug_assert!(row.len() >= self.total_static_size());
+        debug_assert_eq!(field.value, Type::Uuid7);
+        unsafe {
+            // UUIDs are 16 bytes
+            let bytes: [u8; 16] = std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
+            Uuid7::from(Uuid::from_bytes(bytes))
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::Type;
     use crate::row::Layout;
-    use crate::value::{Date, DateTime, Interval, Time};
+    use crate::value::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
 
     #[test]
     fn test_get_bool() {
@@ -485,5 +519,52 @@ mod tests {
         let value = Interval::default();
         layout.set_interval(&mut row, 0, value.clone());
         assert_eq!(layout.get_interval(&row, 0), value);
+    }
+
+    #[test]
+    fn test_uuid4() {
+        let layout = Layout::new(&[Type::Uuid4]);
+        let mut row = layout.allocate_row();
+
+        let uuid = Uuid4::generate();
+        layout.set_uuid4(&mut row, 0, uuid.clone());
+        assert_eq!(layout.get_uuid4(&row, 0), uuid);
+        
+        // Test that generic get_uuid also works
+        let generic_uuid: uuid::Uuid = uuid.into();
+        assert_eq!(layout.get_uuid(&row, 0), generic_uuid);
+    }
+
+    #[test]
+    fn test_uuid7() {
+        let layout = Layout::new(&[Type::Uuid7]);
+        let mut row = layout.allocate_row();
+
+        let uuid = Uuid7::generate();
+        layout.set_uuid7(&mut row, 0, uuid.clone());
+        assert_eq!(layout.get_uuid7(&row, 0), uuid);
+        
+        // Test that generic get_uuid also works
+        let generic_uuid: uuid::Uuid = uuid.into();
+        assert_eq!(layout.get_uuid(&row, 0), generic_uuid);
+    }
+
+    #[test]
+    fn test_mixed_uuid_types() {
+        let layout = Layout::new(&[Type::Uuid4, Type::Bool, Type::Uuid7, Type::Int4]);
+        let mut row = layout.allocate_row();
+
+        let uuid4 = Uuid4::generate();
+        let uuid7 = Uuid7::generate();
+
+        layout.set_uuid4(&mut row, 0, uuid4.clone());
+        layout.set_bool(&mut row, 1, true);
+        layout.set_uuid7(&mut row, 2, uuid7.clone());
+        layout.set_i32(&mut row, 3, 42);
+
+        assert_eq!(layout.get_uuid4(&row, 0), uuid4);
+        assert_eq!(layout.get_bool(&row, 1), true);
+        assert_eq!(layout.get_uuid7(&row, 2), uuid7);
+        assert_eq!(layout.get_i32(&row, 3), 42);
     }
 }

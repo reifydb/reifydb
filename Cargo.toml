@@ -89,7 +89,7 @@ once_cell = { version = "1.21.3" }
 rand = { version = "0.9.1" }
 regex = { version = "1.11.1" }
 unicode-width = { version = "0.2.1" }
-uuid = { version = "1.16.0", features = ["v4"] }
+uuid = { version = "1.16.0", features = ["v4", "v7", "serde"] }
 
 
 crossbeam-skiplist = { version = "0.1.3" }

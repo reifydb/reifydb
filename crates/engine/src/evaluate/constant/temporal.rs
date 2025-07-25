@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate;
-use crate::frame::ColumnValues;
+use reifydb_core::frame::ColumnValues;
 use reifydb_core::error::diagnostic::temporal;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
 use reifydb_core::{return_error, Span, Type};
@@ -15,12 +14,12 @@ impl TemporalParser {
         span: impl Span,
         target: Type,
         row_count: usize,
-    ) -> evaluate::Result<ColumnValues> {
+    ) -> crate::Result<ColumnValues> {
         Self::parse_temporal_type(span, target, row_count)
     }
 
     /// Parse a temporal constant expression and create a column with the specified row count
-    pub fn parse_temporal(span: impl Span, row_count: usize) -> evaluate::Result<ColumnValues> {
+    pub fn parse_temporal(span: impl Span, row_count: usize) -> crate::Result<ColumnValues> {
         let fragment = span.fragment();
 
         // Route based on character patterns
@@ -63,7 +62,7 @@ impl TemporalParser {
         span: impl Span,
         target: Type,
         row_count: usize,
-    ) -> evaluate::Result<ColumnValues> {
+    ) -> crate::Result<ColumnValues> {
         use reifydb_core::error::diagnostic::cast;
 
         match target {

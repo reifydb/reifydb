@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::hook::Hooks;
 use crate::interface::{UnversionedStorage, Versioned, VersionedStorage};
 use crate::row::EncodedRow;
 use crate::{EncodedKey, EncodedKeyRange, Error};
@@ -20,8 +19,6 @@ pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
     fn begin_unversioned_rx(&self) -> RwLockReadGuard<US>;
 
     fn begin_unversioned_tx(&self) -> RwLockWriteGuard<US>;
-
-    fn hooks(&self) -> Hooks<US>;
 
     fn versioned(&self) -> VS;
 }

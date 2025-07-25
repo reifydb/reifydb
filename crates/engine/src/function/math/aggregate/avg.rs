@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{FrameColumn, ColumnValues};
+use reifydb_core::frame::{FrameColumn, ColumnValues};
 use crate::function::AggregateFunction;
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
@@ -23,7 +23,7 @@ impl AggregateFunction for Avg {
 		column: &FrameColumn,
 		mask: &BitVec,
 		groups: &HashMap<Vec<Value>, Vec<usize>>,
-    ) -> Result<(), reifydb_core::Error> {
+    ) -> crate::Result<()> {
         match &column.values {
             ColumnValues::Float8(values, bitvec) => {
                 for (group, indices) in groups {
@@ -75,7 +75,7 @@ impl AggregateFunction for Avg {
         }
     }
 
-    fn finalize(&mut self) -> Result<(Vec<Vec<Value>>, ColumnValues), reifydb_core::Error> {
+    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnValues)> {
         let mut keys = Vec::with_capacity(self.sums.len());
         let mut values = ColumnValues::float8_with_capacity(self.sums.len());
 

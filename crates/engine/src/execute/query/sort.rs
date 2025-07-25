@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{Frame, FrameLayout};
+use reifydb_core::frame::{Frame, FrameLayout};
 use reifydb_core::SortDirection::{Asc, Desc};
-use reifydb_core::interface::Rx;
-use reifydb_core::{BitVec, SortKey};
 use reifydb_core::error::diagnostic::query;
+use reifydb_core::interface::Rx;
+use reifydb_core::{BitVec, SortKey, error};
 use std::cmp::Ordering::Equal;
 
 pub(crate) struct SortNode {
@@ -53,11 +53,11 @@ impl ExecutionPlan for SortNode {
                 let col = frame
                     .columns
                     .iter()
-                    .find(|c| c.name == key.column.fragment)
-                    .ok_or_else(|| reifydb_core::Error(query::column_not_found(key.column.clone())))?;
+                    .find(|c| c.qualified_name() == key.column.fragment || c.name == key.column.fragment)
+                    .ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
                 Ok::<_, reifydb_core::Error>((&col.values, &key.direction))
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<crate::Result<Vec<_>>>()?;
 
         let row_count = frame.row_count();
         let mut indices: Vec<usize> = (0..row_count).collect();

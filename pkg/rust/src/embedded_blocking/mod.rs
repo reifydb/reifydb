@@ -1,10 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Error;
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::frame::Frame;
+use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{
+    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+};
 use reifydb_engine::Engine;
-use reifydb_engine::frame::Frame;
 
 pub struct Embedded<VS, US, T>
 where
@@ -32,9 +34,8 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> crate::Result<(Self, Principal)> {
-        let principal = Principal::System { id: 1, name: "root".to_string() };
-        Ok((Self { engine: Engine::new(transaction)? }, principal))
+    pub fn new(transaction: T, hooks: Hooks) -> crate::Result<Self> {
+        Ok(Self { engine: Engine::new(transaction, hooks)? })
     }
 }
 
@@ -45,15 +46,24 @@ where
     T: Transaction<VS, US>,
 {
     pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.tx_as(principal, rql).map_err(|err| {
-            let mut diagnostic = err.diagnostic();
-            diagnostic.set_statement(rql.to_string());
-            Error::ExecutionError { diagnostic }
+        self.engine.tx_as(principal, rql).map_err(|mut err| {
+            err.0.set_statement(rql.to_string());
+            err
         })
     }
 
-    pub fn rx_as(&self, principal: &Principal, rql: &str) -> Vec<Frame> {
-        self.engine.rx_as(principal, rql).unwrap()
+    pub fn tx_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+        let principal = Principal::root();
+        self.tx_as(&principal, rql)
+    }
+
+    pub fn rx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+        self.engine.rx_as(principal, rql)
+    }
+
+    pub fn rx_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+        let principal = Principal::root();
+        self.rx_as(&principal, rql)
     }
 
     // fn session_read_only(

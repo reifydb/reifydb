@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
-use reifydb_catalog::key::{EncodableKey, Key, TableRowKey};
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
-use reifydb_core::Type;
 use reifydb_core::EncodedKeyRange;
+use reifydb_core::Type;
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
+use reifydb_core::interface::{EncodableKey, Key, TableRowKey};
 use reifydb_core::row::Layout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::sync::Arc;
@@ -105,6 +105,7 @@ impl ExecutionPlan for ScanFrameNode {
         if let Some(row_ids_vec) = row_ids {
             if !row_ids_vec.is_empty() {
                 let row_id_column = FrameColumn {
+                    frame: Some(self.table.name.clone()),
                     name: ROW_ID_COLUMN_NAME.to_string(),
                     values: ColumnValues::row_id(row_ids_vec),
                 };
@@ -148,9 +149,15 @@ fn create_empty_frame(table: &Table) -> Frame {
                 Type::Time => ColumnValues::time(vec![]),
                 Type::Interval => ColumnValues::interval(vec![]),
                 Type::RowId => ColumnValues::row_id(vec![]),
+                Type::Uuid4 => ColumnValues::uuid4(vec![]),
+                Type::Uuid7 => ColumnValues::uuid7(vec![]),
                 Type::Undefined => ColumnValues::Undefined(0),
             };
-            FrameColumn { name, values: data }
+            FrameColumn { 
+                frame: Some(table.name.clone()),
+                name: name,
+                values: data 
+            }
         })
         .collect();
 

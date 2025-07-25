@@ -4,10 +4,10 @@
 use crate::ast::lex::Keyword::Describe;
 use crate::ast::lex::Operator;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstDescribe, parse};
+use crate::ast::AstDescribe;
 
 impl Parser {
-    pub(crate) fn parse_describe(&mut self) -> parse::Result<AstDescribe> {
+    pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe> {
         let token = self.consume_keyword(Describe)?;
         self.consume_operator(Operator::OpenParen)?;
         let node = Box::new(self.parse_node(Precedence::None)?);

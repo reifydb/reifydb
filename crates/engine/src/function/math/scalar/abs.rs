@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{ColumnValues, FrameColumn};
+use reifydb_core::frame::{ColumnValues, FrameColumn};
 use crate::function::ScalarFunction;
 
 pub struct Abs;
@@ -17,7 +17,7 @@ impl ScalarFunction for Abs {
         &self,
         columns: &[FrameColumn],
         row_count: usize,
-    ) -> Result<ColumnValues, reifydb_core::Error> {
+    ) -> crate::Result<ColumnValues> {
         let column = columns.get(0).unwrap();
 
         match &column.values {

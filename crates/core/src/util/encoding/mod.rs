@@ -8,4 +8,3 @@ pub mod bincode;
 pub mod format;
 pub mod keycode;
 
-pub type Result<T> = std::result::Result<T, Error>;

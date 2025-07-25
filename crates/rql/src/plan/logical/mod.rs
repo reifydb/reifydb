@@ -8,11 +8,10 @@ mod query;
 
 use crate::ast::{Ast, AstIdentifier, AstPolicy, AstPolicyKind, AstStatement};
 use crate::expression::{Expression, KeyedExpression};
-use reifydb_catalog::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_catalog::table::ColumnToCreate;
-use crate::Error;
-use reifydb_core::{Type, SortKey, OwnedSpan};
-use reifydb_core::error::diagnostic::parse::unrecognized_type;
+use reifydb_core::error::diagnostic::ast::unrecognized_type;
+use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
+use reifydb_core::{OwnedSpan, SortKey, Type, return_error};
 
 struct Compiler {}
 
@@ -30,6 +29,7 @@ impl Compiler {
         for node in ast {
             match node {
                 Ast::Create(node) => result.push(Self::compile_create(node)?),
+                Ast::AstDelete(node) => result.push(Self::compile_delete(node)?),
                 Ast::AstInsert(node) => result.push(Self::compile_insert(node)?),
                 Ast::AstUpdate(node) => result.push(Self::compile_update(node)?),
 
@@ -54,12 +54,15 @@ pub enum LogicalPlan {
     CreateSequence(CreateSequenceNode),
     CreateTable(CreateTableNode),
     // Mutate
+    Delete(DeleteNode),
     Insert(InsertNode),
     Update(UpdateNode),
     // Query
     Aggregate(AggregateNode),
     Filter(FilterNode),
+    JoinInner(JoinInnerNode),
     JoinLeft(JoinLeftNode),
+    JoinNatural(JoinNaturalNode),
     Take(TakeNode),
     Order(OrderNode),
     Map(MapNode),
@@ -96,6 +99,12 @@ pub struct CreateTableNode {
 }
 
 #[derive(Debug)]
+pub struct DeleteNode {
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
+}
+
+#[derive(Debug)]
 pub struct InsertNode {
     pub schema: Option<OwnedSpan>,
     pub table: OwnedSpan,
@@ -119,10 +128,30 @@ pub struct FilterNode {
 }
 
 #[derive(Debug)]
+pub struct JoinInnerNode {
+    pub with: Vec<LogicalPlan>,
+    pub on: Vec<Expression>,
+}
+
+#[derive(Debug)]
 pub struct JoinLeftNode {
     pub with: Vec<LogicalPlan>,
     pub on: Vec<Expression>,
 }
+
+#[derive(Clone, Debug)]
+pub enum NaturalJoinType {
+    Inner,
+    Left,
+    // Future: Right, Full
+}
+
+#[derive(Debug)]
+pub struct JoinNaturalNode {
+    pub with: Vec<LogicalPlan>,
+    pub join_type: NaturalJoinType,
+}
+
 #[derive(Debug)]
 pub struct TakeNode {
     pub take: usize,
@@ -170,7 +199,9 @@ pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<Type> {
         "datetime" => Type::DateTime,
         "time" => Type::Time,
         "interval" => Type::Interval,
-        _ => return Err(Error(unrecognized_type(ast.span.clone()))),
+        "uuid4" => Type::Uuid4,
+        "uuid7" => Type::Uuid7,
+        _ => return_error!(unrecognized_type(ast.span.clone())),
     })
 }
 

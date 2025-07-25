@@ -17,6 +17,7 @@ pub mod row_id;
 pub mod temporal;
 mod time;
 mod r#type;
+pub mod uuid;
 
 pub use date::Date;
 pub use datetime::DateTime;
@@ -27,6 +28,7 @@ pub use ordered_f64::OrderedF64;
 pub use row_id::RowId;
 pub use time::Time;
 pub use r#type::{GetType, Type};
+pub use uuid::{Uuid4, Uuid7};
 
 /// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -71,6 +73,10 @@ pub enum Value {
     Interval(Interval),
     /// A row identifier (8-byte unsigned integer)
     RowId(RowId),
+    /// A UUID version 4 (random)
+    Uuid4(Uuid4),
+    /// A UUID version 7 (timestamp-based)
+    Uuid7(Uuid7),
 }
 
 impl Value {
@@ -108,7 +114,9 @@ impl Value {
             | Value::Uint4(_)
             | Value::Uint8(_)
             | Value::Uint16(_)
-            | Value::RowId(_) => Value::Undefined,
+            | Value::RowId(_)
+            | Value::Uuid4(_)
+            | Value::Uuid7(_) => Value::Undefined,
         }
     }
 }
@@ -135,6 +143,8 @@ impl PartialOrd for Value {
             (Value::Time(l), Value::Time(r)) => l.partial_cmp(r),
             (Value::Interval(l), Value::Interval(r)) => l.partial_cmp(r),
             (Value::RowId(l), Value::RowId(r)) => l.partial_cmp(r),
+            (Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
+            (Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -162,6 +172,8 @@ impl Ord for Value {
             (Value::Time(l), Value::Time(r)) => l.cmp(r),
             (Value::Interval(l), Value::Interval(r)) => l.cmp(r),
             (Value::RowId(l), Value::RowId(r)) => l.cmp(r),
+            (Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
+            (Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -190,6 +202,8 @@ impl Display for Value {
             Value::Time(value) => Display::fmt(value, f),
             Value::Interval(value) => Display::fmt(value, f),
             Value::RowId(value) => Display::fmt(value, f),
+            Value::Uuid4(value) => Display::fmt(value, f),
+            Value::Uuid7(value) => Display::fmt(value, f),
             Value::Undefined => f.write_str("undefined"),
         }
     }
@@ -218,6 +232,8 @@ impl Value {
             Value::Time(_) => Type::Time,
             Value::Interval(_) => Type::Interval,
             Value::RowId(_) => Type::RowId,
+            Value::Uuid4(_) => Type::Uuid4,
+            Value::Uuid7(_) => Type::Uuid7,
         }
     }
 }

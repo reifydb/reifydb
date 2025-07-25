@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::frame::{FrameColumn, ColumnValues, Push};
+use reifydb_core::frame::{FrameColumn, ColumnValues, Push};
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeMul};
@@ -14,7 +14,7 @@ impl Evaluator {
 		&mut self,
 		mul: &MulExpression,
 		ctx: &EvaluationContext,
-    ) -> crate::evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let left = self.evaluate(&mul.left, ctx)?;
         let right = self.evaluate(&mul.right, ctx)?;
         let ty = Type::promote(left.get_type(), right.get_type());
@@ -497,7 +497,7 @@ fn mul_numeric<L, R>(
 	rv: &BitVec,
 	ty: Type,
 	span: OwnedSpan,
-) -> crate::evaluate::Result<FrameColumn>
+) -> crate::Result<FrameColumn>
 where
     L: GetType + Promote<R> + Copy,
     R: GetType + IsNumber + Copy,
@@ -520,5 +520,5 @@ where
             data.push_undefined()
         }
     }
-    Ok(FrameColumn { name: span.fragment, values: data })
+    Ok(crate::create_frame_column(span.fragment, data))
 }

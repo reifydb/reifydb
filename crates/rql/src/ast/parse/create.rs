@@ -8,13 +8,13 @@ use crate::ast::lex::{Keyword, Operator, Token, TokenKind};
 use crate::ast::parse::Parser;
 use crate::ast::{
     AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema, AstCreateSeries,
-    AstCreateTable, parse,
+    AstCreateTable,
 };
 use Keyword::{Create, Schema};
 use Operator::Colon;
 
 impl Parser {
-    pub(crate) fn parse_create(&mut self) -> parse::Result<AstCreate> {
+    pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate> {
         let token = self.consume_keyword(Create)?;
 
         if (self.consume_if(TokenKind::Keyword(Schema))?).is_some() {
@@ -39,11 +39,11 @@ impl Parser {
         unimplemented!();
     }
 
-    fn parse_schema(&mut self, token: Token) -> parse::Result<AstCreate> {
+    fn parse_schema(&mut self, token: Token) -> crate::Result<AstCreate> {
         Ok(AstCreate::Schema(AstCreateSchema { token, name: self.parse_identifier()? }))
     }
 
-    fn parse_series(&mut self, token: Token) -> parse::Result<AstCreate> {
+    fn parse_series(&mut self, token: Token) -> crate::Result<AstCreate> {
         let schema = self.parse_identifier()?;
         self.consume_operator(Operator::Dot)?;
         let name = self.parse_identifier()?;
@@ -52,7 +52,7 @@ impl Parser {
         Ok(AstCreate::Series(AstCreateSeries { token, name, schema, columns }))
     }
 
-    fn parse_deferred_view(&mut self, token: Token) -> parse::Result<AstCreate> {
+    fn parse_deferred_view(&mut self, token: Token) -> crate::Result<AstCreate> {
         let schema = self.parse_identifier()?;
         self.consume_operator(Operator::Dot)?;
         let name = self.parse_identifier()?;
@@ -61,7 +61,7 @@ impl Parser {
         Ok(AstCreate::DeferredView(AstCreateDeferredView { token, view: name, schema, columns }))
     }
 
-    fn parse_table(&mut self, token: Token) -> parse::Result<AstCreate> {
+    fn parse_table(&mut self, token: Token) -> crate::Result<AstCreate> {
         let schema = self.parse_identifier()?;
         self.consume_operator(Operator::Dot)?;
         let name = self.parse_identifier()?;
@@ -70,7 +70,7 @@ impl Parser {
         Ok(AstCreate::Table(AstCreateTable { token, table: name, schema, columns }))
     }
 
-    fn parse_columns(&mut self) -> parse::Result<Vec<AstColumnToCreate>> {
+    fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate>> {
         let mut result = Vec::new();
 
         self.consume_operator(Operator::OpenParen)?;
@@ -89,7 +89,7 @@ impl Parser {
         Ok(result)
     }
 
-    fn parse_column(&mut self) -> parse::Result<AstColumnToCreate> {
+    fn parse_column(&mut self) -> crate::Result<AstColumnToCreate> {
         let name = self.parse_identifier()?;
         self.consume_operator(Colon)?;
         let ty = self.parse_identifier()?;

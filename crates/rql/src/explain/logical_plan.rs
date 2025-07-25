@@ -3,12 +3,11 @@
 
 use crate::ast::parse;
 use crate::plan::logical::{
-    AggregateNode, FilterNode, InlineDataNode, JoinLeftNode, TakeNode, LogicalPlan, OrderNode, MapNode,
-    TableScanNode, compile_logical,
+    AggregateNode, FilterNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, TakeNode, LogicalPlan,
+    NaturalJoinType, OrderNode, MapNode, TableScanNode, compile_logical,
 };
-use reifydb_core::Error;
 
-pub fn explain_logical_plan(query: &str) -> Result<String, Error> {
+pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
     let statements = parse(query).unwrap(); // FIXME
 
     let mut plans = Vec::new();
@@ -35,6 +34,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
         LogicalPlan::CreateSchema(_) => unimplemented!(),
         LogicalPlan::CreateSequence(_) => unimplemented!(),
         LogicalPlan::CreateTable(_) => unimplemented!(),
+        LogicalPlan::Delete(_) => unimplemented!(),
         LogicalPlan::Insert(_) => unimplemented!(),
         LogicalPlan::Update(_) => unimplemented!(),
 
@@ -91,9 +91,30 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
                 ));
             }
         }
+        LogicalPlan::JoinInner(JoinInnerNode { with, on }) => {
+            let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
+            output.push_str(&format!("{}{}Join(Inner) [{}]\n", prefix, branch, on));
+
+            for (i, plan) in with.iter().enumerate() {
+                let last = i == with.len() - 1;
+                render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+            }
+        }
         LogicalPlan::JoinLeft(JoinLeftNode { with, on }) => {
             let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
             output.push_str(&format!("{}{}Join(Left) [{}]\n", prefix, branch, on));
+
+            for (i, plan) in with.iter().enumerate() {
+                let last = i == with.len() - 1;
+                render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+            }
+        }
+        LogicalPlan::JoinNatural(JoinNaturalNode { with, join_type }) => {
+            let join_type_str = match join_type {
+                NaturalJoinType::Inner => "Inner",
+                NaturalJoinType::Left => "Left",
+            };
+            output.push_str(&format!("{}{}Join(Natural {}) [using common columns]\n", prefix, branch, join_type_str));
 
             for (i, plan) in with.iter().enumerate() {
                 let last = i == with.len() - 1;

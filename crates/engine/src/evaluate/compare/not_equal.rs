@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::frame::{ColumnValues, FrameColumn};
+use reifydb_core::frame::{ColumnValues, FrameColumn};
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::value::number::Promote;
 use reifydb_core::{BitVec, CowVec, OwnedSpan, value};
@@ -13,7 +13,7 @@ impl Evaluator {
         &mut self,
         ne: &NotEqualExpression,
         ctx: &EvaluationContext,
-    ) -> crate::evaluate::Result<FrameColumn> {
+    ) -> crate::Result<FrameColumn> {
         let left = self.evaluate(&ne.left, ctx)?;
         let right = self.evaluate(&ne.right, ctx)?;
 
@@ -480,7 +480,13 @@ impl Evaluator {
             (ColumnValues::Utf8(l, lv), ColumnValues::Utf8(r, rv)) => {
                 Ok(compare_utf8(l, r, lv, rv, ne.span()))
             }
-            _ => unimplemented!(),
+            (l,r) => {
+                let span = ne.span();
+                Ok(crate::create_frame_column(
+                    span.fragment,
+                    ColumnValues::bool(vec![false; l.len().min(r.len())])
+                ))
+            },
         }
     }
 }
@@ -505,7 +511,7 @@ fn compare_bool(
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
+    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
 }
 
 fn compare_number<L, R>(
@@ -533,7 +539,7 @@ where
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
+    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
 }
 
 fn compare_temporal<T>(
@@ -559,7 +565,7 @@ where
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
+    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
 }
 
 fn compare_utf8(
@@ -582,5 +588,5 @@ fn compare_utf8(
         }
     }
 
-    FrameColumn { name: span.fragment, values: ColumnValues::bool_with_bitvec(values, bitvec) }
+    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
 }

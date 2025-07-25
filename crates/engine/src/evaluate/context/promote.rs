@@ -2,28 +2,24 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::evaluate::EvaluationContext;
-use reifydb_catalog::column_policy::ColumnSaturationPolicy;
+use reifydb_core::interface::ColumnSaturationPolicy;
 use reifydb_core::error::diagnostic::number::number_out_of_range;
 use reifydb_core::value::number::SafePromote;
-use reifydb_core::{GetType, IntoOwnedSpan};
+use reifydb_core::{GetType, IntoOwnedSpan, error};
 
 pub trait Promote {
-    fn promote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    fn promote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafePromote<To>,
         To: GetType;
 }
 
-impl Promote for EvaluationContext {
+impl Promote for EvaluationContext<'_> {
     fn promote<From, To>(
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafePromote<To>,
         To: GetType,
@@ -32,12 +28,12 @@ impl Promote for EvaluationContext {
     }
 }
 
-impl Promote for &EvaluationContext {
+impl Promote for &EvaluationContext<'_> {
     fn promote<From, To>(
         &self,
         from: From,
         span: impl IntoOwnedSpan,
-    ) -> crate::evaluate::Result<Option<To>>
+    ) -> crate::Result<Option<To>>
     where
         From: SafePromote<To>,
         To: GetType,
@@ -46,9 +42,10 @@ impl Promote for &EvaluationContext {
             ColumnSaturationPolicy::Error => from
                 .checked_promote()
                 .ok_or_else(|| {
-                    return reifydb_core::Error(number_out_of_range(
+                    return error!(number_out_of_range(
                         span.into_span(),
                         To::get_type(),
+                        self.target_column.as_ref(),
                     ));
                 })
                 .map(Some),
@@ -62,20 +59,18 @@ impl Promote for &EvaluationContext {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluate::context::EvaluationColumn;
     use crate::evaluate::context::promote::GetType;
     use crate::evaluate::{EvaluationContext, Promote};
-    use reifydb_catalog::column_policy::ColumnPolicyKind::Saturation;
-    use reifydb_catalog::column_policy::ColumnSaturationPolicy::{Error, Undefined};
-    use reifydb_core::OwnedSpan;
-    use reifydb_core::Type;
+    use reifydb_core::interface::ColumnPolicyKind::Saturation;
+    use reifydb_core::interface::ColumnSaturationPolicy::{Error, Undefined};
     use reifydb_core::value::number::SafePromote;
+    use reifydb_core::{ColumnDescriptor, OwnedSpan, Type};
 
     #[test]
     fn test_promote_ok() {
         let mut ctx = EvaluationContext::testing();
-        ctx.column =
-            Some(EvaluationColumn { ty: Some(Type::Int2), policies: vec![Saturation(Error)] });
+        ctx.target_column = Some(ColumnDescriptor::new().with_column_type(Type::Int2));
+        ctx.column_policies = vec![Saturation(Error)];
 
         let result = ctx.promote::<i8, i16>(1i8, || OwnedSpan::testing_empty());
         assert_eq!(result, Ok(Some(1i16)));
@@ -84,8 +79,8 @@ mod tests {
     #[test]
     fn test_promote_fail_with_error_policy() {
         let mut ctx = EvaluationContext::testing();
-        ctx.column =
-            Some(EvaluationColumn { ty: Some(Type::Int2), policies: vec![Saturation(Error)] });
+        ctx.target_column = Some(ColumnDescriptor::new().with_column_type(Type::Int2));
+        ctx.column_policies = vec![Saturation(Error)];
 
         let err =
             ctx.promote::<TestI8, TestI16>(TestI8 {}, || OwnedSpan::testing_empty()).err().unwrap();
@@ -96,10 +91,11 @@ mod tests {
     #[test]
     fn test_promote_fail_with_undefined_policy() {
         let mut ctx = EvaluationContext::testing();
-        ctx.column =
-            Some(EvaluationColumn { ty: Some(Type::Int2), policies: vec![Saturation(Undefined)] });
+        ctx.target_column = Some(ColumnDescriptor::new().with_column_type(Type::Int2));
+        ctx.column_policies = vec![Saturation(Undefined)];
 
-        let result = ctx.promote::<TestI8, TestI16>(TestI8 {}, || OwnedSpan::testing_empty()).unwrap();
+        let result =
+            ctx.promote::<TestI8, TestI16>(TestI8 {}, || OwnedSpan::testing_empty()).unwrap();
         assert!(result.is_none());
     }
 

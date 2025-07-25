@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Error;
 use once_cell::sync::Lazy;
 use reifydb_core::error::diagnostic::sequence::sequence_exhausted;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
-use reifydb_core::{EncodedKey, Type};
+use reifydb_core::{EncodedKey, Type, return_error};
 
 static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[Type::Uint8]));
 
@@ -26,7 +25,7 @@ impl SequenceGeneratorU64 {
                 let next_value = value.saturating_add(1);
 
                 if value == next_value {
-                    return Err(Error(sequence_exhausted(Type::Uint8)));
+                    return_error!(sequence_exhausted(Type::Uint8));
                 }
 
                 LAYOUT.set_u64(&mut row, 0, next_value);

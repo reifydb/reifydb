@@ -14,7 +14,6 @@ mod serialize;
 
 use crate::util::encoding::keycode::deserialize::Deserializer;
 use crate::util::encoding::keycode::serialize::Serializer;
-use crate::util::encoding;
 use serde::{Deserialize, Serialize};
 
 #[macro_export]
@@ -33,14 +32,14 @@ pub fn serialize<T: Serialize>(key: &T) -> Vec<u8> {
 }
 
 /// Deserializes a key from a binary Keycode representation (Descending order)
-pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> encoding::Result<T> {
+pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> crate::Result<T> {
     let mut deserializer = Deserializer::from_bytes(input);
     let t = T::deserialize(&mut deserializer)?;
     if !deserializer.input.is_empty() {
-        return Err(crate::Error::from(format!(
+        return Err(crate::error!(crate::error::diagnostic::serialization::keycode_serialization_error(format!(
             "unexpected trailing bytes {:x?} at end of key {input:x?}",
             deserializer.input,
-        )));
+        ))));
     }
     Ok(t)
 }

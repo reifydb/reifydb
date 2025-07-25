@@ -2,14 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::parse;
-use crate::plan::logical::compile_logical;
+use crate::plan::logical::{compile_logical, NaturalJoinType};
 use crate::plan::physical;
 use crate::plan::physical::{PhysicalPlan, compile_physical};
-use reifydb_core::Error;
 use reifydb_core::interface::Rx;
 use std::fmt::Write;
 
-pub fn explain_physical_plan(rx: &mut impl Rx, query: &str) -> Result<String, Error> {
+pub fn explain_physical_plan(rx: &mut impl Rx, query: &str) -> crate::Result<String> {
     let statements = parse(query).unwrap(); // FIXME
 
     let mut plans = Vec::new();
@@ -52,6 +51,7 @@ fn render_physical_plan_inner(
         PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
         PhysicalPlan::CreateSchema(_) => unimplemented!(),
         PhysicalPlan::CreateTable(_) => unimplemented!(),
+        PhysicalPlan::Delete(_) => unimplemented!(),
         PhysicalPlan::Insert(_) => unimplemented!(),
         PhysicalPlan::Update(_) => unimplemented!(),
         PhysicalPlan::Aggregate(physical::AggregateNode { by, map, input }) => {
@@ -109,11 +109,36 @@ fn render_physical_plan_inner(
             });
         }
 
+        PhysicalPlan::JoinInner(physical::JoinInnerNode { left, right, on }) => {
+            let label = format!(
+                "Join(Inner) on: [{}]",
+                on.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+            );
+            write_node_header(output, prefix, is_last, &label);
+            with_child_prefix(prefix, is_last, |child_prefix| {
+                render_physical_plan_inner(left, child_prefix, false, output);
+                render_physical_plan_inner(right, child_prefix, true, output);
+            });
+        }
+
         PhysicalPlan::JoinLeft(physical::JoinLeftNode { left, right, on }) => {
             let label = format!(
                 "Join(Left) on: [{}]",
                 on.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
             );
+            write_node_header(output, prefix, is_last, &label);
+            with_child_prefix(prefix, is_last, |child_prefix| {
+                render_physical_plan_inner(left, child_prefix, false, output);
+                render_physical_plan_inner(right, child_prefix, true, output);
+            });
+        }
+
+        PhysicalPlan::JoinNatural(physical::JoinNaturalNode { left, right, join_type }) => {
+            let join_type_str = match join_type {
+                NaturalJoinType::Inner => "Inner",
+                NaturalJoinType::Left => "Left",
+            };
+            let label = format!("Join(Natural {}) [using common columns]", join_type_str);
             write_node_header(output, prefix, is_last, &label);
             with_child_prefix(prefix, is_last, |child_prefix| {
                 render_physical_plan_inner(left, child_prefix, false, output);

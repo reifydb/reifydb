@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::Catalog;
 use crate::column::ColumnIndex;
 use crate::column_policy::ColumnPolicyKind;
-use crate::key::{EncodableKey, Key, SchemaTableKey, TableKey};
 use crate::schema::SchemaId;
 use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use crate::table::{Table, TableId};
-use crate::{Catalog, Error};
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_already_exists};
+use reifydb_core::interface::{EncodableKey, Key, SchemaTableKey, TableKey};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{OwnedSpan, Type};
+use reifydb_core::{OwnedSpan, Type, return_error};
 
 #[derive(Debug, Clone)]
 pub struct ColumnToCreate {
@@ -34,11 +34,11 @@ impl Catalog {
         to_create: TableToCreate,
     ) -> crate::Result<Table> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &to_create.schema)? else {
-            return Err(Error(schema_not_found(to_create.span, &to_create.schema)));
+            return_error!(schema_not_found(to_create.span, &to_create.schema));
         };
 
         if let Some(table) = Catalog::get_table_by_name(tx, schema.id, &to_create.table)? {
-            return Err(Error(table_already_exists(to_create.span, &schema.name, &table.name)));
+            return_error!(table_already_exists(to_create.span, &schema.name, &table.name));
         }
 
         let table_id = SystemSequence::next_table_id(tx)?;
@@ -108,12 +108,12 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
     use crate::Catalog;
-    use crate::key::SchemaTableKey;
     use crate::schema::SchemaId;
     use crate::table::TableToCreate;
     use crate::table::layout::table_schema;
     use crate::test_utils::ensure_test_schema;
     use reifydb_core::interface::Rx;
+    use reifydb_core::interface::SchemaTableKey;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

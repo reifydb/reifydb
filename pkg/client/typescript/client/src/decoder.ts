@@ -51,6 +51,9 @@ export function decodeValue(ty: DataType, value: string): unknown {
         case "Interval":
             // Return interval as Interval instance
             return Interval.parse(value);
+        case "Uuid4":
+        case "Uuid7":
+            return value;
         case "Undefined":
             return undefined;
         default:

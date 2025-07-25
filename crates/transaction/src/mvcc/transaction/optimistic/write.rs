@@ -19,6 +19,7 @@ use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::CowVec;
 use reifydb_core::delta::Delta;
+use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};
 use reifydb_core::row::EncodedRow;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
@@ -56,17 +57,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
             }
 
             for (version, deltas) in grouped {
-                self.engine.hooks.transaction().pre_commit().for_each(|hook| {
-                    hook.on_pre_commit(deltas.clone(), version)?;
-                    Ok(())
-                })?;
+                self.engine.hooks.trigger(PreCommitHook { deltas: deltas.clone(), version })?;
 
                 self.engine.versioned.apply(deltas.clone(), version);
 
-                self.engine.hooks.transaction().post_commit().for_each(|hook| {
-                    hook.on_post_commit(deltas.clone(), version);
-                    Ok(())
-                })?;
+                self.engine.hooks.trigger(PostCommitHook { deltas, version })?;
             }
 
             Ok(())
@@ -100,7 +95,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         }
     }
 
-    pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, reifydb_core::Error> {
+    pub fn get(
+        &mut self,
+        key: &EncodedKey,
+    ) -> Result<Option<TransactionValue>, reifydb_core::Error> {
         let version = self.tm.version();
         match self.tm.get(key)? {
             Some(v) => {

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::{Error as ReifyDBError, retry};
 use reifydb::network::ws::client::WsClient;
@@ -35,8 +36,8 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> Self {
-        let server = ReifyDB::server_with(transaction);
+    pub fn new(input: (T, Hooks)) -> Self {
+        let server = ReifyDB::server_with(input);
         Self { server: Some(server), client: None, runtime: None, shutdown: None }
     }
 }

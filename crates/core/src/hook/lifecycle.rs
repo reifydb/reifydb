@@ -1,55 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::hook::registry::Registry;
-use crate::interface::UnversionedStorage;
-use std::error::Error;
-use std::sync::RwLockWriteGuard;
+use crate::impl_hook;
 
-pub struct OnAfterBootHookContext<'a, US>
-where
-    US: UnversionedStorage,
-{
-    pub unversioned: RwLockWriteGuard<'a, US>,
-}
+pub struct OnStartHook {}
 
-impl<'a, US> OnAfterBootHookContext<'a, US>
-where
-    US: UnversionedStorage,
-{
-    pub fn new(bypass: RwLockWriteGuard<'a, US>) -> Self {
-        Self { unversioned: bypass }
-    }
-}
+impl_hook!(OnStartHook);
 
-pub trait OnAfterBootHook<US>: Send + Sync + 'static
-where
-    US: UnversionedStorage,
-{
-    fn on_after_boot(&self, ctx: OnAfterBootHookContext<US>) -> Result<(), Box<dyn Error>>;
-}
+pub struct OnCreateHook {}
 
-pub struct LifecycleHookRegistry<US>
-where
-    US: UnversionedStorage,
-{
-    after_boot: Registry<dyn OnAfterBootHook<US>>,
-}
-
-impl<US> Default for LifecycleHookRegistry<US>
-where
-    US: UnversionedStorage,
-{
-    fn default() -> Self {
-        Self { after_boot: Registry::default() }
-    }
-}
-
-impl<US> LifecycleHookRegistry<US>
-where
-    US: UnversionedStorage,
-{
-    pub fn after_boot(&self) -> &Registry<dyn OnAfterBootHook<US>> {
-        &self.after_boot
-    }
-}
+impl_hook!(OnCreateHook);

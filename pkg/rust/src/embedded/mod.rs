@@ -1,10 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{DB, Error};
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use crate::DB;
+use reifydb_core::frame::Frame;
+use reifydb_core::hook::Hooks;
+use reifydb_core::interface::{
+    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+};
 use reifydb_engine::Engine;
-use reifydb_engine::frame::Frame;
 use tokio::task::spawn_blocking;
 
 pub struct Embedded<VS, US, T>
@@ -33,9 +36,8 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn new(transaction: T) -> (Self, Principal) {
-        let principal = Principal::System { id: 1, name: "root".to_string() };
-        (Self { engine: Engine::new(transaction).unwrap() }, principal)
+    pub fn new(transaction: T, hooks: Hooks) -> Self {
+        Self { engine: Engine::new(transaction, hooks).unwrap() }
     }
 }
 
@@ -51,14 +53,18 @@ where
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.tx_as(&principal, &rql).map_err(|err| {
-                let mut diagnostic = err.diagnostic();
-                diagnostic.set_statement(rql.to_string());
-                Error::ExecutionError { diagnostic }
+            engine.tx_as(&principal, &rql).map_err(|mut err| {
+                err.0.set_statement(rql.to_string());
+                err
             })
         })
         .await
         .unwrap()
+    }
+
+    async fn tx_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+        let principal = Principal::root();
+        self.tx_as(&principal, rql).await
     }
 
     async fn rx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
@@ -67,14 +73,18 @@ where
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.rx_as(&principal, &rql).map_err(|err| {
-                let mut diagnostic = err.diagnostic();
-                diagnostic.set_statement(rql.to_string());
-                Error::ExecutionError { diagnostic }
+            engine.rx_as(&principal, &rql).map_err(|mut err| {
+                err.0.set_statement(rql.to_string());
+                err
             })
         })
         .await
         .unwrap()
+    }
+
+    async fn rx_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+        let principal = Principal::root();
+        self.rx_as(&principal, rql).await
     }
 
     // fn session_read_only(

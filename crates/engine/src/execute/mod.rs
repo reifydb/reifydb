@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
@@ -35,7 +35,7 @@ pub(crate) trait ExecutionPlan {
 
 pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
     functions: Functions,
-    _marker: PhantomData<(VS, US)>,
+    _phantom: PhantomData<(VS, US)>,
 }
 
 pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
@@ -52,7 +52,7 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),
-        _marker: PhantomData,
+        _phantom: PhantomData,
     };
 
     executor.execute_rx(rx, plan)
@@ -72,7 +72,7 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
             .build(),
-        _marker: PhantomData,
+        _phantom: PhantomData,
     };
 
     executor.execute_tx(tx, plan)
@@ -84,11 +84,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             // Query
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
+            | PhysicalPlan::JoinInner(_)
             | PhysicalPlan::JoinLeft(_)
+            | PhysicalPlan::JoinNatural(_)
             | PhysicalPlan::Take(_)
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
             | PhysicalPlan::InlineData(_)
+            | PhysicalPlan::Delete(_)
             | PhysicalPlan::Insert(_)
             | PhysicalPlan::Update(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
@@ -108,12 +111,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
             PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
+            PhysicalPlan::Delete(plan) => self.delete(tx, plan),
             PhysicalPlan::Insert(plan) => self.insert(tx, plan),
             PhysicalPlan::Update(plan) => self.update(tx, plan),
 
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
+            | PhysicalPlan::JoinInner(_)
             | PhysicalPlan::JoinLeft(_)
+            | PhysicalPlan::JoinNatural(_)
             | PhysicalPlan::Take(_)
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
@@ -153,20 +159,36 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 if let Some(frame) = result {
                     Ok(frame.into())
                 } else {
-                    Ok(Frame {
-                        name: "frame".to_string(),
-                        columns: node
-                            .layout()
-                            .unwrap_or(FrameLayout { columns: vec![] })
-                            .columns
-                            .into_iter()
-                            .map(|cl| FrameColumn {
-                                name: cl.name,
-                                values: ColumnValues::with_capacity(cl.ty, 0),
-                            })
-                            .collect(),
-                        index: Default::default(),
-                    })
+                    // empty frame - reconstruct table, for better UX
+                    let columns: Vec<FrameColumn> = node
+                        .layout()
+                        .unwrap_or(FrameLayout { columns: vec![] })
+                        .columns
+                        .into_iter()
+                        .map(|layout| FrameColumn {
+                            frame: layout.frame,
+                            name: layout.name,
+                            values: ColumnValues::with_capacity(layout.ty, 0),
+                        })
+                        .collect();
+
+                    let index = columns
+                        .iter()
+                        .enumerate()
+                        .map(|(i, col)| (col.qualified_name(), i))
+                        .collect();
+
+                    let frame_index = columns
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, col)| {
+                            col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i))
+                        })
+                        .collect();
+
+                    dbg!(&columns);
+
+                    Ok(Frame { name: "".to_string(), columns, index, frame_index })
                 }
             }
         }
