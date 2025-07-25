@@ -67,9 +67,11 @@ impl Frame {
         use std::collections::HashMap;
 
         // Group columns by name and check for ambiguity across different table/schema contexts
-        let mut name_groups: HashMap<String, Vec<(Option<String>, Option<String>)>> = HashMap::new();
+        let mut name_groups: HashMap<String, Vec<(Option<String>, Option<String>)>> =
+            HashMap::new();
         for column_layout in &layout.columns {
-            name_groups.entry(column_layout.name.clone())
+            name_groups
+                .entry(column_layout.name.clone())
                 .or_insert_with(Vec::new)
                 .push((column_layout.schema.clone(), column_layout.table.clone()));
         }
@@ -80,16 +82,17 @@ impl Frame {
             .iter()
             .map(|column_layout| {
                 let contexts = name_groups.get(&column_layout.name).unwrap();
-                
+
                 // Check if this column name appears in different table/schema contexts
                 let mut unique_contexts = std::collections::HashSet::new();
                 for (schema, table) in contexts {
                     unique_contexts.insert((schema.clone(), table.clone()));
                 }
-                
+
                 // Qualify if there are duplicates OR if the layout explicitly specifies schema/table
                 let has_duplicates = unique_contexts.len() > 1;
-                let has_explicit_qualification = column_layout.schema.is_some() || column_layout.table.is_some();
+                let has_explicit_qualification =
+                    column_layout.schema.is_some() || column_layout.table.is_some();
 
                 if has_duplicates || has_explicit_qualification {
                     // This column has naming conflicts - add qualification using available table info
