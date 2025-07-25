@@ -6,7 +6,6 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_catalog::table::Table;
 use reifydb_core::frame::{
     ColumnQualified, ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout,
-    TableQualified,
 };
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, ColumnDescriptor, Value};
@@ -33,11 +32,7 @@ impl InlineDataNode {
         let columns = table
             .columns
             .iter()
-            .map(|col| FrameColumnLayout {
-                schema: None,
-                table: Some(table.name.clone()),
-                name: col.name.clone(),
-            })
+            .map(|col| FrameColumnLayout { schema: None, table: None, name: col.name.clone() })
             .collect();
 
         FrameLayout { columns }
@@ -125,8 +120,7 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(FrameColumn::TableQualified(TableQualified {
-                table: "inline".to_string(),
+            frame_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
                 name: column_name,
                 values: column_values,
             }));
