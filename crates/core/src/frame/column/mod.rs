@@ -12,6 +12,7 @@ mod filter;
 mod get;
 mod layout;
 mod push;
+mod qualification;
 mod reorder;
 mod slice;
 mod values;
@@ -39,6 +40,34 @@ impl FrameColumn {
         Self::validate_name(&name);
         Self { frame: Some(frame.into()), name, values }
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColumnFullyQualified {
+    pub schema: String,
+    pub table: String,
+    pub name: String,
+    pub values: ColumnValues,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColumnTableQualified {
+    pub table: String,
+    pub name: String,
+    pub values: ColumnValues,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColumnUnqualified {
+    pub name: String,
+    pub values: ColumnValues,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NewFrameColumn {
+    FullyQualified(ColumnFullyQualified),
+    TableQualified(ColumnTableQualified),
+    Unqualified(ColumnUnqualified),
 }
 
 impl FrameColumn {
