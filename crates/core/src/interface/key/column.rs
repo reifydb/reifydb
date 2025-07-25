@@ -26,7 +26,9 @@ impl EncodableKey for ColumnKey {
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 8);
+        if payload.len() != 8 {
+            return None;
+        }
         keycode::deserialize(&payload[..8]).ok().map(|column| Self { column })
     }
 }

@@ -54,7 +54,9 @@ impl EncodableKey for SystemVersionKey {
         Self: Sized,
     {
         assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 1);
+        if payload.len() != 1 {
+            return None;
+        }
         keycode::deserialize(&payload[..1]).ok().map(|version| Self { version })
     }
 }

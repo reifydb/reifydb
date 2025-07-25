@@ -28,7 +28,9 @@ impl EncodableKey for TableColumnKey {
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 16);
+        if payload.len() != 16 {
+            return None;
+        }
 
         keycode::deserialize(&payload[..8])
             .ok()

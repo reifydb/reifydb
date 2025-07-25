@@ -26,7 +26,9 @@ impl EncodableKey for SystemSequenceKey {
 
     fn decode(version: u8, payload: &[u8]) -> Option<Self> {
         assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 4);
+        if payload.len() != 4 {
+            return None;
+        }
         keycode::deserialize(&payload).ok().map(|sequence| Self { sequence })
     }
 }
