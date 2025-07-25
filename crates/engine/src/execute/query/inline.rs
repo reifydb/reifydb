@@ -110,7 +110,7 @@ impl InlineDataNode {
                     let evaluated = evaluate(&keyed_expr.expression, &ctx)?;
 
                     // Take the first value from the evaluated result
-                    let mut iter = evaluated.values.iter();
+                    let mut iter = evaluated.values().iter();
                     if let Some(value) = iter.next() {
                         column_values.push_value(value);
                     } else {
@@ -122,11 +122,11 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(reifydb_core::frame::FrameColumn {
-                frame: Some("inline".to_string()),
-                name: column_name,
-                values: column_values,
-            });
+            frame_columns.push(reifydb_core::frame::FrameColumn::new(
+                Some("inline".to_string()),
+                column_name,
+                column_values,
+            ));
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");
@@ -186,17 +186,17 @@ impl InlineDataNode {
                         take: None,
                     };
 
-                    column_values.extend(evaluate(&keyed_expr.expression, &ctx)?.values)?;
+                    column_values.extend(evaluate(&keyed_expr.expression, &ctx)?.values().clone())?;
                 } else {
                     column_values.push_value(Value::Undefined);
                 }
             }
 
-            frame_columns.push(reifydb_core::frame::FrameColumn {
-                frame: Some("inline".to_string()),
-                name: column_layout.name.clone(),
-                values: column_values,
-            });
+            frame_columns.push(reifydb_core::frame::FrameColumn::new(
+                Some("inline".to_string()),
+                column_layout.name.clone(),
+                column_values,
+            ));
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");

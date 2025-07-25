@@ -164,10 +164,10 @@ fn map_frame(frame: Frame) -> grpc::Frame {
             .columns
             .into_iter()
             .map(|col| {
-                let data_type = col.values.get_type();
+                let data_type = col.values().get_type();
 
                 let values = col
-                    .values
+                    .values()
                     .iter()
                     .map(|v| {
                         let data_type = match v {
@@ -216,10 +216,10 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                     .collect();
 
                 Column {
-                    name: col.name,
+                    name: col.name().to_string(),
                     ty: Type::to_u8(&data_type) as i32,
                     values,
-                    frame: col.frame,
+                    frame: col.frame().map(|s| s.to_string()),
                 }
             })
             .collect(),

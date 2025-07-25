@@ -68,9 +68,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 // For each table column, find if it exists in the input frame
                 for (table_idx, table_column) in table.columns.iter().enumerate() {
                     let mut value = if let Some(input_column) =
-                        frame.columns.iter().find(|col| col.name == table_column.name)
+                        frame.columns.iter().find(|col| col.name() == table_column.name)
                     {
-                        input_column.values.get(row_idx)
+                        input_column.values().get(row_idx)
                     } else {
                         Value::Undefined
                     };

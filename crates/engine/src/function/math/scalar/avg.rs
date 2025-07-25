@@ -22,7 +22,7 @@ impl ScalarFunction for Avg {
         let mut count = vec![0u32; row_count];
 
         for col in columns {
-            match &col.values {
+            match &col.values() {
                 ColumnValues::Int2(vals, bitvec) => {
                     for i in 0..row_count {
                         if bitvec.get(i) {

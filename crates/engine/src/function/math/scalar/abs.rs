@@ -20,7 +20,7 @@ impl ScalarFunction for Abs {
     ) -> crate::Result<ColumnValues> {
         let column = columns.get(0).unwrap();
 
-        match &column.values {
+        match &column.values() {
             ColumnValues::Int1(v, b) => {
                 let mut values = Vec::with_capacity(v.len());
 

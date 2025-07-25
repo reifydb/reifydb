@@ -72,7 +72,7 @@ impl ExecutionPlan for MapNode {
             // Only preserve RowId column if the execution context requires it
             if ctx.preserve_row_ids {
                 if let Some(row_id_column) =
-                    frame.columns.iter().find(|col| col.name == ROW_ID_COLUMN_NAME)
+                    frame.columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
                 {
                     let mut filtered_row_id_column = row_id_column.clone();
                     filtered_row_id_column.filter(&mask)?;

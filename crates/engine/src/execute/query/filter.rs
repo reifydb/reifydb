@@ -45,7 +45,7 @@ impl ExecutionPlan for FilterNode {
                 let result = evaluate(filter_expr, &eval_ctx)?;
                 
                 // Apply the filter result to the mask
-                match result.values {
+                match result.values() {
                     ColumnValues::Bool(values, bitvec) => {
                         // The result only contains values for rows where mask was true
                         // We need to map these back to the original row indices

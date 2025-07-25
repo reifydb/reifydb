@@ -17,7 +17,7 @@ impl Evaluator {
         let left = self.evaluate(&lt.left, ctx)?;
         let right = self.evaluate(&lt.right, ctx)?;
 
-        match (&left.values, &right.values) {
+        match (&left.values(), &right.values()) {
             // Float4
             (ColumnValues::Float4(l, lv), ColumnValues::Float4(r, rv)) => {
                 Ok(compare_number::<f32, f32>(l, r, lv, rv, lt.span()))

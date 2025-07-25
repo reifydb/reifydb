@@ -17,7 +17,7 @@ impl Evaluator {
         let left = self.evaluate(&ne.left, ctx)?;
         let right = self.evaluate(&ne.right, ctx)?;
 
-        match (&left.values, &right.values) {
+        match (&left.values(), &right.values()) {
             (ColumnValues::Bool(l, lv), ColumnValues::Bool(r, rv)) => {
                 Ok(compare_bool(l, r, lv, rv, ne.span()))
             }

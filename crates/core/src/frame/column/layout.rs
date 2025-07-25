@@ -14,9 +14,9 @@ pub struct FrameColumnLayout {
 impl FrameColumnLayout {
     pub fn from_column(column: &FrameColumn) -> Self {
         Self {
-            name: column.name.clone(),
-            frame: column.frame.clone(),
-            ty: match column.values {
+            name: column.name().to_string(),
+            frame: column.frame().map(|s| s.to_string()),
+            ty: match column.values() {
                 ColumnValues::Bool(_, _) => Type::Bool,
                 ColumnValues::Float4(_, _) => Type::Float4,
                 ColumnValues::Float8(_, _) => Type::Float8,

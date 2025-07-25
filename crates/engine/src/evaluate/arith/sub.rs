@@ -19,7 +19,7 @@ impl Evaluator {
         let right = self.evaluate(&sub.right, ctx)?;
         let ty = Type::promote(left.get_type(), right.get_type());
 
-        match (&left.values, &right.values) {
+        match (&left.values(), &right.values()) {
             // Float4
             (ColumnValues::Float4(l, lv), ColumnValues::Float4(r, rv)) => {
                 sub_numeric(ctx, l, r, lv, rv, ty, sub.span())

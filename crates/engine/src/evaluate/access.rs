@@ -24,8 +24,8 @@ impl Evaluator {
                 })),
                 &ctx,
             )?
-            .values;
+            .values().clone();
 
-        Ok(FrameColumn::fully_qualified(table, column, values))
+        Ok(FrameColumn::new(Some(table), column, values))
     }
 }

@@ -71,25 +71,25 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Group { alias, column, .. } => {
                     let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-                    let mut c = FrameColumn {
-                        frame: Some("aggregate".to_string()),
-                        name: alias.fragment.clone(),
+                    let mut c = FrameColumn::new(
+                        Some("aggregate".to_string()),
+                        alias.fragment.clone(),
                         // FIXME this must be set based on the actual key
-                        values: ColumnValues::int2_with_capacity(group_key_order.len()),
-                    };
+                        ColumnValues::int2_with_capacity(group_key_order.len()),
+                    );
                     for key in &group_key_order {
-                        c.values.push_value(key[col_idx].clone());
+                        c.values_mut().push_value(key[col_idx].clone());
                     }
                     result_columns.push(c);
                 }
                 Projection::Aggregate { alias, mut function, .. } => {
                     let (keys_out, mut values) = function.finalize().unwrap();
                     align_column_values(&group_key_order, &keys_out, &mut values).unwrap();
-                    result_columns.push(FrameColumn { 
-                        frame: Some("aggregate".to_string()),
-                        name: alias.fragment.clone(),
-                        values: values 
-                    });
+                    result_columns.push(FrameColumn::new(
+                        Some("aggregate".to_string()),
+                        alias.fragment.clone(),
+                        values,
+                    ));
                 }
             }
         }

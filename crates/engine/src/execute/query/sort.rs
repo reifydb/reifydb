@@ -28,7 +28,7 @@ impl ExecutionPlan for SortNode {
         while let Some(Batch { frame, mask }) = self.input.next(ctx, rx)? {
             if let Some(existing_frame) = &mut frame_opt {
                 for (i, col) in frame.columns.into_iter().enumerate() {
-                    existing_frame.columns[i].values.extend(col.values)?;
+                    existing_frame.columns[i].values_mut().extend(col.values().clone())?;
                 }
             } else {
                 frame_opt = Some(frame);
@@ -53,9 +53,9 @@ impl ExecutionPlan for SortNode {
                 let col = frame
                     .columns
                     .iter()
-                    .find(|c| c.qualified_name() == key.column.fragment || c.name == key.column.fragment)
+                    .find(|c| c.qualified_name() == key.column.fragment || c.name() == key.column.fragment)
                     .ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-                Ok::<_, reifydb_core::Error>((&col.values, &key.direction))
+                Ok::<_, reifydb_core::Error>((col.values().clone(), key.direction.clone()))
             })
             .collect::<crate::Result<Vec<_>>>()?;
 
@@ -80,7 +80,7 @@ impl ExecutionPlan for SortNode {
         });
 
         for col in &mut frame.columns {
-            col.values.reorder(&indices);
+            col.values_mut().reorder(&indices);
         }
 
         Ok(Some(Batch { frame, mask: mask_opt.unwrap() }))
