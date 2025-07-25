@@ -10,8 +10,7 @@ use rusqlite::params;
 impl VersionedScanRev for Sqlite {
     type ScanIterRev<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
-    fn scan_rev(&self, _version: Version) -> Self::ScanIterRev<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
+    fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_> {
 
         let conn = self.get_conn();
         let mut stmt = conn

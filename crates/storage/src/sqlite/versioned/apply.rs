@@ -8,14 +8,13 @@ use reifydb_core::{CowVec, Version};
 use rusqlite::params;
 
 impl VersionedApply for Sqlite {
-    fn apply(&self, delta: CowVec<Delta>, _version: Version) {
+    fn apply(&self, delta: CowVec<Delta>, version: Version) {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 
         for delta in delta {
             match delta {
                 Delta::Set { key, row: bytes } => {
-                    let version = 1; // FIXME remove this - transaction version needs to be persisted
                     tx.execute(
                         "INSERT OR REPLACE INTO versioned (key, version, value) VALUES (?1, ?2, ?3)",
                         params![key.to_vec(), version, bytes.to_vec()],
@@ -23,7 +22,6 @@ impl VersionedApply for Sqlite {
                     .unwrap();
                 }
                 Delta::Remove { key } => {
-                    let version = 1; // FIXME remove this - transaction version needs to be persisted
                     tx.execute(
                         "DELETE FROM versioned WHERE key = ?1 AND version = ?2",
                         params![key.to_vec(), version],

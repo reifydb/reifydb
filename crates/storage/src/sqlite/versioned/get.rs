@@ -8,9 +8,7 @@ use reifydb_core::{CowVec, EncodedKey, Version};
 use rusqlite::{OptionalExtension, params};
 
 impl VersionedGet for Sqlite {
-    fn get(&self, key: &EncodedKey, _version: Version) -> Option<Versioned> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
+    fn get(&self, key: &EncodedKey, version: Version) -> Option<Versioned> {
         let conn = self.get_conn();
         conn.query_row(
 			"SELECT key, value, version FROM versioned WHERE key = ?1 AND version <= ?2 SORT version DESC LIMIT 1",

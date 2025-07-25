@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::sqlite::{bound_to_bytes, Sqlite};
+use crate::sqlite::{Sqlite, bound_to_bytes};
 use reifydb_core::interface::{Versioned, VersionedScanRange};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
@@ -10,9 +10,7 @@ use rusqlite::params;
 impl VersionedScanRange for Sqlite {
     type ScanRangeIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
-    fn scan_range(&self, range: EncodedKeyRange, _version: Version) -> Self::ScanRangeIter<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
+    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
         let conn = self.get_conn();
         let mut stmt = conn
 			.prepare("SELECT key, value, version FROM versioned WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key ASC")
@@ -22,7 +20,6 @@ impl VersionedScanRange for Sqlite {
         let end_bytes = bound_to_bytes(&range.end);
 
         let rows = stmt
-            // .query_map(params![], |row| {
             .query_map(params![start_bytes, end_bytes, version], |row| {
                 Ok(Versioned {
                     key: EncodedKey(CowVec::new(row.get(0)?)),

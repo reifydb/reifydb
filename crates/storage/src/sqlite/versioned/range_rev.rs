@@ -13,9 +13,8 @@ impl VersionedScanRangeRev for Sqlite {
     fn scan_range_rev(
         &self,
         range: EncodedKeyRange,
-        _version: Version,
+        version: Version,
     ) -> Self::ScanRangeIterRev<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
 
         let conn = self.get_conn();
         let mut stmt = conn
