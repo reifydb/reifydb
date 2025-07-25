@@ -11,7 +11,7 @@ impl VersionedGet for Sqlite {
     fn get(&self, key: &EncodedKey, version: Version) -> Option<Versioned> {
         let conn = self.get_conn();
         conn.query_row(
-			"SELECT key, value, version FROM versioned WHERE key = ?1 AND version <= ?2 SORT version DESC LIMIT 1",
+			"SELECT key, value, version FROM versioned WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
 			params![key.to_vec(), version],
 			|row| {
 				Ok(Versioned {

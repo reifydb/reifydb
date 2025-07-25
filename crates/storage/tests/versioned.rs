@@ -10,13 +10,15 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::delta::Delta;
+use reifydb_core::interface::{Versioned, VersionedStorage};
+use reifydb_core::row::EncodedRow;
 use reifydb_core::util::encoding::binary::decode_binary;
 use reifydb_core::util::encoding::format;
 use reifydb_core::util::encoding::format::Formatter;
-use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
-use reifydb_core::interface::{VersionedStorage, Versioned};
+use reifydb_storage::sqlite::Sqlite;
+use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
@@ -24,9 +26,15 @@ use std::path::Path;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_memory => test_memory }
+test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
     testscript::run_path(&mut Runner::new(Memory::default()), path).expect("test failed")
+}
+
+fn test_sqlite(path: &Path) {
+    temp_dir(|db_path| testscript::run_path(&mut Runner::new(Sqlite::new(db_path)), path))
+        .expect("test failed")
 }
 
 /// Runs engine tests.
@@ -137,7 +145,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
     }
 }
 
-fn print<I: Iterator<Item =Versioned>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = Versioned>>(output: &mut String, iter: I) {
     for sv in iter {
         let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
         writeln!(output, "{fmtkv}").unwrap();
