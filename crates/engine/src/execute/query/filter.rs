@@ -10,12 +10,11 @@ use reifydb_rql::expression::Expression;
 pub(crate) struct FilterNode {
     input: Box<dyn ExecutionPlan>,
     expressions: Vec<Expression>,
-    layout: Option<FrameLayout>,
 }
 
 impl FilterNode {
     pub fn new(input: Box<dyn ExecutionPlan>, expressions: Vec<Expression>) -> Self {
-        Self { input, expressions, layout: None }
+        Self { input, expressions }
     }
 }
 
@@ -43,7 +42,7 @@ impl ExecutionPlan for FilterNode {
 
                 // Evaluate the filter expression
                 let result = evaluate(filter_expr, &eval_ctx)?;
-                
+
                 // Apply the filter result to the mask
                 match result.values() {
                     ColumnValues::Bool(values, bitvec) => {
@@ -70,8 +69,6 @@ impl ExecutionPlan for FilterNode {
                 }
             }
 
-            self.layout = Some(FrameLayout::from_frame(&frame));
-
             // Only return batch if any rows remain after filtering
             if mask.any() {
                 return Ok(Some(Batch { frame, mask }));
@@ -81,6 +78,6 @@ impl ExecutionPlan for FilterNode {
     }
 
     fn layout(&self) -> Option<FrameLayout> {
-        self.layout.clone().or(self.input.layout())
+        self.input.layout()
     }
 }

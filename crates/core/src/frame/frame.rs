@@ -3,7 +3,7 @@
 
 use crate::Type::Undefined;
 use crate::Value;
-use crate::frame::column::{ColumnQualified, TableQualified};
+use crate::frame::column::ColumnQualified;
 use crate::frame::iterator::FrameIter;
 use crate::frame::{ColumnValues, FrameColumn};
 use std::collections::HashMap;
@@ -48,11 +48,8 @@ impl Frame {
                 Value::Uuid7(v) => ColumnValues::uuid7([v]),
             };
 
-            let column = FrameColumn::TableQualified(TableQualified {
-                table: "frame".to_string(),
-                name: name.to_string(),
-                values,
-            });
+            let column =
+                FrameColumn::ColumnQualified(ColumnQualified { name: name.to_string(), values });
             index.insert(column.qualified_name(), idx);
             columns.push(column);
         }
