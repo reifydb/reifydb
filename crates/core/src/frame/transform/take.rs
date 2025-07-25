@@ -9,7 +9,7 @@ impl Frame {
         let mut columns = Vec::with_capacity(self.columns.len());
 
         for col in &self.columns {
-            let data = match &col.values {
+            let data = match &col.values() {
                 ColumnValues::Bool(values, bitvec) => ColumnValues::Bool(
                     CowVec::new(values[..n.min(values.len())].to_vec()),
                     bitvec.take(n),
@@ -97,11 +97,11 @@ impl Frame {
                 ),
             };
 
-            columns.push(FrameColumn {
-                frame: col.frame.clone(),
-                name: col.name.clone(),
-                values: data,
-            });
+            columns.push(FrameColumn::new(
+                col.frame().map(|s| s.to_string()),
+                col.name().to_string(),
+                data,
+            ));
         }
 
         self.columns = columns;
@@ -113,9 +113,10 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frame::column::TableQualified;
     #[test]
     fn test_bool_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::bool_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::bool_with_bitvec(
             "test",
             "flag",
             [true, true, false],
@@ -125,14 +126,14 @@ mod tests {
         test_instance.take(1).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::bool_with_bitvec([true], [false])
         );
     }
 
     #[test]
     fn test_float4_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::float4_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::float4_with_bitvec(
             "test",
             "a",
             [1.0, 2.0, 3.0],
@@ -142,14 +143,14 @@ mod tests {
         test_instance.take(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::float4_with_bitvec([1.0, 2.0], [true, false])
         );
     }
 
     #[test]
     fn test_float8_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::float8_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::float8_with_bitvec(
             "test",
             "a",
             [1f64, 2.0, 3.0, 4.0],
@@ -159,14 +160,14 @@ mod tests {
         test_instance.take(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::float8_with_bitvec([1.0, 2.0], [true, true])
         );
     }
 
     #[test]
     fn test_int1_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int1_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::int1_with_bitvec(
             "test_frame",
             "a",
             [1, 2, 3],
@@ -176,14 +177,14 @@ mod tests {
         test_instance.take(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::int1_with_bitvec([1, 2], [true, false])
         );
     }
 
     #[test]
     fn test_int2_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int2_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::int2_with_bitvec(
             "test",
             "a",
             [1, 2, 3, 4],
@@ -193,14 +194,14 @@ mod tests {
         test_instance.take(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::int2_with_bitvec([1, 2], [true, true])
         );
     }
 
     #[test]
     fn test_int4_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int4_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::int4_with_bitvec(
             "test_frame",
             "a",
             [1, 2],
@@ -209,12 +210,12 @@ mod tests {
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(test_instance.columns[0].values, ColumnValues::int4_with_bitvec([1], [true]));
+        assert_eq!(*test_instance.columns[0].values(), ColumnValues::int4_with_bitvec([1], [true]));
     }
 
     #[test]
     fn test_int8_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int8_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::int8_with_bitvec(
             "test_frame",
             "a",
             [1, 2, 3],
@@ -224,14 +225,14 @@ mod tests {
         test_instance.take(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::int8_with_bitvec([1, 2], [false, true])
         );
     }
 
     #[test]
     fn test_int16_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int16_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::int16_with_bitvec(
             "test_frame",
             "a",
             [1, 2],
@@ -240,12 +241,12 @@ mod tests {
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(test_instance.columns[0].values, ColumnValues::int16_with_bitvec([1], [true]));
+        assert_eq!(*test_instance.columns[0].values(), ColumnValues::int16_with_bitvec([1], [true]));
     }
 
     #[test]
     fn test_uint1_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint1_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::uint1_with_bitvec(
             "test_frame",
             "a",
             [1, 2, 3],
@@ -255,14 +256,14 @@ mod tests {
         test_instance.take(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::uint1_with_bitvec([1, 2], [false, false])
         );
     }
 
     #[test]
     fn test_uint2_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint2_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::uint2_with_bitvec(
             "test_frame",
             "a",
             [1, 2],
@@ -271,12 +272,12 @@ mod tests {
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(test_instance.columns[0].values, ColumnValues::uint2_with_bitvec([1], [true]));
+        assert_eq!(*test_instance.columns[0].values(), ColumnValues::uint2_with_bitvec([1], [true]));
     }
 
     #[test]
     fn test_uint4_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint4_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::uint4_with_bitvec(
             "test_frame",
             "a",
             [10, 20],
@@ -285,12 +286,15 @@ mod tests {
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(test_instance.columns[0].values, ColumnValues::uint4_with_bitvec([10], [false]));
+        assert_eq!(
+            *test_instance.columns[0].values(),
+            ColumnValues::uint4_with_bitvec([10], [false])
+        );
     }
 
     #[test]
     fn test_uint8_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint8_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::uint8_with_bitvec(
             "test",
             "a",
             [10, 20, 30],
@@ -300,14 +304,14 @@ mod tests {
         test_instance.take(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::uint8_with_bitvec([10, 20], [true, true])
         );
     }
 
     #[test]
     fn test_uint16_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::uint16_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::uint16_with_bitvec(
             "test",
             "a",
             [100, 200, 300],
@@ -317,14 +321,14 @@ mod tests {
         test_instance.take(1).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::uint16_with_bitvec([100], [true])
         );
     }
 
     #[test]
     fn test_text_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::utf8_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::utf8_with_bitvec(
             "test",
             "t",
             ["a", "b", "c"],
@@ -334,18 +338,19 @@ mod tests {
         test_instance.take(2).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::utf8_with_bitvec(["a".to_string(), "b".to_string()], [true, false])
         );
     }
 
     #[test]
     fn test_undefined_column() {
-        let mut test_instance = Frame::new(vec![FrameColumn::undefined("test_frame", "u", 3)]);
+        let mut test_instance =
+            Frame::new(vec![TableQualified::undefined("test_frame", "u", 3)]);
 
         test_instance.take(2).unwrap();
 
-        match &test_instance.columns[0].values {
+        match &test_instance.columns[0].values() {
             ColumnValues::Undefined(size) => {
                 assert_eq!(*size, 2);
             }
@@ -355,11 +360,12 @@ mod tests {
 
     #[test]
     fn test_handles_undefined() {
-        let mut test_instance = Frame::new(vec![FrameColumn::undefined("test_frame", "u", 5)]);
+        let mut test_instance =
+            Frame::new(vec![TableQualified::undefined("test_frame", "u", 5)]);
 
         test_instance.take(3).unwrap();
 
-        match &test_instance.columns[0].values {
+        match &test_instance.columns[0].values() {
             ColumnValues::Undefined(len) => assert_eq!(*len, 3),
             _ => panic!("Expected Undefined column"),
         }
@@ -367,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_n_larger_than_len_is_safe() {
-        let mut test_instance = Frame::new(vec![FrameColumn::int2_with_bitvec(
+        let mut test_instance = Frame::new(vec![TableQualified::int2_with_bitvec(
             "test_frame",
             "a",
             [10, 20],
@@ -377,7 +383,7 @@ mod tests {
         test_instance.take(10).unwrap();
 
         assert_eq!(
-            test_instance.columns[0].values,
+            *test_instance.columns[0].values(),
             ColumnValues::int2_with_bitvec([10, 20], [true, false])
         );
     }

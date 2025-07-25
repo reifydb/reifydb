@@ -204,11 +204,7 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn {
-                    name: col.name,
-                    frame: col.frame,
-                    values: convert_column_values(col.ty, col.data),
-                }
+                FrameColumn::new(col.frame, col.name, convert_column_values(col.ty, col.data))
             })
             .collect();
 
@@ -234,11 +230,7 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn {
-                    frame: col.frame,
-                    name: col.name,
-                    values: convert_column_values(col.ty, col.data),
-                }
+                FrameColumn::new(col.frame, col.name, convert_column_values(col.ty, col.data))
             })
             .collect();
 

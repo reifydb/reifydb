@@ -104,11 +104,11 @@ impl ExecutionPlan for ScanFrameNode {
         // Add the RowId column to the frame if requested
         if let Some(row_ids_vec) = row_ids {
             if !row_ids_vec.is_empty() {
-                let row_id_column = FrameColumn {
-                    frame: Some(self.table.name.clone()),
-                    name: ROW_ID_COLUMN_NAME.to_string(),
-                    values: ColumnValues::row_id(row_ids_vec),
-                };
+                let row_id_column = FrameColumn::new(
+                    Some(self.table.name.clone()),
+                    ROW_ID_COLUMN_NAME.to_string(),
+                    ColumnValues::row_id(row_ids_vec),
+                );
                 frame.columns.push(row_id_column);
                 frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);
             }
@@ -153,11 +153,11 @@ fn create_empty_frame(table: &Table) -> Frame {
                 Type::Uuid7 => ColumnValues::uuid7(vec![]),
                 Type::Undefined => ColumnValues::Undefined(0),
             };
-            FrameColumn { 
-                frame: Some(table.name.clone()),
-                name: name,
-                values: data 
-            }
+            FrameColumn::new(
+                Some(table.name.clone()),
+                name,
+                data,
+            )
         })
         .collect();
 

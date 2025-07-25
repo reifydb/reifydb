@@ -18,17 +18,17 @@ impl Evaluator {
         let col = ctx
             .columns
             .iter()
-            .find(|c| &c.qualified_name() == name.as_str() || &c.name == name.as_str())
+            .find(|c| &c.qualified_name() == name.as_str() || c.name() == name.as_str())
             .ok_or(error!(column_not_found(column.0.clone())))?;
 
         let take = ctx.take.unwrap_or(usize::MAX);
 
-        match col.values.get(0) {
+        match col.values().get(0) {
             Value::Bool(_) => {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -53,7 +53,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -78,7 +78,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -103,7 +103,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -128,7 +128,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -153,7 +153,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -178,7 +178,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -203,7 +203,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -228,7 +228,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -253,7 +253,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -278,7 +278,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -303,7 +303,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -328,7 +328,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -353,7 +353,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -378,7 +378,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -403,7 +403,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -428,7 +428,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -453,7 +453,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -477,7 +477,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -501,7 +501,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -525,7 +525,7 @@ impl Evaluator {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for (i, v) in col.values.iter().enumerate() {
+                for (i, v) in col.values().iter().enumerate() {
                     if ctx.mask.get(i) {
                         if count >= take {
                             break;
@@ -545,7 +545,21 @@ impl Evaluator {
                 }
                 Ok(col.with_new_values(ColumnValues::uuid7_with_bitvec(values, bitvec)))
             }
-            _ => unimplemented!(),
+            Value::Undefined => {
+                // For undefined values (e.g., from left joins with no match on right side),
+                // we need to count how many rows are requested by the mask.
+                let mut count = 0;
+                for i in 0..ctx.row_count {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        count += 1;
+                    }
+                }
+                // Return an undefined column with the correct number of undefined values
+                Ok(col.with_new_values(ColumnValues::undefined(count)))
+            }
         }
     }
 }

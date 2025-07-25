@@ -86,11 +86,11 @@ impl ExecutionPlan for LeftJoinNode {
                         .iter()
                         .cloned()
                         .zip(left_frame.columns.iter().chain(&right_frame.columns))
-                        .map(|(v, col)| FrameColumn {
-                            frame: col.frame.clone(),
-                            name: col.name.clone(),
-                            values: ColumnValues::from(v),
-                        })
+                        .map(|(v, col)| FrameColumn::new(
+                            col.frame().map(|s| s.to_string()),
+                            col.name().to_string(),
+                            ColumnValues::from(v),
+                        ))
                         .collect(),
                     row_count: 1,
                     take: Some(1),
@@ -98,7 +98,7 @@ impl ExecutionPlan for LeftJoinNode {
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {
                     let col = evaluate(cond, &ctx).unwrap();
-                    matches!(col.values.get(0), Value::Bool(true)) && acc
+                    matches!(col.values().get(0), Value::Bool(true)) && acc
                 });
 
                 if all_true {
@@ -126,8 +126,12 @@ impl ExecutionPlan for LeftJoinNode {
 
         // Update frame columns with proper metadata
         for (i, col_meta) in column_metadata.iter().enumerate() {
-            frame.columns[i].frame = col_meta.frame.clone();
-            frame.columns[i].name = col_meta.name.clone();
+            let old_column = &frame.columns[i];
+            frame.columns[i] = FrameColumn::new(
+                col_meta.frame().map(|s| s.to_string()),
+                col_meta.name().to_string(),
+                old_column.values().clone()
+            );
         }
 
         // Rebuild indexes with updated column info
@@ -138,7 +142,7 @@ impl ExecutionPlan for LeftJoinNode {
             .columns
             .iter()
             .enumerate()
-            .filter_map(|(i, col)| col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i)))
+            .filter_map(|(i, col)| col.frame().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
             .collect();
 
         self.layout = Some(FrameLayout::from_frame(&frame));

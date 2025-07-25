@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::value::row_id::ROW_ID_COLUMN_NAME;
-use crate::{BitVec, Type};
+use crate::Type;
 pub use layout::FrameColumnLayout;
 pub use push::Push;
 pub use values::ColumnValues;
@@ -12,244 +11,143 @@ mod filter;
 mod get;
 mod layout;
 mod push;
+mod qualification;
 mod reorder;
 mod slice;
 mod values;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FrameColumn {
-    // maybe name of the frame where this column was copied from, Some("users") or Some("orders") or None for expressions
-    pub frame: Option<String>,
-    // name of the column "id" or "user_id" or "1+2"
+pub struct FullyQualified {
+    pub schema: String,
+    pub table: String,
     pub name: String,
     pub values: ColumnValues,
 }
 
-impl FrameColumn {
-    pub fn with_new_values(&self, values: ColumnValues) -> FrameColumn {
-        Self { frame: self.frame.clone(), name: self.name.clone(), values }
-    }
+#[derive(Clone, Debug, PartialEq)]
+pub struct TableQualified {
+    pub table: String,
+    pub name: String,
+    pub values: ColumnValues,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColumnQualified {
+    pub name: String,
+    pub values: ColumnValues,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Unqualified {
+    pub name: String,
+    pub values: ColumnValues,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FrameColumn {
+    FullyQualified(FullyQualified),
+    TableQualified(TableQualified),
+    ColumnQualified(ColumnQualified),
+    Unqualified(Unqualified),
 }
 
 impl FrameColumn {
+
+    pub fn new(frame: Option<String>, name: String, values: ColumnValues) -> Self {
+        match frame {
+            Some(table) => Self::TableQualified(TableQualified { table, name, values }),
+            None => Self::ColumnQualified(ColumnQualified { name, values }),
+        }
+    }
+
     pub fn get_type(&self) -> Type {
-        self.values.get_type()
+        match self {
+            Self::FullyQualified(col) => col.values.get_type(),
+            Self::TableQualified(col) => col.values.get_type(),
+            Self::ColumnQualified(col) => col.values.get_type(),
+            Self::Unqualified(col) => col.values.get_type(),
+        }
     }
 
-    /// Returns the qualified name: frame.name if frame exists, otherwise just name
     pub fn qualified_name(&self) -> String {
-        match &self.frame {
-            Some(frame) => format!("{}.{}", frame, self.name),
-            None => self.name.clone(),
+        match self {
+            Self::FullyQualified(col) => format!("{}.{}.{}", col.schema, col.table, col.name),
+            Self::TableQualified(col) => format!("{}.{}", col.table, col.name),
+            Self::ColumnQualified(col) => col.name.clone(),
+            Self::Unqualified(col) => col.name.clone(),
         }
     }
 
-    fn validate_name(name: &str) -> String {
-        if name == ROW_ID_COLUMN_NAME {
-            panic!("Column name '{}' is reserved for RowId columns", ROW_ID_COLUMN_NAME);
+    pub fn with_new_values(&self, values: ColumnValues) -> FrameColumn {
+        match self {
+            Self::FullyQualified(col) => Self::FullyQualified(FullyQualified {
+                schema: col.schema.clone(),
+                table: col.table.clone(),
+                name: col.name.clone(),
+                values,
+            }),
+            Self::TableQualified(col) => Self::TableQualified(TableQualified {
+                table: col.table.clone(),
+                name: col.name.clone(),
+                values,
+            }),
+            Self::ColumnQualified(col) => {
+                Self::ColumnQualified(ColumnQualified { name: col.name.clone(), values })
+            }
+            Self::Unqualified(col) => {
+                Self::Unqualified(Unqualified { name: col.name.clone(), values })
+            }
         }
-        name.to_string()
     }
 
-    fn create_qualified_column(frame: &str, name: &str, values: ColumnValues) -> Self {
-        let name = Self::validate_name(name);
-        Self { frame: Some(frame.to_string()), name, values }
-    }
-}
-
-impl FrameColumn {
-    pub fn bool(frame: &str, name: &str, values: impl IntoIterator<Item = bool>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::bool(values))
-    }
-
-    pub fn bool_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = bool>,
-        bitvec: impl Into<BitVec>,
+    pub fn fully_qualified(
+        schema: impl Into<String>,
+        table: impl Into<String>, 
+        name: impl Into<String>,
+        values: ColumnValues,
     ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::bool_with_bitvec(values, bitvec))
+        Self::FullyQualified(FullyQualified { 
+            schema: schema.into(), 
+            table: table.into(), 
+            name: name.into(), 
+            values 
+        })
     }
 
-    pub fn float4(frame: &str, name: &str, values: impl IntoIterator<Item = f32>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::float4(values))
+    pub fn name(&self) -> &str {
+        match self {
+            Self::FullyQualified(col) => &col.name,
+            Self::TableQualified(col) => &col.name,
+            Self::ColumnQualified(col) => &col.name,
+            Self::Unqualified(col) => &col.name,
+        }
     }
 
-    pub fn float4_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = f32>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::float4_with_bitvec(values, bitvec))
+    pub fn frame(&self) -> Option<&str> {
+        match self {
+            Self::FullyQualified(col) => Some(&col.table), // Use table as frame for compatibility
+            Self::TableQualified(col) => Some(&col.table),
+            Self::ColumnQualified(_) => None,
+            Self::Unqualified(_) => None,
+        }
     }
 
-    pub fn float8(frame: &str, name: &str, values: impl IntoIterator<Item = f64>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::float8(values))
+    pub fn values(&self) -> &ColumnValues {
+        match self {
+            Self::FullyQualified(col) => &col.values,
+            Self::TableQualified(col) => &col.values,
+            Self::ColumnQualified(col) => &col.values,
+            Self::Unqualified(col) => &col.values,
+        }
     }
 
-    pub fn float8_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = f64>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::float8_with_bitvec(values, bitvec))
-    }
-
-    pub fn int1(frame: &str, name: &str, values: impl IntoIterator<Item = i8>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int1(values))
-    }
-
-    pub fn int1_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = i8>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int1_with_bitvec(values, bitvec))
-    }
-
-    pub fn int2(frame: &str, name: &str, values: impl IntoIterator<Item = i16>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int2(values))
-    }
-
-    pub fn int2_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = i16>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int2_with_bitvec(values, bitvec))
-    }
-
-    pub fn int4(frame: &str, name: &str, values: impl IntoIterator<Item = i32>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int4(values))
-    }
-
-    pub fn int4_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = i32>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int4_with_bitvec(values, bitvec))
-    }
-
-    pub fn int8(frame: &str, name: &str, values: impl IntoIterator<Item = i64>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int8(values))
-    }
-
-    pub fn int8_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = i64>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int8_with_bitvec(values, bitvec))
-    }
-
-    pub fn int16(frame: &str, name: &str, values: impl IntoIterator<Item = i128>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int16(values))
-    }
-
-    pub fn int16_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = i128>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::int16_with_bitvec(values, bitvec))
-    }
-
-    pub fn uint1(frame: &str, name: &str, values: impl IntoIterator<Item = u8>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint1(values))
-    }
-
-    pub fn uint1_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = u8>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint1_with_bitvec(values, bitvec))
-    }
-
-    pub fn uint2(frame: &str, name: &str, values: impl IntoIterator<Item = u16>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint2(values))
-    }
-
-    pub fn uint2_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = u16>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint2_with_bitvec(values, bitvec))
-    }
-
-    pub fn uint4(frame: &str, name: &str, values: impl IntoIterator<Item = u32>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint4(values))
-    }
-
-    pub fn uint4_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = u32>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint4_with_bitvec(values, bitvec))
-    }
-
-    pub fn uint8(frame: &str, name: &str, values: impl IntoIterator<Item = u64>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint8(values))
-    }
-
-    pub fn uint8_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = u64>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint8_with_bitvec(values, bitvec))
-    }
-
-    pub fn uint16(frame: &str, name: &str, values: impl IntoIterator<Item = u128>) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint16(values))
-    }
-
-    pub fn uint16_with_bitvec(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = u128>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::uint16_with_bitvec(values, bitvec))
-    }
-
-    pub fn utf8<'a>(frame: &str, name: &str, values: impl IntoIterator<Item = &'a str>) -> Self {
-        Self::create_qualified_column(
-            frame,
-            name,
-            ColumnValues::utf8(values.into_iter().map(|s| s.to_string())),
-        )
-    }
-
-    pub fn utf8_with_bitvec<'a>(
-        frame: &str,
-        name: &str,
-        values: impl IntoIterator<Item = &'a str>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        Self::create_qualified_column(
-            frame,
-            name,
-            ColumnValues::utf8_with_bitvec(values.into_iter().map(|s| s.to_string()), bitvec),
-        )
-    }
-
-    pub fn undefined(frame: &str, name: &str, len: usize) -> Self {
-        Self::create_qualified_column(frame, name, ColumnValues::undefined(len))
+    pub fn values_mut(&mut self) -> &mut ColumnValues {
+        match self {
+            Self::FullyQualified(col) => &mut col.values,
+            Self::TableQualified(col) => &mut col.values,
+            Self::ColumnQualified(col) => &mut col.values,
+            Self::Unqualified(col) => &mut col.values,
+        }
     }
 }
 
@@ -258,16 +156,53 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "Column name '__ROW__ID__' is reserved for RowId columns")]
-    fn test_reserved_column_name_panic() {
-        FrameColumn::int4("test_frame", ROW_ID_COLUMN_NAME, [1, 2, 3]);
+    fn test_table_qualified_column() {
+        let column = TableQualified::int4("test_frame", "normal_column", [1, 2, 3]);
+        assert_eq!(column.qualified_name(), "test_frame.normal_column");
+        match column {
+            FrameColumn::TableQualified(col) => {
+                assert_eq!(col.table, "test_frame");
+                assert_eq!(col.name, "normal_column");
+            }
+            _ => panic!("Expected TableQualified variant"),
+        }
     }
 
     #[test]
-    fn test_normal_column_name_works() {
-        let column = FrameColumn::int4("test_frame", "normal_column", [1, 2, 3]);
-        assert_eq!(column.qualified_name(), "test_frame.normal_column");
-        assert_eq!(column.frame, Some("test_frame".to_string()));
-        assert_eq!(column.name, "normal_column");
+    fn test_fully_qualified_column() {
+        let column = FullyQualified::int4("public", "users", "id", [1, 2, 3]);
+        assert_eq!(column.qualified_name(), "public.users.id");
+        match column {
+            FrameColumn::FullyQualified(col) => {
+                assert_eq!(col.schema, "public");
+                assert_eq!(col.table, "users");
+                assert_eq!(col.name, "id");
+            }
+            _ => panic!("Expected FullyQualified variant"),
+        }
+    }
+
+    #[test]
+    fn test_column_qualified() {
+        let column = ColumnQualified::int4("expr_result", [1, 2, 3]);
+        assert_eq!(column.qualified_name(), "expr_result");
+        match column {
+            FrameColumn::ColumnQualified(col) => {
+                assert_eq!(col.name, "expr_result");
+            }
+            _ => panic!("Expected ColumnQualified variant"),
+        }
+    }
+
+    #[test]
+    fn test_unqualified_expression() {
+        let column = Unqualified::int4("sum(a+b)", [1, 2, 3]);
+        assert_eq!(column.qualified_name(), "sum(a+b)");
+        match column {
+            FrameColumn::Unqualified(col) => {
+                assert_eq!(col.name, "sum(a+b)");
+            }
+            _ => panic!("Expected Unqualified variant"),
+        }
     }
 }

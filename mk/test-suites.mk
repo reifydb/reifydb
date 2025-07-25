@@ -1,5 +1,5 @@
 # =============================================================================
-# Test Suites (smoke, compatibility, diagnostic, functional, stress)
+# Test Suites (smoke, compatibility, diagnostic, functional, integration, stress)
 # =============================================================================
 
 # List of available test suites
@@ -8,6 +8,7 @@ TEST_SUITES := \
 	compatibility \
 	diagnostic \
 	functional \
+	integration \
 	stress
 
 .PHONY: testsuite testsuite-dev $(TEST_SUITES)

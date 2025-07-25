@@ -165,10 +165,12 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         .unwrap_or(FrameLayout { columns: vec![] })
                         .columns
                         .into_iter()
-                        .map(|layout| FrameColumn {
-                            frame: layout.frame,
-                            name: layout.name,
-                            values: ColumnValues::with_capacity(layout.ty, 0),
+                        .map(|layout| {
+                            FrameColumn::new(
+                                layout.frame,
+                                layout.name,
+                                ColumnValues::with_capacity(layout.ty, 0),
+                            )
                         })
                         .collect();
 
@@ -182,11 +184,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         .iter()
                         .enumerate()
                         .filter_map(|(i, col)| {
-                            col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i))
+                            col.frame().map(|sf| ((sf.to_string(), col.name().to_string()), i))
                         })
                         .collect();
-
-                    dbg!(&columns);
 
                     Ok(Frame { name: "".to_string(), columns, index, frame_index })
                 }

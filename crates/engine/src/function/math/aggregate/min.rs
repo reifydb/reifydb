@@ -23,7 +23,7 @@ impl AggregateFunction for Min {
 		mask: &BitVec,
 		groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
-        match &column.values {
+        match &column.values() {
             ColumnValues::Float8(values, bitvec) => {
                 for (group, indices) in groups {
                     let min_val = indices

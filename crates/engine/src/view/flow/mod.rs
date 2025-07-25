@@ -7,7 +7,6 @@
 // #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
 
 use reifydb_core::delta::Delta;
-use reifydb_core::delta::Delta::Set;
 use reifydb_core::util::encoding::keycode::serialize;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, Version};
@@ -140,7 +139,7 @@ impl<VS: VersionedStorage> Node for CountNode<VS> {
         let mut counters: HashMap<EncodedKey, i8> = HashMap::new();
 
         for d in delta {
-            if let Delta::Set { key, .. } = d {
+            if let Delta::Insert { key, .. } | Delta::Update { key, .. } = d {
                 let state_key = self.make_state_key(&key);
 
                 let current = *counters.entry(state_key.clone()).or_insert_with(|| {
@@ -152,7 +151,7 @@ impl<VS: VersionedStorage> Node for CountNode<VS> {
         }
 
         for (key, count) in counters {
-            updates.push(Set { key, row: EncodedRow(CowVec::new(vec![count as u8])) });
+            updates.push(Delta::Update { key, row: EncodedRow(CowVec::new(vec![count as u8])) });
         }
 
         self.storage.apply(updates.clone(), version);
@@ -187,7 +186,7 @@ impl Node for GroupNode {
         // let mut grouped: HashMap<EncodedKey, Vec<EncodedRow>> = HashMap::new();
 
         // for d in delta {
-        //     if let Delta::Set { row, .. } = d {
+        //     if let Delta::Insert { row, .. } | Delta::Update { row, .. } = d {
         //         // let row: EncodedRow = deprecated_deserialize_row(&row).unwrap();
         //         // let group_key = self.make_group_key(&row);
         //         // grouped.entry(group_key).or_default().push(row);
@@ -199,7 +198,7 @@ impl Node for GroupNode {
         //     grouped
         //         .into_iter()
         //         .flat_map(|(key, rows)| {
-        //             rows.into_iter().map(move |r| Delta::Set {
+        //             rows.into_iter().map(move |r| Delta::Insert {
         //                 key: key.clone(),
         //                 row: EncodedRow(CowVec::new(deprecated_serialize_row(&r).unwrap())),
         //             })
@@ -231,7 +230,7 @@ impl<VS: VersionedStorage> Node for SumNode<VS> {
         let sums: HashMap<EncodedKey, i8> = HashMap::new();
 
         for d in delta {
-            if let Set { .. } = d {
+            if let Delta::Insert { .. } | Delta::Update { .. } = d {
                 // let state_key = self.make_state_key(&key);
 
                 // let current = *sums.entry(state_key.clone()).or_insert_with(|| {
@@ -251,7 +250,7 @@ impl<VS: VersionedStorage> Node for SumNode<VS> {
         }
 
         for (key, sum) in sums {
-            updates.push(Set { key, row: EncodedRow(CowVec::new(vec![sum as u8])) });
+            updates.push(Delta::Update { key, row: EncodedRow(CowVec::new(vec![sum as u8])) });
         }
 
         self.storage.apply(updates.clone(), version);
@@ -300,19 +299,19 @@ mod tests {
     //     orchestrator.register("view::sum", create_sum_graph(storage.clone()));
     //
     //     // let delta = CowVec::new(vec![
-    //     //     Delta::Set {
+    //     //     Delta::Insert {
     //     //         key: EncodedKey::new(b"apple".to_vec()),
     //     //         bytes: CowVec::new(
     //     //             serialize_row(&vec![Value::Int1(1), Value::Int1(1), Value::Int1(23)]).unwrap(),
     //     //         ),
     //     //     },
-    //     //     Delta::Set {
+    //     //     Delta::Insert {
     //     //         key: EncodedKey::new(b"apple".to_vec()),
     //     //         bytes: CowVec::new(
     //     //             serialize_row(&vec![Value::Int1(1), Value::Int1(1), Value::Int1(1)]).unwrap(),
     //     //         ),
     //     //     },
-    //     //     Delta::Set {
+    //     //     Delta::Insert {
     //     //         key: EncodedKey::new(b"banana".to_vec()),
     //     //         bytes: CowVec::new(
     //     //             serialize_row(&vec![Value::Int1(2), Value::Int1(1), Value::Int1(1)]).unwrap(),

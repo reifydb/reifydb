@@ -6,7 +6,7 @@ use crate::{BitVec, CowVec};
 
 impl FrameColumn {
     pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
-        self.values.filter(mask)
+        self.values_mut().filter(mask)
     }
 }
 

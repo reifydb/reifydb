@@ -11,7 +11,7 @@ impl Frame {
                 // Try qualified name first, then try as original name
                 self.index.get(name).cloned().or_else(|| {
                     // Search by original name in source_index
-                    self.columns.iter().position(|col| col.name == name)
+                    self.columns.iter().position(|col| col.name() == name)
                 })
             })
             .collect();
@@ -38,7 +38,8 @@ impl Frame {
 
 #[cfg(test)]
 mod tests {
-    use crate::frame::{FrameColumn, Frame};
+    use crate::frame::Frame;
+    use crate::frame::column::TableQualified;
 
     #[test]
     fn test_select_subset_of_columns() {
@@ -46,8 +47,8 @@ mod tests {
         test_instance.select(&["name", "score"]).unwrap();
 
         assert_eq!(test_instance.columns.len(), 2);
-        assert_eq!(test_instance.columns[0].name, "name");
-        assert_eq!(test_instance.columns[1].name, "score");
+        assert_eq!(test_instance.columns[0].name(), "name");
+        assert_eq!(test_instance.columns[1].name(), "score");
     }
 
     #[test]
@@ -56,7 +57,7 @@ mod tests {
         test_instance.select(&["id"]).unwrap();
 
         assert_eq!(test_instance.columns.len(), 1);
-        assert_eq!(test_instance.columns[0].name, "id");
+        assert_eq!(test_instance.columns[0].name(), "id");
     }
 
     #[test]
@@ -65,9 +66,9 @@ mod tests {
         test_instance.select(&["id", "name", "score"]).unwrap();
 
         assert_eq!(test_instance.columns.len(), 3);
-        assert_eq!(test_instance.columns[0].name, "id");
-        assert_eq!(test_instance.columns[1].name, "name");
-        assert_eq!(test_instance.columns[2].name, "score");
+        assert_eq!(test_instance.columns[0].name(), "id");
+        assert_eq!(test_instance.columns[1].name(), "name");
+        assert_eq!(test_instance.columns[2].name(), "score");
     }
 
     #[test]
@@ -92,15 +93,15 @@ mod tests {
         test_instance.select(&["id", "nonexistent", "score"]).unwrap();
 
         assert_eq!(test_instance.columns.len(), 2);
-        assert_eq!(test_instance.columns[0].name, "id");
-        assert_eq!(test_instance.columns[1].name, "score");
+        assert_eq!(test_instance.columns[0].name(), "id");
+        assert_eq!(test_instance.columns[1].name(), "score");
     }
 
     fn make_test_instance() -> Frame {
         Frame::new(vec![
-			FrameColumn::int2("test_frame", "id", [1, 2]),
-			FrameColumn::utf8("test_frame", "name", ["Alice", "Bob"]),
-			FrameColumn::int2("test_frame", "score", [23, 32]),
+            TableQualified::int2("test_frame", "id", [1, 2]),
+            TableQualified::utf8("test_frame", "name", ["Alice", "Bob"]),
+            TableQualified::int2("test_frame", "score", [23, 32]),
         ])
     }
 }

@@ -20,7 +20,9 @@ impl VersionedApply for Sqlite {
 
         for delta in delta {
             match delta {
-                Delta::Set { key, row: bytes } => {
+                Delta::Insert { key, row }
+                | Delta::Update { key, row }
+                | Delta::Upsert { key, row } => {
                     let table = table_name(&key);
 
                     if table != "versioned" {
@@ -39,7 +41,7 @@ impl VersionedApply for Sqlite {
                         "INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)",
                         table
                     );
-                    tx.execute(&query, params![key.to_vec(), version, bytes.to_vec()]).unwrap();
+                    tx.execute(&query, params![key.to_vec(), version, row.to_vec()]).unwrap();
                 }
                 Delta::Remove { key } => {
                     let table = table_name(&key);

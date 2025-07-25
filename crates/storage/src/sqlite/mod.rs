@@ -10,7 +10,7 @@ pub use config::*;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::interface::{
-    UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
+    UnversionedRemove, UnversionedStorage, UnversionedUpsert, VersionedStorage,
 };
 use std::ops::Deref;
 use std::sync::Arc;
@@ -108,7 +108,7 @@ impl Sqlite {
 
 impl VersionedStorage for Sqlite {}
 impl UnversionedStorage for Sqlite {}
-impl UnversionedSet for Sqlite {}
+impl UnversionedUpsert for Sqlite {}
 impl UnversionedRemove for Sqlite {}
 
 #[cfg(test)]

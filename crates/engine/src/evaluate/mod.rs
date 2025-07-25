@@ -69,7 +69,8 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Fra
     // Ensures that result column data type matches the expected target column type
     if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type) {
         let mut column = evaluator.evaluate(expr, ctx)?;
-        column.values = cast::cast_column_values(&column.values, ty, ctx, expr.lazy_span())?;
+        let new_values = cast::cast_column_values(&column.values(), ty, ctx, expr.lazy_span())?;
+        column = FrameColumn::new(column.frame().map(|s| s.to_string()), column.name().to_string(), new_values);
         Ok(column)
     } else {
         evaluator.evaluate(expr, ctx)

@@ -31,11 +31,11 @@ impl Evaluator {
                 let column = self.evaluate(expr, ctx)?;
 
                 // Re-enable cast functionality using the moved cast module
-                Ok(FrameColumn {
-                    frame: column.frame,
-                    name: column.name,
-                    values: cast_column_values(
-                        &column.values,
+                Ok(FrameColumn::new(
+                    column.frame().map(|s| s.to_string()),
+                    column.name().to_string(),
+                    cast_column_values(
+                        &column.values(),
                         cast.to.ty,
                         ctx,
                         cast.expression.lazy_span(),
@@ -43,7 +43,7 @@ impl Evaluator {
                     .map_err(|e| {
                         error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
                     })?,
-                })
+                ))
             }
         }
     }
@@ -104,7 +104,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.values, ColumnValues::int4([42]));
+        assert_eq!(*result.values(), ColumnValues::int4([42]));
     }
 
     #[test]
@@ -124,7 +124,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.values, ColumnValues::int4([-42]));
+        assert_eq!(*result.values(), ColumnValues::int4([-42]));
     }
 
     #[test]
@@ -144,7 +144,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.values, ColumnValues::int1([-128]));
+        assert_eq!(*result.values(), ColumnValues::int1([-128]));
     }
 
     #[test]
@@ -160,7 +160,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.values, ColumnValues::float8([4.2]));
+        assert_eq!(*result.values(), ColumnValues::float8([4.2]));
     }
 
     #[test]
@@ -176,7 +176,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.values, ColumnValues::float4([4.2]));
+        assert_eq!(*result.values(), ColumnValues::float4([4.2]));
     }
 
     #[test]
@@ -192,7 +192,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.values, ColumnValues::float4([-1.1]));
+        assert_eq!(*result.values(), ColumnValues::float4([-1.1]));
     }
 
     #[test]
@@ -208,7 +208,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.values, ColumnValues::float8([-1.1]));
+        assert_eq!(*result.values(), ColumnValues::float8([-1.1]));
     }
 
     #[test]
@@ -226,7 +226,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.values, ColumnValues::bool([false]));
+        assert_eq!(*result.values(), ColumnValues::bool([false]));
     }
 
     #[test]

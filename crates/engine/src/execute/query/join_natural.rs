@@ -48,8 +48,8 @@ impl NaturalJoinNode {
 
         for (left_idx, left_col) in left_frame.columns.iter().enumerate() {
             for (right_idx, right_col) in right_frame.columns.iter().enumerate() {
-                if left_col.name == right_col.name {
-                    common_columns.push((left_col.name.clone(), left_idx, right_idx));
+                if left_col.name() == right_col.name() {
+                    common_columns.push((left_col.name().to_string(), left_idx, right_idx));
                 }
             }
         }
@@ -154,8 +154,12 @@ impl ExecutionPlan for NaturalJoinNode {
 
         // Update frame columns with proper metadata
         for (i, col_meta) in column_metadata.iter().enumerate() {
-            frame.columns[i].frame = col_meta.frame.clone();
-            frame.columns[i].name = col_meta.name.clone();
+            let old_column = &frame.columns[i];
+            frame.columns[i] = FrameColumn::new(
+                col_meta.frame().map(|s| s.to_string()),
+                col_meta.name().to_string(),
+                old_column.values().clone()
+            );
         }
 
         // Rebuild indexes with updated column info
@@ -166,7 +170,7 @@ impl ExecutionPlan for NaturalJoinNode {
             .columns
             .iter()
             .enumerate()
-            .filter_map(|(i, col)| col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i)))
+            .filter_map(|(i, col)| col.frame().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
             .collect();
 
         self.layout = Some(FrameLayout::from_frame(&frame));

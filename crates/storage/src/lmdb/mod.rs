@@ -4,7 +4,7 @@
 use heed::types::Bytes;
 use heed::{Database, Env, EnvOpenOptions};
 use reifydb_core::interface::{
-    UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
+	UnversionedRemove, UnversionedUpsert, UnversionedStorage, VersionedStorage,
 };
 use std::ops::Deref;
 use std::path::Path;
@@ -48,5 +48,5 @@ impl Lmdb {
 
 impl VersionedStorage for Lmdb {}
 impl UnversionedStorage for Lmdb {}
-impl UnversionedSet for Lmdb {}
+impl UnversionedUpsert for Lmdb {}
 impl UnversionedRemove for Lmdb {}

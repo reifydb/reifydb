@@ -62,13 +62,13 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         while let Some(Batch { frame, mask }) = input_node.next(&context, tx)? {
             // Find the RowId column - return error if not found
             let Some(row_id_column) =
-                frame.columns.iter().find(|col| col.name == ROW_ID_COLUMN_NAME)
+                frame.columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
             else {
                 return_error!(engine::missing_row_id_column());
             };
 
             // Extract RowId values - panic if any are undefined
-            let row_ids = match &row_id_column.values {
+            let row_ids = match &row_id_column.values() {
                 ColumnValues::RowId(row_ids, bitvec) => {
                     // Check that all row IDs are defined
                     for i in 0..row_ids.len() {
@@ -93,9 +93,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 // For each table column, find if it exists in the input frame
                 for (table_idx, table_column) in table.columns.iter().enumerate() {
                     let mut value = if let Some(input_column) =
-                        frame.columns.iter().find(|col| col.name == table_column.name)
+                        frame.columns.iter().find(|col| col.name() == table_column.name)
                     {
-                        input_column.values.get(row_idx)
+                        input_column.values().get(row_idx)
                     } else {
                         Value::Undefined
                     };

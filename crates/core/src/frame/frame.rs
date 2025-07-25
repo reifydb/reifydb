@@ -5,7 +5,6 @@ use crate::Type::Undefined;
 use crate::Value;
 use crate::frame::iterator::FrameIter;
 use crate::frame::{ColumnValues, FrameColumn};
-use crate::value::row_id::ROW_ID_COLUMN_NAME;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -48,11 +47,7 @@ impl Frame {
                 Value::Uuid7(v) => ColumnValues::uuid7([v]),
             };
 
-            if name == ROW_ID_COLUMN_NAME {
-                panic!("Column name '{}' is reserved for RowId columns", ROW_ID_COLUMN_NAME);
-            }
-            let column =
-                FrameColumn { frame: Some("frame".to_string()), name: name.to_string(), values };
+            let column = FrameColumn::new(Some("frame".to_string()), name.to_string(), values);
             index.insert(column.qualified_name(), idx);
             columns.push(column);
         }
@@ -64,16 +59,16 @@ impl Frame {
 
 impl Frame {
     pub fn new(columns: Vec<FrameColumn>) -> Self {
-        let n = columns.first().map_or(0, |c| c.values.len());
-        assert!(columns.iter().all(|c| c.values.len() == n));
+        let n = columns.first().map_or(0, |c| c.values().len());
+        assert!(columns.iter().all(|c| c.values().len() == n));
 
         let (index, frame_index) = build_indices(&columns);
         Self { name: "frame".to_string(), columns, index, frame_index }
     }
 
     pub fn new_with_name(columns: Vec<FrameColumn>, name: impl Into<String>) -> Self {
-        let n = columns.first().map_or(0, |c| c.values.len());
-        assert!(columns.iter().all(|c| c.values.len() == n));
+        let n = columns.first().map_or(0, |c| c.values().len());
+        assert!(columns.iter().all(|c| c.values().len() == n));
 
         let (index, frame_index) = build_indices(&columns);
         Self { name: name.into(), columns, index, frame_index }
@@ -89,7 +84,7 @@ impl Frame {
     }
 
     pub fn shape(&self) -> (usize, usize) {
-        (self.columns.get(0).map(|c| c.values.len()).unwrap_or(0), self.columns.len())
+        (self.columns.get(0).map(|c| c.values().len()).unwrap_or(0), self.columns.len())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -97,7 +92,7 @@ impl Frame {
     }
 
     pub fn row(&self, i: usize) -> Vec<Value> {
-        self.columns.iter().map(|c| c.values.get(i)).collect()
+        self.columns.iter().map(|c| c.values().get(i)).collect()
     }
 
     pub fn column(&self, name: &str) -> Option<&FrameColumn> {
@@ -105,7 +100,7 @@ impl Frame {
         self.index
             .get(name)
             .map(|&i| &self.columns[i])
-            .or_else(|| self.columns.iter().find(|col| col.name == name))
+            .or_else(|| self.columns.iter().find(|col| col.name() == name))
     }
 
     pub fn column_by_source(&self, frame: &str, name: &str) -> Option<&FrameColumn> {
@@ -116,17 +111,17 @@ impl Frame {
         // Try qualified name first, then try as original name
         self.index
             .get(name)
-            .map(|&i| &self.columns[i].values)
-            .or_else(|| self.columns.iter().find(|col| col.name == name).map(|col| &col.values))
+            .map(|&i| self.columns[i].values())
+            .or_else(|| self.columns.iter().find(|col| col.name() == name).map(|col| col.values()))
     }
 
     pub fn column_values_mut(&mut self, name: &str) -> Option<&mut ColumnValues> {
         // Try qualified name first, then try as original name
         if let Some(&i) = self.index.get(name) {
-            Some(&mut self.columns[i].values)
+            Some(self.columns[i].values_mut())
         } else {
-            let pos = self.columns.iter().position(|col| col.name == name)?;
-            Some(&mut self.columns[pos].values)
+            let pos = self.columns.iter().position(|col| col.name() == name)?;
+            Some(self.columns[pos].values_mut())
         }
     }
 
@@ -141,7 +136,7 @@ impl Frame {
     }
 
     pub fn row_count(&self) -> usize {
-        self.columns.first().map_or(0, |col| col.values.len())
+        self.columns.first().map_or(0, |col| col.values().len())
     }
 
     pub fn column_count(&self) -> usize {
@@ -149,7 +144,7 @@ impl Frame {
     }
 
     pub fn get_row(&self, index: usize) -> Vec<Value> {
-        self.columns.iter().map(|col| col.values.get(index)).collect()
+        self.columns.iter().map(|col| col.values().get(index)).collect()
     }
 }
 
@@ -159,17 +154,15 @@ impl Frame {
 
         let mut columns: Vec<FrameColumn> = names
             .iter()
-            .map(|name| FrameColumn {
-                frame: Some("unknown".to_string()),
-                name: name.to_string(),
-                values: ColumnValues::with_capacity(Undefined, 0),
+            .map(|name| {
+                FrameColumn::new(None, name.to_string(), ColumnValues::with_capacity(Undefined, 0))
             })
             .collect();
 
         for row in result_rows {
             assert_eq!(row.len(), column_count, "row length does not match column count");
             for (i, value) in row.iter().enumerate() {
-                columns[i].values.push_value(value.clone());
+                columns[i].values_mut().push_value(value.clone());
             }
         }
 
@@ -184,7 +177,7 @@ fn build_indices(
     let frame_index = columns
         .iter()
         .enumerate()
-        .filter_map(|(i, col)| col.frame.as_ref().map(|sf| ((sf.clone(), col.name.clone()), i)))
+        .filter_map(|(i, col)| col.frame().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
         .collect();
     (index, frame_index)
 }
@@ -212,10 +205,16 @@ mod tests {
         assert_eq!(frame.shape(), (1, 4));
 
         // Check that the values are correctly stored
-        assert_eq!(frame.column("date_col").unwrap().values.get(0), Value::Date(date));
-        assert_eq!(frame.column("datetime_col").unwrap().values.get(0), Value::DateTime(datetime));
-        assert_eq!(frame.column("time_col").unwrap().values.get(0), Value::Time(time));
-        assert_eq!(frame.column("interval_col").unwrap().values.get(0), Value::Interval(interval));
+        assert_eq!(frame.column("date_col").unwrap().values().get(0), Value::Date(date));
+        assert_eq!(
+            frame.column("datetime_col").unwrap().values().get(0),
+            Value::DateTime(datetime)
+        );
+        assert_eq!(frame.column("time_col").unwrap().values().get(0), Value::Time(time));
+        assert_eq!(
+            frame.column("interval_col").unwrap().values().get(0),
+            Value::Interval(interval)
+        );
     }
 
     #[test]
@@ -236,27 +235,21 @@ mod tests {
         assert_eq!(frame.shape(), (1, 6));
 
         // Check all values are correctly stored
-        assert_eq!(frame.column("bool_col").unwrap().values.get(0), Value::Bool(true));
-        assert_eq!(frame.column("int_col").unwrap().values.get(0), Value::Int4(42));
+        assert_eq!(frame.column("bool_col").unwrap().values().get(0), Value::Bool(true));
+        assert_eq!(frame.column("int_col").unwrap().values().get(0), Value::Int4(42));
         assert_eq!(
-            frame.column("str_col").unwrap().values.get(0),
+            frame.column("str_col").unwrap().values().get(0),
             Value::Utf8("hello".to_string())
         );
-        assert_eq!(frame.column("date_col").unwrap().values.get(0), Value::Date(date));
-        assert_eq!(frame.column("time_col").unwrap().values.get(0), Value::Time(time));
-        assert_eq!(frame.column("undefined_col").unwrap().values.get(0), Value::Undefined);
-    }
-
-    #[test]
-    #[should_panic(expected = "Column name '__ROW__ID__' is reserved for RowId columns")]
-    fn test_single_row_reserved_column_name_panic() {
-        Frame::single_row([(ROW_ID_COLUMN_NAME, Value::Int4(42))]);
+        assert_eq!(frame.column("date_col").unwrap().values().get(0), Value::Date(date));
+        assert_eq!(frame.column("time_col").unwrap().values().get(0), Value::Time(time));
+        assert_eq!(frame.column("undefined_col").unwrap().values().get(0), Value::Undefined);
     }
 
     #[test]
     fn test_single_row_normal_column_names_work() {
         let frame = Frame::single_row([("normal_column", Value::Int4(42))]);
         assert_eq!(frame.columns.len(), 1);
-        assert_eq!(frame.column("normal_column").unwrap().values.get(0), Value::Int4(42));
+        assert_eq!(frame.column("normal_column").unwrap().values().get(0), Value::Int4(42));
     }
 }

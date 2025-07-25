@@ -454,11 +454,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
         // Use the provided metadata, fallback to name if fields are empty
         let name = if name.is_empty() { name.clone() } else { name };
 
-        columns.push(FrameColumn {
-            frame: frame.clone(),
-            name: name.clone(),
-            values: column_values,
-        });
+        columns.push(FrameColumn::new(frame.clone(), name.clone(), column_values));
         let qualified_name = if name.contains('.') {
             name.clone()
         } else {

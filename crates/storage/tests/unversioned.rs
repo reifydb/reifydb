@@ -120,7 +120,7 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Set { key, row })]).unwrap()
+                self.storage.apply(async_cow_vec![(Delta::Update { key, row })]).unwrap()
             }
 
             // remove KEY

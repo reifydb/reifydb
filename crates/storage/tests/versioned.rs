@@ -128,7 +128,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Set { key, row })], version)
+                self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)
             }
 
             // remove KEY [version=VERSION]

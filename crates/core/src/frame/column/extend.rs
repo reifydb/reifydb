@@ -7,7 +7,7 @@ use crate::{BitVec, CowVec, Date, DateTime, Interval, Time, return_error};
 
 impl FrameColumn {
     pub fn extend(&mut self, other: FrameColumn) -> crate::Result<()> {
-        self.values.extend(other.values)
+        self.values_mut().extend(other.values().clone())
     }
 }
 
