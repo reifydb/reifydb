@@ -160,7 +160,7 @@ impl Frame {
         let mut columns: Vec<FrameColumn> = names
             .iter()
             .map(|name| FrameColumn {
-                frame: Some("unknown".to_string()),
+                frame: None,
                 name: name.to_string(),
                 values: ColumnValues::with_capacity(Undefined, 0),
             })

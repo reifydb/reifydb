@@ -15,19 +15,17 @@ impl Evaluator {
         let table = expr.table.fragment.clone();
         let column = expr.column.fragment.clone();
 
-        let mut result = self.evaluate(
-            &Expression::Column(ColumnExpression(OwnedSpan {
-                column: expr.table.column,
-                line: expr.table.line,
-                fragment: format!("{}.{}", table, column),
-            })),
-            &ctx,
-        )?;
+        let values = self
+            .evaluate(
+                &Expression::Column(ColumnExpression(OwnedSpan {
+                    column: expr.table.column,
+                    line: expr.table.line,
+                    fragment: format!("{}.{}", table, column),
+                })),
+                &ctx,
+            )?
+            .values;
 
-        // Ensure name contains only the column name, not the qualified name
-        result.name = column;
-        result.frame = Some(table);
-
-        Ok(result)
+        Ok(FrameColumn::fully_qualified(table, column, values))
     }
 }

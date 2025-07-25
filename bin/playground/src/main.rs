@@ -44,61 +44,6 @@ fn main() {
     }
     println!("Frame content:");
     println!("{}", frame);
-    
-    // Now test accessing these columns with qualified names
-    println!("\nTesting access with qualified names:");
-    let l2 = db
-        .tx_as_root(
-            r#"
-          from test.one
-            left join { with test.two on one.field == two.field }
-            left join { with test.three on one.field == three.field}
-            filter three.type != "Barker"
-            map { three.field, three.type }
-            filter three.field == 1
-        "#,
-        )
-        .unwrap();
-    println!("After filtering by three.field == 1:");
-    println!("{}", l2.first().unwrap());
-    
-    // Test if we can also access by unqualified name
-    println!("\nTesting access with unqualified names:");
-    let l3 = db
-        .tx_as_root(
-            r#"
-          from test.one
-            left join { with test.two on one.field == two.field }
-            left join { with test.three on one.field == three.field}
-            filter three.type != "Barker"
-            map { three.field, three.type }
-            filter field == 1
-        "#,
-        )
-        .unwrap();
-    println!("After filtering by field == 1:");
-    println!("{}", l3.first().unwrap());
-    
-    // Test with explicit aliases - what are the column names?
-    println!("\nTesting with explicit aliases:");
-    let l4 = db
-        .tx_as_root(
-            r#"
-          from test.one
-            left join { with test.two on one.field == two.field }
-            left join { with test.three on one.field == three.field}
-            filter three.type != "Barker"
-            map { three.field as three_field, three.type as three_type }
-        "#,
-        )
-        .unwrap();
-    let frame4 = l4.first().unwrap();
-    println!("Column names with explicit aliases:");
-    for (i, col) in frame4.columns.iter().enumerate() {
-        println!("  [{}] name: '{}', qualified_name: '{}', frame: {:?}", 
-                 i, col.name, col.qualified_name(), col.frame);
-    }
-    println!("{}", frame4);
 
     //     for l in db
     //         .tx_as(
