@@ -2,32 +2,78 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::sqlite::Sqlite;
+use super::execute_iter_query;
 use reifydb_core::Error;
 use reifydb_core::interface::{Unversioned, UnversionedScan};
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey};
-use rusqlite::params;
+use reifydb_core::EncodedKey;
+use r2d2::{PooledConnection};
+use r2d2_sqlite::SqliteConnectionManager;
+use std::collections::VecDeque;
 
 impl UnversionedScan for Sqlite {
-    type ScanIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
+    type ScanIter<'a> = Iter;
 
     fn scan(&self) -> Result<Self::ScanIter<'_>, Error> {
-        let conn = self.get_conn();
-        let mut stmt = conn
-            .prepare("SELECT key, value FROM unversioned ORDER BY key ASC")
-            .unwrap();
+        Ok(Iter::new(self.get_conn(), 1024))
+    }
+}
 
-        let rows = stmt
-            .query_map(params![], |row| {
-                Ok(Unversioned {
-                    key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                    row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
+pub struct Iter {
+    conn: PooledConnection<SqliteConnectionManager>,
+    buffer: VecDeque<Unversioned>,
+    last_key: Option<EncodedKey>,
+    batch_size: usize,
+    exhausted: bool,
+}
 
-        Ok(Box::new(rows.into_iter()))
+impl Iter {
+    pub fn new(
+        conn: PooledConnection<SqliteConnectionManager>,
+        batch_size: usize,
+    ) -> Self {
+        Self {
+            conn,
+            buffer: VecDeque::new(),
+            last_key: None,
+            batch_size,
+            exhausted: false,
+        }
+    }
+
+    fn refill_buffer(&mut self) {
+        if self.exhausted {
+            return;
+        }
+
+        self.buffer.clear();
+
+        let count = execute_iter_query(
+            &self.conn,
+            self.batch_size,
+            self.last_key.as_ref(),
+            "ASC",
+            &mut self.buffer,
+        );
+
+        // Update last_key to the last item we retrieved
+        if let Some(last_item) = self.buffer.back() {
+            self.last_key = Some(last_item.key.clone());
+        }
+
+        // If we got fewer results than requested, we've reached the end
+        if count < self.batch_size {
+            self.exhausted = true;
+        }
+    }
+}
+
+impl Iterator for Iter {
+    type Item = Unversioned;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer.is_empty() {
+            self.refill_buffer();
+        }
+        self.buffer.pop_front()
     }
 }

@@ -2,56 +2,86 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::sqlite::Sqlite;
+use super::{execute_iter_query, get_table_names};
 use reifydb_core::interface::{Versioned, VersionedScan};
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey, Version};
-use rusqlite::params;
+use reifydb_core::{EncodedKey, Version};
+use r2d2::{PooledConnection};
+use r2d2_sqlite::SqliteConnectionManager;
+use std::collections::VecDeque;
 
 impl VersionedScan for Sqlite {
-    type ScanIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
+    type ScanIter<'a> = Iter;
 
     fn scan(&self, version: Version) -> Self::ScanIter<'_> {
-        let conn = self.get_conn();
+        Iter::new(self.get_conn(), version, 1024)
+    }
+}
+
+pub struct Iter {
+    conn: PooledConnection<SqliteConnectionManager>,
+    version: Version,
+    table_names: Vec<String>,
+    buffer: VecDeque<Versioned>,
+    last_key: Option<EncodedKey>,
+    batch_size: usize,
+    exhausted: bool,
+}
+
+impl Iter {
+    pub fn new(
+        conn: PooledConnection<SqliteConnectionManager>,
+        version: Version,
+        batch_size: usize,
+    ) -> Self {
+        let table_names = get_table_names(&conn);
         
-        // Get all table names that exist
-        let mut stmt = conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='versioned' OR name LIKE 'table_%')")
-            .unwrap();
-        
-        let table_names: Vec<String> = stmt
-            .query_map([], |row| Ok(row.get::<_, String>(0)?))
-            .unwrap()
-            .map(Result::unwrap)
-            .collect();
-        
-        let mut all_rows = Vec::new();
-        
-        // Query each table
-        for table_name in table_names {
-            let query = format!(
-                "SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC",
-                table_name
-            );
-            let mut stmt = conn.prepare(&query).unwrap();
-            
-            let rows: Vec<Versioned> = stmt
-                .query_map(params![version], |row| {
-                    Ok(Versioned {
-                        key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                        row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                        version: row.get(2)?,
-                    })
-                })
-                .unwrap()
-                .map(Result::unwrap)
-                .collect();
-                
-            all_rows.extend(rows);
+        Self {
+            conn,
+            version,
+            table_names,
+            buffer: VecDeque::new(),
+            last_key: None,
+            batch_size,
+            exhausted: false,
         }
-        
-        // Sort all rows by key
-        all_rows.sort_by(|a, b| a.key.cmp(&b.key));
-        
-        Box::new(all_rows.into_iter())
+    }
+
+    fn refill_buffer(&mut self) {
+        if self.exhausted {
+            return;
+        }
+
+        self.buffer.clear();
+
+        let count = execute_iter_query(
+            &self.conn,
+            &self.table_names,
+            self.version,
+            self.batch_size,
+            self.last_key.as_ref(),
+            "ASC",
+            &mut self.buffer,
+        );
+
+        // Update last_key to the last item we retrieved
+        if let Some(last_item) = self.buffer.back() {
+            self.last_key = Some(last_item.key.clone());
+        }
+
+        // If we got fewer results than requested, we've reached the end
+        if count < self.batch_size {
+            self.exhausted = true;
+        }
+    }
+}
+
+impl Iterator for Iter {
+    type Item = Versioned;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer.is_empty() {
+            self.refill_buffer();
+        }
+        self.buffer.pop_front()
     }
 }

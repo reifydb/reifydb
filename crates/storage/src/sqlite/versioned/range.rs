@@ -2,54 +2,104 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::sqlite::Sqlite;
-use super::{execute_range_query, table_name_for_range};
+use super::{build_range_query, execute_batched_range_query, table_name_for_range};
 use reifydb_core::interface::{Versioned, VersionedScanRange};
-use reifydb_core::{EncodedKeyRange, Version};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
+use r2d2::{PooledConnection};
+use r2d2_sqlite::SqliteConnectionManager;
+use std::collections::VecDeque;
 use std::ops::Bound;
 
 impl VersionedScanRange for Sqlite {
-    type ScanRangeIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
+    type ScanRangeIter<'a> = Range;
 
     fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
-        let conn = self.get_conn();
+        Range::new(self.get_conn(), range, version, 1024)
+    }
+}
+
+pub struct Range {
+    conn: PooledConnection<SqliteConnectionManager>,
+    range: EncodedKeyRange,
+    version: Version,
+    table: String,
+    buffer: VecDeque<Versioned>,
+    last_key: Option<EncodedKey>,
+    batch_size: usize,
+    exhausted: bool,
+}
+
+impl Range {
+    pub fn new(
+        conn: PooledConnection<SqliteConnectionManager>,
+        range: EncodedKeyRange,
+        version: Version,
+        batch_size: usize,
+    ) -> Self {
+        let table = table_name_for_range(&range).to_string();
         
-        let table = table_name_for_range(&range);
-        
-        // Build query and parameters based on bounds 
-        let (query_template, param_count) = match (&range.start, &range.end) {
-            (Bound::Unbounded, Bound::Unbounded) => {
-                ("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC", 1)
-            }
-            (Bound::Included(_), Bound::Unbounded) => {
-                ("SELECT key, value, version FROM {} WHERE key >= ? AND version <= ? ORDER BY key ASC", 2)
-            }
-            (Bound::Excluded(_), Bound::Unbounded) => {
-                ("SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key ASC", 2)
-            }
-            (Bound::Unbounded, Bound::Included(_)) => {
-                ("SELECT key, value, version FROM {} WHERE key <= ? AND version <= ? ORDER BY key ASC", 2)
-            }
-            (Bound::Unbounded, Bound::Excluded(_)) => {
-                ("SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key ASC", 2)
-            }
-            (Bound::Included(_), Bound::Included(_)) => {
-                ("SELECT key, value, version FROM {} WHERE key >= ? AND key <= ? AND version <= ? ORDER BY key ASC", 3)
-            }
-            (Bound::Included(_), Bound::Excluded(_)) => {
-                ("SELECT key, value, version FROM {} WHERE key >= ? AND key < ? AND version <= ? ORDER BY key ASC", 3)
-            }
-            (Bound::Excluded(_), Bound::Included(_)) => {
-                ("SELECT key, value, version FROM {} WHERE key > ? AND key <= ? AND version <= ? ORDER BY key ASC", 3)
-            }
-            (Bound::Excluded(_), Bound::Excluded(_)) => {
-                ("SELECT key, value, version FROM {} WHERE key > ? AND key < ? AND version <= ? ORDER BY key ASC", 3)
-            }
+        Self {
+            conn,
+            range,
+            version,
+            table,
+            buffer: VecDeque::new(),
+            last_key: None,
+            batch_size,
+            exhausted: false,
+        }
+    }
+
+    fn refill_buffer(&mut self) {
+        if self.exhausted {
+            return;
+        }
+
+        self.buffer.clear();
+
+        // Determine the effective start bound for this batch
+        let start_bound = match &self.last_key {
+            Some(k) => Bound::Excluded(k),
+            None => self.range.start.as_ref(),
         };
         
-        let query = query_template.replace("{}", table);
-        let mut stmt = conn.prepare(&query).unwrap();
+        let end_bound = self.range.end.as_ref();
+
+        // Build query and parameters based on bounds - note ASC order for forward iteration
+        let (query_template, param_count) = build_range_query(start_bound, end_bound, "ASC");
+
+        let query = query_template.replace("{}", &self.table);
+        let mut stmt = self.conn.prepare(&query).unwrap();
         
-        let rows = execute_range_query(&mut stmt, &range, version, param_count);
-        Box::new(rows.into_iter())
+        let count = execute_batched_range_query(
+            &mut stmt, 
+            start_bound, 
+            end_bound, 
+            self.version, 
+            self.batch_size, 
+            param_count, 
+            &mut self.buffer
+        );
+
+        // Update last_key to the last item we retrieved
+        if let Some(last_item) = self.buffer.back() {
+            self.last_key = Some(last_item.key.clone());
+        }
+
+        // If we got fewer results than requested, we've reached the end
+        if count < self.batch_size {
+            self.exhausted = true;
+        }
+    }
+}
+
+impl Iterator for Range {
+    type Item = Versioned;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer.is_empty() {
+            self.refill_buffer();
+        }
+        self.buffer.pop_front()
     }
 }

@@ -13,7 +13,9 @@ use reifydb_core::interface::{Key, TableId, TableRowKey, Versioned};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
 use rusqlite::{Connection, Statement};
-use std::collections::HashMap;
+use r2d2::{PooledConnection};
+use r2d2_sqlite::SqliteConnectionManager;
+use std::collections::{HashMap, VecDeque};
 use std::ops::Bound;
 use std::sync::{Mutex, OnceLock};
 
@@ -89,62 +91,242 @@ pub(crate) fn table_name_for_range(range: &EncodedKeyRange) -> &'static str {
     "versioned"
 }
 
-/// Helper function to execute range queries with version parameter
-pub(crate) fn execute_range_query(
+/// Helper function to build query template and determine parameter count
+pub(crate) fn build_range_query(
+    start_bound: Bound<&EncodedKey>,
+    end_bound: Bound<&EncodedKey>,
+    order: &str, // "ASC" or "DESC"
+) -> (&'static str, u8) {
+    match (start_bound, end_bound) {
+        (Bound::Unbounded, Bound::Unbounded) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC LIMIT ?", 1),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key DESC LIMIT ?", 1),
+                _ => unreachable!(),
+            }
+        }
+        (Bound::Included(_), Bound::Unbounded) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE key >= ? AND version <= ? ORDER BY key ASC LIMIT ?", 2),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE key >= ? AND version <= ? ORDER BY key DESC LIMIT ?", 2),
+                _ => unreachable!(),
+            }
+        }
+        (Bound::Excluded(_), Bound::Unbounded) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key ASC LIMIT ?", 2),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key DESC LIMIT ?", 2),
+                _ => unreachable!(),
+            }
+        }
+        (Bound::Unbounded, Bound::Included(_)) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE key <= ? AND version <= ? ORDER BY key ASC LIMIT ?", 2),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE key <= ? AND version <= ? ORDER BY key DESC LIMIT ?", 2),
+                _ => unreachable!(),
+            }
+        }
+        (Bound::Unbounded, Bound::Excluded(_)) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key ASC LIMIT ?", 2),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key DESC LIMIT ?", 2),
+                _ => unreachable!(),
+            }
+        }
+        (Bound::Included(_), Bound::Included(_)) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE key >= ? AND key <= ? AND version <= ? ORDER BY key ASC LIMIT ?", 3),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE key >= ? AND key <= ? AND version <= ? ORDER BY key DESC LIMIT ?", 3),
+                _ => unreachable!(),
+            }
+        }
+        (Bound::Included(_), Bound::Excluded(_)) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE key >= ? AND key < ? AND version <= ? ORDER BY key ASC LIMIT ?", 3),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE key >= ? AND key < ? AND version <= ? ORDER BY key DESC LIMIT ?", 3),
+                _ => unreachable!(),
+            }
+        }
+        (Bound::Excluded(_), Bound::Included(_)) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE key > ? AND key <= ? AND version <= ? ORDER BY key ASC LIMIT ?", 3),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE key > ? AND key <= ? AND version <= ? ORDER BY key DESC LIMIT ?", 3),
+                _ => unreachable!(),
+            }
+        }
+        (Bound::Excluded(_), Bound::Excluded(_)) => {
+            match order {
+                "ASC" => ("SELECT key, value, version FROM {} WHERE key > ? AND key < ? AND version <= ? ORDER BY key ASC LIMIT ?", 3),
+                "DESC" => ("SELECT key, value, version FROM {} WHERE key > ? AND key < ? AND version <= ? ORDER BY key DESC LIMIT ?", 3),
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+/// Helper function to execute batched range queries
+pub(crate) fn execute_batched_range_query(
     stmt: &mut Statement,
-    range: &EncodedKeyRange,
+    start_bound: Bound<&EncodedKey>,
+    end_bound: Bound<&EncodedKey>,
     version: Version,
+    batch_size: usize,
     param_count: u8,
-) -> Vec<Versioned> {
+    buffer: &mut VecDeque<Versioned>,
+) -> usize {
+    let mut count = 0;
     match param_count {
-        1 => stmt
-            .query_map(rusqlite::params![version], |row| {
+        1 => {
+            let rows = stmt.query_map(rusqlite::params![version, batch_size], |row| {
                 Ok(Versioned {
                     key: EncodedKey(CowVec::new(row.get(0)?)),
                     row: EncodedRow(CowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>(),
+            }).unwrap();
+            
+            for result in rows {
+                match result {
+                    Ok(versioned) => {
+                        buffer.push_back(versioned);
+                        count += 1;
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
         2 => {
-            let param = match (&range.start, &range.end) {
+            let param = match (start_bound, end_bound) {
                 (Bound::Included(key), _) | (Bound::Excluded(key), _) => key.to_vec(),
                 (_, Bound::Included(key)) | (_, Bound::Excluded(key)) => key.to_vec(),
                 _ => unreachable!(),
             };
-            stmt.query_map(rusqlite::params![param, version], |row| {
+            let rows = stmt.query_map(rusqlite::params![param, version, batch_size], |row| {
                 Ok(Versioned {
                     key: EncodedKey(CowVec::new(row.get(0)?)),
                     row: EncodedRow(CowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>()
+            }).unwrap();
+            
+            for result in rows {
+                match result {
+                    Ok(versioned) => {
+                        buffer.push_back(versioned);
+                        count += 1;
+                    }
+                    Err(_) => break,
+                }
+            }
         }
         3 => {
-            let start_param = match &range.start {
+            let start_param = match start_bound {
                 Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
                 _ => unreachable!(),
             };
-            let end_param = match &range.end {
+            let end_param = match end_bound {
                 Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
                 _ => unreachable!(),
             };
-            stmt.query_map(rusqlite::params![start_param, end_param, version], |row| {
+            let rows = stmt.query_map(rusqlite::params![start_param, end_param, version, batch_size], |row| {
                 Ok(Versioned {
                     key: EncodedKey(CowVec::new(row.get(0)?)),
                     row: EncodedRow(CowVec::new(row.get(1)?)),
                     version: row.get(2)?,
                 })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>()
+            }).unwrap();
+            
+            for result in rows {
+                match result {
+                    Ok(versioned) => {
+                        buffer.push_back(versioned);
+                        count += 1;
+                    }
+                    Err(_) => break,
+                }
+            }
         }
         _ => unreachable!(),
     }
+    count
+}
+
+/// Helper function to get all table names for iteration
+pub(crate) fn get_table_names(conn: &PooledConnection<SqliteConnectionManager>) -> Vec<String> {
+    let mut stmt = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='versioned' OR name LIKE 'table_%')")
+        .unwrap();
+    
+    stmt.query_map([], |row| Ok(row.get::<_, String>(0)?))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+/// Helper function to execute batched iteration queries across multiple tables
+pub(crate) fn execute_iter_query(
+    conn: &PooledConnection<SqliteConnectionManager>,
+    table_names: &[String],
+    version: Version,
+    batch_size: usize,
+    last_key: Option<&EncodedKey>,
+    order: &str, // "ASC" or "DESC"
+    buffer: &mut VecDeque<Versioned>,
+) -> usize {
+    let mut all_rows = Vec::new();
+    
+    // Query each table
+    for table_name in table_names {
+        let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
+            (None, "ASC") => {
+                (format!("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC LIMIT ?", table_name),
+                 vec![Box::new(version), Box::new(batch_size)])
+            },
+            (None, "DESC") => {
+                (format!("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key DESC LIMIT ?", table_name),
+                 vec![Box::new(version), Box::new(batch_size)])
+            },
+            (Some(key), "ASC") => {
+                (format!("SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key ASC LIMIT ?", table_name),
+                 vec![Box::new(key.to_vec()), Box::new(version), Box::new(batch_size)])
+            },
+            (Some(key), "DESC") => {
+                (format!("SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key DESC LIMIT ?", table_name),
+                 vec![Box::new(key.to_vec()), Box::new(version), Box::new(batch_size)])
+            },
+            _ => unreachable!(),
+        };
+        
+        let mut stmt = conn.prepare(&query).unwrap();
+        
+        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+            Ok(Versioned {
+                key: EncodedKey(CowVec::new(row.get(0)?)),
+                row: EncodedRow(CowVec::new(row.get(1)?)),
+                version: row.get(2)?,
+            })
+        }).unwrap();
+        
+        for result in rows {
+            match result {
+                Ok(versioned) => all_rows.push(versioned),
+                Err(_) => break,
+            }
+        }
+    }
+    
+    // Sort the combined results
+    match order {
+        "ASC" => all_rows.sort_by(|a, b| a.key.cmp(&b.key)),
+        "DESC" => all_rows.sort_by(|a, b| b.key.cmp(&a.key)),
+        _ => unreachable!(),
+    }
+    
+    // Take only the requested batch size from the sorted results
+    let count = all_rows.len().min(batch_size);
+    for versioned in all_rows.into_iter().take(batch_size) {
+        buffer.push_back(versioned);
+    }
+    
+    count
 }
