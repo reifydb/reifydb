@@ -30,7 +30,7 @@ pub use reifydb_network::grpc::client;
 /// The underlying persistence responsible for data access.
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
-use reifydb_storage::sqlite::Sqlite;
+use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
@@ -164,7 +164,7 @@ pub fn lmdb(path: &Path) -> (Lmdb, Lmdb, Hooks) {
     (result.clone(), result, Hooks::default())
 }
 
-pub fn sqlite(path: &Path) -> (Sqlite, Sqlite, Hooks) {
-    let result = Sqlite::new(path);
+pub fn sqlite(config: SqliteConfig) -> (Sqlite, Sqlite, Hooks) {
+    let result = Sqlite::new(config);
     (result.clone(), result, Hooks::default())
 }

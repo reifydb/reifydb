@@ -17,7 +17,7 @@ use reifydb_core::util::encoding::format;
 use reifydb_core::util::encoding::format::Formatter;
 use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
-use reifydb_storage::sqlite::Sqlite;
+use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
@@ -33,8 +33,10 @@ fn test_memory(path: &Path) {
 }
 
 fn test_sqlite(path: &Path) {
-    temp_dir(|db_path| testscript::run_path(&mut Runner::new(Sqlite::new(db_path)), path))
-        .expect("test failed")
+    temp_dir(|db_path| {
+        testscript::run_path(&mut Runner::new(Sqlite::new(SqliteConfig::fast(db_path))), path)
+    })
+    .expect("test failed")
 }
 
 /// Runs engine tests.
