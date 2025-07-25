@@ -21,7 +21,7 @@ use crate::memory::versioned::VersionedRow;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::EncodedKey;
 use reifydb_core::interface::{
-    UnversionedRemove, UnversionedSet, UnversionedStorage, VersionedStorage,
+	UnversionedRemove, UnversionedUpsert, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::row::EncodedRow;
 
@@ -55,5 +55,5 @@ impl Memory {
 
 impl VersionedStorage for Memory {}
 impl UnversionedStorage for Memory {}
-impl UnversionedSet for Memory {}
+impl UnversionedUpsert for Memory {}
 impl UnversionedRemove for Memory {}

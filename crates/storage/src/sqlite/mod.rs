@@ -13,7 +13,7 @@ use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::{
-    UnversionedRemove, UnversionedSet, UnversionedStorage, Versioned, VersionedApply,
+    UnversionedRemove, UnversionedUpsert, UnversionedStorage, Versioned, VersionedApply,
     VersionedContains, VersionedGet, VersionedScan, VersionedScanRange, VersionedScanRangeRev,
     VersionedScanRev, VersionedStorage,
 };
@@ -89,11 +89,13 @@ impl VersionedApply for Sqlite {
 
         for delta in delta {
             match delta {
-                Delta::Set { key, row: bytes } => {
+                Delta::Insert { key, row }
+                | Delta::Update { key, row }
+                | Delta::Upsert { key, row } => {
                     let version = 1; // FIXME remove this - transaction version needs to be persisted
                     tx.execute(
                         "INSERT OR REPLACE INTO versioned (key, version, value) VALUES (?1, ?2, ?3)",
-                        params![key.to_vec(), version, bytes.to_vec()],
+                        params![key.to_vec(), version, row.to_vec()],
                     )
                     .unwrap();
                 }
@@ -265,7 +267,7 @@ impl VersionedScanRangeRev for Sqlite {
 
 impl VersionedStorage for Sqlite {}
 impl UnversionedStorage for Sqlite {}
-impl UnversionedSet for Sqlite {}
+impl UnversionedUpsert for Sqlite {}
 impl UnversionedRemove for Sqlite {}
 
 fn bound_to_bytes(bound: &Bound<EncodedKey>) -> Vec<u8> {
