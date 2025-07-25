@@ -29,13 +29,13 @@ impl SequenceGeneratorU64 {
                 }
 
                 LAYOUT.set_u64(&mut row, 0, next_value);
-                uversioned.set(key, row)?;
+                uversioned.upsert(key, row)?;
                 Ok(value)
             }
             None => {
                 let mut new_row = LAYOUT.allocate_row();
                 LAYOUT.set_u64(&mut new_row, 0, 2u64);
-                uversioned.set(key, new_row)?;
+                uversioned.upsert(key, new_row)?;
                 Ok(1)
             }
         }
@@ -46,7 +46,7 @@ impl SequenceGeneratorU64 {
 mod tests {
     use crate::sequence::u64::{LAYOUT, SequenceGeneratorU64};
     use reifydb_core::error::diagnostic::sequence::sequence_exhausted;
-    use reifydb_core::interface::{Unversioned, UnversionedScan, UnversionedSet};
+    use reifydb_core::interface::{Unversioned, UnversionedScan, UnversionedUpsert};
     use reifydb_core::{EncodedKey, Type};
     use reifydb_transaction::test_utils::TestTransaction;
 
@@ -75,7 +75,7 @@ mod tests {
         LAYOUT.set_u64(&mut row, 0, u64::MAX);
 
         let mut unversioned = tx.unversioned();
-        unversioned.set(&EncodedKey::new("sequence"), row).unwrap();
+        unversioned.upsert(&EncodedKey::new("sequence"), row).unwrap();
 
         let err = SequenceGeneratorU64::next(&mut tx, &EncodedKey::new("sequence")).unwrap_err();
         assert_eq!(err.diagnostic(), sequence_exhausted(Type::Uint8));

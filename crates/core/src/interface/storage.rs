@@ -45,7 +45,7 @@ pub trait VersionedContains {
     fn contains(&self, key: &EncodedKey, version: Version) -> bool;
 }
 
-pub trait VersionedIter: Iterator<Item = Versioned> + Send{}
+pub trait VersionedIter: Iterator<Item = Versioned> + Send {}
 impl<T: Send> VersionedIter for T where T: Iterator<Item = Versioned> {}
 
 pub trait VersionedScan {
@@ -99,7 +99,7 @@ pub trait UnversionedStorage:
     + UnversionedApply
     + UnversionedGet
     + UnversionedContains
-    + UnversionedSet
+    + UnversionedUpsert
     + UnversionedRemove
     + UnversionedScan
     + UnversionedScanRev
@@ -121,9 +121,9 @@ pub trait UnversionedContains {
     fn contains(&self, key: &EncodedKey) -> Result<bool, Error>;
 }
 
-pub trait UnversionedSet: UnversionedApply {
-    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
-        Self::apply(self, CowVec::new(vec![Delta::Set { key: key.clone(), row: row.clone() }]))
+pub trait UnversionedUpsert: UnversionedApply {
+    fn upsert(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
+        Self::apply(self, CowVec::new(vec![Delta::Upsert { key: key.clone(), row: row.clone() }]))
     }
 }
 

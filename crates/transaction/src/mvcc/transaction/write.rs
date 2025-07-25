@@ -187,7 +187,7 @@ where
             // Fulfill from buffer.
             Ok(Some(Pending {
                 delta: match v.row() {
-                    Some(row) => Delta::Set { key: key.clone(), row: row.clone() },
+                    Some(row) => Delta::Update { key: key.clone(), row: row.clone() },
                     None => Delta::Remove { key: key.clone() },
                 },
                 version: v.version,
@@ -274,7 +274,7 @@ where
             return_error!(transaction::transaction_rolled_back());
         }
 
-        self.modify(Pending { delta: Delta::Set { key: key.clone(), row }, version: self.version })
+        self.modify(Pending { delta: Delta::Update { key: key.clone(), row }, version: self.version })
     }
 
     fn modify(&mut self, pending: Pending) -> Result<(), reifydb_core::Error> {
@@ -307,7 +307,7 @@ where
             if old_value.version != version {
                 self.duplicates.push(Pending {
                     delta: match row {
-                        Some(row) => Delta::Set { key: old_key, row: row.clone() },
+                        Some(row) => Delta::Update { key: old_key, row: row.clone() },
                         None => Delta::Remove { key: old_key },
                     },
                     version,
@@ -361,7 +361,7 @@ where
                         &mut all,
                         Pending {
                             delta: match v.row() {
-                                Some(row) => Delta::Set { key: k, row: row.clone() },
+                                Some(row) => Delta::Update { key: k, row: row.clone() },
                                 None => Delta::Remove { key: k },
                             },
                             version: v.version,
