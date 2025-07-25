@@ -87,10 +87,11 @@ impl Frame {
                     unique_contexts.insert((schema.clone(), table.clone()));
                 }
                 
-                // Only qualify if there are actually multiple different contexts for this column name
+                // Qualify if there are duplicates OR if the layout explicitly specifies schema/table
                 let has_duplicates = unique_contexts.len() > 1;
+                let has_explicit_qualification = column_layout.schema.is_some() || column_layout.table.is_some();
 
-                if has_duplicates {
+                if has_duplicates || has_explicit_qualification {
                     // This column has naming conflicts - add qualification using available table info
                     match (&column_layout.schema, &column_layout.table) {
                         (Some(schema), Some(table)) => FrameColumnLayout {
