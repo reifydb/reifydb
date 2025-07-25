@@ -7,6 +7,7 @@ TEST_SUITES := \
 	smoke \
 	compatibility \
 	diagnostic \
+	error \
 	functional \
 	integration \
 	stress
