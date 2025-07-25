@@ -8,12 +8,11 @@ use reifydb_core::interface::Rx;
 pub(crate) struct TakeNode {
     input: Box<dyn ExecutionPlan>,
     remaining: usize,
-    layout: Option<FrameLayout>,
 }
 
 impl TakeNode {
     pub(crate) fn new(input: Box<dyn ExecutionPlan>, take: usize) -> Self {
-        Self { input, remaining: take, layout: None }
+        Self { input, remaining: take }
     }
 }
 
@@ -24,7 +23,6 @@ impl ExecutionPlan for TakeNode {
             if visible == 0 {
                 continue;
             }
-            self.layout = Some(FrameLayout::from_frame(&frame));
             return if visible <= self.remaining {
                 self.remaining -= visible;
                 Ok(Some(Batch { frame, mask }))
@@ -47,6 +45,6 @@ impl ExecutionPlan for TakeNode {
     }
 
     fn layout(&self) -> Option<FrameLayout> {
-        self.layout.clone().or(self.input.layout())
+        self.input.layout()
     }
 }

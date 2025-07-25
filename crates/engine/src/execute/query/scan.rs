@@ -6,7 +6,9 @@ use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
 use reifydb_core::EncodedKeyRange;
 use reifydb_core::Type;
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified};
+use reifydb_core::frame::{
+    ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout, TableQualified,
+};
 use reifydb_core::interface::Rx;
 use reifydb_core::interface::{EncodableKey, Key, TableRowKey};
 use reifydb_core::row::Layout;
@@ -27,16 +29,15 @@ impl ScanFrameNode {
         let values = table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
         let row_layout = Layout::new(&values);
 
-        let frame = create_empty_frame(&table);
+        let layout = FrameLayout {
+            columns: table
+                .columns
+                .iter()
+                .map(|col| FrameColumnLayout { schema: None, table: None, name: col.name.clone() })
+                .collect(),
+        };
 
-        Ok(Self {
-            table,
-            context,
-            layout: FrameLayout::from_frame(&frame),
-            row_layout,
-            last_key: None,
-            exhausted: false,
-        })
+        Ok(Self { table, context, layout, row_layout, last_key: None, exhausted: false })
     }
 }
 

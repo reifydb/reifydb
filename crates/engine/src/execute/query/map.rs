@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::frame::{Frame, FrameColumn, FrameColumnLayout, FrameLayout};
+use reifydb_core::frame::{Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, ColumnDescriptor};
@@ -18,52 +18,6 @@ pub(crate) struct MapNode {
 impl MapNode {
     pub fn new(input: Box<dyn ExecutionPlan>, expressions: Vec<Expression>) -> Self {
         Self { input, expressions, layout: None }
-    }
-
-    /// Derive frame layout from expressions based on what the user expects to see
-    fn derive_layout_from_expressions(&self, preserve_row_ids: bool) -> FrameLayout {
-        let mut columns = Vec::new();
-
-        // Add RowId column if preserved
-        if preserve_row_ids {
-            columns.push(FrameColumnLayout {
-                schema: None,
-                table: None,
-                name: ROW_ID_COLUMN_NAME.to_string(),
-            });
-        }
-
-        // Add columns based on expressions
-        for expr in &self.expressions {
-            let column_layout = self.expression_to_column_layout(expr);
-            columns.push(column_layout);
-        }
-
-        FrameLayout { columns }
-    }
-
-    /// Convert an expression to its expected column layout
-    fn expression_to_column_layout(&self, expr: &Expression) -> FrameColumnLayout {
-        match expr {
-            Expression::Alias(alias_expr) => FrameColumnLayout {
-                schema: None,
-                table: None,
-                name: alias_expr.alias.name().to_string(),
-            },
-            Expression::Column(col_expr) => {
-                // Always create unqualified layout - qualification will be maximized in apply_layout
-                FrameColumnLayout { schema: None, table: None, name: col_expr.0.fragment.clone() }
-            }
-            Expression::AccessTable(access_expr) => FrameColumnLayout {
-                schema: None,
-                table: Some(access_expr.table.fragment.clone()),
-                name: access_expr.column.fragment.clone(),
-            },
-            _ => {
-                // For other expressions, use the display representation as the name
-                FrameColumnLayout { schema: None, table: None, name: expr.to_string() }
-            }
-        }
     }
 
     /// Creates an EvaluationContext for a specific expression, injecting target column information
@@ -143,7 +97,9 @@ impl ExecutionPlan for MapNode {
                 columns.push(column);
             }
 
-            let layout = self.derive_layout_from_expressions(ctx.preserve_row_ids);
+            let layout =
+                Expression::derive_frame_column_layout(&self.expressions, ctx.preserve_row_ids);
+
             self.layout = Some(layout);
 
             let new_frame = Frame::new(columns);

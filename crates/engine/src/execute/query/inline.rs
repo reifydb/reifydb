@@ -4,7 +4,10 @@
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_catalog::table::Table;
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout, TableQualified};
+use reifydb_core::frame::{
+    ColumnQualified, ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout,
+    TableQualified,
+};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, ColumnDescriptor, Value};
 use reifydb_rql::expression::KeyedExpression;
@@ -122,7 +125,7 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(reifydb_core::frame::FrameColumn::TableQualified(TableQualified {
+            frame_columns.push(FrameColumn::TableQualified(TableQualified {
                 table: "inline".to_string(),
                 name: column_name,
                 values: column_values,
@@ -193,8 +196,7 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(reifydb_core::frame::FrameColumn::TableQualified(TableQualified {
-                table: "inline".to_string(),
+            frame_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
                 name: column_layout.name.clone(),
                 values: column_values,
             }));
