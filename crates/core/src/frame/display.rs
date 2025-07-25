@@ -33,26 +33,6 @@ fn get_column_display_order(frame: &Frame) -> Vec<usize> {
     indices
 }
 
-/// Determine if the frame contains columns from multiple source frames
-/// Only shows qualified names when there are actually multiple table sources
-fn has_multiple_frames(frame: &Frame) -> bool {
-    if frame.columns.len() < 2 {
-        return false;
-    }
-
-    // Collect unique table source frames (only those that have a source frame)
-    let table_sources: std::collections::HashSet<&str> =
-        frame.columns.iter().filter_map(|col| col.table()).collect();
-
-    // Only show qualified names if there are 2 or more actual table sources
-    table_sources.len() > 1
-}
-
-/// Get the appropriate display name for a column based on whether multiple frames are present
-fn get_column_display_name(col: &FrameColumn, use_qualified: bool) -> String {
-    if use_qualified { col.qualified_name() } else { col.name().to_string() }
-}
-
 /// Extract string value from column at given row index, with proper escaping
 fn extract_string_value(col: &FrameColumn, row_idx: usize) -> String {
     let s = match &col.values() {
@@ -216,14 +196,11 @@ impl Display for Frame {
         // Get the display order with RowId column first
         let column_order = get_column_display_order(self);
 
-        // Determine if we should show qualified names (when multiple source frames are present)
-        let use_qualified_names = has_multiple_frames(self);
-
         let mut col_widths = vec![0; col_count];
 
         for (display_idx, &col_idx) in column_order.iter().enumerate() {
             let col = &self.columns[col_idx];
-            let display_name = get_column_display_name(col, use_qualified_names);
+            let display_name = col.qualified_name();
             col_widths[display_idx] = display_width(&display_name);
         }
 
@@ -252,7 +229,7 @@ impl Display for Frame {
             .map(|(display_idx, &col_idx)| {
                 let col = &self.columns[col_idx];
                 let w = col_widths[display_idx];
-                let name = get_column_display_name(col, use_qualified_names);
+                let name = col.qualified_name();
                 let pad = w - display_width(&name);
                 let l = pad / 2;
                 let r = pad - l;

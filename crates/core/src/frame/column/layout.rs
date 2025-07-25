@@ -6,16 +6,18 @@ use crate::frame::{ColumnValues, FrameColumn};
 
 #[derive(Debug, Clone)]
 pub struct FrameColumnLayout {
+    pub schema: Option<String>,
+    pub table: Option<String>,
     pub name: String,
-    pub frame: Option<String>,
     pub ty: Type,
 }
 
 impl FrameColumnLayout {
     pub fn from_column(column: &FrameColumn) -> Self {
         Self {
+            schema: column.schema().map(|s| s.to_string()),
+            table: column.table().map(|s| s.to_string()),
             name: column.name().to_string(),
-            frame: column.table().map(|s| s.to_string()),
             ty: match column.values() {
                 ColumnValues::Bool(_, _) => Type::Bool,
                 ColumnValues::Float4(_, _) => Type::Float4,

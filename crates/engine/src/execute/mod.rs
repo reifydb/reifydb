@@ -5,7 +5,9 @@ use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified, ColumnQualified};
+use reifydb_core::frame::{
+    ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
+};
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
@@ -156,7 +158,13 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     }
                 }
 
-                if let Some(frame) = result {
+                let layout = node.layout();
+
+                if let Some(mut frame) = result {
+                    if let Some(layout) = layout {
+                        frame.apply_layout(&layout);
+                    }
+
                     Ok(frame.into())
                 } else {
                     // empty frame - reconstruct table, for better UX
@@ -165,18 +173,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         .unwrap_or(FrameLayout { columns: vec![] })
                         .columns
                         .into_iter()
-                        .map(|layout| {
-                            match layout.frame {
-                                Some(table) => FrameColumn::TableQualified(TableQualified {
-                                    table,
-                                    name: layout.name,
-                                    values: ColumnValues::with_capacity(layout.ty, 0),
-                                }),
-                                None => FrameColumn::ColumnQualified(ColumnQualified {
-                                    name: layout.name,
-                                    values: ColumnValues::with_capacity(layout.ty, 0),
-                                }),
-                            }
+                        .map(|layout| match layout.table {
+                            Some(table) => FrameColumn::TableQualified(TableQualified {
+                                table,
+                                name: layout.name,
+                                values: ColumnValues::with_capacity(layout.ty, 0),
+                            }),
+                            None => FrameColumn::ColumnQualified(ColumnQualified {
+                                name: layout.name,
+                                values: ColumnValues::with_capacity(layout.ty, 0),
+                            }),
                         })
                         .collect();
 

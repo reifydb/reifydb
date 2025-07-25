@@ -15,11 +15,41 @@ impl Evaluator {
         ctx: &EvaluationContext,
     ) -> crate::Result<FrameColumn> {
         let name = column.0.fragment.to_string();
-        let col = ctx
-            .columns
-            .iter()
-            .find(|c| &c.qualified_name() == name.as_str() || c.name() == name.as_str())
-            .ok_or(error!(column_not_found(column.0.clone())))?;
+        
+        // First try exact qualified name match
+        if let Some(col) = ctx.columns.iter().find(|c| c.qualified_name() == name) {
+            return self.extract_column_values(col, ctx);
+        }
+        
+        // Then find all matches by unqualified name and select the most qualified one
+        let all_matches: Vec<_> = ctx.columns.iter()
+            .filter(|c| c.name() == name)
+            .collect();
+            
+        if all_matches.is_empty() {
+            return Err(error!(column_not_found(column.0.clone())));
+        }
+        
+        // Always prefer the most qualified column available
+        let best_match = all_matches.iter()
+            .enumerate()
+            .max_by_key(|(idx, c)| {
+                let qualification_level = match (c.schema(), c.table()) {
+                    (Some(_), Some(_)) => 3, // Fully qualified
+                    (None, Some(_)) => 2,    // Table qualified  
+                    (Some(_), None) => 1,    // Schema qualified (unusual)
+                    _ => 0,                  // Unqualified
+                };
+                // Use index as secondary sort key to prefer later columns in case of tie
+                (qualification_level, *idx)
+            })
+            .map(|(_, c)| *c)
+            .unwrap(); // Safe because we know the list is not empty
+            
+        self.extract_column_values(best_match, ctx)
+    }
+    
+    fn extract_column_values(&mut self, col: &FrameColumn, ctx: &EvaluationContext) -> crate::Result<FrameColumn> {
 
         let take = ctx.take.unwrap_or(usize::MAX);
 

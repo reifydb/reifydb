@@ -178,7 +178,7 @@ impl Frame {
     }
 }
 
-fn build_indices(
+pub(crate) fn build_indices(
     columns: &[FrameColumn],
 ) -> (HashMap<String, usize>, HashMap<(String, String), usize>) {
     let index = columns.iter().enumerate().map(|(i, col)| (col.qualified_name(), i)).collect();

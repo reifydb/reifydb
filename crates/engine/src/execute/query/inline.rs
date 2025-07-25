@@ -31,8 +31,9 @@ impl InlineDataNode {
             .columns
             .iter()
             .map(|col| FrameColumnLayout {
+                schema: None,
+                table: Some(table.name.clone()),
                 name: col.name.clone(),
-                frame: Some(table.name.clone()),
                 ty: col.ty,
             })
             .collect();
@@ -186,7 +187,8 @@ impl InlineDataNode {
                         take: None,
                     };
 
-                    column_values.extend(evaluate(&keyed_expr.expression, &ctx)?.values().clone())?;
+                    column_values
+                        .extend(evaluate(&keyed_expr.expression, &ctx)?.values().clone())?;
                 } else {
                     column_values.push_value(Value::Undefined);
                 }
