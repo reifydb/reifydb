@@ -177,11 +177,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                             Some(table) => FrameColumn::TableQualified(TableQualified {
                                 table,
                                 name: layout.name,
-                                values: ColumnValues::with_capacity(layout.ty, 0),
+                                values: ColumnValues::undefined(0),
                             }),
                             None => FrameColumn::ColumnQualified(ColumnQualified {
                                 name: layout.name,
-                                values: ColumnValues::with_capacity(layout.ty, 0),
+                                values: ColumnValues::undefined(0),
                             }),
                         })
                         .collect();

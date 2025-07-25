@@ -6,7 +6,7 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::frame::{Frame, FrameColumn, FrameColumnLayout, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
-use reifydb_core::{BitVec, ColumnDescriptor, Type};
+use reifydb_core::{BitVec, ColumnDescriptor};
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct MapNode {
@@ -30,7 +30,6 @@ impl MapNode {
                 schema: None,
                 table: None,
                 name: ROW_ID_COLUMN_NAME.to_string(),
-                ty: Type::RowId,
             });
         }
 
@@ -46,40 +45,23 @@ impl MapNode {
     /// Convert an expression to its expected column layout
     fn expression_to_column_layout(&self, expr: &Expression) -> FrameColumnLayout {
         match expr {
-            Expression::Alias(alias_expr) => {
-                FrameColumnLayout {
-                    schema: None,
-                    table: None,
-                    name: alias_expr.alias.name().to_string(),
-                    ty: Type::Float4, // FIXME
-                }
-            }
+            Expression::Alias(alias_expr) => FrameColumnLayout {
+                schema: None,
+                table: None,
+                name: alias_expr.alias.name().to_string(),
+            },
             Expression::Column(col_expr) => {
                 // Always create unqualified layout - qualification will be maximized in apply_layout
-                FrameColumnLayout {
-                    schema: None,
-                    table: None,
-                    name: col_expr.0.fragment.clone(),
-                    ty: Type::Undefined, // Type will be determined at runtime
-                }
+                FrameColumnLayout { schema: None, table: None, name: col_expr.0.fragment.clone() }
             }
-            Expression::AccessTable(access_expr) => {
-                FrameColumnLayout {
-                    schema: None,
-                    table: Some(access_expr.table.fragment.clone()),
-                    name: access_expr.column.fragment.clone(),
-                    ty: Type::Undefined, // Type will be determined at runtime
-                }
-            }
+            Expression::AccessTable(access_expr) => FrameColumnLayout {
+                schema: None,
+                table: Some(access_expr.table.fragment.clone()),
+                name: access_expr.column.fragment.clone(),
+            },
             _ => {
                 // For other expressions, use the display representation as the name
-                FrameColumnLayout {
-                    schema: None,
-                    table: None,
-                    name: expr.to_string(),
-                    // ty: self.infer_expression_type(expr),
-                    ty: Type::Float4,
-                }
+                FrameColumnLayout { schema: None, table: None, name: expr.to_string() }
             }
         }
     }

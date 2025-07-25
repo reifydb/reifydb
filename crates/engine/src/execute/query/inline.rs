@@ -34,7 +34,6 @@ impl InlineDataNode {
                 schema: None,
                 table: Some(table.name.clone()),
                 name: col.name.clone(),
-                ty: col.ty,
             })
             .collect();
 
@@ -95,7 +94,7 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_name in all_columns {
-            let mut column_values = reifydb_core::frame::ColumnValues::undefined(0);
+            let mut column_values = ColumnValues::undefined(0);
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_name) {
@@ -157,7 +156,7 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_layout in &layout.columns {
-            let mut column_values = ColumnValues::with_capacity(column_layout.ty, self.rows.len());
+            let mut column_values = ColumnValues::undefined(0);
 
             // Find the corresponding table column for policies
             let table_column =

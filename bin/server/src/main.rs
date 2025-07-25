@@ -40,8 +40,6 @@ fn main() {
         .with_websocket(WsConfig::default())
         .on_create(|ctx| {
             ctx.tx_as_root("create schema test")?;
-            ctx.tx_as_root("create table test.arith(id: int2, value: int2, num: int2)")?;
-            ctx.tx_as_root("insert (1,1,5), (1,1,10), (1,2,15), (2,1,10), (2,1,30) into test.arith(id,value,num)")?;
             Ok(())
         })
         .serve_blocking(&rt, rx)
