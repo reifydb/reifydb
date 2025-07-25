@@ -219,7 +219,7 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                     name: col.name().to_string(),
                     ty: Type::to_u8(&data_type) as i32,
                     values,
-                    frame: col.frame().map(|s| s.to_string()),
+                    frame: col.table().map(|s| s.to_string()),
                 }
             })
             .collect(),

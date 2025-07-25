@@ -1,5 +1,6 @@
 use super::super::{ColumnValues, FrameColumn, Unqualified};
 use crate::BitVec;
+use crate::value::row_id::ROW_ID_COLUMN_NAME;
 
 impl Unqualified {
     pub fn bool(name: &str, values: impl IntoIterator<Item = bool>) -> FrameColumn {
@@ -380,20 +381,19 @@ impl Unqualified {
         })
     }
 
-    pub fn row_id(name: &str, values: impl IntoIterator<Item = crate::RowId>) -> FrameColumn {
+    pub fn row_id(values: impl IntoIterator<Item = crate::RowId>) -> FrameColumn {
         FrameColumn::Unqualified(Self {
-            name: name.to_string(),
+            name: ROW_ID_COLUMN_NAME.to_string(),
             values: ColumnValues::row_id(values),
         })
     }
 
     pub fn row_id_with_bitvec(
-        name: &str,
         values: impl IntoIterator<Item = crate::RowId>,
         bitvec: impl Into<BitVec>,
     ) -> FrameColumn {
         FrameColumn::Unqualified(Self {
-            name: name.to_string(),
+            name: ROW_ID_COLUMN_NAME.to_string(),
             values: ColumnValues::row_id_with_bitvec(values, bitvec),
         })
     }

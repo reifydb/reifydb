@@ -15,7 +15,7 @@ impl FrameColumnLayout {
     pub fn from_column(column: &FrameColumn) -> Self {
         Self {
             name: column.name().to_string(),
-            frame: column.frame().map(|s| s.to_string()),
+            frame: column.table().map(|s| s.to_string()),
             ty: match column.values() {
                 ColumnValues::Bool(_, _) => Type::Bool,
                 ColumnValues::Float4(_, _) => Type::Float4,

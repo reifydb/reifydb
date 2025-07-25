@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
-use reifydb_core::frame::{ColumnValues, FrameColumn};
+use crate::evaluate::{evaluate, EvaluationContext, Evaluator};
+use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, TableQualified};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
@@ -29,11 +29,17 @@ impl Evaluator {
                         result.push(0.0f32);
                     }
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::float4_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::float4_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::float4_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Float8(values, bitvec) => {
@@ -48,11 +54,17 @@ impl Evaluator {
                         result.push(0.0f64);
                     }
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::float8_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::float8_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::float8_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Int1(values, bitvec) => {
@@ -67,11 +79,17 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int1_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int1_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int1_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Int2(values, bitvec) => {
@@ -86,11 +104,17 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int2_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int2_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int2_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Int4(values, bitvec) => {
@@ -105,11 +129,17 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int4_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int4_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int4_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Int8(values, bitvec) => {
@@ -124,11 +154,17 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int8_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int8_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int8_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Int16(values, bitvec) => {
@@ -143,11 +179,17 @@ impl Evaluator {
                         result.push(0);
                     }
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int16_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int16_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int16_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             // ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
@@ -162,11 +204,17 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int1_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int1_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int1_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Uint2(values, bitvec) => {
@@ -178,11 +226,17 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int2_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int2_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int2_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Uint4(values, bitvec) => {
@@ -194,11 +248,17 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int4_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int4_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int4_with_bitvec(result, bitvec),
+                    }),
+                })
             }
 
             ColumnValues::Uint8(values, bitvec) => {
@@ -210,11 +270,17 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int8_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int8_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int8_with_bitvec(result, bitvec),
+                    }),
+                })
             }
             ColumnValues::Uint16(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
@@ -225,11 +291,17 @@ impl Evaluator {
                         PrefixOperator::Plus(_) => signed,
                     });
                 }
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    ColumnValues::int16_with_bitvec(result, bitvec),
-                ))
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: ColumnValues::int16_with_bitvec(result, bitvec),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: ColumnValues::int16_with_bitvec(result, bitvec),
+                    }),
+                })
             }
             // ColumnValues::Undefined(_) => {
             //     Err("Cannot apply prefix operator to undefined values".into())
@@ -238,27 +310,13 @@ impl Evaluator {
                 unimplemented!()
             }
 
-            ColumnValues::Date(_, _) => {
-                unimplemented!()
-            }
-            ColumnValues::DateTime(_, _) => {
-                unimplemented!()
-            }
-            ColumnValues::Time(_, _) => {
-                unimplemented!()
-            }
-            ColumnValues::Interval(_, _) => {
-                unimplemented!()
-            }
-            ColumnValues::RowId(_, _) => {
-                unimplemented!("Cannot apply prefix operator to RowId")
-            }
-            ColumnValues::Uuid4(_, _) => {
-                unimplemented!("Cannot apply prefix operator to Uuid4")
-            }
-            ColumnValues::Uuid7(_, _) => {
-                unimplemented!("Cannot apply prefix operator to Uuid7")
-            }
+            ColumnValues::Date(_, _) => unimplemented!(),
+            ColumnValues::DateTime(_, _) => unimplemented!(),
+            ColumnValues::Time(_, _) => unimplemented!(),
+            ColumnValues::Interval(_, _) => unimplemented!(),
+            ColumnValues::RowId(_, _) => unimplemented!(),
+            ColumnValues::Uuid4(_, _) => unimplemented!(),
+            ColumnValues::Uuid7(_, _) => unimplemented!(),
         }
     }
 }

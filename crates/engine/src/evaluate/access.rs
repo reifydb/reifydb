@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
-use reifydb_core::frame::FrameColumn;
+use reifydb_core::frame::{FrameColumn, TableQualified};
 use reifydb_rql::expression::{AccessTableExpression, ColumnExpression, Expression};
 
 impl Evaluator {
@@ -26,6 +26,6 @@ impl Evaluator {
             )?
             .values().clone();
 
-        Ok(FrameColumn::new(Some(table), column, values))
+        Ok(FrameColumn::TableQualified(TableQualified { table, name: column, values }))
     }
 }

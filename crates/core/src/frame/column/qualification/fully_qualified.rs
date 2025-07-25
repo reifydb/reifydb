@@ -1,5 +1,6 @@
 use super::super::{ColumnValues, FrameColumn, FullyQualified};
 use crate::BitVec;
+use crate::value::row_id::ROW_ID_COLUMN_NAME;
 
 impl FullyQualified {
     pub fn bool(
@@ -599,13 +600,12 @@ impl FullyQualified {
     pub fn row_id(
         schema: &str,
         table: &str,
-        name: &str,
         values: impl IntoIterator<Item = crate::RowId>,
     ) -> FrameColumn {
         FrameColumn::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
-            name: name.to_string(),
+            name: ROW_ID_COLUMN_NAME.to_string(),
             values: ColumnValues::row_id(values),
         })
     }
@@ -613,14 +613,13 @@ impl FullyQualified {
     pub fn row_id_with_bitvec(
         schema: &str,
         table: &str,
-        name: &str,
         values: impl IntoIterator<Item = crate::RowId>,
         bitvec: impl Into<BitVec>,
     ) -> FrameColumn {
         FrameColumn::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
-            name: name.to_string(),
+            name: ROW_ID_COLUMN_NAME.to_string(),
             values: ColumnValues::row_id_with_bitvec(values, bitvec),
         })
     }

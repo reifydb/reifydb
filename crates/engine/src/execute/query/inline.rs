@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_catalog::table::Table;
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumnLayout, FrameLayout, TableQualified};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, ColumnDescriptor, Value};
 use reifydb_rql::expression::KeyedExpression;
@@ -122,11 +122,11 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(reifydb_core::frame::FrameColumn::new(
-                Some("inline".to_string()),
-                column_name,
-                column_values,
-            ));
+            frame_columns.push(reifydb_core::frame::FrameColumn::TableQualified(TableQualified {
+                table: "inline".to_string(),
+                name: column_name,
+                values: column_values,
+            }));
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");
@@ -192,11 +192,11 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(reifydb_core::frame::FrameColumn::new(
-                Some("inline".to_string()),
-                column_layout.name.clone(),
-                column_values,
-            ));
+            frame_columns.push(reifydb_core::frame::FrameColumn::TableQualified(TableQualified {
+                table: "inline".to_string(),
+                name: column_layout.name.clone(),
+                values: column_values,
+            }));
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::FrameColumn;
+use reifydb_core::frame::{FrameColumn, TableQualified, ColumnQualified};
 use reifydb_rql::expression::AliasExpression;
 
 impl Evaluator {
@@ -18,8 +18,11 @@ impl Evaluator {
             .target_column
             .as_ref()
             .and_then(|c| c.table.map(|c| c.to_string()))
-            .or(ctx.columns.first().as_ref().and_then(|c| c.frame().map(|f| f.to_string())));
+            .or(ctx.columns.first().as_ref().and_then(|c| c.table().map(|f| f.to_string())));
 
-        Ok(FrameColumn::new(frame, alias_name.clone(), evaluated.values().clone()))
+        Ok(match frame {
+            Some(table) => FrameColumn::TableQualified(TableQualified { table, name: alias_name.clone(), values: evaluated.values().clone() }),
+            None => FrameColumn::ColumnQualified(ColumnQualified { name: alias_name.clone(), values: evaluated.values().clone() }),
+        })
     }
 }

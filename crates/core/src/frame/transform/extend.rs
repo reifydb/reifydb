@@ -509,8 +509,7 @@ mod tests {
 
         #[test]
         fn test_float4() {
-            let mut test_instance1 =
-                Frame::new(vec![ColumnQualified::float4("id", [1.0f32, 2.0])]);
+            let mut test_instance1 = Frame::new(vec![ColumnQualified::float4("id", [1.0f32, 2.0])]);
 
             let test_instance2 = Frame::new(vec![ColumnQualified::float4_with_bitvec(
                 "id",
@@ -532,8 +531,7 @@ mod tests {
 
         #[test]
         fn test_float8() {
-            let mut test_instance1 =
-                Frame::new(vec![ColumnQualified::float8("id", [1.0f64, 2.0])]);
+            let mut test_instance1 = Frame::new(vec![ColumnQualified::float8("id", [1.0f64, 2.0])]);
 
             let test_instance2 = Frame::new(vec![ColumnQualified::float8_with_bitvec(
                 "id",
@@ -630,11 +628,8 @@ mod tests {
 
         #[test]
         fn test_string() {
-            let mut test_instance1 = Frame::new(vec![ColumnQualified::utf8_with_bitvec(
-                "id",
-                ["a", "b"],
-                [true, true],
-            )]);
+            let mut test_instance1 =
+                Frame::new(vec![ColumnQualified::utf8_with_bitvec("id", ["a", "b"], [true, true])]);
 
             let test_instance2 = Frame::new(vec![ColumnQualified::utf8_with_bitvec(
                 "id",
@@ -718,21 +713,14 @@ mod tests {
         fn test_uint16() {
             let mut test_instance1 = Frame::new(vec![ColumnQualified::uint16("id", [1, 2])]);
 
-            let test_instance2 = Frame::new(vec![ColumnQualified::uint16_with_bitvec(
-                "id",
-                [3, 4],
-                [true, false],
-            )]);
+            let test_instance2 =
+                Frame::new(vec![ColumnQualified::uint16_with_bitvec("id", [3, 4], [true, false])]);
 
             test_instance1.append_frame(test_instance2).unwrap();
 
             assert_eq!(
                 test_instance1.columns[0],
-                ColumnQualified::uint16_with_bitvec(
-                    "id",
-                    [1, 2, 3, 4],
-                    [true, true, true, false]
-                )
+                ColumnQualified::uint16_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
             );
         }
 
@@ -747,11 +735,7 @@ mod tests {
 
             assert_eq!(
                 test_instance1.columns[0],
-                ColumnQualified::int2_with_bitvec(
-                    "id",
-                    [1, 2, 0, 0],
-                    [true, false, false, false]
-                )
+                ColumnQualified::int2_with_bitvec("id", [1, 2, 0, 0], [true, false, false, false])
             );
         }
 
@@ -812,7 +796,7 @@ mod tests {
     }
 
     mod row {
-        use crate::frame::column::ColumnQualified;
+        use crate::frame::column::{ColumnQualified, TableQualified};
         use crate::frame::{ColumnValues, Frame, FrameColumn};
         use crate::row::Layout;
         use crate::{BitVec, OrderedF32, OrderedF64};
@@ -1690,12 +1674,16 @@ mod tests {
 
         fn test_instance_with_columns() -> Frame {
             Frame::new(vec![
-                FrameColumn::new(Some("test".into()), "int2".into(), ColumnValues::int2(vec![1])),
-                FrameColumn::new(
-                    Some("test".into()),
-                    "bool".into(),
-                    ColumnValues::bool(vec![true]),
-                ),
+                FrameColumn::TableQualified(TableQualified {
+                    table: "test".into(),
+                    name: "int2".into(),
+                    values: ColumnValues::int2(vec![1]),
+                }),
+                FrameColumn::TableQualified(TableQualified {
+                    table: "test".into(),
+                    name: "bool".into(),
+                    values: ColumnValues::bool(vec![true]),
+                }),
             ])
         }
     }

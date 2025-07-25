@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::frame::FrameColumn;
+use reifydb_core::frame::{ColumnQualified, FrameColumn, TableQualified};
 use reifydb_rql::expression::Expression;
 
 use crate::function::{Functions, math};
@@ -70,7 +70,17 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Fra
     if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type) {
         let mut column = evaluator.evaluate(expr, ctx)?;
         let new_values = cast::cast_column_values(&column.values(), ty, ctx, expr.lazy_span())?;
-        column = FrameColumn::new(column.frame().map(|s| s.to_string()), column.name().to_string(), new_values);
+        column = match column.table() {
+            Some(table) => FrameColumn::TableQualified(TableQualified {
+                table: table.to_string(),
+                name: column.name().to_string(),
+                values: new_values,
+            }),
+            None => FrameColumn::ColumnQualified(ColumnQualified {
+                name: column.name().to_string(),
+                values: new_values,
+            }),
+        };
         Ok(column)
     } else {
         evaluator.evaluate(expr, ctx)

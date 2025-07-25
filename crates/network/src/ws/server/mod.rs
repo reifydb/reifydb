@@ -264,7 +264,7 @@ where
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
                                                                                             name: c.name().to_string(),
-                                                                                            frame: c.frame().map(|s| s.to_string()),
+                                                                                            frame: c.table().map(|s| s.to_string()),
                                                                                             data: c.values().iter().map(|v| {
                                                                                                 if v == Value::Undefined {
                                                                                                     "⟪undefined⟫".to_string()
@@ -321,7 +321,7 @@ where
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
                                                                                             name: c.name().to_string(),
-                                                                                            frame: c.frame().map(|s| s.to_string()),
+                                                                                            frame: c.table().map(|s| s.to_string()),
                                                                                             data: c.values().iter().map(|v| {
                                                                                                 if v == Value::Undefined {
                                                                                                     "⟪undefined⟫".to_string()

@@ -5,7 +5,7 @@ use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified, ColumnQualified};
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
@@ -166,11 +166,17 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         .columns
                         .into_iter()
                         .map(|layout| {
-                            FrameColumn::new(
-                                layout.frame,
-                                layout.name,
-                                ColumnValues::with_capacity(layout.ty, 0),
-                            )
+                            match layout.frame {
+                                Some(table) => FrameColumn::TableQualified(TableQualified {
+                                    table,
+                                    name: layout.name,
+                                    values: ColumnValues::with_capacity(layout.ty, 0),
+                                }),
+                                None => FrameColumn::ColumnQualified(ColumnQualified {
+                                    name: layout.name,
+                                    values: ColumnValues::with_capacity(layout.ty, 0),
+                                }),
+                            }
                         })
                         .collect();
 
@@ -184,7 +190,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         .iter()
                         .enumerate()
                         .filter_map(|(i, col)| {
-                            col.frame().map(|sf| ((sf.to_string(), col.name().to_string()), i))
+                            col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i))
                         })
                         .collect();
 

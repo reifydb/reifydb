@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::frame::{Frame, FrameColumn, FrameLayout};
+use reifydb_core::frame::{Frame, FrameColumn, FrameLayout, TableQualified, ColumnQualified};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::plan::logical::NaturalJoinType;
@@ -155,11 +155,17 @@ impl ExecutionPlan for NaturalJoinNode {
         // Update frame columns with proper metadata
         for (i, col_meta) in column_metadata.iter().enumerate() {
             let old_column = &frame.columns[i];
-            frame.columns[i] = FrameColumn::new(
-                col_meta.frame().map(|s| s.to_string()),
-                col_meta.name().to_string(),
-                old_column.values().clone()
-            );
+            frame.columns[i] = match col_meta.table() {
+                Some(table) => FrameColumn::TableQualified(TableQualified {
+                    table: table.to_string(),
+                    name: col_meta.name().to_string(),
+                    values: old_column.values().clone(),
+                }),
+                None => FrameColumn::ColumnQualified(ColumnQualified {
+                    name: col_meta.name().to_string(),
+                    values: old_column.values().clone(),
+                }),
+            };
         }
 
         // Rebuild indexes with updated column info
@@ -170,7 +176,7 @@ impl ExecutionPlan for NaturalJoinNode {
             .columns
             .iter()
             .enumerate()
-            .filter_map(|(i, col)| col.frame().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
+            .filter_map(|(i, col)| col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
             .collect();
 
         self.layout = Some(FrameLayout::from_frame(&frame));

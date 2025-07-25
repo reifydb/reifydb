@@ -9,7 +9,7 @@ pub mod uuid;
 
 use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
 use reifydb_core::error::diagnostic::cast;
-use reifydb_core::frame::{ColumnValues, FrameColumn};
+use reifydb_core::frame::{ColumnValues, FrameColumn, TableQualified, ColumnQualified};
 use reifydb_core::{OwnedSpan, Type, err, error};
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
@@ -31,19 +31,27 @@ impl Evaluator {
                 let column = self.evaluate(expr, ctx)?;
 
                 // Re-enable cast functionality using the moved cast module
-                Ok(FrameColumn::new(
-                    column.frame().map(|s| s.to_string()),
-                    column.name().to_string(),
-                    cast_column_values(
-                        &column.values(),
-                        cast.to.ty,
-                        ctx,
-                        cast.expression.lazy_span(),
-                    )
-                    .map_err(|e| {
-                        error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
-                    })?,
-                ))
+                let casted_values = cast_column_values(
+                    &column.values(),
+                    cast.to.ty,
+                    ctx,
+                    cast.expression.lazy_span(),
+                )
+                .map_err(|e| {
+                    error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
+                })?;
+                
+                Ok(match column.table() {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table: table.to_string(),
+                        name: column.name().to_string(),
+                        values: casted_values,
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        values: casted_values,
+                    }),
+                })
             }
         }
     }

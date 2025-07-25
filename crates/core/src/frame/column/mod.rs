@@ -52,14 +52,6 @@ pub enum FrameColumn {
 }
 
 impl FrameColumn {
-
-    pub fn new(frame: Option<String>, name: String, values: ColumnValues) -> Self {
-        match frame {
-            Some(table) => Self::TableQualified(TableQualified { table, name, values }),
-            None => Self::ColumnQualified(ColumnQualified { name, values }),
-        }
-    }
-
     pub fn get_type(&self) -> Type {
         match self {
             Self::FullyQualified(col) => col.values.get_type(),
@@ -100,20 +92,6 @@ impl FrameColumn {
         }
     }
 
-    pub fn fully_qualified(
-        schema: impl Into<String>,
-        table: impl Into<String>, 
-        name: impl Into<String>,
-        values: ColumnValues,
-    ) -> Self {
-        Self::FullyQualified(FullyQualified { 
-            schema: schema.into(), 
-            table: table.into(), 
-            name: name.into(), 
-            values 
-        })
-    }
-
     pub fn name(&self) -> &str {
         match self {
             Self::FullyQualified(col) => &col.name,
@@ -123,10 +101,19 @@ impl FrameColumn {
         }
     }
 
-    pub fn frame(&self) -> Option<&str> {
+    pub fn table(&self) -> Option<&str> {
         match self {
-            Self::FullyQualified(col) => Some(&col.table), // Use table as frame for compatibility
+            Self::FullyQualified(col) => Some(&col.table),
             Self::TableQualified(col) => Some(&col.table),
+            Self::ColumnQualified(_) => None,
+            Self::Unqualified(_) => None,
+        }
+    }
+
+    pub fn schema(&self) -> Option<&str> {
+        match self {
+            Self::FullyQualified(col) => Some(&col.schema),
+            Self::TableQualified(_) => None,
             Self::ColumnQualified(_) => None,
             Self::Unqualified(_) => None,
         }

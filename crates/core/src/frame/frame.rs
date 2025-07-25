@@ -3,6 +3,7 @@
 
 use crate::Type::Undefined;
 use crate::Value;
+use crate::frame::column::{ColumnQualified, TableQualified};
 use crate::frame::iterator::FrameIter;
 use crate::frame::{ColumnValues, FrameColumn};
 use std::collections::HashMap;
@@ -47,7 +48,11 @@ impl Frame {
                 Value::Uuid7(v) => ColumnValues::uuid7([v]),
             };
 
-            let column = FrameColumn::new(Some("frame".to_string()), name.to_string(), values);
+            let column = FrameColumn::TableQualified(TableQualified {
+                table: "frame".to_string(),
+                name: name.to_string(),
+                values,
+            });
             index.insert(column.qualified_name(), idx);
             columns.push(column);
         }
@@ -155,7 +160,10 @@ impl Frame {
         let mut columns: Vec<FrameColumn> = names
             .iter()
             .map(|name| {
-                FrameColumn::new(None, name.to_string(), ColumnValues::with_capacity(Undefined, 0))
+                FrameColumn::ColumnQualified(ColumnQualified {
+                    name: name.to_string(),
+                    values: ColumnValues::with_capacity(Undefined, 0),
+                })
             })
             .collect();
 
@@ -177,7 +185,7 @@ fn build_indices(
     let frame_index = columns
         .iter()
         .enumerate()
-        .filter_map(|(i, col)| col.frame().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
+        .filter_map(|(i, col)| col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
         .collect();
     (index, frame_index)
 }

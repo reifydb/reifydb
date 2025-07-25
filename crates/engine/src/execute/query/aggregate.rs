@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;
+use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 use reifydb_rql::expression::Expression;
@@ -71,12 +71,10 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Group { alias, column, .. } => {
                     let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-                    let mut c = FrameColumn::new(
-                        Some("aggregate".to_string()),
-                        alias.fragment.clone(),
-                        // FIXME this must be set based on the actual key
-                        ColumnValues::int2_with_capacity(group_key_order.len()),
-                    );
+                    let mut c = FrameColumn::ColumnQualified(ColumnQualified {
+                        name: alias.fragment.clone(),
+                        values: ColumnValues::int2_with_capacity(group_key_order.len()),
+                    });
                     for key in &group_key_order {
                         c.values_mut().push_value(key[col_idx].clone());
                     }
@@ -85,11 +83,10 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Aggregate { alias, mut function, .. } => {
                     let (keys_out, mut values) = function.finalize().unwrap();
                     align_column_values(&group_key_order, &keys_out, &mut values).unwrap();
-                    result_columns.push(FrameColumn::new(
-                        Some("aggregate".to_string()),
-                        alias.fragment.clone(),
+                    result_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
+                        name: alias.fragment.clone(),
                         values,
-                    ));
+                    }));
                 }
             }
         }
@@ -165,7 +162,10 @@ fn align_column_values(
         .iter()
         .map(|k| {
             key_to_index.get(k).copied().ok_or_else(|| {
-                reifydb_core::error!(reifydb_core::error::diagnostic::engine::frame_error(format!("Group key {:?} missing in aggregate output", k)))
+                reifydb_core::error!(reifydb_core::error::diagnostic::engine::frame_error(format!(
+                    "Group key {:?} missing in aggregate output",
+                    k
+                )))
             })
         })
         .collect::<crate::Result<Vec<_>>>()?;

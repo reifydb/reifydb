@@ -9,7 +9,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, TableQualified, ColumnQualified};
 use reifydb_core::value::temporal::parse_interval;
 use reifydb_core::{CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -204,7 +204,17 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn::new(col.frame, col.name, convert_column_values(col.ty, col.data))
+                match col.frame {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table,
+                        name: col.name,
+                        values: convert_column_values(col.ty, col.data),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: col.name,
+                        values: convert_column_values(col.ty, col.data),
+                    }),
+                }
             })
             .collect();
 
@@ -230,7 +240,17 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                FrameColumn::new(col.frame, col.name, convert_column_values(col.ty, col.data))
+                match col.frame {
+                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                        table,
+                        name: col.name,
+                        values: convert_column_values(col.ty, col.data),
+                    }),
+                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                        name: col.name,
+                        values: convert_column_values(col.ty, col.data),
+                    }),
+                }
             })
             .collect();
 

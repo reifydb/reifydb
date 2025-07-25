@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::CowVec;
+use crate::frame::column::{ColumnQualified, TableQualified};
 use crate::frame::{ColumnValues, Frame, FrameColumn};
 
 impl Frame {
@@ -97,11 +98,17 @@ impl Frame {
                 ),
             };
 
-            columns.push(FrameColumn::new(
-                col.frame().map(|s| s.to_string()),
-                col.name().to_string(),
-                data,
-            ));
+            columns.push(match col.table() {
+                Some(table) => FrameColumn::TableQualified(TableQualified {
+                    table: table.to_string(),
+                    name: col.name().to_string(),
+                    values: data,
+                }),
+                None => FrameColumn::ColumnQualified(ColumnQualified {
+                    name: col.name().to_string(),
+                    values: data,
+                }),
+            });
         }
 
         self.columns = columns;
@@ -241,7 +248,10 @@ mod tests {
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(*test_instance.columns[0].values(), ColumnValues::int16_with_bitvec([1], [true]));
+        assert_eq!(
+            *test_instance.columns[0].values(),
+            ColumnValues::int16_with_bitvec([1], [true])
+        );
     }
 
     #[test]
@@ -272,7 +282,10 @@ mod tests {
 
         test_instance.take(1).unwrap();
 
-        assert_eq!(*test_instance.columns[0].values(), ColumnValues::uint2_with_bitvec([1], [true]));
+        assert_eq!(
+            *test_instance.columns[0].values(),
+            ColumnValues::uint2_with_bitvec([1], [true])
+        );
     }
 
     #[test]
@@ -345,8 +358,7 @@ mod tests {
 
     #[test]
     fn test_undefined_column() {
-        let mut test_instance =
-            Frame::new(vec![TableQualified::undefined("test_frame", "u", 3)]);
+        let mut test_instance = Frame::new(vec![TableQualified::undefined("test_frame", "u", 3)]);
 
         test_instance.take(2).unwrap();
 
@@ -360,8 +372,7 @@ mod tests {
 
     #[test]
     fn test_handles_undefined() {
-        let mut test_instance =
-            Frame::new(vec![TableQualified::undefined("test_frame", "u", 5)]);
+        let mut test_instance = Frame::new(vec![TableQualified::undefined("test_frame", "u", 5)]);
 
         test_instance.take(3).unwrap();
 

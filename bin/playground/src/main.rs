@@ -34,7 +34,7 @@ fn main() {
     println!("Column names:");
     for (i, col) in frame.columns.iter().enumerate() {
         println!("  [{}] name: '{}', qualified_name: '{}', frame: {:?}", 
-                 i, col.name(), col.qualified_name(), col.frame());
+                 i, col.name(), col.qualified_name(), col.table());
     }
     println!("Frame content:");
     println!("{}", frame);
