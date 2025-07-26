@@ -11,22 +11,22 @@
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
+use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::types::TransactionValue;
-use reifydb_core::clock::LocalClock;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 
 pub struct TransactionRx<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) engine: Optimistic<VS, US>,
-    pub(crate) tm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
+    pub(crate) tm: TransactionManagerRx<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
-    pub fn new(engine: Optimistic<VS, US>, version: Option<Version>) -> Self {
-        let tm = engine.tm.read(version);
-        Self { engine, tm }
+    pub fn new(engine: Optimistic<VS, US>, version: Option<Version>) -> crate::Result<Self> {
+        let tm = engine.tm.read(version)?;
+        Ok(Self { engine, tm })
     }
 }
 
@@ -35,41 +35,44 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
         self.tm.version()
     }
 
-    pub fn get(&self, key: &EncodedKey) -> Option<TransactionValue> {
+    pub fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
         let version = self.tm.version();
-        self.engine.get(key, version).map(Into::into)
+        Ok(self.engine.get(key, version)?.map(Into::into))
     }
 
-    pub fn contains_key(&self, key: &EncodedKey) -> bool {
+    pub fn contains_key(&self, key: &EncodedKey) -> crate::Result<bool> {
         let version = self.tm.version();
-        self.engine.contains_key(key, version)
+        Ok(self.engine.contains_key(key, version)?)
     }
 
-    pub fn scan(&self) -> VS::ScanIter<'_> {
+    pub fn scan(&self) -> crate::Result<VS::ScanIter<'_>> {
         let version = self.tm.version();
-        self.engine.scan(version)
+        Ok(self.engine.scan(version)?)
     }
 
-    pub fn scan_rev(&self) -> VS::ScanIterRev<'_> {
+    pub fn scan_rev(&self) -> crate::Result<VS::ScanIterRev<'_>> {
         let version = self.tm.version();
-        self.engine.scan_rev(version)
+        Ok(self.engine.scan_rev(version)?)
     }
 
-    pub fn scan_range(&self, range: EncodedKeyRange) -> VS::ScanRangeIter<'_> {
+    pub fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIter<'_>> {
         let version = self.tm.version();
-        self.engine.scan_range(range, version)
+        Ok(self.engine.scan_range(range, version)?)
     }
 
-    pub fn scan_range_rev(&self, range: EncodedKeyRange) -> VS::ScanRangeIterRev<'_> {
+    pub fn scan_range_rev(
+        &self,
+        range: EncodedKeyRange,
+    ) -> crate::Result<VS::ScanRangeIterRev<'_>> {
         let version = self.tm.version();
-        self.engine.scan_range_rev(range, version)
+        Ok(self.engine.scan_range_rev(range, version)?)
     }
 
-    pub fn scan_prefix(&self, prefix: &EncodedKey) -> VS::ScanRangeIter<'_> {
+    pub fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIter<'_>> {
         self.scan_range(EncodedKeyRange::prefix(prefix))
     }
 
-    pub fn scan_prefix_rev(&self, prefix: &EncodedKey) -> VS::ScanRangeIterRev<'_> {
+    pub fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIterRev<'_>> {
         self.scan_range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

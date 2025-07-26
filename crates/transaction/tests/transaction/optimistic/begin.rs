@@ -16,13 +16,13 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 #[test]
 fn test_begin_rx() {
     let engine = Optimistic::new(Memory::new(), Memory::new(), Hooks::default());
-    let tx = engine.begin_rx();
-    assert_eq!(tx.version(), 0);
+    let tx = engine.begin_rx().unwrap();
+    assert_eq!(tx.version(), 1);
 }
 
 #[test]
 fn test_begin_tx() {
     let engine = Optimistic::new(Memory::new(), Memory::new(), Hooks::default());
-    let tx = engine.begin_tx();
-    assert_eq!(tx.version(), 0);
+    let tx = engine.begin_tx().unwrap();
+    assert_eq!(tx.version(), 1);
 }

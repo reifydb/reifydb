@@ -3,7 +3,7 @@
 
 use crate::delta::Delta;
 use crate::row::EncodedRow;
-use crate::{CowVec, EncodedKey, EncodedKeyRange, Error, Version};
+use crate::{CowVec, EncodedKey, EncodedKeyRange, Version};
 
 #[derive(Debug)]
 pub struct Versioned {
@@ -34,15 +34,15 @@ pub trait VersionedStorage:
 }
 
 pub trait VersionedApply {
-    fn apply(&self, delta: CowVec<Delta>, version: Version);
+    fn apply(&self, delta: CowVec<Delta>, version: Version) -> crate::Result<()>;
 }
 
 pub trait VersionedGet {
-    fn get(&self, key: &EncodedKey, version: Version) -> Option<Versioned>;
+    fn get(&self, key: &EncodedKey, version: Version) -> crate::Result<Option<Versioned>>;
 }
 
 pub trait VersionedContains {
-    fn contains(&self, key: &EncodedKey, version: Version) -> bool;
+    fn contains(&self, key: &EncodedKey, version: Version) -> crate::Result<bool>;
 }
 
 pub trait VersionedIter: Iterator<Item = Versioned> + Send {}
@@ -53,7 +53,7 @@ pub trait VersionedScan {
     where
         Self: 'a;
 
-    fn scan(&self, version: Version) -> Self::ScanIter<'_>;
+    fn scan(&self, version: Version) -> crate::Result<Self::ScanIter<'_>>;
 }
 
 pub trait VersionedScanRev {
@@ -61,7 +61,7 @@ pub trait VersionedScanRev {
     where
         Self: 'a;
 
-    fn scan_rev(&self, version: Version) -> Self::ScanIterRev<'_>;
+    fn scan_rev(&self, version: Version) -> crate::Result<Self::ScanIterRev<'_>>;
 }
 
 pub trait VersionedScanRange {
@@ -69,9 +69,17 @@ pub trait VersionedScanRange {
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_>;
+    fn scan_range(
+        &self,
+        range: EncodedKeyRange,
+        version: Version,
+    ) -> crate::Result<Self::ScanRangeIter<'_>>;
 
-    fn scan_prefix(&self, prefix: &EncodedKey, version: Version) -> Self::ScanRangeIter<'_> {
+    fn scan_prefix(
+        &self,
+        prefix: &EncodedKey,
+        version: Version,
+    ) -> crate::Result<Self::ScanRangeIter<'_>> {
         self.scan_range(EncodedKeyRange::prefix(prefix), version)
     }
 }
@@ -85,9 +93,13 @@ pub trait VersionedScanRangeRev {
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Self::ScanRangeIterRev<'_>;
+    ) -> crate::Result<Self::ScanRangeIterRev<'_>>;
 
-    fn scan_prefix_rev(&self, prefix: &EncodedKey, version: Version) -> Self::ScanRangeIterRev<'_> {
+    fn scan_prefix_rev(
+        &self,
+        prefix: &EncodedKey,
+        version: Version,
+    ) -> crate::Result<Self::ScanRangeIterRev<'_>> {
         self.scan_range_rev(EncodedKeyRange::prefix(prefix), version)
     }
 }
@@ -110,25 +122,25 @@ pub trait UnversionedStorage:
 }
 
 pub trait UnversionedApply {
-    fn apply(&mut self, delta: CowVec<Delta>) -> Result<(), Error>;
+    fn apply(&mut self, delta: CowVec<Delta>) -> crate::Result<()>;
 }
 
 pub trait UnversionedGet {
-    fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>, Error>;
+    fn get(&self, key: &EncodedKey) -> crate::Result<Option<Unversioned>>;
 }
 
 pub trait UnversionedContains {
-    fn contains(&self, key: &EncodedKey) -> Result<bool, Error>;
+    fn contains(&self, key: &EncodedKey) -> crate::Result<bool>;
 }
 
 pub trait UnversionedUpsert: UnversionedApply {
-    fn upsert(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
+    fn upsert(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
         Self::apply(self, CowVec::new(vec![Delta::Upsert { key: key.clone(), row: row.clone() }]))
     }
 }
 
 pub trait UnversionedRemove: UnversionedApply {
-    fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
+    fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
         Self::apply(self, CowVec::new(vec![Delta::Remove { key: key.clone() }]))
     }
 }
@@ -141,7 +153,7 @@ pub trait UnversionedScan {
     where
         Self: 'a;
 
-    fn scan(&self) -> Result<Self::ScanIter<'_>, Error>;
+    fn scan(&self) -> crate::Result<Self::ScanIter<'_>>;
 }
 
 pub trait UnversionedScanRev {
@@ -149,7 +161,7 @@ pub trait UnversionedScanRev {
     where
         Self: 'a;
 
-    fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>, Error>;
+    fn scan_rev(&self) -> crate::Result<Self::ScanIterRev<'_>>;
 }
 
 pub trait UnversionedScanRange {
@@ -157,9 +169,9 @@ pub trait UnversionedScanRange {
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> Result<Self::ScanRange<'_>, Error>;
+    fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<Self::ScanRange<'_>>;
 
-    fn scan_prefix(&self, prefix: &EncodedKey) -> Result<Self::ScanRange<'_>, Error> {
+    fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<Self::ScanRange<'_>> {
         self.scan_range(EncodedKeyRange::prefix(prefix))
     }
 }
@@ -169,9 +181,9 @@ pub trait UnversionedScanRangeRev {
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>, Error>;
+    fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<Self::ScanRangeRev<'_>>;
 
-    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> Result<Self::ScanRangeRev<'_>, Error> {
+    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<Self::ScanRangeRev<'_>> {
         self.scan_range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

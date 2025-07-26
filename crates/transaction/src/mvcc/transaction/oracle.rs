@@ -10,9 +10,9 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::conflict::Conflict;
+use crate::mvcc::transaction::version::VersionProvider;
 use crate::mvcc::watermark::{Closer, WaterMark};
 use reifydb_core::Version;
-use reifydb_core::clock::LogicalClock;
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard};
 
@@ -20,7 +20,7 @@ use std::sync::{Mutex, MutexGuard};
 pub(super) struct OracleInner<C, L>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
 {
     pub clock: L,
 
@@ -38,7 +38,7 @@ pub(super) enum CreateCommitResult<C> {
 pub(super) struct Oracle<C, L>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
 {
     // write_serialize_lock is for ensuring that transactions go to the write
     // channel in the same order as their commit timestamps.
@@ -58,14 +58,14 @@ where
 impl<C, L> Oracle<C, L>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
 {
     pub(super) fn new_commit(
         &self,
         done_read: &mut bool,
         version: Version,
         conflicts: C,
-    ) -> CreateCommitResult<C> {
+    ) -> crate::Result<CreateCommitResult<C>> {
         let mut inner = self.inner.lock().unwrap();
 
         for committed_txn in inner.committed.iter() {
@@ -81,7 +81,7 @@ where
 
             if let Some(old_conflicts) = &committed_txn.conflict_manager {
                 if conflicts.has_conflict(old_conflicts) {
-                    return CreateCommitResult::Conflict(conflicts);
+                    return Ok(CreateCommitResult::Conflict(conflicts));
                 }
             }
         }
@@ -95,7 +95,7 @@ where
             self.cleanup_committed_transactions(true, &mut inner);
 
             // This is the general case, when user doesn't specify the read and commit ts.
-            let version = inner.clock.next();
+            let version = inner.clock.next()?;
             self.tx.begin(version);
             version
         };
@@ -106,7 +106,7 @@ where
         // conflict detection is disabled otherwise this slice would keep growing.
         inner.committed.push(CommittedTxn { version, conflict_manager: Some(conflicts) });
 
-        CreateCommitResult::Success(version)
+        Ok(CreateCommitResult::Success(version))
     }
 
     fn cleanup_committed_transactions(
@@ -139,7 +139,7 @@ where
 impl<C, L> Oracle<C, L>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
 {
     pub fn new(rx_mark_name: Cow<'static, str>, tx_mark_name: Cow<'static, str>, clock: L) -> Self {
         let closer = Closer::new(2);
@@ -152,11 +152,11 @@ where
         }
     }
 
-    pub(super) fn version(&self) -> Version {
+    pub(super) fn version(&self) -> crate::Result<Version> {
         let version = {
             let inner = self.inner.lock().unwrap();
 
-            let version = inner.clock.current() - 1;
+            let version = inner.clock.current()?;
             self.rx.begin(version);
             version
         };
@@ -166,7 +166,7 @@ where
         // process. Not waiting here could mean that some txns which have been
         // committed would not be read.
         self.tx.wait_for_mark(version);
-        version
+        Ok(version)
     }
 
     pub(super) fn discard_at_or_below(&self) -> Version {
@@ -189,7 +189,7 @@ where
 impl<C, L> Drop for Oracle<C, L>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
 {
     fn drop(&mut self) {
         self.stop();

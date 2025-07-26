@@ -1670,10 +1670,6 @@ dependencies = [
  "nom_locate",
  "regex",
  "reifydb-core",
- "reifydb-engine",
- "reifydb-rql",
- "reifydb-storage",
- "reifydb-transaction",
  "test_each_file",
  "uuid",
 ]

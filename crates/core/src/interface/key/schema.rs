@@ -24,9 +24,26 @@ impl EncodableKey for SchemaKey {
         EncodedKey::new(out)
     }
 
-    fn decode(version: u8, payload: &[u8]) -> Option<Self> {
-        assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 8);
+    fn decode(key: &EncodedKey) -> Option<Self> {
+        if key.len() < 2 {
+            return None;
+        }
+
+        let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+        if version != VERSION {
+            return None;
+        }
+
+        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+        if kind != Self::KIND {
+            return None;
+        }
+
+        let payload = &key[2..];
+        if payload.len() != 8 {
+            return None;
+        }
+
         keycode::deserialize(&payload[..8]).ok().map(|schema| Self { schema })
     }
 }
@@ -63,7 +80,7 @@ mod tests {
         let expected = vec![0xFE, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32];
         assert_eq!(encoded.as_slice(), expected);
 
-        let key = SchemaKey::decode(1, &encoded[2..]).unwrap();
+        let key = SchemaKey::decode(&encoded).unwrap();
         assert_eq!(key.schema, 0xABCD);
     }
 }

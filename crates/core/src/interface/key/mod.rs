@@ -1,19 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::util::encoding::keycode;
+use crate::{EncodedKey, EncodedKeyRange};
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use kind::KeyKind;
-use crate::EncodedKey;
-use crate::util::encoding::keycode;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
 pub use system_sequence::SystemSequenceKey;
 pub use system_version::{SystemVersion, SystemVersionKey};
 pub use table::TableKey;
 pub use table_column::TableColumnKey;
-pub use table_row::TableRowKey;
+pub use table_row::{TableRowKey, TableRowKeyRange};
 pub use table_row_sequence::TableRowSequenceKey;
+pub use transaction_version::TransactionVersionKey;
 
 mod column;
 mod column_policy;
@@ -26,6 +27,7 @@ mod table;
 mod table_column;
 mod table_row;
 mod table_row_sequence;
+mod transaction_version;
 
 #[derive(Debug)]
 pub enum Key {
@@ -39,6 +41,7 @@ pub enum Key {
     TableRow(TableRowKey),
     TableRowSequence(TableRowSequenceKey),
     SystemVersion(SystemVersionKey),
+    TransactionVersion(TransactionVersionKey),
 }
 
 impl Key {
@@ -54,6 +57,7 @@ impl Key {
             Key::TableRowSequence(key) => key.encode(),
             Key::SystemSequence(key) => key.encode(),
             Key::SystemVersion(key) => key.encode(),
+            Key::TransactionVersion(key) => key.encode(),
         }
     }
 }
@@ -63,35 +67,45 @@ pub trait EncodableKey {
 
     fn encode(&self) -> EncodedKey;
 
-    fn decode(version: u8, payload: &[u8]) -> Option<Self>
+    fn decode(key: &EncodedKey) -> Option<Self>
+    where
+        Self: Sized;
+}
+
+pub trait EncodableKeyRange {
+    const KIND: KeyKind;
+
+    fn start(&self) -> Option<EncodedKey>;
+
+    fn end(&self) -> Option<EncodedKey>;
+
+    fn decode(range: &EncodedKeyRange) -> (Option<Self>, Option<Self>)
     where
         Self: Sized;
 }
 
 impl Key {
     pub fn decode(key: &EncodedKey) -> Option<Self> {
-        let version = keycode::deserialize(&key[0..1]).ok()?;
-        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
-        let payload = &key[2..];
+        if key.len() < 2 {
+            return None;
+        }
 
+        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
         match kind {
-            KeyKind::Column => ColumnKey::decode(version, payload).map(Self::Column),
-            KeyKind::ColumnPolicy => {
-                ColumnPolicyKey::decode(version, payload).map(Self::ColumnPolicy)
-            }
-            KeyKind::Schema => SchemaKey::decode(version, payload).map(Self::Schema),
-            KeyKind::SchemaTable => SchemaTableKey::decode(version, payload).map(Self::SchemaTable),
-            KeyKind::Table => TableKey::decode(version, payload).map(Self::Table),
-            KeyKind::TableColumn => TableColumnKey::decode(version, payload).map(Self::TableColumn),
-            KeyKind::TableRow => TableRowKey::decode(version, payload).map(Self::TableRow),
+            KeyKind::Column => ColumnKey::decode(&key).map(Self::Column),
+            KeyKind::ColumnPolicy => ColumnPolicyKey::decode(&key).map(Self::ColumnPolicy),
+            KeyKind::Schema => SchemaKey::decode(&key).map(Self::Schema),
+            KeyKind::SchemaTable => SchemaTableKey::decode(&key).map(Self::SchemaTable),
+            KeyKind::Table => TableKey::decode(&key).map(Self::Table),
+            KeyKind::TableColumn => TableColumnKey::decode(&key).map(Self::TableColumn),
+            KeyKind::TableRow => TableRowKey::decode(&key).map(Self::TableRow),
             KeyKind::TableRowSequence => {
-                TableRowSequenceKey::decode(version, payload).map(Self::TableRowSequence)
+                TableRowSequenceKey::decode(&key).map(Self::TableRowSequence)
             }
-            KeyKind::SystemSequence => {
-                SystemSequenceKey::decode(version, payload).map(Self::SystemSequence)
-            }
-            KeyKind::SystemVersion => {
-                SystemVersionKey::decode(version, payload).map(Self::SystemVersion)
+            KeyKind::SystemSequence => SystemSequenceKey::decode(&key).map(Self::SystemSequence),
+            KeyKind::SystemVersion => SystemVersionKey::decode(&key).map(Self::SystemVersion),
+            KeyKind::TransactionVersion => {
+                TransactionVersionKey::decode(&key).map(Self::TransactionVersion)
             }
         }
     }
@@ -99,7 +113,6 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
-    use crate::interface::catalog::{ColumnId, ColumnPolicyId, SchemaId, SystemSequenceId, TableId};
     use super::ColumnPolicyKey;
     use super::TableRowSequenceKey;
     use super::{
@@ -107,6 +120,10 @@ mod tests {
         TableRowKey,
     };
     use crate::RowId;
+    use crate::interface::catalog::{
+        ColumnId, ColumnPolicyId, SchemaId, SystemSequenceId, TableId,
+    };
+    use crate::interface::key::transaction_version::TransactionVersionKey;
 
     #[test]
     fn test_column() {
@@ -250,5 +267,12 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn test_transaction_version() {
+        let key = Key::TransactionVersion(TransactionVersionKey {});
+        let encoded = key.encode();
+        Key::decode(&encoded).expect("Failed to decode key");
     }
 }

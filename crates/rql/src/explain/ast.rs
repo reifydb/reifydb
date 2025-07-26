@@ -40,7 +40,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::List(_) => "List",
         Ast::Literal(_) => "Literal",
         Ast::Nop => "Nop",
-        Ast::Sort(_) => "Order",
+        Ast::Sort(_) => "Sort",
         Ast::Policy(_) => "Policy",
         Ast::PolicyBlock(_) => "PolicyBlock",
         Ast::Prefix(_) => "Prefix",

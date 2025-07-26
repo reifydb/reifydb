@@ -26,9 +26,25 @@ impl EncodableKey for SchemaTableKey {
         EncodedKey::new(out)
     }
 
-    fn decode(version: u8, payload: &[u8]) -> Option<Self> {
-        assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 16);
+    fn decode(key: &EncodedKey) -> Option<Self> {
+        if key.len() < 2 {
+            return None;
+        }
+
+        let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+        if version != VERSION {
+            return None;
+        }
+
+        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+        if kind != Self::KIND {
+            return None;
+        }
+
+        let payload = &key[2..];
+        if payload.len() != 16 {
+            return None;
+        }
 
         keycode::deserialize(&payload[..8])
             .ok()
@@ -81,7 +97,7 @@ mod tests {
 
         assert_eq!(encoded.as_slice(), expected);
 
-        let key = SchemaTableKey::decode(1, &expected[2..]).unwrap();
+        let key = SchemaTableKey::decode(&encoded).unwrap();
         assert_eq!(key.schema, 0xABCD);
         assert_eq!(key.table, 0x123456789ABCDEF0);
     }

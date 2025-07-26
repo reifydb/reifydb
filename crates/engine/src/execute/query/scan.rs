@@ -3,16 +3,17 @@
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_catalog::table::Table;
-use reifydb_core::BitVec;
 use reifydb_core::EncodedKeyRange;
 use reifydb_core::Type;
 use reifydb_core::frame::{
     ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout, TableQualified,
 };
-use reifydb_core::interface::Rx;
-use reifydb_core::interface::{EncodableKey, Key, TableRowKey};
+use reifydb_core::interface::{EncodableKey, TableRowKey};
+use reifydb_core::interface::{EncodableKeyRange, Rx, TableRowKeyRange};
 use reifydb_core::row::Layout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
+use reifydb_core::{BitVec, EncodedKey};
+use std::ops::Bound::{Excluded, Included};
 use std::sync::Arc;
 
 pub(crate) struct ScanFrameNode {
@@ -20,7 +21,7 @@ pub(crate) struct ScanFrameNode {
     context: Arc<ExecutionContext>,
     layout: FrameLayout,
     row_layout: Layout,
-    last_key: Option<TableRowKey>,
+    last_key: Option<EncodedKey>,
     exhausted: bool,
 }
 
@@ -48,42 +49,29 @@ impl ExecutionPlan for ScanFrameNode {
         }
 
         let batch_size = self.context.batch_size;
+        let range = TableRowKeyRange { table: self.table.id };
 
-        let range = if let Some(last_key) = &self.last_key {
-            let start_key = last_key.encode();
-            let end_key = TableRowKey::table_end(self.table.id);
-            EncodedKeyRange::start_end(Some(start_key), Some(end_key))
+        let range = if let Some(_) = &self.last_key {
+            EncodedKeyRange::new(
+                Excluded(self.last_key.clone().unwrap()),
+                Included(range.end().unwrap()),
+            )
         } else {
-            TableRowKey::full_scan(self.table.id)
+            EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap()))
         };
 
         let mut batch_rows = Vec::new();
-        let mut row_ids = if ctx.preserve_row_ids { Some(Vec::new()) } else { None };
+        let mut row_ids = Vec::new();
         let mut rows_collected = 0;
         let mut new_last_key = None;
 
         let versioned_rows: Vec<_> = rx.scan_range(range)?.into_iter().collect();
 
         for versioned in versioned_rows.into_iter() {
-            // Decode the table row key to extract the RowId
-            let table_row_key = Key::decode(&versioned.key).and_then(|k| match k {
-                Key::TableRow(tr_key) => Some(tr_key),
-                _ => None,
-            });
-
-            // Skip the first row if it matches our last_key (to avoid duplicates)
-            if let Some(last_key) = &self.last_key {
-                if table_row_key == Some(last_key.clone()) {
-                    continue;
-                }
-            }
-
-            if let Some(tr_key) = &table_row_key {
+            if let Some(key) = TableRowKey::decode(&versioned.key) {
                 batch_rows.push(versioned.row);
-                if let Some(ref mut row_ids_vec) = row_ids {
-                    row_ids_vec.push(tr_key.row);
-                }
-                new_last_key = table_row_key;
+                row_ids.push(key.row);
+                new_last_key = Some(versioned.key);
                 rows_collected += 1;
 
                 if rows_collected >= batch_size {
@@ -103,16 +91,14 @@ impl ExecutionPlan for ScanFrameNode {
         frame.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
         // Add the RowId column to the frame if requested
-        if let Some(row_ids_vec) = row_ids {
-            if !row_ids_vec.is_empty() {
-                let row_id_column = FrameColumn::TableQualified(TableQualified {
-                    table: self.table.name.clone(),
-                    name: ROW_ID_COLUMN_NAME.to_string(),
-                    values: ColumnValues::row_id(row_ids_vec),
-                });
-                frame.columns.push(row_id_column);
-                frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);
-            }
+        if ctx.preserve_row_ids {
+            let row_id_column = FrameColumn::TableQualified(TableQualified {
+                table: self.table.name.clone(),
+                name: ROW_ID_COLUMN_NAME.to_string(),
+                values: ColumnValues::row_id(row_ids),
+            });
+            frame.columns.push(row_id_column);
+            frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);
         }
 
         let mask = BitVec::new(frame.row_count(), true);

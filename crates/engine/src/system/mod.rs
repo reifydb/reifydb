@@ -43,18 +43,18 @@ where
         let key = SystemVersionKey { version: SystemVersion::Storage }.encode();
 
         let mut unversioned = self.transaction.begin_unversioned_tx();
-
-        if let None = unversioned.get(&key)? {
-            let mut row = layout.allocate_row();
-            layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
-            unversioned.upsert(&key, row)?;
+        match unversioned.get(&key)? {
+            None => {
+                let mut row = layout.allocate_row();
+                layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
+                unversioned.upsert(&key, row)?;
+            }
+            Some(unversioned) => {
+                let version = layout.get_u8(&unversioned.row, 0);
+                assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
+            }
         }
 
-        if let Some(unversioned) = unversioned.get(&key)? {
-            let layout = Layout::new(&[Type::Uint1]);
-            let version = layout.get_u8(&unversioned.row, 0);
-            assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
-        }
         return_hooks!()
     }
 }

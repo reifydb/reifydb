@@ -15,13 +15,14 @@ use std::sync::Arc;
 pub use crate::mvcc::types::*;
 pub use write::*;
 
+use version::VersionProvider;
 use oracle::*;
 use reifydb_core::Version;
-use reifydb_core::clock::LogicalClock;
 
 pub mod iter;
 pub mod iter_rev;
 
+mod version;
 pub mod optimistic;
 mod oracle;
 pub mod range;
@@ -37,7 +38,7 @@ use crate::mvcc::transaction::read::TransactionManagerRx;
 pub struct TransactionManager<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     inner: Arc<Oracle<C, L>>,
@@ -47,7 +48,7 @@ where
 impl<C, L, P> Clone for TransactionManager<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     fn clone(&self) -> Self {
@@ -58,13 +59,13 @@ where
 impl<C, L, P> TransactionManager<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     pub fn write(&self) -> Result<TransactionManagerTx<C, L, P>, reifydb_core::Error> {
         Ok(TransactionManagerTx {
             oracle: self.inner.clone(),
-            version: self.inner.version(),
+            version: self.inner.version()?,
             size: 0,
             count: 0,
             conflicts: C::new(),
@@ -79,12 +80,12 @@ where
 impl<C, L, P> TransactionManager<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
-    pub fn new(name: &str, clock: L) -> Self {
-        let version = clock.next();
-        Self {
+    pub fn new(name: &str, clock: L) -> crate::Result<Self> {
+        let version = clock.next()?;
+        Ok(Self {
             inner: Arc::new({
                 let oracle = Oracle::new(
                     format!("{}.pending_reads", name).into(),
@@ -96,10 +97,10 @@ where
                 oracle
             }),
             _phantom: std::marker::PhantomData,
-        }
+        })
     }
 
-    pub fn version(&self) -> Version {
+    pub fn version(&self) -> crate::Result<Version> {
         self.inner.version()
     }
 }
@@ -107,18 +108,18 @@ where
 impl<C, L, P> TransactionManager<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     pub fn discard_hint(&self) -> Version {
         self.inner.discard_at_or_below()
     }
 
-    pub fn read(&self, version: Option<Version>) -> TransactionManagerRx<C, L, P> {
-        if let Some(version) = version {
+    pub fn read(&self, version: Option<Version>) -> crate::Result<TransactionManagerRx<C, L, P>> {
+        Ok(if let Some(version) = version {
             TransactionManagerRx::new_time_travel(self.clone(), version)
         } else {
-            TransactionManagerRx::new_current(self.clone(), self.inner.version())
-        }
+            TransactionManagerRx::new_current(self.clone(), self.inner.version()?)
+        })
     }
 }

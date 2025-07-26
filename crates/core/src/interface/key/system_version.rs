@@ -6,7 +6,7 @@ use crate::EncodedKey;
 use crate::util::encoding::keycode;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug,Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SystemVersionKey {
     pub version: SystemVersion,
 }
@@ -42,19 +42,36 @@ impl EncodableKey for SystemVersionKey {
     const KIND: KeyKind = KeyKind::SystemVersion;
 
     fn encode(&self) -> EncodedKey {
-        let mut out = Vec::with_capacity(2);
+        let mut out = Vec::with_capacity(3);
         out.extend(&keycode::serialize(&VERSION));
         out.extend(&keycode::serialize(&Self::KIND));
         out.extend(&keycode::serialize(&self.version));
         EncodedKey::new(out)
     }
 
-    fn decode(version: u8, payload: &[u8]) -> Option<Self>
+    fn decode(key: &EncodedKey) -> Option<Self>
     where
         Self: Sized,
     {
-        assert_eq!(version, VERSION);
-        assert_eq!(payload.len(), 1);
+        if key.len() < 2 {
+            return None;
+        }
+
+        let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+        if version != VERSION {
+            return None;
+        }
+
+        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+        if kind != Self::KIND {
+            return None;
+        }
+
+        let payload = &key[2..];
+        if payload.len() != 1 {
+            return None;
+        }
+
         keycode::deserialize(&payload[..1]).ok().map(|version| Self { version })
     }
 }
@@ -74,8 +91,8 @@ mod tests {
             0xFE,
         ];
         assert_eq!(encoded.as_slice(), expected);
-        
-        let key = SystemVersionKey::decode(1, &encoded[2..]).unwrap();
+
+        let key = SystemVersionKey::decode(&encoded).unwrap();
         assert_eq!(key.version, SystemVersion::Storage);
     }
 }

@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-// #![cfg_attr(not(debug_assertions), deny(missing_docs))]
+
 #![cfg_attr(not(debug_assertions), deny(warnings))]
-// #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
-// #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
+
 
 pub use reifydb_auth as auth;
 pub use reifydb_core as core;
@@ -30,7 +29,7 @@ pub use reifydb_network::grpc::client;
 /// The underlying persistence responsible for data access.
 use reifydb_storage::lmdb::Lmdb;
 use reifydb_storage::memory::Memory;
-use reifydb_storage::sqlite::Sqlite;
+use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
@@ -164,7 +163,7 @@ pub fn lmdb(path: &Path) -> (Lmdb, Lmdb, Hooks) {
     (result.clone(), result, Hooks::default())
 }
 
-pub fn sqlite(path: &Path) -> (Sqlite, Sqlite, Hooks) {
-    let result = Sqlite::new(path);
+pub fn sqlite(config: SqliteConfig) -> (Sqlite, Sqlite, Hooks) {
+    let result = Sqlite::new(config);
     (result.clone(), result, Hooks::default())
 }

@@ -12,12 +12,12 @@
 use super::*;
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
+use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::transaction::iter::TransactionIter;
 use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
-use reifydb_core::clock::LocalClock;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};
 use reifydb_core::interface::UnversionedStorage;
@@ -29,13 +29,13 @@ use std::sync::RwLockWriteGuard;
 
 pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
     engine: Serializable<VS, US>,
-    tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
+    tm: TransactionManagerTx<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
-    pub fn new(engine: Serializable<VS, US>) -> Self {
-        let tm = engine.tm.write().unwrap();
-        Self { engine, tm }
+    pub fn new(engine: Serializable<VS, US>) -> crate::Result<Self> {
+        let tm = engine.tm.write()?;
+        Ok(Self { engine, tm })
     }
 }
 
@@ -61,7 +61,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
             for (version, deltas) in grouped {
                 self.engine.hooks.trigger(PreCommitHook { deltas: deltas.clone(), version })?;
 
-                self.engine.versioned.apply(deltas.clone(), version);
+                self.engine.versioned.apply(deltas.clone(), version)?;
 
                 self.engine.hooks.trigger(PostCommitHook { deltas, version })?;
             }
@@ -93,7 +93,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.engine.versioned.contains(key, version)),
+            None => self.engine.versioned.contains(key, version),
         }
     }
 
@@ -110,7 +110,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
                     Ok(None)
                 }
             }
-            None => Ok(self.engine.versioned.get(key, version).map(Into::into)),
+            None => Ok(self.engine.versioned.get(key, version)?.map(Into::into)),
         }
     }
 
@@ -128,7 +128,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         let pending = pw.iter();
 
         marker.mark_range(EncodedKeyRange::all());
-        let commited = self.engine.versioned.scan(version);
+        let commited = self.engine.versioned.scan(version)?;
 
         Ok(TransactionIter::new(pending, commited, Some(marker)))
     }
@@ -141,7 +141,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         let pending = pw.iter().rev();
 
         marker.mark_range(EncodedKeyRange::all());
-        let commited = self.engine.versioned.scan_rev(version);
+        let commited = self.engine.versioned.scan_rev(version)?;
 
         Ok(TransactionIterRev::new(pending, commited, Some(marker)))
     }
@@ -157,7 +157,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
 
         marker.mark_range(range.clone());
         let pending = pw.range_comparable((start, end));
-        let commited = self.engine.versioned.scan_range(range, version);
+        let commited = self.engine.versioned.scan_range(range, version)?;
 
         Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
@@ -173,7 +173,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
 
         marker.mark_range(range.clone());
         let pending = pw.range_comparable((start, end));
-        let commited = self.engine.versioned.scan_range_rev(range, version);
+        let commited = self.engine.versioned.scan_range_rev(range, version)?;
 
         Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))
     }

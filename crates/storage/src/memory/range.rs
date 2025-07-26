@@ -15,7 +15,7 @@ use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
 use reifydb_core::interface::{Unversioned, UnversionedScanRange, Versioned, VersionedScanRange};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Error, Version};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Result, Version};
 use std::ops::Bound;
 
 impl VersionedScanRange for Memory {
@@ -24,8 +24,8 @@ impl VersionedScanRange for Memory {
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Self::ScanRangeIter<'_> {
-        Range { range: self.versioned.range(range), version }
+    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Result<Self::ScanRangeIter<'_>> {
+        Ok(Range { range: self.versioned.range(range), version })
     }
 }
 
@@ -61,7 +61,7 @@ impl UnversionedScanRange for Memory {
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> Result<Self::ScanRange<'_>, Error> {
+    fn scan_range(&self, range: EncodedKeyRange) -> Result<Self::ScanRange<'_>> {
         Ok(UnversionedRange { range: self.unversioned.range(range) })
     }
 }

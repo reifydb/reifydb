@@ -1,27 +1,18 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-mod apply;
-mod contains;
-mod get;
-mod iter;
-mod iter_rev;
-mod range;
-mod range_rev;
+mod config;
+mod unversioned;
+mod versioned;
+
+pub use config::*;
 
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::delta::Delta;
 use reifydb_core::interface::{
-    UnversionedRemove, UnversionedUpsert, UnversionedStorage, Versioned, VersionedApply,
-    VersionedContains, VersionedGet, VersionedScan, VersionedScanRange, VersionedScanRangeRev,
-    VersionedScanRev, VersionedStorage,
+    UnversionedRemove, UnversionedStorage, UnversionedUpsert, VersionedStorage,
 };
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
-use rusqlite::{OptionalExtension, params};
-use std::ops::{Bound, Deref};
-use std::path::Path;
+use std::ops::Deref;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -39,21 +30,20 @@ impl Deref for Sqlite {
 }
 
 impl Sqlite {
-    pub fn new(path: &Path) -> Self {
-        let db_path = if path.is_dir() { path.join("reify.db") } else { path.to_path_buf() };
+    /// Create a new Sqlite storage with the given configuration
+    pub fn new(config: SqliteConfig) -> Self {
+        let db_path =
+            if config.path.is_dir() { config.path.join("reify.db") } else { config.path.clone() };
 
-        let manager = SqliteConnectionManager::file(db_path).with_flags(
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
-                | rusqlite::OpenFlags::SQLITE_OPEN_CREATE
-                | rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX,
-        );
+        let manager =
+            SqliteConnectionManager::file(db_path).with_flags(Self::convert_flags(&config.flags));
 
-        let pool = Pool::builder().max_size(4).build(manager).unwrap();
+        let pool = Pool::builder().max_size(config.max_pool_size).build(manager).unwrap();
         {
             let conn = pool.get().unwrap();
-            conn.pragma_update(None, "journal_mode", "WAL").unwrap();
-            conn.pragma_update(None, "synchronous", "NORMAL").unwrap();
-            conn.pragma_update(None, "temp_store", "MEMORY").unwrap();
+            conn.pragma_update(None, "journal_mode", config.journal_mode.as_str()).unwrap();
+            conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str()).unwrap();
+            conn.pragma_update(None, "temp_store", config.temp_store.as_str()).unwrap();
 
             conn.execute_batch(
                 "BEGIN;
@@ -77,191 +67,41 @@ impl Sqlite {
         Self(Arc::new(SqliteInner { pool: Arc::new(pool) }))
     }
 
-    fn get_conn(&self) -> PooledConnection<SqliteConnectionManager> {
-        self.pool.get().unwrap()
-    }
-}
+    fn convert_flags(flags: &OpenFlags) -> rusqlite::OpenFlags {
+        let mut rusqlite_flags = rusqlite::OpenFlags::empty();
 
-impl VersionedApply for Sqlite {
-    fn apply(&self, delta: CowVec<Delta>, _version: Version) {
-        let mut conn = self.get_conn();
-        let tx = conn.transaction().unwrap();
-
-        for delta in delta {
-            match delta {
-                Delta::Insert { key, row }
-                | Delta::Update { key, row }
-                | Delta::Upsert { key, row } => {
-                    let version = 1; // FIXME remove this - transaction version needs to be persisted
-                    tx.execute(
-                        "INSERT OR REPLACE INTO versioned (key, version, value) VALUES (?1, ?2, ?3)",
-                        params![key.to_vec(), version, row.to_vec()],
-                    )
-                    .unwrap();
-                }
-                Delta::Remove { key } => {
-                    let version = 1; // FIXME remove this - transaction version needs to be persisted
-                    tx.execute(
-                        "DELETE FROM versioned WHERE key = ?1 AND version = ?2",
-                        params![key.to_vec(), version],
-                    )
-                    .unwrap();
-                }
-            }
+        if flags.read_write {
+            rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE;
         }
 
-        tx.commit().unwrap();
+        if flags.create {
+            rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
+        }
+
+        if flags.full_mutex {
+            rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX;
+        }
+
+        if flags.no_mutex {
+            rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        }
+
+        if flags.shared_cache {
+            rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE;
+        }
+
+        if flags.private_cache {
+            rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_PRIVATE_CACHE;
+        }
+
+        if flags.uri {
+            rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_URI;
+        }
+        rusqlite_flags
     }
-}
 
-impl VersionedGet for Sqlite {
-    fn get(&self, key: &EncodedKey, _version: Version) -> Option<Versioned> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        conn.query_row(
-			"SELECT key, value, version FROM versioned WHERE key = ?1 AND version <= ?2 SORT version DESC LIMIT 1",
-			params![key.to_vec(), version],
-			|row| {
-				Ok(Versioned {
-					key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-					row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-					version: row.get(2)?,
-				})
-			},
-		)
-			.optional()
-			.unwrap()
-    }
-}
-
-impl VersionedContains for Sqlite {
-    fn contains(&self, key: &EncodedKey, version: Version) -> bool {
-        // FIXME this can be done better than this
-        self.get(key, version).is_some()
-    }
-}
-
-impl VersionedScan for Sqlite {
-    type ScanIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
-
-    fn scan(&self, _version: Version) -> Self::ScanIter<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        let mut stmt = conn
-            .prepare(
-                "SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key ASC",
-            )
-            .unwrap();
-
-        let rows = stmt
-            .query_map(params![version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                    row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                    version: row.get(2)?,
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
-
-        Box::new(rows.into_iter())
-    }
-}
-
-impl VersionedScanRev for Sqlite {
-    type ScanIterRev<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
-
-    fn scan_rev(&self, _version: Version) -> Self::ScanIterRev<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        let mut stmt = conn
-            .prepare(
-                "SELECT key, value, version FROM versioned WHERE version <= ? ORDER BY key DESC",
-            )
-            .unwrap();
-
-        let rows = stmt
-            .query_map(params![version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey(CowVec::new(row.get(0)?)),
-                    row: EncodedRow(CowVec::new(row.get(1)?)),
-                    version: row.get(2)?,
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
-
-        Box::new(rows.into_iter())
-    }
-}
-
-impl VersionedScanRange for Sqlite {
-    type ScanRangeIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
-
-    fn scan_range(&self, range: EncodedKeyRange, _version: Version) -> Self::ScanRangeIter<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        let mut stmt = conn
-			.prepare("SELECT key, value, version FROM versioned WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key ASC")
-			.unwrap();
-
-        let start_bytes = bound_to_bytes(&range.start);
-        let end_bytes = bound_to_bytes(&range.end);
-
-        let rows = stmt
-            // .query_map(params![], |row| {
-            .query_map(params![start_bytes, end_bytes, version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey(CowVec::new(row.get(0)?)),
-                    row: EncodedRow(CowVec::new(row.get(1)?)),
-                    version: row.get(2)?,
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
-
-        Box::new(rows.into_iter())
-    }
-}
-
-impl VersionedScanRangeRev for Sqlite {
-    type ScanRangeIterRev<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
-
-    fn scan_range_rev(
-        &self,
-        range: EncodedKeyRange,
-        _version: Version,
-    ) -> Self::ScanRangeIterRev<'_> {
-        let version = 1; // FIXME remove this - transaction version needs to be persisted
-
-        let conn = self.get_conn();
-        let mut stmt = conn
-			.prepare("SELECT key, value, version FROM versioned WHERE key >= ?1 AND key <= ?2 AND version <= ?3 ORDER BY key DESC")
-			.unwrap();
-
-        let start_bytes = bound_to_bytes(&range.start);
-        let end_bytes = bound_to_bytes(&range.end);
-
-        let rows = stmt
-            .query_map(params![start_bytes, end_bytes, version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey(CowVec::new(row.get(0)?)),
-                    row: EncodedRow(CowVec::new(row.get(1)?)),
-                    version: row.get(2)?,
-                })
-            })
-            .unwrap()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>();
-
-        Box::new(rows.into_iter())
+    fn get_conn(&self) -> PooledConnection<SqliteConnectionManager> {
+        self.pool.get().unwrap()
     }
 }
 
@@ -270,9 +110,163 @@ impl UnversionedStorage for Sqlite {}
 impl UnversionedUpsert for Sqlite {}
 impl UnversionedRemove for Sqlite {}
 
-fn bound_to_bytes(bound: &Bound<EncodedKey>) -> Vec<u8> {
-    match bound {
-        Bound::Included(v) | Bound::Excluded(v) => v.to_vec(),
-        Bound::Unbounded => Vec::new(), // or handle it differently if needed
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reifydb_testing::tempdir::temp_dir;
+
+    #[test]
+    fn test_sqlite_creation_with_new_config() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::new(db_path.join("test.db"));
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_sqlite_creation_with_safe_config() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::safe(db_path.join("safe.db"));
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_sqlite_creation_with_fast_config() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::fast(db_path.join("fast.db"));
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_directory_path_handling() {
+        temp_dir(|db_path| {
+            // Test with directory path - should create reify.db inside
+            let config = SqliteConfig::new(db_path);
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+
+            // Verify the database file was created
+            assert!(db_path.join("reify.db").exists());
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_file_path_handling() {
+        temp_dir(|db_path| {
+            // Test with specific file path
+            let db_file = db_path.join("custom.db");
+            let config = SqliteConfig::new(&db_file);
+            let storage = Sqlite::new(config);
+
+            // Verify we can get a connection
+            let _conn = storage.get_conn();
+
+            // Verify the specific database file was created
+            assert!(db_file.exists());
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_custom_flags_conversion() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::new(db_path.join("flags.db")).flags(
+                OpenFlags::new()
+                    .read_write(true)
+                    .create(true)
+                    .no_mutex(true)
+                    .shared_cache(true)
+                    .uri(true),
+            );
+
+            let storage = Sqlite::new(config);
+            let _conn = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_custom_pool_size() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::new(db_path.join("pool.db")).max_pool_size(1);
+
+            let storage = Sqlite::new(config);
+
+            // Should be able to get at least one connection
+            let _conn1 = storage.get_conn();
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_pragma_settings_applied() {
+        temp_dir(|db_path| {
+            let config = SqliteConfig::new(db_path.join("pragma.db"))
+                .journal_mode(JournalMode::Delete)
+                .synchronous_mode(SynchronousMode::Extra)
+                .temp_store(TempStore::File);
+
+            let storage = Sqlite::new(config);
+            let conn = storage.get_conn();
+
+            // Verify pragma settings were applied (simplified check)
+            let journal_mode: String =
+                conn.pragma_query_value(None, "journal_mode", |row| Ok(row.get(0)?)).unwrap();
+            assert_eq!(journal_mode.to_uppercase(), "DELETE");
+
+            let synchronous: i32 =
+                conn.pragma_query_value(None, "synchronous", |row| Ok(row.get(0)?)).unwrap();
+            assert_eq!(synchronous, 3); // EXTRA = 3
+
+            let temp_store: i32 =
+                conn.pragma_query_value(None, "temp_store", |row| Ok(row.get(0)?)).unwrap();
+            assert_eq!(temp_store, 1); // FILE = 1
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_tables_created() {
+        temp_dir(|db_path| {
+			let config = SqliteConfig::new(db_path.join("tables.db"));
+			let storage = Sqlite::new(config);
+			let conn = storage.get_conn();
+
+			// Check that both tables exist
+			let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('versioned', 'unversioned')").unwrap();
+			let table_names: Vec<String> = stmt.query_map([], |row| {
+				Ok(row.get(0)?)
+			}).unwrap().map(Result::unwrap).collect();
+
+			assert_eq!(table_names.len(), 2);
+			assert!(table_names.contains(&"versioned".to_string()));
+			assert!(table_names.contains(&"unversioned".to_string()));
+			Ok(())
+		}).expect("test failed");
     }
 }

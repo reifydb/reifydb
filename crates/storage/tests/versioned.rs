@@ -10,13 +10,15 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::delta::Delta;
+use reifydb_core::interface::{Versioned, VersionedStorage};
+use reifydb_core::row::EncodedRow;
 use reifydb_core::util::encoding::binary::decode_binary;
 use reifydb_core::util::encoding::format;
 use reifydb_core::util::encoding::format::Formatter;
-use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
 use reifydb_storage::memory::Memory;
-use reifydb_core::interface::{VersionedStorage, Versioned};
+use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
+use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
@@ -24,9 +26,17 @@ use std::path::Path;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_memory => test_memory }
+test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
     testscript::run_path(&mut Runner::new(Memory::default()), path).expect("test failed")
+}
+
+fn test_sqlite(path: &Path) {
+    temp_dir(|db_path| {
+        testscript::run_path(&mut Runner::new(Sqlite::new(SqliteConfig::fast(db_path))), path)
+    })
+    .expect("test failed")
 }
 
 /// Runs engine tests.
@@ -50,7 +60,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
-                let value = self.storage.get(&key, version).map(|sv| sv.row.to_vec());
+                let value = self.storage.get(&key, version)?.map(|sv| sv.row.to_vec());
                 writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
             }
             // contains KEY [version=VERSION]
@@ -59,7 +69,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
-                let contains = self.storage.contains(&key, version);
+                let contains = self.storage.contains(&key, version)?;
                 writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
             }
 
@@ -71,9 +81,9 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan(version))
+                    print(&mut output, self.storage.scan(version)?)
                 } else {
-                    print(&mut output, self.storage.scan_rev(version))
+                    print(&mut output, self.storage.scan_rev(version)?)
                 };
             }
             // scan_range RANGE [reverse=BOOL] [version=VERSION]
@@ -87,9 +97,9 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_range(range, version))
+                    print(&mut output, self.storage.scan_range(range, version)?)
                 } else {
-                    print(&mut output, self.storage.scan_range_rev(range, version))
+                    print(&mut output, self.storage.scan_range_rev(range, version)?)
                 };
             }
 
@@ -103,9 +113,9 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_prefix(&prefix, version))
+                    print(&mut output, self.storage.scan_prefix(&prefix, version)?)
                 } else {
-                    print(&mut output, self.storage.scan_prefix_rev(&prefix, version))
+                    print(&mut output, self.storage.scan_prefix_rev(&prefix, version)?)
                 };
             }
 
@@ -118,7 +128,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)
+                self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)?
             }
 
             // remove KEY [version=VERSION]
@@ -128,7 +138,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Remove { key })], version)
+                self.storage.apply(async_cow_vec![(Delta::Remove { key })], version)?
             }
 
             name => return Err(format!("invalid command {name}").into()),
@@ -137,7 +147,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
     }
 }
 
-fn print<I: Iterator<Item =Versioned>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = Versioned>>(output: &mut String, iter: I) {
     for sv in iter {
         let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
         writeln!(output, "{fmtkv}").unwrap();

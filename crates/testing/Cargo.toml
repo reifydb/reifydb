@@ -7,10 +7,6 @@ repository.workspace = true
 
 [dependencies]
 reifydb-core = { workspace = true }
-reifydb-engine = { workspace = true }
-reifydb-rql = { workspace = true }
-reifydb-transaction = { workspace = true }
-reifydb-storage = { workspace = true }
 
 goldenfile = { workspace = true }
 nom = { workspace = true }

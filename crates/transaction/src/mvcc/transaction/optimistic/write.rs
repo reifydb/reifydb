@@ -12,6 +12,7 @@
 use super::*;
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
+use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::transaction::iter::TransactionIter;
 use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
@@ -27,13 +28,13 @@ use std::sync::RwLockWriteGuard;
 
 pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
     engine: Optimistic<VS, US>,
-    tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
+    tm: TransactionManagerTx<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
-    pub fn new(engine: Optimistic<VS, US>) -> Self {
-        let tm = engine.tm.write().unwrap();
-        Self { engine, tm }
+    pub fn new(engine: Optimistic<VS, US>) -> crate::Result<Self> {
+        let tm = engine.tm.write()?;
+        Ok(Self { engine, tm })
     }
 }
 
@@ -59,7 +60,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
             for (version, deltas) in grouped {
                 self.engine.hooks.trigger(PreCommitHook { deltas: deltas.clone(), version })?;
 
-                self.engine.versioned.apply(deltas.clone(), version);
+                self.engine.versioned.apply(deltas.clone(), version)?;
 
                 self.engine.hooks.trigger(PostCommitHook { deltas, version })?;
             }
@@ -91,7 +92,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         match self.tm.contains_key(key)? {
             Some(true) => Ok(true),
             Some(false) => Ok(false),
-            None => Ok(self.engine.versioned.contains(key, version)),
+            None => self.engine.versioned.contains(key, version),
         }
     }
 
@@ -108,7 +109,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
                     Ok(None)
                 }
             }
-            None => Ok(self.engine.versioned.get(key, version).map(Into::into)),
+            None => Ok(self.engine.versioned.get(key, version)?.map(TransactionValue::from)),
         }
     }
 
@@ -124,7 +125,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter();
-        let commited = self.engine.versioned.scan(version);
+        let commited = self.engine.versioned.scan(version)?;
 
         Ok(TransactionIter::new(pending, commited, Some(marker)))
     }
@@ -135,7 +136,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter().rev();
-        let commited = self.engine.versioned.scan_rev(version);
+        let commited = self.engine.versioned.scan_rev(version)?;
 
         Ok(TransactionIterRev::new(pending, commited, Some(marker)))
     }
@@ -149,7 +150,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pw.range_comparable((start, end));
-        let commited = self.engine.versioned.scan_range(range, version);
+        let commited = self.engine.versioned.scan_range(range, version)?;
 
         Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
@@ -163,7 +164,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         let start = range.start_bound();
         let end = range.end_bound();
         let pending = pw.range_comparable((start, end));
-        let commited = self.engine.versioned.scan_range_rev(range, version);
+        let commited = self.engine.versioned.scan_range_rev(range, version)?;
 
         Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))
     }

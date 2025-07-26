@@ -4,11 +4,11 @@
 use crate::sqlite::Sqlite;
 use reifydb_core::interface::{Unversioned, UnversionedGet};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, EncodedKey, Error};
+use reifydb_core::{CowVec, EncodedKey, Result};
 use rusqlite::{OptionalExtension, params};
 
 impl UnversionedGet for Sqlite {
-    fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>, Error> {
+    fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>> {
         let conn = self.get_conn();
         Ok(conn
             .query_row(

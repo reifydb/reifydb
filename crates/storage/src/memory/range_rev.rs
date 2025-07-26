@@ -18,7 +18,7 @@ use reifydb_core::interface::{
     Unversioned, UnversionedScanRangeRev, Versioned, VersionedScanRangeRev,
 };
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Error, Version};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Result, Version};
 use std::ops::Bound;
 
 impl VersionedScanRangeRev for Memory {
@@ -31,8 +31,8 @@ impl VersionedScanRangeRev for Memory {
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Self::ScanRangeIterRev<'_> {
-        RangeRev { range: self.versioned.range(range).rev(), version }
+    ) -> Result<Self::ScanRangeIterRev<'_>> {
+        Ok(RangeRev { range: self.versioned.range(range).rev(), version })
     }
 }
 
@@ -68,7 +68,7 @@ impl UnversionedScanRangeRev for Memory {
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>, Error> {
+    fn scan_range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>> {
         Ok(UnversionedRangeRev { range: self.unversioned.range(range) })
     }
 }

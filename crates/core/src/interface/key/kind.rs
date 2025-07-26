@@ -17,6 +17,7 @@ pub enum KeyKind {
     TableRowSequence = 0x08,
     ColumnPolicy = 0x09,
     SystemVersion = 0x0A,
+    TransactionVersion = 0x0B,
 }
 
 impl From<KeyKind> for u8 {
@@ -29,15 +30,17 @@ impl TryFrom<u8> for KeyKind {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0x06 => Ok(Self::Column),
-            0x09 => Ok(Self::ColumnPolicy),
             0x01 => Ok(Self::Schema),
-            0x04 => Ok(Self::SchemaTable),
-            0x08 => Ok(Self::TableRowSequence),
-            0x05 => Ok(Self::SystemSequence),
             0x02 => Ok(Self::Table),
-            0x07 => Ok(Self::TableColumn),
             0x03 => Ok(Self::TableRow),
+            0x04 => Ok(Self::SchemaTable),
+            0x05 => Ok(Self::SystemSequence),
+            0x06 => Ok(Self::Column),
+            0x07 => Ok(Self::TableColumn),
+            0x08 => Ok(Self::TableRowSequence),
+            0x09 => Ok(Self::ColumnPolicy),
+            0x0A => Ok(Self::SystemVersion),
+            0x0B => Ok(Self::TransactionVersion),
             _ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
         }
     }

@@ -6,14 +6,15 @@ use reifydb_catalog::Catalog;
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::error::diagnostic::engine;
 use reifydb_core::frame::{ColumnValues, Frame};
-use reifydb_core::interface::{EncodableKey, TableRowKey};
+use reifydb_core::interface::{EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange};
 use reifydb_core::{
-    IntoOwnedSpan, Value,
+    EncodedKeyRange, IntoOwnedSpan, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},
     return_error,
     value::row_id::ROW_ID_COLUMN_NAME,
 };
 use reifydb_rql::plan::physical::DeletePlan;
+use std::collections::Bound::Included;
 use std::sync::Arc;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
@@ -91,8 +92,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }
         } else {
             // Delete entire table - scan all rows and delete them
+
+            let range = TableRowKeyRange { table: table.id };
+
             let keys = tx
-                .scan_range(TableRowKey::full_scan(table.id))?
+                .scan_range(EncodedKeyRange::new(
+                    Included(range.start().unwrap()),
+                    Included(range.end().unwrap()),
+                ))?
                 .map(|versioned| versioned.key)
                 .collect::<Vec<_>>();
             for key in keys {

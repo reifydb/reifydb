@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::lmdb::Lmdb;
-use reifydb_core::{Error, Version};
+use reifydb_core::{Result, Version};
 use reifydb_core::interface::{Unversioned, UnversionedScanRev, Versioned, VersionedScanRev};
 
 impl VersionedScanRev for Lmdb {
     type ScanIterRev<'a> = IterRev;
 
-    fn scan_rev(&self, _version: Version) -> Self::ScanIterRev<'_> {
+    fn scan_rev(&self, _version: Version) -> Result<Self::ScanIterRev<'_>> {
         todo!()
     }
 }
@@ -36,7 +36,7 @@ impl<'a> Iterator for UnversionedIterRev {
 impl UnversionedScanRev for Lmdb {
     type ScanIterRev<'a> = UnversionedIterRev;
 
-    fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>,Error> {
+    fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
         todo!()
     }
 }
