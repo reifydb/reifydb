@@ -4,6 +4,7 @@
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 #[repr(transparent)]
@@ -177,6 +178,12 @@ impl<'de> Deserialize<'de> for SchemaId {
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct TableId(pub u64);
+
+impl Display for TableId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 impl Deref for TableId {
     type Target = u64;

@@ -24,11 +24,26 @@ impl EncodableKey for SystemSequenceKey {
         EncodedKey::new(out)
     }
 
-    fn decode(version: u8, payload: &[u8]) -> Option<Self> {
-        assert_eq!(version, VERSION);
+    fn decode(key: &EncodedKey) -> Option<Self> {
+        if key.len() < 2 {
+            return None;
+        }
+
+        let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+        if version != VERSION {
+            return None;
+        }
+
+        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+        if kind != Self::KIND {
+            return None;
+        }
+
+        let payload = &key[2..];
         if payload.len() != 4 {
             return None;
         }
+
         keycode::deserialize(&payload).ok().map(|sequence| Self { sequence })
     }
 }
@@ -69,7 +84,7 @@ mod tests {
         ];
         assert_eq!(encoded.as_slice(), expected);
 
-        let key = SystemSequenceKey::decode(1, &encoded[2..]).unwrap();
+        let key = SystemSequenceKey::decode(&encoded).unwrap();
         assert_eq!(key.sequence, 0xABCD);
     }
 }

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::util::encoding::keycode;
-use crate::EncodedKey;
+use crate::{EncodedKey, EncodedKeyRange};
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use kind::KeyKind;
@@ -12,7 +12,7 @@ pub use system_sequence::SystemSequenceKey;
 pub use system_version::{SystemVersion, SystemVersionKey};
 pub use table::TableKey;
 pub use table_column::TableColumnKey;
-pub use table_row::TableRowKey;
+pub use table_row::{TableRowKey, TableRowKeyRange};
 pub use table_row_sequence::TableRowSequenceKey;
 
 mod column;
@@ -63,7 +63,19 @@ pub trait EncodableKey {
 
     fn encode(&self) -> EncodedKey;
 
-    fn decode(version: u8, payload: &[u8]) -> Option<Self>
+    fn decode(key: &EncodedKey) -> Option<Self>
+    where
+        Self: Sized;
+}
+
+pub trait EncodableKeyRange {
+    const KIND: KeyKind;
+
+    fn start(&self) -> Option<EncodedKey>;
+
+    fn end(&self) -> Option<EncodedKey>;
+
+    fn decode(range: &EncodedKeyRange) -> (Option<Self>, Option<Self>)
     where
         Self: Sized;
 }
@@ -74,29 +86,20 @@ impl Key {
             return None;
         }
 
-        let version = keycode::deserialize(&key[0..1]).ok()?;
         let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
-        let payload = &key[2..];
-
         match kind {
-            KeyKind::Column => ColumnKey::decode(version, payload).map(Self::Column),
-            KeyKind::ColumnPolicy => {
-                ColumnPolicyKey::decode(version, payload).map(Self::ColumnPolicy)
-            }
-            KeyKind::Schema => SchemaKey::decode(version, payload).map(Self::Schema),
-            KeyKind::SchemaTable => SchemaTableKey::decode(version, payload).map(Self::SchemaTable),
-            KeyKind::Table => TableKey::decode(version, payload).map(Self::Table),
-            KeyKind::TableColumn => TableColumnKey::decode(version, payload).map(Self::TableColumn),
-            KeyKind::TableRow => TableRowKey::decode(version, payload).map(Self::TableRow),
+            KeyKind::Column => ColumnKey::decode(&key).map(Self::Column),
+            KeyKind::ColumnPolicy => ColumnPolicyKey::decode(&key).map(Self::ColumnPolicy),
+            KeyKind::Schema => SchemaKey::decode(&key).map(Self::Schema),
+            KeyKind::SchemaTable => SchemaTableKey::decode(&key).map(Self::SchemaTable),
+            KeyKind::Table => TableKey::decode(&key).map(Self::Table),
+            KeyKind::TableColumn => TableColumnKey::decode(&key).map(Self::TableColumn),
+            KeyKind::TableRow => TableRowKey::decode(&key).map(Self::TableRow),
             KeyKind::TableRowSequence => {
-                TableRowSequenceKey::decode(version, payload).map(Self::TableRowSequence)
+                TableRowSequenceKey::decode(&key).map(Self::TableRowSequence)
             }
-            KeyKind::SystemSequence => {
-                SystemSequenceKey::decode(version, payload).map(Self::SystemSequence)
-            }
-            KeyKind::SystemVersion => {
-                SystemVersionKey::decode(version, payload).map(Self::SystemVersion)
-            }
+            KeyKind::SystemSequence => SystemSequenceKey::decode(&key).map(Self::SystemSequence),
+            KeyKind::SystemVersion => SystemVersionKey::decode(&key).map(Self::SystemVersion),
         }
     }
 }
@@ -109,10 +112,10 @@ mod tests {
         ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableKey,
         TableRowKey,
     };
+    use crate::RowId;
     use crate::interface::catalog::{
         ColumnId, ColumnPolicyId, SchemaId, SystemSequenceId, TableId,
     };
-    use crate::RowId;
 
     #[test]
     fn test_column() {

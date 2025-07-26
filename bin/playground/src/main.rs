@@ -10,7 +10,7 @@ use reifydb::storage::sqlite::SqliteConfig;
 use reifydb::{ReifyDB, serializable, sqlite};
 
 fn main() {
-    let db = ReifyDB::embedded_blocking_with(serializable(sqlite(SqliteConfig::new("/tmp/test/"))));
+    let db = ReifyDB::embedded_blocking_with(serializable(sqlite(SqliteConfig::safe("/tmp"))));
 
     db.tx_as_root(r#"create schema test"#).unwrap();
     db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
@@ -27,6 +27,8 @@ fn main() {
         .tx_as_root(
             r#"
           from test.one
+            natural left join { with test.two }
+            natural left join { with test.three }
         "#,
         )
         .unwrap();
