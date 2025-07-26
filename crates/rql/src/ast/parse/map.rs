@@ -33,15 +33,13 @@ impl Parser {
                 break;
             }
 
-            // If we have braces, look for closing brace
-            if has_braces && self.current()?.is_operator(CloseCurly) {
-                self.advance()?; // consume closing brace
-                break;
-            }
-
             // consume comma and continue
             if self.current()?.is_separator(Comma) {
                 self.advance()?;
+            } else if has_braces && self.current()?.is_operator(CloseCurly) {
+                // If we have braces, look for closing brace
+                self.advance()?; // consume closing brace
+                break;
             } else {
                 break;
             }

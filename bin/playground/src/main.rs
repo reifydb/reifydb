@@ -3,11 +3,10 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::storage::sqlite::SqliteConfig;
-use reifydb::{ReifyDB, serializable, sqlite};
+use reifydb::{ReifyDB, memory, serializable};
 
 fn main() {
-    let db = ReifyDB::embedded_blocking_with(serializable(sqlite(SqliteConfig::safe("/tmp/test"))));
+    let db = ReifyDB::embedded_blocking_with(serializable(memory()));
 
     db.tx_as_root(r#"create schema test"#).unwrap();
     db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
@@ -23,9 +22,12 @@ fn main() {
     for frame in db
         .tx_as_root(
             r#"
-          from test.one
-            natural left join { with test.two }
-            natural left join { with test.three }
+map {
+  cast(1.0, float8) + cast(1.0, float8),
+  cast(1.0, float8) + cast(-1.0, float8),
+  cast(-1.0, float8) + cast(-1.0, float8),
+  cast(1.1, float8) + cast(1.1, float8),
+}
         "#,
         )
         .unwrap()
