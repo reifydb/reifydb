@@ -12,6 +12,7 @@
 use super::*;
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
+use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::transaction::iter::TransactionIter;
 use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
@@ -27,13 +28,13 @@ use std::sync::RwLockWriteGuard;
 
 pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
     engine: Optimistic<VS, US>,
-    tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
+    tm: TransactionManagerTx<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
-    pub fn new(engine: Optimistic<VS, US>) -> Self {
-        let tm = engine.tm.write().unwrap();
-        Self { engine, tm }
+    pub fn new(engine: Optimistic<VS, US>) -> crate::Result<Self> {
+        let tm = engine.tm.write()?;
+        Ok(Self { engine, tm })
     }
 }
 

@@ -11,22 +11,22 @@
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
+use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::types::TransactionValue;
-use reifydb_core::clock::LocalClock;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 
 pub struct TransactionRx<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) engine: Serializable<VS, US>,
-    pub(crate) tm: TransactionManagerRx<BTreeConflict, LocalClock, BTreePendingWrites>,
+    pub(crate) tm: TransactionManagerRx<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
-    pub fn new(engine: Serializable<VS, US>, version: Option<Version>) -> Self {
-        let tm = engine.tm.read(version);
-        Self { engine, tm }
+    pub fn new(engine: Serializable<VS, US>, version: Option<Version>) -> crate::Result<Self> {
+        let tm = engine.tm.read(version)?;
+        Ok(Self { engine, tm })
     }
 }
 
@@ -60,7 +60,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
         Ok(self.engine.scan_range(range, version)?)
     }
 
-    pub fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIterRev<'_>> {
+    pub fn scan_range_rev(
+        &self,
+        range: EncodedKeyRange,
+    ) -> crate::Result<VS::ScanRangeIterRev<'_>> {
         let version = self.tm.version();
         Ok(self.engine.scan_range_rev(range, version)?)
     }

@@ -11,7 +11,7 @@
 
 use crate::mvcc::transaction::*;
 use reifydb_core::Version;
-use reifydb_core::clock::LogicalClock;
+use crate::mvcc::transaction::version::VersionProvider;
 
 pub enum TransactionKind {
     Current(Version),
@@ -22,7 +22,7 @@ pub enum TransactionKind {
 pub struct TransactionManagerRx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     engine: TransactionManager<C, L, P>,
@@ -32,7 +32,7 @@ where
 impl<C, L, P> TransactionManagerRx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     pub fn new_current(engine: TransactionManager<C, L, P>, version: Version) -> Self {
@@ -54,7 +54,7 @@ where
 impl<C, L, P> Drop for TransactionManagerRx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     fn drop(&mut self) {

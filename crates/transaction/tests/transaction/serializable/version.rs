@@ -27,10 +27,10 @@ fn test_versions() {
     let k0 = as_key!(0);
 
     for i in 1..10 {
-        let mut txn = engine.begin_tx();
+        let mut txn = engine.begin_tx().unwrap();
         txn.set(&k0, as_row!(i)).unwrap();
         txn.commit().unwrap();
-        assert_eq!(i, engine.version());
+        assert_eq!(i + 1, engine.version().unwrap());
     }
 
     let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, i: u64| {
@@ -55,8 +55,8 @@ fn test_versions() {
     };
 
     for idx in 1..10 {
-        let mut txn = engine.begin_tx();
-        txn.as_of_version(idx); // Read version at idx.
+        let mut txn = engine.begin_tx().unwrap();
+        txn.as_of_version(idx + 1); // Read version at idx.
 
         let v = idx;
         {
@@ -72,7 +72,7 @@ fn test_versions() {
         check_rev_iter(itr, idx);
     }
 
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     let sv = txn.get(&k0).unwrap().unwrap();
     let val = from_row!(u64, *sv.row());
     assert_eq!(9, val)

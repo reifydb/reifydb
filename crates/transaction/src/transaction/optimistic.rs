@@ -14,11 +14,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optim
     type Tx = TransactionTx<VS, US>;
 
     fn begin_rx(&self) -> Result<Self::Rx, Error> {
-        Ok(self.begin_rx())
+        self.begin_rx()
     }
 
     fn begin_tx(&self) -> Result<Self::Tx, Error> {
-        Ok(self.begin_tx())
+        self.begin_tx()
     }
 
     fn versioned(&self) -> VS {

@@ -14,6 +14,7 @@ pub use table::TableKey;
 pub use table_column::TableColumnKey;
 pub use table_row::{TableRowKey, TableRowKeyRange};
 pub use table_row_sequence::TableRowSequenceKey;
+pub use transaction_version::TransactionVersionKey;
 
 mod column;
 mod column_policy;
@@ -26,6 +27,7 @@ mod table;
 mod table_column;
 mod table_row;
 mod table_row_sequence;
+mod transaction_version;
 
 #[derive(Debug)]
 pub enum Key {
@@ -39,6 +41,7 @@ pub enum Key {
     TableRow(TableRowKey),
     TableRowSequence(TableRowSequenceKey),
     SystemVersion(SystemVersionKey),
+    TransactionVersion(TransactionVersionKey),
 }
 
 impl Key {
@@ -54,6 +57,7 @@ impl Key {
             Key::TableRowSequence(key) => key.encode(),
             Key::SystemSequence(key) => key.encode(),
             Key::SystemVersion(key) => key.encode(),
+            Key::TransactionVersion(key) => key.encode(),
         }
     }
 }
@@ -100,6 +104,9 @@ impl Key {
             }
             KeyKind::SystemSequence => SystemSequenceKey::decode(&key).map(Self::SystemSequence),
             KeyKind::SystemVersion => SystemVersionKey::decode(&key).map(Self::SystemVersion),
+            KeyKind::TransactionVersion => {
+                TransactionVersionKey::decode(&key).map(Self::TransactionVersion)
+            }
         }
     }
 }
@@ -116,6 +123,7 @@ mod tests {
     use crate::interface::catalog::{
         ColumnId, ColumnPolicyId, SchemaId, SystemSequenceId, TableId,
     };
+    use crate::interface::key::transaction_version::TransactionVersionKey;
 
     #[test]
     fn test_column() {
@@ -259,5 +267,12 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn test_transaction_version() {
+        let key = Key::TransactionVersion(TransactionVersionKey {});
+        let encoded = key.encode();
+        Key::decode(&encoded).expect("Failed to decode key");
     }
 }

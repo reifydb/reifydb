@@ -18,7 +18,7 @@ use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 #[test]
 fn test_rollback_same_tx() {
     let engine = Optimistic::testing();
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.rollback().unwrap();
     assert!(txn.get(&as_key!(1)).unwrap().is_none());
@@ -27,10 +27,10 @@ fn test_rollback_same_tx() {
 #[test]
 fn test_rollback_different_tx() {
     let engine = Optimistic::testing();
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.rollback().unwrap();
 
-    let rx = engine.begin_rx();
+    let rx = engine.begin_rx().unwrap();
     assert!(rx.get(&as_key!(1)).unwrap().is_none());
 }

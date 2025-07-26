@@ -24,7 +24,7 @@ use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 #[test]
 fn test_range() {
     let engine = Serializable::testing();
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
@@ -32,26 +32,26 @@ fn test_range() {
 
     let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
-    let txn = engine.begin_rx();
+    let txn = engine.begin_rx().unwrap();
     let iter = txn.scan_range(four_to_one.clone()).unwrap();
     for (expected, v) in (1..=3).rev().zip(iter) {
         assert_eq!(v.key, as_key!(expected));
         assert_eq!(v.row, as_row!(expected));
-        assert_eq!(v.version, 1);
+        assert_eq!(v.version, 2);
     }
 
     let iter = txn.scan_range_rev(four_to_one).unwrap();
     for (expected, v) in (1..=3).zip(iter) {
         assert_eq!(v.key, as_key!(expected));
         assert_eq!(v.row, as_row!(expected));
-        assert_eq!(v.version, 1);
+        assert_eq!(v.version, 2);
     }
 }
 
 #[test]
 fn test_range2() {
     let engine = Serializable::testing();
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
@@ -62,19 +62,19 @@ fn test_range2() {
     for (expected, v) in (1..=3).rev().zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
-        assert_eq!(v.version(), 0);
+        assert_eq!(v.version(), 1);
     }
 
     let iter = txn.scan_range_rev(four_to_one.clone()).unwrap();
     for (expected, v) in (1..=3).zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
-        assert_eq!(v.version(), 0);
+        assert_eq!(v.version(), 1);
     }
 
     txn.commit().unwrap();
 
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     txn.set(&as_key!(4), as_row!(4)).unwrap();
     txn.set(&as_key!(5), as_row!(5)).unwrap();
     txn.set(&as_key!(6), as_row!(6)).unwrap();
@@ -85,21 +85,21 @@ fn test_range2() {
     for (expected, v) in (1..=6).rev().zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
-        assert_eq!(v.version(), 1);
+        assert_eq!(v.version(), 2);
     }
 
     let iter = txn.scan_range_rev(seven_to_one.clone()).unwrap();
     for (expected, v) in (1..=6).zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
-        assert_eq!(v.version(), 1);
+        assert_eq!(v.version(), 2);
     }
 }
 
 #[test]
 fn test_range3() {
     let engine = Serializable::testing();
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     txn.set(&as_key!(4), as_row!(4)).unwrap();
     txn.set(&as_key!(5), as_row!(5)).unwrap();
     txn.set(&as_key!(6), as_row!(6)).unwrap();
@@ -110,21 +110,21 @@ fn test_range3() {
     for (expected, v) in (4..=6).rev().zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
-        assert_eq!(v.version(), 0);
+        assert_eq!(v.version(), 1);
     }
 
     let iter = txn.scan_range_rev(seven_to_four.clone()).unwrap();
     for (expected, v) in (4..=6).zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
-        assert_eq!(v.version(), 0);
+        assert_eq!(v.version(), 1);
     }
 
     txn.commit().unwrap();
 
     let five_to_one = EncodedKeyRange::start_end(Some(as_key!(5)), Some(as_key!(1)));
 
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
@@ -133,14 +133,14 @@ fn test_range3() {
     for (expected, v) in (1..=5).rev().zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
-        assert_eq!(v.version(), 1);
+        assert_eq!(v.version(), 2);
     }
 
     let iter = txn.scan_range_rev(five_to_one.clone()).unwrap();
     for (expected, v) in (1..=5).zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
-        assert_eq!(v.version(), 1);
+        assert_eq!(v.version(), 2);
     }
 }
 
@@ -155,40 +155,40 @@ fn test_range_edge() {
 
     // c1
     {
-        let mut txn = engine.begin_tx();
+        let mut txn = engine.begin_tx().unwrap();
 
         txn.set(&as_key!(0), as_row!(0u64)).unwrap();
         txn.set(&as_key!(u64::MAX), as_row!(u64::MAX)).unwrap();
 
         txn.set(&as_key!(3), as_row!(31u64)).unwrap();
         txn.commit().unwrap();
-        assert_eq!(1, engine.version());
+        assert_eq!(2, engine.version().unwrap());
     }
 
     // a2, c2
     {
-        let mut txn = engine.begin_tx();
+        let mut txn = engine.begin_tx().unwrap();
         txn.set(&as_key!(1), as_row!(12u64)).unwrap();
         txn.set(&as_key!(3), as_row!(32u64)).unwrap();
         txn.commit().unwrap();
-        assert_eq!(2, engine.version());
+        assert_eq!(3, engine.version().unwrap());
     }
 
     // b3
     {
-        let mut txn = engine.begin_tx();
+        let mut txn = engine.begin_tx().unwrap();
         txn.set(&as_key!(1), as_row!(13u64)).unwrap();
         txn.set(&as_key!(2), as_row!(23u64)).unwrap();
         txn.commit().unwrap();
-        assert_eq!(3, engine.version());
+        assert_eq!(4, engine.version().unwrap());
     }
 
     // b4 (remove)
     {
-        let mut txn = engine.begin_tx();
+        let mut txn = engine.begin_tx().unwrap();
         txn.remove(&as_key!(2)).unwrap();
         txn.commit().unwrap();
-        assert_eq!(4, engine.version());
+        assert_eq!(5, engine.version().unwrap());
     }
 
     let check_iter = |itr: TransactionRange<'_, _, _>, expected: &[u64]| {
@@ -211,13 +211,13 @@ fn test_range_edge() {
 
     let ten_to_one = EncodedKeyRange::start_end(Some(as_key!(10)), Some(as_key!(1)));
 
-    let mut txn = engine.begin_tx();
+    let mut txn = engine.begin_tx().unwrap();
     let itr = txn.scan_range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[32, 13]);
     let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();
     check_rev_iter(itr, &[13, 32]);
 
-    txn.as_of_version(5);
+    txn.as_of_version(6);
     let itr = txn.scan_range(ten_to_one.clone()).unwrap();
     let mut count = 2;
     for v in itr {
@@ -244,21 +244,21 @@ fn test_range_edge() {
     }
     assert_eq!(0, count);
 
-    txn.as_of_version(3);
+    txn.as_of_version(4);
     let itr = txn.scan_range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[32, 23, 13]);
 
     let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();
     check_rev_iter(itr, &[13, 23, 32]);
 
-    txn.as_of_version(2);
+    txn.as_of_version(3);
     let itr = txn.scan_range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[32, 12]);
 
     let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();
     check_rev_iter(itr, &[12, 32]);
 
-    txn.as_of_version(1);
+    txn.as_of_version(2);
     let itr = txn.scan_range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[31]);
     let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();

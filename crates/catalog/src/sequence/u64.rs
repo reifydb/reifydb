@@ -60,8 +60,9 @@ mod tests {
 
         let unversioned = tx.unversioned();
         let mut unversioned: Vec<Unversioned> = unversioned.scan().unwrap().collect();
-        assert_eq!(unversioned.len(), 1);
+        assert_eq!(unversioned.len(), 2);
 
+        unversioned.pop().unwrap(); // TX-Version
         let unversioned = unversioned.pop().unwrap();
         assert_eq!(unversioned.key, EncodedKey::new("sequence"));
         assert_eq!(LAYOUT.get_u64(&unversioned.row, 0), 1000);

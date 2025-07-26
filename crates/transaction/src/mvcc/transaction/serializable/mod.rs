@@ -12,8 +12,8 @@
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
+use crate::mvcc::transaction::version::StdVersionProvider;
 pub use read::*;
-use reifydb_core::clock::LocalClock;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
@@ -31,7 +31,7 @@ use crate::mvcc::transaction::{Committed, TransactionManager};
 pub struct Serializable<VS: VersionedStorage, US: UnversionedStorage>(Arc<Inner<VS, US>>);
 
 pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
-    pub(crate) tm: TransactionManager<BTreeConflict, LocalClock, BTreePendingWrites>,
+    pub(crate) tm: TransactionManager<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
     pub(crate) versioned: VS,
     pub(crate) unversioned: RwLock<US>,
     pub(crate) hooks: Hooks,
@@ -53,11 +53,12 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Clone for Serializable<VS, US
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
     fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks) -> Self {
-        let tm = TransactionManager::new(name, LocalClock::new());
+        let tm =
+            TransactionManager::new(name, StdVersionProvider::new(unversioned.clone()).unwrap()).unwrap();
         Self { tm, versioned, unversioned: RwLock::new(unversioned), hooks }
     }
 
-    fn version(&self) -> Version {
+    fn version(&self) -> crate::Result<Version> {
         self.tm.version()
     }
 }
@@ -75,16 +76,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
-    pub fn version(&self) -> Version {
+    pub fn version(&self) -> crate::Result<Version> {
         self.0.version()
     }
-    pub fn begin_rx(&self) -> TransactionRx<VS, US> {
+    pub fn begin_rx(&self) -> crate::Result<TransactionRx<VS, US>> {
         TransactionRx::new(self.clone(), None)
     }
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
-    pub fn begin_tx(&self) -> TransactionTx<VS, US> {
+    pub fn begin_tx(&self) -> crate::Result<TransactionTx<VS, US>> {
         TransactionTx::new(self.clone())
     }
 }
@@ -95,11 +96,19 @@ pub enum Transaction<VS: VersionedStorage, US: UnversionedStorage> {
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
-    pub fn get(&self, key: &EncodedKey, version: Version) -> Result<Option<Committed>, reifydb_core::Error> {
+    pub fn get(
+        &self,
+        key: &EncodedKey,
+        version: Version,
+    ) -> Result<Option<Committed>, reifydb_core::Error> {
         Ok(self.versioned.get(key, version)?.map(|sv| sv.into()))
     }
 
-    pub fn contains_key(&self, key: &EncodedKey, version: Version) -> Result<bool, reifydb_core::Error> {
+    pub fn contains_key(
+        &self,
+        key: &EncodedKey,
+        version: Version,
+    ) -> Result<bool, reifydb_core::Error> {
         self.versioned.contains(key, version)
     }
 
@@ -111,7 +120,11 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
         self.versioned.scan_rev(version)
     }
 
-    pub fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Result<VS::ScanRangeIter<'_>, reifydb_core::Error> {
+    pub fn scan_range(
+        &self,
+        range: EncodedKeyRange,
+        version: Version,
+    ) -> Result<VS::ScanRangeIter<'_>, reifydb_core::Error> {
         self.versioned.scan_range(range, version)
     }
 

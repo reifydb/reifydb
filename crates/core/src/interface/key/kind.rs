@@ -17,6 +17,7 @@ pub enum KeyKind {
     TableRowSequence = 0x08,
     ColumnPolicy = 0x09,
     SystemVersion = 0x0A,
+    TransactionVersion = 0x0B,
 }
 
 impl From<KeyKind> for u8 {
@@ -39,6 +40,7 @@ impl TryFrom<u8> for KeyKind {
             0x08 => Ok(Self::TableRowSequence),
             0x09 => Ok(Self::ColumnPolicy),
             0x0A => Ok(Self::SystemVersion),
+            0x0B => Ok(Self::TransactionVersion),
             _ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
         }
     }

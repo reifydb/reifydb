@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-// #![cfg_attr(not(debug_assertions), deny(missing_docs))]
+
 #![cfg_attr(not(debug_assertions), deny(warnings))]
-// #![cfg_attr(not(debug_assertions), deny(clippy::unwrap_used))]
-// #![cfg_attr(not(debug_assertions), deny(clippy::expect_used))]
+
 
 use reifydb::storage::sqlite::SqliteConfig;
 use reifydb::{ReifyDB, serializable, sqlite};
 
 fn main() {
-    let db = ReifyDB::embedded_blocking_with(serializable(sqlite(SqliteConfig::safe("/tmp"))));
+    let db = ReifyDB::embedded_blocking_with(serializable(sqlite(SqliteConfig::safe("/tmp/test"))));
 
     db.tx_as_root(r#"create schema test"#).unwrap();
     db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();

@@ -12,7 +12,7 @@
 use super::*;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
-use reifydb_core::clock::LogicalClock;
+use crate::mvcc::transaction::version::VersionProvider;
 use reifydb_core::delta::Delta;
 use reifydb_core::error::diagnostic::transaction;
 use reifydb_core::row::EncodedRow;
@@ -21,7 +21,7 @@ use reifydb_core::{EncodedKey, Version, return_error, error};
 pub struct TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     pub(super) version: Version,
@@ -40,7 +40,7 @@ where
 impl<C, L, P> Drop for TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     fn drop(&mut self) {
@@ -53,7 +53,7 @@ where
 impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     /// Returns the version of the transaction.
@@ -80,7 +80,7 @@ where
 impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     /// This method is used to create a marker for the keys that are operated.
@@ -110,7 +110,7 @@ where
 impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
@@ -204,7 +204,7 @@ where
 impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     /// Commits the transaction, following these steps:
@@ -236,7 +236,7 @@ where
             return Ok(());
         }
 
-        let (commit_ts, entries) = self.commit_pending().map_err(|e| {
+        let (version, entries) = self.commit_pending().map_err(|e| {
             // Check if this is a conflict error by examining the error code
             if e.0.code == "TXN_001" {
                 e // Don't discard on conflict, let caller handle retry
@@ -248,11 +248,11 @@ where
 
         apply(entries)
             .map(|_| {
-                self.oracle().done_commit(commit_ts);
+                self.oracle().done_commit(version);
                 self.discard();
             })
             .map_err(|e| {
-                self.oracle().done_commit(commit_ts);
+                self.oracle().done_commit(version);
                 self.discard();
                 error!(transaction::commit_failed(e.to_string()))
             })
@@ -262,7 +262,7 @@ where
 impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     fn set_internal(
@@ -323,7 +323,7 @@ where
 impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     fn commit_pending(&mut self) -> Result<(Version, Vec<Pending>), reifydb_core::Error> {
@@ -339,7 +339,7 @@ where
 
         let conflict_manager = mem::take(&mut self.conflicts);
 
-        match self.oracle.new_commit(&mut self.done_read, self.version, conflict_manager) {
+        match self.oracle.new_commit(&mut self.done_read, self.version, conflict_manager)? {
             CreateCommitResult::Conflict(conflicts) => {
                 // If there is a conflict, we should not send the updates to the write channel.
                 // Instead, we should return the conflict error to the user.
@@ -383,7 +383,7 @@ where
 impl<C, L, P> TransactionManagerTx<C, L, P>
 where
     C: Conflict,
-    L: LogicalClock,
+    L: VersionProvider,
     P: PendingWrites,
 {
     fn done_read(&mut self) {

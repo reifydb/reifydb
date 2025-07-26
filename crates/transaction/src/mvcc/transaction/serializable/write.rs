@@ -12,12 +12,12 @@
 use super::*;
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
+use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::transaction::iter::TransactionIter;
 use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::types::TransactionValue;
-use reifydb_core::clock::LocalClock;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};
 use reifydb_core::interface::UnversionedStorage;
@@ -29,13 +29,13 @@ use std::sync::RwLockWriteGuard;
 
 pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
     engine: Serializable<VS, US>,
-    tm: TransactionManagerTx<BTreeConflict, LocalClock, BTreePendingWrites>,
+    tm: TransactionManagerTx<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
-    pub fn new(engine: Serializable<VS, US>) -> Self {
-        let tm = engine.tm.write().unwrap();
-        Self { engine, tm }
+    pub fn new(engine: Serializable<VS, US>) -> crate::Result<Self> {
+        let tm = engine.tm.write()?;
+        Ok(Self { engine, tm })
     }
 }
 
