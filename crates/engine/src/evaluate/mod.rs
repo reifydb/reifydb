@@ -16,6 +16,7 @@ mod column;
 mod compare;
 pub(crate) mod constant;
 mod context;
+mod logic;
 mod prefix;
 
 pub(crate) struct Evaluator {
@@ -49,6 +50,9 @@ impl Evaluator {
             Expression::LessThanEqual(expr) => self.less_than_equal(expr, ctx),
             Expression::Equal(expr) => self.equal(expr, ctx),
             Expression::NotEqual(expr) => self.not_equal(expr, ctx),
+            Expression::And(expr) => self.and(expr, ctx),
+            Expression::Or(expr) => self.or(expr, ctx),
+            Expression::Xor(expr) => self.xor(expr, ctx),
             Expression::Rem(expr) => self.rem(expr, ctx),
             Expression::Mul(expr) => self.mul(expr, ctx),
             Expression::Prefix(expr) => self.prefix(expr, ctx),

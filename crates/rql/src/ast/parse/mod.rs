@@ -39,6 +39,8 @@ use std::collections::HashMap;
 pub(crate) enum Precedence {
     None,
     Assignment,
+    LogicOr,
+    LogicAnd,
     Comparison,
     Term,
     Factor,
@@ -85,6 +87,10 @@ impl Parser {
 
         precedence_map.insert(Operator::Arrow, Precedence::Primary);
         precedence_map.insert(Operator::Colon, Precedence::Primary);
+
+        precedence_map.insert(Operator::Or, Precedence::LogicOr);
+        precedence_map.insert(Operator::Xor, Precedence::LogicOr);
+        precedence_map.insert(Operator::And, Precedence::LogicAnd);
 
         tokens.reverse();
         Self { tokens, precedence_map }

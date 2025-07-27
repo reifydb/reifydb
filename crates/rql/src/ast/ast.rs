@@ -559,6 +559,9 @@ pub enum InfixOperator {
     GreaterThan(Token),
     GreaterThanEqual(Token),
     TypeAscription(Token),
+    And(Token),
+    Or(Token),
+    Xor(Token),
 }
 
 #[derive(Debug, Clone, PartialEq)]

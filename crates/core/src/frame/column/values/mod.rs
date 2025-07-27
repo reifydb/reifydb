@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{BitVec, CowVec, Type, Value};
-use crate::{Date, DateTime, Interval, Time};
 use crate::RowId;
 use crate::value::uuid::{Uuid4, Uuid7};
+use crate::{BitVec, CowVec, Type, Value};
+use crate::{Date, DateTime, Interval, Time};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
@@ -71,6 +71,36 @@ impl ColumnValues {
 
     pub fn is_utf8(&self) -> bool {
         self.get_type() == Type::Utf8
+    }
+
+    pub fn is_number(&self) -> bool {
+        matches!(
+            self.get_type(),
+            Type::Float4
+                | Type::Float8
+                | Type::Int1
+                | Type::Int2
+                | Type::Int4
+                | Type::Int8
+                | Type::Int16
+                | Type::Uint1
+                | Type::Uint2
+                | Type::Uint4
+                | Type::Uint8
+                | Type::Uint16
+        )
+    }
+
+    pub fn is_text(&self) -> bool {
+        self.get_type() == Type::Utf8
+    }
+
+    pub fn is_temporal(&self) -> bool {
+        matches!(self.get_type(), Type::Date | Type::DateTime | Type::Time | Type::Interval)
+    }
+
+    pub fn is_uuid(&self) -> bool {
+        matches!(self.get_type(), Type::Uuid4 | Type::Uuid7)
     }
 }
 

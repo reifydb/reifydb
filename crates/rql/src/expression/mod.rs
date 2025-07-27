@@ -76,6 +76,12 @@ pub enum Expression {
 
     NotEqual(NotEqualExpression),
 
+    And(AndExpression),
+
+    Or(OrExpression),
+
+    Xor(XorExpression),
+
     Type(DataTypeExpression),
 }
 
@@ -262,6 +268,45 @@ impl NotEqualExpression {
 }
 
 #[derive(Debug, Clone)]
+pub struct AndExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: OwnedSpan,
+}
+
+impl AndExpression {
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OrExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: OwnedSpan,
+}
+
+impl OrExpression {
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct XorExpression {
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
+    pub span: OwnedSpan,
+}
+
+impl XorExpression {
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ColumnExpression(pub OwnedSpan);
 
 impl ColumnExpression {
@@ -321,6 +366,15 @@ impl Display for Expression {
             Expression::NotEqual(NotEqualExpression { left, right, .. }) => {
                 write!(f, "({} != {})", left, right)
             }
+            Expression::And(AndExpression { left, right, .. }) => {
+                write!(f, "({} and {})", left, right)
+            }
+            Expression::Or(OrExpression { left, right, .. }) => {
+                write!(f, "({} or {})", left, right)
+            }
+            Expression::Xor(XorExpression { left, right, .. }) => {
+                write!(f, "({} xor {})", left, right)
+            }
             Expression::Type(DataTypeExpression { span, .. }) => write!(f, "{}", span.fragment),
         }
     }
@@ -377,6 +431,17 @@ impl Display for IdentExpression {
 pub enum PrefixOperator {
     Minus(OwnedSpan),
     Plus(OwnedSpan),
+    Not(OwnedSpan),
+}
+
+impl PrefixOperator {
+    pub fn span(&self) -> OwnedSpan {
+        match self {
+            PrefixOperator::Minus(span) => span.clone(),
+            PrefixOperator::Plus(span) => span.clone(),
+            PrefixOperator::Not(span) => span.clone(),
+        }
+    }
 }
 
 impl Display for PrefixOperator {
@@ -384,6 +449,7 @@ impl Display for PrefixOperator {
         match self {
             PrefixOperator::Minus(_) => write!(f, "-"),
             PrefixOperator::Plus(_) => write!(f, "+"),
+            PrefixOperator::Not(_) => write!(f, "not"),
         }
     }
 }
@@ -393,6 +459,12 @@ pub struct PrefixExpression {
     pub operator: PrefixOperator,
     pub expression: Box<Expression>,
     pub span: OwnedSpan,
+}
+
+impl PrefixExpression {
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.operator.span(), self.expression.span()])
+    }
 }
 
 impl Display for PrefixExpression {

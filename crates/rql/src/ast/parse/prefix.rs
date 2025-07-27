@@ -39,6 +39,7 @@ impl Parser {
                 Operator::Plus => Ok(AstPrefixOperator::Plus(token)),
                 Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
                 Operator::Bang => Ok(AstPrefixOperator::Not(token)),
+                Operator::Not => Ok(AstPrefixOperator::Not(token)),
                 _ => return_error!(unsupported_token_error(token)),
             },
             _ => return_error!(unsupported_token_error(token)),
@@ -121,6 +122,21 @@ mod tests {
     #[test]
     fn test_not_false() {
         let tokens = lex("!false").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let Ast::Prefix(AstPrefix { operator, node }) = result[0].first_unchecked() else {
+            panic!()
+        };
+        assert!(matches!(*operator, AstPrefixOperator::Not(_)));
+
+        let Literal(AstLiteral::Boolean(node)) = node.deref() else { panic!() };
+        assert!(!node.value());
+    }
+
+    #[test]
+    fn test_not_word_false() {
+        let tokens = lex("not false").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 

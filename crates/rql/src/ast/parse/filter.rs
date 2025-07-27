@@ -56,4 +56,79 @@ mod tests {
         let result = parser.parse_filter().unwrap();
         assert_eq!(*result.node, Ast::Nop);
     }
+
+    #[test]
+    fn test_logical_and() {
+        let tokens = lex("filter price > 100 and qty < 50").unwrap();
+        let mut parser = Parser::new(tokens);
+        let filter = parser.parse_filter().unwrap();
+
+        let node = filter.node.as_infix();
+        assert!(matches!(node.operator, InfixOperator::And(_)));
+
+        let left = node.left.as_infix();
+        assert_eq!(left.left.as_identifier().name(), "price");
+        assert!(matches!(left.operator, InfixOperator::GreaterThan(_)));
+        assert_eq!(left.right.as_literal_number().value(), "100");
+
+        let right = node.right.as_infix();
+        assert_eq!(right.left.as_identifier().name(), "qty");
+        assert!(matches!(right.operator, InfixOperator::LessThan(_)));
+        assert_eq!(right.right.as_literal_number().value(), "50");
+    }
+
+    #[test]
+    fn test_logical_or() {
+        let tokens = lex("filter active == true or premium == true").unwrap();
+        let mut parser = Parser::new(tokens);
+        let filter = parser.parse_filter().unwrap();
+
+        let node = filter.node.as_infix();
+        assert!(matches!(node.operator, InfixOperator::Or(_)));
+
+        let left = node.left.as_infix();
+        assert_eq!(left.left.as_identifier().name(), "active");
+        assert!(matches!(left.operator, InfixOperator::Equal(_)));
+
+        let right = node.right.as_infix();
+        assert_eq!(right.left.as_identifier().name(), "premium");
+        assert!(matches!(right.operator, InfixOperator::Equal(_)));
+    }
+
+    #[test]
+    fn test_logical_xor() {
+        let tokens = lex("filter active == true xor guest == true").unwrap();
+        let mut parser = Parser::new(tokens);
+        let filter = parser.parse_filter().unwrap();
+
+        let node = filter.node.as_infix();
+        assert!(matches!(node.operator, InfixOperator::Xor(_)));
+
+        let left = node.left.as_infix();
+        assert_eq!(left.left.as_identifier().name(), "active");
+        assert!(matches!(left.operator, InfixOperator::Equal(_)));
+
+        let right = node.right.as_infix();
+        assert_eq!(right.left.as_identifier().name(), "guest");
+        assert!(matches!(right.operator, InfixOperator::Equal(_)));
+    }
+
+    #[test]
+    fn test_complex_logical_chain() {
+        let tokens = lex("filter active == true and price > 100 or premium == true").unwrap();
+        let mut parser = Parser::new(tokens);
+        let filter = parser.parse_filter().unwrap();
+
+        // Should parse as: (active == true and price > 100) or premium == true
+        // Due to precedence, AND has higher precedence than OR
+        let node = filter.node.as_infix();
+        assert!(matches!(node.operator, InfixOperator::Or(_)));
+
+        let left_and = node.left.as_infix();
+        assert!(matches!(left_and.operator, InfixOperator::And(_)));
+
+        let right_or = node.right.as_infix();
+        assert_eq!(right_or.left.as_identifier().name(), "premium");
+        assert!(matches!(right_or.operator, InfixOperator::Equal(_)));
+    }
 }
