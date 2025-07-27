@@ -1,3 +1,4 @@
+use crate::interface::table::Table;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -9,3 +10,13 @@ impl fmt::Display for NodeId {
         write!(f, "Node({})", self.0)
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum NodeType {
+    Table { name: String, table: Table },
+    Operator { operator: OperatorType },
+    View { name: String, table: Table },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum OperatorType {}

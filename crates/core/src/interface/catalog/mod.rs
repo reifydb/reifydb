@@ -8,3 +8,4 @@ pub use policy::*;
 mod column;
 mod id;
 mod policy;
+pub mod table;

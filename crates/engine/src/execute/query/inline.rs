@@ -3,11 +3,11 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_catalog::table::Table;
 use reifydb_core::frame::{
     ColumnQualified, ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout,
 };
 use reifydb_core::interface::Rx;
+use reifydb_core::interface::table::Table;
 use reifydb_core::{BitVec, ColumnDescriptor, Value};
 use reifydb_rql::expression::KeyedExpression;
 use std::collections::HashMap;

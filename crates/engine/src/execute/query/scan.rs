@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_catalog::table::Table;
 use reifydb_core::EncodedKeyRange;
 use reifydb_core::Type;
 use reifydb_core::frame::{
     ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout, TableQualified,
 };
+use reifydb_core::interface::table::Table;
 use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::interface::{EncodableKeyRange, Rx, TableRowKeyRange};
 use reifydb_core::row::Layout;

@@ -18,7 +18,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod delta;
 pub mod error;
-mod flow;
+#[allow(dead_code)]
+pub mod flow;
 pub mod frame;
 pub mod hook;
 pub mod interface;

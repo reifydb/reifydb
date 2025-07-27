@@ -2,16 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::interface::catalog::{ColumnId, ColumnPolicyId};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnPolicy {
     pub id: ColumnPolicyId,
     pub column: ColumnId,
     pub policy: ColumnPolicyKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ColumnPolicyKind {
     Saturation(ColumnSaturationPolicy),
 }
@@ -39,7 +40,7 @@ impl ColumnPolicyKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ColumnSaturationPolicy {
     Error,
     // Saturate,

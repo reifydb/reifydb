@@ -3,11 +3,11 @@
 
 use crate::function::{Functions, math};
 use query::compile::compile;
-use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
 use reifydb_core::frame::{
     ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
 };
+use reifydb_core::interface::table::Table;
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
