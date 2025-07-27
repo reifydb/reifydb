@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Catalog;
 use crate::column::{ColumnIndex, ColumnToCreate};
 use crate::column_policy::ColumnPolicyKind;
 use crate::schema::SchemaToCreate;
 use crate::schema::{Schema, SchemaId};
-use crate::table;
-use crate::table::TableId;
-use crate::table::{Table, TableToCreate};
+use crate::table::TableToCreate;
+use crate::{Catalog, table};
 use reifydb_core::Type;
-use reifydb_core::interface::Tx;
+use reifydb_core::interface::{TableId, Tx};
+use reifydb_core::interface::table::Table;
 use reifydb_storage::memory::Memory;
 
 pub fn create_schema(tx: &mut impl Tx<Memory, Memory>, schema: &str) -> Schema {
@@ -52,10 +51,10 @@ pub fn create_table(
 }
 
 pub fn create_test_table_column(
-	tx: &mut impl Tx<Memory, Memory>,
-	name: &str,
-	value: Type,
-	policies: Vec<ColumnPolicyKind>,
+    tx: &mut impl Tx<Memory, Memory>,
+    name: &str,
+    value: Type,
+    policies: Vec<ColumnPolicyKind>,
 ) {
     ensure_test_table(tx);
 

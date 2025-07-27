@@ -13,7 +13,7 @@ use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::{Type, return_error};
-use reifydb_rql::expression::ConstantExpression;
+use reifydb_core::expression::ConstantExpression;
 use temporal::TemporalParser;
 use text::TextParser;
 

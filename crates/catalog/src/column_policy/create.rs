@@ -50,9 +50,9 @@ mod tests {
     use crate::Catalog;
     use crate::column::{ColumnId, ColumnIndex, ColumnToCreate};
     use crate::column_policy::{ColumnPolicyKind, ColumnSaturationPolicy};
-    use crate::table::TableId;
     use crate::test_utils::{create_test_table_column, ensure_test_table};
     use reifydb_core::Type;
+    use reifydb_core::interface::TableId;
     use reifydb_transaction::test_utils::TestTransaction;
 
     #[test]

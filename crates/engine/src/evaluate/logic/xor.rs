@@ -7,7 +7,7 @@ use reifydb_core::error::diagnostic::operator::{
     xor_can_not_applied_to_temporal, xor_can_not_applied_to_uuid
 };
 use reifydb_core::return_error;
-use reifydb_rql::expression::XorExpression;
+use reifydb_core::expression::XorExpression;
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 

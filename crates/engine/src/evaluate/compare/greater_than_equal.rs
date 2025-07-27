@@ -6,7 +6,7 @@ use reifydb_core::frame::{FrameColumn, ColumnValues, ColumnQualified};
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::value::number::Promote;
 use reifydb_core::{BitVec, CowVec, OwnedSpan, value};
-use reifydb_rql::expression::GreaterThanEqualExpression;
+use reifydb_core::expression::GreaterThanEqualExpression;
 
 impl Evaluator {
     pub(crate) fn greater_than_equal(

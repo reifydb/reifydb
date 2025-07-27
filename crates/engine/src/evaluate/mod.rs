@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::frame::{ColumnQualified, FrameColumn, TableQualified};
-use reifydb_rql::expression::Expression;
+use reifydb_core::expression::Expression;
 
 use crate::function::{Functions, math};
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};

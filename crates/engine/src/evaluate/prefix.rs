@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
 use reifydb_core::err;
 use reifydb_core::error::diagnostic::operator;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, TableQualified};
-use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
+use reifydb_core::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
     pub(crate) fn prefix(

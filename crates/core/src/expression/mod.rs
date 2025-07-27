@@ -4,8 +4,7 @@
 mod layout;
 mod span;
 
-use reifydb_core::OwnedSpan;
-use reifydb_core::Type;
+use crate::{OwnedSpan, Type};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 

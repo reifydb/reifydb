@@ -5,7 +5,7 @@ use crate::expression::{
     AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
     RemExpression, SubExpression,
 };
-use reifydb_core::OwnedSpan;
+use crate::OwnedSpan;
 
 impl Expression {
     pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {

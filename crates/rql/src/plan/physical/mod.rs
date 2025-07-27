@@ -3,12 +3,12 @@
 
 mod create;
 
-use crate::expression::{Expression, KeyedExpression};
-use crate::plan::logical::{LogicalPlan, NaturalJoinType};
+use reifydb_core::expression::{Expression, KeyedExpression};
+use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::Rx;
-use reifydb_core::{OwnedSpan, SortKey};
+use reifydb_core::{JoinType, OwnedSpan, SortKey};
 
 struct Compiler {}
 
@@ -155,7 +155,7 @@ impl Compiler {
 
 #[derive(Debug, Clone)]
 pub enum PhysicalPlan {
-    CreateDeferredView(CreateDeferredViewPlan),
+    CreateComputedView(CreateComputedViewPlan),
     CreateSchema(CreateSchemaPlan),
     CreateTable(CreateTablePlan),
     // Mutate
@@ -177,7 +177,7 @@ pub enum PhysicalPlan {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateDeferredViewPlan {
+pub struct CreateComputedViewPlan {
     pub schema: OwnedSpan,
     pub view: OwnedSpan,
     pub if_not_exists: bool,
@@ -250,7 +250,7 @@ pub struct JoinLeftNode {
 pub struct JoinNaturalNode {
     pub left: Box<PhysicalPlan>,
     pub right: Box<PhysicalPlan>,
-    pub join_type: NaturalJoinType,
+    pub join_type: JoinType,
 }
 
 #[derive(Debug, Clone)]
