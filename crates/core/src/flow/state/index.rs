@@ -1,5 +1,5 @@
 use crate::Value;
-use crate::row::Row;
+use crate::flow::row::Row;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 

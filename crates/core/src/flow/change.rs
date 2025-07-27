@@ -1,17 +1,22 @@
-use crate::delta::Delta;
 use std::collections::HashMap;
-use uuid::Version;
+use crate::flow::row::Row;
 
 #[derive(Debug, Clone)]
-pub struct Change {
-    pub deltas: Vec<Delta>,
-    pub version: Version,
+pub enum Change {
+    Insert { row: Row },
+    Update { old: Row, new: Row },
+    Remove { row: Row },
+}
+
+#[derive(Debug, Clone)]
+pub struct Diff {
+    pub changes: Vec<Change>,
     pub metadata: HashMap<String, String>,
 }
 
-impl Change {
-    pub fn new(deltas: Vec<Delta>, version: Version) -> Self {
-        Self { deltas, version, metadata: HashMap::new() }
+impl Diff {
+    pub fn new(changes: Vec<Change>) -> Self {
+        Self { changes, metadata: HashMap::new() }
     }
 
     pub fn with_metadata(mut self, key: String, value: String) -> Self {

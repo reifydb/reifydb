@@ -1,11 +1,10 @@
-use super::change::Change;
+use super::change::{Change, Diff};
 use super::flow::FlowGraph;
 use super::node::{NodeId, NodeType, OperatorType};
 use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
 use super::state::StateStore;
-use crate::delta::Delta::{Insert, Remove, Update, Upsert};
-use crate::row::{Layout, Row};
-use crate::{Result, Type};
+use crate::Result;
+use crate::flow::row::Row;
 use std::collections::HashMap;
 
 pub struct FlowEngine {
@@ -53,7 +52,7 @@ impl FlowEngine {
         Ok(())
     }
 
-    pub fn process_change(&mut self, node_id: &NodeId, change: Change) -> Result<()> {
+    pub fn process_change(&mut self, node_id: &NodeId, change: Diff) -> Result<()> {
         if let Some(node) = self.graph.get_node(node_id) {
             let output_change = match &node.node_type {
                 NodeType::Table { .. } => {
@@ -68,7 +67,7 @@ impl FlowEngine {
                     if let (Some(operator), Some(context)) =
                         (self.operators.get_mut(node_id), self.contexts.get_mut(node_id))
                     {
-                        operator.apply(change, context)?
+                        operator.apply(context, change)?
                     } else {
                         panic!("Operator or context not found");
                     }
@@ -106,21 +105,17 @@ impl FlowEngine {
         }
     }
 
-    fn apply_change_to_state(state: &mut StateStore, change: &Change) -> Result<()> {
-        for delta in &change.deltas {
-            match delta {
-                Insert { key, row, .. } => {
-                    state.insert(Row { layout: Layout::new(&[Type::Int1]), data: row.clone() })?;
+    fn apply_change_to_state(state: &mut StateStore, diff: &Diff) -> Result<()> {
+        for change in &diff.changes {
+            match change {
+                Change::Insert { row, .. } => {
+                    state.insert(row.clone())?;
                 }
-                Update { row, .. } => {
+                Change::Update { old, new } => {
                     todo!()
                 }
-                Upsert { row, .. } => {
+                Change::Remove { row } => {
                     todo!()
-                }
-                Remove { key } => {
-                    // Would need to implement removal by key in StateStore
-                    // For now, skip
                 }
             }
         }

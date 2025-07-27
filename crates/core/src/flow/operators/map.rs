@@ -1,8 +1,7 @@
 use super::base::{Operator, OperatorContext};
-use crate::delta::Delta;
 use crate::expression::Expression;
-use crate::flow::change::Change;
-use crate::row::EncodedRow;
+use crate::flow::change::{Change, Diff};
+use crate::flow::row::Row;
 
 pub struct MapOperator {
     expressions: Vec<Expression>,
@@ -15,36 +14,32 @@ impl MapOperator {
 }
 
 impl Operator for MapOperator {
-    fn apply(&mut self, change: Change, _ctx: &mut OperatorContext) -> crate::Result<Change> {
-        let mut output_deltas = Vec::new();
+    fn apply(&mut self, ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
+        let mut output_changes = Vec::new();
 
-        for delta in change.deltas {
-            match delta {
-                Delta::Insert { key, row } => {
+        for change in diff.changes {
+            match change {
+                Change::Insert { row } => {
                     let projected_row = self.project_row(&row)?;
-                    output_deltas.push(Delta::Insert { key, row: projected_row });
+                    output_changes.push(Change::Insert { row: projected_row });
                 }
-                Delta::Update { key, row } => {
-                    let projected_row = self.project_row(&row)?;
-                    output_deltas.push(Delta::Update { key, row: projected_row });
+                Change::Update { old, new } => {
+                    let projected_row = self.project_row(&new)?;
+                    output_changes.push(Change::Update { old, new: projected_row });
                 }
-                Delta::Upsert { key, row } => {
-                    let projected_row = self.project_row(&row)?;
-                    output_deltas.push(Delta::Upsert { key, row: projected_row });
-                }
-                Delta::Remove { key } => {
+                Change::Remove { row } => {
                     // Pass through removes unchanged
-                    output_deltas.push(Delta::Remove { key });
+                    output_changes.push(Change::Remove { row });
                 }
             }
         }
 
-        Ok(Change::new(output_deltas, change.version))
+        Ok(Diff::new(output_changes))
     }
 }
 
 impl MapOperator {
-    fn project_row(&self, row: &EncodedRow) -> crate::Result<EncodedRow> {
+    fn project_row(&self, row: &Row) -> crate::Result<Row> {
         // TODO: Integrate with purple's expression evaluation system
         // For now, return the original row as a placeholder
         // This should evaluate each expression against the input row

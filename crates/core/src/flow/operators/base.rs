@@ -1,9 +1,9 @@
-use crate::flow::change::Change;
+use crate::flow::change::Diff;
 use crate::flow::state::StateStore;
 
 pub trait Operator {
     /// Apply the operator to a change and return the resulting change
-    fn apply(&mut self, change: Change, ctx: &mut OperatorContext) -> crate::Result<Change>;
+    fn apply(&mut self, ctx: &mut OperatorContext, change: Diff) -> crate::Result<Diff>;
 }
 
 pub struct OperatorContext {

@@ -1,7 +1,7 @@
 use super::base::{Operator, OperatorContext};
-use crate::delta::Delta;
 use crate::expression::Expression;
-use crate::flow::change::Change;
+use crate::flow::change::{Change, Diff};
+use crate::flow::row::Row;
 
 pub struct FilterOperator {
     predicate: Expression,
@@ -14,48 +14,39 @@ impl FilterOperator {
 }
 
 impl Operator for FilterOperator {
-    fn apply(&mut self, change: Change, _ctx: &mut OperatorContext) -> crate::Result<Change> {
+    fn apply(&mut self, ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
         let mut output_deltas = Vec::new();
 
-        for delta in change.deltas {
-            match delta {
-                Delta::Insert { key, row } => {
+        for change in diff.changes {
+            match change {
+                Change::Insert { row } => {
                     // Evaluate predicate on the row
                     if self.evaluate_predicate(&row)? {
-                        output_deltas.push(Delta::Insert { key, row });
+                        output_deltas.push(Change::Insert { row });
                     }
                 }
-                Delta::Update { key, row } => {
+                Change::Update { old, new } => {
                     // For updates, we need to check if the new row passes the filter
-                    if self.evaluate_predicate(&row)? {
-                        output_deltas.push(Delta::Update { key, row });
+                    if self.evaluate_predicate(&new)? {
+                        output_deltas.push(Change::Update { old, new });
                     } else {
                         // If it doesn't pass, emit a Remove
-                        output_deltas.push(Delta::Remove { key });
+                        output_deltas.push(Change::Remove { row: old });
                     }
                 }
-                Delta::Upsert { key, row } => {
-                    // For upserts, only pass through if predicate matches
-                    if self.evaluate_predicate(&row)? {
-                        output_deltas.push(Delta::Upsert { key, row });
-                    } else {
-                        // If it doesn't pass, emit a Remove to ensure consistency
-                        output_deltas.push(Delta::Remove { key });
-                    }
-                }
-                Delta::Remove { key } => {
+                Change::Remove { row } => {
                     // Always pass through removes
-                    output_deltas.push(Delta::Remove { key });
+                    output_deltas.push(Change::Remove { row });
                 }
             }
         }
 
-        Ok(Change::new(output_deltas, change.version))
+        Ok(Diff::new(output_deltas))
     }
 }
 
 impl FilterOperator {
-    fn evaluate_predicate(&self, _row: &crate::row::EncodedRow) -> crate::Result<bool> {
+    fn evaluate_predicate(&self, _row: &Row) -> crate::Result<bool> {
         // TODO: Integrate with purple's expression evaluation system
         // For now, return true as a placeholder
         // This should use purple's expression evaluation engine
