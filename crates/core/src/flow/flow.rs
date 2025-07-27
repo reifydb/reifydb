@@ -1,6 +1,8 @@
 use super::change::Change;
 use super::graph::DirectedGraph;
-use super::node::{Node, NodeId, NodeType};
+use super::node::{Node, NodeId, NodeType, OperatorType};
+use super::operators::{Operator, OperatorContext, FilterOperator, MapOperator};
+use super::state::StateStore;
 use crate::Result;
 use std::collections::HashMap;
 
@@ -85,6 +87,10 @@ impl FlowGraph {
 
     pub fn get_node_mut(&mut self, node_id: &NodeId) -> Option<&mut Node> {
         self.graph.get_node_mut(node_id)
+    }
+    
+    pub fn get_all_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.node_map.keys().cloned()
     }
 }
 
