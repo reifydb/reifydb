@@ -9,7 +9,7 @@ use reifydb_core::frame::{
 use reifydb_core::interface::Rx;
 use reifydb_core::interface::table::Table;
 use reifydb_core::{BitVec, ColumnDescriptor, Value};
-use reifydb_rql::expression::KeyedExpression;
+use reifydb_core::expression::KeyedExpression;
 use std::collections::HashMap;
 use std::sync::Arc;
 

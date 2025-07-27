@@ -6,7 +6,7 @@ use reifydb_core::error::diagnostic::query::column_not_found;
 use reifydb_core::frame::{ColumnValues, FrameColumn};
 use reifydb_core::value::{Uuid4, Uuid7};
 use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
-use reifydb_rql::expression::ColumnExpression;
+use reifydb_core::expression::ColumnExpression;
 
 impl Evaluator {
     pub(crate) fn column(

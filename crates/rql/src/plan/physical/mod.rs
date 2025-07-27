@@ -3,7 +3,7 @@
 
 mod create;
 
-use crate::expression::{Expression, KeyedExpression};
+use reifydb_core::expression::{Expression, KeyedExpression};
 use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;

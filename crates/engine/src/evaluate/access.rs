@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
 use reifydb_core::frame::{FrameColumn, TableQualified};
-use reifydb_rql::expression::{AccessTableExpression, ColumnExpression, Expression};
+use reifydb_core::expression::{AccessTableExpression, ColumnExpression, Expression};
 
 impl Evaluator {
     pub(crate) fn access(

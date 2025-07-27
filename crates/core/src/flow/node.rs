@@ -1,3 +1,4 @@
+use crate::expression::Expression;
 use crate::interface::table::Table;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -11,12 +12,14 @@ impl fmt::Display for NodeId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum NodeType {
     Table { name: String, table: Table },
     Operator { operator: OperatorType },
     View { name: String, table: Table },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OperatorType {}
+#[derive(Debug, Clone)]
+pub enum OperatorType {
+    Filter { predicate: Expression },
+}

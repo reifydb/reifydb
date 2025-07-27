@@ -3,7 +3,7 @@
 
 use crate::ast;
 use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator};
-use crate::expression::{
+use reifydb_core::expression::{
     AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
     ColumnExpression, ConstantExpression, DataTypeExpression, DivExpression, EqualExpression,
     Expression, GreaterThanEqualExpression, GreaterThanExpression, IdentExpression,

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::{Ast, AstFrom};
-use crate::expression::{IdentExpression, KeyedExpression};
+use reifydb_core::expression::{IdentExpression, KeyedExpression};
 use crate::plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode};
 use reifydb_core::err;
 use reifydb_core::error::diagnostic::Diagnostic;
@@ -58,7 +58,7 @@ mod tests {
     use super::*;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
-    use crate::expression::{ConstantExpression, Expression};
+    use reifydb_core::expression::{ConstantExpression, Expression};
 
     #[test]
     fn test_compile_static_single_row() {

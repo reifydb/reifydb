@@ -7,7 +7,7 @@ use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeSub};
 use reifydb_core::{Type, BitVec, CowVec, GetType};
-use reifydb_rql::expression::SubExpression;
+use reifydb_core::expression::SubExpression;
 
 impl Evaluator {
     pub(crate) fn sub(
