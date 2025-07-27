@@ -1,9 +1,11 @@
 use super::change::Change;
 use super::flow::FlowGraph;
 use super::node::{NodeId, NodeType, OperatorType};
-use super::operators::{Operator, OperatorContext, FilterOperator, MapOperator};
+use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
 use super::state::StateStore;
-use crate::Result;
+use crate::delta::Delta::{Insert, Remove, Update, Upsert};
+use crate::row::{Layout, Row};
+use crate::{Result, Type};
 use std::collections::HashMap;
 
 pub struct FlowEngine {
@@ -22,11 +24,11 @@ impl FlowEngine {
             node_states: HashMap::new(),
         }
     }
-    
+
     pub fn initialize(&mut self) -> Result<()> {
         // Initialize operators and state for all nodes
         let node_ids: Vec<NodeId> = self.graph.get_all_nodes().collect();
-        
+
         for node_id in node_ids {
             if let Some(node) = self.graph.get_node(&node_id) {
                 match &node.node_type {
@@ -47,35 +49,34 @@ impl FlowEngine {
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     pub fn process_change(&mut self, node_id: &NodeId, change: Change) -> Result<()> {
         if let Some(node) = self.graph.get_node(node_id) {
             let output_change = match &node.node_type {
                 NodeType::Table { .. } => {
                     // Store in table state and pass through
                     if let Some(state) = self.node_states.get_mut(node_id) {
-                        self.apply_change_to_state(state, &change)?;
+                        Self::apply_change_to_state(state, &change)?;
                     }
                     change
                 }
                 NodeType::Operator { .. } => {
                     // Process through operator
-                    if let (Some(operator), Some(context)) = (
-                        self.operators.get_mut(node_id),
-                        self.contexts.get_mut(node_id)
-                    ) {
+                    if let (Some(operator), Some(context)) =
+                        (self.operators.get_mut(node_id), self.contexts.get_mut(node_id))
+                    {
                         operator.apply(change, context)?
                     } else {
-                        return Err(crate::Error::Runtime("Operator or context not found".to_string()));
+                        panic!("Operator or context not found");
                     }
                 }
                 NodeType::View { .. } => {
                     // Store in view state
                     if let Some(state) = self.node_states.get_mut(node_id) {
-                        self.apply_change_to_state(state, &change)?;
+                        Self::apply_change_to_state(state, &change)?;
                     }
                     change
                 }
@@ -90,7 +91,7 @@ impl FlowEngine {
 
         Ok(())
     }
-    
+
     fn create_operator(&self, operator_type: &OperatorType) -> Result<Box<dyn Operator>> {
         match operator_type {
             OperatorType::Filter { predicate } => {
@@ -100,26 +101,24 @@ impl FlowEngine {
                 Ok(Box::new(MapOperator::new(expressions.clone())))
             }
             _ => {
-                Err(crate::Error::Runtime(format!("Operator type {:?} not implemented yet", operator_type)))
+                panic!("Operator type {:?} not implemented yet", operator_type)
             }
         }
     }
-    
-    fn apply_change_to_state(&self, state: &mut StateStore, change: &Change) -> Result<()> {
+
+    fn apply_change_to_state(state: &mut StateStore, change: &Change) -> Result<()> {
         for delta in &change.deltas {
             match delta {
-                crate::delta::Delta::Insert { row, .. } => {
-                    state.insert(row.clone())?;
+                Insert { key, row, .. } => {
+                    state.insert(Row { layout: Layout::new(&[Type::Int1]), data: row.clone() })?;
                 }
-                crate::delta::Delta::Update { row, .. } => {
-                    // For updates, we'd need to find and update the existing row
-                    // This is simplified - in practice we'd use the key
-                    state.insert(row.clone())?;
+                Update { row, .. } => {
+                    todo!()
                 }
-                crate::delta::Delta::Upsert { row, .. } => {
-                    state.insert(row.clone())?;
+                Upsert { row, .. } => {
+                    todo!()
                 }
-                crate::delta::Delta::Remove { key } => {
+                Remove { key } => {
                     // Would need to implement removal by key in StateStore
                     // For now, skip
                 }
@@ -127,8 +126,8 @@ impl FlowEngine {
         }
         Ok(())
     }
-    
-    pub fn get_view_data(&self, view_name: &str) -> Result<Vec<&crate::row::EncodedRow>> {
+
+    pub fn get_view_data(&self, view_name: &str) -> Result<Vec<&Row>> {
         // Find view node and return its state
         for (node_id, _) in &self.node_states {
             if let Some(node) = self.graph.get_node(node_id) {
@@ -141,9 +140,9 @@ impl FlowEngine {
                 }
             }
         }
-        Err(crate::Error::Runtime(format!("View {} not found", view_name)))
+        panic!("View {} not found", view_name)
     }
-    
+
     pub fn get_graph(&self) -> &FlowGraph {
         &self.graph
     }

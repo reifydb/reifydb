@@ -1,7 +1,7 @@
 use super::base::{Operator, OperatorContext};
-use crate::flow::change::Change;
 use crate::delta::Delta;
 use crate::expression::Expression;
+use crate::flow::change::Change;
 
 pub struct FilterOperator {
     predicate: Expression,
@@ -14,9 +14,9 @@ impl FilterOperator {
 }
 
 impl Operator for FilterOperator {
-    fn apply(&mut self, change: Change, ctx: &mut OperatorContext) -> crate::Result<Change> {
+    fn apply(&mut self, change: Change, _ctx: &mut OperatorContext) -> crate::Result<Change> {
         let mut output_deltas = Vec::new();
-        
+
         for delta in change.deltas {
             match delta {
                 Delta::Insert { key, row } => {
@@ -49,13 +49,13 @@ impl Operator for FilterOperator {
                 }
             }
         }
-        
-        Ok(Change::new(output_deltas))
+
+        Ok(Change::new(output_deltas, change.version))
     }
 }
 
 impl FilterOperator {
-    fn evaluate_predicate(&self, row: &crate::row::EncodedRow) -> crate::Result<bool> {
+    fn evaluate_predicate(&self, _row: &crate::row::EncodedRow) -> crate::Result<bool> {
         // TODO: Integrate with purple's expression evaluation system
         // For now, return true as a placeholder
         // This should use purple's expression evaluation engine

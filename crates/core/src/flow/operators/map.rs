@@ -1,7 +1,7 @@
 use super::base::{Operator, OperatorContext};
-use crate::flow::change::Change;
 use crate::delta::Delta;
 use crate::expression::Expression;
+use crate::flow::change::Change;
 use crate::row::EncodedRow;
 
 pub struct MapOperator {
@@ -15,9 +15,9 @@ impl MapOperator {
 }
 
 impl Operator for MapOperator {
-    fn apply(&mut self, change: Change, ctx: &mut OperatorContext) -> crate::Result<Change> {
+    fn apply(&mut self, change: Change, _ctx: &mut OperatorContext) -> crate::Result<Change> {
         let mut output_deltas = Vec::new();
-        
+
         for delta in change.deltas {
             match delta {
                 Delta::Insert { key, row } => {
@@ -38,8 +38,8 @@ impl Operator for MapOperator {
                 }
             }
         }
-        
-        Ok(Change::new(output_deltas))
+
+        Ok(Change::new(output_deltas, change.version))
     }
 }
 

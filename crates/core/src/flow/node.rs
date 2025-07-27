@@ -1,6 +1,6 @@
-use crate::JoinType;
 use crate::expression::Expression;
 use crate::interface::Table;
+use crate::JoinType;
 use crate::SortKey;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -25,23 +25,11 @@ pub enum NodeType {
 pub enum OperatorType {
     Filter { predicate: Expression },
     Map { expressions: Vec<Expression> },
-    Join { 
-        join_type: JoinType,
-        left: Vec<Expression>,
-        right: Vec<Expression>,
-    },
-    Aggregate { 
-        by: Vec<Expression>, 
-        map: Vec<Expression>
-    },
+    Join { join_type: JoinType, left: Vec<Expression>, right: Vec<Expression> },
+    Aggregate { by: Vec<Expression>, map: Vec<Expression> },
     Union,
-    TopK { 
-        k: usize, 
-        sort: Vec<SortKey> 
-    },
-    Distinct { 
-        expressions: Option<Vec<Expression>> 
-    },
+    TopK { k: usize, sort: Vec<SortKey> },
+    Distinct { expressions: Option<Vec<Expression>> },
 }
 
 #[derive(Debug, Clone)]
