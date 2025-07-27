@@ -155,7 +155,7 @@ impl Compiler {
 
 #[derive(Debug, Clone)]
 pub enum PhysicalPlan {
-    CreateDeferredView(CreateDeferredViewPlan),
+    CreateComputedView(CreateComputedViewPlan),
     CreateSchema(CreateSchemaPlan),
     CreateTable(CreateTablePlan),
     // Mutate
@@ -177,7 +177,7 @@ pub enum PhysicalPlan {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateDeferredViewPlan {
+pub struct CreateComputedViewPlan {
     pub schema: OwnedSpan,
     pub view: OwnedSpan,
     pub if_not_exists: bool,

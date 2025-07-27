@@ -379,14 +379,14 @@ impl Index<usize> for AstInline {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstCreate {
-    DeferredView(AstCreateDeferredView),
+    ComputedView(AstCreateComputedView),
     Schema(AstCreateSchema),
     Series(AstCreateSeries),
     Table(AstCreateTable),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateDeferredView {
+pub struct AstCreateComputedView {
     pub token: Token,
     pub schema: AstIdentifier,
     pub view: AstIdentifier,
@@ -431,7 +431,7 @@ pub struct AstColumnToCreate {
 impl AstCreate {
     pub fn token(&self) -> &Token {
         match self {
-            AstCreate::DeferredView(AstCreateDeferredView { token, .. }) => token,
+            AstCreate::ComputedView(AstCreateComputedView { token, .. }) => token,
             AstCreate::Schema(AstCreateSchema { token, .. }) => token,
             AstCreate::Series(AstCreateSeries { token, .. }) => token,
             AstCreate::Table(AstCreateTable { token, .. }) => token,

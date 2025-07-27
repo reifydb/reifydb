@@ -30,7 +30,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
     let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
 
     match plan {
-        LogicalPlan::CreateDeferredView(_) => unimplemented!(),
+        LogicalPlan::CreateComputedView(_) => unimplemented!(),
         LogicalPlan::CreateSchema(_) => unimplemented!(),
         LogicalPlan::CreateSequence(_) => unimplemented!(),
         LogicalPlan::CreateTable(_) => unimplemented!(),

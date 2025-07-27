@@ -32,7 +32,7 @@ pub type Version = u64;
 
 #[derive(Copy, Clone, Debug)]
 pub enum StoreKind {
-    DeferredView,
+    ComputedView,
     Series,
     Table,
 }

@@ -48,7 +48,7 @@ fn render_physical_plan_inner(
     output: &mut String,
 ) {
     match plan {
-        PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
+        PhysicalPlan::CreateComputedView(_) => unimplemented!(),
         PhysicalPlan::CreateSchema(_) => unimplemented!(),
         PhysicalPlan::CreateTable(_) => unimplemented!(),
         PhysicalPlan::Delete(_) => unimplemented!(),

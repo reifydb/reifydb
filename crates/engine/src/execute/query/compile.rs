@@ -88,7 +88,7 @@ pub(crate) fn compile(
 
             Box::new(ScanFrameNode::new(table, context).unwrap())
         }
-        PhysicalPlan::CreateDeferredView(_)
+        PhysicalPlan::CreateComputedView(_)
         | PhysicalPlan::CreateSchema(_)
         | PhysicalPlan::CreateTable(_)
         | PhysicalPlan::Delete(_)

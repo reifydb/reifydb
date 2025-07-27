@@ -104,7 +104,7 @@ keyword! {
     Table  => "TABLE",
     Policy => "POLICY",
     View => "VIEW",
-    Deferred => "DEFERRED",
+    Computed => "COMPUTED",
     Transactional => "TRANSACTIONAL",
 }
 
@@ -200,7 +200,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Table, "TABLE"),
             keyword_tag(Keyword::Policy, "POLICY"),
             keyword_tag(Keyword::View, "VIEW"),
-            keyword_tag(Keyword::Deferred, "DEFERRED"),
+            keyword_tag(Keyword::Computed, "COMPUTED"),
             keyword_tag(Keyword::Transactional, "TRANSACTIONAL"),
             keyword_tag(Keyword::Cast, "CAST"),
         )),
@@ -319,7 +319,7 @@ mod tests {
         test_keyword_table => (Table, "TABLE"),
         test_keyword_policy => (Policy, "POLICY"),
         test_keyword_view => (View, "VIEW"),
-        test_keyword_deferred => (Deferred, "DEFERRED"),
+        test_keyword_computed => (Computed, "COMPUTED"),
         test_keyword_transactional => (Transactional, "TRANSACTIONAL"),
         test_keyword_cast => (Cast, "CAST"),
     }
