@@ -4,7 +4,7 @@
 use crate::ast;
 use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator};
 use crate::expression::{
-    AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
+    AccessTableExpression, AddExpression, AliasExpression, BetweenExpression, CallExpression, CastExpression,
     ColumnExpression, ConstantExpression, DataTypeExpression, DivExpression, EqualExpression,
     Expression, GreaterThanEqualExpression, GreaterThanExpression, IdentExpression,
     LessThanEqualExpression, LessThanExpression, MulExpression, NotEqualExpression,
@@ -36,6 +36,18 @@ impl Compiler {
                 Ok(Expression::Column(ColumnExpression(identifier.span())))
             }
             Ast::Infix(ast) => Self::compile_expression_infix(ast),
+            Ast::Between(between) => {
+                let value = Self::compile_expression(*between.value)?;
+                let lower = Self::compile_expression(*between.lower)?;
+                let upper = Self::compile_expression(*between.upper)?;
+                
+                Ok(Expression::Between(BetweenExpression {
+                    value: Box::new(value),
+                    lower: Box::new(lower),
+                    upper: Box::new(upper),
+                    span: between.token.span,
+                }))
+            }
             Ast::Tuple(tuple) => {
                 let mut expressions = Vec::with_capacity(tuple.len());
 

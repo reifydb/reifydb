@@ -76,6 +76,8 @@ pub enum Expression {
 
     NotEqual(NotEqualExpression),
 
+    Between(BetweenExpression),
+
     Type(DataTypeExpression),
 }
 
@@ -262,6 +264,20 @@ impl NotEqualExpression {
 }
 
 #[derive(Debug, Clone)]
+pub struct BetweenExpression {
+    pub value: Box<Expression>,
+    pub lower: Box<Expression>,
+    pub upper: Box<Expression>,
+    pub span: OwnedSpan,
+}
+
+impl BetweenExpression {
+    pub fn span(&self) -> OwnedSpan {
+        OwnedSpan::merge_all([self.value.span(), self.span.clone(), self.lower.span(), self.upper.span()])
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ColumnExpression(pub OwnedSpan);
 
 impl ColumnExpression {
@@ -320,6 +336,9 @@ impl Display for Expression {
             }
             Expression::NotEqual(NotEqualExpression { left, right, .. }) => {
                 write!(f, "({} != {})", left, right)
+            }
+            Expression::Between(BetweenExpression { value, lower, upper, .. }) => {
+                write!(f, "({} BETWEEN {} AND {})", value, lower, upper)
             }
             Expression::Type(DataTypeExpression { span, .. }) => write!(f, "{}", span.fragment),
         }

@@ -31,6 +31,7 @@ impl Expression {
             Expression::LessThanEqual(expr) => expr.span.clone(),
             Expression::Equal(expr) => expr.span.clone(),
             Expression::NotEqual(expr) => expr.span.clone(),
+            Expression::Between(expr) => expr.span(),
 
             Expression::Mul(expr) => expr.span(),
             Expression::Div(expr) => expr.span(),

@@ -119,7 +119,12 @@ impl Parser {
         let mut left = self.parse_primary()?;
 
         while !self.is_eof() && precedence < self.current_precedence()? {
-            left = Ast::Infix(self.parse_infix(left)?);
+            let current = self.current()?;
+            if let TokenKind::Keyword(Keyword::Between) = current.kind {
+                left = Ast::Between(self.parse_between(left)?);
+            } else {
+                left = Ast::Infix(self.parse_infix(left)?);
+            }
         }
         Ok(left)
     }
@@ -201,11 +206,13 @@ impl Parser {
         };
 
         let current = self.current()?;
-        if let TokenKind::Operator(operator) = current.kind {
-            let precedence = self.precedence_map.get(&operator).cloned();
-            Ok(precedence.unwrap_or(Precedence::None))
-        } else {
-            Ok(Precedence::None)
+        match current.kind {
+            TokenKind::Operator(operator) => {
+                let precedence = self.precedence_map.get(&operator).cloned();
+                Ok(precedence.unwrap_or(Precedence::None))
+            }
+            TokenKind::Keyword(Keyword::Between) => Ok(Precedence::Comparison),
+            _ => Ok(Precedence::None),
         }
     }
 
@@ -216,6 +223,20 @@ impl Parser {
     pub(crate) fn skip_new_line(&mut self) -> crate::Result<()> {
         self.consume_while(TokenKind::Separator(NewLine))?;
         Ok(())
+    }
+
+    pub(crate) fn parse_between(&mut self, value: Ast) -> crate::Result<crate::ast::AstBetween> {
+        let token = self.consume_keyword(Keyword::Between)?;
+        let lower = Box::new(self.parse_node(Precedence::Comparison)?);
+        self.consume_keyword(Keyword::And)?;
+        let upper = Box::new(self.parse_node(Precedence::Comparison)?);
+        
+        Ok(crate::ast::AstBetween {
+            token,
+            value: Box::new(value),
+            lower,
+            upper,
+        })
     }
 }
 
@@ -386,5 +407,25 @@ mod tests {
         let parser = Parser::new(tokens);
         let result = parser.current_precedence();
         assert_eq!(result, Ok(Term))
+    }
+
+    #[test]
+    fn test_between_precedence() {
+        let tokens = lex("BETWEEN").unwrap();
+        let parser = Parser::new(tokens);
+        let result = parser.current_precedence();
+        assert_eq!(result, Ok(Precedence::Comparison))
+    }
+
+    #[test]
+    fn test_parse_between_expression() {
+        let tokens = lex("x BETWEEN 1 AND 10").unwrap();
+        let result = crate::ast::parse::parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let between = result[0].first_unchecked().as_between();
+        assert_eq!(between.value.as_identifier().name(), "x");
+        assert_eq!(between.lower.as_literal_number().value(), "1");
+        assert_eq!(between.upper.as_literal_number().value(), "10");
     }
 }
