@@ -35,3 +35,15 @@ pub enum StoreKind {
     Series,
     Table,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum JoinType {
+    Inner,
+    Left,
+}
+
+impl Default for JoinType {
+    fn default() -> Self {
+        JoinType::Left
+    }
+}

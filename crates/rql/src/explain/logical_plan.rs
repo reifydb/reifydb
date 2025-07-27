@@ -3,9 +3,10 @@
 
 use crate::ast::parse;
 use crate::plan::logical::{
-    AggregateNode, FilterNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, TakeNode, LogicalPlan,
-    NaturalJoinType, OrderNode, MapNode, TableScanNode, compile_logical,
+    AggregateNode, FilterNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
+    LogicalPlan, MapNode, OrderNode, TableScanNode, TakeNode, compile_logical,
 };
+use reifydb_core::JoinType;
 
 pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
     let statements = parse(query).unwrap(); // FIXME
@@ -111,10 +112,13 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
         }
         LogicalPlan::JoinNatural(JoinNaturalNode { with, join_type }) => {
             let join_type_str = match join_type {
-                NaturalJoinType::Inner => "Inner",
-                NaturalJoinType::Left => "Left",
+                JoinType::Inner => "Inner",
+                JoinType::Left => "Left",
             };
-            output.push_str(&format!("{}{}Join(Natural {}) [using common columns]\n", prefix, branch, join_type_str));
+            output.push_str(&format!(
+                "{}{}Join(Natural {}) [using common columns]\n",
+                prefix, branch, join_type_str
+            ));
 
             for (i, plan) in with.iter().enumerate() {
                 let last = i == with.len() - 1;

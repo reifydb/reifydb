@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use reifydb_core::OwnedSpan;
+use reifydb_core::{JoinType, OwnedSpan};
 use std::ops::{Deref, Index};
 
 #[derive(Debug)]
@@ -590,23 +590,12 @@ pub struct AstUpdate {
     pub table: AstIdentifier,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum AstJoinType {
-    Inner,
-    Left,
-}
-
-impl Default for AstJoinType {
-    fn default() -> Self {
-        AstJoinType::Left
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstJoin {
     InnerJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },
     LeftJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },
-    NaturalJoin { token: Token, with: Box<Ast>, join_type: Option<AstJoinType> },
+    NaturalJoin { token: Token, with: Box<Ast>, join_type: Option<JoinType> },
 }
 
 #[derive(Debug, Clone, PartialEq)]

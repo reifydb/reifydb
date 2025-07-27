@@ -2,18 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::parse;
-use crate::plan::logical::{compile_logical, NaturalJoinType};
+use crate::plan::logical::compile_logical;
 use crate::plan::physical;
 use crate::plan::physical::{PhysicalPlan, compile_physical};
+use reifydb_core::JoinType;
 use reifydb_core::interface::Rx;
 use std::fmt::Write;
 
 pub fn explain_physical_plan(rx: &mut impl Rx, query: &str) -> crate::Result<String> {
-    let statements = parse(query).unwrap(); // FIXME
+    let statements = parse(query)?;
 
     let mut plans = Vec::new();
     for statement in statements {
-        let logical = compile_logical(statement).unwrap(); // FIXME
+        let logical = compile_logical(statement)?;
         plans.extend(compile_physical(rx, logical))
     }
 
@@ -135,8 +136,8 @@ fn render_physical_plan_inner(
 
         PhysicalPlan::JoinNatural(physical::JoinNaturalNode { left, right, join_type }) => {
             let join_type_str = match join_type {
-                NaturalJoinType::Inner => "Inner",
-                NaturalJoinType::Left => "Left",
+                JoinType::Inner => "Inner",
+                JoinType::Left => "Left",
             };
             let label = format!("Join(Natural {}) [using common columns]", join_type_str);
             write_node_header(output, prefix, is_last, &label);
