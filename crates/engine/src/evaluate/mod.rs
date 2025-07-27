@@ -18,6 +18,7 @@ pub(crate) mod constant;
 mod context;
 mod logic;
 mod prefix;
+mod tuple;
 
 pub(crate) struct Evaluator {
     functions: Functions,
@@ -57,6 +58,7 @@ impl Evaluator {
             Expression::Mul(expr) => self.mul(expr, ctx),
             Expression::Prefix(expr) => self.prefix(expr, ctx),
             Expression::Sub(expr) => self.sub(expr, ctx),
+            Expression::Tuple(expr) => self.tuple(expr, ctx),
             expr => unimplemented!("{expr:?}"),
         }
     }
