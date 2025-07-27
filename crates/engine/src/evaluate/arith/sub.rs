@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{Evaluator, EvaluationContext};
-use reifydb_core::frame::{FrameColumn, ColumnValues, Push};
+use reifydb_core::frame::{FrameColumn, ColumnValues, ColumnQualified, Push};
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeSub};
@@ -521,5 +521,8 @@ where
         }
     }
 
-    Ok(crate::create_frame_column(span.fragment, data))
+    Ok(FrameColumn::ColumnQualified(ColumnQualified {
+        name: span.fragment.into(),
+        values: data
+    }))
 }
