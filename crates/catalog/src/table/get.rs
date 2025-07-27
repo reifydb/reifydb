@@ -4,8 +4,7 @@
 use crate::Catalog;
 use crate::schema::SchemaId;
 use crate::table::layout::{table, table_schema};
-use reifydb_core::interface::table::Table;
-use reifydb_core::interface::{EncodableKey, SchemaTableKey, TableId, TableKey};
+use reifydb_core::interface::{EncodableKey, SchemaTableKey, Table, TableId, TableKey};
 use reifydb_core::interface::{Rx, Versioned};
 
 impl Catalog {

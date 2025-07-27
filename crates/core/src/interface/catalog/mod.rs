@@ -4,8 +4,9 @@
 pub use column::*;
 pub use id::*;
 pub use policy::*;
+pub use table::*;
 
 mod column;
 mod id;
 mod policy;
-pub mod table;
+mod table;

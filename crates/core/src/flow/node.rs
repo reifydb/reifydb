@@ -1,5 +1,7 @@
+use crate::JoinType;
 use crate::expression::Expression;
-use crate::interface::table::Table;
+use crate::interface::Table;
+use crate::SortKey;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -22,4 +24,30 @@ pub enum NodeType {
 #[derive(Debug, Clone)]
 pub enum OperatorType {
     Filter { predicate: Expression },
+    Map { expressions: Vec<Expression> },
+    Join { 
+        join_type: JoinType,
+        left: Vec<Expression>,
+        right: Vec<Expression>,
+    },
+    Aggregate { 
+        by: Vec<Expression>, 
+        map: Vec<Expression>
+    },
+    Union,
+    TopK { 
+        k: usize, 
+        sort: Vec<SortKey> 
+    },
+    Distinct { 
+        expressions: Option<Vec<Expression>> 
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub id: NodeId,
+    pub node_type: NodeType,
+    pub inputs: Vec<NodeId>,
+    pub outputs: Vec<NodeId>,
 }

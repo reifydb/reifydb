@@ -7,8 +7,7 @@ use reifydb_core::Type;
 use reifydb_core::frame::{
     ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout, TableQualified,
 };
-use reifydb_core::interface::table::Table;
-use reifydb_core::interface::{EncodableKey, TableRowKey};
+use reifydb_core::interface::{EncodableKey, Table, TableRowKey};
 use reifydb_core::interface::{EncodableKeyRange, Rx, TableRowKeyRange};
 use reifydb_core::row::Layout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;

@@ -8,8 +8,7 @@ use crate::schema::SchemaId;
 use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_already_exists};
-use reifydb_core::interface::table::Table;
-use reifydb_core::interface::{EncodableKey, Key, SchemaTableKey, TableId, TableKey};
+use reifydb_core::interface::{EncodableKey, Key, SchemaTableKey, Table, TableId, TableKey};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{OwnedSpan, Type, return_error};
 
