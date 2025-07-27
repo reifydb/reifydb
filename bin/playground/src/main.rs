@@ -22,12 +22,7 @@ fn main() {
     for frame in db
         .tx_as_root(
             r#"
-map {
-  cast(1.0, float8) + cast(1.0, float8),
-  cast(1.0, float8) + cast(-1.0, float8),
-  cast(-1.0, float8) + cast(-1.0, float8),
-  cast(1.1, float8) + cast(1.1, float8),
-}
+   map { not cast('550e8400-e29b-41d4-a716-446655440000', uuid4)}
         "#,
         )
         .unwrap()

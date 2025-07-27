@@ -7,7 +7,7 @@ use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeMul};
 use reifydb_core::{Type, BitVec, CowVec, GetType};
-use reifydb_rql::expression::MulExpression;
+use reifydb_core::expression::MulExpression;
 
 impl Evaluator {
     pub(crate) fn mul(

@@ -3,7 +3,7 @@
 
 use crate::evaluate::{Evaluator, EvaluationContext};
 use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
-use reifydb_rql::expression::{BetweenExpression, GreaterThanEqualExpression, LessThanEqualExpression};
+use reifydb_core::expression::{BetweenExpression, GreaterThanEqualExpression, LessThanEqualExpression};
 
 impl Evaluator {
     pub(crate) fn between(

@@ -7,7 +7,7 @@ use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeDiv};
 use reifydb_core::{Type, BitVec, CowVec, GetType};
-use reifydb_rql::expression::{ DivExpression};
+use reifydb_core::expression::{ DivExpression};
 
 impl Evaluator {
     pub(crate) fn div(

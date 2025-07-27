@@ -26,7 +26,7 @@ impl Parser {
         let current = self.current()?;
         match &current.kind {
             TokenKind::Operator(operator) => match operator {
-                Operator::Plus | Operator::Minus | Operator::Bang => self.parse_prefix(),
+                Operator::Plus | Operator::Minus | Operator::Bang | Operator::Not => self.parse_prefix(),
                 Operator::Asterisk => Ok(Ast::Wildcard(AstWildcard(self.advance()?))),
                 Operator::OpenBracket => Ok(Ast::List(self.parse_list()?)),
                 Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),

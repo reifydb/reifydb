@@ -1,6 +1,6 @@
 use crate::expression::Expression;
-use reifydb_core::frame::{FrameColumnLayout, FrameLayout};
-use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
+use crate::frame::{FrameColumnLayout, FrameLayout};
+use crate::value::row_id::ROW_ID_COLUMN_NAME;
 
 impl Expression {
     pub fn derive_frame_column_layout(
@@ -120,6 +120,15 @@ impl Expression {
             }
             Expression::Between(expr) => {
                 format!("{} BETWEEN {} AND {}", expr.value.simplified_name(), expr.lower.simplified_name(), expr.upper.simplified_name())
+            }
+            Expression::And(expr) => {
+                format!("{}and{}", expr.left.simplified_name(), expr.right.simplified_name())
+            }
+            Expression::Or(expr) => {
+                format!("{}or{}", expr.left.simplified_name(), expr.right.simplified_name())
+            }
+            Expression::Xor(expr) => {
+                format!("{}xor{}", expr.left.simplified_name(), expr.right.simplified_name())
             }
             Expression::Type(type_expr) => type_expr.span.fragment.clone(),
         }

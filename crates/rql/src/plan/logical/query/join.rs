@@ -1,9 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{Ast, AstInfix, AstJoin, AstJoinType, InfixOperator};
+use crate::ast::{Ast, AstInfix, AstJoin, InfixOperator};
 use crate::plan::logical::LogicalPlan::TableScan;
-use crate::plan::logical::{Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, NaturalJoinType, TableScanNode};
+use crate::plan::logical::{
+    Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, TableScanNode,
+};
+use reifydb_core::JoinType;
 
 impl Compiler {
     pub(crate) fn compile_join(ast: AstJoin) -> crate::Result<LogicalPlan> {
@@ -72,16 +75,10 @@ impl Compiler {
                     }
                     _ => unimplemented!(),
                 };
-                
-                let join_type = match join_type {
-                    Some(AstJoinType::Left) => NaturalJoinType::Left,
-                    Some(AstJoinType::Inner) => NaturalJoinType::Inner,
-                    None => NaturalJoinType::Inner,
-                };
-                
+
                 Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
                     with,
-                    join_type,
+                    join_type: join_type.unwrap_or(JoinType::Inner),
                 }))
             }
         }

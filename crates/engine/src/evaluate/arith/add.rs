@@ -7,7 +7,7 @@ use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{Promote, SafeAdd};
 use reifydb_core::{BitVec, CowVec, GetType, Type};
-use reifydb_rql::expression::AddExpression;
+use reifydb_core::expression::AddExpression;
 
 impl Evaluator {
     pub(crate) fn add(

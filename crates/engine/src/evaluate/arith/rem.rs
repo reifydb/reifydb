@@ -7,7 +7,7 @@ use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeRemainder};
 use reifydb_core::{Type, BitVec, CowVec, GetType};
-use reifydb_rql::expression::RemExpression;
+use reifydb_core::expression::RemExpression;
 
 impl Evaluator {
     pub(crate) fn rem(

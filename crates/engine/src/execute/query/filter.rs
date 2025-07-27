@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::frame::{ColumnValues, FrameLayout};
 use reifydb_core::interface::Rx;
-use reifydb_rql::expression::Expression;
+use reifydb_core::expression::Expression;
 
 pub(crate) struct FilterNode {
     input: Box<dyn ExecutionPlan>,

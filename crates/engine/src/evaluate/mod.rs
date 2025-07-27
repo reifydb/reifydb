@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::frame::{ColumnQualified, FrameColumn, TableQualified};
-use reifydb_rql::expression::Expression;
+use reifydb_core::expression::Expression;
 
 use crate::function::{Functions, math};
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
@@ -16,7 +16,9 @@ mod column;
 mod compare;
 pub(crate) mod constant;
 mod context;
+mod logic;
 mod prefix;
+mod tuple;
 
 pub(crate) struct Evaluator {
     functions: Functions,
@@ -50,10 +52,14 @@ impl Evaluator {
             Expression::Equal(expr) => self.equal(expr, ctx),
             Expression::NotEqual(expr) => self.not_equal(expr, ctx),
             Expression::Between(expr) => self.between(expr, ctx),
+            Expression::And(expr) => self.and(expr, ctx),
+            Expression::Or(expr) => self.or(expr, ctx),
+            Expression::Xor(expr) => self.xor(expr, ctx),
             Expression::Rem(expr) => self.rem(expr, ctx),
             Expression::Mul(expr) => self.mul(expr, ctx),
             Expression::Prefix(expr) => self.prefix(expr, ctx),
             Expression::Sub(expr) => self.sub(expr, ctx),
+            Expression::Tuple(expr) => self.tuple(expr, ctx),
             expr => unimplemented!("{expr:?}"),
         }
     }

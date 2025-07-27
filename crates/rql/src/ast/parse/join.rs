@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::ast::AstJoin;
 use crate::ast::lex::Keyword::{Inner, Join, Left, Natural, On, With};
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{AstJoin, AstJoinType};
 use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
-use reifydb_core::return_error;
+use reifydb_core::{JoinType, return_error};
 
 impl Parser {
     pub(crate) fn parse_join(&mut self) -> crate::Result<AstJoin> {
@@ -70,10 +70,10 @@ impl Parser {
         // Check for join type (LEFT, INNER, etc.)
         let join_type = if self.current()?.is_keyword(Left) {
             self.advance()?;
-            Some(AstJoinType::Left)
+            Some(JoinType::Left)
         } else if self.current()?.is_keyword(Inner) {
             self.advance()?;
-            Some(AstJoinType::Inner)
+            Some(JoinType::Inner)
         } else {
             None // Will use default (which is Inner based on the system reminder)
         };
@@ -211,7 +211,8 @@ impl Parser {
 mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
-    use crate::ast::{AstJoin, AstJoinType, InfixOperator};
+    use crate::ast::{AstJoin, InfixOperator};
+    use reifydb_core::JoinType;
 
     #[test]
     fn test_left_join() {
@@ -399,7 +400,7 @@ mod tests {
         match &join {
             AstJoin::NaturalJoin { with, join_type, .. } => {
                 assert_eq!(with.as_identifier().value(), "orders");
-                assert_eq!(join_type, &Some(AstJoinType::Left));
+                assert_eq!(join_type, &Some(JoinType::Left));
             }
             _ => panic!("Expected NaturalJoin"),
         }
@@ -418,7 +419,7 @@ mod tests {
         match &join {
             AstJoin::NaturalJoin { with, join_type, .. } => {
                 assert_eq!(with.as_identifier().value(), "orders");
-                assert_eq!(join_type, &Some(AstJoinType::Inner));
+                assert_eq!(join_type, &Some(JoinType::Inner));
             }
             _ => panic!("Expected NaturalJoin"),
         }

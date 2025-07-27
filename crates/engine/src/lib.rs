@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-
 #![cfg_attr(not(debug_assertions), deny(warnings))]
-
 
 pub use reifydb_core::Result;
 
@@ -14,9 +12,6 @@ mod engine;
 mod evaluate;
 pub(crate) mod execute;
 
-
 #[allow(dead_code)]
 mod function;
 mod system;
-#[allow(dead_code)]
-pub(crate) mod view;

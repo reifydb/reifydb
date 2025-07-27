@@ -11,5 +11,4 @@ pub use explain::*;
 
 pub mod ast;
 mod explain;
-pub mod expression;
 pub mod plan;

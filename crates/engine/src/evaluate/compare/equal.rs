@@ -6,7 +6,7 @@ use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
 use reifydb_core::value::number::Promote;
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::{BitVec, CowVec, OwnedSpan, value};
-use reifydb_rql::expression::EqualExpression;
+use reifydb_core::expression::EqualExpression;
 use value::number;
 
 impl Evaluator {

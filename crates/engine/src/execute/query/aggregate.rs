@@ -7,7 +7,7 @@ use reifydb_core::OwnedSpan;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
-use reifydb_rql::expression::Expression;
+use reifydb_core::expression::Expression;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
