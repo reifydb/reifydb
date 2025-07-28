@@ -2,11 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::AstCreateTable;
-use crate::plan::logical::{
-    Compiler, CreateTableNode, LogicalPlan, convert_data_type, convert_policy,
-};
-use reifydb_core::interface::ColumnPolicyKind;
+use crate::convert_data_type;
+use crate::plan::logical::{Compiler, CreateTableNode, LogicalPlan, convert_policy};
 use reifydb_catalog::table::ColumnToCreate;
+use reifydb_core::interface::ColumnPolicyKind;
 
 impl Compiler {
     pub(crate) fn compile_create_table(ast: AstCreateTable) -> crate::Result<LogicalPlan> {

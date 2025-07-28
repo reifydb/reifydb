@@ -3,12 +3,10 @@
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::EncodedKeyRange;
-use reifydb_core::Type;
 use reifydb_core::frame::{
     ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout, TableQualified,
 };
-use reifydb_core::interface::table::Table;
-use reifydb_core::interface::{EncodableKey, TableRowKey};
+use reifydb_core::interface::{EncodableKey, Table, TableRowKey};
 use reifydb_core::interface::{EncodableKeyRange, Rx, TableRowKeyRange};
 use reifydb_core::row::Layout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
@@ -87,7 +85,7 @@ impl ExecutionPlan for ScanFrameNode {
 
         self.last_key = new_last_key;
 
-        let mut frame = create_empty_frame(&self.table);
+        let mut frame = Frame::empty_from_table(&self.table);
         frame.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
         // Add the RowId column to the frame if requested
@@ -108,45 +106,4 @@ impl ExecutionPlan for ScanFrameNode {
     fn layout(&self) -> Option<FrameLayout> {
         Some(self.layout.clone())
     }
-}
-
-fn create_empty_frame(table: &Table) -> Frame {
-    let columns: Vec<FrameColumn> = table
-        .columns
-        .iter()
-        .map(|col| {
-            let name = col.name.clone();
-            let data = match col.ty {
-                Type::Bool => ColumnValues::bool(vec![]),
-                Type::Float4 => ColumnValues::float4(vec![]),
-                Type::Float8 => ColumnValues::float8(vec![]),
-                Type::Int1 => ColumnValues::int1(vec![]),
-                Type::Int2 => ColumnValues::int2(vec![]),
-                Type::Int4 => ColumnValues::int4(vec![]),
-                Type::Int8 => ColumnValues::int8(vec![]),
-                Type::Int16 => ColumnValues::int16(vec![]),
-                Type::Utf8 => ColumnValues::utf8(vec![]),
-                Type::Uint1 => ColumnValues::uint1(vec![]),
-                Type::Uint2 => ColumnValues::uint2(vec![]),
-                Type::Uint4 => ColumnValues::uint4(vec![]),
-                Type::Uint8 => ColumnValues::uint8(vec![]),
-                Type::Uint16 => ColumnValues::uint16(vec![]),
-                Type::Date => ColumnValues::date(vec![]),
-                Type::DateTime => ColumnValues::datetime(vec![]),
-                Type::Time => ColumnValues::time(vec![]),
-                Type::Interval => ColumnValues::interval(vec![]),
-                Type::RowId => ColumnValues::row_id(vec![]),
-                Type::Uuid4 => ColumnValues::uuid4(vec![]),
-                Type::Uuid7 => ColumnValues::uuid7(vec![]),
-                Type::Undefined => ColumnValues::Undefined(0),
-            };
-            FrameColumn::TableQualified(TableQualified {
-                table: table.name.clone(),
-                name,
-                values: data,
-            })
-        })
-        .collect();
-
-    Frame::new_with_name(columns, table.name.clone())
 }

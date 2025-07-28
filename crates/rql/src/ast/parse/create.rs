@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::Keyword::{Computed, Series, Table, View};
+use crate::ast::lex::Keyword::{Computed, Series, Table, View, With};
 use crate::ast::lex::Operator::CloseParen;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, Operator, Token, TokenKind};
@@ -57,8 +57,34 @@ impl Parser {
         self.consume_operator(Operator::Dot)?;
         let name = self.parse_identifier()?;
         let columns = self.parse_columns()?;
+        
+        // Parse optional WITH clause
+        let with = if self.consume_if(TokenKind::Keyword(With))?.is_some() {
+            // Expect opening curly brace
+            self.consume_operator(Operator::OpenCurly)?;
+            
+            // Parse the query nodes inside the WITH clause
+            let mut query_nodes = Vec::new();
+            
+            // Parse statements until we hit the closing brace
+            loop {
+                if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+                    break;
+                }
+                
+                let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+                query_nodes.push(node);
+            }
+            
+            // Expect closing curly brace
+            self.consume_operator(Operator::CloseCurly)?;
+            
+            Some(crate::ast::AstStatement(query_nodes))
+        } else {
+            None
+        };
 
-        Ok(AstCreate::ComputedView(AstCreateComputedView { token, view: name, schema, columns }))
+        Ok(AstCreate::ComputedView(AstCreateComputedView { token, view: name, schema, columns, with }))
     }
 
     fn parse_table(&mut self, token: Token) -> crate::Result<AstCreate> {

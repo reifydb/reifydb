@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_rql::{explain_ast, explain_lex, explain_logical_plan, explain_physical_plan};
+use reifydb_rql::explain::{explain_ast, explain_lex, explain_logical_plan, explain_physical_plan};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use reifydb_transaction::test_utils::TestTransaction;
@@ -55,7 +55,7 @@ impl testscript::Runner for Runner {
                 let query = args.next_pos().ok_or("args not given")?.value.as_str();
                 args.reject_rest()?;
 
-                let mut dummy_tx = TestTransaction::new(); // FIXME needs access to catalog
+                let mut dummy_tx = TestTransaction::new();
                 let result = explain_physical_plan(&mut dummy_tx, query).unwrap();
                 writeln!(output, "{}", result).unwrap();
             }

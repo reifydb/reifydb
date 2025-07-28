@@ -2,7 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::Error;
-use reifydb::rql::{explain_ast, explain_lex, explain_logical_plan, explain_physical_plan};
+use reifydb::rql::explain::{
+    explain_ast, explain_lex, explain_logical_plan, explain_physical_plan,
+};
 use reifydb::transaction::test_utils::TestTransaction;
 
 pub fn lex(query: &str) -> Result<(), Error> {

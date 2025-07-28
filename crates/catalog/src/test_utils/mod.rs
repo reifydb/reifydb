@@ -8,8 +8,7 @@ use crate::schema::{Schema, SchemaId};
 use crate::table::TableToCreate;
 use crate::{Catalog, table};
 use reifydb_core::Type;
-use reifydb_core::interface::{TableId, Tx};
-use reifydb_core::interface::table::Table;
+use reifydb_core::interface::{Table, TableId, Tx};
 use reifydb_storage::memory::Memory;
 
 pub fn create_schema(tx: &mut impl Tx<Memory, Memory>, schema: &str) -> Schema {

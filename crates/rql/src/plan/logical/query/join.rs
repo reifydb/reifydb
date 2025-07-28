@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::{Ast, AstInfix, AstJoin, InfixOperator};
+use crate::expression::ExpressionCompiler;
 use crate::plan::logical::LogicalPlan::TableScan;
 use crate::plan::logical::{
     Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, TableScanNode,
@@ -31,7 +32,7 @@ impl Compiler {
                     with,
                     on: on
                         .into_iter()
-                        .map(Self::compile_expression)
+                        .map(ExpressionCompiler::compile)
                         .collect::<crate::Result<Vec<_>>>()?,
                 }))
             }
@@ -55,7 +56,7 @@ impl Compiler {
                     with,
                     on: on
                         .into_iter()
-                        .map(Self::compile_expression)
+                        .map(ExpressionCompiler::compile)
                         .collect::<crate::Result<Vec<_>>>()?,
                 }))
             }

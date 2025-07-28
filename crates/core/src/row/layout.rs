@@ -3,6 +3,35 @@
 
 use crate::row::EncodedRow;
 use crate::{CowVec, Type};
+use std::ops::Deref;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct Layout(Arc<LayoutInner>);
+
+impl Deref for Layout {
+    type Target = LayoutInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Layout {
+    pub fn new(kinds: &[Type]) -> Self {
+        Self(Arc::new(LayoutInner::new(kinds)))
+    }
+}
+
+#[derive(Debug)]
+pub struct LayoutInner {
+    pub fields: Vec<Field>,
+    /// size of data in bytes
+    pub static_section_size: usize,
+    /// size of bitvec part in bytes
+    pub bitvec_size: usize,
+    pub alignment: usize,
+}
 
 #[derive(Debug)]
 pub struct Field {
@@ -12,18 +41,8 @@ pub struct Field {
     pub value: Type,
 }
 
-#[derive(Debug)]
-pub struct Layout {
-    pub fields: Vec<Field>,
-    /// size of data in bytes
-    pub static_section_size: usize,
-    /// size of bitvec part in bytes
-    pub bitvec_size: usize,
-    pub alignment: usize,
-}
-
-impl Layout {
-    pub fn new(kinds: &[Type]) -> Self {
+impl LayoutInner {
+    fn new(kinds: &[Type]) -> Self {
         assert!(!kinds.is_empty());
 
         let num_fields = kinds.len();
@@ -45,7 +64,7 @@ impl Layout {
         }
 
         let size = align_up(offset, max_align);
-        Layout {
+        LayoutInner {
             fields,
             static_section_size: size,
             alignment: max_align,

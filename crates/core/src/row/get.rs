@@ -175,7 +175,8 @@ impl Layout {
         debug_assert!(field.value == Type::Uuid4 || field.value == Type::Uuid7);
         unsafe {
             // UUIDs are 16 bytes
-            let bytes: [u8; 16] = std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
+            let bytes: [u8; 16] =
+                std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
             Uuid::from_bytes(bytes)
         }
     }
@@ -186,7 +187,8 @@ impl Layout {
         debug_assert_eq!(field.value, Type::Uuid4);
         unsafe {
             // UUIDs are 16 bytes
-            let bytes: [u8; 16] = std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
+            let bytes: [u8; 16] =
+                std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
             Uuid4::from(Uuid::from_bytes(bytes))
         }
     }
@@ -197,7 +199,8 @@ impl Layout {
         debug_assert_eq!(field.value, Type::Uuid7);
         unsafe {
             // UUIDs are 16 bytes
-            let bytes: [u8; 16] = std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
+            let bytes: [u8; 16] =
+                std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
             Uuid7::from(Uuid::from_bytes(bytes))
         }
     }
@@ -337,13 +340,7 @@ mod tests {
 
     #[test]
     fn test_multiple_utf8_different_sizes() {
-        let layout = Layout::new(&[
-            Type::Utf8,
-            Type::Int2,
-            Type::Utf8,
-            Type::Bool,
-            Type::Utf8,
-        ]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Bool, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "");
@@ -529,7 +526,7 @@ mod tests {
         let uuid = Uuid4::generate();
         layout.set_uuid4(&mut row, 0, uuid.clone());
         assert_eq!(layout.get_uuid4(&row, 0), uuid);
-        
+
         // Test that generic get_uuid also works
         let generic_uuid: uuid::Uuid = uuid.into();
         assert_eq!(layout.get_uuid(&row, 0), generic_uuid);
@@ -543,7 +540,7 @@ mod tests {
         let uuid = Uuid7::generate();
         layout.set_uuid7(&mut row, 0, uuid.clone());
         assert_eq!(layout.get_uuid7(&row, 0), uuid);
-        
+
         // Test that generic get_uuid also works
         let generic_uuid: uuid::Uuid = uuid.into();
         assert_eq!(layout.get_uuid(&row, 0), generic_uuid);

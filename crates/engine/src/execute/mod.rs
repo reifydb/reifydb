@@ -7,8 +7,7 @@ use reifydb_core::BitVec;
 use reifydb_core::frame::{
     ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
 };
-use reifydb_core::interface::table::Table;
-use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{Rx, Table, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
 use std::sync::Arc;

@@ -18,7 +18,7 @@ pub(crate) fn coerce_value_to_column_type(
     target: Type,
     column: ColumnDescriptor,
 ) -> crate::Result<Value> {
-    if value.ty() == target {
+    if value.get_type() == target {
         return Ok(value);
     }
 

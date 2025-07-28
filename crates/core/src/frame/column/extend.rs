@@ -113,7 +113,10 @@ impl ColumnValues {
                 l.extend(r);
                 lb.extend(&rb);
             }
-
+            (ColumnValues::RowId(l, lb), ColumnValues::RowId(r, rb)) => {
+                l.extend(r);
+                lb.extend(&rb);
+            }
             (ColumnValues::Undefined(l_len), ColumnValues::Undefined(r_len)) => {
                 *l_len += r_len;
             }

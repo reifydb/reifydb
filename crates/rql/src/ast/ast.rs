@@ -5,7 +5,7 @@ use crate::ast::lex::{Literal, Token, TokenKind};
 use reifydb_core::{JoinType, OwnedSpan};
 use std::ops::{Deref, Index};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstStatement(pub Vec<Ast>);
 
 impl AstStatement {
@@ -400,7 +400,7 @@ pub struct AstCreateComputedView {
     pub schema: AstIdentifier,
     pub view: AstIdentifier,
     pub columns: Vec<AstColumnToCreate>,
-    // FIXME query
+    pub with: Option<AstStatement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

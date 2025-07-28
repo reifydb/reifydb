@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
+use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
+use reifydb_core::value::number::Promote;
+use reifydb_core::value::{IsNumber, IsTemporal, temporal};
+use reifydb_core::{BitVec, CowVec, OwnedSpan, value, return_error};
 use reifydb_core::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;
 use reifydb_core::expression::EqualExpression;
-use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn};
-use reifydb_core::value::number::Promote;
-use reifydb_core::value::{temporal, IsNumber, IsTemporal};
-use reifydb_core::{return_error, value, BitVec, CowVec, OwnedSpan};
 use value::number;
 
 impl Evaluator {
