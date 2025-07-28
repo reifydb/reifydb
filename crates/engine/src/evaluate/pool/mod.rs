@@ -44,19 +44,17 @@ pub trait BufferPool<T>: Send + Sync {
 pub struct PooledBuffer<T> {
     data: Vec<T>,
     pool: Option<Arc<dyn BufferPool<T>>>,
-    original_capacity: usize,
 }
 
 impl<T> PooledBuffer<T> {
     /// Create a new pooled buffer with the given data and pool reference.
     pub(crate) fn new(data: Vec<T>, pool: Arc<dyn BufferPool<T>>) -> Self {
-        let original_capacity = data.capacity();
-        Self { data, pool: Some(pool), original_capacity }
+        Self { data, pool: Some(pool) }
     }
 
     /// Create a non-pooled buffer for cases where pooling is not available.
     pub fn unpooled(data: Vec<T>) -> Self {
-        Self { original_capacity: data.capacity(), pool: None, data }
+        Self { pool: None, data }
     }
 
     /// Get a reference to the underlying data as a slice.

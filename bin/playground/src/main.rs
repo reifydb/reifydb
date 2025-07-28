@@ -26,8 +26,7 @@ map{
       cast(1, int1) + cast(1, int1),
       cast(1, int1) + cast(-1, int1),
       cast(-1, int1) + cast(-1, int1),
-      cast(127, int1) + cast(1, int1),
-      cast(cast(-128, int1) + cast(-1, int1), int1)
+      cast(127, int1) + cast(1, int1)
 }
         "#,
         )

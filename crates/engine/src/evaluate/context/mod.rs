@@ -10,12 +10,12 @@ mod convert;
 mod demote;
 mod promote;
 
+use crate::evaluate::pool::BufferPoolManager;
 use reifydb_core::frame::FrameColumn;
 use reifydb_core::{
     BitVec, ColumnDescriptor,
     interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 };
-use crate::evaluate::pool::BufferPoolManager;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -40,27 +40,6 @@ impl<'a> EvaluationContext<'a> {
             row_count: 1,
             take: None,
             buffer_pool: Arc::new(BufferPoolManager::default()),
-        }
-    }
-    
-    /// Create a new evaluation context with buffer pooling support.
-    pub fn new(
-        target_column: Option<ColumnDescriptor<'a>>,
-        column_policies: Vec<ColumnPolicyKind>,
-        mask: BitVec,
-        columns: Vec<FrameColumn>,
-        row_count: usize,
-        take: Option<usize>,
-        buffer_pool: Arc<BufferPoolManager>,
-    ) -> Self {
-        Self {
-            target_column,
-            column_policies,
-            mask,
-            columns,
-            row_count,
-            take,
-            buffer_pool,
         }
     }
 
