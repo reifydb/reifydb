@@ -2,10 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, evaluate};
+use crate::evaluate::pool::BufferPoolManager;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::frame::{ColumnValues, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_rql::expression::Expression;
+use std::sync::Arc;
 
 pub(crate) struct FilterNode {
     input: Box<dyn ExecutionPlan>,
@@ -38,6 +40,7 @@ impl ExecutionPlan for FilterNode {
                     columns: frame.columns.clone(),
                     row_count,
                     take: None,
+                    buffer_pool: Arc::new(BufferPoolManager::default()),
                 };
 
                 // Evaluate the filter expression

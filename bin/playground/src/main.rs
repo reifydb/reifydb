@@ -22,11 +22,12 @@ fn main() {
     for frame in db
         .tx_as_root(
             r#"
-map {
-  cast(1.0, float8) + cast(1.0, float8),
-  cast(1.0, float8) + cast(-1.0, float8),
-  cast(-1.0, float8) + cast(-1.0, float8),
-  cast(1.1, float8) + cast(1.1, float8),
+map{
+      cast(1, int1) + cast(1, int1),
+      cast(1, int1) + cast(-1, int1),
+      cast(-1, int1) + cast(-1, int1),
+      cast(127, int1) + cast(1, int1),
+      cast(cast(-128, int1) + cast(-1, int1), int1)
 }
         "#,
         )

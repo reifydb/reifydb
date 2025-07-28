@@ -508,7 +508,10 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(lv.len(), rv.len());
 
-    let mut data = ColumnValues::with_capacity(ty, lv.len());
+    // Use pooled allocation for better performance
+    use crate::evaluate::pool::ColumnValuesExt;
+    let mut data = ColumnValues::with_pooled_capacity(ty, lv.len(), &ctx.buffer_pool);
+    
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
             if let Some(value) = ctx.add(l[i], r[i], &span)? {

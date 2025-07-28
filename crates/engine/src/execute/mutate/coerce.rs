@@ -41,6 +41,7 @@ pub(crate) fn coerce_value_to_column_type(
             columns: Vec::new(),
             row_count: 1,
             take: None,
+            buffer_pool: std::sync::Arc::new(crate::evaluate::pool::BufferPoolManager::default()),
         },
         || BorrowedSpan::new(&value_str).to_owned(),
     )?;

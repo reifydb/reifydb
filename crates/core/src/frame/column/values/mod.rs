@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{BitVec, CowVec, Type, Value};
-use crate::{Date, DateTime, Interval, Time};
 use crate::RowId;
 use crate::value::uuid::{Uuid4, Uuid7};
+use crate::{BitVec, CowVec, Type, Value};
+use crate::{Date, DateTime, Interval, Time};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ColumnValues {
@@ -732,27 +732,180 @@ impl From<Value> for ColumnValues {
 impl ColumnValues {
     pub fn len(&self) -> usize {
         match self {
-            ColumnValues::Bool(_, b) => b.len(),
-            ColumnValues::Float4(_, b) => b.len(),
-            ColumnValues::Float8(_, b) => b.len(),
-            ColumnValues::Int1(_, b) => b.len(),
-            ColumnValues::Int2(_, b) => b.len(),
-            ColumnValues::Int4(_, b) => b.len(),
-            ColumnValues::Int8(_, b) => b.len(),
-            ColumnValues::Int16(_, b) => b.len(),
-            ColumnValues::Utf8(_, b) => b.len(),
-            ColumnValues::Uint1(_, b) => b.len(),
-            ColumnValues::Uint2(_, b) => b.len(),
-            ColumnValues::Uint4(_, b) => b.len(),
-            ColumnValues::Uint8(_, b) => b.len(),
-            ColumnValues::Uint16(_, b) => b.len(),
-            ColumnValues::Date(_, b) => b.len(),
-            ColumnValues::DateTime(_, b) => b.len(),
-            ColumnValues::Time(_, b) => b.len(),
-            ColumnValues::Interval(_, b) => b.len(),
-            ColumnValues::RowId(_, b) => b.len(),
-            ColumnValues::Uuid4(_, b) => b.len(),
-            ColumnValues::Uuid7(_, b) => b.len(),
+            ColumnValues::Bool(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Float4(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Float8(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Int1(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Int2(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Int4(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Int8(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Int16(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Utf8(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Uint1(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Uint2(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Uint4(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Uint8(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Uint16(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Date(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::DateTime(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Time(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Interval(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::RowId(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Uuid4(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Uuid7(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Undefined(n) => *n,
+        }
+    }
+
+    pub fn capacity(&self) -> usize {
+        match self {
+            ColumnValues::Bool(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Float4(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Float8(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Int1(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Int2(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Int4(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Int8(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Int16(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Utf8(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Uint1(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Uint2(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Uint4(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Uint8(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Uint16(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Date(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::DateTime(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Time(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Interval(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::RowId(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Uuid4(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
+            ColumnValues::Uuid7(v, b) => {
+                debug_assert_eq!(v.capacity(), b.len());
+                v.capacity()
+            }
             ColumnValues::Undefined(n) => *n,
         }
     }

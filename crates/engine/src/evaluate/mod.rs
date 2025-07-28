@@ -16,6 +16,7 @@ mod column;
 mod compare;
 pub(crate) mod constant;
 mod context;
+pub(crate) mod pool;
 mod prefix;
 
 pub(crate) struct Evaluator {

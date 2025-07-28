@@ -2,6 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, evaluate};
+use crate::evaluate::pool::BufferPoolManager;
+use std::sync::Arc;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified, ColumnQualified};
 use reifydb_core::interface::Rx;
@@ -98,6 +100,7 @@ impl ExecutionPlan for InnerJoinNode {
                         .collect(),
                     row_count: 1,
                     take: Some(1),
+                    buffer_pool: Arc::new(BufferPoolManager::default()),
                 };
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {
