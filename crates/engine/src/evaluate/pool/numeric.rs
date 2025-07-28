@@ -203,7 +203,10 @@ struct NumericPoolWrapper<T> {
 
 impl<T> NumericPoolWrapper<T> {
     fn new(pool: &NumericPool<T>) -> Self {
-        Self { pool_ptr: pool as *const NumericPool<T> as *mut NumericPool<T>, _phantom: PhantomData }
+        Self {
+            pool_ptr: pool as *const NumericPool<T> as *mut NumericPool<T>,
+            _phantom: PhantomData,
+        }
     }
 
     fn pool(&self) -> &NumericPool<T> {
@@ -239,41 +242,13 @@ where
     }
 }
 
-/// Helper trait to enable easy creation of common numeric pools.
-pub trait NumericPoolExt {
-    /// Create an i32 pool with default configuration.
-    fn i32_pool() -> NumericPool<i32> {
-        NumericPool::new(PoolConfig::default())
-    }
-
-    /// Create an i64 pool with default configuration.
-    fn i64_pool() -> NumericPool<i64> {
-        NumericPool::new(PoolConfig::default())
-    }
-
-    /// Create an f32 pool with default configuration.
-    fn f32_pool() -> NumericPool<f32> {
-        NumericPool::new(PoolConfig::default())
-    }
-
-    /// Create an f64 pool with default configuration.
-    fn f64_pool() -> NumericPool<f64> {
-        NumericPool::new(PoolConfig::default())
-    }
-}
-
-impl NumericPoolExt for NumericPool<i32> {}
-impl NumericPoolExt for NumericPool<i64> {}
-impl NumericPoolExt for NumericPool<f32> {}
-impl NumericPoolExt for NumericPool<f64> {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_numeric_pool_basic_operations() {
-        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
+        let pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Acquire a buffer
         let buffer1 = pool.acquire(100);

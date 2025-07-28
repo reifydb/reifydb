@@ -136,12 +136,12 @@ impl BufferPool<bool> for BitVecPool {
             // Use the pooled BitVec capacity as hint, but create new Vec<bool>
             let actual_capacity = bitvec.len().max(capacity);
             let buffer = Vec::with_capacity(actual_capacity);
-            PooledBuffer::new(buffer, Rc::new(RefCell::new(BitVecPoolWrapper::new(self))))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(StdBitVecBufferPool::new(self))))
         } else {
             // Allocate a new buffer
             let buffer = Vec::with_capacity(capacity);
             self.update_stats(false); // Miss
-            PooledBuffer::new(buffer, Rc::new(RefCell::new(BitVecPoolWrapper::new(self))))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(StdBitVecBufferPool::new(self))))
         }
     }
 
@@ -154,13 +154,13 @@ impl BufferPool<bool> for BitVecPool {
             let actual_capacity = bitvec.len().max(size);
             let mut buffer = Vec::with_capacity(actual_capacity);
             buffer.resize(size, false);
-            PooledBuffer::new(buffer, Rc::new(RefCell::new(BitVecPoolWrapper::new(self))))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(StdBitVecBufferPool::new(self))))
         } else {
             // Allocate exactly what was requested
             let mut buffer = Vec::with_capacity(size);
             buffer.resize(size, false);
             self.update_stats(false); // Miss
-            PooledBuffer::new(buffer, Rc::new(RefCell::new(BitVecPoolWrapper::new(self))))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(StdBitVecBufferPool::new(self))))
         }
     }
 
@@ -220,11 +220,11 @@ impl BitVecPool {
 }
 
 /// Wrapper to allow the pool to be used as a trait object.
-struct BitVecPoolWrapper {
+struct StdBitVecBufferPool {
     pool_ptr: *const BitVecPool,
 }
 
-impl BitVecPoolWrapper {
+impl StdBitVecBufferPool {
     fn new(pool: &BitVecPool) -> Self {
         Self { pool_ptr: pool as *const BitVecPool }
     }
@@ -234,10 +234,7 @@ impl BitVecPoolWrapper {
     }
 }
 
-unsafe impl Send for BitVecPoolWrapper {}
-unsafe impl Sync for BitVecPoolWrapper {}
-
-impl BufferPool<bool> for BitVecPoolWrapper {
+impl BufferPool<bool> for StdBitVecBufferPool {
     fn acquire(&self, capacity: usize) -> PooledBuffer<bool> {
         self.pool().acquire(capacity)
     }

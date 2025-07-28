@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::cell::RefCell;
-use crate::evaluate::{EvaluationContext, evaluate};
 use crate::evaluate::pool::BufferPoolManager;
-use std::sync::Arc;
+use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified, ColumnQualified};
+use reifydb_core::expression::Expression;
+use reifydb_core::frame::{
+    ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
+};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
-use reifydb_core::expression::Expression;
 
 pub(crate) struct LeftJoinNode {
     left: Box<dyn ExecutionPlan>,
@@ -158,7 +158,9 @@ impl ExecutionPlan for LeftJoinNode {
             .columns
             .iter()
             .enumerate()
-            .filter_map(|(i, col)| col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
+            .filter_map(|(i, col)| {
+                col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i))
+            })
             .collect();
 
         self.layout = Some(FrameLayout::from_frame(&frame));

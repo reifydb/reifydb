@@ -38,6 +38,7 @@ pub struct BufferPoolManagerInner {
 pub struct BufferPoolManager(Rc<BufferPoolManagerInner>);
 
 impl BufferPoolManager {
+
     /// Create a new buffer pool manager with the given configuration.
     pub fn new(config: PoolConfig) -> Self {
         Self(Rc::new(BufferPoolManagerInner {
@@ -57,11 +58,6 @@ impl BufferPoolManager {
             utf8_pool: NumericPool::new(config.clone()),
             config,
         }))
-    }
-
-    /// Get configuration.
-    pub fn config(&self) -> &PoolConfig {
-        &self.config
     }
 
     /// Get comprehensive statistics for all pools.

@@ -22,17 +22,13 @@ pub trait BufferPool<T> {
     /// Acquire a buffer with at least the specified capacity.
     /// The returned buffer may have larger capacity for better reuse.
     fn acquire(&self, capacity: usize) -> PooledBuffer<T>;
-
     /// Acquire a buffer with exactly the specified size.
     /// This is useful when exact size requirements matter.
     fn acquire_exact(&self, size: usize) -> PooledBuffer<T>;
-
     /// Get current pool statistics for monitoring and tuning.
     fn stats(&self) -> PoolStats;
-
     /// Release all buffers and free memory. Used for cleanup.
     fn clear(&self);
-
     /// Return a buffer to the pool for reuse (if possible).
     /// Default implementation does nothing, letting specific pools override.
     fn try_return_buffer(&self, _buffer: Vec<T>) {
