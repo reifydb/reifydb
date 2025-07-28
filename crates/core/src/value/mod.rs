@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
+pub mod blob;
 pub mod boolean;
 mod date;
 mod datetime;
@@ -19,6 +20,7 @@ mod time;
 mod r#type;
 pub mod uuid;
 
+pub use blob::Blob;
 pub use date::Date;
 pub use datetime::DateTime;
 pub use interval::Interval;
