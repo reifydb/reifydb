@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::value::number::Promote;
-use reifydb_core::{BitVec, CowVec, OwnedSpan, value, GetType, return_error};
+use reifydb_core::{BitVec, CowVec, OwnedSpan, value, return_error};
 use reifydb_core::expression::NotEqualExpression;
 use reifydb_core::error::diagnostic::operator::not_equal_cannot_be_applied_to_incompatible_types;
 
@@ -480,6 +480,13 @@ impl Evaluator {
             }
             (ColumnValues::Utf8(l, lv), ColumnValues::Utf8(r, rv)) => {
                 Ok(compare_utf8(l, r, lv, rv, ne.span()))
+            }
+            (ColumnValues::Undefined(size), _) | (_, ColumnValues::Undefined(size)) => {
+                let span = ne.span();
+                Ok(FrameColumn::ColumnQualified(ColumnQualified {
+                    name: span.fragment.into(),
+                    values: ColumnValues::bool(vec![false; *size]),
+                }))
             }
             _ => return_error!(not_equal_cannot_be_applied_to_incompatible_types(
                 ne.span(),
