@@ -158,7 +158,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
                     ty: Type::Int1,
                     policies: vec![],
                     index: ColumnIndex(1),
-                }
+                },
             ],
         };
 
@@ -221,7 +221,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
                                 Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
                                 Value::Time(v) => layout.set_time(&mut row, table_idx, v),
                                 Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
-                                Value::RowId(v) => {}
+                                Value::RowId(_v) => {}
                                 Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
                                 Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
                                 Value::Undefined => layout.set_undefined(&mut row, table_idx),
@@ -304,7 +304,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
                     ty: Type::Int1,
                     policies: vec![],
                     index: ColumnIndex(1),
-                }
+                },
             ],
         };
 
