@@ -6,18 +6,19 @@
 //! These pools are size-bucketed to maximize reuse while minimizing memory waste.
 
 use super::{BufferPool, PoolConfig, PoolStats, PooledBuffer};
+use std::cell::RefCell;
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
 
 /// Size-bucketed pool for numeric types (i8, i16, i32, i64, i128, f32, f64, etc.)
 #[derive(Debug)]
 pub struct NumericPool<T> {
-    small: Mutex<Vec<Vec<T>>>,
-    medium: Mutex<Vec<Vec<T>>>,
-    large: Mutex<Vec<Vec<T>>>,
+    small: RefCell<Vec<Vec<T>>>,
+    medium: RefCell<Vec<Vec<T>>>,
+    large: RefCell<Vec<Vec<T>>>,
 
     config: PoolConfig,
-    stats: Mutex<PoolStats>,
+    stats: RefCell<PoolStats>,
     _phantom: PhantomData<T>,
 }
 
@@ -28,11 +29,11 @@ where
     /// Create a new numeric pool with the given configuration.
     pub fn new(config: PoolConfig) -> Self {
         Self {
-            small: Mutex::new(Vec::new()),
-            medium: Mutex::new(Vec::new()),
-            large: Mutex::new(Vec::new()),
+            small: RefCell::new(Vec::new()),
+            medium: RefCell::new(Vec::new()),
+            large: RefCell::new(Vec::new()),
             config,
-            stats: Mutex::new(PoolStats::new()),
+            stats: RefCell::new(PoolStats::new()),
             _phantom: PhantomData,
         }
     }
@@ -51,13 +52,12 @@ where
             &self.large
         };
 
-        // Try to return to pool if under limit
-        if let Ok(mut bucket_guard) = bucket.try_lock() {
-            if bucket_guard.len() < self.config.max_buffers_per_bucket {
-                bucket_guard.push(buffer);
-            }
-            // If over limit, just drop the buffer (let it be deallocated)
+        // Return to pool if under limit
+        let mut bucket_guard = bucket.borrow_mut();
+        if bucket_guard.len() < self.config.max_buffers_per_bucket {
+            bucket_guard.push(buffer);
         }
+        // If over limit, just drop the buffer (let it be deallocated)
     }
 
     /// Get a buffer from the appropriate size bucket.
@@ -70,13 +70,11 @@ where
             &self.large
         };
 
-        if let Ok(mut bucket_guard) = bucket.try_lock() {
-            // Find a buffer with sufficient capacity
-            for i in (0..bucket_guard.len()).rev() {
-                if bucket_guard[i].capacity() >= capacity {
-                    let buffer = bucket_guard.swap_remove(i);
-                    return Some(buffer);
-                }
+        // Find a buffer with sufficient capacity
+        let mut bucket_guard = bucket.borrow_mut();
+        for i in (0..bucket_guard.len()).rev() {
+            if bucket_guard[i].capacity() >= capacity {
+                return Some(bucket_guard.swap_remove(i));
             }
         }
         None
@@ -84,30 +82,27 @@ where
 
     /// Update pool statistics.
     fn update_stats(&self, hit: bool) {
-        if let Ok(mut stats) = self.stats.try_lock() {
-            if hit {
-                stats.hits += 1;
-            } else {
-                stats.misses += 1;
-            }
-            stats.update_hit_rate();
+        let mut stats = self.stats.borrow_mut();
+        if hit {
+            stats.hits += 1;
+        } else {
+            stats.misses += 1;
         }
+        stats.update_hit_rate();
     }
 
     /// Calculate current memory usage across all buckets.
     fn calculate_memory_usage(&self) -> usize {
         let mut total = 0;
 
-        if let Ok(small) = self.small.try_lock() {
-            total += small.iter().map(|v| v.capacity() * size_of::<T>()).sum::<usize>();
+        if let Ok(small) = self.small.try_borrow() {
+            total += small.iter().map(|v| v.capacity() * std::mem::size_of::<T>()).sum::<usize>();
         }
-
-        if let Ok(medium) = self.medium.try_lock() {
-            total += medium.iter().map(|v| v.capacity() * size_of::<T>()).sum::<usize>();
+        if let Ok(medium) = self.medium.try_borrow() {
+            total += medium.iter().map(|v| v.capacity() * std::mem::size_of::<T>()).sum::<usize>();
         }
-
-        if let Ok(large) = self.large.try_lock() {
-            total += large.iter().map(|v| v.capacity() * size_of::<T>()).sum::<usize>();
+        if let Ok(large) = self.large.try_borrow() {
+            total += large.iter().map(|v| v.capacity() * std::mem::size_of::<T>()).sum::<usize>();
         }
 
         total
@@ -115,21 +110,10 @@ where
 
     /// Count total buffers across all buckets.
     fn count_buffers(&self) -> usize {
-        let mut total = 0;
-
-        if let Ok(small) = self.small.try_lock() {
-            total += small.len();
-        }
-
-        if let Ok(medium) = self.medium.try_lock() {
-            total += medium.len();
-        }
-
-        if let Ok(large) = self.large.try_lock() {
-            total += large.len();
-        }
-
-        total
+        let small_len = self.small.try_borrow().map(|v| v.len()).unwrap_or(0);
+        let medium_len = self.medium.try_borrow().map(|v| v.len()).unwrap_or(0);
+        let large_len = self.large.try_borrow().map(|v| v.len()).unwrap_or(0);
+        small_len + medium_len + large_len
     }
 }
 
@@ -145,12 +129,12 @@ where
                 buffer.reserve(capacity - buffer.capacity());
             }
             self.update_stats(true); // Hit
-            PooledBuffer::new(buffer, Arc::new(NumericPoolWrapper::new(self)))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(NumericPoolWrapper::new(self))))
         } else {
             // Allocate a new buffer
             let buffer = Vec::with_capacity(capacity);
             self.update_stats(false); // Miss
-            PooledBuffer::new(buffer, Arc::new(NumericPoolWrapper::new(self)))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(NumericPoolWrapper::new(self))))
         }
     }
 
@@ -161,60 +145,48 @@ where
             buffer.clear();
             buffer.resize_with(size, T::default);
             self.update_stats(true); // Hit
-            PooledBuffer::new(buffer, Arc::new(NumericPoolWrapper::new(self)))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(NumericPoolWrapper::new(self))))
         } else {
             // Allocate exactly what was requested
             let mut buffer = Vec::with_capacity(size);
             buffer.resize_with(size, T::default);
             self.update_stats(false); // Miss
-            PooledBuffer::new(buffer, Arc::new(NumericPoolWrapper::new(self)))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(NumericPoolWrapper::new(self))))
         }
     }
 
     fn stats(&self) -> PoolStats {
-        if let Ok(mut stats) = self.stats.try_lock() {
-            stats.current_buffers = self.count_buffers();
-            stats.total_memory = self.calculate_memory_usage();
+        let mut stats = self.stats.borrow_mut();
+        stats.current_buffers = self.count_buffers();
+        stats.total_memory = self.calculate_memory_usage();
 
-            // Calculate buffer size statistics
-            let mut sizes = Vec::new();
+        // Calculate buffer size statistics
+        let mut sizes = Vec::new();
 
-            if let Ok(small) = self.small.try_lock() {
-                sizes.extend(small.iter().map(|v| v.capacity()));
-            }
-            if let Ok(medium) = self.medium.try_lock() {
-                sizes.extend(medium.iter().map(|v| v.capacity()));
-            }
-            if let Ok(large) = self.large.try_lock() {
-                sizes.extend(large.iter().map(|v| v.capacity()));
-            }
-
-            if !sizes.is_empty() {
-                stats.avg_buffer_size = sizes.iter().sum::<usize>() as f64 / sizes.len() as f64;
-                stats.max_buffer_size = *sizes.iter().max().unwrap_or(&0);
-                stats.min_buffer_size = *sizes.iter().min().unwrap_or(&0);
-            }
-
-            stats.clone()
-        } else {
-            PoolStats::new()
+        if let Ok(small) = self.small.try_borrow() {
+            sizes.extend(small.iter().map(|v| v.capacity()));
         }
+        if let Ok(medium) = self.medium.try_borrow() {
+            sizes.extend(medium.iter().map(|v| v.capacity()));
+        }
+        if let Ok(large) = self.large.try_borrow() {
+            sizes.extend(large.iter().map(|v| v.capacity()));
+        }
+
+        if !sizes.is_empty() {
+            stats.avg_buffer_size = sizes.iter().sum::<usize>() as f64 / sizes.len() as f64;
+            stats.max_buffer_size = *sizes.iter().max().unwrap_or(&0);
+            stats.min_buffer_size = *sizes.iter().min().unwrap_or(&0);
+        }
+
+        stats.clone()
     }
 
     fn clear(&self) {
-        if let Ok(mut small) = self.small.try_lock() {
-            small.clear();
-        }
-        if let Ok(mut medium) = self.medium.try_lock() {
-            medium.clear();
-        }
-        if let Ok(mut large) = self.large.try_lock() {
-            large.clear();
-        }
-
-        if let Ok(mut stats) = self.stats.try_lock() {
-            *stats = PoolStats::new();
-        }
+        self.small.borrow_mut().clear();
+        self.medium.borrow_mut().clear();
+        self.large.borrow_mut().clear();
+        *self.stats.borrow_mut() = PoolStats::new();
     }
 
     fn try_return_buffer(&self, buffer: Vec<T>) {
@@ -225,13 +197,13 @@ where
 /// Wrapper to allow the pool to be used as a trait object while maintaining
 /// the ability to return buffers to the concrete pool type.
 struct NumericPoolWrapper<T> {
-    pool_ptr: *const NumericPool<T>,
+    pool_ptr: *mut NumericPool<T>,
     _phantom: PhantomData<T>,
 }
 
 impl<T> NumericPoolWrapper<T> {
     fn new(pool: &NumericPool<T>) -> Self {
-        Self { pool_ptr: pool as *const NumericPool<T>, _phantom: PhantomData }
+        Self { pool_ptr: pool as *const NumericPool<T> as *mut NumericPool<T>, _phantom: PhantomData }
     }
 
     fn pool(&self) -> &NumericPool<T> {
@@ -301,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_basic_operations() {
-        let pool = NumericPool::<i32>::new(PoolConfig::default());
+        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Acquire a buffer
         let buffer1 = pool.acquire(100);
@@ -318,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_reuse() {
-        let pool = NumericPool::<i32>::new(PoolConfig::default());
+        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Acquire and drop a buffer
         {
@@ -337,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_size_buckets() {
-        let pool = NumericPool::<i32>::new(PoolConfig::default());
+        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Test different size buckets
         let small = pool.acquire(500); // Should go to small bucket
@@ -351,7 +323,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_stats() {
-        let pool = NumericPool::<i32>::new(PoolConfig::default());
+        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Generate some activity
         for _ in 0..10 {
@@ -365,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_clear() {
-        let pool = NumericPool::<i32>::new(PoolConfig::default());
+        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Add some buffers to the pool
         {

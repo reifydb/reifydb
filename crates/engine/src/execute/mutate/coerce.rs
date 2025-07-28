@@ -1,5 +1,6 @@
 use crate::evaluate::EvaluationContext;
 use crate::evaluate::cast::cast_column_values;
+use crate::evaluate::pool::BufferPoolManager;
 use reifydb_core::frame::ColumnValues;
 use reifydb_core::{BitVec, BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 
@@ -41,7 +42,7 @@ pub(crate) fn coerce_value_to_column_type(
             columns: Vec::new(),
             row_count: 1,
             take: None,
-            buffer_pool: std::sync::Arc::new(crate::evaluate::pool::BufferPoolManager::default()),
+            buffer_pool: BufferPoolManager::default(),
         },
         || BorrowedSpan::new(&value_str).to_owned(),
     )?;

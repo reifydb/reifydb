@@ -5,64 +5,63 @@
 
 use super::{BufferPool, PoolConfig, PoolStats, bitvec::BitVecPool, numeric::NumericPool};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::ops::Deref;
+use std::rc::Rc;
 
-/// Complete buffer pool manager that manages all buffer types used in query execution.
+/// Inner structure containing all the buffer pools.
 #[derive(Debug)]
-pub struct BufferPoolManager {
+pub struct BufferPoolManagerInner {
+    pub bool_pool: BitVecPool,
+
     // Numeric type pools
-    pub bool_pool: Arc<BitVecPool>,
-    pub i8_pool: Arc<NumericPool<i8>>,
-    pub i16_pool: Arc<NumericPool<i16>>,
-    pub i32_pool: Arc<NumericPool<i32>>,
-    pub i64_pool: Arc<NumericPool<i64>>,
-    pub i128_pool: Arc<NumericPool<i128>>,
-    pub u8_pool: Arc<NumericPool<u8>>,
-    pub u16_pool: Arc<NumericPool<u16>>,
-    pub u32_pool: Arc<NumericPool<u32>>,
-    pub u64_pool: Arc<NumericPool<u64>>,
-    pub u128_pool: Arc<NumericPool<u128>>,
-    pub f32_pool: Arc<NumericPool<f32>>,
-    pub f64_pool: Arc<NumericPool<f64>>,
+    pub i8_pool: NumericPool<i8>,
+    pub i16_pool: NumericPool<i16>,
+    pub i32_pool: NumericPool<i32>,
+    pub i64_pool: NumericPool<i64>,
+    pub i128_pool: NumericPool<i128>,
+    pub u8_pool: NumericPool<u8>,
+    pub u16_pool: NumericPool<u16>,
+    pub u32_pool: NumericPool<u32>,
+    pub u64_pool: NumericPool<u64>,
+    pub u128_pool: NumericPool<u128>,
+    pub f32_pool: NumericPool<f32>,
+    pub f64_pool: NumericPool<f64>,
 
     // String pool for UTF-8 columns
-    pub utf8_pool: Arc<NumericPool<String>>,
+    pub utf8_pool: NumericPool<String>,
 
     config: PoolConfig,
 }
 
+/// Complete buffer pool manager that manages all buffer types used in query execution.
+#[derive(Debug)]
+pub struct BufferPoolManager(Rc<BufferPoolManagerInner>);
+
 impl BufferPoolManager {
     /// Create a new buffer pool manager with the given configuration.
     pub fn new(config: PoolConfig) -> Self {
-        Self {
-            bool_pool: Arc::new(BitVecPool::new(config.clone())),
-            i8_pool: Arc::new(NumericPool::new(config.clone())),
-            i16_pool: Arc::new(NumericPool::new(config.clone())),
-            i32_pool: Arc::new(NumericPool::new(config.clone())),
-            i64_pool: Arc::new(NumericPool::new(config.clone())),
-            i128_pool: Arc::new(NumericPool::new(config.clone())),
-            u8_pool: Arc::new(NumericPool::new(config.clone())),
-            u16_pool: Arc::new(NumericPool::new(config.clone())),
-            u32_pool: Arc::new(NumericPool::new(config.clone())),
-            u64_pool: Arc::new(NumericPool::new(config.clone())),
-            u128_pool: Arc::new(NumericPool::new(config.clone())),
-            f32_pool: Arc::new(NumericPool::new(config.clone())),
-            f64_pool: Arc::new(NumericPool::new(config.clone())),
-            utf8_pool: Arc::new(NumericPool::new(config.clone())),
+        Self(Rc::new(BufferPoolManagerInner {
+            bool_pool: BitVecPool::new(config.clone()),
+            i8_pool: NumericPool::new(config.clone()),
+            i16_pool: NumericPool::new(config.clone()),
+            i32_pool: NumericPool::new(config.clone()),
+            i64_pool: NumericPool::new(config.clone()),
+            i128_pool: NumericPool::new(config.clone()),
+            u8_pool: NumericPool::new(config.clone()),
+            u16_pool: NumericPool::new(config.clone()),
+            u32_pool: NumericPool::new(config.clone()),
+            u64_pool: NumericPool::new(config.clone()),
+            u128_pool: NumericPool::new(config.clone()),
+            f32_pool: NumericPool::new(config.clone()),
+            f64_pool: NumericPool::new(config.clone()),
+            utf8_pool: NumericPool::new(config.clone()),
             config,
-        }
+        }))
     }
 
     /// Get configuration.
     pub fn config(&self) -> &PoolConfig {
         &self.config
-    }
-
-    /// Update configuration for all pools.
-    pub fn update_config(&mut self, config: PoolConfig) {
-        self.config = config;
-        // Note: Individual pools keep their own config copies,
-        // so this mainly affects future operations
     }
 
     /// Get comprehensive statistics for all pools.
@@ -121,7 +120,7 @@ impl BufferPoolManager {
     }
 
     /// Clear all pools and reset statistics.
-    pub fn clear_all(&self) {
+    pub fn clear_all(&mut self) {
         self.bool_pool.clear();
         self.i8_pool.clear();
         self.i16_pool.clear();
@@ -139,7 +138,7 @@ impl BufferPoolManager {
     }
 
     /// Trim excess buffers across all pools when memory usage is high.
-    pub fn trim_excess(&self) {
+    pub fn trim_excess(&mut self) {
         let aggregate_stats = self.get_aggregate_stats();
         let memory_mb = aggregate_stats.total_memory / (1024 * 1024);
 
@@ -177,36 +176,6 @@ impl BufferPoolManager {
         }
     }
 
-    /// Auto-tune pool configurations based on usage patterns.
-    pub fn auto_tune(&mut self, window_stats: &HashMap<String, PoolStats>) {
-        // Adjust max_buffers_per_bucket based on hit rates
-        let mut new_config = self.config.clone();
-
-        let total_hit_rate: f64 =
-            window_stats.values().map(|s| s.hit_rate).sum::<f64>() / window_stats.len() as f64;
-
-        // If hit rate is low, increase buffer limits
-        if total_hit_rate < 0.5 {
-            new_config.max_buffers_per_bucket =
-                (new_config.max_buffers_per_bucket as f64 * 1.5) as usize;
-        }
-        // If hit rate is very high and memory usage is low, we could decrease limits
-        else if total_hit_rate > 0.9 {
-            let memory_usage_ratio = self.get_aggregate_stats().total_memory as f64
-                / (self.config.max_memory_mb * 1024 * 1024) as f64;
-
-            if memory_usage_ratio < 0.3 {
-                new_config.max_buffers_per_bucket =
-                    (new_config.max_buffers_per_bucket as f64 * 0.8) as usize;
-            }
-        }
-
-        // Ensure reasonable bounds
-        new_config.max_buffers_per_bucket = new_config.max_buffers_per_bucket.clamp(16, 256);
-
-        self.update_config(new_config);
-    }
-
     /// Get a summary report of pool performance.
     pub fn get_performance_report(&self) -> String {
         let aggregate = self.get_aggregate_stats();
@@ -239,6 +208,20 @@ impl BufferPoolManager {
     }
 }
 
+impl Deref for BufferPoolManager {
+    type Target = BufferPoolManagerInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Clone for BufferPoolManager {
+    fn clone(&self) -> Self {
+        Self(Rc::clone(&self.0))
+    }
+}
+
 impl Default for BufferPoolManager {
     fn default() -> Self {
         Self::new(PoolConfig::default())
@@ -251,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_buffer_pool_manager_creation() {
-        let manager = BufferPoolManager::new(PoolConfig::default());
+        let mut manager = BufferPoolManager::new(PoolConfig::default());
         let stats = manager.get_aggregate_stats();
 
         // Initially all pools should be empty
@@ -263,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_buffer_pool_manager_stats() {
-        let manager = BufferPoolManager::new(PoolConfig::default());
+        let mut manager = BufferPoolManager::new(PoolConfig::default());
 
         // Generate some activity
         let _buf1 = manager.i32_pool.acquire(100);
@@ -279,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_buffer_pool_manager_clear() {
-        let manager = BufferPoolManager::new(PoolConfig::default());
+        let mut manager = BufferPoolManager::new(PoolConfig::default());
 
         // Generate some activity
         {
@@ -297,7 +280,6 @@ mod tests {
     fn test_buffer_pool_manager_performance_report() {
         let manager = BufferPoolManager::new(PoolConfig::default());
 
-        // Generate some activity
         {
             let _buf1 = manager.i32_pool.acquire(100);
             let _buf2 = manager.f64_pool.acquire(200);
@@ -307,21 +289,5 @@ mod tests {
         assert!(report.contains("Buffer Pool Performance Report"));
         assert!(report.contains("Hit Rate"));
         assert!(report.contains("Total Memory"));
-    }
-
-    #[test]
-    fn test_buffer_pool_manager_auto_tune() {
-        let mut manager = BufferPoolManager::new(PoolConfig::default());
-        let initial_limit = manager.config.max_buffers_per_bucket;
-
-        // Simulate poor hit rate
-        let mut poor_stats = HashMap::new();
-        poor_stats.insert(
-            "i32".to_string(),
-            PoolStats { hits: 1, misses: 9, hit_rate: 0.1, ..PoolStats::new() },
-        );
-
-        manager.auto_tune(&poor_stats);
-        assert!(manager.config.max_buffers_per_bucket > initial_limit);
     }
 }

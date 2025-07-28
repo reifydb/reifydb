@@ -8,15 +8,16 @@
 
 use super::{BufferPool, PoolConfig, PoolStats, PooledBuffer};
 use reifydb_core::BitVec;
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Specialized pool for BitVec allocations with size-based bucketing.
 #[derive(Debug)]
 pub struct BitVecPool {
     /// Different size buckets for efficient reuse
-    pools: [Mutex<Vec<BitVec>>; 6],
+    pools: [RefCell<Vec<BitVec>>; 6],
     config: PoolConfig,
-    stats: Mutex<PoolStats>,
+    stats: RefCell<PoolStats>,
 }
 
 impl BitVecPool {
@@ -27,15 +28,15 @@ impl BitVecPool {
     pub fn new(config: PoolConfig) -> Self {
         Self {
             pools: [
-                Mutex::new(Vec::new()),
-                Mutex::new(Vec::new()),
-                Mutex::new(Vec::new()),
-                Mutex::new(Vec::new()),
-                Mutex::new(Vec::new()),
-                Mutex::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
             ],
             config,
-            stats: Mutex::new(PoolStats::new()),
+            stats: RefCell::new(PoolStats::new()),
         }
     }
 
@@ -57,13 +58,13 @@ impl BitVecPool {
         // Create a cleared BitVec for the pool - use capacity bits, all set to false
         let cleared_bitvec = BitVec::new(capacity, false);
 
-        // Try to return to the appropriate bucket if under limit
-        if let Ok(mut bucket) = self.pools[bucket_idx].try_lock() {
-            if bucket.len() < self.config.max_buffers_per_bucket {
-                bucket.push(cleared_bitvec);
-            }
-            // If over limit, just drop the BitVec (let it be deallocated)
+        // Return to the appropriate bucket if under limit
+        let bucket = &self.pools[bucket_idx];
+        let mut bucket_guard = bucket.borrow_mut();
+        if bucket_guard.len() < self.config.max_buffers_per_bucket {
+            bucket_guard.push(cleared_bitvec);
         }
+        // If over limit, just drop the BitVec (let it be deallocated)
     }
 
     /// Get a BitVec from the appropriate size bucket.
@@ -71,19 +72,17 @@ impl BitVecPool {
         let bucket_idx = self.bucket_for_capacity(capacity);
 
         // Try the exact bucket first
-        if let Ok(mut bucket) = self.pools[bucket_idx].try_lock() {
-            // Just take any BitVec from this bucket since they're pre-sized
-            if let Some(bitvec) = bucket.pop() {
-                return Some(bitvec);
-            }
+        let bucket = &self.pools[bucket_idx];
+        // Just take any BitVec from this bucket since they're pre-sized
+        if let Some(bitvec) = bucket.borrow_mut().pop() {
+            return Some(bitvec);
         }
 
         // If no suitable BitVec in the exact bucket, try larger buckets
         for larger_bucket_idx in (bucket_idx + 1)..self.pools.len() {
-            if let Ok(mut bucket) = self.pools[larger_bucket_idx].try_lock() {
-                if let Some(bitvec) = bucket.pop() {
-                    return Some(bitvec);
-                }
+            let bucket = &self.pools[larger_bucket_idx];
+            if let Some(bitvec) = bucket.borrow_mut().pop() {
+                return Some(bitvec);
             }
         }
         None
@@ -91,14 +90,13 @@ impl BitVecPool {
 
     /// Update pool statistics.
     fn update_stats(&self, hit: bool) {
-        if let Ok(mut stats) = self.stats.try_lock() {
-            if hit {
-                stats.hits += 1;
-            } else {
-                stats.misses += 1;
-            }
-            stats.update_hit_rate();
+        let mut stats = self.stats.borrow_mut();
+        if hit {
+            stats.hits += 1;
+        } else {
+            stats.misses += 1;
         }
+        stats.update_hit_rate();
     }
 
     /// Calculate current memory usage across all buckets.
@@ -106,7 +104,7 @@ impl BitVecPool {
         let mut total = 0;
 
         for bucket in &self.pools {
-            if let Ok(bucket_guard) = bucket.try_lock() {
+            if let Ok(bucket_guard) = bucket.try_borrow() {
                 total += bucket_guard
                     .iter()
                     .map(|bv| bv.len() / 8) // Convert bits to bytes (approximate)
@@ -122,9 +120,7 @@ impl BitVecPool {
         let mut total = 0;
 
         for bucket in &self.pools {
-            if let Ok(bucket_guard) = bucket.try_lock() {
-                total += bucket_guard.len();
-            }
+            total += bucket.try_borrow().map(|v| v.len()).unwrap_or(0);
         }
 
         total
@@ -140,12 +136,12 @@ impl BufferPool<bool> for BitVecPool {
             // Use the pooled BitVec capacity as hint, but create new Vec<bool>
             let actual_capacity = bitvec.len().max(capacity);
             let buffer = Vec::with_capacity(actual_capacity);
-            PooledBuffer::new(buffer, Arc::new(BitVecPoolWrapper::new(self)))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(BitVecPoolWrapper::new(self))))
         } else {
             // Allocate a new buffer
             let buffer = Vec::with_capacity(capacity);
             self.update_stats(false); // Miss
-            PooledBuffer::new(buffer, Arc::new(BitVecPoolWrapper::new(self)))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(BitVecPoolWrapper::new(self))))
         }
     }
 
@@ -158,52 +154,45 @@ impl BufferPool<bool> for BitVecPool {
             let actual_capacity = bitvec.len().max(size);
             let mut buffer = Vec::with_capacity(actual_capacity);
             buffer.resize(size, false);
-            PooledBuffer::new(buffer, Arc::new(BitVecPoolWrapper::new(self)))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(BitVecPoolWrapper::new(self))))
         } else {
             // Allocate exactly what was requested
             let mut buffer = Vec::with_capacity(size);
             buffer.resize(size, false);
             self.update_stats(false); // Miss
-            PooledBuffer::new(buffer, Arc::new(BitVecPoolWrapper::new(self)))
+            PooledBuffer::new(buffer, Rc::new(RefCell::new(BitVecPoolWrapper::new(self))))
         }
     }
 
     fn stats(&self) -> PoolStats {
-        if let Ok(mut stats) = self.stats.try_lock() {
-            stats.current_buffers = self.count_bitvecs();
-            stats.total_memory = self.calculate_memory_usage();
+        let mut stats = self.stats.borrow_mut();
+        stats.current_buffers = self.count_bitvecs();
+        stats.total_memory = self.calculate_memory_usage();
 
-            // Calculate buffer size statistics
-            let mut sizes = Vec::new();
+        // Calculate buffer size statistics
+        let mut sizes = Vec::new();
 
-            for bucket in &self.pools {
-                if let Ok(bucket_guard) = bucket.try_lock() {
-                    sizes.extend(bucket_guard.iter().map(|bv| bv.len()));
-                }
+        for bucket in &self.pools {
+            if let Ok(bucket_guard) = bucket.try_borrow() {
+                sizes.extend(bucket_guard.iter().map(|bv| bv.len()));
             }
-
-            if !sizes.is_empty() {
-                stats.avg_buffer_size = sizes.iter().sum::<usize>() as f64 / sizes.len() as f64;
-                stats.max_buffer_size = *sizes.iter().max().unwrap_or(&0);
-                stats.min_buffer_size = *sizes.iter().min().unwrap_or(&0);
-            }
-
-            stats.clone()
-        } else {
-            PoolStats::new()
         }
+
+        if !sizes.is_empty() {
+            stats.avg_buffer_size = sizes.iter().sum::<usize>() as f64 / sizes.len() as f64;
+            stats.max_buffer_size = *sizes.iter().max().unwrap_or(&0);
+            stats.min_buffer_size = *sizes.iter().min().unwrap_or(&0);
+        }
+
+        stats.clone()
     }
 
     fn clear(&self) {
         for bucket in &self.pools {
-            if let Ok(mut bucket_guard) = bucket.try_lock() {
-                bucket_guard.clear();
-            }
+            bucket.borrow_mut().clear();
         }
 
-        if let Ok(mut stats) = self.stats.try_lock() {
-            *stats = PoolStats::new();
-        }
+        *self.stats.borrow_mut() = PoolStats::new();
     }
 
     fn try_return_buffer(&self, buffer: Vec<bool>) {
@@ -276,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_bucket_selection() {
-        let pool = BitVecPool::new(PoolConfig::default());
+        let mut pool = BitVecPool::new(PoolConfig::default());
 
         assert_eq!(pool.bucket_for_capacity(8), 0); // Small bucket
         assert_eq!(pool.bucket_for_capacity(32), 1); // Medium bucket
@@ -287,7 +276,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_basic_operations() {
-        let pool = BitVecPool::new(PoolConfig::default());
+        let mut pool = BitVecPool::new(PoolConfig::default());
 
         // Acquire a buffer
         let buffer1 = pool.acquire(100);
@@ -304,7 +293,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_direct_bitvec_operations() {
-        let pool = BitVecPool::new(PoolConfig::default());
+        let mut pool = BitVecPool::new(PoolConfig::default());
 
         let bitvec1 = pool.acquire_bitvec(100);
         // Return it to pool
@@ -321,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_stats() {
-        let pool = BitVecPool::new(PoolConfig::default());
+        let mut pool = BitVecPool::new(PoolConfig::default());
 
         // Generate some activity
         for _ in 0..10 {
@@ -335,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_clear() {
-        let pool = BitVecPool::new(PoolConfig::default());
+        let mut pool = BitVecPool::new(PoolConfig::default());
 
         // Add some buffers to the pool
         {
@@ -350,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_size_fallback() {
-        let pool = BitVecPool::new(PoolConfig::default());
+        let mut pool = BitVecPool::new(PoolConfig::default());
 
         // Add a large BitVec to a higher bucket
         let large = pool.acquire_bitvec(1024);

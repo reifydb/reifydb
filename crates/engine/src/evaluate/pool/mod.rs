@@ -6,7 +6,8 @@
 //! This module provides type-safe buffer pools that dramatically reduce memory allocations
 //! during query processing by reusing pre-allocated buffers.
 
-use std::sync::Arc;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub mod bitvec;
 pub mod builder;
@@ -17,7 +18,7 @@ pub use builder::ColumnValuesExt;
 pub use manager::BufferPoolManager;
 
 /// Core trait for buffer pools that manage reusable buffers of a specific type.
-pub trait BufferPool<T>: Send + Sync {
+pub trait BufferPool<T> {
     /// Acquire a buffer with at least the specified capacity.
     /// The returned buffer may have larger capacity for better reuse.
     fn acquire(&self, capacity: usize) -> PooledBuffer<T>;
@@ -43,12 +44,12 @@ pub trait BufferPool<T>: Send + Sync {
 /// Provides Vec-like interface while maintaining pool integration.
 pub struct PooledBuffer<T> {
     data: Vec<T>,
-    pool: Option<Arc<dyn BufferPool<T>>>,
+    pool: Option<Rc<RefCell<dyn BufferPool<T>>>>,
 }
 
 impl<T> PooledBuffer<T> {
     /// Create a new pooled buffer with the given data and pool reference.
-    pub(crate) fn new(data: Vec<T>, pool: Arc<dyn BufferPool<T>>) -> Self {
+    pub(crate) fn new(data: Vec<T>, pool: Rc<RefCell<dyn BufferPool<T>>>) -> Self {
         Self { data, pool: Some(pool) }
     }
 
@@ -140,10 +141,10 @@ impl<T> Drop for PooledBuffer<T> {
 }
 
 impl<T> PooledBuffer<T> {
-    fn return_to_pool(&mut self, pool: Arc<dyn BufferPool<T>>) {
+    fn return_to_pool(&mut self, pool: Rc<RefCell<dyn BufferPool<T>>>) {
         // Use the new try_return_buffer method
         let data = std::mem::take(&mut self.data);
-        pool.try_return_buffer(data);
+        pool.borrow_mut().try_return_buffer(data);
     }
 }
 

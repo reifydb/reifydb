@@ -3,10 +3,9 @@
 
 //! Pooled column builder that uses buffer pools for efficient memory allocation.
 
-use super::{BufferPoolManager, BufferPool};
+use super::{BufferPool, BufferPoolManager};
 use reifydb_core::frame::ColumnValues;
 use reifydb_core::{BitVec, CowVec, Type};
-use std::sync::Arc;
 
 /// Builder for ColumnValues that uses buffer pools for efficient memory allocation.
 pub struct PooledColumnBuilder<'a> {
@@ -17,16 +16,8 @@ pub struct PooledColumnBuilder<'a> {
 
 impl<'a> PooledColumnBuilder<'a> {
     /// Create a new pooled column builder with the specified type and capacity.
-    pub fn with_capacity(
-        pool: &'a BufferPoolManager,
-        target_type: Type,
-        capacity: usize,
-    ) -> Self {
-        Self {
-            pool,
-            target_type,
-            capacity,
-        }
+    pub fn with_capacity(pool: &'a BufferPoolManager, target_type: Type, capacity: usize) -> Self {
+        Self { pool, target_type, capacity }
     }
 
     /// Build the ColumnValues using pooled buffers where possible.
@@ -152,48 +143,24 @@ impl ColumnValuesExt for ColumnValues {
 /// Helper for building columns with pre-allocated pooled buffers.
 pub struct PooledVectorBuilder<T> {
     buffer: Vec<T>,
-    valid: BitVec,
-    pool_manager: Arc<BufferPoolManager>,
+    bitvec: BitVec,
+    manager: BufferPoolManager,
 }
 
 impl<T> PooledVectorBuilder<T>
 where
     T: Default + Clone + Send + Sync + 'static + PartialEq,
 {
-    /// Create a new pooled vector builder.
-    pub fn new(
-        capacity: usize,
-        pool_manager: Arc<BufferPoolManager>,
-        pool_type: PoolType,
-    ) -> Self {
-        let buffer = match pool_type {
-            PoolType::I8 => {
-                // This is a bit tricky with generics, so we'll handle specific types
-                // For now, we'll use direct allocation and improve this later
-                Vec::with_capacity(capacity)
-            }
-            _ => Vec::with_capacity(capacity),
-        };
-
-        let valid = pool_manager.bool_pool.acquire_bitvec(capacity);
-
-        Self {
-            buffer,
-            valid,
-            pool_manager,
-        }
-    }
-
     /// Push a value to the builder.
     pub fn push(&mut self, value: T) {
         self.buffer.push(value);
-        self.valid.push(true);
+        self.bitvec.push(true);
     }
 
     /// Push an undefined value to the builder.
     pub fn push_undefined(&mut self) {
         self.buffer.push(T::default());
-        self.valid.push(false);
+        self.bitvec.push(false);
     }
 
     /// Get the current length.
@@ -208,7 +175,7 @@ where
 
     /// Convert to CowVec and BitVec pair.
     pub fn into_parts(self) -> (CowVec<T>, BitVec) {
-        (CowVec::new(self.buffer), self.valid)
+        (CowVec::new(self.buffer), self.bitvec)
     }
 }
 
@@ -234,57 +201,41 @@ pub enum PoolType {
 /// Specialized builders for common numeric types.
 impl PooledVectorBuilder<i32> {
     /// Create a new i32 builder using the pool.
-    pub fn i32(capacity: usize, pool: Arc<BufferPoolManager>) -> Self {
+    pub fn i32(capacity: usize, pool: BufferPoolManager) -> Self {
         let buffer = pool.i32_pool.acquire(capacity).into_vec();
         let valid = pool.bool_pool.acquire_bitvec(capacity);
 
-        Self {
-            buffer,
-            valid,
-            pool_manager: pool,
-        }
+        Self { buffer, bitvec: valid, manager: pool }
     }
 }
 
 impl PooledVectorBuilder<i64> {
     /// Create a new i64 builder using the pool.
-    pub fn i64(capacity: usize, pool: Arc<BufferPoolManager>) -> Self {
+    pub fn i64(capacity: usize, pool: BufferPoolManager) -> Self {
         let buffer = pool.i64_pool.acquire(capacity).into_vec();
         let valid = pool.bool_pool.acquire_bitvec(capacity);
 
-        Self {
-            buffer,
-            valid,
-            pool_manager: pool,
-        }
+        Self { buffer, bitvec: valid, manager: pool }
     }
 }
 
 impl PooledVectorBuilder<f32> {
     /// Create a new f32 builder using the pool.
-    pub fn f32(capacity: usize, pool: Arc<BufferPoolManager>) -> Self {
+    pub fn f32(capacity: usize, pool: BufferPoolManager) -> Self {
         let buffer = pool.f32_pool.acquire(capacity).into_vec();
         let valid = pool.bool_pool.acquire_bitvec(capacity);
 
-        Self {
-            buffer,
-            valid,
-            pool_manager: pool,
-        }
+        Self { buffer, bitvec: valid, manager: pool }
     }
 }
 
 impl PooledVectorBuilder<f64> {
     /// Create a new f64 builder using the pool.
-    pub fn f64(capacity: usize, pool: Arc<BufferPoolManager>) -> Self {
+    pub fn f64(capacity: usize, pool: BufferPoolManager) -> Self {
         let buffer = pool.f64_pool.acquire(capacity).into_vec();
         let valid = pool.bool_pool.acquire_bitvec(capacity);
 
-        Self {
-            buffer,
-            valid,
-            pool_manager: pool,
-        }
+        Self { buffer, bitvec: valid, manager: pool }
     }
 }
 
@@ -295,8 +246,8 @@ mod tests {
 
     #[test]
     fn test_pooled_column_builder() {
-        let pool = BufferPoolManager::default();
-        let builder = PooledColumnBuilder::with_capacity(&pool, Type::Int4, 100);
+        let mut pool = BufferPoolManager::default();
+        let builder = PooledColumnBuilder::with_capacity(&mut pool, Type::Int4, 100);
         let column = builder.build();
 
         assert_eq!(column.get_type(), Type::Int4);
@@ -307,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_pooled_vector_builder_i32() {
-        let pool = Arc::new(BufferPoolManager::default());
+        let pool = BufferPoolManager::default();
         let mut builder = PooledVectorBuilder::i32(100, pool);
 
         builder.push(42);
@@ -328,8 +279,8 @@ mod tests {
 
     #[test]
     fn test_column_values_ext() {
-        let pool = BufferPoolManager::default();
-        let column = ColumnValues::with_pooled_capacity(Type::Float8, 50, &pool);
+        let mut pool = BufferPoolManager::default();
+        let column = ColumnValues::with_pooled_capacity(Type::Float8, 50, &mut pool);
 
         assert_eq!(column.get_type(), Type::Float8);
         assert_eq!(column.len(), 0);
@@ -337,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_pooled_vector_builder_types() {
-        let pool = Arc::new(BufferPoolManager::default());
+        let pool = BufferPoolManager::default();
 
         let i32_builder = PooledVectorBuilder::i32(10, pool.clone());
         let i64_builder = PooledVectorBuilder::i64(10, pool.clone());

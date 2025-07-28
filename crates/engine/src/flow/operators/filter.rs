@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use crate::evaluate::pool::BufferPoolManager;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::flow::change::{Change, Diff};
@@ -68,7 +69,7 @@ impl FilterOperator {
             columns: frame.columns.clone(),
             row_count,
             take: None,
-            buffer_pool: Arc::new(BufferPoolManager::default()),
+            buffer_pool: BufferPoolManager::default(),
         };
 
         // Evaluate predicate to get boolean column

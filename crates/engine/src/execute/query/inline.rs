@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::cell::RefCell;
 use crate::evaluate::pool::BufferPoolManager;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
@@ -103,7 +104,7 @@ impl InlineDataNode {
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
-                        buffer_pool: Arc::new(BufferPoolManager::default()),
+                        buffer_pool: BufferPoolManager::default(),
                     };
 
                     let evaluated = evaluate(&keyed_expr.expression, &ctx)?;
@@ -182,7 +183,7 @@ impl InlineDataNode {
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
-                        buffer_pool: Arc::new(BufferPoolManager::default()),
+                        buffer_pool: BufferPoolManager::default(),
                     };
 
                     column_values

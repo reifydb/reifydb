@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::cell::RefCell;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::evaluate::pool::BufferPoolManager;
 use std::sync::Arc;
@@ -102,7 +103,7 @@ impl ExecutionPlan for LeftJoinNode {
                         .collect(),
                     row_count: 1,
                     take: Some(1),
-                    buffer_pool: Arc::new(BufferPoolManager::default()),
+                    buffer_pool: BufferPoolManager::default(),
                 };
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {

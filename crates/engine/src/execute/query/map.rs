@@ -1,15 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvaluationContext, evaluate};
 use crate::evaluate::pool::BufferPoolManager;
-use std::sync::Arc;
+use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
+use reifydb_core::expression::Expression;
 use reifydb_core::frame::{Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, ColumnDescriptor};
-use reifydb_core::expression::Expression;
 
 pub(crate) struct MapNode {
     input: Box<dyn ExecutionPlan>,
@@ -39,7 +38,7 @@ impl MapNode {
             columns,
             row_count,
             take: None,
-            buffer_pool: Arc::new(BufferPoolManager::default()),
+            buffer_pool: BufferPoolManager::default(),
         };
 
         // Check if this is an alias expression and we have table information
@@ -147,7 +146,7 @@ impl ExecutionPlan for MapWithoutInputNode {
                     columns: Vec::new(),
                     row_count: 1,
                     take: None,
-                    buffer_pool: Arc::new(BufferPoolManager::default()),
+                    buffer_pool: BufferPoolManager::default(),
                 },
             )?;
 

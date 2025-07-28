@@ -16,7 +16,6 @@ use reifydb_core::{
     BitVec, ColumnDescriptor,
     interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 };
-use std::sync::Arc;
 
 #[derive(Debug)]
 pub(crate) struct EvaluationContext<'a> {
@@ -26,7 +25,7 @@ pub(crate) struct EvaluationContext<'a> {
     pub(crate) columns: Vec<FrameColumn>,
     pub(crate) row_count: usize,
     pub(crate) take: Option<usize>,
-    pub(crate) buffer_pool: Arc<BufferPoolManager>,
+    pub(crate) buffer_pool: BufferPoolManager,
 }
 
 impl<'a> EvaluationContext<'a> {
@@ -39,7 +38,7 @@ impl<'a> EvaluationContext<'a> {
             columns: vec![],
             row_count: 1,
             take: None,
-            buffer_pool: Arc::new(BufferPoolManager::default()),
+            buffer_pool: BufferPoolManager::default(),
         }
     }
 
