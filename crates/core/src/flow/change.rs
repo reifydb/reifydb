@@ -1,11 +1,11 @@
+use crate::frame::Frame;
 use std::collections::HashMap;
-use crate::flow::row::Row;
 
 #[derive(Debug, Clone)]
 pub enum Change {
-    Insert { row: Row },
-    Update { old: Row, new: Row },
-    Remove { row: Row },
+    Insert { frame: Frame },
+    Update { old: Frame, new: Frame },
+    Remove { frame: Frame },
 }
 
 #[derive(Debug, Clone)]

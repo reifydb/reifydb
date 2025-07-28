@@ -8,10 +8,9 @@ use reifydb::core::flow::change::{Change, Diff};
 use reifydb::core::flow::engine::FlowEngine;
 use reifydb::core::flow::flow::FlowGraph;
 use reifydb::core::flow::node::{NodeType, OperatorType};
-use reifydb::core::flow::row::Row;
+use reifydb::core::frame::Frame;
 use reifydb::core::interface::{SchemaId, Table, TableId};
-use reifydb::core::row::Layout;
-use reifydb::core::{OwnedSpan, RowId, SpanColumn, SpanLine, Type};
+use reifydb::core::{OwnedSpan, RowId, SpanColumn, SpanLine, Value};
 
 fn main() {
     //     let db = ReifyDB::embedded_blocking_with(serializable(memory()));
@@ -84,28 +83,30 @@ fn dataflow_example() {
     let mut engine = FlowEngine::new(flow_graph);
     engine.initialize().unwrap();
 
-    // Create sample data
-    let layout = Layout::new(&[Type::Int1]);
+    // Create sample data as frames with rowId and age columns
+    let frame = Frame::from_rows(
+        &["__ROW_ID__", "age"],
+        &[
+            vec![Value::RowId(RowId(1)), Value::Int1(13)],
+            vec![Value::RowId(RowId(2)), Value::Int1(18)],
+            vec![Value::RowId(RowId(3)), Value::Int1(25)],
+        ],
+    );
 
-    let mut user1 = layout.allocate_row();
-    layout.set_i8(&mut user1, 0, 13);
+    println!("Created frame with {} rows and {} columns", frame.row_count(), frame.column_count());
 
-    let mut user2 = layout.allocate_row();
-    layout.set_i8(&mut user2, 0, 18);
+    // Display frame contents
+    for i in 0..frame.row_count() {
+        let row = frame.get_row(i);
+        println!("Row {}: {:?}", i, row);
+    }
 
-    let mut user3 = layout.allocate_row();
-    layout.set_i8(&mut user3, 0, 25);
-
-    // Create change with sample inserts
-    let change = Diff::new(vec![
-        Change::Insert { row: Row::new(RowId(1), layout.clone(), user1) },
-        Change::Insert { row: Row::new(RowId(2), layout.clone(), user2) },
-        Change::Insert { row: Row::new(RowId(3), layout.clone(), user3) },
-    ]);
-
-    // Process the change through the dataflow
-    println!("Processing change through dataflow...");
-    engine.process_change(&table_node, change).unwrap();
+    engine
+        .process_change(
+            &table_node,
+            Diff { changes: vec![Change::Insert { frame }], metadata: Default::default() },
+        )
+        .unwrap();
 
     // Query the view results
     let results = engine.get_view_data("adult_users").unwrap();

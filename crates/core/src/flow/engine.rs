@@ -52,22 +52,22 @@ impl FlowEngine {
         Ok(())
     }
 
-    pub fn process_change(&mut self, node_id: &NodeId, change: Diff) -> Result<()> {
+    pub fn process_change(&mut self, node_id: &NodeId, diff: Diff) -> Result<()> {
         if let Some(node) = self.graph.get_node(node_id) {
             let output_change = match &node.node_type {
                 NodeType::Table { .. } => {
                     // Store in table state and pass through
                     if let Some(state) = self.node_states.get_mut(node_id) {
-                        Self::apply_change_to_state(state, &change)?;
+                        Self::apply_change_to_state(state, &diff)?;
                     }
-                    change
+                    diff
                 }
                 NodeType::Operator { .. } => {
                     // Process through operator
                     if let (Some(operator), Some(context)) =
                         (self.operators.get_mut(node_id), self.contexts.get_mut(node_id))
                     {
-                        operator.apply(context, change)?
+                        operator.apply(context, diff)?
                     } else {
                         panic!("Operator or context not found");
                     }
@@ -75,9 +75,9 @@ impl FlowEngine {
                 NodeType::View { .. } => {
                     // Store in view state
                     if let Some(state) = self.node_states.get_mut(node_id) {
-                        Self::apply_change_to_state(state, &change)?;
+                        Self::apply_change_to_state(state, &diff)?;
                     }
-                    change
+                    diff
                 }
             };
 
@@ -108,13 +108,14 @@ impl FlowEngine {
     fn apply_change_to_state(state: &mut StateStore, diff: &Diff) -> Result<()> {
         for change in &diff.changes {
             match change {
-                Change::Insert { row, .. } => {
-                    state.insert(row.clone())?;
+                Change::Insert { frame, .. } => {
+                    // state.insert(row.clone())?;
+                    todo!()
                 }
                 Change::Update { old, new } => {
                     todo!()
                 }
-                Change::Remove { row } => {
+                Change::Remove { frame } => {
                     todo!()
                 }
             }

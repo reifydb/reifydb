@@ -1,7 +1,7 @@
-use super::base::{Operator, OperatorContext};
 use crate::expression::Expression;
 use crate::flow::change::{Change, Diff};
-use crate::flow::row::Row;
+use crate::flow::operators::{Operator, OperatorContext};
+use crate::frame::Frame;
 
 pub struct MapOperator {
     expressions: Vec<Expression>,
@@ -19,17 +19,18 @@ impl Operator for MapOperator {
 
         for change in diff.changes {
             match change {
-                Change::Insert { row } => {
-                    let projected_row = self.project_row(&row)?;
-                    output_changes.push(Change::Insert { row: projected_row });
+                Change::Insert { frame } => {
+                    let projected_frame = self.project_frame(&frame)?;
+                    output_changes.push(Change::Insert { frame: projected_frame });
                 }
                 Change::Update { old, new } => {
-                    let projected_row = self.project_row(&new)?;
-                    output_changes.push(Change::Update { old, new: projected_row });
+                    let projected_frame = self.project_frame(&new)?;
+                    output_changes.push(Change::Update { old, new: projected_frame });
                 }
-                Change::Remove { row } => {
-                    // Pass through removes unchanged
-                    output_changes.push(Change::Remove { row });
+                Change::Remove { frame } => {
+                    // For removes, we might need to project to maintain schema consistency
+                    let projected_frame = self.project_frame(&frame)?;
+                    output_changes.push(Change::Remove { frame: projected_frame });
                 }
             }
         }
@@ -39,11 +40,23 @@ impl Operator for MapOperator {
 }
 
 impl MapOperator {
-    fn project_row(&self, row: &Row) -> crate::Result<Row> {
-        // TODO: Integrate with purple's expression evaluation system
-        // For now, return the original row as a placeholder
-        // This should evaluate each expression against the input row
-        // and construct a new row with the results
-        Ok(row.clone())
+    fn project_frame(&self, frame: &Frame) -> crate::Result<Frame> {
+        if frame.is_empty() {
+            return Ok(frame.clone());
+        }
+
+        // // Create evaluation context from input frame
+        // let eval_ctx = EvaluationContext::from_frame(frame);
+        //
+        // // Evaluate each expression to get projected columns
+        // let mut projected_columns = Vec::new();
+        // for expr in &self.expressions {
+        //     let column = evaluate(expr, &eval_ctx)?;
+        //     projected_columns.push(column);
+        // }
+        //
+        // Build new frame from projected columns
+        // Frame::from_columns(projected_columns)
+        Ok(frame.clone())
     }
 }
