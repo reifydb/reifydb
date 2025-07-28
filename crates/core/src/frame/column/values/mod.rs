@@ -5,8 +5,9 @@ use crate::RowId;
 use crate::value::uuid::{Uuid4, Uuid7};
 use crate::{BitVec, CowVec, Type, Value};
 use crate::{Date, DateTime, Interval, Time};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColumnValues {
     Bool(CowVec<bool>, BitVec),
     Float4(CowVec<f32>, BitVec),

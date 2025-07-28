@@ -7,8 +7,9 @@ mod span;
 use crate::{OwnedSpan, Type};
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AliasExpression {
     pub alias: IdentExpression,
     pub expression: Box<Expression>,
@@ -21,7 +22,7 @@ impl Display for AliasExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyedExpression {
     pub key: IdentExpression,
     pub expression: Box<Expression>,
@@ -33,7 +34,7 @@ impl Display for KeyedExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expression {
     AccessTable(AccessTableExpression),
 
@@ -86,7 +87,7 @@ pub enum Expression {
     Type(DataTypeExpression),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessTableExpression {
     pub table: OwnedSpan,
     pub column: OwnedSpan,
@@ -98,7 +99,7 @@ impl AccessTableExpression {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConstantExpression {
     Undefined { span: OwnedSpan },
     Bool { span: OwnedSpan },
@@ -122,7 +123,7 @@ impl Display for ConstantExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CastExpression {
     pub span: OwnedSpan,
     pub expression: Box<Expression>,
@@ -139,7 +140,7 @@ impl CastExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataTypeExpression {
     pub span: OwnedSpan,
     pub ty: Type,
@@ -155,42 +156,42 @@ impl DataTypeExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: OwnedSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DivExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: OwnedSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: OwnedSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: OwnedSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MulExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: OwnedSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GreaterThanExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -203,7 +204,7 @@ impl GreaterThanExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GreaterThanEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -216,7 +217,7 @@ impl GreaterThanEqualExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LessThanExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -229,7 +230,7 @@ impl LessThanExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LessThanEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -242,7 +243,7 @@ impl LessThanEqualExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -255,7 +256,7 @@ impl EqualExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotEqualExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -268,7 +269,7 @@ impl NotEqualExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BetweenExpression {
     pub value: Box<Expression>,
     pub lower: Box<Expression>,
@@ -282,7 +283,7 @@ impl BetweenExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AndExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -295,7 +296,7 @@ impl AndExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -308,7 +309,7 @@ impl OrExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XorExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
@@ -321,7 +322,7 @@ impl XorExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnExpression(pub OwnedSpan);
 
 impl ColumnExpression {
@@ -398,7 +399,7 @@ impl Display for Expression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallExpression {
     pub func: IdentExpression,
     pub args: Vec<Expression>,
@@ -430,7 +431,7 @@ impl Display for CallExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentExpression(pub OwnedSpan);
 
 impl IdentExpression {
@@ -445,7 +446,7 @@ impl Display for IdentExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PrefixOperator {
     Minus(OwnedSpan),
     Plus(OwnedSpan),
@@ -472,7 +473,7 @@ impl Display for PrefixOperator {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrefixExpression {
     pub operator: PrefixOperator,
     pub expression: Box<Expression>,
@@ -491,7 +492,7 @@ impl Display for PrefixExpression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TupleExpression {
     pub expressions: Vec<Expression>,
     pub span: OwnedSpan,
