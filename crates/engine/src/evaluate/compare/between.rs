@@ -40,11 +40,11 @@ impl Evaluator {
             // but we handle it as a safety measure
             let value = self.evaluate(&expr.value, ctx)?;
             let lower = self.evaluate(&expr.lower, ctx)?;
-            return return_error!(between_cannot_be_applied_to_incompatible_types(
+            return_error!(between_cannot_be_applied_to_incompatible_types(
                 expr.span(),
                 value.get_type(),
                 lower.get_type(),
-            ));
+            ))
         }
 
         // Combine the results with AND logic

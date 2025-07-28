@@ -481,6 +481,13 @@ impl Evaluator {
             (ColumnValues::Utf8(l, lv), ColumnValues::Utf8(r, rv)) => {
                 Ok(compare_utf8(l, r, lv, rv, ne.span()))
             }
+            (ColumnValues::Undefined(size), _) | (_, ColumnValues::Undefined(size)) => {
+                let span = ne.span();
+                Ok(FrameColumn::ColumnQualified(ColumnQualified {
+                    name: span.fragment.into(),
+                    values: ColumnValues::bool(vec![false; *size]),
+                }))
+            }
             _ => return_error!(not_equal_cannot_be_applied_to_incompatible_types(
                 ne.span(),
                 left.get_type(),
