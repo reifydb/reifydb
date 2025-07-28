@@ -13,7 +13,6 @@ use reifydb::engine::flow::engine::FlowEngine;
 // use reifydb::engine::flow::engine::FlowEngine;
 use reifydb::engine::flow::flow::FlowGraph;
 use reifydb::engine::flow::node::{NodeType, OperatorType};
-use reifydb::storage::memory::Memory;
 use reifydb::transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::{memory, serializable};
 
@@ -60,7 +59,7 @@ fn dataflow_example() {
     // Create table node
     let table =
         Table { id: TableId(1), schema: SchemaId(1), name: "users".to_string(), columns: vec![] };
-    let table_node = flow_graph.add_node(NodeType::Table { name: "users".to_string(), table });
+    let source_node = flow_graph.add_node(NodeType::Source { name: "users".to_string(), table });
 
     // Create filter node (filter users with age > 18)
     let filter_expr = Expression::Constant(ConstantExpression::Bool {
@@ -77,18 +76,19 @@ fn dataflow_example() {
         name: "adult_users".to_string(),
         columns: vec![],
     };
-    let view_node =
-        flow_graph.add_node(NodeType::View { name: "adult_users".to_string(), table: view_table });
+    let sink_node =
+        flow_graph.add_node(NodeType::Sink { name: "adult_users".to_string(), table: view_table });
 
-    // Connect nodes: table -> filter -> view
-    flow_graph.add_edge(&table_node, &filter_node).unwrap();
-    flow_graph.add_edge(&filter_node, &view_node).unwrap();
+    // Connect nodes: source -> filter -> sink
+    flow_graph.add_edge(&source_node, &filter_node).unwrap();
+    flow_graph.add_edge(&filter_node, &sink_node).unwrap();
 
     // Create engine and initialize
     // For playground, we'll skip the full transactional engine for now
+    // let (versioned, unversioned, hooks) = sqlite(SqliteConfig::new("/tmp/test"));
     let (versioned, unversioned, hooks) = memory();
 
-    let mut engine = FlowEngine::<Memory, Memory, Serializable<Memory, Memory>>::new(
+    let mut engine = FlowEngine::<_, _, Serializable<_, _>>::new(
         flow_graph.clone(),
         serializable((versioned.clone(), unversioned.clone(), hooks)).0,
     );
@@ -111,7 +111,7 @@ fn dataflow_example() {
 
     engine
         .process_change(
-            &table_node,
+            &source_node,
             Diff { changes: vec![Change::Insert { frame }], metadata: Default::default() },
         )
         .unwrap();

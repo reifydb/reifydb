@@ -10,7 +10,7 @@ use reifydb_core::interface::{
     TableRowKey, TableRowKeyRange, Transaction, Tx, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::row::Layout;
-use reifydb_core::{EncodedKeyRange, Type, Value, Version};
+use reifydb_core::{EncodedKeyRange, Type, Value};
 use std::collections::Bound::Included;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -20,7 +20,6 @@ pub struct FlowEngine<VS: VersionedStorage, US: UnversionedStorage, T: Transacti
     operators: HashMap<NodeId, Box<dyn Operator>>,
     contexts: HashMap<NodeId, OperatorContext>,
     transaction: T,
-    current_version: Version,
     _phantom: PhantomData<(VS, US)>,
 }
 
@@ -31,7 +30,6 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             operators: HashMap::new(),
             contexts: HashMap::new(),
             transaction,
-            current_version: 0, // Start at version 0
             _phantom: PhantomData,
         }
     }
@@ -43,7 +41,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         for node_id in node_ids {
             if let Some(node) = self.graph.get_node(&node_id) {
                 match &node.node_type {
-                    NodeType::Table { .. } => {
+                    NodeType::Source { .. } => {
                         // Tables use VersionedStorage directly
                     }
                     NodeType::Operator { operator } => {
@@ -52,7 +50,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
                         self.operators.insert(node_id.clone(), op);
                         self.contexts.insert(node_id.clone(), OperatorContext::new());
                     }
-                    NodeType::View { .. } => {
+                    NodeType::Sink { .. } => {
                         // Views use VersionedStorage directly
                     }
                 }
@@ -63,10 +61,20 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
     }
 
     pub fn process_change(&mut self, node_id: &NodeId, diff: Diff) -> Result<()> {
-        // First get the node type and output nodes to avoid borrowing conflicts
+        let mut tx = self.transaction.begin_tx()?;
 
-        // FIXME this must be transactional here already
+        self.process_change_with_tx(&mut tx, node_id, diff)?;
+        tx.commit()?;
 
+        Ok(())
+    }
+
+    fn process_change_with_tx(
+        &mut self,
+        tx: &mut <T as Transaction<VS, US>>::Tx,
+        node_id: &NodeId,
+        diff: Diff,
+    ) -> Result<()> {
         let (node_type, output_nodes) = if let Some(node) = self.graph.get_node(node_id) {
             (node.node_type.clone(), node.outputs.clone())
         } else {
@@ -74,31 +82,37 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         };
 
         let output_change = match &node_type {
-            NodeType::Table { .. } => {
-                // Store in versioned storage with transaction
-                self.apply_diff_to_storage(node_id, &diff)?;
+            NodeType::Source { .. } => {
+                // Source are handled elsewhere in the system - just propagate
                 diff
             }
-            NodeType::Operator { .. } => {
+            NodeType::Operator { operator } => {
                 // Process through operator
-                if let (Some(operator), Some(context)) =
+                let transformed_diff = if let (Some(op), Some(context)) =
                     (self.operators.get_mut(node_id), self.contexts.get_mut(node_id))
                 {
-                    operator.apply(context, diff)?
+                    op.apply(context, diff)?
                 } else {
                     panic!("Operator or context not found");
+                };
+
+                // Stateful operators need to persist their internal state
+                if operator.is_stateful() {
+                    self.apply_diff_to_storage_with_tx(tx, node_id, &transformed_diff)?;
                 }
+
+                transformed_diff
             }
-            NodeType::View { .. } => {
-                // Store in versioned storage with transaction
-                self.apply_diff_to_storage(node_id, &diff)?;
+            NodeType::Sink { .. } => {
+                // Sinks persist the final results
+                self.apply_diff_to_storage_with_tx(tx, node_id, &diff)?;
                 diff
             }
         };
 
         // Propagate to downstream nodes
         for output_id in output_nodes {
-            self.process_change(&output_id, output_change.clone())?;
+            self.process_change_with_tx(tx, &output_id, output_change.clone())?;
         }
 
         Ok(())
@@ -118,13 +132,12 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         }
     }
 
-    fn apply_diff_to_storage(&mut self, node_id: &NodeId, diff: &Diff) -> Result<()> {
-        // Start a transaction
-        let mut tx = self.transaction.begin_tx()?;
-
-        // Increment version for this transaction
-        self.current_version += 1;
-
+    fn apply_diff_to_storage_with_tx(
+        &mut self,
+        tx: &mut <T as Transaction<VS, US>>::Tx,
+        node_id: &NodeId,
+        diff: &Diff,
+    ) -> Result<()> {
         let layout = Layout::new(&[Type::Int1]);
 
         let table = Table {
@@ -207,7 +220,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
                         }
 
                         // Insert the row into the database
-                        let row_id = TableRowSequence::next_row_id(&mut tx, TableId(node_id.0))?;
+                        let row_id = TableRowSequence::next_row_id(tx, TableId(node_id.0))?;
                         tx.set(
                             &TableRowKey { table: TableId(node_id.0), row: row_id }.encode(),
                             row,
@@ -233,15 +246,6 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             }
         }
 
-        // // Apply all deltas to versioned storage in a single transaction
-        // if !deltas.is_empty() {
-        //     let versioned_storage = self.transaction.versioned();
-        //     versioned_storage.apply(CowVec::from(deltas), self.current_version)?;
-        // }
-
-        // Commit transaction
-        tx.commit()?;
-
         Ok(())
     }
 
@@ -249,7 +253,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         // Find view node and read from versioned storage
         for node_id in self.graph.get_all_nodes() {
             if let Some(node) = self.graph.get_node(&node_id) {
-                if let NodeType::View { name, .. } = &node.node_type {
+                if let NodeType::Sink { name, .. } = &node.node_type {
                     if name == view_name {
                         return self.read_frame_from_storage(&node_id);
                     }

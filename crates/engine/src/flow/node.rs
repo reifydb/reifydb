@@ -15,9 +15,9 @@ impl fmt::Display for NodeId {
 
 #[derive(Debug, Clone)]
 pub enum NodeType {
-    Table { name: String, table: Table },
+    Source { name: String, table: Table },
     Operator { operator: OperatorType },
-    View { name: String, table: Table },
+    Sink { name: String, table: Table },
 }
 
 #[derive(Debug, Clone)]
@@ -29,6 +29,25 @@ pub enum OperatorType {
     Union,
     TopK { k: usize, sort: Vec<SortKey> },
     Distinct { expressions: Option<Vec<Expression>> },
+}
+
+impl OperatorType {
+    /// Returns true if this operator maintains internal state that needs to be persisted
+    /// across incremental updates
+    pub fn is_stateful(&self) -> bool {
+        match self {
+            // Stateless operators - pure transformations
+            OperatorType::Filter { .. } => false,
+            OperatorType::Map { .. } => false,
+            OperatorType::Union => false,
+
+            // Stateful operators - need persistent state for incremental updates
+            OperatorType::Join { .. } => true, // Hash tables for both sides
+            OperatorType::Aggregate { .. } => true, // Running aggregation state
+            OperatorType::TopK { .. } => true, // Sorted buffer of top K elements
+            OperatorType::Distinct { .. } => true, // Set of seen values
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

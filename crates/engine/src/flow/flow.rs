@@ -59,7 +59,7 @@ impl FlowGraph {
 
             // Process update based on node type
             match &node.node_type {
-                NodeType::Table { name, .. } => {
+                NodeType::Source { name, .. } => {
                     // Debug: Base table received update
                     let _ = name; // Avoid unused variable warning
                 }
@@ -67,7 +67,7 @@ impl FlowGraph {
                     // Debug: Operator processing update
                     let _ = operator; // Avoid unused variable warning
                 }
-                NodeType::View { name, .. } => {
+                NodeType::Sink { name, .. } => {
                     // Debug: View storing update
                     let _ = name; // Avoid unused variable warning
                 }
@@ -113,7 +113,7 @@ mod tests {
         let mut graph = FlowGraph::new();
 
         // Create some test nodes
-        let table1 = graph.add_node(NodeType::Table {
+        let table1 = graph.add_node(NodeType::Source {
             name: "test_table".to_string(),
             table: create_test_table(1, "test_table"),
         });
@@ -121,7 +121,7 @@ mod tests {
         let operator = graph
             .add_node(NodeType::Operator { operator: OperatorType::Map { expressions: vec![] } });
 
-        let view = graph.add_node(NodeType::View {
+        let view = graph.add_node(NodeType::Sink {
             name: "test_view".to_string(),
             table: create_test_table(2, "test_view"),
         });
