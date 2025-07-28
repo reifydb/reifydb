@@ -6,8 +6,9 @@ use reifydb_core::frame::{FrameColumn, ColumnValues, ColumnQualified, Push};
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeRemainder};
-use reifydb_core::{Type, BitVec, CowVec, GetType};
+use reifydb_core::{Type, BitVec, CowVec, GetType, return_error};
 use reifydb_core::expression::RemExpression;
+use reifydb_core::error::diagnostic::operator::rem_cannot_be_applied_to_incompatible_types;
 
 impl Evaluator {
     pub(crate) fn rem(
@@ -484,7 +485,11 @@ impl Evaluator {
                 rem_numeric(ctx, l, r, lv, rv, ty, rem.span())
             }
 
-            _ => unimplemented!(),
+            _ => return_error!(rem_cannot_be_applied_to_incompatible_types(
+                rem.span(),
+                left.get_type(),
+                right.get_type(),
+            )),
         }
     }
 }

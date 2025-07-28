@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::error::diagnostic::Diagnostic;
-use crate::IntoOwnedSpan;
+use crate::{IntoOwnedSpan, Type};
 
 pub fn not_can_not_applied_to_number(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();
@@ -303,6 +303,121 @@ pub fn xor_can_not_applied_to_uuid(span: impl IntoOwnedSpan) -> Diagnostic {
             "XOR is a logical operator that performs exclusive or on boolean values".to_string(),
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...' ".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
+        ],
+        cause: None,
+    }
+}
+
+pub fn add_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_017".to_string(),
+        statement: None,
+        message: format!("Cannot apply '+' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'+' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Consider converting operands to compatible numeric types first".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn sub_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_018".to_string(),
+        statement: None,
+        message: format!("Cannot apply '-' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'-' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Consider converting operands to compatible numeric types first".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn mul_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_019".to_string(),
+        statement: None,
+        message: format!("Cannot apply '*' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'*' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Consider converting operands to compatible numeric types first".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn div_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_020".to_string(),
+        statement: None,
+        message: format!("Cannot apply '/' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'/' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Consider converting operands to compatible numeric types first".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn rem_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_021".to_string(),
+        statement: None,
+        message: format!("Cannot apply '%' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'%' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Consider converting operands to compatible numeric types first".to_string(),
         ],
         cause: None,
     }
