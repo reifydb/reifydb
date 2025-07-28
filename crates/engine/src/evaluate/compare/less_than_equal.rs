@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
 use reifydb_core::value::number::Promote;
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
-use reifydb_core::{BitVec, CowVec, OwnedSpan, value, GetType, return_error};
+use reifydb_core::{BitVec, CowVec, OwnedSpan, value, return_error};
 use reifydb_core::expression::LessThanEqualExpression;
 use reifydb_core::error::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types;
 
