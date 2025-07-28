@@ -13,6 +13,7 @@ pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
 pub use value::{
     Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, RowId, Time, Type, Value,
 };
+use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -36,7 +37,7 @@ pub enum StoreKind {
     Table,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JoinType {
     Inner,
     Left,

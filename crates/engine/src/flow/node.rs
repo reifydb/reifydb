@@ -13,14 +13,14 @@ impl fmt::Display for NodeId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NodeType {
     Source { name: String, table: Table },
     Operator { operator: OperatorType },
     Sink { name: String, table: Table },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperatorType {
     Filter { predicate: Expression },
     Map { expressions: Vec<Expression> },
@@ -50,7 +50,7 @@ impl OperatorType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
     pub node_type: NodeType,

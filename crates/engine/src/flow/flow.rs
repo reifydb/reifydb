@@ -3,8 +3,9 @@ use super::graph::DirectedGraph;
 use super::node::{Node, NodeId, NodeType};
 use crate::Result;
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct FlowGraph {
     graph: DirectedGraph<Node>,
     node_map: HashMap<NodeId, NodeId>,

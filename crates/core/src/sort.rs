@@ -4,14 +4,15 @@
 use crate::OwnedSpan;
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SortDirection {
     Asc,
     Desc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SortKey {
     pub column: OwnedSpan,
     pub direction: SortDirection,
