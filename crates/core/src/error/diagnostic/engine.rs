@@ -18,21 +18,6 @@ pub fn frame_error(message: String) -> Diagnostic {
     }
 }
 
-/// View flow processing error
-pub fn flow_error(message: String) -> Diagnostic {
-    Diagnostic {
-        code: "ENG_002".to_string(),
-        statement: None,
-        message: format!("Flow processing error: {}", message),
-        column: None,
-        span: None,
-        label: None,
-        help: Some("Check view flow configuration".to_string()),
-        notes: vec![],
-        cause: None,
-    }
-}
-
 /// Column policy saturation error - wraps an existing diagnostic
 pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
     let statement = diagnostic.statement.clone();
@@ -43,7 +28,7 @@ pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
     let notes = diagnostic.notes.clone();
     
     Diagnostic {
-        code: "ENG_003".to_string(),
+        code: "ENG_002".to_string(),
         statement,
         message: format!("Column policy saturation: {}", message),
         column,
@@ -58,7 +43,7 @@ pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
 /// Frame missing required ROW_ID column error
 pub fn missing_row_id_column() -> Diagnostic {
     Diagnostic {
-        code: "ENG_004".to_string(),
+        code: "ENG_003".to_string(),
         statement: None,
         message: "Frame must have a __ROW__ID__ column for UPDATE operations".to_string(),
         column: None,
@@ -73,7 +58,7 @@ pub fn missing_row_id_column() -> Diagnostic {
 /// Invalid or undefined RowId values error
 pub fn invalid_row_id_values() -> Diagnostic {
     Diagnostic {
-        code: "ENG_005".to_string(),
+        code: "ENG_004".to_string(),
         statement: None,
         message: "All RowId values must be defined for UPDATE operations".to_string(),
         column: None,

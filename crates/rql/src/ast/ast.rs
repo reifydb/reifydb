@@ -42,6 +42,7 @@ impl IntoIterator for AstStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ast {
     Aggregate(AstAggregate),
+    Between(AstBetween),
     Cast(AstCast),
     Create(AstCreate),
     Describe(AstDescribe),
@@ -77,6 +78,7 @@ impl Ast {
     pub fn token(&self) -> &Token {
         match self {
             Ast::Inline(node) => &node.token,
+            Ast::Between(node) => &node.token,
             Ast::Cast(node) => &node.token,
             Ast::Create(node) => node.token(),
             Ast::Describe(node) => match node {
@@ -126,6 +128,13 @@ impl Ast {
     }
     pub fn as_aggregate(&self) -> &AstAggregate {
         if let Ast::Aggregate(result) = self { result } else { panic!("not aggregate") }
+    }
+
+    pub fn is_between(&self) -> bool {
+        matches!(self, Ast::Between(_))
+    }
+    pub fn as_between(&self) -> &AstBetween {
+        if let Ast::Between(result) = self { result } else { panic!("not between") }
     }
 
     pub fn is_block(&self) -> bool {
@@ -559,6 +568,9 @@ pub enum InfixOperator {
     GreaterThan(Token),
     GreaterThanEqual(Token),
     TypeAscription(Token),
+    And(Token),
+    Or(Token),
+    Xor(Token),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -731,6 +743,14 @@ impl Index<usize> for AstTuple {
     fn index(&self, index: usize) -> &Self::Output {
         &self.nodes[index]
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstBetween {
+    pub token: Token,
+    pub value: Box<Ast>,
+    pub lower: Box<Ast>,
+    pub upper: Box<Ast>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

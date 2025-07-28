@@ -6,8 +6,9 @@ use reifydb_core::frame::{FrameColumn, ColumnValues, ColumnQualified, Push};
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeDiv};
-use reifydb_core::{Type, BitVec, CowVec, GetType};
+use reifydb_core::{Type, BitVec, CowVec, GetType, return_error};
 use reifydb_core::expression::{ DivExpression};
+use reifydb_core::error::diagnostic::operator::div_cannot_be_applied_to_incompatible_types;
 
 impl Evaluator {
     pub(crate) fn div(
@@ -484,7 +485,11 @@ impl Evaluator {
                 div_numeric(ctx, l, r, lv, rv, ty, div.span())
             }
 
-            _ => unimplemented!(),
+            _ => return_error!(div_cannot_be_applied_to_incompatible_types(
+                div.span(),
+                left.get_type(),
+                right.get_type(),
+            )),
         }
     }
 }

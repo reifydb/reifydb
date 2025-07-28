@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::RowId;
 use crate::Type;
 use crate::row::{EncodedRow, Layout};
 use crate::value::{Date, DateTime, Interval, Time, Uuid4, Uuid7};

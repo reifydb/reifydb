@@ -118,6 +118,18 @@ impl Expression {
             Expression::NotEqual(expr) => {
                 format!("{}!={}", expr.left.simplified_name(), expr.right.simplified_name())
             }
+            Expression::Between(expr) => {
+                format!("{} BETWEEN {} AND {}", expr.value.simplified_name(), expr.lower.simplified_name(), expr.upper.simplified_name())
+            }
+            Expression::And(expr) => {
+                format!("{}and{}", expr.left.simplified_name(), expr.right.simplified_name())
+            }
+            Expression::Or(expr) => {
+                format!("{}or{}", expr.left.simplified_name(), expr.right.simplified_name())
+            }
+            Expression::Xor(expr) => {
+                format!("{}xor{}", expr.left.simplified_name(), expr.right.simplified_name())
+            }
             Expression::Type(type_expr) => type_expr.span.fragment.clone(),
         }
     }

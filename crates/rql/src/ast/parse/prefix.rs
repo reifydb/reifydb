@@ -14,7 +14,15 @@ use reifydb_core::return_error;
 impl Parser {
     pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast> {
         let operator = self.parse_prefix_operator()?;
-        let expr = self.parse_node(Precedence::Prefix)?;
+        
+        // NOT operator should have lower precedence than comparison operators
+        // to allow expressions like "not price == 150" to parse as "not (price == 150)"
+        let precedence = match operator {
+            AstPrefixOperator::Not(_) => Precedence::Assignment, // Much lower than comparisons
+            _ => Precedence::Prefix, // Keep existing high precedence for +/- operators
+        };
+        
+        let expr = self.parse_node(precedence)?;
 
         if matches!(operator, AstPrefixOperator::Negate(_)) {
             if let Ast::Literal(AstLiteral::Number(literal)) = &expr {
@@ -39,6 +47,7 @@ impl Parser {
                 Operator::Plus => Ok(AstPrefixOperator::Plus(token)),
                 Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
                 Operator::Bang => Ok(AstPrefixOperator::Not(token)),
+                Operator::Not => Ok(AstPrefixOperator::Not(token)),
                 _ => return_error!(unsupported_token_error(token)),
             },
             _ => return_error!(unsupported_token_error(token)),
@@ -131,5 +140,53 @@ mod tests {
 
         let Literal(AstLiteral::Boolean(node)) = node.deref() else { panic!() };
         assert!(!node.value());
+    }
+
+    #[test]
+    fn test_not_word_false() {
+        let tokens = lex("not false").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let Ast::Prefix(AstPrefix { operator, node }) = result[0].first_unchecked() else {
+            panic!()
+        };
+        assert!(matches!(*operator, AstPrefixOperator::Not(_)));
+
+        let Literal(AstLiteral::Boolean(node)) = node.deref() else { panic!() };
+        assert!(!node.value());
+    }
+
+    #[test]
+    fn test_not_comparison_precedence() {
+        let tokens = lex("not x == 5").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        // Should parse as: not (x == 5), not (not x) == 5
+        let Ast::Prefix(AstPrefix { operator, node }) = result[0].first_unchecked() else {
+            panic!("Expected prefix expression, got {:?}", result[0].first_unchecked())
+        };
+        assert!(matches!(*operator, AstPrefixOperator::Not(_)));
+
+        // The inner expression should be a comparison (x == 5)
+        let Ast::Infix(inner) = node.deref() else { 
+            panic!("Expected infix comparison inside NOT, got {:?}", node.deref()) 
+        };
+        
+        // Verify it's an equality comparison
+        assert!(matches!(inner.operator, crate::ast::InfixOperator::Equal(_)));
+        
+        // Left side should be identifier 'x'
+        let Ast::Identifier(left_id) = inner.left.deref() else { 
+            panic!("Expected identifier on left side") 
+        };
+        assert_eq!(left_id.value(), "x");
+        
+        // Right side should be number '5'
+        let Literal(AstLiteral::Number(right_num)) = inner.right.deref() else { 
+            panic!("Expected number on right side") 
+        };
+        assert_eq!(right_num.value(), "5");
     }
 }

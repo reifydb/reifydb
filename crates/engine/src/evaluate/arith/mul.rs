@@ -6,8 +6,9 @@ use reifydb_core::frame::{FrameColumn, ColumnValues, ColumnQualified, Push};
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{ Promote, SafeMul};
-use reifydb_core::{Type, BitVec, CowVec, GetType};
+use reifydb_core::{Type, BitVec, CowVec, GetType, return_error};
 use reifydb_core::expression::MulExpression;
+use reifydb_core::error::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types;
 
 impl Evaluator {
     pub(crate) fn mul(
@@ -484,7 +485,11 @@ impl Evaluator {
                 mul_numeric(ctx, l, r, lv, rv, ty, mul.span())
             }
 
-            _ => unimplemented!(),
+            _ => return_error!(mul_cannot_be_applied_to_incompatible_types(
+                mul.span(),
+                left.get_type(),
+                right.get_type(),
+            )),
         }
     }
 }

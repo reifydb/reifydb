@@ -3,7 +3,7 @@
 
 use crate::expression::{
     AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
-    PrefixExpression, RemExpression, SubExpression,
+    RemExpression, SubExpression,
 };
 use crate::OwnedSpan;
 
@@ -31,6 +31,10 @@ impl Expression {
             Expression::LessThanEqual(expr) => expr.span.clone(),
             Expression::Equal(expr) => expr.span.clone(),
             Expression::NotEqual(expr) => expr.span.clone(),
+            Expression::Between(expr) => expr.span(),
+            Expression::And(expr) => expr.span.clone(),
+            Expression::Or(expr) => expr.span.clone(),
+            Expression::Xor(expr) => expr.span.clone(),
 
             Expression::Mul(expr) => expr.span(),
             Expression::Div(expr) => expr.span(),
@@ -65,12 +69,6 @@ impl ConstantExpression {
             ConstantExpression::Temporal { span } => span.clone(),
             ConstantExpression::Text { span } => span.clone(),
         }
-    }
-}
-
-impl PrefixExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.span.clone(), self.expression.span()])
     }
 }
 

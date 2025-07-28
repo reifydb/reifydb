@@ -4,11 +4,12 @@
 use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse};
 use crate::{ast, convert_data_type};
 use reifydb_core::expression::{
-    AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
+    AccessTableExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
     ColumnExpression, ConstantExpression, DataTypeExpression, DivExpression, EqualExpression,
     Expression, GreaterThanEqualExpression, GreaterThanExpression, IdentExpression,
     LessThanEqualExpression, LessThanExpression, MulExpression, NotEqualExpression,
-    PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
+    OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
+    XorExpression,
 };
 
 pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
@@ -52,7 +53,19 @@ impl ExpressionCompiler {
             Ast::Identifier(identifier) => {
                 Ok(Expression::Column(ColumnExpression(identifier.span())))
             }
-            Ast::Infix(ast) => ExpressionCompiler::infix(ast),
+            Ast::Infix(ast) => Self::infix(ast),
+            Ast::Between(between) => {
+                let value = Self::compile(*between.value)?;
+                let lower = Self::compile(*between.lower)?;
+                let upper = Self::compile(*between.upper)?;
+                
+                Ok(Expression::Between(BetweenExpression {
+                    value: Box::new(value),
+                    lower: Box::new(lower),
+                    upper: Box::new(upper),
+                    span: between.token.span,
+                }))
+            }
             Ast::Tuple(tuple) => {
                 let mut expressions = Vec::with_capacity(tuple.len());
 
@@ -70,7 +83,9 @@ impl ExpressionCompiler {
                     ast::AstPrefixOperator::Negate(token) => {
                         (token.span.clone(), PrefixOperator::Minus(token.span))
                     }
-                    ast::AstPrefixOperator::Not(_token) => unimplemented!(),
+                    ast::AstPrefixOperator::Not(token) => {
+                        (token.span.clone(), PrefixOperator::Not(token.span))
+                    }
                 };
 
                 Ok(Expression::Prefix(PrefixExpression {
@@ -235,6 +250,39 @@ impl ExpressionCompiler {
                 Ok(Expression::Alias(AliasExpression {
                     alias: IdentExpression(right.span()),
                     expression: Box::new(left),
+                    span: token.span,
+                }))
+            }
+
+            InfixOperator::And(token) => {
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
+
+                Ok(Expression::And(AndExpression {
+                    left: Box::new(left),
+                    right: Box::new(right),
+                    span: token.span,
+                }))
+            }
+
+            InfixOperator::Or(token) => {
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
+
+                Ok(Expression::Or(OrExpression {
+                    left: Box::new(left),
+                    right: Box::new(right),
+                    span: token.span,
+                }))
+            }
+
+            InfixOperator::Xor(token) => {
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
+
+                Ok(Expression::Xor(XorExpression {
+                    left: Box::new(left),
+                    right: Box::new(right),
                     span: token.span,
                 }))
             }

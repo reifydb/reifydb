@@ -1,13 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{Evaluator, EvaluationContext};
-use reifydb_core::frame::{FrameColumn, ColumnValues, ColumnQualified, Push};
+use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
-use reifydb_core::value::IsNumber;
-use reifydb_core::value::number::{ Promote, SafeSub};
-use reifydb_core::{Type, BitVec, CowVec, GetType};
+use reifydb_core::error::diagnostic::operator::sub_cannot_be_applied_to_incompatible_types;
 use reifydb_core::expression::SubExpression;
+use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, Push};
+use reifydb_core::value::IsNumber;
+use reifydb_core::value::number::{Promote, SafeSub};
+use reifydb_core::{BitVec, CowVec, GetType, Type, return_error};
 
 impl Evaluator {
     pub(crate) fn sub(
@@ -484,7 +485,11 @@ impl Evaluator {
                 sub_numeric(ctx, l, r, lv, rv, ty, sub.span())
             }
 
-            _ => unimplemented!(),
+            _ => return_error!(sub_cannot_be_applied_to_incompatible_types(
+                sub.span(),
+                left.get_type(),
+                right.get_type(),
+            )),
         }
     }
 }
@@ -521,8 +526,5 @@ where
         }
     }
 
-    Ok(FrameColumn::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        values: data
-    }))
+    Ok(FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values: data }))
 }

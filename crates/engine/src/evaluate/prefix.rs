@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{evaluate, EvaluationContext, Evaluator};
+use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
+use reifydb_core::err;
+use reifydb_core::error::diagnostic::operator;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, TableQualified};
 use reifydb_core::expression::{PrefixExpression, PrefixOperator};
 
@@ -15,7 +17,32 @@ impl Evaluator {
 
         match column.values() {
             // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
-            ColumnValues::Bool(_, _) => unimplemented!(),
+            ColumnValues::Bool(values, bitvec) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    let mut result = Vec::with_capacity(values.len());
+                    for (idx, val) in values.iter().enumerate() {
+                        if bitvec.get(idx) {
+                            result.push(!val);
+                        } else {
+                            result.push(false);
+                        }
+                    }
+                    Ok(match column.table() {
+                        Some(table) => FrameColumn::TableQualified(TableQualified {
+                            table: table.to_string(),
+                            name: column.name().to_string(),
+                            values: ColumnValues::bool_with_bitvec(result, bitvec),
+                        }),
+                        None => FrameColumn::ColumnQualified(ColumnQualified {
+                            name: column.name().to_string(),
+                            values: ColumnValues::bool_with_bitvec(result, bitvec),
+                        }),
+                    })
+                }
+                _ => err!(reifydb_core::error::diagnostic::engine::frame_error(
+                    "Cannot apply arithmetic prefix operator to bool".to_string()
+                )),
+            },
 
             ColumnValues::Float4(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
@@ -24,6 +51,11 @@ impl Evaluator {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.span()
+                                ));
+                            }
                         });
                     } else {
                         result.push(0.0f32);
@@ -49,6 +81,11 @@ impl Evaluator {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.span()
+                                ));
+                            }
                         });
                     } else {
                         result.push(0.0f64);
@@ -74,6 +111,11 @@ impl Evaluator {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.span()
+                                ));
+                            }
                         });
                     } else {
                         result.push(0);
@@ -99,6 +141,11 @@ impl Evaluator {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.span()
+                                ));
+                            }
                         });
                     } else {
                         result.push(0);
@@ -124,6 +171,11 @@ impl Evaluator {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.span()
+                                ));
+                            }
                         });
                     } else {
                         result.push(0);
@@ -149,6 +201,11 @@ impl Evaluator {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.span()
+                                ));
+                            }
                         });
                     } else {
                         result.push(0);
@@ -174,6 +231,11 @@ impl Evaluator {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.span()
+                                ));
+                            }
                         });
                     } else {
                         result.push(0);
@@ -192,8 +254,14 @@ impl Evaluator {
                 })
             }
 
-            // ColumnValues::String(_, _) => Err("Cannot apply prefix operator to string".into()),
-            ColumnValues::Utf8(_, _) => unimplemented!(),
+            ColumnValues::Utf8(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_text(prefix.span()))
+                }
+                _ => err!(reifydb_core::error::diagnostic::engine::frame_error(
+                    "Cannot apply arithmetic prefix operator to text".to_string()
+                )),
+            },
 
             ColumnValues::Uint1(values, bitvec) => {
                 let mut result = Vec::with_capacity(values.len());
@@ -202,6 +270,9 @@ impl Evaluator {
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
+                        PrefixOperator::Not(_) => {
+                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                        }
                     });
                 }
                 Ok(match column.table() {
@@ -224,6 +295,9 @@ impl Evaluator {
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
+                        PrefixOperator::Not(_) => {
+                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                        }
                     });
                 }
                 Ok(match column.table() {
@@ -246,6 +320,9 @@ impl Evaluator {
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
+                        PrefixOperator::Not(_) => {
+                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                        }
                     });
                 }
                 Ok(match column.table() {
@@ -268,6 +345,9 @@ impl Evaluator {
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
+                        PrefixOperator::Not(_) => {
+                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                        }
                     });
                 }
                 Ok(match column.table() {
@@ -289,6 +369,9 @@ impl Evaluator {
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
+                        PrefixOperator::Not(_) => {
+                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                        }
                     });
                 }
                 Ok(match column.table() {
@@ -310,13 +393,48 @@ impl Evaluator {
                 unimplemented!()
             }
 
-            ColumnValues::Date(_, _) => unimplemented!(),
-            ColumnValues::DateTime(_, _) => unimplemented!(),
-            ColumnValues::Time(_, _) => unimplemented!(),
-            ColumnValues::Interval(_, _) => unimplemented!(),
-            ColumnValues::RowId(_, _) => unimplemented!(),
-            ColumnValues::Uuid4(_, _) => unimplemented!(),
-            ColumnValues::Uuid7(_, _) => unimplemented!(),
+            ColumnValues::Date(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_temporal(prefix.span()))
+                }
+                _ => unimplemented!(),
+            },
+            ColumnValues::DateTime(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_temporal(prefix.span()))
+                }
+                _ => unimplemented!(),
+            },
+            ColumnValues::Time(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_temporal(prefix.span()))
+                }
+                _ => unimplemented!(),
+            },
+            ColumnValues::Interval(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_temporal(prefix.span()))
+                }
+                _ => unimplemented!(),
+            },
+            ColumnValues::RowId(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_number(prefix.span()))
+                }
+                _ => unimplemented!(),
+            },
+            ColumnValues::Uuid4(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_uuid(prefix.span()))
+                }
+                _ => unimplemented!(),
+            },
+            ColumnValues::Uuid7(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_uuid(prefix.span()))
+                }
+                _ => unimplemented!(),
+            },
         }
     }
 }
