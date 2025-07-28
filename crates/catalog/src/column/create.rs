@@ -3,7 +3,8 @@
 
 use crate::Catalog;
 use crate::column::layout::{column, table_column};
-use crate::column::{Column, ColumnIndex, ColumnPolicyKind};
+use crate::column::{Column, ColumnIndex};
+use crate::column_policy::ColumnPolicyKind;
 use crate::sequence::SystemSequence;
 use reifydb_core::error::diagnostic::catalog::column_already_exists;
 use reifydb_core::interface::{ColumnKey, EncodableKey, Key, TableColumnKey};

@@ -8,7 +8,7 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified, ColumnQualified};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
-use reifydb_rql::expression::Expression;
+use reifydb_core::expression::Expression;
 
 pub(crate) struct InnerJoinNode {
     left: Box<dyn ExecutionPlan>,

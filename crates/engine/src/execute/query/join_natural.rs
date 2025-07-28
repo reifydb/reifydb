@@ -2,16 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::frame::{Frame, FrameColumn, FrameLayout, TableQualified, ColumnQualified};
+use reifydb_core::frame::{ColumnQualified, Frame, FrameColumn, FrameLayout, TableQualified};
 use reifydb_core::interface::Rx;
-use reifydb_core::{BitVec, Value};
-use reifydb_rql::plan::logical::NaturalJoinType;
+use reifydb_core::{BitVec, JoinType, Value};
 use std::collections::HashSet;
 
 pub(crate) struct NaturalJoinNode {
     left: Box<dyn ExecutionPlan>,
     right: Box<dyn ExecutionPlan>,
-    join_type: NaturalJoinType,
+    join_type: JoinType,
     layout: Option<FrameLayout>,
 }
 
@@ -19,7 +18,7 @@ impl NaturalJoinNode {
     pub fn new(
         left: Box<dyn ExecutionPlan>,
         right: Box<dyn ExecutionPlan>,
-        join_type: NaturalJoinType,
+        join_type: JoinType,
     ) -> Self {
         Self { left, right, join_type, layout: None }
     }
@@ -79,8 +78,6 @@ impl ExecutionPlan for NaturalJoinNode {
             panic!("Natural join requires at least one common column");
         }
 
-
-
         // Build set of right column indices to exclude (common columns)
         let excluded_right_cols: HashSet<usize> =
             common_columns.iter().map(|(_, _, right_idx)| *right_idx).collect();
@@ -99,7 +96,6 @@ impl ExecutionPlan for NaturalJoinNode {
                     .map(|(_, col)| col.qualified_name()),
             )
             .collect();
-
 
         let mut result_rows = Vec::new();
         let mut mask = BitVec::new(0, true);
@@ -131,7 +127,7 @@ impl ExecutionPlan for NaturalJoinNode {
             }
 
             // Handle LEFT natural join - include unmatched left rows
-            if !matched && matches!(self.join_type, NaturalJoinType::Left) {
+            if !matched && matches!(self.join_type, JoinType::Left) {
                 let mut combined = left_row.clone();
                 // Add undefined values for non-common right columns
                 let undefined_count = right_frame.column_count() - excluded_right_cols.len();
@@ -176,7 +172,9 @@ impl ExecutionPlan for NaturalJoinNode {
             .columns
             .iter()
             .enumerate()
-            .filter_map(|(i, col)| col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
+            .filter_map(|(i, col)| {
+                col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i))
+            })
             .collect();
 
         self.layout = Some(FrameLayout::from_frame(&frame));

@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::FrameColumn;
+use reifydb_core::frame::{FrameColumn, ColumnQualified};
 use reifydb_core::error::diagnostic::function;
 use reifydb_core::error;
-use reifydb_rql::expression::{CallExpression, Expression};
+use reifydb_core::expression::{CallExpression, Expression};
 
 impl Evaluator {
     pub(crate) fn call(
@@ -23,10 +23,10 @@ impl Evaluator {
             .ok_or(error!(function::unknown_function(function.clone())))?;
 
         let row_count = ctx.row_count;
-        Ok(crate::create_frame_column(
-            call.span().fragment,
-            functor.scalar(&virtual_columns, row_count).unwrap()
-        ))
+        Ok(FrameColumn::ColumnQualified(ColumnQualified {
+            name: call.span().fragment.into(),
+            values: functor.scalar(&virtual_columns, row_count).unwrap()
+        }))
     }
 
     fn evaluate_virtual_column<'a>(

@@ -7,11 +7,11 @@ mod mutate;
 mod query;
 
 use crate::ast::{Ast, AstIdentifier, AstPolicy, AstPolicyKind, AstStatement};
-use crate::expression::{Expression, KeyedExpression};
+use reifydb_core::expression::{Expression, KeyedExpression};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::error::diagnostic::ast::unrecognized_type;
 use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
-use reifydb_core::{OwnedSpan, SortKey, Type, return_error};
+use reifydb_core::{JoinType, OwnedSpan, SortKey, Type, return_error};
 
 struct Compiler {}
 
@@ -49,7 +49,7 @@ impl Compiler {
 
 #[derive(Debug)]
 pub enum LogicalPlan {
-    CreateDeferredView(CreateDeferredViewNode),
+    CreateComputedView(CreateComputedViewNode),
     CreateSchema(CreateSchemaNode),
     CreateSequence(CreateSequenceNode),
     CreateTable(CreateTableNode),
@@ -71,7 +71,7 @@ pub enum LogicalPlan {
 }
 
 #[derive(Debug)]
-pub struct CreateDeferredViewNode {
+pub struct CreateComputedViewNode {
     pub schema: OwnedSpan,
     pub view: OwnedSpan,
     pub if_not_exists: bool,
@@ -139,17 +139,10 @@ pub struct JoinLeftNode {
     pub on: Vec<Expression>,
 }
 
-#[derive(Clone, Debug)]
-pub enum NaturalJoinType {
-    Inner,
-    Left,
-    // Future: Right, Full
-}
-
 #[derive(Debug)]
 pub struct JoinNaturalNode {
     pub with: Vec<LogicalPlan>,
-    pub join_type: NaturalJoinType,
+    pub join_type: JoinType,
 }
 
 #[derive(Debug)]

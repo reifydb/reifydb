@@ -1,16 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use super::ColumnId;
+use super::policy::{
+    ColumnPolicy, ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY,
+};
 use crate::Type;
-use super::policy::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
+use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnDescriptor<'a> {
     // Location information
     pub schema: Option<&'a str>,
-    pub table: Option<&'a str>, 
+    pub table: Option<&'a str>,
     pub column: Option<&'a str>,
-    
+
     // Column metadata
     pub column_type: Option<Type>,
     pub policies: Vec<ColumnPolicyKind>,
@@ -18,40 +23,34 @@ pub struct ColumnDescriptor<'a> {
 
 impl<'a> ColumnDescriptor<'a> {
     pub fn new() -> Self {
-        Self { 
-            schema: None, 
-            table: None, 
-            column: None,
-            column_type: None,
-            policies: Vec::new(),
-        }
+        Self { schema: None, table: None, column: None, column_type: None, policies: Vec::new() }
     }
-    
+
     pub fn with_schema(mut self, schema: &'a str) -> Self {
         self.schema = Some(schema);
         self
     }
-    
+
     pub fn with_table(mut self, table: &'a str) -> Self {
         self.table = Some(table);
         self
     }
-    
+
     pub fn with_column(mut self, column: &'a str) -> Self {
         self.column = Some(column);
         self
     }
-    
+
     pub fn with_column_type(mut self, column_type: Type) -> Self {
         self.column_type = Some(column_type);
         self
     }
-    
+
     pub fn with_policies(mut self, policies: Vec<ColumnPolicyKind>) -> Self {
         self.policies = policies;
         self
     }
-    
+
     // Location formatting
     pub fn location_string(&self) -> String {
         match (self.schema, self.table, self.column) {
@@ -65,7 +64,7 @@ impl<'a> ColumnDescriptor<'a> {
             (None, None, None) => "unknown location".to_string(),
         }
     }
-    
+
     // Policy methods
     pub fn saturation_policy(&self) -> &ColumnSaturationPolicy {
         self.policies
@@ -74,5 +73,38 @@ impl<'a> ColumnDescriptor<'a> {
                 ColumnPolicyKind::Saturation(policy) => Some(policy),
             })
             .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Column {
+    pub id: ColumnId,
+    pub name: String,
+    pub ty: Type,
+    pub policies: Vec<ColumnPolicy>,
+    pub index: ColumnIndex,
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+pub struct ColumnIndex(pub u16);
+
+impl Deref for ColumnIndex {
+    type Target = u16;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq<u16> for ColumnIndex {
+    fn eq(&self, other: &u16) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl From<ColumnIndex> for u16 {
+    fn from(value: ColumnIndex) -> Self {
+        value.0
     }
 }

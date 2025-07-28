@@ -6,7 +6,7 @@ use crate::evaluate::pool::BufferPoolManager;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::frame::{ColumnValues, FrameLayout};
 use reifydb_core::interface::Rx;
-use reifydb_rql::expression::Expression;
+use reifydb_core::expression::Expression;
 use std::sync::Arc;
 
 pub(crate) struct FilterNode {

@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::Keyword::{Deferred, Series, Table, View};
+use crate::ast::lex::Keyword::{Computed, Series, Table, View};
 use crate::ast::lex::Operator::CloseParen;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, Operator, Token, TokenKind};
 use crate::ast::parse::Parser;
 use crate::ast::{
-    AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema, AstCreateSeries,
+    AstColumnToCreate, AstCreate, AstCreateComputedView, AstCreateSchema, AstCreateSeries,
     AstCreateTable,
 };
 use Keyword::{Create, Schema};
@@ -21,9 +21,9 @@ impl Parser {
             return self.parse_schema(token);
         }
 
-        if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
+        if (self.consume_if(TokenKind::Keyword(Computed))?).is_some() {
             if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
-                return self.parse_deferred_view(token);
+                return self.parse_computed_view(token);
             }
             unimplemented!()
         }
@@ -52,13 +52,13 @@ impl Parser {
         Ok(AstCreate::Series(AstCreateSeries { token, name, schema, columns }))
     }
 
-    fn parse_deferred_view(&mut self, token: Token) -> crate::Result<AstCreate> {
+    fn parse_computed_view(&mut self, token: Token) -> crate::Result<AstCreate> {
         let schema = self.parse_identifier()?;
         self.consume_operator(Operator::Dot)?;
         let name = self.parse_identifier()?;
         let columns = self.parse_columns()?;
 
-        Ok(AstCreate::DeferredView(AstCreateDeferredView { token, view: name, schema, columns }))
+        Ok(AstCreate::ComputedView(AstCreateComputedView { token, view: name, schema, columns }))
     }
 
     fn parse_table(&mut self, token: Token) -> crate::Result<AstCreate> {
@@ -109,7 +109,7 @@ mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
     use crate::ast::{
-        AstCreate, AstCreateDeferredView, AstCreateSchema, AstCreateSeries, AstCreateTable,
+        AstCreate, AstCreateComputedView, AstCreateSchema, AstCreateSeries, AstCreateTable,
         AstPolicyKind,
     };
 
@@ -236,9 +236,9 @@ mod tests {
     }
 
     #[test]
-    fn test_create_deferred_view() {
+    fn test_create_computed_view() {
         let tokens = lex(r#"
-        create deferred view test.views(field: int2 policy (saturation error))
+        create computed view test.views(field: int2 policy (saturation error))
     "#)
         .unwrap();
         let mut parser = Parser::new(tokens);
@@ -248,7 +248,7 @@ mod tests {
         let result = result.pop().unwrap();
         let create = result.first_unchecked().as_create();
         match create {
-            AstCreate::DeferredView(AstCreateDeferredView {
+            AstCreate::ComputedView(AstCreateComputedView {
                 view: name, schema, columns, ..
             }) => {
                 assert_eq!(schema.value(), "test");

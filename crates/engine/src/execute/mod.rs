@@ -3,11 +3,11 @@
 
 use crate::function::{Functions, math};
 use query::compile::compile;
-use reifydb_catalog::table::Table;
 use reifydb_core::BitVec;
 use reifydb_core::frame::{
     ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
 };
+use reifydb_core::interface::table::Table;
 use reifydb_core::interface::{Rx, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
@@ -98,7 +98,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::Update(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
 
-            PhysicalPlan::CreateDeferredView(_)
+            PhysicalPlan::CreateComputedView(_)
             | PhysicalPlan::CreateSchema(_)
             | PhysicalPlan::CreateTable(_) => unreachable!(), // FIXME return explanatory diagnostic
         }
@@ -110,7 +110,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         plan: PhysicalPlan,
     ) -> crate::Result<Frame> {
         match plan {
-            PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(tx, plan),
+            PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(tx, plan),
             PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
             PhysicalPlan::Delete(plan) => self.delete(tx, plan),

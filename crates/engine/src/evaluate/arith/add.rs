@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::{ColumnValues, FrameColumn, Push};
+use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified, Push};
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{Promote, SafeAdd};
-use reifydb_core::{BitVec, CowVec, GetType, Type};
-use reifydb_rql::expression::AddExpression;
+use reifydb_core::{BitVec, CowVec, GetType, Type, return_error};
+use reifydb_core::expression::AddExpression;
+use reifydb_core::error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types;
 
 impl Evaluator {
     pub(crate) fn add(
@@ -484,7 +485,11 @@ impl Evaluator {
                 add_numeric(ctx, l, r, lv, rv, ty, add.span())
             }
 
-            _ => unimplemented!(),
+            _ => return_error!(add_cannot_be_applied_to_incompatible_types(
+                add.span(),
+                left.get_type(),
+                right.get_type(),
+            )),
         }
     }
 }
@@ -523,5 +528,8 @@ where
             data.push_undefined()
         }
     }
-    Ok(crate::create_frame_column(span.fragment, data))
+    Ok(FrameColumn::ColumnQualified(ColumnQualified {
+        name: span.fragment.into(),
+        values: data
+    }))
 }

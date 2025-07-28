@@ -9,11 +9,11 @@ mod uuid;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use number::NumberParser;
 use reifydb_core::error::diagnostic::cast;
-use reifydb_core::frame::{ColumnValues, FrameColumn};
+use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::{Type, return_error};
-use reifydb_rql::expression::ConstantExpression;
+use reifydb_core::expression::ConstantExpression;
 use temporal::TemporalParser;
 use text::TextParser;
 
@@ -24,10 +24,10 @@ impl Evaluator {
         ctx: &EvaluationContext,
     ) -> crate::Result<FrameColumn> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
-        Ok(crate::create_frame_column(
-            expr.span().fragment,
-            Self::constant_value(&expr, row_count)?
-        ))
+        Ok(FrameColumn::ColumnQualified(ColumnQualified {
+            name: expr.span().fragment.into(),
+            values: Self::constant_value(&expr, row_count)?
+        }))
     }
 
     pub(crate) fn constant_of(
@@ -46,7 +46,10 @@ impl Evaluator {
                 Self::constant_value_of(&expr, target, row_count)?
             }
         };
-        Ok(crate::create_frame_column(expr.span().fragment, casted_values))
+        Ok(FrameColumn::ColumnQualified(ColumnQualified {
+            name: expr.span().fragment.into(),
+            values: casted_values
+        }))
     }
 
     fn constant_value(expr: &ConstantExpression, row_count: usize) -> crate::Result<ColumnValues> {

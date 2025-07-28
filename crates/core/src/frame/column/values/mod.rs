@@ -72,6 +72,36 @@ impl ColumnValues {
     pub fn is_utf8(&self) -> bool {
         self.get_type() == Type::Utf8
     }
+
+    pub fn is_number(&self) -> bool {
+        matches!(
+            self.get_type(),
+            Type::Float4
+                | Type::Float8
+                | Type::Int1
+                | Type::Int2
+                | Type::Int4
+                | Type::Int8
+                | Type::Int16
+                | Type::Uint1
+                | Type::Uint2
+                | Type::Uint4
+                | Type::Uint8
+                | Type::Uint16
+        )
+    }
+
+    pub fn is_text(&self) -> bool {
+        self.get_type() == Type::Utf8
+    }
+
+    pub fn is_temporal(&self) -> bool {
+        matches!(self.get_type(), Type::Date | Type::DateTime | Type::Time | Type::Interval)
+    }
+
+    pub fn is_uuid(&self) -> bool {
+        matches!(self.get_type(), Type::Uuid4 | Type::Uuid7)
+    }
 }
 
 impl ColumnValues {

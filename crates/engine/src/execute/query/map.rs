@@ -9,7 +9,7 @@ use reifydb_core::frame::{Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, ColumnDescriptor};
-use reifydb_rql::expression::Expression;
+use reifydb_core::expression::Expression;
 
 pub(crate) struct MapNode {
     input: Box<dyn ExecutionPlan>,

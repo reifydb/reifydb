@@ -60,32 +60,58 @@ operator! {
     Bang             => "!",
     BangEqual        => "!=",
     QuestionMark     => "?",
-    As               => "as"
+    As               => "as",
+    And              => "and",
+    Or               => "or",
+    Not              => "not",
+    Xor              => "xor"
 }
 
 fn is_ident_continue(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-fn parse_as(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> {
-    let original = input;
+fn parse_word_operator(word: &'static str, op: Operator) -> impl Fn(LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> + 'static {
+    move |input: LocatedSpan<&str>| {
+        let original = input;
 
-    let res = map(
-        terminated(
-            tag_no_case::<&str, LocatedSpan<&str>, nom::error::Error<LocatedSpan<&str>>>("as"),
-            not(peek(satisfy(is_ident_continue))),
-        ),
-        move |_| Operator::As,
-    )
-    .parse(input);
+        let res = map(
+            terminated(
+                tag_no_case::<&str, LocatedSpan<&str>, nom::error::Error<LocatedSpan<&str>>>(word),
+                not(peek(satisfy(is_ident_continue))),
+            ),
+            move |_| op,
+        )
+        .parse(input);
 
-    match res {
-        Ok(ok) => Ok(ok),
-        Err(_) => Err(nom::Err::Error(nom::error::Error {
-            input: original,
-            code: nom::error::ErrorKind::Tag,
-        })),
+        match res {
+            Ok(ok) => Ok(ok),
+            Err(_) => Err(nom::Err::Error(nom::error::Error {
+                input: original,
+                code: nom::error::ErrorKind::Tag,
+            })),
+        }
     }
+}
+
+fn parse_as(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> {
+    parse_word_operator("as", Operator::As)(input)
+}
+
+fn parse_and(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> {
+    parse_word_operator("and", Operator::And)(input)
+}
+
+fn parse_or(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> {
+    parse_word_operator("or", Operator::Or)(input)
+}
+
+fn parse_not(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> {
+    parse_word_operator("not", Operator::Not)(input)
+}
+
+fn parse_xor(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> {
+    parse_word_operator("xor", Operator::Xor)(input)
 }
 
 pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
@@ -107,6 +133,10 @@ pub(crate) fn parse_operator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&s
             value(Operator::OpenParen, tag("(")),
             value(Operator::CloseParen, tag(")")),
             value(Operator::As, map(parse_as, |op| op)),
+            value(Operator::And, map(parse_and, |op| op)),
+            value(Operator::Or, map(parse_or, |op| op)),
+            value(Operator::Not, map(parse_not, |op| op)),
+            value(Operator::Xor, map(parse_xor, |op| op)),
         )),
         alt((
             value(Operator::OpenBracket, tag("[")),
@@ -163,7 +193,7 @@ mod tests {
         assert_eq!(
             TokenKind::Operator(op),
             token.kind,
-            "ty mismatch for symbol: {}",
+            "type mismatch for symbol: {}",
             symbol
         );
         assert_eq!(token.span.fragment, symbol);
@@ -217,6 +247,10 @@ mod tests {
         test_operator_bang => (Bang, "!"),
         test_operator_bang_equal => (BangEqual, "!="),
         test_operator_question_mark => (QuestionMark, "?"),
-        test_operator_as => (As, "as")
+        test_operator_as => (As, "as"),
+        test_operator_and => (And, "and"),
+        test_operator_or => (Or, "or"),
+        test_operator_not => (Not, "not"),
+        test_operator_xor => (Xor, "xor")
     }
 }

@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::{ColumnValues, FrameColumn};
+use reifydb_core::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;
+use reifydb_core::expression::EqualExpression;
+use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn};
 use reifydb_core::value::number::Promote;
-use reifydb_core::value::{IsNumber, IsTemporal, temporal};
-use reifydb_core::{BitVec, CowVec, OwnedSpan, value};
-use reifydb_rql::expression::EqualExpression;
+use reifydb_core::value::{temporal, IsNumber, IsTemporal};
+use reifydb_core::{return_error, value, BitVec, CowVec, OwnedSpan};
 use value::number;
 
 impl Evaluator {
@@ -481,13 +482,18 @@ impl Evaluator {
             (ColumnValues::Utf8(l, lv), ColumnValues::Utf8(r, rv)) => {
                 Ok(compare_utf8(l, r, lv, rv, eq.span()))
             }
-            (l,r) => {
+            (ColumnValues::Undefined(size), _) | (_, ColumnValues::Undefined(size)) => {
                 let span = eq.span();
-                Ok(crate::create_frame_column(
-                    span.fragment,
-                    ColumnValues::bool(vec![false; l.len().min(r.len())])
-                ))
-            },
+                Ok(FrameColumn::ColumnQualified(ColumnQualified {
+                    name: span.fragment.into(),
+                    values: ColumnValues::bool(vec![false; *size]),
+                }))
+            }
+            _ => return_error!(equal_cannot_be_applied_to_incompatible_types(
+                eq.span(),
+                left.get_type(),
+                right.get_type(),
+            )),
         }
     }
 }
@@ -512,7 +518,10 @@ fn compare_bool(
         }
     }
 
-    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
+    FrameColumn::ColumnQualified(ColumnQualified {
+        name: span.fragment.into(),
+        values: ColumnValues::bool_with_bitvec(values, bitvec),
+    })
 }
 
 fn compare_number<L, R>(
@@ -540,7 +549,10 @@ where
         }
     }
 
-    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
+    FrameColumn::ColumnQualified(ColumnQualified {
+        name: span.fragment.into(),
+        values: ColumnValues::bool_with_bitvec(values, bitvec),
+    })
 }
 
 fn compare_temporal<T>(
@@ -566,7 +578,10 @@ where
         }
     }
 
-    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
+    FrameColumn::ColumnQualified(ColumnQualified {
+        name: span.fragment.into(),
+        values: ColumnValues::bool_with_bitvec(values, bitvec),
+    })
 }
 
 fn compare_utf8(
@@ -588,5 +603,8 @@ fn compare_utf8(
             bitvec.push(false);
         }
     }
-    crate::create_frame_column(span.fragment, ColumnValues::bool_with_bitvec(values, bitvec))
+    FrameColumn::ColumnQualified(ColumnQualified {
+        name: span.fragment.into(),
+        values: ColumnValues::bool_with_bitvec(values, bitvec),
+    })
 }
