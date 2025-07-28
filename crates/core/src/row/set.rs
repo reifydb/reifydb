@@ -3,7 +3,7 @@
 
 use crate::Type;
 use crate::row::{EncodedRow, Layout};
-use crate::value::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
+use crate::value::{Blob, Date, DateTime, Interval, Time, Uuid4, Uuid7};
 use std::ptr;
 use uuid::Uuid;
 
@@ -123,6 +123,27 @@ impl Layout {
         let dynamic_offset = self.dynamic_section_size(row);
 
         // Append string to dynamic section
+        row.0.extend_from_slice(bytes);
+
+        // Update reference in static section: [offset: u32][length: u32]
+        let ref_slice = &mut row.0.make_mut()[field.offset..field.offset + 8];
+        ref_slice[0..4].copy_from_slice(&(dynamic_offset as u32).to_le_bytes());
+        ref_slice[4..8].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
+
+        row.set_valid(index, true);
+    }
+
+    pub fn set_blob(&self, row: &mut EncodedRow, index: usize, value: &Blob) {
+        let field = &self.fields[index];
+        debug_assert_eq!(field.value, Type::Blob);
+        debug_assert!(!row.is_defined(index), "BLOB field {} already set", index);
+
+        let bytes = value.as_bytes();
+
+        // Calculate offset in dynamic section (relative to start of dynamic section)
+        let dynamic_offset = self.dynamic_section_size(row);
+
+        // Append blob bytes to dynamic section
         row.0.extend_from_slice(bytes);
 
         // Update reference in static section: [offset: u32][length: u32]
@@ -328,7 +349,7 @@ impl Layout {
 mod tests {
     use crate::Type;
     use crate::row::Layout;
-    use crate::value::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
+    use crate::value::{Blob, Date, DateTime, Interval, Time, Uuid4, Uuid7};
 
     #[test]
     fn test_bool_and_clone_on_write() {
@@ -953,5 +974,66 @@ mod tests {
 
         assert!(!row1.is_defined(0));
         assert_ne!(row1.as_ptr(), row2.as_ptr());
+    }
+
+    #[test]
+    fn test_blob_basic() {
+        let layout = Layout::new(&[Type::Blob]);
+        let mut row = layout.allocate_row();
+
+        let data = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        let blob = Blob::new(data.clone());
+        layout.set_blob(&mut row, 0, &blob);
+
+        let retrieved_blob = layout.get_blob(&row, 0);
+        assert_eq!(retrieved_blob.as_bytes(), &data);
+        assert!(row.is_defined(0));
+    }
+
+    #[test]
+    fn test_blob_empty() {
+        let layout = Layout::new(&[Type::Blob]);
+        let mut row = layout.allocate_row();
+
+        let blob = Blob::new(vec![]);
+        layout.set_blob(&mut row, 0, &blob);
+
+        let retrieved_blob = layout.get_blob(&row, 0);
+        assert!(retrieved_blob.is_empty());
+        assert_eq!(retrieved_blob.len(), 0);
+        assert!(row.is_defined(0));
+    }
+
+    #[test]
+    fn test_blob_multiple() {
+        let layout = Layout::new(&[Type::Blob, Type::Blob, Type::Blob]);
+        let mut row = layout.allocate_row();
+
+        let blob1 = Blob::new(vec![0x00, 0x01]);
+        let blob2 = Blob::new(vec![0xFF, 0xFE, 0xFD]);
+        let blob3 = Blob::new(vec![0xCA, 0xFE, 0xBA, 0xBE]);
+
+        layout.set_blob(&mut row, 0, &blob1);
+        layout.set_blob(&mut row, 1, &blob2);
+        layout.set_blob(&mut row, 2, &blob3);
+
+        assert_eq!(layout.get_blob(&row, 0).as_bytes(), &[0x00, 0x01]);
+        assert_eq!(layout.get_blob(&row, 1).as_bytes(), &[0xFF, 0xFE, 0xFD]);
+        assert_eq!(layout.get_blob(&row, 2).as_bytes(), &[0xCA, 0xFE, 0xBA, 0xBE]);
+    }
+
+    #[test]
+    fn test_blob_mixed_with_other_types() {
+        let layout = Layout::new(&[Type::Int4, Type::Blob, Type::Utf8]);
+        let mut row = layout.allocate_row();
+
+        layout.set_i32(&mut row, 0, 42);
+        let blob = Blob::new(vec![0x12, 0x34, 0x56, 0x78]);
+        layout.set_blob(&mut row, 1, &blob);
+        layout.set_utf8(&mut row, 2, "hello");
+
+        assert_eq!(layout.get_i32(&row, 0), 42);
+        assert_eq!(layout.get_blob(&row, 1).as_bytes(), &[0x12, 0x34, 0x56, 0x78]);
+        assert_eq!(layout.get_utf8(&row, 2), "hello");
     }
 }

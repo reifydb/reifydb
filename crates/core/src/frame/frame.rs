@@ -46,6 +46,7 @@ impl Frame {
                 Value::RowId(v) => ColumnValues::row_id([v]),
                 Value::Uuid4(v) => ColumnValues::uuid4([v]),
                 Value::Uuid7(v) => ColumnValues::uuid7([v]),
+                Value::Blob(ref v) => ColumnValues::blob([v.clone()]),
             };
 
             let column =

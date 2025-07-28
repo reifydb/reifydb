@@ -79,6 +79,8 @@ pub enum Value {
     Uuid4(Uuid4),
     /// A UUID version 7 (timestamp-based)
     Uuid7(Uuid7),
+    /// A binary large object (BLOB)
+    Blob(Blob),
 }
 
 impl Value {
@@ -118,7 +120,8 @@ impl Value {
             | Value::Uint16(_)
             | Value::RowId(_)
             | Value::Uuid4(_)
-            | Value::Uuid7(_) => Value::Undefined,
+            | Value::Uuid7(_)
+            | Value::Blob(_) => Value::Undefined,
         }
     }
 }
@@ -147,6 +150,7 @@ impl PartialOrd for Value {
             (Value::RowId(l), Value::RowId(r)) => l.partial_cmp(r),
             (Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
             (Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
+            (Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -176,6 +180,7 @@ impl Ord for Value {
             (Value::RowId(l), Value::RowId(r)) => l.cmp(r),
             (Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
             (Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
+            (Value::Blob(l), Value::Blob(r)) => l.cmp(r),
             _ => unimplemented!(),
         }
     }
@@ -206,6 +211,7 @@ impl Display for Value {
             Value::RowId(value) => Display::fmt(value, f),
             Value::Uuid4(value) => Display::fmt(value, f),
             Value::Uuid7(value) => Display::fmt(value, f),
+            Value::Blob(value) => Display::fmt(value, f),
             Value::Undefined => f.write_str("undefined"),
         }
     }
@@ -236,6 +242,7 @@ impl Value {
             Value::RowId(_) => Type::RowId,
             Value::Uuid4(_) => Type::Uuid4,
             Value::Uuid7(_) => Type::Uuid7,
+            Value::Blob(_) => Type::Blob,
         }
     }
 }

@@ -26,6 +26,7 @@ pub(crate) fn value_max<'a>(value: Type) -> &'a str {
         Type::RowId => "18_446_744_073_709_551_615",
         Type::Uuid4 => unreachable!(),
         Type::Uuid7 => unreachable!(),
+        Type::Blob => unreachable!(),
         Type::Undefined => unreachable!(),
     }
 }
@@ -55,6 +56,7 @@ pub(crate) fn value_range<'a>(value: Type) -> &'a str {
         Type::RowId => "0 to 18_446_744_073_709_551_615",
         Type::Uuid4 => unreachable!(),
         Type::Uuid7 => unreachable!(),
+        Type::Blob => unreachable!(),
         Type::Undefined => unreachable!(),
     }
 }
@@ -63,8 +65,8 @@ pub(crate) fn value_range<'a>(value: Type) -> &'a str {
 mod tests {
 
     mod value_max {
-        use crate::error::diagnostic::util::value_max;
         use crate::Type;
+        use crate::error::diagnostic::util::value_max;
 
         #[test]
         fn test_signed_ints() {
@@ -73,8 +75,8 @@ mod tests {
             assert_eq!(value_max(Type::Int4), "2_147_483_647");
             assert_eq!(value_max(Type::Int8), "9_223_372_036_854_775_807");
             assert_eq!(
-				value_max(Type::Int16),
-				"170_141_183_460_469_231_731_687_303_715_884_105_727"
+                value_max(Type::Int16),
+                "170_141_183_460_469_231_731_687_303_715_884_105_727"
             );
         }
 
@@ -85,8 +87,8 @@ mod tests {
             assert_eq!(value_max(Type::Uint4), "4_294_967_295");
             assert_eq!(value_max(Type::Uint8), "18_446_744_073_709_551_615");
             assert_eq!(
-				value_max(Type::Uint16),
-				"340_282_366_920_938_463_463_374_607_431_768_211_455"
+                value_max(Type::Uint16),
+                "340_282_366_920_938_463_463_374_607_431_768_211_455"
             );
         }
 
@@ -95,12 +97,11 @@ mod tests {
             assert_eq!(value_max(Type::Float4), "+3.4e38");
             assert_eq!(value_max(Type::Float8), "+1.8e308");
         }
-
     }
 
     mod value_range {
-        use crate::error::diagnostic::util::value_range;
         use crate::Type;
+        use crate::error::diagnostic::util::value_range;
 
         #[test]
         fn test_signed_ints() {
@@ -108,12 +109,12 @@ mod tests {
             assert_eq!(value_range(Type::Int2), "-32_768 to 32_767");
             assert_eq!(value_range(Type::Int4), "-2_147_483_648 to 2_147_483_647");
             assert_eq!(
-				value_range(Type::Int8),
-				"-9_223_372_036_854_775_808 to 9_223_372_036_854_775_807"
+                value_range(Type::Int8),
+                "-9_223_372_036_854_775_808 to 9_223_372_036_854_775_807"
             );
             assert_eq!(
-				value_range(Type::Int16),
-				"-170_141_183_460_469_231_731_687_303_715_884_105_728 to 170_141_183_460_469_231_731_687_303_715_884_105_727"
+                value_range(Type::Int16),
+                "-170_141_183_460_469_231_731_687_303_715_884_105_728 to 170_141_183_460_469_231_731_687_303_715_884_105_727"
             );
         }
 
@@ -124,8 +125,8 @@ mod tests {
             assert_eq!(value_range(Type::Uint4), "0 to 4_294_967_295");
             assert_eq!(value_range(Type::Uint8), "0 to 18_446_744_073_709_551_615");
             assert_eq!(
-				value_range(Type::Uint16),
-				"0 to 340_282_366_920_938_463_463_374_607_431_768_211_455"
+                value_range(Type::Uint16),
+                "0 to 340_282_366_920_938_463_463_374_607_431_768_211_455"
             );
         }
 
@@ -134,6 +135,5 @@ mod tests {
             assert_eq!(value_range(Type::Float4), "-3.4e38 to +3.4e38");
             assert_eq!(value_range(Type::Float8), "-1.8e308 to +1.8e308");
         }
-
     }
 }

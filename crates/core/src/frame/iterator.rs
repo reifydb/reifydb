@@ -174,6 +174,13 @@ impl<'df> Iterator for FrameIter<'df> {
                         ValueRef::Undefined
                     }
                 }
+                ColumnValues::Blob(data, bitvec) => {
+                    if bitvec.get(i) {
+                        ValueRef::Blob(&data[i])
+                    } else {
+                        ValueRef::Undefined
+                    }
+                }
                 ColumnValues::Undefined(_) => ValueRef::Undefined,
             })
             .collect();

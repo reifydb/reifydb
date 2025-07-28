@@ -96,6 +96,10 @@ impl Frame {
                     CowVec::new(values[..n.min(values.len())].to_vec()),
                     bitvec.take(n),
                 ),
+                ColumnValues::Blob(values, bitvec) => ColumnValues::Blob(
+                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    bitvec.take(n),
+                ),
             };
 
             columns.push(match col.table() {

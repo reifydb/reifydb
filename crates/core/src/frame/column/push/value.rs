@@ -3,6 +3,7 @@
 
 use crate::frame::ColumnValues;
 use crate::value::uuid::{Uuid4, Uuid7};
+use crate::value::Blob;
 use crate::{BitVec, Date, DateTime, Interval, RowId, Time, Value};
 
 impl ColumnValues {
@@ -260,6 +261,20 @@ impl ColumnValues {
                     values.push(row_id);
                     bitvec.push(true);
                     *self = ColumnValues::row_id_with_bitvec(values, bitvec);
+                }
+                _ => unimplemented!(),
+            },
+            Value::Blob(v) => match self {
+                ColumnValues::Blob(values, bitvec) => {
+                    values.push(v);
+                    bitvec.push(true);
+                }
+                ColumnValues::Undefined(len) => {
+                    let mut values = vec![Blob::new(vec![]); *len];
+                    let mut bitvec = BitVec::new(*len, false);
+                    values.push(v);
+                    bitvec.push(true);
+                    *self = ColumnValues::blob_with_bitvec(values, bitvec);
                 }
                 _ => unimplemented!(),
             },

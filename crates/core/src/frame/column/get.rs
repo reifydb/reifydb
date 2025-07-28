@@ -156,6 +156,13 @@ impl ColumnValues {
                     Value::Undefined
                 }
             }
+            ColumnValues::Blob(v, b) => {
+                if b.get(index) {
+                    Value::Blob(v[index].clone())
+                } else {
+                    Value::Undefined
+                }
+            }
         }
     }
 }

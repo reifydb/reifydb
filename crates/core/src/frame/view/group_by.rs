@@ -179,6 +179,13 @@ impl Frame {
                             Value::Undefined
                         }
                     }
+                    ColumnValues::Blob(data, bitvec) => {
+                        if bitvec.get(row_idx) {
+                            Value::Blob(data[row_idx].clone())
+                        } else {
+                            Value::Undefined
+                        }
+                    }
                 };
 
                 values.push(value);

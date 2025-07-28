@@ -44,6 +44,7 @@ impl Frame {
                     Type::RowId => ColumnValues::row_id(vec![]),
                     Type::Uuid4 => ColumnValues::uuid4(vec![]),
                     Type::Uuid7 => ColumnValues::uuid7(vec![]),
+                    Type::Blob => ColumnValues::blob(vec![]),
                     Type::Undefined => ColumnValues::Undefined(0),
                 };
                 FrameColumn::TableQualified(TableQualified {

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::frame::{ColumnValues, FrameColumn};
-use crate::value::{Uuid4, Uuid7};
+use crate::value::{Blob, Uuid4, Uuid7};
 use crate::{BitVec, CowVec, Date, DateTime, Interval, Time, return_error};
 
 impl FrameColumn {
@@ -311,6 +311,15 @@ impl ColumnValues {
 
                     *self = ColumnValues::uuid7_with_bitvec(values, bitvec);
                 }
+                ColumnValues::Blob(r, rb) => {
+                    let mut values = CowVec::new(vec![Blob::new(vec![]); *l_len]);
+                    values.extend(r);
+
+                    let mut bitvec = BitVec::new(*l_len, false);
+                    bitvec.extend(&rb);
+
+                    *self = ColumnValues::blob_with_bitvec(values, bitvec);
+                }
                 ColumnValues::Undefined(_) => {}
                 ColumnValues::RowId(_, _) => {
                     panic!("Cannot extend RowId column from Undefined")
@@ -402,6 +411,10 @@ impl ColumnValues {
                 }
                 ColumnValues::Uuid7(l, lb) => {
                     l.extend(std::iter::repeat(Uuid7::default()).take(r_len));
+                    lb.extend(&std::iter::repeat(false).take(r_len).collect::<Vec<_>>().into());
+                }
+                ColumnValues::Blob(l, lb) => {
+                    l.extend(std::iter::repeat(Blob::new(vec![])).take(r_len));
                     lb.extend(&std::iter::repeat(false).take(r_len).collect::<Vec<_>>().into());
                 }
             },

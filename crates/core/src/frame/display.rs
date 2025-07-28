@@ -183,6 +183,13 @@ fn extract_string_value(col: &FrameColumn, row_idx: usize) -> String {
                 "Undefined".into()
             }
         }
+        ColumnValues::Blob(v, b) => {
+            if b.get(row_idx) {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
         ColumnValues::Undefined(_) => "Undefined".into(),
     };
     escape_control_chars(&s)

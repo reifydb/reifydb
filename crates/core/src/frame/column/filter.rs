@@ -329,6 +329,21 @@ impl ColumnValues {
                 *values = CowVec::new(new_values);
                 *bitvec = new_valid.into();
             }
+
+            ColumnValues::Blob(values, bitvec) => {
+                let mut new_values = Vec::with_capacity(mask.count_ones());
+                let mut new_valid = Vec::with_capacity(mask.count_ones());
+
+                for i in 0..values.len().min(mask.len()) {
+                    if mask.get(i) {
+                        new_values.push(values[i].clone());
+                        new_valid.push(bitvec.get(i));
+                    }
+                }
+
+                *values = CowVec::new(new_values);
+                *bitvec = new_valid.into();
+            }
         }
 
         Ok(())

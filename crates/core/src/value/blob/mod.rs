@@ -3,11 +3,12 @@
 
 use crate::util::CowVec;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
 /// A binary large object (BLOB) wrapper type
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Blob(CowVec<u8>);
 
 impl Blob {
@@ -68,6 +69,13 @@ impl From<Blob> for Vec<u8> {
     }
 }
 
+impl Display for Blob {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // Default display as hex with 0x prefix
+        write!(f, "0x{}", hex::encode(self.as_bytes()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +109,17 @@ mod tests {
         let blob = Blob::from(data.clone());
         let bytes: Vec<u8> = blob.into();
         assert_eq!(bytes, data);
+    }
+
+    #[test]
+    fn test_blob_display() {
+        let blob = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        assert_eq!(format!("{}", blob), "0xdeadbeef");
+        
+        let empty_blob = Blob::new(vec![]);
+        assert_eq!(format!("{}", empty_blob), "0x");
+        
+        let single_byte_blob = Blob::new(vec![0xFF]);
+        assert_eq!(format!("{}", single_byte_blob), "0xff");
     }
 }

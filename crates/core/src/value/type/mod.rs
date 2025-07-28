@@ -55,6 +55,8 @@ pub enum Type {
     Uuid4,
     /// A UUID version 7 (timestamp-based)
     Uuid7,
+    /// A binary large object (BLOB)
+    Blob,
     /// Value is not defined (think null in common programming languages)
     Undefined,
 }
@@ -109,6 +111,10 @@ impl Type {
     pub fn is_uuid(&self) -> bool {
         matches!(self, Type::Uuid4 | Type::Uuid7)
     }
+
+    pub fn is_blob(&self) -> bool {
+        matches!(self, Type::Blob)
+    }
 }
 
 impl Type {
@@ -135,6 +141,7 @@ impl Type {
             Type::RowId => 0x13,
             Type::Uuid4 => 0x14,
             Type::Uuid7 => 0x15,
+            Type::Blob => 0x16,
             Type::Undefined => 0x00,
         }
     }
@@ -165,6 +172,7 @@ impl Type {
             0x13 => Type::RowId,
             0x14 => Type::Uuid4,
             0x15 => Type::Uuid7,
+            0x16 => Type::Blob,
             _ => unreachable!(),
         }
     }
@@ -194,6 +202,7 @@ impl Type {
             Type::RowId => 8,
             Type::Uuid4 => 16,
             Type::Uuid7 => 16,
+            Type::Blob => 8, // offset: u32 + length: u32
             Type::Undefined => 0,
         }
     }
@@ -221,6 +230,7 @@ impl Type {
             Type::RowId => 8,
             Type::Uuid4 => 8,
             Type::Uuid7 => 8,
+            Type::Blob => 4, // u32 alignment
             Type::Undefined => 0,
         }
     }
@@ -250,6 +260,7 @@ impl Display for Type {
             Type::RowId => f.write_str("ROWID"),
             Type::Uuid4 => f.write_str("UUID4"),
             Type::Uuid7 => f.write_str("UUID7"),
+            Type::Blob => f.write_str("BLOB"),
             Type::Undefined => f.write_str("UNDEFINED"),
         }
     }
@@ -280,6 +291,7 @@ impl From<&Value> for Type {
             Value::RowId(_) => Type::RowId,
             Value::Uuid4(_) => Type::Uuid4,
             Value::Uuid7(_) => Type::Uuid7,
+            Value::Blob(_) => Type::Blob,
         }
     }
 }

@@ -74,6 +74,7 @@ message Value {
     uint64 row_id_value = 20;
     bytes uuid4_value = 21;
     bytes uuid7_value = 22;
+    bytes blob_value = 23;
   }
 }
 
@@ -159,4 +160,5 @@ enum Type {
   ROW_ID = 0x13;
   UUID4 = 0x14;
   UUID7 = 0x15;
+  BLOB = 0x16;
 }

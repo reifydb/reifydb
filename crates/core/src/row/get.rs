@@ -3,7 +3,7 @@
 
 use crate::Type;
 use crate::row::{EncodedRow, Layout};
-use crate::value::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
+use crate::value::{Blob, Date, DateTime, Interval, Time, Uuid4, Uuid7};
 use uuid::Uuid;
 
 impl Layout {
@@ -80,6 +80,25 @@ impl Layout {
         let string_slice = &row.as_slice()[string_start..string_start + length];
 
         unsafe { std::str::from_utf8_unchecked(string_slice) }
+    }
+
+    pub fn get_blob(&self, row: &EncodedRow, index: usize) -> Blob {
+        let field = &self.fields[index];
+        debug_assert_eq!(field.value, Type::Blob);
+
+        // Read offset and length from static section
+        let ref_slice = &row.as_slice()[field.offset..field.offset + 8];
+        let offset =
+            u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
+        let length =
+            u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
+
+        // Get bytes from dynamic section
+        let dynamic_start = self.dynamic_section_start();
+        let blob_start = dynamic_start + offset;
+        let blob_slice = &row.as_slice()[blob_start..blob_start + length];
+
+        Blob::from_slice(blob_slice)
     }
 
     pub fn get_u8(&self, row: &EncodedRow, index: usize) -> u8 {

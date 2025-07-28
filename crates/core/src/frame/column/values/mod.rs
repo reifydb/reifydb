@@ -3,6 +3,7 @@
 
 use crate::RowId;
 use crate::value::uuid::{Uuid4, Uuid7};
+use crate::value::Blob;
 use crate::{BitVec, CowVec, Type, Value};
 use crate::{Date, DateTime, Interval, Time};
 
@@ -29,6 +30,7 @@ pub enum ColumnValues {
     RowId(CowVec<RowId>, BitVec),
     Uuid4(CowVec<Uuid4>, BitVec),
     Uuid7(CowVec<Uuid7>, BitVec),
+    Blob(CowVec<Blob>, BitVec),
     // special case: all undefined
     Undefined(usize),
 }
@@ -57,6 +59,7 @@ impl ColumnValues {
             ColumnValues::RowId(_, _) => Type::RowId,
             ColumnValues::Uuid4(_, _) => Type::Uuid4,
             ColumnValues::Uuid7(_, _) => Type::Uuid7,
+            ColumnValues::Blob(_, _) => Type::Blob,
             ColumnValues::Undefined(_) => Type::Undefined,
         }
     }
@@ -128,6 +131,7 @@ impl ColumnValues {
             ColumnValues::RowId(_, bitvec) => bitvec,
             ColumnValues::Uuid4(_, bitvec) => bitvec,
             ColumnValues::Uuid7(_, bitvec) => bitvec,
+            ColumnValues::Blob(_, bitvec) => bitvec,
             ColumnValues::Undefined(_) => unreachable!(),
         }
     }
@@ -157,6 +161,7 @@ impl ColumnValues {
             Type::RowId => Self::row_id_with_capacity(capacity),
             Type::Uuid4 => Self::uuid4_with_capacity(capacity),
             Type::Uuid7 => Self::uuid7_with_capacity(capacity),
+            Type::Blob => Self::blob_with_capacity(capacity),
             Type::Undefined => Self::undefined(capacity),
         }
     }
@@ -309,6 +314,13 @@ impl ColumnValues {
                     .iter()
                     .zip(bitvec.iter())
                     .map(|(v, b)| if b { Value::Uuid7(*v) } else { Value::Undefined })
+                    .into_iter(),
+            ),
+            ColumnValues::Blob(values, bitvec) => Box::new(
+                values
+                    .iter()
+                    .zip(bitvec.iter())
+                    .map(|(v, b)| if b { Value::Blob(v.clone()) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Undefined(size) => {
@@ -719,6 +731,26 @@ impl ColumnValues {
         ColumnValues::Uuid7(CowVec::new(values), bitvec)
     }
 
+    pub fn blob(values: impl IntoIterator<Item = Blob>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Blob(CowVec::new(values), BitVec::new(len, true))
+    }
+
+    pub fn blob_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Blob(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
+    }
+
+    pub fn blob_with_bitvec(
+        values: impl IntoIterator<Item = Blob>,
+        bitvec: impl Into<BitVec>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Blob(CowVec::new(values), bitvec)
+    }
+
     pub fn undefined(len: usize) -> Self {
         ColumnValues::Undefined(len)
     }
@@ -748,6 +780,7 @@ impl ColumnValues {
             Value::RowId(v) => ColumnValues::row_id(vec![v; row_count]),
             Value::Uuid4(v) => ColumnValues::uuid4(vec![v; row_count]),
             Value::Uuid7(v) => ColumnValues::uuid7(vec![v; row_count]),
+            Value::Blob(v) => ColumnValues::blob(vec![v; row_count]),
             Value::Undefined => ColumnValues::undefined(row_count),
         }
     }
@@ -783,6 +816,7 @@ impl ColumnValues {
             ColumnValues::RowId(_, b) => b.len(),
             ColumnValues::Uuid4(_, b) => b.len(),
             ColumnValues::Uuid7(_, b) => b.len(),
+            ColumnValues::Blob(_, b) => b.len(),
             ColumnValues::Undefined(n) => *n,
         }
     }

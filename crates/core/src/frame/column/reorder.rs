@@ -96,6 +96,10 @@ impl ColumnValues {
                 values.reorder(indices);
                 bitvec.reorder(indices);
             }
+            ColumnValues::Blob(values, bitvec) => {
+                values.reorder(indices);
+                bitvec.reorder(indices);
+            }
         }
     }
 }

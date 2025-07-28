@@ -4,6 +4,7 @@
 use crate::error::diagnostic::engine;
 use crate::frame::{ColumnValues, Frame};
 use crate::row::{EncodedRow, Layout};
+use crate::value::Blob;
 use crate::{BitVec, CowVec, Date, DateTime, Interval, Time, Type, return_error};
 
 impl Frame {
@@ -139,6 +140,10 @@ impl Frame {
                     ),
                     Type::Uuid7 => ColumnValues::uuid7_with_bitvec(
                         vec![crate::value::uuid::Uuid7::from(uuid::Uuid::nil()); size],
+                        BitVec::new(size, false),
+                    ),
+                    Type::Blob => ColumnValues::blob_with_bitvec(
+                        vec![Blob::new(vec![]); size],
                         BitVec::new(size, false),
                     ),
                 };
