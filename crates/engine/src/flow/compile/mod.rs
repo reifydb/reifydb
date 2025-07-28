@@ -13,8 +13,8 @@ use crate::flow::flow::FlowGraph;
 use crate::flow::node::{NodeId, NodeType};
 use crate::Result;
 use reifydb_core::error::diagnostic::flow::flow_error;
-use reifydb_core::interface::{SchemaId, TableId};
-use reifydb_rql::plan::logical::LogicalPlan;
+use reifydb_core::interface::{SchemaId, Table, TableId};
+use reifydb_rql::plan::logical::{CreateComputedViewNode, LogicalPlan};
 use std::collections::HashMap;
 
 /// Compiler for converting RQL logical plans into executable FlowGraphs
@@ -92,14 +92,18 @@ impl FlowCompiler {
                 self.compile_order(flow_graph, order)?
             }
             
-            // DDL operations are not part of dataflow execution
+            // DDL operations that cannot be compiled to dataflow
             LogicalPlan::CreateSchema(_) |
             LogicalPlan::CreateTable(_) |
-            LogicalPlan::CreateSequence(_) |
-            LogicalPlan::CreateComputedView(_) => {
+            LogicalPlan::CreateSequence(_) => {
                 return Err(reifydb_core::Error(flow_error(
                     "DDL operations cannot be compiled to dataflow".to_string()
                 )));
+            }
+            
+            // CREATE COMPUTED VIEW can be compiled to dataflow
+            LogicalPlan::CreateComputedView(computed_view) => {
+                self.compile_create_computed_view(flow_graph, computed_view)?
             }
             
             // Mutate operations are handled by transaction layer
@@ -130,6 +134,54 @@ impl FlowCompiler {
         let id = TableId(self.next_table_id);
         self.next_table_id += 1;
         id
+    }
+
+    /// Compiles a CREATE COMPUTED VIEW logical plan into a FlowGraph with a Sink node
+    fn compile_create_computed_view(&mut self, flow_graph: &mut FlowGraph, computed_view: CreateComputedViewNode) -> Result<NodeId> {
+        // If there's no WITH clause, this is just a view definition without a query
+        let query_plans = match computed_view.with {
+            Some(plans) => plans,
+            None => {
+                return Err(reifydb_core::Error(flow_error(
+                    "CREATE COMPUTED VIEW requires a WITH clause containing the query definition".to_string()
+                )));
+            }
+        };
+
+        // Compile the query plans to build the dataflow graph
+        let mut last_node_id: Option<NodeId> = None;
+        
+        for (index, plan) in query_plans.into_iter().enumerate() {
+            let node_id = self.compile_plan(flow_graph, plan, index)?;
+            
+            // Connect nodes in sequence (for simple linear plans)
+            if let Some(prev_id) = last_node_id {
+                flow_graph.add_edge(&prev_id, &node_id)?;
+            }
+            
+            last_node_id = Some(node_id);
+        }
+
+        // Create the computed view as a Sink node at the end
+        let view_name = computed_view.view.fragment.clone();
+        let view_table = Table {
+            id: self.next_table_id(),
+            schema: SchemaId(1), // TODO: Parse schema from computed_view.schema
+            name: view_name.clone(),
+            columns: vec![], // TODO: Create columns from computed_view.columns
+        };
+
+        let sink_node_id = flow_graph.add_node(NodeType::Sink {
+            name: view_name,
+            table: view_table,
+        });
+
+        // Connect the last query node to the sink
+        if let Some(last_id) = last_node_id {
+            flow_graph.add_edge(&last_id, &sink_node_id)?;
+        }
+
+        Ok(sink_node_id)
     }
 }
 

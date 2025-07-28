@@ -1,15 +1,17 @@
+use crate::evaluate::{EvaluationContext, evaluate};
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
+use reifydb_core::BitVec;
 use reifydb_core::expression::Expression;
 use reifydb_core::frame::Frame;
 
 pub struct MapOperator {
-    _expressions: Vec<Expression>,
+    expressions: Vec<Expression>,
 }
 
 impl MapOperator {
     pub fn new(expressions: Vec<Expression>) -> Self {
-        Self { _expressions: expressions }
+        Self { expressions }
     }
 }
 
@@ -45,18 +47,26 @@ impl MapOperator {
             return Ok(frame.clone());
         }
 
-        // // Create evaluation context from input frame
-        // let eval_ctx = EvaluationContext::from_frame(frame);
-        //
-        // // Evaluate each expression to get projected columns
-        // let mut projected_columns = Vec::new();
-        // for expr in &self.expressions {
-        //     let column = evaluate(expr, &eval_ctx)?;
-        //     projected_columns.push(column);
-        // }
-        //
+        let row_count = frame.row_count();
+
+        // Create evaluation context from input frame
+        let eval_ctx = EvaluationContext {
+            target_column: None,
+            column_policies: Vec::new(),
+            mask: BitVec::new(row_count, true),
+            columns: frame.columns.clone(),
+            row_count,
+            take: None,
+        };
+
+        // Evaluate each expression to get projected columns
+        let mut projected_columns = Vec::new();
+        for expr in &self.expressions {
+            let column = evaluate(expr, &eval_ctx)?;
+            projected_columns.push(column);
+        }
+
         // Build new frame from projected columns
-        // Frame::from_columns(projected_columns)
-        Ok(frame.clone())
+        Ok(Frame::new(projected_columns))
     }
 }

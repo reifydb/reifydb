@@ -74,6 +74,7 @@ pub struct CreateComputedViewNode {
     pub view: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
+    pub with: Option<Vec<LogicalPlan>>, // Compiled query from WITH clause
 }
 
 #[derive(Debug)]

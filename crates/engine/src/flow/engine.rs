@@ -138,19 +138,28 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         node_id: &NodeId,
         diff: &Diff,
     ) -> Result<()> {
-        let layout = Layout::new(&[Type::Int1]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int1]);
 
         let table = Table {
             id: TableId(node_id.0),
             schema: SchemaId(0),
             name: "view".to_string(),
-            columns: vec![Column {
-                id: ColumnId(0),
-                name: "age".to_string(),
-                ty: Type::Int1,
-                policies: vec![],
-                index: ColumnIndex(0),
-            }],
+            columns: vec![
+                Column {
+                    id: ColumnId(0),
+                    name: "name".to_string(),
+                    ty: Type::Utf8,
+                    policies: vec![],
+                    index: ColumnIndex(0),
+                },
+                Column {
+                    id: ColumnId(1),
+                    name: "age".to_string(),
+                    ty: Type::Int1,
+                    policies: vec![],
+                    index: ColumnIndex(1),
+                }
+            ],
         };
 
         for change in &diff.changes {
@@ -275,19 +284,28 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             ))
             .unwrap();
 
-        let layout = Layout::new(&[Type::Int1]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int1]);
 
         let table = Table {
             id: TableId(node_id.0),
             schema: SchemaId(0),
             name: "view".to_string(),
-            columns: vec![Column {
-                id: ColumnId(0),
-                name: "age".to_string(),
-                ty: Type::Int1,
-                policies: vec![],
-                index: ColumnIndex(0),
-            }],
+            columns: vec![
+                Column {
+                    id: ColumnId(0),
+                    name: "name".to_string(),
+                    ty: Type::Utf8,
+                    policies: vec![],
+                    index: ColumnIndex(0),
+                },
+                Column {
+                    id: ColumnId(1),
+                    name: "age".to_string(),
+                    ty: Type::Int1,
+                    policies: vec![],
+                    index: ColumnIndex(1),
+                }
+            ],
         };
 
         let mut frame = Frame::empty_from_table(&table);

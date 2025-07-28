@@ -5,14 +5,11 @@
 
 use reifydb::core::Value;
 use reifydb::core::frame::Frame;
-use reifydb::core::interface::{SchemaId, Table, TableId};
 use reifydb::engine::flow::change::{Change, Diff};
 use reifydb::engine::flow::compile::compile_to_flow;
 use reifydb::engine::flow::engine::FlowEngine;
-use reifydb::engine::flow::flow::FlowGraph;
-use reifydb::engine::flow::node::{NodeType, OperatorType};
+use reifydb::engine::flow::node::NodeType;
 use reifydb::rql::ast;
-use reifydb::rql::expression::parse_expression;
 use reifydb::rql::plan::logical::compile_logical;
 use reifydb::transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::{memory, serializable};
@@ -49,22 +46,22 @@ fn main() {
 
     // Test RQL to FlowGraph compilation
     rql_to_flow_example();
-    
+
     // Dataflow example
     // dataflow_example();
 }
 
 fn rql_to_flow_example() {
     println!("\n=== RQL to FlowGraph Compilation Example ===");
-    
+
     // Parse a simple RQL query
     let rql = r#"
-create computed view adults with {
-    from users filter age > 18 map { name, age }
+create computed view test.adults(name: utf8, age: int1) with {
+    from users filter { age > 18  and name == 'Bob' }   map { name, age }
 }"#;
 
     println!("Compiling RQL: {}", rql);
-    
+
     // Parse RQL into AST
     let ast_statements = match ast::parse(rql) {
         Ok(statements) => statements,
@@ -73,10 +70,10 @@ create computed view adults with {
             return;
         }
     };
-    
+
     println!("AST statements: {} nodes", ast_statements.len());
-    
-    // Compile AST to logical plans  
+
+    // Compile AST to logical plans
     let logical_plans = match compile_logical(ast_statements.into_iter().next().unwrap()) {
         Ok(plans) => plans,
         Err(e) => {
@@ -84,105 +81,90 @@ create computed view adults with {
             return;
         }
     };
-    
+
     println!("Logical plans: {} nodes", logical_plans.len());
     for (i, plan) in logical_plans.iter().enumerate() {
         println!("  Plan {}: {:?}", i, plan);
     }
-    
+
     // Compile logical plans to FlowGraph
     match compile_to_flow(logical_plans) {
         Ok(flow_graph) => {
             println!("✅ Successfully compiled to FlowGraph!");
             println!("FlowGraph has {} nodes", flow_graph.get_all_nodes().count());
-            
+
             // Print the nodes in the graph
             for node_id in flow_graph.get_all_nodes() {
                 if let Some(node) = flow_graph.get_node(&node_id) {
                     println!("  Node {}: {:?}", node_id, node.node_type);
                 }
             }
+
+            // Now let's execute the FlowGraph with real data
+            println!("\n--- Executing FlowGraph with Sample Data ---");
+
+            // Create engine and initialize
+            let (versioned, unversioned, hooks) = memory();
+            let mut engine = FlowEngine::<_, _, Serializable<_, _>>::new(
+                flow_graph.clone(),
+                serializable((versioned.clone(), unversioned.clone(), hooks)).0,
+            );
+
+            engine.initialize().unwrap();
+
+            // Find the source node (users table)
+            let source_node_id = flow_graph
+                .get_all_nodes()
+                .find(|node_id| {
+                    if let Some(node) = flow_graph.get_node(node_id) {
+                        matches!(node.node_type, NodeType::Source { .. })
+                    } else {
+                        false
+                    }
+                })
+                .expect("Should have a source node");
+
+            // Insert sample users with different ages
+            let users_data = [
+                ("Alice", 16),
+                ("Bob", 22),
+                ("Charlie", 17),
+                ("Diana", 25),
+                ("Eve", 19),
+                ("Bob", 60),
+            ];
+
+            for (name, age) in users_data {
+                println!("Inserting user: {} (age {})", name, age);
+
+                // Create frame with user data
+                let frame = Frame::from_rows(
+                    &["name", "age"],
+                    &[vec![Value::Utf8(name.to_string()), Value::Int1(age)]],
+                );
+
+                // Process the change through the dataflow
+                engine
+                    .process_change(
+                        &source_node_id,
+                        Diff {
+                            changes: vec![Change::Insert { frame }],
+                            metadata: Default::default(),
+                        },
+                    )
+                    .unwrap();
+            }
+
+            // Query the computed view results
+            println!("\n--- Computed View Results ---");
+            let results = engine.get_view_data("adults").unwrap();
+            println!("Adults view contains {} rows:", results.row_count());
+            println!("{}", results);
+
+            println!("\nExpected: Only users with age > 18 (Bob: 22, Diana: 25, Eve: 19)");
         }
         Err(e) => {
             println!("❌ FlowGraph compilation failed: {}", e);
         }
     }
-}
-
-fn dataflow_example() {
-    println!("\n=== Dataflow Example ===");
-
-    // Create a simple flow: Table -> Filter -> View
-    let mut flow_graph = FlowGraph::new();
-
-    // Create table node
-    let table =
-        Table { id: TableId(1), schema: SchemaId(1), name: "users".to_string(), columns: vec![] };
-    let source_node = flow_graph.add_node(NodeType::Source { name: "users".to_string(), table });
-
-    // Create filter node (filter users with age > 18)
-    // let filter_expr = Expression::Constant(ConstantExpression::Bool {
-    //     span: OwnedSpan { column: SpanColumn(0), line: SpanLine(0), fragment: "true".to_string() },
-    // });
-
-    let filter_expr = parse_expression("age > 18").unwrap().pop().unwrap();
-
-    let filter_node = flow_graph
-        .add_node(NodeType::Operator { operator: OperatorType::Filter { predicate: filter_expr } });
-
-    // Create view node
-    let view_table = Table {
-        id: TableId(2),
-        schema: SchemaId(1),
-        name: "adult_users".to_string(),
-        columns: vec![],
-    };
-    let sink_node =
-        flow_graph.add_node(NodeType::Sink { name: "adult_users".to_string(), table: view_table });
-
-    // Connect nodes: source -> filter -> sink
-    flow_graph.add_edge(&source_node, &filter_node).unwrap();
-    flow_graph.add_edge(&filter_node, &sink_node).unwrap();
-
-    // Create engine and initialize
-    // For playground, we'll skip the full transactional engine for now
-    // let (versioned, unversioned, hooks) = sqlite(SqliteConfig::new("/tmp/test"));
-    let (versioned, unversioned, hooks) = memory();
-
-    let mut engine = FlowEngine::<_, _, Serializable<_, _>>::new(
-        flow_graph.clone(),
-        serializable((versioned.clone(), unversioned.clone(), hooks)).0,
-    );
-
-    engine.initialize().unwrap();
-
-    // Create sample data as frames with rowId and age columns
-    let frame = Frame::from_rows(
-        &["age"],
-        &[vec![Value::Int1(13)], vec![Value::Int1(18)], vec![Value::Int1(25)]],
-    );
-
-    println!("Created frame with {} rows and {} columns", frame.row_count(), frame.column_count());
-
-    // Display frame contents
-    for i in 0..frame.row_count() {
-        let row = frame.get_row(i);
-        println!("Row {}: {:?}", i, row);
-    }
-
-    engine
-        .process_change(
-            &source_node,
-            Diff { changes: vec![Change::Insert { frame }], metadata: Default::default() },
-        )
-        .unwrap();
-
-    // Query the view results
-    let results = engine.get_view_data("adult_users").unwrap();
-    println!("View results: {} rows", results.row_count());
-    println!("{}", results);
-
-    println!("Flow graph created with {} nodes", flow_graph.get_all_nodes().count());
-
-    println!("Dataflow example completed!");
 }
