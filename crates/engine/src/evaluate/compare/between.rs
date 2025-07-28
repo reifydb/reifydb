@@ -4,6 +4,8 @@
 use crate::evaluate::{Evaluator, EvaluationContext};
 use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
 use reifydb_core::expression::{BetweenExpression, GreaterThanEqualExpression, LessThanEqualExpression};
+use reifydb_core::{GetType, return_error};
+use reifydb_core::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
 
 impl Evaluator {
     pub(crate) fn between(
@@ -30,6 +32,19 @@ impl Evaluator {
         let ge_result = self.greater_than_equal(&greater_equal_expr, ctx)?;
         let le_result = self.less_than_equal(&less_equal_expr, ctx)?;
         
+        // Check that both results are boolean (they should be if the comparison succeeded)
+        if !matches!(ge_result.values(), ColumnValues::Bool(_, _)) || !matches!(le_result.values(), ColumnValues::Bool(_, _)) {
+            // This should not happen if the comparison operators work correctly,
+            // but we handle it as a safety measure
+            let value = self.evaluate(&expr.value, ctx)?;
+            let lower = self.evaluate(&expr.lower, ctx)?;
+            return return_error!(between_cannot_be_applied_to_incompatible_types(
+                expr.span(),
+                value.get_type(),
+                lower.get_type(),
+            ));
+        }
+        
         // Combine the results with AND logic
         let ge_values = ge_result.values();
         let le_values = le_result.values();
@@ -55,12 +70,8 @@ impl Evaluator {
                 }))
             }
             _ => {
-                // Fallback: create a false result
-                let len = ge_values.len().min(le_values.len());
-                Ok(FrameColumn::ColumnQualified(ColumnQualified {
-                    name: expr.span.fragment.clone(),
-                    values: ColumnValues::bool(vec![false; len]),
-                }))
+                // This should never be reached due to the check above
+                unreachable!("Both comparison results should be boolean after the check above")
             }
         }
     }

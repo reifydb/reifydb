@@ -422,3 +422,164 @@ pub fn rem_cannot_be_applied_to_incompatible_types(
         cause: None,
     }
 }
+
+pub fn equal_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_022".to_string(),
+        statement: None,
+        message: format!("Cannot apply '==' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'==' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Equality comparison is only supported between compatible types".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn not_equal_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_023".to_string(),
+        statement: None,
+        message: format!("Cannot apply '!=' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'!=' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Inequality comparison is only supported between compatible types".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn less_than_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_024".to_string(),
+        statement: None,
+        message: format!("Cannot apply '<' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'<' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Less than comparison is only supported between compatible types".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn less_than_equal_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_025".to_string(),
+        statement: None,
+        message: format!("Cannot apply '<=' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'<=' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Less than or equal comparison is only supported between compatible types".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn greater_than_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_026".to_string(),
+        statement: None,
+        message: format!("Cannot apply '>' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'>' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Greater than comparison is only supported between compatible types".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn greater_than_equal_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    left: Type,
+    right: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_027".to_string(),
+        statement: None,
+        message: format!("Cannot apply '>=' operator to {} and {}", left, right),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'>=' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Left operand is of type: {}", left),
+            format!("Right operand is of type: {}", right),
+            "Greater than or equal comparison is only supported between compatible types".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn between_cannot_be_applied_to_incompatible_types(
+    span: impl IntoOwnedSpan,
+    value_type: Type,
+    range_type: Type,
+) -> Diagnostic {
+    let owned_span = span.into_span();
+    Diagnostic {
+        code: "OPERATOR_028".to_string(),
+        statement: None,
+        message: format!("Cannot apply 'BETWEEN' operator to {} with range of {}", value_type, range_type),
+        column: None,
+        span: Some(owned_span),
+        label: Some("'BETWEEN' operator on incompatible types".to_string()),
+        help: None,
+        notes: vec![
+            format!("Value is of type: {}", value_type),
+            format!("Range bounds are of type: {}", range_type),
+            "BETWEEN comparison is only supported between compatible types".to_string(),
+        ],
+        cause: None,
+    }
+}

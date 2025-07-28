@@ -5,8 +5,9 @@ use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
 use reifydb_core::value::number::Promote;
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
-use reifydb_core::{BitVec, CowVec, OwnedSpan, value};
+use reifydb_core::{BitVec, CowVec, OwnedSpan, value, GetType, return_error};
 use reifydb_core::expression::LessThanEqualExpression;
+use reifydb_core::error::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types;
 
 impl Evaluator {
     pub(crate) fn less_than_equal(
@@ -477,13 +478,11 @@ impl Evaluator {
             (ColumnValues::Utf8(l, lv), ColumnValues::Utf8(r, rv)) => {
                 Ok(compare_utf8(l, r, lv, rv, lte.span()))
             }
-            (l,r) => {
-                let span = lte.span();
-                Ok(FrameColumn::ColumnQualified(ColumnQualified {
-                    name: span.fragment.into(),
-                    values: ColumnValues::bool(vec![false; l.len().min(r.len())])
-                }))
-            },
+            _ => return_error!(less_than_equal_cannot_be_applied_to_incompatible_types(
+                lte.span(),
+                left.get_type(),
+                right.get_type(),
+            )),
         }
     }
 }
