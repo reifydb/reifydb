@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::row::{EncodedRow, Layout};
-use crate::{Date, DateTime, Interval, Time};
 use crate::value::{Uuid4, Uuid7};
+use crate::{Date, DateTime, Interval, Time};
 
 impl Layout {
     pub fn try_get_bool(&self, row: &EncodedRow, index: usize) -> Option<bool> {
@@ -90,8 +90,8 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use crate::row::Layout;
-    use crate::{Type, Date, DateTime, Interval, Time};
     use crate::value::{Uuid4, Uuid7};
+    use crate::{Date, DateTime, Interval, Time, Type};
 
     #[test]
     fn test_try_get_bool() {
@@ -272,13 +272,7 @@ mod tests {
 
     #[test]
     fn test_try_get_multiple_utf8_different_sizes() {
-        let layout = Layout::new(&[
-            Type::Utf8,
-            Type::Int2,
-            Type::Utf8,
-            Type::Bool,
-            Type::Utf8,
-        ]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Bool, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // All initially undefined
@@ -472,8 +466,7 @@ mod tests {
 
     #[test]
     fn test_try_get_mixed_temporal_fields() {
-        let layout =
-            Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+        let layout = Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         // Initially all fields undefined
@@ -507,8 +500,7 @@ mod tests {
 
     #[test]
     fn test_try_get_temporal_after_set_undefined() {
-        let layout =
-            Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+        let layout = Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         // Set all temporal fields

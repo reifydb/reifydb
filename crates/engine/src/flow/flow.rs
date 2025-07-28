@@ -86,7 +86,7 @@ impl FlowGraph {
     pub fn get_node_mut(&mut self, node_id: &NodeId) -> Option<&mut Node> {
         self.graph.get_node_mut(node_id)
     }
-    
+
     pub fn get_all_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.node_map.keys().cloned()
     }
@@ -102,7 +102,7 @@ impl Default for FlowGraph {
 mod tests {
     use super::*;
     use crate::flow::node::OperatorType;
-    use crate::interface::{SchemaId, Table, TableId};
+    use reifydb_core::interface::{SchemaId, Table, TableId};
 
     fn create_test_table(id: u64, name: &str) -> Table {
         Table { id: TableId(id), schema: SchemaId(1), name: name.to_string(), columns: vec![] }

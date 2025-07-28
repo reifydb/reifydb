@@ -1,4 +1,4 @@
-use crate::frame::Frame;
+use reifydb_core::frame::Frame;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]

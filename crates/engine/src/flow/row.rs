@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::row::{EncodedRow, Layout};
-use crate::{RowId, Value};
+use reifydb_core::row::{EncodedRow, Layout};
+use reifydb_core::{RowId, Value};
 
 #[derive(Debug, Clone)]
 pub struct Row {

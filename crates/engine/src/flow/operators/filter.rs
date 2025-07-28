@@ -1,21 +1,21 @@
-use crate::BitVec;
-use crate::expression::Expression;
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
-use crate::frame::Frame;
+use reifydb_core::BitVec;
+use reifydb_core::expression::Expression;
+use reifydb_core::frame::Frame;
 
 pub struct FilterOperator {
-    predicate: Expression,
+    _predicate: Expression,
 }
 
 impl FilterOperator {
     pub fn new(predicate: Expression) -> Self {
-        Self { predicate }
+        Self { _predicate: predicate }
     }
 }
 
 impl Operator for FilterOperator {
-    fn apply(&mut self, ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
+    fn apply(&mut self, _ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
         let mut output_changes = Vec::new();
 
         for change in diff.changes {
@@ -63,7 +63,6 @@ impl FilterOperator {
         bv.set(0, false);
         frame.filter(&bv).unwrap();
 
-        dbg!(&frame);
         //
         // Filter frame using boolean mask (SIMD operation)
         // frame.filter_by_column(&result_column)

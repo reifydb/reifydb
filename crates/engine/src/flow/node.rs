@@ -1,7 +1,6 @@
-use crate::expression::Expression;
-use crate::interface::Table;
-use crate::JoinType;
-use crate::SortKey;
+use reifydb_core::expression::Expression;
+use reifydb_core::interface::Table;
+use reifydb_core::{JoinType, SortKey};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

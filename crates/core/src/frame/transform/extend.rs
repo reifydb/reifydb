@@ -475,10 +475,34 @@ impl Frame {
                         }
                     }
                 }
+                (ColumnValues::Uuid4(vec, bitvec), Type::Uuid4) => {
+                    match layout.try_get_uuid4(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            bitvec.push(true);
+                        }
+                        None => {
+                            vec.push(crate::value::uuid::Uuid4::from(uuid::Uuid::nil()));
+                            bitvec.push(false);
+                        }
+                    }
+                }
+                (ColumnValues::Uuid7(vec, bitvec), Type::Uuid7) => {
+                    match layout.try_get_uuid7(row, index) {
+                        Some(v) => {
+                            vec.push(v);
+                            bitvec.push(true);
+                        }
+                        None => {
+                            vec.push(crate::value::uuid::Uuid7::from(uuid::Uuid::nil()));
+                            bitvec.push(false);
+                        }
+                    }
+                }
                 (ColumnValues::Undefined(size), Type::Undefined) => {
                     *size += 1;
                 }
-                (_, _) => unreachable!(),
+                (l, r) => unreachable!("{:#?} {:#?}", l, r),
             }
         }
         Ok(())
@@ -488,6 +512,7 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     mod frame {
+        use uuid::Timestamp;
         use crate::frame::Frame;
         use crate::frame::column::ColumnQualified;
 
@@ -721,6 +746,69 @@ mod tests {
             assert_eq!(
                 test_instance1.columns[0],
                 ColumnQualified::uint16_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+            );
+        }
+
+        #[test]
+        fn test_uuid4() {
+            use crate::value::uuid::Uuid4;
+            use uuid::Uuid;
+            
+            let uuid1 = Uuid4::from(Uuid::new_v4());
+            let uuid2 = Uuid4::from(Uuid::new_v4());
+            let uuid3 = Uuid4::from(Uuid::new_v4());
+            let uuid4 = Uuid4::from(Uuid::new_v4());
+
+            let mut test_instance1 = Frame::new(vec![ColumnQualified::uuid4("id", [uuid1, uuid2])]);
+
+            let test_instance2 =
+                Frame::new(vec![ColumnQualified::uuid4_with_bitvec("id", [uuid3, uuid4], [true, false])]);
+
+            test_instance1.append_frame(test_instance2).unwrap();
+
+            assert_eq!(
+                test_instance1.columns[0],
+                ColumnQualified::uuid4_with_bitvec("id", [uuid1, uuid2, uuid3, uuid4], [true, true, true, false])
+            );
+        }
+
+        #[test]
+        fn test_uuid7() {
+            use crate::value::uuid::Uuid7;
+            use uuid::Uuid;
+            
+            let uuid1 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(1,1)));
+            let uuid2 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(1,2)));
+            let uuid3 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(2,1)));
+            let uuid4 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(2,2)));
+
+            let mut test_instance1 = Frame::new(vec![ColumnQualified::uuid7("id", [uuid1, uuid2])]);
+
+            let test_instance2 =
+                Frame::new(vec![ColumnQualified::uuid7_with_bitvec("id", [uuid3, uuid4], [true, false])]);
+
+            test_instance1.append_frame(test_instance2).unwrap();
+
+            assert_eq!(
+                test_instance1.columns[0],
+                ColumnQualified::uuid7_with_bitvec("id", [uuid1, uuid2, uuid3, uuid4], [true, true, true, false])
+            );
+        }
+
+        #[test]
+        fn test_row_id() {
+            use crate::RowId;
+            
+            let mut test_instance1 = Frame::new(vec![ColumnQualified::row_id([RowId(1), RowId(2)])]);
+
+            let test_instance2 =
+                Frame::new(vec![ColumnQualified::row_id_with_bitvec([RowId(3), RowId(4)], [true, false])]);
+
+            test_instance1.append_frame(test_instance2).unwrap();
+
+            assert_eq!(
+                test_instance1.columns[0],
+                ColumnQualified::row_id_with_bitvec([RowId(1), RowId(2), RowId(3), RowId(4)], [true, true, true, false])
             );
         }
 

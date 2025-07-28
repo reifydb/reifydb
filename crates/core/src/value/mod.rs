@@ -210,7 +210,7 @@ impl Display for Value {
 }
 
 impl Value {
-    pub fn ty(&self) -> Type {
+    pub fn get_type(&self) -> Type {
         match self {
             Value::Undefined => Type::Undefined,
             Value::Bool(_) => Type::Bool,

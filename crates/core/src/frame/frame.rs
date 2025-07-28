@@ -76,15 +76,6 @@ impl Frame {
         Self { name: name.into(), columns, index, frame_index }
     }
 
-    pub fn empty() -> Self {
-        Self {
-            name: "frame".to_string(),
-            columns: vec![],
-            index: HashMap::new(),
-            frame_index: HashMap::new(),
-        }
-    }
-
     pub fn shape(&self) -> (usize, usize) {
         (self.columns.get(0).map(|c| c.values().len()).unwrap_or(0), self.columns.len())
     }

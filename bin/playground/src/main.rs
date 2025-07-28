@@ -4,13 +4,18 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb::core::expression::{ConstantExpression, Expression};
-use reifydb::core::flow::change::{Change, Diff};
-use reifydb::core::flow::engine::FlowEngine;
-use reifydb::core::flow::flow::FlowGraph;
-use reifydb::core::flow::node::{NodeType, OperatorType};
 use reifydb::core::frame::Frame;
 use reifydb::core::interface::{SchemaId, Table, TableId};
-use reifydb::core::{OwnedSpan, RowId, SpanColumn, SpanLine, Value};
+use reifydb::core::{OwnedSpan, SpanColumn, SpanLine, Value};
+use reifydb::engine::flow::change::{Change, Diff};
+use reifydb::engine::flow::engine::FlowEngine;
+// use reifydb::engine::flow::change::{Change, Diff};
+// use reifydb::engine::flow::engine::FlowEngine;
+use reifydb::engine::flow::flow::FlowGraph;
+use reifydb::engine::flow::node::{NodeType, OperatorType};
+use reifydb::storage::memory::Memory;
+use reifydb::transaction::mvcc::transaction::serializable::Serializable;
+use reifydb::{memory, serializable};
 
 fn main() {
     //     let db = ReifyDB::embedded_blocking_with(serializable(memory()));
@@ -80,17 +85,20 @@ fn dataflow_example() {
     flow_graph.add_edge(&filter_node, &view_node).unwrap();
 
     // Create engine and initialize
-    let mut engine = FlowEngine::new(flow_graph);
+    // For playground, we'll skip the full transactional engine for now
+    let (versioned, unversioned, hooks) = memory();
+
+    let mut engine = FlowEngine::<Memory, Memory, Serializable<Memory, Memory>>::new(
+        flow_graph.clone(),
+        serializable((versioned.clone(), unversioned.clone(), hooks)).0,
+    );
+
     engine.initialize().unwrap();
 
     // Create sample data as frames with rowId and age columns
     let frame = Frame::from_rows(
-        &["__ROW_ID__", "age"],
-        &[
-            vec![Value::RowId(RowId(1)), Value::Int1(13)],
-            vec![Value::RowId(RowId(2)), Value::Int1(18)],
-            vec![Value::RowId(RowId(3)), Value::Int1(25)],
-        ],
+        &["age"],
+        &[vec![Value::Int1(13)], vec![Value::Int1(18)], vec![Value::Int1(25)]],
     );
 
     println!("Created frame with {} rows and {} columns", frame.row_count(), frame.column_count());
@@ -110,11 +118,10 @@ fn dataflow_example() {
 
     // Query the view results
     let results = engine.get_view_data("adult_users").unwrap();
-    println!("View results: {} rows", results.len());
+    println!("View results: {} rows", results.row_count());
+    println!("{}", results);
 
-    for (i, row) in results.iter().enumerate() {
-        println!("Row {}: {} bytes", i, row.data.len());
-    }
+    println!("Flow graph created with {} nodes", flow_graph.get_all_nodes().count());
 
     println!("Dataflow example completed!");
 }

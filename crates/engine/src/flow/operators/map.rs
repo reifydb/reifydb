@@ -1,20 +1,20 @@
-use crate::expression::Expression;
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
-use crate::frame::Frame;
+use reifydb_core::expression::Expression;
+use reifydb_core::frame::Frame;
 
 pub struct MapOperator {
-    expressions: Vec<Expression>,
+    _expressions: Vec<Expression>,
 }
 
 impl MapOperator {
     pub fn new(expressions: Vec<Expression>) -> Self {
-        Self { expressions }
+        Self { _expressions: expressions }
     }
 }
 
 impl Operator for MapOperator {
-    fn apply(&mut self, ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
+    fn apply(&mut self, _ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
         let mut output_changes = Vec::new();
 
         for change in diff.changes {
