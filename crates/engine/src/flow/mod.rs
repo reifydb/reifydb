@@ -1,4 +1,5 @@
 pub mod change;
+pub mod compile;
 pub mod engine;
 pub mod flow;
 pub mod graph;

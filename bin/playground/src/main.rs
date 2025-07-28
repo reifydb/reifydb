@@ -7,12 +7,13 @@ use reifydb::core::Value;
 use reifydb::core::frame::Frame;
 use reifydb::core::interface::{SchemaId, Table, TableId};
 use reifydb::engine::flow::change::{Change, Diff};
+use reifydb::engine::flow::compile::compile_to_flow;
 use reifydb::engine::flow::engine::FlowEngine;
-// use reifydb::engine::flow::change::{Change, Diff};
-// use reifydb::engine::flow::engine::FlowEngine;
 use reifydb::engine::flow::flow::FlowGraph;
 use reifydb::engine::flow::node::{NodeType, OperatorType};
+use reifydb::rql::ast;
 use reifydb::rql::expression::parse_expression;
+use reifydb::rql::plan::logical::compile_logical;
 use reifydb::transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::{memory, serializable};
 
@@ -46,8 +47,66 @@ fn main() {
     //         println!("{}", frame);
     //     }
 
+    // Test RQL to FlowGraph compilation
+    rql_to_flow_example();
+    
     // Dataflow example
-    dataflow_example();
+    // dataflow_example();
+}
+
+fn rql_to_flow_example() {
+    println!("\n=== RQL to FlowGraph Compilation Example ===");
+    
+    // Parse a simple RQL query
+    let rql = r#"
+create computed view adults with {
+    from users filter age > 18 map { name, age }
+}"#;
+
+    println!("Compiling RQL: {}", rql);
+    
+    // Parse RQL into AST
+    let ast_statements = match ast::parse(rql) {
+        Ok(statements) => statements,
+        Err(e) => {
+            println!("RQL parsing failed: {}", e);
+            return;
+        }
+    };
+    
+    println!("AST statements: {} nodes", ast_statements.len());
+    
+    // Compile AST to logical plans  
+    let logical_plans = match compile_logical(ast_statements.into_iter().next().unwrap()) {
+        Ok(plans) => plans,
+        Err(e) => {
+            println!("Logical plan compilation failed: {}", e);
+            return;
+        }
+    };
+    
+    println!("Logical plans: {} nodes", logical_plans.len());
+    for (i, plan) in logical_plans.iter().enumerate() {
+        println!("  Plan {}: {:?}", i, plan);
+    }
+    
+    // Compile logical plans to FlowGraph
+    match compile_to_flow(logical_plans) {
+        Ok(flow_graph) => {
+            println!("✅ Successfully compiled to FlowGraph!");
+            println!("FlowGraph has {} nodes", flow_graph.get_all_nodes().count());
+            
+            // Print the nodes in the graph
+            for node_id in flow_graph.get_all_nodes() {
+                if let Some(node) = flow_graph.get_node(&node_id) {
+                    println!("  Node {}: {:?}", node_id, node.node_type);
+                }
+            }
+        }
+        Err(e) => {
+            println!("❌ FlowGraph compilation failed: {}", e);
+        }
+    }
 }
 
 fn dataflow_example() {
