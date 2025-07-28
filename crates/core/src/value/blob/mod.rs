@@ -1,6 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+pub mod base64;
+pub mod hex;
+pub mod utf8;
+
 use crate::util::CowVec;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -72,7 +76,7 @@ impl From<Blob> for Vec<u8> {
 impl Display for Blob {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // Default display as hex with 0x prefix
-        write!(f, "0x{}", hex::encode(self.as_bytes()))
+        write!(f, "0x{}", ::hex::encode(self.as_bytes()))
     }
 }
 
@@ -115,10 +119,10 @@ mod tests {
     fn test_blob_display() {
         let blob = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
         assert_eq!(format!("{}", blob), "0xdeadbeef");
-        
+
         let empty_blob = Blob::new(vec![]);
         assert_eq!(format!("{}", empty_blob), "0x");
-        
+
         let single_byte_blob = Blob::new(vec![0xFF]);
         assert_eq!(format!("{}", single_byte_blob), "0xff");
     }

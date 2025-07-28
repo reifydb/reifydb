@@ -3,6 +3,7 @@
 
 pub mod ast;
 pub mod auth;
+pub mod blob;
 pub mod boolean;
 pub mod cast;
 pub mod catalog;
