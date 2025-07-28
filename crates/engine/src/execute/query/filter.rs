@@ -54,7 +54,7 @@ impl ExecutionPlan for FilterNode {
                                 // This row was visible to the filter evaluation
                                 if result_idx < values.len() && result_idx < bitvec.len() {
                                     let valid = bitvec.get(result_idx);
-                                    let filter_result = values[result_idx];
+                                    let filter_result = values.get(result_idx);
                                     mask.set(i, valid & filter_result);
                                 } else {
                                     // Safety: if result is shorter than expected, exclude this row

@@ -19,12 +19,12 @@ impl ColumnValues {
 
                 for i in 0..values.len().min(mask.len()) {
                     if mask.get(i) {
-                        new_values.push(values[i].clone());
+                        new_values.push(values.get(i));
                         new_valid.push(bitvec.get(i));
                     }
                 }
 
-                *values = CowVec::new(new_values);
+                *values = BitVec::from_slice(&new_values);
                 *bitvec = new_valid.into();
             }
 

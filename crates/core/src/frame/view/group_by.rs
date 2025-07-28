@@ -33,7 +33,7 @@ impl Frame {
                 let value = match col {
                     ColumnValues::Bool(data, bitvec) => {
                         if bitvec.get(row_idx) {
-                            Value::Bool(data[row_idx])
+                            Value::Bool(data.get(row_idx))
                         } else {
                             Value::Undefined
                         }

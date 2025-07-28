@@ -20,7 +20,7 @@ impl ColumnValues {
 impl AsSlice<bool> for ColumnValues {
     fn as_slice(&self) -> &[bool] {
         match self {
-            ColumnValues::Bool(values, _) => values.as_slice(),
+            ColumnValues::Bool(_, _) => panic!("as_slice() is not supported for BitVec. Use to_vec() instead."),
             other => panic!("called `as_slice::<bool>()` on ColumnValues::{:?}", other.get_type()),
         }
     }

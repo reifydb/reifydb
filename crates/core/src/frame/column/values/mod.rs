@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColumnValues {
-    Bool(CowVec<bool>, BitVec),
+    Bool(BitVec, BitVec),
     Float4(CowVec<f32>, BitVec),
     Float8(CowVec<f64>, BitVec),
     Int1(CowVec<i8>, BitVec),
@@ -174,7 +174,7 @@ impl ColumnValues {
                 values
                     .iter()
                     .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Bool(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Bool(v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Float4(values, bitvec) => Box::new(
@@ -335,11 +335,11 @@ impl ColumnValues {
     pub fn bool(values: impl IntoIterator<Item = bool>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Bool(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Bool(BitVec::from_slice(&values), BitVec::new(len, true))
     }
 
     pub fn bool_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Bool(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
+        ColumnValues::Bool(BitVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
     pub fn bool_with_bitvec(
@@ -349,7 +349,7 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Bool(CowVec::new(values), bitvec)
+        ColumnValues::Bool(BitVec::from_slice(&values), bitvec)
     }
 
     pub fn float4(values: impl IntoIterator<Item = f32>) -> Self {

@@ -498,8 +498,8 @@ impl Evaluator {
 }
 
 fn compare_bool(
-    l: &CowVec<bool>,
-    r: &CowVec<bool>,
+    l: &BitVec,
+    r: &BitVec,
     lv: &BitVec,
     rv: &BitVec,
     span: OwnedSpan,
@@ -509,7 +509,7 @@ fn compare_bool(
 
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
-            values.push(l[i] != r[i]);
+            values.push(l.get(i) != r.get(i));
             bitvec.push(true);
         } else {
             values.push(false);
@@ -595,7 +595,7 @@ fn compare_utf8(
 
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
-            values.push(l[i] != r[i]);
+            values.push(l.get(i) != r.get(i));
             bitvec.push(true);
         } else {
             values.push(false);
