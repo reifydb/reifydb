@@ -151,6 +151,10 @@ impl BitVec {
         self.inner.len
     }
 
+    pub fn capacity(&self) -> usize {
+        self.inner.bits.capacity() * 8
+    }
+
     pub fn get(&self, idx: usize) -> bool {
         assert!(idx < self.inner.len);
         let byte = self.inner.bits[idx / 8];
@@ -183,22 +187,34 @@ impl BitVec {
         // Process 8 bytes at a time for better performance
         let chunks = byte_count / 8;
         let mut i = 0;
-        
+
         // Process 64-bit chunks
         for _ in 0..chunks {
             let a = u64::from_le_bytes([
-                self.inner.bits[i], self.inner.bits[i+1], self.inner.bits[i+2], self.inner.bits[i+3],
-                self.inner.bits[i+4], self.inner.bits[i+5], self.inner.bits[i+6], self.inner.bits[i+7]
+                self.inner.bits[i],
+                self.inner.bits[i + 1],
+                self.inner.bits[i + 2],
+                self.inner.bits[i + 3],
+                self.inner.bits[i + 4],
+                self.inner.bits[i + 5],
+                self.inner.bits[i + 6],
+                self.inner.bits[i + 7],
             ]);
             let b = u64::from_le_bytes([
-                other.inner.bits[i], other.inner.bits[i+1], other.inner.bits[i+2], other.inner.bits[i+3],
-                other.inner.bits[i+4], other.inner.bits[i+5], other.inner.bits[i+6], other.inner.bits[i+7]
+                other.inner.bits[i],
+                other.inner.bits[i + 1],
+                other.inner.bits[i + 2],
+                other.inner.bits[i + 3],
+                other.inner.bits[i + 4],
+                other.inner.bits[i + 5],
+                other.inner.bits[i + 6],
+                other.inner.bits[i + 7],
             ]);
             let result = a & b;
-            result_bits[i..i+8].copy_from_slice(&result.to_le_bytes());
+            result_bits[i..i + 8].copy_from_slice(&result.to_le_bytes());
             i += 8;
         }
-        
+
         // Process remaining bytes
         while i < byte_count {
             result_bits[i] = self.inner.bits[i] & other.inner.bits[i];
@@ -214,14 +230,12 @@ impl BitVec {
 
     pub fn count_ones(&self) -> usize {
         // Count complete bytes using built-in popcount
-        let mut count = self.inner.bits.iter()
-            .map(|&byte| byte.count_ones() as usize)
-            .sum();
-        
+        let mut count = self.inner.bits.iter().map(|&byte| byte.count_ones() as usize).sum();
+
         // Adjust for partial last byte if needed
         let full_bytes = self.inner.len / 8;
         let remainder_bits = self.inner.len % 8;
-        
+
         if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
             let last_byte = self.inner.bits[full_bytes];
             // Mask out bits beyond our length
@@ -229,7 +243,7 @@ impl BitVec {
             // Subtract the invalid bits we counted
             count -= (last_byte & !mask).count_ones() as usize;
         }
-        
+
         count
     }
 
@@ -241,7 +255,7 @@ impl BitVec {
                 return true;
             }
         }
-        
+
         // Check remaining bits in last partial byte
         let remainder_bits = self.inner.len % 8;
         if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
@@ -249,14 +263,14 @@ impl BitVec {
             let mask = (1u8 << remainder_bits) - 1;
             return (last_byte & mask) != 0;
         }
-        
+
         false
     }
 
     pub fn none(&self) -> bool {
         !self.any()
     }
-    
+
     pub fn or(&self, other: &Self) -> Self {
         assert_eq!(self.len(), other.len());
         let len = self.len();
@@ -266,22 +280,34 @@ impl BitVec {
         // Process 8 bytes at a time for better performance
         let chunks = byte_count / 8;
         let mut i = 0;
-        
+
         // Process 64-bit chunks
         for _ in 0..chunks {
             let a = u64::from_le_bytes([
-                self.inner.bits[i], self.inner.bits[i+1], self.inner.bits[i+2], self.inner.bits[i+3],
-                self.inner.bits[i+4], self.inner.bits[i+5], self.inner.bits[i+6], self.inner.bits[i+7]
+                self.inner.bits[i],
+                self.inner.bits[i + 1],
+                self.inner.bits[i + 2],
+                self.inner.bits[i + 3],
+                self.inner.bits[i + 4],
+                self.inner.bits[i + 5],
+                self.inner.bits[i + 6],
+                self.inner.bits[i + 7],
             ]);
             let b = u64::from_le_bytes([
-                other.inner.bits[i], other.inner.bits[i+1], other.inner.bits[i+2], other.inner.bits[i+3],
-                other.inner.bits[i+4], other.inner.bits[i+5], other.inner.bits[i+6], other.inner.bits[i+7]
+                other.inner.bits[i],
+                other.inner.bits[i + 1],
+                other.inner.bits[i + 2],
+                other.inner.bits[i + 3],
+                other.inner.bits[i + 4],
+                other.inner.bits[i + 5],
+                other.inner.bits[i + 6],
+                other.inner.bits[i + 7],
             ]);
             let result = a | b;
-            result_bits[i..i+8].copy_from_slice(&result.to_le_bytes());
+            result_bits[i..i + 8].copy_from_slice(&result.to_le_bytes());
             i += 8;
         }
-        
+
         // Process remaining bytes
         while i < byte_count {
             result_bits[i] = self.inner.bits[i] | other.inner.bits[i];
@@ -586,12 +612,12 @@ mod tests {
         #[test]
         fn test_empty_operations() {
             let mut bv = BitVec::empty();
-            
+
             // Push operations should work
             bv.push(true);
             assert_eq!(bv.len(), 1);
             assert!(bv.get(0));
-            
+
             // Extend should work
             let other = BitVec::from([false, true]);
             bv.extend(&other);
@@ -601,7 +627,7 @@ mod tests {
             assert!(bv.get(2));
         }
     }
-    
+
     mod take {
         use crate::util::BitVec;
 
@@ -708,7 +734,7 @@ mod tests {
             let bv2 = BitVec::from([false, true, false]);
             bv1.extend(&bv2);
             assert_eq!(bv1.len(), 9);
-            
+
             let expected = [true, false, true, false, true, false, false, true, false];
             for i in 0..9 {
                 assert_eq!(bv1.get(i), expected[i], "mismatch at bit {}", i);
@@ -721,7 +747,7 @@ mod tests {
             let bv2 = BitVec::from_fn(50, |i| i % 3 == 0);
             bv1.extend(&bv2);
             assert_eq!(bv1.len(), 100);
-            
+
             for i in 0..50 {
                 assert_eq!(bv1.get(i), i % 2 == 0, "first half mismatch at bit {}", i);
             }
@@ -799,9 +825,9 @@ mod tests {
             bv.reorder(&[3, 2, 1, 0]);
             assert_eq!(bv.len(), 4);
             assert!(!bv.get(0)); // was index 3
-            assert!(bv.get(1));  // was index 2
+            assert!(bv.get(1)); // was index 2
             assert!(!bv.get(2)); // was index 1
-            assert!(bv.get(3));  // was index 0
+            assert!(bv.get(3)); // was index 0
         }
 
         #[test]
@@ -809,8 +835,8 @@ mod tests {
             let mut bv = BitVec::from([true, false, true, false]);
             bv.reorder(&[2, 0, 3, 1]);
             assert_eq!(bv.len(), 4);
-            assert!(bv.get(0));  // was index 2
-            assert!(bv.get(1));  // was index 0
+            assert!(bv.get(0)); // was index 2
+            assert!(bv.get(1)); // was index 0
             assert!(!bv.get(2)); // was index 3
             assert!(!bv.get(3)); // was index 1
         }
@@ -820,7 +846,7 @@ mod tests {
             let mut bv = BitVec::from([true, false, true, false, true, false, true, false, true]);
             bv.reorder(&[8, 7, 6, 5, 4, 3, 2, 1, 0]);
             assert_eq!(bv.len(), 9);
-            
+
             let expected = [true, false, true, false, true, false, true, false, true]; // reversed
             for i in 0..9 {
                 assert_eq!(bv.get(i), expected[8 - i], "mismatch at bit {}", i);
@@ -1025,7 +1051,7 @@ mod tests {
             let b = BitVec::from([true, false, true, false]);
             let result = a.and(&b);
             assert_eq!(result.len(), 4);
-            assert!(result.get(0));  // true & true = true
+            assert!(result.get(0)); // true & true = true
             assert!(!result.get(1)); // true & false = false
             assert!(!result.get(2)); // false & true = false
             assert!(!result.get(3)); // false & false = false
@@ -1063,7 +1089,7 @@ mod tests {
             assert_eq!(bv.count_ones(), 1);
             assert!(bv.any());
             assert!(!bv.none());
-            
+
             bv.set(0, false);
             assert!(!bv.get(0));
             assert_eq!(bv.count_ones(), 0);
@@ -1232,18 +1258,18 @@ mod tests {
         fn test_large_bitvec_operations() {
             let size = 10000;
             let mut bv = BitVec::empty();
-            
+
             // Test large push operations
             for i in 0..size {
                 bv.push(i % 17 == 0);
             }
             assert_eq!(bv.len(), size);
-            
+
             // Verify all values
             for i in 0..size {
                 assert_eq!(bv.get(i), i % 17 == 0, "mismatch at bit {}", i);
             }
-            
+
             // Test count_ones on large bitvec
             let expected_ones = (0..size).filter(|&i| i % 17 == 0).count();
             assert_eq!(bv.count_ones(), expected_ones);
@@ -1254,15 +1280,15 @@ mod tests {
             let size = 5000;
             let mut bv1 = BitVec::from_fn(size, |i| i % 13 == 0);
             let bv2 = BitVec::from_fn(size, |i| i % 19 == 0);
-            
+
             bv1.extend(&bv2);
             assert_eq!(bv1.len(), size * 2);
-            
+
             // Verify first half
             for i in 0..size {
                 assert_eq!(bv1.get(i), i % 13 == 0, "first half mismatch at bit {}", i);
             }
-            
+
             // Verify second half
             for i in size..(size * 2) {
                 assert_eq!(bv1.get(i), (i - size) % 19 == 0, "second half mismatch at bit {}", i);
@@ -1275,11 +1301,11 @@ mod tests {
             for size in [7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129] {
                 let bv = BitVec::from_fn(size, |i| i % 3 == 0);
                 assert_eq!(bv.len(), size);
-                
+
                 for i in 0..size {
                     assert_eq!(bv.get(i), i % 3 == 0, "size {} mismatch at bit {}", size, i);
                 }
-                
+
                 let expected_ones = (0..size).filter(|&i| i % 3 == 0).count();
                 assert_eq!(bv.count_ones(), expected_ones, "count_ones mismatch for size {}", size);
             }
@@ -1291,10 +1317,10 @@ mod tests {
             let a = BitVec::from_fn(size, |i| i % 2 == 0);
             let b = BitVec::from_fn(size, |i| i % 3 == 0);
             let c = BitVec::from_fn(size, |i| i % 5 == 0);
-            
+
             let ab = a.and(&b);
             let abc = ab.and(&c);
-            
+
             assert_eq!(abc.len(), size);
             for i in 0..size {
                 let expected = (i % 2 == 0) && (i % 3 == 0) && (i % 5 == 0);
@@ -1306,18 +1332,23 @@ mod tests {
         fn test_complex_reorder_pattern() {
             let size = 100;
             let mut bv = BitVec::from_fn(size, |i| i % 7 == 0);
-            
+
             // Create a complex reordering pattern
             let mut indices: Vec<usize> = (0..size).collect();
             indices.reverse();
-            
+
             let original_values: Vec<bool> = bv.to_vec();
             bv.reorder(&indices);
-            
+
             // Verify reordering worked correctly
             for i in 0..size {
                 let original_index = indices[i];
-                assert_eq!(bv.get(i), original_values[original_index], "reorder mismatch at position {}", i);
+                assert_eq!(
+                    bv.get(i),
+                    original_values[original_index],
+                    "reorder mismatch at position {}",
+                    i
+                );
             }
         }
     }
@@ -1343,12 +1374,22 @@ mod tests {
                 // Test Vec<bool> -> BitVec -> Vec<bool>
                 let bv = BitVec::from(pattern.clone());
                 let result = bv.to_vec();
-                assert_eq!(pattern, result, "roundtrip failed for pattern length {}", pattern.len());
+                assert_eq!(
+                    pattern,
+                    result,
+                    "roundtrip failed for pattern length {}",
+                    pattern.len()
+                );
 
                 // Test slice -> BitVec -> Vec<bool>
                 let bv2 = BitVec::from_slice(&pattern);
                 let result2 = bv2.to_vec();
-                assert_eq!(pattern, result2, "slice roundtrip failed for pattern length {}", pattern.len());
+                assert_eq!(
+                    pattern,
+                    result2,
+                    "slice roundtrip failed for pattern length {}",
+                    pattern.len()
+                );
 
                 if pattern.len() <= 32 {
                     // Test array -> BitVec for small patterns
@@ -1363,24 +1404,20 @@ mod tests {
 
         #[test]
         fn test_invariants() {
-            let patterns = [
-                vec![],
-                vec![true],
-                vec![false],
-                (0..100).map(|i| i % 5 == 0).collect::<Vec<_>>(),
-            ];
+            let patterns =
+                [vec![], vec![true], vec![false], (0..100).map(|i| i % 5 == 0).collect::<Vec<_>>()];
 
             for pattern in patterns {
                 let bv = BitVec::from(pattern.clone());
-                
+
                 // Length invariant
                 assert_eq!(bv.len(), pattern.len());
-                
+
                 // count_ones + count_zeros = len
                 let count_ones = bv.count_ones();
                 let count_zeros = pattern.iter().filter(|&&b| !b).count();
                 assert_eq!(count_ones + count_zeros, pattern.len());
-                
+
                 // any() and none() consistency
                 if count_ones > 0 {
                     assert!(bv.any());
@@ -1389,7 +1426,7 @@ mod tests {
                     assert!(!bv.any());
                     assert!(bv.none());
                 }
-                
+
                 // get() consistency
                 for (i, &expected) in pattern.iter().enumerate() {
                     assert_eq!(bv.get(i), expected, "get() inconsistency at bit {}", i);
@@ -1401,16 +1438,16 @@ mod tests {
         fn test_extend_preserves_original() {
             let original = BitVec::from([true, false, true]);
             let extension = BitVec::from([false, true]);
-            
+
             let mut extended = original.clone();
             extended.extend(&extension);
-            
+
             // Original should be unchanged
             assert_eq!(original.len(), 3);
             assert!(original.get(0));
             assert!(!original.get(1));
             assert!(original.get(2));
-            
+
             // Extended should have both parts
             assert_eq!(extended.len(), 5);
             assert!(extended.get(0));
@@ -1424,17 +1461,17 @@ mod tests {
         fn test_and_operation_properties() {
             let a = BitVec::from([true, true, false, false]);
             let b = BitVec::from([true, false, true, false]);
-            
+
             let result = a.and(&b);
-            
+
             // AND result should never have more ones than either input
             assert!(result.count_ones() <= a.count_ones());
             assert!(result.count_ones() <= b.count_ones());
-            
+
             // AND is commutative
             let result2 = b.and(&a);
             assert_eq!(result.to_vec(), result2.to_vec());
-            
+
             // AND with self equals self
             let self_and = a.and(&a);
             assert_eq!(a.to_vec(), self_and.to_vec());

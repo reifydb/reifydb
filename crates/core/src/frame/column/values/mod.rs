@@ -853,87 +853,87 @@ impl ColumnValues {
     pub fn capacity(&self) -> usize {
         match self {
             ColumnValues::Bool(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Float4(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Float8(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Int1(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Int2(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Int4(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Int8(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Int16(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Utf8(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Uint1(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Uint2(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Uint4(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Uint8(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Uint16(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Date(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::DateTime(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Time(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Interval(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::RowId(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Uuid4(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Uuid7(v, b) => {
-                debug_assert_eq!(v.capacity(), b.len());
+                debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
             ColumnValues::Undefined(n) => *n,

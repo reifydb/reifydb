@@ -302,6 +302,7 @@ mod tests {
         assert_eq!(column.get_type(), Type::Int4);
         // Column should be empty initially but have capacity
         assert_eq!(column.len(), 0);
+        assert_eq!(column.capacity(), 100);
     }
 
     #[test]
@@ -315,20 +316,20 @@ mod tests {
 
         assert_eq!(builder.len(), 3);
 
-        let (values, valid) = builder.into_parts();
+        let (values, bitvec) = builder.into_parts();
         assert_eq!(values.len(), 3);
-        assert_eq!(valid.len(), 3);
-        assert!(valid.get(0));
-        assert!(valid.get(1));
-        assert!(!valid.get(2));
+        assert_eq!(values.capacity(), 100);
+
+        assert_eq!(bitvec.len(), 3);
+        assert!(bitvec.get(0));
+        assert!(bitvec.get(1));
+        assert!(!bitvec.get(2));
     }
 
     #[test]
     fn test_column_values_ext() {
         let pool = BufferPoolManager::default();
         let column = ColumnValues::with_pooled_capacity(Type::Float8, 50, &pool);
-
-        dbg!(&column);
 
         assert_eq!(column.get_type(), Type::Float8);
         assert_eq!(column.len(), 0);
