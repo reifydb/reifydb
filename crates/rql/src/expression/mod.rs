@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast;
-use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator};
+use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse};
+use crate::{ast, convert_data_type};
 use reifydb_core::expression::{
     AccessTableExpression, AddExpression, AliasExpression, CallExpression, CastExpression,
     ColumnExpression, ConstantExpression, DataTypeExpression, DivExpression, EqualExpression,
@@ -10,10 +10,27 @@ use reifydb_core::expression::{
     LessThanEqualExpression, LessThanExpression, MulExpression, NotEqualExpression,
     PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
 };
-use crate::plan::logical::{Compiler, convert_data_type};
 
-impl Compiler {
-    pub(crate) fn compile_expression(ast: Ast) -> crate::Result<Expression> {
+pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
+    let statements = parse(rql)?;
+    if statements.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut result = Vec::new();
+    for statement in statements {
+        for ast in statement.0 {
+            result.push(ExpressionCompiler::compile(ast)?);
+        }
+    }
+
+    Ok(result)
+}
+
+pub struct ExpressionCompiler {}
+
+impl ExpressionCompiler {
+    pub fn compile(ast: Ast) -> crate::Result<Expression> {
         match ast {
             Ast::Literal(literal) => match literal {
                 AstLiteral::Boolean(_) => {
@@ -35,12 +52,12 @@ impl Compiler {
             Ast::Identifier(identifier) => {
                 Ok(Expression::Column(ColumnExpression(identifier.span())))
             }
-            Ast::Infix(ast) => Self::compile_expression_infix(ast),
+            Ast::Infix(ast) => ExpressionCompiler::infix(ast),
             Ast::Tuple(tuple) => {
                 let mut expressions = Vec::with_capacity(tuple.len());
 
                 for ast in tuple.nodes {
-                    expressions.push(Self::compile_expression(ast)?);
+                    expressions.push(Self::compile(ast)?);
                 }
 
                 Ok(Expression::Tuple(TupleExpression { expressions, span: tuple.token.span }))
@@ -58,7 +75,7 @@ impl Compiler {
 
                 Ok(Expression::Prefix(PrefixExpression {
                     operator,
-                    expression: Box::new(Self::compile_expression(*prefix.node)?),
+                    expression: Box::new(Self::compile(*prefix.node)?),
                     span,
                 }))
             }
@@ -73,7 +90,7 @@ impl Compiler {
 
                 Ok(Expression::Cast(CastExpression {
                     span: tuple.token.span,
-                    expression: Box::new(Self::compile_expression(expr)?),
+                    expression: Box::new(Self::compile(expr)?),
                     to: DataTypeExpression { span, ty },
                 }))
             }
@@ -81,7 +98,7 @@ impl Compiler {
         }
     }
 
-    pub(crate) fn compile_expression_infix(ast: AstInfix) -> crate::Result<Expression> {
+    fn infix(ast: AstInfix) -> crate::Result<Expression> {
         match ast.operator {
             InfixOperator::AccessTable(_) => {
                 let Ast::Identifier(left) = *ast.left else { unimplemented!() };
@@ -94,8 +111,8 @@ impl Compiler {
             }
 
             InfixOperator::Add(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
                 Ok(Expression::Add(AddExpression {
                     left: Box::new(left),
                     right: Box::new(right),
@@ -103,8 +120,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::Divide(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
                 Ok(Expression::Div(DivExpression {
                     left: Box::new(left),
                     right: Box::new(right),
@@ -112,8 +129,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::Subtract(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
                 Ok(Expression::Sub(SubExpression {
                     left: Box::new(left),
                     right: Box::new(right),
@@ -121,8 +138,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::Rem(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
                 Ok(Expression::Rem(RemExpression {
                     left: Box::new(left),
                     right: Box::new(right),
@@ -130,8 +147,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::Multiply(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
                 Ok(Expression::Mul(MulExpression {
                     left: Box::new(left),
                     right: Box::new(right),
@@ -139,8 +156,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::Call(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
 
                 let Expression::Column(ColumnExpression(span)) = left else { panic!() };
                 let Expression::Tuple(tuple) = right else { panic!() };
@@ -152,8 +169,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::GreaterThan(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
 
                 Ok(Expression::GreaterThan(GreaterThanExpression {
                     left: Box::new(left),
@@ -162,8 +179,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::GreaterThanEqual(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
 
                 Ok(Expression::GreaterThanEqual(GreaterThanEqualExpression {
                     left: Box::new(left),
@@ -172,8 +189,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::LessThan(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
 
                 Ok(Expression::LessThan(LessThanExpression {
                     left: Box::new(left),
@@ -182,8 +199,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::LessThanEqual(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
 
                 Ok(Expression::LessThanEqual(LessThanEqualExpression {
                     left: Box::new(left),
@@ -192,8 +209,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::Equal(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
 
                 Ok(Expression::Equal(EqualExpression {
                     left: Box::new(left),
@@ -202,8 +219,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::NotEqual(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
 
                 Ok(Expression::NotEqual(NotEqualExpression {
                     left: Box::new(left),
@@ -212,8 +229,8 @@ impl Compiler {
                 }))
             }
             InfixOperator::As(token) => {
-                let left = Self::compile_expression(*ast.left)?;
-                let right = Self::compile_expression(*ast.right)?;
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
 
                 Ok(Expression::Alias(AliasExpression {
                     alias: IdentExpression(right.span()),

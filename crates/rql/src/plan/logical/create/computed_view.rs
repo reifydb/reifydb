@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::AstCreateComputedView;
-use crate::plan::logical::{convert_data_type, convert_policy, Compiler, CreateComputedViewNode, LogicalPlan};
-use reifydb_core::interface::ColumnPolicyKind;
+use crate::convert_data_type;
+use crate::plan::logical::{Compiler, CreateComputedViewNode, LogicalPlan, convert_policy};
 use reifydb_catalog::table::ColumnToCreate;
+use reifydb_core::interface::ColumnPolicyKind;
 
 impl Compiler {
     pub(crate) fn compile_computed_view(ast: AstCreateComputedView) -> crate::Result<LogicalPlan> {

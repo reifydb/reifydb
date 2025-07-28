@@ -3,16 +3,16 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::core::expression::{ConstantExpression, Expression};
+use reifydb::core::Value;
 use reifydb::core::frame::Frame;
 use reifydb::core::interface::{SchemaId, Table, TableId};
-use reifydb::core::{OwnedSpan, SpanColumn, SpanLine, Value};
 use reifydb::engine::flow::change::{Change, Diff};
 use reifydb::engine::flow::engine::FlowEngine;
 // use reifydb::engine::flow::change::{Change, Diff};
 // use reifydb::engine::flow::engine::FlowEngine;
 use reifydb::engine::flow::flow::FlowGraph;
 use reifydb::engine::flow::node::{NodeType, OperatorType};
+use reifydb::rql::expression::parse_expression;
 use reifydb::transaction::mvcc::transaction::serializable::Serializable;
 use reifydb::{memory, serializable};
 
@@ -62,9 +62,11 @@ fn dataflow_example() {
     let source_node = flow_graph.add_node(NodeType::Source { name: "users".to_string(), table });
 
     // Create filter node (filter users with age > 18)
-    let filter_expr = Expression::Constant(ConstantExpression::Bool {
-        span: OwnedSpan { column: SpanColumn(0), line: SpanLine(0), fragment: "true".to_string() },
-    });
+    // let filter_expr = Expression::Constant(ConstantExpression::Bool {
+    //     span: OwnedSpan { column: SpanColumn(0), line: SpanLine(0), fragment: "true".to_string() },
+    // });
+
+    let filter_expr = parse_expression("age > 18").unwrap().pop().unwrap();
 
     let filter_node = flow_graph
         .add_node(NodeType::Operator { operator: OperatorType::Filter { predicate: filter_expr } });

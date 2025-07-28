@@ -2,10 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::{Ast, AstFrom};
-use reifydb_core::expression::{IdentExpression, KeyedExpression};
+use crate::expression::ExpressionCompiler;
 use crate::plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode};
 use reifydb_core::err;
 use reifydb_core::error::diagnostic::Diagnostic;
+use reifydb_core::expression::{IdentExpression, KeyedExpression};
 
 impl Compiler {
     pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalPlan> {
@@ -23,7 +24,8 @@ impl Compiler {
                             let mut keyed_fields = Vec::new();
                             for field in row.keyed_values {
                                 let key = IdentExpression(field.key.span());
-                                let expr = Self::compile_expression(field.value.as_ref().clone())?;
+                                let expr =
+                                    ExpressionCompiler::compile(field.value.as_ref().clone())?;
 
                                 let keyed_expr =
                                     KeyedExpression { key, expression: Box::new(expr) };
