@@ -28,6 +28,85 @@ pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
     Ok(result)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_function_call_expression_compilation() {
+        let result = parse_expression("func()").unwrap();
+        assert_eq!(result.len(), 1);
+        
+        if let Expression::Call(call) = &result[0] {
+            assert_eq!(call.func.0.fragment, "func");
+            assert_eq!(call.args.len(), 0);
+        } else {
+            panic!("Expected Call expression");
+        }
+    }
+
+    #[test]
+    fn test_namespaced_function_call_expression_compilation() {
+        let result = parse_expression("blob::hex('deadbeef')").unwrap();
+        assert_eq!(result.len(), 1);
+        
+        if let Expression::Call(call) = &result[0] {
+            assert_eq!(call.func.0.fragment, "blob::hex");
+            assert_eq!(call.args.len(), 1);
+        } else {
+            panic!("Expected Call expression");
+        }
+    }
+
+    #[test]
+    fn test_deeply_nested_function_call_expression_compilation() {
+        let result = parse_expression("ext::crypto::hash::sha256('data')").unwrap();
+        assert_eq!(result.len(), 1);
+        
+        if let Expression::Call(call) = &result[0] {
+            assert_eq!(call.func.0.fragment, "ext::crypto::hash::sha256");
+            assert_eq!(call.args.len(), 1);
+        } else {
+            panic!("Expected Call expression");
+        }
+    }
+
+    #[test]
+    fn test_blob_constructor_end_to_end() {
+        // Test all BLOB constructor expressions compile correctly
+        let test_cases = vec![
+            ("blob::hex('deadbeef')", "blob::hex"),
+            ("blob::b64('SGVsbG8=')", "blob::b64"),
+            ("blob::b64url('SGVsbG8')", "blob::b64url"),
+            ("blob::utf8('Hello, World!')", "blob::utf8"),
+        ];
+
+        for (input, expected_func_name) in test_cases {
+            let result = parse_expression(input).unwrap();
+            assert_eq!(result.len(), 1, "Failed for input: {}", input);
+            
+            if let Expression::Call(call) = &result[0] {
+                assert_eq!(call.func.0.fragment, expected_func_name, "Function name mismatch for: {}", input);
+                assert_eq!(call.args.len(), 1, "Argument count mismatch for: {}", input);
+                
+                // Verify the argument is a text constant
+                if let Expression::Constant(const_expr) = &call.args[0] {
+                    match const_expr {
+                        reifydb_core::expression::ConstantExpression::Text { .. } => {
+                            // Expected - this is a text constant
+                        }
+                        _ => panic!("Expected text constant argument for: {}", input),
+                    }
+                } else {
+                    panic!("Expected constant expression argument for: {}", input);
+                }
+            } else {
+                panic!("Expected Call expression for: {}", input);
+            }
+        }
+    }
+}
+
 pub struct ExpressionCompiler {}
 
 impl ExpressionCompiler {
@@ -52,6 +131,30 @@ impl ExpressionCompiler {
             },
             Ast::Identifier(identifier) => {
                 Ok(Expression::Column(ColumnExpression(identifier.span())))
+            }
+            Ast::CallFunction(call) => {
+                // Build the full function name from namespace + function
+                let full_name = if call.namespaces.is_empty() {
+                    call.function.value().to_string()
+                } else {
+                    let namespace_path = call.namespaces.iter()
+                        .map(|id| id.value())
+                        .collect::<Vec<_>>()
+                        .join("::");
+                    format!("{}::{}", namespace_path, call.function.value())
+                };
+                
+                // Compile arguments
+                let mut arg_expressions = Vec::new();
+                for arg_ast in call.arguments.nodes {
+                    arg_expressions.push(Self::compile(arg_ast)?);
+                }
+                
+                Ok(Expression::Call(CallExpression {
+                    func: IdentExpression(reifydb_core::OwnedSpan::testing(&full_name)),
+                    args: arg_expressions,
+                    span: call.token.span,
+                }))
             }
             Ast::Infix(ast) => Self::infix(ast),
             Ast::Between(between) => {

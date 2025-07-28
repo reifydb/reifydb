@@ -64,7 +64,13 @@ impl Parser {
                 _ if current.is_literal(Undefined) => {
                     Ok(Ast::Literal(self.parse_literal_undefined()?))
                 }
-                _ if current.is_identifier() => Ok(Ast::Identifier(self.parse_identifier()?)),
+                _ if current.is_identifier() => {
+                    if self.is_function_call_pattern() {
+                        Ok(Ast::CallFunction(self.parse_function_call()?))
+                    } else {
+                        Ok(Ast::Identifier(self.parse_identifier()?))
+                    }
+                },
                 _ => return_error!(unsupported_token_error(self.advance()?)),
             },
         }

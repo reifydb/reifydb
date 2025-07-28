@@ -26,6 +26,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
     let ty = match ast {
         Ast::Aggregate(_) => "Aggregate",
         Ast::Between(_) => "Between",
+        Ast::CallFunction(_) => "CallFunction",
         Ast::Inline(_) => "Row",
         Ast::Cast(_) => "Cast",
         Ast::Create(_) => "Create",

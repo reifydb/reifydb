@@ -21,6 +21,10 @@ impl Blob {
         Self(CowVec::new(bytes))
     }
 
+    pub fn empty() -> Self {
+        Self(CowVec::with_capacity(0))
+    }
+
     /// Create a BLOB from a byte slice
     pub fn from_slice(bytes: &[u8]) -> Self {
         Self(CowVec::new(bytes.to_vec()))

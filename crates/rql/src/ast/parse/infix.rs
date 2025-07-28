@@ -49,7 +49,7 @@ impl Parser {
                 Operator::Colon => Ok(InfixOperator::TypeAscription(token)),
                 Operator::Arrow => Ok(InfixOperator::Arrow(token)),
                 Operator::Dot => Ok(InfixOperator::AccessTable(token)),
-                Operator::DoubleColon => Ok(InfixOperator::AccessExtension(token)),
+                Operator::DoubleColon => Ok(InfixOperator::AccessNamespace(token)),
                 Operator::As => Ok(InfixOperator::As(token)),
                 Operator::And => Ok(InfixOperator::And(token)),
                 Operator::Or => Ok(InfixOperator::Or(token)),
@@ -66,10 +66,10 @@ mod tests {
     use std::ops::Deref;
 
     use crate::ast::Ast::{Infix, Literal};
+    use crate::ast::AstLiteral;
     use crate::ast::lex::lex;
     use crate::ast::parse::infix::{AstInfix, InfixOperator};
     use crate::ast::parse::parse;
-    use crate::ast::{AstLiteral, AstTuple};
 
     #[test]
     fn test_as_one() {
@@ -333,166 +333,4 @@ mod tests {
         let Literal(AstLiteral::Number(node)) = right.deref() else { panic!() };
         assert_eq!(node.value(), "2");
     }
-
-    #[test]
-    fn test_call_without_arguments() {
-        let tokens = lex("test()").unwrap();
-        let result = parse(tokens).unwrap();
-        assert_eq!(result.len(), 1);
-
-        let Infix(AstInfix { left, operator, right, .. }) = &result[0].first_unchecked() else {
-            panic!()
-        };
-        let identifier = left.as_identifier();
-        assert_eq!(identifier.value(), "test");
-
-        let InfixOperator::Call(_) = operator else { panic!() };
-
-        let AstTuple { nodes, .. } = right.as_tuple();
-        assert_eq!(*nodes, vec![]);
-    }
-
-    #[test]
-    fn test_call_with_argument() {
-        let tokens = lex("test('elodie')").unwrap();
-        let result = parse(tokens).unwrap();
-        assert_eq!(result.len(), 1);
-
-        let AstInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
-        let identifier = left.as_identifier();
-        assert_eq!(identifier.value(), "test");
-
-        let InfixOperator::Call(_) = operator else { panic!() };
-
-        let AstTuple { nodes, .. } = right.as_tuple();
-        assert_eq!(nodes.len(), 1);
-
-        let Some(Literal(AstLiteral::Text(arg_1))) = &nodes.first() else { panic!() };
-        assert_eq!(arg_1.value(), "elodie");
-    }
-
-    #[test]
-    fn test_call_extension_function() {
-        let tokens = lex("some_extension::some_function()").unwrap();
-        let result = parse(tokens).unwrap();
-        assert_eq!(result.len(), 1);
-
-        let AstInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
-        {
-            let AstInfix { left, operator, right, .. } = left.as_infix();
-
-            let package = left.as_identifier();
-            assert_eq!(package.value(), "some_extension");
-
-            assert!(matches!(operator, InfixOperator::AccessExtension(_)));
-
-            let function = right.as_identifier();
-            assert_eq!(function.value(), "some_function");
-        }
-
-        assert!(matches!(operator, InfixOperator::Call(_)));
-
-        let AstTuple { nodes, .. } = right.as_tuple();
-        assert_eq!(*nodes, vec![]);
-    }
-
-    #[test]
-    fn test_call_nested_package_function() {
-        let tokens = lex("reify::db::log('Elodie')").unwrap();
-        let result = parse(tokens).unwrap();
-        assert_eq!(result.len(), 1);
-
-        let AstInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
-        {
-            let AstInfix { left, operator, right, .. } = left.as_infix();
-            {
-                let AstInfix { left, operator, right, .. } = left.as_infix();
-                let root_package = left.as_identifier();
-                assert_eq!(root_package.value(), "reify");
-
-                assert!(matches!(operator, InfixOperator::AccessExtension(_)));
-
-                let root_package = right.as_identifier();
-                assert_eq!(root_package.value(), "db");
-            }
-
-            assert!(matches!(operator, InfixOperator::AccessExtension(_)));
-
-            let function = right.as_identifier();
-            assert_eq!(function.value(), "log");
-        }
-
-        assert!(matches!(operator, InfixOperator::Call(_)));
-
-        let AstTuple { nodes, .. } = right.as_tuple();
-        assert_eq!(nodes.len(), 1);
-
-        let Literal(AstLiteral::Text(node)) = &nodes[0] else { panic!() };
-        assert_eq!(node.value(), "Elodie");
-    }
-    //
-    // #[test]
-    // fn test_instantiate_type_without_properties() {
-    //     let mut ctx = Context::testing();
-    //     let tokens = lex(&mut ctx, "Point()").unwrap();
-    //     let result = parse(&mut ctx, tokens).unwrap();
-    //     assert_eq!(result.len(), 1);
-    //
-    //     let block = result[0].first_unchecked().as_infix();
-    // }
-    //
-    // #[test]
-    // fn test_call_function_with_lambda() {
-    //     let mut ctx = Context::testing();
-    //     let tokens = lex(&mut ctx, "test('elodie'){ true }").unwrap();
-    //     let result = parse(&mut ctx, tokens).unwrap();
-    //     assert_eq!(result.len(), 1);
-    //
-    //     let NodeInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
-    //     let call = left.as_infix();
-    //     {
-    //         let NodeInfix { left, operator, right, .. } = call;
-    //         let identifier = left.as_identifier();
-    //         assert_eq!(ctx.str_get(identifier.value()), "test");
-    //         let InfixOperator::Call(_) = operator else { panic!() };
-    //
-    //         let TupleNode { nodes, .. } = right.as_tuple();
-    //         assert_eq!(nodes.len(), 1);
-    //         let Some(Literal(NodeLiteral::String(arg_1))) = &nodes.first() else { panic!() };
-    //         assert_eq!(ctx.str_get(arg_1.value()), "elodie");
-    //     }
-    //
-    //     let InfixOperator::LambdaCall(_) = operator else { panic!() };
-    //
-    //     let block = right.as_block();
-    //     assert_eq!(block.nodes.len(), 1);
-    //
-    //     let Literal(NodeLiteral::Boolean(boolean_node)) = &block.nodes[0] else { panic!() };
-    //     assert!(boolean_node.value())
-    // }
-    //
-    // #[test]
-    // fn test_property_access_and_comparison() {
-    //     let mut ctx = Context::testing();
-    //     let tokens = lex(&mut ctx, "p.x == 1").unwrap();
-    //     let result = parse(&mut ctx, tokens).unwrap();
-    //     assert_eq!(result.len(), 1);
-    //
-    //     let NodeInfix { left, operator, right, .. } = &result[0].first_unchecked().as_infix();
-    //     {
-    //         let NodeInfix { left, operator, right, .. } = left.as_infix();
-    //         let left = left.as_identifier();
-    //         assert_eq!(ctx.str_get(left.value()), "p");
-    //
-    //         assert!(matches!(operator, InfixOperator::AccessProperty(_)));
-    //
-    //         let right = right.as_identifier();
-    //         assert_eq!(ctx.str_get(right.value()), "x");
-    //     }
-    //
-    //     assert!(matches!(operator, InfixOperator::Equal(_)));
-    //
-    //     let NodeLiteral::Number(right) = right.as_literal() else { panic!() };
-    //     assert_eq!(ctx.str_get(right.value()), "1");
-    // }
 }

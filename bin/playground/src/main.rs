@@ -12,43 +12,37 @@ use reifydb::engine::flow::node::NodeType;
 use reifydb::rql::ast;
 use reifydb::rql::plan::logical::compile_logical;
 use reifydb::transaction::mvcc::transaction::serializable::Serializable;
-use reifydb::{memory, serializable};
+use reifydb::{ReifyDB, memory, serializable};
 
 fn main() {
-    //     let db = ReifyDB::embedded_blocking_with(serializable(memory()));
-    //
-    //     db.tx_as_root(r#"create schema test"#).unwrap();
-    //     db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
-    //     db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
-    //     db.tx_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
-    //     db.tx_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
-    //     db.tx_as_root(
-    //         r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#,
-    //     )
-    //     .unwrap();
-    //     db.tx_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
-    //
-    //     for frame in db
-    //         .tx_as_root(
-    //             r#"
-    // map {
-    //   cast(1.0, float8) + cast(1.0, float8),
-    //   cast(1.0, float8) + cast(-1.0, float8),
-    //   cast(-1.0, float8) + cast(-1.0, float8),
-    //   cast(1.1, float8) + cast(1.1, float8),
-    // }
-    //         "#,
-    //         )
-    //         .unwrap()
-    //     {
-    //         println!("{}", frame);
-    //     }
+    let db = ReifyDB::embedded_blocking_with(serializable(memory()));
+
+    db.tx_as_root(r#"create schema test"#).unwrap();
+    db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
+    db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
+    db.tx_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
+    db.tx_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
+    db.tx_as_root(
+        r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#,
+    )
+    .unwrap();
+    db.tx_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
+
+    for frame in db
+        .tx_as_root(
+            r#"
+    map {
+        blob::utf8('hello!')
+    }
+            "#,
+        )
+        .unwrap()
+    {
+        println!("{}", frame);
+    }
 
     // Test RQL to FlowGraph compilation
     rql_to_flow_example();
-
-    // Dataflow example
-    // dataflow_example();
 }
 
 fn rql_to_flow_example() {
