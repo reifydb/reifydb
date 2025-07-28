@@ -10,8 +10,7 @@ mod convert;
 mod demote;
 mod promote;
 
-use crate::evaluate::pool::BufferPoolManager;
-use reifydb_core::frame::FrameColumn;
+use reifydb_core::frame::{BufferPoolManager, FrameColumn};
 use reifydb_core::{
     BitVec, ColumnDescriptor,
     interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},

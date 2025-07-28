@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::frame::{ColumnQualified, FrameColumn, TableQualified};
 use reifydb_core::expression::Expression;
+use reifydb_core::frame::{ColumnQualified, FrameColumn, TableQualified};
 
 use crate::function::{Functions, math};
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
@@ -17,7 +17,6 @@ mod compare;
 pub(crate) mod constant;
 mod context;
 mod logic;
-pub(crate) mod pool;
 mod prefix;
 mod tuple;
 

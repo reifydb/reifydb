@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_reuse() {
-        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
+        let pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Acquire and drop a buffer
         {
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_size_buckets() {
-        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
+        let pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Test different size buckets
         let small = pool.acquire(500); // Should go to small bucket
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_stats() {
-        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
+        let pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Generate some activity
         for _ in 0..10 {
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_numeric_pool_clear() {
-        let mut pool = NumericPool::<i32>::new(PoolConfig::default());
+        let pool = NumericPool::<i32>::new(PoolConfig::default());
 
         // Add some buffers to the pool
         {

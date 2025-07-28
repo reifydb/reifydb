@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_buffer_pool_manager_creation() {
-        let mut manager = BufferPoolManager::new(PoolConfig::default());
+        let manager = BufferPoolManager::new(PoolConfig::default());
         let stats = manager.get_aggregate_stats();
 
         // Initially all pools should be empty
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_buffer_pool_manager_stats() {
-        let mut manager = BufferPoolManager::new(PoolConfig::default());
+        let manager = BufferPoolManager::new(PoolConfig::default());
 
         // Generate some activity
         let _buf1 = manager.i32_pool.acquire(100);

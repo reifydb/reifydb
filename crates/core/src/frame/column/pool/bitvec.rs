@@ -7,7 +7,7 @@
 //! prime candidates for pooling to reduce allocation overhead.
 
 use super::{BufferPool, PoolConfig, PoolStats, PooledBuffer};
-use reifydb_core::BitVec;
+use crate::BitVec;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_bucket_selection() {
-        let mut pool = BitVecPool::new(PoolConfig::default());
+        let pool = BitVecPool::new(PoolConfig::default());
 
         assert_eq!(pool.bucket_for_capacity(8), 0); // Small bucket
         assert_eq!(pool.bucket_for_capacity(32), 1); // Medium bucket
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_basic_operations() {
-        let mut pool = BitVecPool::new(PoolConfig::default());
+        let pool = BitVecPool::new(PoolConfig::default());
 
         // Acquire a buffer
         let buffer1 = pool.acquire(100);
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_direct_bitvec_operations() {
-        let mut pool = BitVecPool::new(PoolConfig::default());
+        let pool = BitVecPool::new(PoolConfig::default());
 
         let bitvec1 = pool.acquire_bitvec(100);
         // Return it to pool
@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_stats() {
-        let mut pool = BitVecPool::new(PoolConfig::default());
+        let pool = BitVecPool::new(PoolConfig::default());
 
         // Generate some activity
         for _ in 0..10 {
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_clear() {
-        let mut pool = BitVecPool::new(PoolConfig::default());
+        let pool = BitVecPool::new(PoolConfig::default());
 
         // Add some buffers to the pool
         {
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_bitvec_pool_size_fallback() {
-        let mut pool = BitVecPool::new(PoolConfig::default());
+        let pool = BitVecPool::new(PoolConfig::default());
 
         // Add a large BitVec to a higher bucket
         let large = pool.acquire_bitvec(1024);

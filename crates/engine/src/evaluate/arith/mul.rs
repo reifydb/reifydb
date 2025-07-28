@@ -2,19 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::{FrameColumn, ColumnValues, ColumnQualified, Push};
 use reifydb_core::OwnedSpan;
-use reifydb_core::value::IsNumber;
-use reifydb_core::value::number::{ Promote, SafeMul};
-use reifydb_core::{Type, BitVec, CowVec, GetType, return_error};
-use reifydb_core::expression::MulExpression;
 use reifydb_core::error::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types;
+use reifydb_core::expression::MulExpression;
+use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, Push};
+use reifydb_core::value::IsNumber;
+use reifydb_core::value::number::{Promote, SafeMul};
+use reifydb_core::{BitVec, CowVec, GetType, Type, return_error};
 
 impl Evaluator {
     pub(crate) fn mul(
-		&mut self,
-		mul: &MulExpression,
-		ctx: &EvaluationContext,
+        &mut self,
+        mul: &MulExpression,
+        ctx: &EvaluationContext,
     ) -> crate::Result<FrameColumn> {
         let left = self.evaluate(&mul.left, ctx)?;
         let right = self.evaluate(&mul.right, ctx)?;
@@ -495,13 +495,13 @@ impl Evaluator {
 }
 
 fn mul_numeric<L, R>(
-	ctx: &EvaluationContext,
-	l: &CowVec<L>,
-	r: &CowVec<R>,
-	lv: &BitVec,
-	rv: &BitVec,
-	ty: Type,
-	span: OwnedSpan,
+    ctx: &EvaluationContext,
+    l: &CowVec<L>,
+    r: &CowVec<R>,
+    lv: &BitVec,
+    rv: &BitVec,
+    ty: Type,
+    span: OwnedSpan,
 ) -> crate::Result<FrameColumn>
 where
     L: GetType + Promote<R> + Copy,
@@ -513,7 +513,6 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(lv.len(), rv.len());
 
-    use crate::evaluate::pool::ColumnValuesExt;
     let mut data = ColumnValues::with_pooled_capacity(ty, lv.len(), &ctx.buffer_pool);
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
@@ -526,8 +525,5 @@ where
             data.push_undefined()
         }
     }
-    Ok(FrameColumn::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        values: data
-    }))
+    Ok(FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values: data }))
 }

@@ -3,7 +3,7 @@
 
 pub use column::{
     ColumnQualified, ColumnValues, FrameColumn, FrameColumnLayout, FullyQualified, Push,
-    TableQualified, Unqualified,
+    TableQualified, Unqualified, pool::*,
 };
 pub use frame::Frame;
 pub use layout::FrameLayout;
@@ -11,10 +11,10 @@ pub use reference::{RowRef, ValueRef};
 
 mod column;
 mod display;
+mod empty;
 mod frame;
 mod iterator;
 mod layout;
 mod reference;
 mod transform;
 mod view;
-mod empty;

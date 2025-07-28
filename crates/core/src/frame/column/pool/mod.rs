@@ -14,7 +14,6 @@ pub mod builder;
 pub mod manager;
 pub mod numeric;
 
-pub use builder::ColumnValuesExt;
 pub use manager::BufferPoolManager;
 
 /// Core trait for buffer pools that manage reusable buffers of a specific type.

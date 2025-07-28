@@ -1,7 +1,6 @@
 use crate::evaluate::EvaluationContext;
 use crate::evaluate::cast::cast_column_values;
-use crate::evaluate::pool::BufferPoolManager;
-use reifydb_core::frame::ColumnValues;
+use reifydb_core::frame::{BufferPoolManager, ColumnValues};
 use reifydb_core::{BitVec, BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 
 /// Attempts to coerce a single Value to match the target column type using the existing casting infrastructure

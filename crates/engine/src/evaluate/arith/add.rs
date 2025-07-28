@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
+use reifydb_core::OwnedSpan;
 use reifydb_core::error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types;
 use reifydb_core::expression::AddExpression;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, Push};
-use reifydb_core::value::number::{Promote, SafeAdd};
 use reifydb_core::value::IsNumber;
-use reifydb_core::OwnedSpan;
-use reifydb_core::{return_error, BitVec, CowVec, GetType, Type};
+use reifydb_core::value::number::{Promote, SafeAdd};
+use reifydb_core::{BitVec, CowVec, GetType, Type, return_error};
 
 impl Evaluator {
     pub(crate) fn add(
@@ -513,9 +513,7 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(lv.len(), rv.len());
 
-    use crate::evaluate::pool::ColumnValuesExt;
     let mut data = ColumnValues::with_pooled_capacity(ty, lv.len(), &ctx.buffer_pool);
-    
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
             if let Some(value) = ctx.add(l[i], r[i], &span)? {
@@ -527,8 +525,5 @@ where
             data.push_undefined()
         }
     }
-    Ok(FrameColumn::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        values: data
-    }))
+    Ok(FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values: data }))
 }

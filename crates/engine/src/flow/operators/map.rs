@@ -1,10 +1,9 @@
-use crate::evaluate::pool::BufferPoolManager;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
 use reifydb_core::BitVec;
 use reifydb_core::expression::Expression;
-use reifydb_core::frame::Frame;
+use reifydb_core::frame::{BufferPoolManager, Frame};
 
 pub struct MapOperator {
     expressions: Vec<Expression>,

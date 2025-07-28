@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::{BufferPool, BufferPoolManager};
-use reifydb_core::frame::ColumnValues;
-use reifydb_core::{CowVec, Type};
+use crate::frame::ColumnValues;
+use crate::{CowVec, Type};
 
 /// Builder for ColumnValues that uses buffer pools for efficient memory allocation.
 pub struct PooledColumnBuilder<'a> {
@@ -118,30 +118,20 @@ impl<'a> PooledColumnBuilder<'a> {
     }
 }
 
-/// Extension trait to add pooled building capabilities to ColumnValues.
-pub trait ColumnValuesExt {
-    /// Create ColumnValues using buffer pools for efficient memory allocation.
-    fn with_pooled_capacity(
-        target_type: Type,
-        capacity: usize,
-        pool: &BufferPoolManager,
-    ) -> ColumnValues;
-}
-
-impl ColumnValuesExt for ColumnValues {
-    fn with_pooled_capacity(
-        target_type: Type,
+impl ColumnValues {
+    pub fn with_pooled_capacity(
+        target: Type,
         capacity: usize,
         pool: &BufferPoolManager,
     ) -> ColumnValues {
-        PooledColumnBuilder::with_capacity(pool, target_type, capacity).build()
+        PooledColumnBuilder::with_capacity(pool, target, capacity).build()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::Type;
+    use crate::Type;
 
     #[test]
     fn test_pooled_column_builder() {

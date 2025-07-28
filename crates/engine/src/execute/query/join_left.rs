@@ -1,13 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::pool::BufferPoolManager;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::expression::Expression;
-use reifydb_core::frame::{
-    ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
-};
+use reifydb_core::frame::{BufferPoolManager, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 

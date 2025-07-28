@@ -10,6 +10,7 @@ mod extend;
 mod filter;
 mod get;
 mod layout;
+pub mod pool;
 mod push;
 mod qualification;
 mod reorder;
