@@ -108,11 +108,11 @@ mod tests {
     #[test]
     fn test_reorder_bool() {
         let mut col =
-            ColumnValues::Bool(CowVec::new(vec![true, false, true]), [true, false, true].into());
+            ColumnValues::Bool([true, false, true].into(), [true, false, true].into());
         col.reorder(&[2, 0, 1]);
         assert_eq!(
             col,
-            ColumnValues::Bool(CowVec::new(vec![true, true, false]), [true, true, false].into())
+            ColumnValues::Bool([true, true, false].into(), [true, true, false].into())
         );
     }
 

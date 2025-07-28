@@ -8,7 +8,7 @@ use std::fmt::Display;
 
 pub fn to_text(values: &ColumnValues, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
     match values {
-        ColumnValues::Bool(vals, bitvec) => from(vals, bitvec),
+        ColumnValues::Bool(vals, bitvec) => from_bool(vals, bitvec),
         ColumnValues::Int1(vals, bitvec) => from(vals, bitvec),
         ColumnValues::Int2(vals, bitvec) => from(vals, bitvec),
         ColumnValues::Int4(vals, bitvec) => from(vals, bitvec),
@@ -32,6 +32,19 @@ pub fn to_text(values: &ColumnValues, span: impl Fn() -> OwnedSpan) -> crate::Re
             reifydb_core::err!(cast::unsupported_cast(span(), source_type, Type::Utf8))
         }
     }
+}
+
+#[inline]
+fn from_bool(values: &BitVec, bitvec: &BitVec) -> crate::Result<ColumnValues> {
+    let mut out = ColumnValues::with_capacity(Type::Utf8, values.len());
+    for idx in 0..values.len() {
+        if bitvec.get(idx) {
+            out.push::<String>(values.get(idx).to_string());
+        } else {
+            out.push_undefined();
+        }
+    }
+    Ok(out)
 }
 
 #[inline]

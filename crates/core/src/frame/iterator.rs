@@ -29,7 +29,15 @@ impl<'df> Iterator for FrameIter<'df> {
             .map(|col| match &col.values() {
                 ColumnValues::Bool(data, bitmap) => {
                     if bitmap.get(i) {
-                        ValueRef::Bool(&data[i])
+                        // TODO: This is a temporary workaround - we need to restructure ValueRef
+                        // to handle owned values for BitVec since we can't get references to bits
+                        static TRUE_VAL: bool = true;
+                        static FALSE_VAL: bool = false;
+                        if data.get(i) {
+                            ValueRef::Bool(&TRUE_VAL)
+                        } else {
+                            ValueRef::Bool(&FALSE_VAL)
+                        }
                     } else {
                         ValueRef::Undefined
                     }

@@ -61,13 +61,36 @@ macro_rules! impl_push {
     };
 }
 
-impl_push!(bool, Bool);
+impl Push<bool> for ColumnValues {
+    fn push(&mut self, value: bool) {
+        match self {
+            ColumnValues::Bool(values, bitvec) => {
+                values.push(value);
+                bitvec.push(true);
+            }
+            ColumnValues::Undefined(len) => {
+                let mut values = BitVec::new(*len, false);
+                let mut bitvec = BitVec::new(*len, false);
+                values.push(value);
+                bitvec.push(true);
+
+                *self = ColumnValues::Bool(values, bitvec);
+            }
+            other => panic!(
+                "called `push::<bool>()` on ColumnValues::{:?}",
+                other.get_type()
+            ),
+        }
+    }
+}
+
 impl_push!(f32, Float4);
 impl_push!(f64, Float8);
 impl_push!(Date, Date);
 impl_push!(DateTime, DateTime);
 impl_push!(Time, Time);
 impl_push!(Interval, Interval);
+
 
 impl Push<String> for ColumnValues {
     fn push(&mut self, value: String) {

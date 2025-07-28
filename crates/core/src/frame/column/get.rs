@@ -10,7 +10,7 @@ impl ColumnValues {
         match self {
             ColumnValues::Bool(v, b) => {
                 if b.get(index) {
-                    Value::Bool(v[index])
+                    Value::Bool(v.get(index))
                 } else {
                     Value::Undefined
                 }

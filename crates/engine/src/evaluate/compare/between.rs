@@ -58,7 +58,7 @@ impl Evaluator {
 
                 for i in 0..ge_vals.len() {
                     if ge_bitvec.get(i) && le_bitvec.get(i) {
-                        result_values.push(ge_vals[i] && le_vals[i]);
+                        result_values.push(ge_vals.get(i) && le_vals.get(i));
                         result_bitvec.push(true);
                     } else {
                         result_values.push(false);

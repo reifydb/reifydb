@@ -108,7 +108,7 @@ mod tests {
         let mut col = ColumnValues::bool(vec![true]);
         col.push_undefined();
         if let ColumnValues::Bool(v, bitvec) = col {
-            assert_eq!(v.as_slice(), &[true, false]);
+            assert_eq!(v.to_vec(), vec![true, false]);
             assert!(bitvec.get(0));
             assert!(!bitvec.get(1));
         }

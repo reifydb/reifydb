@@ -12,7 +12,7 @@ impl Frame {
         for col in &self.columns {
             let data = match &col.values() {
                 ColumnValues::Bool(values, bitvec) => ColumnValues::Bool(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
+                    values.take(n),
                     bitvec.take(n),
                 ),
                 ColumnValues::Float4(values, bitvec) => ColumnValues::Float4(
