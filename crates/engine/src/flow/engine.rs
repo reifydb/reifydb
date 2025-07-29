@@ -224,6 +224,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
                                 Value::RowId(_v) => {}
                                 Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
                                 Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
+                                Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
                                 Value::Undefined => layout.set_undefined(&mut row, table_idx),
                             }
                         }

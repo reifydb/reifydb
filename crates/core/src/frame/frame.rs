@@ -8,8 +8,9 @@ use crate::frame::iterator::FrameIter;
 use crate::frame::{ColumnValues, FrameColumn};
 use std::collections::HashMap;
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frame {
     pub name: String,
     pub columns: Vec<FrameColumn>,
@@ -46,6 +47,7 @@ impl Frame {
                 Value::RowId(v) => ColumnValues::row_id([v]),
                 Value::Uuid4(v) => ColumnValues::uuid4([v]),
                 Value::Uuid7(v) => ColumnValues::uuid7([v]),
+                Value::Blob(ref v) => ColumnValues::blob([v.clone()]),
             };
 
             let column =

@@ -435,6 +435,16 @@ impl Evaluator {
                 }
                 _ => unimplemented!(),
             },
+            ColumnValues::Blob(_, _) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(reifydb_core::error::diagnostic::engine::frame_error(
+                        "Cannot apply NOT operator to BLOB".to_string()
+                    ))
+                }
+                _ => err!(reifydb_core::error::diagnostic::engine::frame_error(
+                    "Cannot apply arithmetic prefix operator to BLOB".to_string()
+                )),
+            },
         }
     }
 }

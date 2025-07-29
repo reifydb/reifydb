@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::value::{OrderedF32, OrderedF64};
 use crate::row::{EncodedRow, Layout};
+use crate::value::uuid::{Uuid4, Uuid7};
+use crate::value::{OrderedF32, OrderedF64};
 use crate::{RowId, Type, Value};
 
 impl Layout {
@@ -72,6 +73,15 @@ impl Layout {
             (Type::Interval, Value::Interval(v)) => self.set_interval(row, index, v.clone()),
             (Type::Interval, Value::Undefined) => self.set_undefined(row, index),
 
+            (Type::Uuid4, Value::Uuid4(v)) => self.set_uuid(row, index, (*v).into()),
+            (Type::Uuid4, Value::Undefined) => self.set_undefined(row, index),
+
+            (Type::Uuid7, Value::Uuid7(v)) => self.set_uuid(row, index, (*v).into()),
+            (Type::Uuid7, Value::Undefined) => self.set_undefined(row, index),
+
+            (Type::Blob, Value::Blob(v)) => self.set_blob(row, index, v),
+            (Type::Blob, Value::Undefined) => self.set_undefined(row, index),
+
             (Type::Undefined, Value::Undefined) => {}
             (_, _) => unreachable!(),
         }
@@ -106,8 +116,9 @@ impl Layout {
             Type::Time => Value::Time(self.get_time(row, index)),
             Type::Interval => Value::Interval(self.get_interval(row, index)),
             Type::RowId => Value::RowId(RowId::new(self.get_u64(row, index))),
-            Type::Uuid4 => Value::Uuid4(crate::value::uuid::Uuid4::from(self.get_uuid(row, index))),
-            Type::Uuid7 => Value::Uuid7(crate::value::uuid::Uuid7::from(self.get_uuid(row, index))),
+            Type::Uuid4 => Value::Uuid4(Uuid4::from(self.get_uuid(row, index))),
+            Type::Uuid7 => Value::Uuid7(Uuid7::from(self.get_uuid(row, index))),
+            Type::Blob => Value::Blob(self.get_blob(row, index)),
             Type::Undefined => Value::Undefined,
         }
     }
@@ -115,9 +126,10 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    use crate::value::{OrderedF32, OrderedF64};
     use crate::row::Layout;
-    use crate::value::{Date, DateTime, Interval, Time};
+    use crate::value::uuid::{Uuid4, Uuid7};
+    use crate::value::{Blob, Date, DateTime, Interval, Time};
+    use crate::value::{OrderedF32, OrderedF64};
     use crate::{Type, Value};
 
     #[test]
@@ -140,13 +152,7 @@ mod tests {
 
     #[test]
     fn test_set_values_with_mixed_dynamic_content() {
-        let layout = Layout::new(&[
-            Type::Bool,
-            Type::Utf8,
-            Type::Float4,
-            Type::Utf8,
-            Type::Int2,
-        ]);
+        let layout = Layout::new(&[Type::Bool, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -353,8 +359,7 @@ mod tests {
 
     #[test]
     fn test_temporal_types_roundtrip() {
-        let layout =
-            Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+        let layout = Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         let original_values = vec![
@@ -373,8 +378,7 @@ mod tests {
 
     #[test]
     fn test_temporal_types_with_undefined() {
-        let layout =
-            Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+        let layout = Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -431,8 +435,7 @@ mod tests {
 
     #[test]
     fn test_value_roundtrip_with_dynamic_content() {
-        let layout =
-            Layout::new(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
+        let layout = Layout::new(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
         let mut row = layout.allocate_row();
 
         let original_values = vec![
@@ -449,5 +452,189 @@ mod tests {
         let retrieved_values: Vec<Value> = (0..4).map(|i| layout.get_value(&row, i)).collect();
 
         assert_eq!(retrieved_values, original_values);
+    }
+
+    #[test]
+    fn test_blob_roundtrip() {
+        let layout = Layout::new(&[Type::Blob, Type::Int4, Type::Blob]);
+        let mut row = layout.allocate_row();
+
+        let blob1 = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        let blob2 = Blob::new(vec![]);
+        let values = vec![Value::Blob(blob1.clone()), Value::Int4(42), Value::Blob(blob2.clone())];
+
+        layout.set_values(&mut row, &values);
+
+        let retrieved_values: Vec<Value> = (0..3).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values, values);
+
+        // Verify blob content directly
+        match &retrieved_values[0] {
+            Value::Blob(b) => assert_eq!(b.as_bytes(), &[0xDE, 0xAD, 0xBE, 0xEF]),
+            _ => panic!("Expected Blob value"),
+        }
+
+        match &retrieved_values[2] {
+            Value::Blob(b) => assert!(b.is_empty()),
+            _ => panic!("Expected Blob value"),
+        }
+    }
+
+    #[test]
+    fn test_blob_with_undefined() {
+        let layout = Layout::new(&[Type::Blob, Type::Blob, Type::Blob]);
+        let mut row = layout.allocate_row();
+
+        let values = vec![
+            Value::Blob(Blob::new(vec![0x00, 0x01, 0x02])),
+            Value::Undefined,
+            Value::Blob(Blob::new(vec![0xFF, 0xFE])),
+        ];
+
+        layout.set_values(&mut row, &values);
+
+        assert!(row.is_defined(0));
+        assert!(!row.is_defined(1));
+        assert!(row.is_defined(2));
+
+        let retrieved_values: Vec<Value> = (0..3).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values[0], values[0]);
+        assert_eq!(retrieved_values[1], Value::Undefined);
+        assert_eq!(retrieved_values[2], values[2]);
+    }
+
+    #[test]
+    fn test_uuid_roundtrip() {
+        let layout = Layout::new(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
+        let mut row = layout.allocate_row();
+
+        let uuid4 = Uuid4::generate();
+        let uuid7 = Uuid7::generate();
+        let values = vec![Value::Uuid4(uuid4), Value::Uuid7(uuid7), Value::Int4(123)];
+
+        layout.set_values(&mut row, &values);
+
+        let retrieved_values: Vec<Value> = (0..3).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values, values);
+    }
+
+    #[test]
+    fn test_uuid_with_undefined() {
+        let layout = Layout::new(&[Type::Uuid4, Type::Uuid7]);
+        let mut row = layout.allocate_row();
+
+        let values = vec![Value::Undefined, Value::Uuid7(Uuid7::generate())];
+
+        layout.set_values(&mut row, &values);
+
+        assert!(!row.is_defined(0));
+        assert!(row.is_defined(1));
+
+        let retrieved_values: Vec<Value> = (0..2).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values[0], Value::Undefined);
+        assert_eq!(retrieved_values[1], values[1]);
+    }
+
+    #[test]
+    fn test_mixed_blob_row_id_uuid_types() {
+        let layout = Layout::new(&[
+            Type::Blob,
+            Type::Int16,
+            Type::Uuid4,
+            Type::Utf8,
+            Type::Uuid7,
+            Type::Int4,
+        ]);
+        let mut row = layout.allocate_row();
+
+        let values = vec![
+            Value::Blob(Blob::new(vec![0xCA, 0xFE, 0xBA, 0xBE])),
+            Value::Int16(42424242i128),
+            Value::Uuid4(Uuid4::generate()),
+            Value::Utf8("mixed types test".to_string()),
+            Value::Uuid7(Uuid7::generate()),
+            Value::Int4(-999),
+        ];
+
+        layout.set_values(&mut row, &values);
+
+        let retrieved_values: Vec<Value> = (0..6).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values, values);
+
+        // Verify dynamic content exists (for blob and utf8)
+        assert!(layout.dynamic_section_size(&row) > 0);
+    }
+
+    #[test]
+    fn test_all_types_comprehensive() {
+        // except row id
+
+        let layout = Layout::new(&[
+            Type::Bool,
+            Type::Int1,
+            Type::Int2,
+            Type::Int4,
+            Type::Int8,
+            Type::Int16,
+            Type::Uint1,
+            Type::Uint2,
+            Type::Uint4,
+            Type::Uint8,
+            Type::Uint16,
+            Type::Float4,
+            Type::Float8,
+            Type::Utf8,
+            Type::Date,
+            Type::DateTime,
+            Type::Time,
+            Type::Interval,
+            Type::Uuid4,
+            Type::Uuid7,
+            Type::Blob,
+        ]);
+        let mut row = layout.allocate_row();
+
+        let values = vec![
+            Value::Bool(true),
+            Value::Int1(-128),
+            Value::Int2(-32768),
+            Value::Int4(-2147483648),
+            Value::Int8(-9223372036854775808),
+            Value::Int16(-170141183460469231731687303715884105728),
+            Value::Uint1(255),
+            Value::Uint2(65535),
+            Value::Uint4(4294967295),
+            Value::Uint8(18446744073709551615),
+            Value::Uint16(340282366920938463463374607431768211455),
+            Value::Float4(OrderedF32::try_from(3.14159f32).unwrap()),
+            Value::Float8(OrderedF64::try_from(2.718281828459045).unwrap()),
+            Value::Utf8("comprehensive test".to_string()),
+            Value::Date(Date::new(2025, 12, 31).unwrap()),
+            Value::DateTime(DateTime::new(2025, 1, 1, 0, 0, 0, 0).unwrap()),
+            Value::Time(Time::new(23, 59, 59, 999999999).unwrap()),
+            Value::Interval(Interval::from_hours(24)),
+            Value::Uuid4(Uuid4::generate()),
+            Value::Uuid7(Uuid7::generate()),
+            Value::Blob(Blob::new(vec![
+                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD,
+                0xEE, 0xFF,
+            ])),
+        ];
+
+        layout.set_values(&mut row, &values);
+
+        let retrieved_values: Vec<Value> = (0..21).map(|i| layout.get_value(&row, i)).collect();
+
+        assert_eq!(retrieved_values, values);
+
+        // Verify all fields are defined
+        for i in 0..21 {
+            assert!(row.is_defined(i), "Field {} should be defined", i);
+        }
     }
 }

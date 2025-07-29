@@ -1,14 +1,15 @@
 use reifydb_core::frame::Frame;
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Change {
     Insert { frame: Frame },
     Update { old: Frame, new: Frame },
     Remove { frame: Frame },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diff {
     pub changes: Vec<Change>,
     pub metadata: HashMap<String, String>,

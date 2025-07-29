@@ -4,6 +4,7 @@
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BitVec {
@@ -28,7 +29,7 @@ impl<const N: usize> From<[bool; N]> for BitVec {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BitVecInner {
     bits: Vec<u8>,
     len: usize,
@@ -365,6 +366,25 @@ impl Deref for BitVec {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+impl Serialize for BitVec {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for BitVec {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let inner = BitVecInner::deserialize(deserializer)?;
+        Ok(BitVec { inner: Arc::new(inner) })
     }
 }
 

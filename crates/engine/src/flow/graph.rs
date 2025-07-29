@@ -1,13 +1,14 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::flow::node::NodeId;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Edge {
     pub source: NodeId,
     pub target: NodeId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirectedGraph<NodeData> {
     nodes: HashMap<NodeId, NodeData>,
     edges: Vec<Edge>,
@@ -235,7 +236,7 @@ impl<NodeData> DirectedGraph<NodeData> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum EdgeDirection {
     Incoming,
     Outgoing,

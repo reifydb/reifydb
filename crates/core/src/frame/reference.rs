@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{Value, Date, DateTime, Time, Interval, RowId};
+use crate::value::Blob;
 use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -41,6 +42,7 @@ pub enum ValueRef<'a> {
     RowId(&'a RowId),
     Uuid4(&'a Uuid),
     Uuid7(&'a Uuid),
+    Blob(&'a Blob),
     Undefined,
 }
 
@@ -68,6 +70,7 @@ impl<'a> ValueRef<'a> {
             ValueRef::RowId(v) => Value::RowId(**v),
             ValueRef::Uuid4(v) => Value::Uuid4(crate::value::uuid::Uuid4::from(**v)),
             ValueRef::Uuid7(v) => Value::Uuid7(crate::value::uuid::Uuid7::from(**v)),
+            ValueRef::Blob(v) => Value::Blob((*v).clone()),
             ValueRef::Undefined => Value::Undefined,
         }
     }
@@ -97,6 +100,7 @@ impl<'a> ToString for ValueRef<'a> {
             ValueRef::RowId(v) => v.to_string(),
             ValueRef::Uuid4(v) => v.to_string(),
             ValueRef::Uuid7(v) => v.to_string(),
+            ValueRef::Blob(v) => v.to_string(),
             ValueRef::Undefined => "Undefined".to_string(),
         }
     }

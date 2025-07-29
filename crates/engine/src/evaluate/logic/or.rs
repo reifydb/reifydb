@@ -27,7 +27,7 @@ impl Evaluator {
 
                 for i in 0..l.len() {
                     if lv.get(i) && rv.get(i) {
-                        values.push(l[i] || r[i]);
+                        values.push(l.get(i) || r.get(i));
                         bitvec.push(true);
                     } else {
                         values.push(false);

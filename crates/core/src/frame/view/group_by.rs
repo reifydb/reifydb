@@ -33,7 +33,7 @@ impl Frame {
                 let value = match col {
                     ColumnValues::Bool(data, bitvec) => {
                         if bitvec.get(row_idx) {
-                            Value::Bool(data[row_idx])
+                            Value::Bool(data.get(row_idx))
                         } else {
                             Value::Undefined
                         }
@@ -175,6 +175,13 @@ impl Frame {
                     ColumnValues::Uuid7(data, bitvec) => {
                         if bitvec.get(row_idx) {
                             Value::Uuid7(crate::value::uuid::Uuid7::from(data[row_idx]))
+                        } else {
+                            Value::Undefined
+                        }
+                    }
+                    ColumnValues::Blob(data, bitvec) => {
+                        if bitvec.get(row_idx) {
+                            Value::Blob(data[row_idx].clone())
                         } else {
                             Value::Undefined
                         }

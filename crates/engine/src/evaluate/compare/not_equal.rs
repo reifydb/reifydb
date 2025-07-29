@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
-use reifydb_core::value::{IsNumber, IsTemporal, temporal};
-use reifydb_core::value::number::Promote;
-use reifydb_core::{BitVec, CowVec, OwnedSpan, value, return_error};
-use reifydb_core::expression::NotEqualExpression;
+use reifydb_core::Type::Bool;
 use reifydb_core::error::diagnostic::operator::not_equal_cannot_be_applied_to_incompatible_types;
+use reifydb_core::expression::NotEqualExpression;
+use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn};
+use reifydb_core::value::number::Promote;
+use reifydb_core::value::{IsNumber, IsTemporal, temporal};
+use reifydb_core::{BitVec, CowVec, OwnedSpan, return_error, value};
 
 impl Evaluator {
     pub(crate) fn not_equal(
@@ -20,7 +21,7 @@ impl Evaluator {
 
         match (&left.values(), &right.values()) {
             (ColumnValues::Bool(l, lv), ColumnValues::Bool(r, rv)) => {
-                Ok(compare_bool(l, r, lv, rv, ne.span()))
+                Ok(compare_bool(ctx, l, r, lv, rv, ne.span()))
             }
             // Float4
             (ColumnValues::Float4(l, lv), ColumnValues::Float4(r, rv)) => {
@@ -498,32 +499,28 @@ impl Evaluator {
 }
 
 fn compare_bool(
-    l: &CowVec<bool>,
-    r: &CowVec<bool>,
+    ctx: &EvaluationContext,
+    l: &BitVec,
+    r: &BitVec,
     lv: &BitVec,
     rv: &BitVec,
     span: OwnedSpan,
 ) -> FrameColumn {
     debug_assert_eq!(l.len(), r.len());
     debug_assert_eq!(lv.len(), rv.len());
+    debug_assert_eq!(l.len(), lv.len());
 
-    let mut values = Vec::with_capacity(l.len());
-    let mut bitvec = Vec::with_capacity(lv.len());
+    let mut values = ctx.pooled_values(Bool, l.len());
 
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
-            values.push(l[i] != r[i]);
-            bitvec.push(true);
+            values.push(l.get(i) != r.get(i));
         } else {
-            values.push(false);
-            bitvec.push(false);
+            values.push_undefined();
         }
     }
 
-    FrameColumn::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        values: ColumnValues::bool_with_bitvec(values, bitvec)
-    })
+    FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values })
 }
 
 fn compare_number<L, R>(
@@ -543,7 +540,7 @@ where
     debug_assert_eq!(lv.len(), rv.len());
     debug_assert_eq!(l.len(), lv.len());
 
-    let mut values = ctx.pooled_values(reifydb_core::Type::Bool, l.len());
+    let mut values = ctx.pooled_values(Bool, l.len());
 
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
@@ -553,10 +550,7 @@ where
         }
     }
 
-    FrameColumn::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        values,
-    })
+    FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values })
 }
 
 fn compare_temporal<T>(
@@ -587,7 +581,7 @@ where
 
     FrameColumn::ColumnQualified(ColumnQualified {
         name: span.fragment.into(),
-        values: ColumnValues::bool_with_bitvec(values, bitvec)
+        values: ColumnValues::bool_with_bitvec(values, bitvec),
     })
 }
 
@@ -606,7 +600,7 @@ fn compare_utf8(
 
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
-            values.push(l[i] != r[i]);
+            values.push(l.get(i) != r.get(i));
             bitvec.push(true);
         } else {
             values.push(false);
@@ -616,6 +610,6 @@ fn compare_utf8(
 
     FrameColumn::ColumnQualified(ColumnQualified {
         name: span.fragment.into(),
-        values: ColumnValues::bool_with_bitvec(values, bitvec)
+        values: ColumnValues::bool_with_bitvec(values, bitvec),
     })
 }

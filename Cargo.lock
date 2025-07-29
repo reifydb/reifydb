@@ -1550,10 +1550,10 @@ dependencies = [
 name = "reifydb-core"
 version = "0.0.1"
 dependencies = [
+ "base64",
  "bincode 2.0.1",
  "chrono",
  "hex",
- "rand 0.9.2",
  "regex",
  "serde",
  "serde_bytes",
@@ -1584,6 +1584,7 @@ version = "0.0.1"
 dependencies = [
  "chrono",
  "futures-util",
+ "hex",
  "prost",
  "reifydb-catalog",
  "reifydb-core",

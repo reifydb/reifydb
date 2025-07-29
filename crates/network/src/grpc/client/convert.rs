@@ -5,6 +5,7 @@ use crate::grpc::client::grpc;
 use reifydb_core::error::diagnostic::{Diagnostic, DiagnosticColumn};
 use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, TableQualified, ColumnQualified};
 use reifydb_core::value::uuid::{Uuid4, Uuid7};
+use reifydb_core::value::Blob;
 use reifydb_core::{Date, DateTime, Interval, OwnedSpan, RowId, SpanColumn, SpanLine, Time, Type};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -448,6 +449,24 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                     }
                 }
                 ColumnValues::uuid7_with_bitvec(data, bitvec)
+            }
+
+            Type::Blob => {
+                let mut data = Vec::with_capacity(values.len());
+                let mut bitvec = Vec::with_capacity(values.len());
+                for v in values {
+                    match v.r#type {
+                        Some(GrpcType::BlobValue(bytes)) => {
+                            data.push(Blob::new(bytes));
+                            bitvec.push(true);
+                        }
+                        _ => {
+                            data.push(Blob::new(vec![]));
+                            bitvec.push(false);
+                        }
+                    }
+                }
+                ColumnValues::blob_with_bitvec(data, bitvec)
             }
         };
 

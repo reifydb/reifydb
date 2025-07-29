@@ -4,7 +4,7 @@
 use reifydb_core::expression::Expression;
 use reifydb_core::frame::{ColumnQualified, FrameColumn, TableQualified};
 
-use crate::function::{Functions, math};
+use crate::function::{Functions, math, blob};
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
 
 mod access;
@@ -26,7 +26,16 @@ pub(crate) struct Evaluator {
 
 impl Default for Evaluator {
     fn default() -> Self {
-        Self { functions: Functions::builder().build() }
+        Self { 
+            functions: Functions::builder()
+                .register_scalar("abs", math::scalar::Abs::new)
+                .register_scalar("avg", math::scalar::Avg::new)
+                .register_scalar("blob::hex", blob::BlobHex::new)
+                .register_scalar("blob::b64", blob::BlobB64::new)
+                .register_scalar("blob::b64url", blob::BlobB64url::new)
+                .register_scalar("blob::utf8", blob::BlobUtf8::new)
+                .build() 
+        }
     }
 }
 
@@ -70,6 +79,10 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Fra
         functions: Functions::builder()
             .register_scalar("abs", math::scalar::Abs::new)
             .register_scalar("avg", math::scalar::Avg::new)
+            .register_scalar("blob::hex", blob::BlobHex::new)
+            .register_scalar("blob::b64", blob::BlobB64::new)
+            .register_scalar("blob::b64url", blob::BlobB64url::new)
+            .register_scalar("blob::utf8", blob::BlobUtf8::new)
             .build(),
     };
 

@@ -77,7 +77,7 @@ fn bool_to_number(
             };
 
             let mut out = ColumnValues::with_capacity(target, inner_values.len());
-            for (idx, &val) in inner_values.iter().enumerate() {
+            for (idx, val) in inner_values.iter().enumerate() {
                 if bitvec.get(idx) {
                     converter(&mut out, val);
                 } else {

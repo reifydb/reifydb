@@ -5,6 +5,7 @@ use crate::Type;
 pub use layout::FrameColumnLayout;
 pub use push::Push;
 pub use values::ColumnValues;
+use serde::{Deserialize, Serialize};
 
 mod extend;
 mod filter;
@@ -18,7 +19,7 @@ mod reorder;
 mod slice;
 mod values;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FullyQualified {
     pub schema: String,
     pub table: String,
@@ -26,26 +27,26 @@ pub struct FullyQualified {
     pub values: ColumnValues,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TableQualified {
     pub table: String,
     pub name: String,
     pub values: ColumnValues,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ColumnQualified {
     pub name: String,
     pub values: ColumnValues,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Unqualified {
     pub name: String,
     pub values: ColumnValues,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum FrameColumn {
     FullyQualified(FullyQualified),
     TableQualified(TableQualified),

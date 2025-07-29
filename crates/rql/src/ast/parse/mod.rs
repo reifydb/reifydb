@@ -10,6 +10,7 @@ mod describe;
 mod error;
 mod filter;
 mod from;
+mod call;
 mod identifier;
 mod infix;
 mod inline;

@@ -9,9 +9,12 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, TableQualified, ColumnQualified};
+use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, TableQualified};
+use reifydb_core::value::Blob;
 use reifydb_core::value::temporal::parse_interval;
-use reifydb_core::{CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err};
+use reifydb_core::{
+    BitVec, CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
@@ -300,7 +303,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     _ => false, // treat ⟪undefined⟫ or anything else as false
                 })
                 .collect();
-            ColumnValues::Bool(CowVec::new(values), bitvec.into())
+            ColumnValues::Bool(BitVec::from_slice(&values), bitvec.into())
         }
         Type::Float4 => parse!(f32, Float4),
         Type::Float8 => parse!(f64, Float8),
@@ -493,6 +496,28 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                 })
                 .collect();
             ColumnValues::Uuid7(CowVec::new(values), bitvec.into())
+        }
+        Type::Blob => {
+            let values: Vec<Blob> = data
+                .into_iter()
+                .map(|s| {
+                    if s == "⟪undefined⟫" {
+                        Blob::new(vec![])
+                    } else {
+                        // Parse hex string (assuming 0x prefix)
+                        if s.starts_with("0x") {
+                            if let Ok(bytes) = hex::decode(&s[2..]) {
+                                Blob::new(bytes)
+                            } else {
+                                Blob::new(vec![])
+                            }
+                        } else {
+                            Blob::new(vec![])
+                        }
+                    }
+                })
+                .collect();
+            ColumnValues::Blob(CowVec::new(values), bitvec.into())
         }
     }
 }

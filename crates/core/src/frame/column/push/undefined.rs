@@ -3,6 +3,7 @@
 
 use crate::frame::ColumnValues;
 use crate::value::uuid::{Uuid4, Uuid7};
+use crate::value::Blob;
 use crate::{Date, DateTime, Interval, RowId, Time};
 
 impl ColumnValues {
@@ -95,6 +96,10 @@ impl ColumnValues {
                 values.push(Uuid7::default());
                 bitvec.push(false);
             }
+            ColumnValues::Blob(values, bitvec) => {
+                values.push(Blob::new(vec![]));
+                bitvec.push(false);
+            }
         }
     }
 }
@@ -108,7 +113,7 @@ mod tests {
         let mut col = ColumnValues::bool(vec![true]);
         col.push_undefined();
         if let ColumnValues::Bool(v, bitvec) = col {
-            assert_eq!(v.as_slice(), &[true, false]);
+            assert_eq!(v.to_vec(), vec![true, false]);
             assert!(bitvec.get(0));
             assert!(!bitvec.get(1));
         }

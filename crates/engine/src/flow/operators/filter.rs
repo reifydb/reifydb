@@ -79,7 +79,7 @@ impl FilterOperator {
             ColumnValues::Bool(values, bitvec) => {
                 for (idx, val) in values.iter().enumerate() {
                     debug_assert!(bitvec.get(idx));
-                    bv.set(idx, *val);
+                    bv.set(idx, val);
                 }
             }
             _ => unreachable!(),

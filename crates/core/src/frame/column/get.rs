@@ -10,7 +10,7 @@ impl ColumnValues {
         match self {
             ColumnValues::Bool(v, b) => {
                 if b.get(index) {
-                    Value::Bool(v[index])
+                    Value::Bool(v.get(index))
                 } else {
                     Value::Undefined
                 }
@@ -152,6 +152,13 @@ impl ColumnValues {
             ColumnValues::Uuid7(v, b) => {
                 if b.get(index) {
                     Value::Uuid7(v[index])
+                } else {
+                    Value::Undefined
+                }
+            }
+            ColumnValues::Blob(v, b) => {
+                if b.get(index) {
+                    Value::Blob(v[index].clone())
                 } else {
                     Value::Undefined
                 }

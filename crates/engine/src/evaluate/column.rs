@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::error::diagnostic::query::column_not_found;
 use reifydb_core::frame::{ColumnValues, FrameColumn};
-use reifydb_core::value::{Uuid4, Uuid7};
+use reifydb_core::value::{Blob, Uuid4, Uuid7};
 use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
 use reifydb_core::expression::ColumnExpression;
 
@@ -574,6 +574,30 @@ impl Evaluator {
                     }
                 }
                 Ok(col.with_new_values(ColumnValues::uuid7_with_bitvec(values, bitvec)))
+            }
+            Value::Blob(_) => {
+                let mut values = Vec::new();
+                let mut bitvec = Vec::new();
+                let mut count = 0;
+                for (i, v) in col.values().iter().enumerate() {
+                    if ctx.mask.get(i) {
+                        if count >= take {
+                            break;
+                        }
+                        match v {
+                            Value::Blob(b) => {
+                                values.push(b.clone());
+                                bitvec.push(true);
+                            }
+                            _ => {
+                                values.push(Blob::new(vec![]));
+                                bitvec.push(false);
+                            }
+                        }
+                        count += 1;
+                    }
+                }
+                Ok(col.with_new_values(ColumnValues::blob_with_bitvec(values, bitvec)))
             }
             Value::Undefined => {
                 // For undefined values (e.g., from left joins with no match on right side),

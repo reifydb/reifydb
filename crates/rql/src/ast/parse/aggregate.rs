@@ -105,13 +105,12 @@ mod tests {
         let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 1);
 
-        let projection = &aggregate.map[0].as_infix();
-        let identifier = projection.left.as_identifier();
-        assert_eq!(identifier.value(), "min");
-
-        assert!(matches!(projection.operator, InfixOperator::Call(_)));
-        let tuple = projection.right.as_tuple();
-        let identifier = tuple.nodes[0].as_identifier();
+        let projection = &aggregate.map[0].as_call_function();
+        assert_eq!(projection.function.value(), "min");
+        assert!(projection.namespaces.is_empty());
+        
+        assert_eq!(projection.arguments.len(), 1);
+        let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
 
         assert_eq!(aggregate.by.len(), 1);
@@ -131,13 +130,12 @@ mod tests {
 
         let projection = &aggregate.map[0].as_infix();
 
-        let min_age = projection.left.as_infix();
-        let identifier = min_age.left.as_identifier();
-        assert_eq!(identifier.value(), "min");
-
-        assert!(matches!(min_age.operator, InfixOperator::Call(_)));
-        let tuple = min_age.right.as_tuple();
-        let identifier = tuple.nodes[0].as_identifier();
+        let min_call = projection.left.as_call_function();
+        assert_eq!(min_call.function.value(), "min");
+        assert!(min_call.namespaces.is_empty());
+        
+        assert_eq!(min_call.arguments.len(), 1);
+        let identifier = min_call.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
 
         assert!(matches!(projection.operator, InfixOperator::As(_)));
@@ -192,22 +190,20 @@ mod tests {
         let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 2);
 
-        let projection = &aggregate.map[0].as_infix();
-        let identifier = projection.left.as_identifier();
-        assert_eq!(identifier.value(), "min");
-
-        assert!(matches!(projection.operator, InfixOperator::Call(_)));
-        let tuple = projection.right.as_tuple();
-        let identifier = tuple.nodes[0].as_identifier();
+        let projection = &aggregate.map[0].as_call_function();
+        assert_eq!(projection.function.value(), "min");
+        assert!(projection.namespaces.is_empty());
+        
+        assert_eq!(projection.arguments.len(), 1);
+        let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
 
-        let projection = &aggregate.map[1].as_infix();
-        let identifier = projection.left.as_identifier();
-        assert_eq!(identifier.value(), "max");
-
-        assert!(matches!(projection.operator, InfixOperator::Call(_)));
-        let tuple = projection.right.as_tuple();
-        let identifier = tuple.nodes[0].as_identifier();
+        let projection = &aggregate.map[1].as_call_function();
+        assert_eq!(projection.function.value(), "max");
+        assert!(projection.namespaces.is_empty());
+        
+        assert_eq!(projection.arguments.len(), 1);
+        let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
 
         assert_eq!(aggregate.by.len(), 2);
@@ -228,9 +224,13 @@ mod tests {
         let aggregate = result.first_unchecked().as_aggregate();
         assert_eq!(aggregate.map.len(), 1);
 
-        let projection = &aggregate.map[0].as_infix();
-        let identifier = projection.left.as_identifier();
-        assert_eq!(identifier.value(), "min");
+        let projection = &aggregate.map[0].as_call_function();
+        assert_eq!(projection.function.value(), "min");
+        assert!(projection.namespaces.is_empty());
+        
+        assert_eq!(projection.arguments.len(), 1);
+        let identifier = projection.arguments.nodes[0].as_identifier();
+        assert_eq!(identifier.value(), "age");
 
         assert_eq!(aggregate.by.len(), 1);
         assert_eq!(aggregate.by[0].value(), "name");

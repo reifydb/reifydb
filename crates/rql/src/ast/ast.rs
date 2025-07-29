@@ -43,6 +43,7 @@ impl IntoIterator for AstStatement {
 pub enum Ast {
     Aggregate(AstAggregate),
     Between(AstBetween),
+    CallFunction(AstCallFunction),
     Cast(AstCast),
     Create(AstCreate),
     Describe(AstDescribe),
@@ -79,6 +80,7 @@ impl Ast {
         match self {
             Ast::Inline(node) => &node.token,
             Ast::Between(node) => &node.token,
+            Ast::CallFunction(node) => &node.token,
             Ast::Cast(node) => &node.token,
             Ast::Create(node) => node.token(),
             Ast::Describe(node) => match node {
@@ -135,6 +137,13 @@ impl Ast {
     }
     pub fn as_between(&self) -> &AstBetween {
         if let Ast::Between(result) = self { result } else { panic!("not between") }
+    }
+
+    pub fn is_call_function(&self) -> bool {
+        matches!(self, Ast::CallFunction(_))
+    }
+    pub fn as_call_function(&self) -> &AstCallFunction {
+        if let Ast::CallFunction(result) = self { result } else { panic!("not call function") }
     }
 
     pub fn is_block(&self) -> bool {
@@ -361,6 +370,14 @@ pub struct AstCast {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstCallFunction {
+    pub token: Token,
+    pub namespaces: Vec<AstIdentifier>,
+    pub function: AstIdentifier,
+    pub arguments: AstTuple,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstInlineKeyedValue {
     pub key: AstIdentifier,
     pub value: Box<Ast>,
@@ -553,7 +570,7 @@ pub enum InfixOperator {
     Add(Token),
     As(Token),
     Arrow(Token),
-    AccessExtension(Token),
+    AccessNamespace(Token),
     AccessTable(Token),
     Assign(Token),
     Call(Token),

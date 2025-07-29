@@ -5,6 +5,7 @@ use reifydb_core::frame::{ColumnValues, FrameColumn};
 pub use registry::Functions;
 use reifydb_core::{BitVec, Value};
 use std::collections::HashMap;
+pub mod blob;
 pub mod math;
 mod registry;
 

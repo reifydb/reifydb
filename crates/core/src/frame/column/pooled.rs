@@ -9,9 +9,9 @@ impl ColumnValues {
     pub fn new_pooled(target: Type, capacity: usize, pools: &BufferedPools) -> ColumnValues {
         match target {
             Type::Bool => {
+                let values = pools.bool_pool.acquire_bitvec(capacity);
                 let bitvec = pools.bool_pool.acquire_bitvec(capacity);
-                let values_vec = vec![false; 0]; // Empty vec, will be populated by caller
-                ColumnValues::Bool(CowVec::new(values_vec), bitvec)
+                ColumnValues::Bool(values, bitvec)
             }
             Type::Int1 => {
                 let buffer = pools.i8_pool.acquire(capacity);
@@ -94,6 +94,7 @@ impl ColumnValues {
             Type::Uuid4 => unimplemented!(),
             Type::Uuid7 => unimplemented!(),
             Type::Undefined => unimplemented!(),
+            Type::Blob => unimplemented!()
         }
     }
 }

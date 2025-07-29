@@ -38,7 +38,7 @@ fn extract_string_value(col: &FrameColumn, row_idx: usize) -> String {
     let s = match &col.values() {
         ColumnValues::Bool(v, bitvec) => {
             if bitvec.get(row_idx) {
-                v[row_idx].to_string()
+                v.get(row_idx).to_string()
             } else {
                 "Undefined".into()
             }
@@ -177,6 +177,13 @@ fn extract_string_value(col: &FrameColumn, row_idx: usize) -> String {
             }
         }
         ColumnValues::Uuid7(v, b) => {
+            if b.get(row_idx) {
+                v[row_idx].to_string()
+            } else {
+                "Undefined".into()
+            }
+        }
+        ColumnValues::Blob(v, b) => {
             if b.get(row_idx) {
                 v[row_idx].to_string()
             } else {

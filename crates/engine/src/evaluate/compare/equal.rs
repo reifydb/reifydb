@@ -501,8 +501,8 @@ impl Evaluator {
 
 fn compare_bool(
     ctx: &EvaluationContext,
-    l: &CowVec<bool>,
-    r: &CowVec<bool>,
+    l: &BitVec,
+    r: &BitVec,
     lv: &BitVec,
     rv: &BitVec,
     span: OwnedSpan,
@@ -515,7 +515,7 @@ fn compare_bool(
 
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
-            values.push(l[i] == r[i]);
+            values.push(l.get(i) == r.get(i));
         } else {
             values.push_undefined();
         }
@@ -551,10 +551,7 @@ where
         }
     }
 
-    FrameColumn::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        values,
-    })
+    FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values })
 }
 
 fn compare_temporal<T>(
@@ -567,7 +564,6 @@ fn compare_temporal<T>(
 where
     T: IsTemporal,
 {
-
     debug_assert_eq!(l.len(), r.len());
     debug_assert_eq!(lv.len(), rv.len());
 
@@ -597,7 +593,6 @@ fn compare_utf8(
     rv: &BitVec,
     span: OwnedSpan,
 ) -> FrameColumn {
-
     debug_assert_eq!(l.len(), r.len());
     debug_assert_eq!(lv.len(), rv.len());
 
@@ -606,7 +601,7 @@ fn compare_utf8(
 
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
-            values.push(l[i] == r[i]);
+            values.push(l.get(i) == r.get(i));
             bitvec.push(true);
         } else {
             values.push(false);

@@ -2,13 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::RowId;
+use crate::value::Blob;
 use crate::value::uuid::{Uuid4, Uuid7};
 use crate::{BitVec, CowVec, Type, Value};
 use crate::{Date, DateTime, Interval, Time};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColumnValues {
-    Bool(CowVec<bool>, BitVec),
+    Bool(BitVec, BitVec),
     Float4(CowVec<f32>, BitVec),
     Float8(CowVec<f64>, BitVec),
     Int1(CowVec<i8>, BitVec),
@@ -29,6 +31,7 @@ pub enum ColumnValues {
     RowId(CowVec<RowId>, BitVec),
     Uuid4(CowVec<Uuid4>, BitVec),
     Uuid7(CowVec<Uuid7>, BitVec),
+    Blob(CowVec<Blob>, BitVec),
     // special case: all undefined
     Undefined(usize),
 }
@@ -57,6 +60,7 @@ impl ColumnValues {
             ColumnValues::RowId(_, _) => Type::RowId,
             ColumnValues::Uuid4(_, _) => Type::Uuid4,
             ColumnValues::Uuid7(_, _) => Type::Uuid7,
+            ColumnValues::Blob(_, _) => Type::Blob,
             ColumnValues::Undefined(_) => Type::Undefined,
         }
     }
@@ -128,6 +132,7 @@ impl ColumnValues {
             ColumnValues::RowId(_, bitvec) => bitvec,
             ColumnValues::Uuid4(_, bitvec) => bitvec,
             ColumnValues::Uuid7(_, bitvec) => bitvec,
+            ColumnValues::Blob(_, bitvec) => bitvec,
             ColumnValues::Undefined(_) => unreachable!(),
         }
     }
@@ -157,6 +162,7 @@ impl ColumnValues {
             Type::RowId => Self::row_id_with_capacity(capacity),
             Type::Uuid4 => Self::uuid4_with_capacity(capacity),
             Type::Uuid7 => Self::uuid7_with_capacity(capacity),
+            Type::Blob => Self::blob_with_capacity(capacity),
             Type::Undefined => Self::undefined(capacity),
         }
     }
@@ -168,7 +174,7 @@ impl ColumnValues {
                 values
                     .iter()
                     .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Bool(*v) } else { Value::Undefined })
+                    .map(|(v, b)| if b { Value::Bool(v) } else { Value::Undefined })
                     .into_iter(),
             ),
             ColumnValues::Float4(values, bitvec) => Box::new(
@@ -311,6 +317,13 @@ impl ColumnValues {
                     .map(|(v, b)| if b { Value::Uuid7(*v) } else { Value::Undefined })
                     .into_iter(),
             ),
+            ColumnValues::Blob(values, bitvec) => Box::new(
+                values
+                    .iter()
+                    .zip(bitvec.iter())
+                    .map(|(v, b)| if b { Value::Blob(v.clone()) } else { Value::Undefined })
+                    .into_iter(),
+            ),
             ColumnValues::Undefined(size) => {
                 Box::new((0..*size).map(|_| Value::Undefined).collect::<Vec<Value>>().into_iter())
             }
@@ -322,11 +335,11 @@ impl ColumnValues {
     pub fn bool(values: impl IntoIterator<Item = bool>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Bool(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Bool(BitVec::from_slice(&values), BitVec::new(len, true))
     }
 
     pub fn bool_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Bool(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
+        ColumnValues::Bool(BitVec::with_capacity(capacity), BitVec::with_capacity(capacity))
     }
 
     pub fn bool_with_bitvec(
@@ -336,7 +349,7 @@ impl ColumnValues {
         let values = values.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Bool(CowVec::new(values), bitvec)
+        ColumnValues::Bool(BitVec::from_slice(&values), bitvec)
     }
 
     pub fn float4(values: impl IntoIterator<Item = f32>) -> Self {
@@ -719,6 +732,26 @@ impl ColumnValues {
         ColumnValues::Uuid7(CowVec::new(values), bitvec)
     }
 
+    pub fn blob(values: impl IntoIterator<Item = Blob>) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let len = values.len();
+        ColumnValues::Blob(CowVec::new(values), BitVec::new(len, true))
+    }
+
+    pub fn blob_with_capacity(capacity: usize) -> Self {
+        ColumnValues::Blob(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
+    }
+
+    pub fn blob_with_bitvec(
+        values: impl IntoIterator<Item = Blob>,
+        bitvec: impl Into<BitVec>,
+    ) -> Self {
+        let values = values.into_iter().collect::<Vec<_>>();
+        let bitvec = bitvec.into();
+        assert_eq!(bitvec.len(), values.len());
+        ColumnValues::Blob(CowVec::new(values), bitvec)
+    }
+
     pub fn undefined(len: usize) -> Self {
         ColumnValues::Undefined(len)
     }
@@ -748,6 +781,7 @@ impl ColumnValues {
             Value::RowId(v) => ColumnValues::row_id(vec![v; row_count]),
             Value::Uuid4(v) => ColumnValues::uuid4(vec![v; row_count]),
             Value::Uuid7(v) => ColumnValues::uuid7(vec![v; row_count]),
+            Value::Blob(v) => ColumnValues::blob(vec![v; row_count]),
             Value::Undefined => ColumnValues::undefined(row_count),
         }
     }
@@ -763,6 +797,10 @@ impl ColumnValues {
     pub fn len(&self) -> usize {
         match self {
             ColumnValues::Bool(v, b) => {
+                debug_assert_eq!(v.len(), b.len());
+                v.len()
+            }
+            ColumnValues::Blob(v, b) => {
                 debug_assert_eq!(v.len(), b.len());
                 v.len()
             }
@@ -856,6 +894,10 @@ impl ColumnValues {
                 debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
+            ColumnValues::Blob(v, b) => {
+                debug_assert!(v.capacity() <= b.capacity());
+                v.capacity()
+            }
             ColumnValues::Float4(v, b) => {
                 debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
@@ -936,7 +978,7 @@ impl ColumnValues {
                 debug_assert!(v.capacity() <= b.capacity());
                 v.capacity()
             }
-            ColumnValues::Undefined(n) => *n,
+            ColumnValues::Undefined(size) => *size,
         }
     }
 }
