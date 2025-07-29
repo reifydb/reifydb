@@ -1,6 +1,6 @@
 use crate::evaluate::EvaluationContext;
 use crate::evaluate::cast::cast_column_values;
-use reifydb_core::frame::{BufferPoolManager, ColumnValues};
+use reifydb_core::frame::{BufferedPools, ColumnValues};
 use reifydb_core::{BitVec, BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 
 /// Attempts to coerce a single Value to match the target column type using the existing casting infrastructure
@@ -41,7 +41,7 @@ pub(crate) fn coerce_value_to_column_type(
             columns: Vec::new(),
             row_count: 1,
             take: None,
-            buffer_pool: BufferPoolManager::default(),
+            buffered: BufferedPools::default(),
         },
         || BorrowedSpan::new(&value_str).to_owned(),
     )?;

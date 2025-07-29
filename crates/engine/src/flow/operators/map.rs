@@ -3,7 +3,7 @@ use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
 use reifydb_core::BitVec;
 use reifydb_core::expression::Expression;
-use reifydb_core::frame::{BufferPoolManager, Frame};
+use reifydb_core::frame::{BufferedPools, Frame};
 
 pub struct MapOperator {
     expressions: Vec<Expression>,
@@ -57,7 +57,7 @@ impl MapOperator {
             columns: frame.columns.clone(),
             row_count,
             take: None,
-            buffer_pool: BufferPoolManager::default(),
+            buffered: BufferedPools::default(),
         };
 
         // Evaluate each expression to get projected columns

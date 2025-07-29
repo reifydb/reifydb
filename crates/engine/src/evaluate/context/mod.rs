@@ -10,9 +10,9 @@ mod convert;
 mod demote;
 mod promote;
 
-use reifydb_core::frame::{BufferPoolManager, FrameColumn};
+use reifydb_core::frame::{BufferedPools, ColumnValues, FrameColumn};
 use reifydb_core::{
-    BitVec, ColumnDescriptor,
+    BitVec, ColumnDescriptor, Type,
     interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 };
 
@@ -24,7 +24,7 @@ pub(crate) struct EvaluationContext<'a> {
     pub(crate) columns: Vec<FrameColumn>,
     pub(crate) row_count: usize,
     pub(crate) take: Option<usize>,
-    pub(crate) buffer_pool: BufferPoolManager,
+    pub(crate) buffered: BufferedPools,
 }
 
 impl<'a> EvaluationContext<'a> {
@@ -37,7 +37,7 @@ impl<'a> EvaluationContext<'a> {
             columns: vec![],
             row_count: 1,
             take: None,
-            buffer_pool: BufferPoolManager::default(),
+            buffered: BufferedPools::default(),
         }
     }
 
@@ -48,5 +48,10 @@ impl<'a> EvaluationContext<'a> {
                 ColumnPolicyKind::Saturation(policy) => Some(policy),
             })
             .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
+    }
+
+    #[inline]
+    pub fn pooled_values(&self, target: Type, capacity: usize) -> ColumnValues {
+        ColumnValues::new_pooled(target, capacity, &self.buffered)
     }
 }

@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::expression::Expression;
-use reifydb_core::frame::{BufferPoolManager, ColumnValues, FrameLayout};
+use reifydb_core::frame::{BufferedPools, ColumnValues, FrameLayout};
 use reifydb_core::interface::Rx;
 
 pub(crate) struct FilterNode {
@@ -38,7 +38,7 @@ impl ExecutionPlan for FilterNode {
                     columns: frame.columns.clone(),
                     row_count,
                     take: None,
-                    buffer_pool: BufferPoolManager::default(),
+                    buffered: BufferedPools::default(),
                 };
 
                 // Evaluate the filter expression

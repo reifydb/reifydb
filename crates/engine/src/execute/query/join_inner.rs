@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::expression::Expression;
 use reifydb_core::frame::{
-    BufferPoolManager, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout,
+    BufferedPools, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout,
     TableQualified,
 };
 use reifydb_core::interface::Rx;
@@ -101,7 +101,7 @@ impl ExecutionPlan for InnerJoinNode {
                         .collect(),
                     row_count: 1,
                     take: Some(1),
-                    buffer_pool: BufferPoolManager::default(),
+                    buffered: BufferedPools::default(),
                 };
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {

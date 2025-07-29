@@ -5,7 +5,7 @@ use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::expression::KeyedExpression;
 use reifydb_core::frame::{
-    BufferPoolManager, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameColumnLayout,
+    BufferedPools, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameColumnLayout,
     FrameLayout,
 };
 use reifydb_core::interface::{Rx, Table};
@@ -103,7 +103,7 @@ impl InlineDataNode {
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
-                        buffer_pool: BufferPoolManager::default(),
+                        buffered: BufferedPools::default(),
                     };
 
                     let evaluated = evaluate(&keyed_expr.expression, &ctx)?;
@@ -182,7 +182,7 @@ impl InlineDataNode {
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
-                        buffer_pool: BufferPoolManager::default(),
+                        buffered: BufferedPools::default(),
                     };
 
                     column_values

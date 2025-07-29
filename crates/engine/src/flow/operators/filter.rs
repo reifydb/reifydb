@@ -3,7 +3,7 @@ use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
 use reifydb_core::BitVec;
 use reifydb_core::expression::Expression;
-use reifydb_core::frame::{BufferPoolManager, ColumnValues, Frame};
+use reifydb_core::frame::{BufferedPools, ColumnValues, Frame};
 
 pub struct FilterOperator {
     predicate: Expression,
@@ -66,7 +66,7 @@ impl FilterOperator {
             columns: frame.columns.clone(),
             row_count,
             take: None,
-            buffer_pool: BufferPoolManager::default(),
+            buffered: BufferedPools::default(),
         };
 
         // Evaluate predicate to get boolean column

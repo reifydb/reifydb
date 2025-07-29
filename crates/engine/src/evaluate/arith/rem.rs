@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::{FrameColumn, ColumnValues, ColumnQualified, Push};
 use reifydb_core::OwnedSpan;
-use reifydb_core::value::IsNumber;
-use reifydb_core::value::number::{ Promote, SafeRemainder};
-use reifydb_core::{Type, BitVec, CowVec, GetType, return_error};
-use reifydb_core::expression::RemExpression;
 use reifydb_core::error::diagnostic::operator::rem_cannot_be_applied_to_incompatible_types;
+use reifydb_core::expression::RemExpression;
+use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, Push};
+use reifydb_core::value::IsNumber;
+use reifydb_core::value::number::{Promote, SafeRemainder};
+use reifydb_core::{BitVec, CowVec, GetType, Type, return_error};
 
 impl Evaluator {
     pub(crate) fn rem(
@@ -513,20 +513,17 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(lv.len(), rv.len());
 
-    let mut data = ColumnValues::with_pooled_capacity(ty, lv.len(), &ctx.buffer_pool);
+    let mut values = ctx.pooled_values(ty, lv.len());
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
             if let Some(value) = ctx.remainder(l[i], r[i], &span)? {
-                data.push(value);
+                values.push(value);
             } else {
-                data.push_undefined()
+                values.push_undefined()
             }
         } else {
-            data.push_undefined()
+            values.push_undefined()
         }
     }
-    Ok(FrameColumn::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        values: data
-    }))
+    Ok(FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values }))
 }

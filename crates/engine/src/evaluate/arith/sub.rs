@@ -513,18 +513,18 @@ where
     assert_eq!(l.len(), r.len());
     assert_eq!(lv.len(), rv.len());
 
-    let mut data = ColumnValues::with_pooled_capacity(ty, lv.len(), &ctx.buffer_pool);
+    let mut values = ctx.pooled_values(ty, lv.len());
     for i in 0..l.len() {
         if lv.get(i) && rv.get(i) {
             if let Some(value) = ctx.sub(l[i], r[i], &span)? {
-                data.push(value);
+                values.push(value);
             } else {
-                data.push_undefined()
+                values.push_undefined()
             }
         } else {
-            data.push_undefined()
+            values.push_undefined()
         }
     }
 
-    Ok(FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values: data }))
+    Ok(FrameColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), values }))
 }
