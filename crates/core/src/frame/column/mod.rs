@@ -7,13 +7,12 @@ pub use push::Push;
 use serde::{Deserialize, Serialize};
 pub use values::ColumnValues;
 
+pub mod container;
 mod extend;
 mod filter;
 mod get;
 mod layout;
-// pub mod old_pool;
-pub mod container;
-// mod pool; // TODO: Re-enable after container trait refactor
+pub mod pool;
 pub(crate) mod pooled;
 mod push;
 mod qualification;

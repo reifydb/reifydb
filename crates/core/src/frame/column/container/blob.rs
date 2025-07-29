@@ -149,3 +149,200 @@ impl Default for BlobContainer {
         Self::with_capacity(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::Blob;
+    use crate::BitVec;
+
+    #[test]
+    fn test_new() {
+        let blob1 = Blob::new(vec![1, 2, 3]);
+        let blob2 = Blob::new(vec![4, 5, 6]);
+        let blobs = vec![blob1.clone(), blob2.clone()];
+        let bitvec = BitVec::from_slice(&[true, true]);
+        let container = BlobContainer::new(blobs, bitvec);
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&blob1));
+        assert_eq!(container.get(1), Some(&blob2));
+    }
+
+    #[test]
+    fn test_from_vec() {
+        let blob1 = Blob::new(vec![10, 20, 30]);
+        let blob2 = Blob::new(vec![40, 50]);
+        let blobs = vec![blob1.clone(), blob2.clone()];
+        let container = BlobContainer::from_vec(blobs);
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&blob1));
+        assert_eq!(container.get(1), Some(&blob2));
+        
+        // All should be defined
+        for i in 0..2 {
+            assert!(container.bitvec().get(i));
+        }
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let container = BlobContainer::with_capacity(10);
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+        assert!(container.capacity() >= 10);
+    }
+
+    #[test]
+    fn test_push_with_undefined() {
+        let mut container = BlobContainer::with_capacity(3);
+        let blob1 = Blob::new(vec![1, 2, 3]);
+        let blob2 = Blob::new(vec![7, 8, 9]);
+        
+        container.push(blob1.clone());
+        container.push_undefined();
+        container.push(blob2.clone());
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&blob1));
+        assert_eq!(container.get(1), None); // undefined
+        assert_eq!(container.get(2), Some(&blob2));
+        
+        assert!(container.bitvec().get(0));
+        assert!(!container.bitvec().get(1));
+        assert!(container.bitvec().get(2));
+    }
+
+    #[test]
+    fn test_extend() {
+        let blob1 = Blob::new(vec![1, 2]);
+        let blob2 = Blob::new(vec![3, 4]);
+        let blob3 = Blob::new(vec![5, 6]);
+        
+        let mut container1 = BlobContainer::from_vec(vec![blob1.clone(), blob2.clone()]);
+        let container2 = BlobContainer::from_vec(vec![blob3.clone()]);
+        
+        container1.extend(&container2).unwrap();
+        
+        assert_eq!(container1.len(), 3);
+        assert_eq!(container1.get(0), Some(&blob1));
+        assert_eq!(container1.get(1), Some(&blob2));
+        assert_eq!(container1.get(2), Some(&blob3));
+    }
+
+    #[test]
+    fn test_extend_from_undefined() {
+        let blob = Blob::new(vec![100, 200]);
+        let mut container = BlobContainer::from_vec(vec![blob.clone()]);
+        container.extend_from_undefined(2);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&blob));
+        assert_eq!(container.get(1), None); // undefined
+        assert_eq!(container.get(2), None); // undefined
+    }
+
+    #[test]
+    fn test_iter() {
+        let blob1 = Blob::new(vec![1]);
+        let blob2 = Blob::new(vec![2]);
+        let blob3 = Blob::new(vec![3]);
+        let blobs = vec![blob1.clone(), blob2, blob3.clone()];
+        let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
+        let container = BlobContainer::new(blobs, bitvec);
+        
+        let collected: Vec<Option<&Blob>> = container.iter().collect();
+        assert_eq!(collected, vec![Some(&blob1), None, Some(&blob3)]);
+    }
+
+    #[test]
+    fn test_slice() {
+        let blobs = vec![
+            Blob::new(vec![1]),
+            Blob::new(vec![2]),
+            Blob::new(vec![3]),
+            Blob::new(vec![4]),
+        ];
+        let container = BlobContainer::from_vec(blobs.clone());
+        let sliced = container.slice(1, 3);
+        
+        assert_eq!(sliced.len(), 2);
+        assert_eq!(sliced.get(0), Some(&blobs[1]));
+        assert_eq!(sliced.get(1), Some(&blobs[2]));
+    }
+
+    #[test]
+    fn test_filter() {
+        let blobs = vec![
+            Blob::new(vec![1]),
+            Blob::new(vec![2]),
+            Blob::new(vec![3]),
+            Blob::new(vec![4]),
+        ];
+        let mut container = BlobContainer::from_vec(blobs.clone());
+        let mask = BitVec::from_slice(&[true, false, true, false]);
+        
+        container.filter(&mask);
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&blobs[0]));
+        assert_eq!(container.get(1), Some(&blobs[2]));
+    }
+
+    #[test]
+    fn test_reorder() {
+        let blobs = vec![
+            Blob::new(vec![10]),
+            Blob::new(vec![20]),
+            Blob::new(vec![30]),
+        ];
+        let mut container = BlobContainer::from_vec(blobs.clone());
+        let indices = [2, 0, 1];
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&blobs[2])); // was index 2
+        assert_eq!(container.get(1), Some(&blobs[0])); // was index 0
+        assert_eq!(container.get(2), Some(&blobs[1])); // was index 1
+    }
+
+    #[test]
+    fn test_reorder_with_out_of_bounds() {
+        let blobs = vec![Blob::new(vec![1]), Blob::new(vec![2])];
+        let mut container = BlobContainer::from_vec(blobs.clone());
+        let indices = [1, 5, 0]; // index 5 is out of bounds
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&blobs[1])); // was index 1
+        assert_eq!(container.get(1), None);            // out of bounds -> undefined
+        assert_eq!(container.get(2), Some(&blobs[0])); // was index 0
+    }
+
+    #[test]
+    fn test_empty_blobs() {
+        let mut container = BlobContainer::with_capacity(2);
+        let empty_blob = Blob::new(vec![]);
+        let data_blob = Blob::new(vec![1, 2, 3]);
+        
+        container.push(empty_blob.clone());
+        container.push(data_blob.clone());
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&empty_blob));
+        assert_eq!(container.get(1), Some(&data_blob));
+        
+        assert!(container.bitvec().get(0));
+        assert!(container.bitvec().get(1));
+    }
+
+    #[test]
+    fn test_default() {
+        let container = BlobContainer::default();
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+    }
+}

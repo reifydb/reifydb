@@ -162,3 +162,178 @@ where
         Self::with_capacity(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::uuid::{Uuid4, Uuid7};
+    use crate::BitVec;
+
+    #[test]
+    fn test_uuid4_container() {
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
+        let uuids = vec![uuid1, uuid2];
+        let container = UuidContainer::from_vec(uuids.clone());
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&uuids[0]));
+        assert_eq!(container.get(1), Some(&uuids[1]));
+        
+        // All should be defined
+        for i in 0..2 {
+            assert!(container.bitvec().get(i));
+        }
+    }
+
+    #[test]
+    fn test_uuid7_container() {
+        let uuid1 = Uuid7::generate();
+        let uuid2 = Uuid7::generate();
+        let uuids = vec![uuid1, uuid2];
+        let container = UuidContainer::from_vec(uuids.clone());
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&uuids[0]));
+        assert_eq!(container.get(1), Some(&uuids[1]));
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let container: UuidContainer<Uuid4> = UuidContainer::with_capacity(10);
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+        assert!(container.capacity() >= 10);
+    }
+
+    #[test]
+    fn test_push_with_undefined() {
+        let mut container: UuidContainer<Uuid4> = UuidContainer::with_capacity(3);
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
+        
+        container.push(uuid1);
+        container.push_undefined();
+        container.push(uuid2);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&uuid1));
+        assert_eq!(container.get(1), None); // undefined
+        assert_eq!(container.get(2), Some(&uuid2));
+        
+        assert!(container.bitvec().get(0));
+        assert!(!container.bitvec().get(1));
+        assert!(container.bitvec().get(2));
+    }
+
+    #[test]
+    fn test_extend() {
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
+        let uuid3 = Uuid4::generate();
+        
+        let mut container1 = UuidContainer::from_vec(vec![uuid1, uuid2]);
+        let container2 = UuidContainer::from_vec(vec![uuid3]);
+        
+        container1.extend(&container2).unwrap();
+        
+        assert_eq!(container1.len(), 3);
+        assert_eq!(container1.get(0), Some(&uuid1));
+        assert_eq!(container1.get(1), Some(&uuid2));
+        assert_eq!(container1.get(2), Some(&uuid3));
+    }
+
+    #[test]
+    fn test_extend_from_undefined() {
+        let uuid = Uuid7::generate();
+        let mut container = UuidContainer::from_vec(vec![uuid]);
+        container.extend_from_undefined(2);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&uuid));
+        assert_eq!(container.get(1), None); // undefined
+        assert_eq!(container.get(2), None); // undefined
+    }
+
+    #[test]
+    fn test_iter() {
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
+        let uuid3 = Uuid4::generate();
+        let uuids = vec![uuid1, uuid2, uuid3];
+        let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
+        let container = UuidContainer::new(uuids.clone(), bitvec);
+        
+        let collected: Vec<Option<Uuid4>> = container.iter().collect();
+        assert_eq!(collected, vec![Some(uuids[0]), None, Some(uuids[2])]);
+    }
+
+    #[test]
+    fn test_slice() {
+        let uuids = vec![
+            Uuid4::generate(),
+            Uuid4::generate(),
+            Uuid4::generate(),
+            Uuid4::generate(),
+        ];
+        let container = UuidContainer::from_vec(uuids.clone());
+        let sliced = container.slice(1, 3);
+        
+        assert_eq!(sliced.len(), 2);
+        assert_eq!(sliced.get(0), Some(&uuids[1]));
+        assert_eq!(sliced.get(1), Some(&uuids[2]));
+    }
+
+    #[test]
+    fn test_filter() {
+        let uuids = vec![
+            Uuid4::generate(),
+            Uuid4::generate(),
+            Uuid4::generate(),
+            Uuid4::generate(),
+        ];
+        let mut container = UuidContainer::from_vec(uuids.clone());
+        let mask = BitVec::from_slice(&[true, false, true, false]);
+        
+        container.filter(&mask);
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&uuids[0]));
+        assert_eq!(container.get(1), Some(&uuids[2]));
+    }
+
+    #[test]
+    fn test_reorder() {
+        let uuids = vec![
+            Uuid4::generate(),
+            Uuid4::generate(),
+            Uuid4::generate(),
+        ];
+        let mut container = UuidContainer::from_vec(uuids.clone());
+        let indices = [2, 0, 1];
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&uuids[2])); // was index 2
+        assert_eq!(container.get(1), Some(&uuids[0])); // was index 0
+        assert_eq!(container.get(2), Some(&uuids[1])); // was index 1
+    }
+
+    #[test]
+    fn test_mixed_uuid_types() {
+        // Test that we can have different UUID containers
+        let uuid4_container: UuidContainer<Uuid4> = UuidContainer::from_vec(vec![Uuid4::generate()]);
+        let uuid7_container: UuidContainer<Uuid7> = UuidContainer::from_vec(vec![Uuid7::generate()]);
+        
+        assert_eq!(uuid4_container.len(), 1);
+        assert_eq!(uuid7_container.len(), 1);
+    }
+
+    #[test]
+    fn test_default() {
+        let container: UuidContainer<Uuid4> = UuidContainer::default();
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+    }
+}

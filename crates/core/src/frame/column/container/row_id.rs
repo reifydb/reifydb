@@ -148,3 +148,192 @@ impl Default for RowIdContainer {
         Self::with_capacity(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{BitVec, RowId};
+
+    #[test]
+    fn test_new() {
+        let row_id1 = RowId::new(1);
+        let row_id2 = RowId::new(2);
+        let row_ids = vec![row_id1, row_id2];
+        let bitvec = BitVec::from_slice(&[true, true]);
+        let container = RowIdContainer::new(row_ids.clone(), bitvec);
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&row_ids[0]));
+        assert_eq!(container.get(1), Some(&row_ids[1]));
+    }
+
+    #[test]
+    fn test_from_vec() {
+        let row_ids = vec![RowId::new(10), RowId::new(20), RowId::new(30)];
+        let container = RowIdContainer::from_vec(row_ids.clone());
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&row_ids[0]));
+        assert_eq!(container.get(1), Some(&row_ids[1]));
+        assert_eq!(container.get(2), Some(&row_ids[2]));
+        
+        // All should be defined
+        for i in 0..3 {
+            assert!(container.bitvec().get(i));
+        }
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let container = RowIdContainer::with_capacity(10);
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+        assert!(container.capacity() >= 10);
+    }
+
+    #[test]
+    fn test_push_with_undefined() {
+        let mut container = RowIdContainer::with_capacity(3);
+        let row_id1 = RowId::new(100);
+        let row_id2 = RowId::new(200);
+        
+        container.push(row_id1);
+        container.push_undefined();
+        container.push(row_id2);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&row_id1));
+        assert_eq!(container.get(1), None); // undefined
+        assert_eq!(container.get(2), Some(&row_id2));
+        
+        assert!(container.bitvec().get(0));
+        assert!(!container.bitvec().get(1));
+        assert!(container.bitvec().get(2));
+    }
+
+    #[test]
+    fn test_extend() {
+        let row_id1 = RowId::new(1);
+        let row_id2 = RowId::new(2);
+        let row_id3 = RowId::new(3);
+        
+        let mut container1 = RowIdContainer::from_vec(vec![row_id1, row_id2]);
+        let container2 = RowIdContainer::from_vec(vec![row_id3]);
+        
+        container1.extend(&container2).unwrap();
+        
+        assert_eq!(container1.len(), 3);
+        assert_eq!(container1.get(0), Some(&row_id1));
+        assert_eq!(container1.get(1), Some(&row_id2));
+        assert_eq!(container1.get(2), Some(&row_id3));
+    }
+
+    #[test]
+    fn test_extend_from_undefined() {
+        let row_id = RowId::new(42);
+        let mut container = RowIdContainer::from_vec(vec![row_id]);
+        container.extend_from_undefined(2);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&row_id));
+        assert_eq!(container.get(1), None); // undefined
+        assert_eq!(container.get(2), None); // undefined
+    }
+
+    #[test]
+    fn test_iter() {
+        let row_id1 = RowId::new(10);
+        let row_id2 = RowId::new(20);
+        let row_id3 = RowId::new(30);
+        let row_ids = vec![row_id1, row_id2, row_id3];
+        let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
+        let container = RowIdContainer::new(row_ids.clone(), bitvec);
+        
+        let collected: Vec<Option<RowId>> = container.iter().collect();
+        assert_eq!(collected, vec![Some(row_ids[0]), None, Some(row_ids[2])]);
+    }
+
+    #[test]
+    fn test_slice() {
+        let container = RowIdContainer::from_vec(vec![
+            RowId::new(1),
+            RowId::new(2),
+            RowId::new(3),
+            RowId::new(4),
+        ]);
+        let sliced = container.slice(1, 3);
+        
+        assert_eq!(sliced.len(), 2);
+        assert_eq!(sliced.get(0), Some(&RowId::new(2)));
+        assert_eq!(sliced.get(1), Some(&RowId::new(3)));
+    }
+
+    #[test]
+    fn test_filter() {
+        let mut container = RowIdContainer::from_vec(vec![
+            RowId::new(1),
+            RowId::new(2),
+            RowId::new(3),
+            RowId::new(4),
+        ]);
+        let mask = BitVec::from_slice(&[true, false, true, false]);
+        
+        container.filter(&mask);
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&RowId::new(1)));
+        assert_eq!(container.get(1), Some(&RowId::new(3)));
+    }
+
+    #[test]
+    fn test_reorder() {
+        let mut container = RowIdContainer::from_vec(vec![
+            RowId::new(10),
+            RowId::new(20),
+            RowId::new(30),
+        ]);
+        let indices = [2, 0, 1];
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&RowId::new(30))); // was index 2
+        assert_eq!(container.get(1), Some(&RowId::new(10))); // was index 0
+        assert_eq!(container.get(2), Some(&RowId::new(20))); // was index 1
+    }
+
+    #[test]
+    fn test_reorder_with_out_of_bounds() {
+        let mut container = RowIdContainer::from_vec(vec![RowId::new(1), RowId::new(2)]);
+        let indices = [1, 5, 0]; // index 5 is out of bounds
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&RowId::new(2))); // was index 1
+        assert_eq!(container.get(1), None);                 // out of bounds -> undefined
+        assert_eq!(container.get(2), Some(&RowId::new(1))); // was index 0
+    }
+
+    #[test]
+    fn test_default() {
+        let container = RowIdContainer::default();
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+    }
+
+    #[test]
+    fn test_values_access() {
+        let mut container = RowIdContainer::from_vec(vec![RowId::new(1), RowId::new(2)]);
+        
+        // Test immutable access
+        assert_eq!(container.values().len(), 2);
+        
+        // Test mutable access
+        container.values_mut().push(RowId::new(3));
+        container.bitvec_mut().push(true);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(2), Some(&RowId::new(3)));
+    }
+}

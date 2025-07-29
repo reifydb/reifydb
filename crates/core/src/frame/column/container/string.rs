@@ -148,3 +148,181 @@ impl Default for StringContainer {
         Self::with_capacity(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BitVec;
+
+    #[test]
+    fn test_new() {
+        let values = vec!["hello".to_string(), "world".to_string(), "test".to_string()];
+        let bitvec = BitVec::from_slice(&[true, true, true]);
+        let container = StringContainer::new(values.clone(), bitvec);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&"hello".to_string()));
+        assert_eq!(container.get(1), Some(&"world".to_string()));
+        assert_eq!(container.get(2), Some(&"test".to_string()));
+    }
+
+    #[test]
+    fn test_from_vec() {
+        let values = vec!["foo".to_string(), "bar".to_string(), "baz".to_string()];
+        let container = StringContainer::from_vec(values);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&"foo".to_string()));
+        assert_eq!(container.get(1), Some(&"bar".to_string()));
+        assert_eq!(container.get(2), Some(&"baz".to_string()));
+        
+        // All should be defined
+        for i in 0..3 {
+            assert!(container.bitvec().get(i));
+        }
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let container = StringContainer::with_capacity(10);
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+        assert!(container.capacity() >= 10);
+    }
+
+    #[test]
+    fn test_push() {
+        let mut container = StringContainer::with_capacity(3);
+        
+        container.push("first".to_string());
+        container.push("second".to_string());
+        container.push_undefined();
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&"first".to_string()));
+        assert_eq!(container.get(1), Some(&"second".to_string()));
+        assert_eq!(container.get(2), None); // undefined
+        
+        assert!(container.bitvec().get(0));
+        assert!(container.bitvec().get(1));
+        assert!(!container.bitvec().get(2));
+    }
+
+    #[test]
+    fn test_extend() {
+        let mut container1 = StringContainer::from_vec(vec!["a".to_string(), "b".to_string()]);
+        let container2 = StringContainer::from_vec(vec!["c".to_string(), "d".to_string()]);
+        
+        container1.extend(&container2).unwrap();
+        
+        assert_eq!(container1.len(), 4);
+        assert_eq!(container1.get(0), Some(&"a".to_string()));
+        assert_eq!(container1.get(1), Some(&"b".to_string()));
+        assert_eq!(container1.get(2), Some(&"c".to_string()));
+        assert_eq!(container1.get(3), Some(&"d".to_string()));
+    }
+
+    #[test]
+    fn test_extend_from_undefined() {
+        let mut container = StringContainer::from_vec(vec!["test".to_string()]);
+        container.extend_from_undefined(2);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&"test".to_string()));
+        assert_eq!(container.get(1), None); // undefined
+        assert_eq!(container.get(2), None); // undefined
+    }
+
+    #[test]
+    fn test_iter() {
+        let values = vec!["x".to_string(), "y".to_string(), "z".to_string()];
+        let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
+        let container = StringContainer::new(values, bitvec);
+        
+        let collected: Vec<Option<&String>> = container.iter().collect();
+        assert_eq!(collected, vec![Some(&"x".to_string()), None, Some(&"z".to_string())]);
+    }
+
+    #[test]
+    fn test_slice() {
+        let container = StringContainer::from_vec(vec![
+            "one".to_string(), 
+            "two".to_string(), 
+            "three".to_string(), 
+            "four".to_string()
+        ]);
+        let sliced = container.slice(1, 3);
+        
+        assert_eq!(sliced.len(), 2);
+        assert_eq!(sliced.get(0), Some(&"two".to_string()));
+        assert_eq!(sliced.get(1), Some(&"three".to_string()));
+    }
+
+    #[test]
+    fn test_filter() {
+        let mut container = StringContainer::from_vec(vec![
+            "keep".to_string(), 
+            "drop".to_string(), 
+            "keep".to_string(), 
+            "drop".to_string()
+        ]);
+        let mask = BitVec::from_slice(&[true, false, true, false]);
+        
+        container.filter(&mask);
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&"keep".to_string()));
+        assert_eq!(container.get(1), Some(&"keep".to_string()));
+    }
+
+    #[test]
+    fn test_reorder() {
+        let mut container = StringContainer::from_vec(vec![
+            "first".to_string(), 
+            "second".to_string(), 
+            "third".to_string()
+        ]);
+        let indices = [2, 0, 1];
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&"third".to_string()));  // was index 2
+        assert_eq!(container.get(1), Some(&"first".to_string()));  // was index 0
+        assert_eq!(container.get(2), Some(&"second".to_string())); // was index 1
+    }
+
+    #[test]
+    fn test_reorder_with_out_of_bounds() {
+        let mut container = StringContainer::from_vec(vec!["a".to_string(), "b".to_string()]);
+        let indices = [1, 5, 0]; // index 5 is out of bounds
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(&"b".to_string())); // was index 1
+        assert_eq!(container.get(1), None);                   // out of bounds -> undefined
+        assert_eq!(container.get(2), Some(&"a".to_string())); // was index 0
+    }
+
+    #[test]
+    fn test_empty_strings() {
+        let mut container = StringContainer::with_capacity(2);
+        container.push("".to_string()); // empty string
+        container.push_undefined();
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&"".to_string()));
+        assert_eq!(container.get(1), None);
+        
+        assert!(container.bitvec().get(0));
+        assert!(!container.bitvec().get(1));
+    }
+
+    #[test]
+    fn test_default() {
+        let container = StringContainer::default();
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+    }
+}

@@ -137,3 +137,142 @@ impl Default for BoolContainer {
         Self::with_capacity(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BitVec;
+
+    #[test]
+    fn test_new() {
+        let values = vec![true, false, true];
+        let bitvec = BitVec::from_slice(&[true, true, true]);
+        let container = BoolContainer::new(values.clone(), bitvec);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(true));
+        assert_eq!(container.get(1), Some(false));
+        assert_eq!(container.get(2), Some(true));
+    }
+
+    #[test]
+    fn test_from_vec() {
+        let values = vec![true, false, true];
+        let container = BoolContainer::from_vec(values);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(true));
+        assert_eq!(container.get(1), Some(false));
+        assert_eq!(container.get(2), Some(true));
+        
+        // All should be defined
+        for i in 0..3 {
+            assert!(container.bitvec().get(i));
+        }
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let container = BoolContainer::with_capacity(10);
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+        assert!(container.capacity() >= 10);
+    }
+
+    #[test]
+    fn test_push() {
+        let mut container = BoolContainer::with_capacity(3);
+        
+        container.push(true);
+        container.push(false);
+        container.push_undefined();
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(true));
+        assert_eq!(container.get(1), Some(false));
+        assert_eq!(container.get(2), None); // undefined
+        
+        assert!(container.bitvec().get(0));
+        assert!(container.bitvec().get(1));
+        assert!(!container.bitvec().get(2));
+    }
+
+    #[test]
+    fn test_extend() {
+        let mut container1 = BoolContainer::from_vec(vec![true, false]);
+        let container2 = BoolContainer::from_vec(vec![false, true]);
+        
+        container1.extend(&container2).unwrap();
+        
+        assert_eq!(container1.len(), 4);
+        assert_eq!(container1.get(0), Some(true));
+        assert_eq!(container1.get(1), Some(false));
+        assert_eq!(container1.get(2), Some(false));
+        assert_eq!(container1.get(3), Some(true));
+    }
+
+    #[test]
+    fn test_iter() {
+        let values = vec![true, false, true];
+        let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
+        let container = BoolContainer::new(values, bitvec);
+        
+        let collected: Vec<Option<bool>> = container.iter().collect();
+        assert_eq!(collected, vec![Some(true), None, Some(true)]);
+    }
+
+    #[test]
+    fn test_slice() {
+        let container = BoolContainer::from_vec(vec![true, false, true, false]);
+        let sliced = container.slice(1, 3);
+        
+        assert_eq!(sliced.len(), 2);
+        assert_eq!(sliced.get(0), Some(false));
+        assert_eq!(sliced.get(1), Some(true));
+    }
+
+    #[test]
+    fn test_filter() {
+        let mut container = BoolContainer::from_vec(vec![true, false, true, false]);
+        let mask = BitVec::from_slice(&[true, false, true, false]);
+        
+        container.filter(&mask);
+        
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(true));
+        assert_eq!(container.get(1), Some(true));
+    }
+
+    #[test]
+    fn test_reorder() {
+        let mut container = BoolContainer::from_vec(vec![true, false, true]);
+        let indices = [2, 0, 1];
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(true));  // was index 2
+        assert_eq!(container.get(1), Some(true));  // was index 0
+        assert_eq!(container.get(2), Some(false)); // was index 1
+    }
+
+    #[test]
+    fn test_reorder_with_out_of_bounds() {
+        let mut container = BoolContainer::from_vec(vec![true, false]);
+        let indices = [1, 5, 0]; // index 5 is out of bounds
+        
+        container.reorder(&indices);
+        
+        assert_eq!(container.len(), 3);
+        assert_eq!(container.get(0), Some(false)); // was index 1
+        assert_eq!(container.get(1), None);        // out of bounds -> undefined
+        assert_eq!(container.get(2), Some(true));  // was index 0
+    }
+
+    #[test]
+    fn test_default() {
+        let container = BoolContainer::default();
+        assert_eq!(container.len(), 0);
+        assert!(container.is_empty());
+    }
+}
