@@ -1,116 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::CowVec;
 use crate::frame::column::{ColumnQualified, TableQualified};
-use crate::frame::{ColumnValues, Frame, FrameColumn};
+use crate::frame::{Frame, FrameColumn};
 
 impl Frame {
     pub fn take(&mut self, n: usize) -> crate::Result<()> {
         let mut columns = Vec::with_capacity(self.columns.len());
 
         for col in &self.columns {
-            let data = match &col.values() {
-                ColumnValues::Bool(values, bitvec) => ColumnValues::Bool(
-                    values.take(n),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Float4(values, bitvec) => ColumnValues::Float4(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Float8(values, bitvec) => ColumnValues::Float8(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Int1(values, bitvec) => ColumnValues::Int1(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Int2(values, bitvec) => ColumnValues::Int2(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Int4(values, bitvec) => ColumnValues::Int4(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Int8(values, bitvec) => ColumnValues::Int8(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Int16(values, bitvec) => ColumnValues::Int16(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Utf8(values, bitvec) => ColumnValues::Utf8(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Uint1(values, bitvec) => ColumnValues::Uint1(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Uint2(values, bitvec) => ColumnValues::Uint2(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Uint4(values, bitvec) => ColumnValues::Uint4(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Uint8(values, bitvec) => ColumnValues::Uint8(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Uint16(values, bitvec) => ColumnValues::Uint16(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Date(values, bitvec) => ColumnValues::Date(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::DateTime(values, bitvec) => ColumnValues::DateTime(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Time(values, bitvec) => ColumnValues::Time(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Interval(values, bitvec) => ColumnValues::Interval(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Undefined(len) => ColumnValues::Undefined(n.min(*len)),
-                ColumnValues::RowId(values, bitvec) => ColumnValues::RowId(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Uuid4(values, bitvec) => ColumnValues::Uuid4(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Uuid7(values, bitvec) => ColumnValues::Uuid7(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-                ColumnValues::Blob(values, bitvec) => ColumnValues::Blob(
-                    CowVec::new(values[..n.min(values.len())].to_vec()),
-                    bitvec.take(n),
-                ),
-            };
+            let values = col.values().take(n);
 
             columns.push(match col.table() {
                 Some(table) => FrameColumn::TableQualified(TableQualified {
                     table: table.to_string(),
                     name: col.name().to_string(),
-                    values: data,
+                    values,
                 }),
                 None => FrameColumn::ColumnQualified(ColumnQualified {
                     name: col.name().to_string(),
-                    values: data,
+                    values,
                 }),
             });
         }
@@ -124,7 +33,9 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frame::ColumnValues;
     use crate::frame::column::TableQualified;
+
     #[test]
     fn test_bool_column() {
         let mut test_instance = Frame::new(vec![TableQualified::bool_with_bitvec(
@@ -367,8 +278,8 @@ mod tests {
         test_instance.take(2).unwrap();
 
         match &test_instance.columns[0].values() {
-            ColumnValues::Undefined(size) => {
-                assert_eq!(*size, 2);
+            ColumnValues::Undefined(container) => {
+                assert_eq!(container.len(), 2);
             }
             _ => panic!("Expected undefined column"),
         }
@@ -381,7 +292,7 @@ mod tests {
         test_instance.take(3).unwrap();
 
         match &test_instance.columns[0].values() {
-            ColumnValues::Undefined(len) => assert_eq!(*len, 3),
+            ColumnValues::Undefined(container) => assert_eq!(container.len(), 3),
             _ => panic!("Expected Undefined column"),
         }
     }

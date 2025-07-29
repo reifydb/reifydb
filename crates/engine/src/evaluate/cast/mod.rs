@@ -63,9 +63,9 @@ pub fn cast_column_values(
     ctx: impl Promote + Demote + Convert,
     span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnValues> {
-    if let ColumnValues::Undefined(size) = values {
-        let mut result = ColumnValues::with_capacity(target, *size);
-        for _ in 0..*size {
+    if let ColumnValues::Undefined(container) = values {
+        let mut result = ColumnValues::with_capacity(target, container.len());
+        for _ in 0..container.len() {
             result.push_undefined();
         }
         return Ok(result);

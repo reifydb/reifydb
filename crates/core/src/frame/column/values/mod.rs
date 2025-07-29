@@ -1,8 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod extend;
 mod factory;
+mod filter;
 mod from;
+mod get;
+mod reorder;
+mod slice;
+mod take;
 
 use crate::frame::column::container::*;
 use crate::value::uuid::{Uuid4, Uuid7};
@@ -64,6 +70,34 @@ impl ColumnValues {
             ColumnValues::Uuid7(_) => Type::Uuid7,
             ColumnValues::Blob(_) => Type::Blob,
             ColumnValues::Undefined(_) => Type::Undefined,
+        }
+    }
+
+    pub fn is_defined(&self, idx: usize) -> bool {
+        match self {
+            ColumnValues::Bool(container) => container.is_defined(idx),
+            ColumnValues::Float4(container) => container.is_defined(idx),
+            ColumnValues::Float8(container) => container.is_defined(idx),
+            ColumnValues::Int1(container) => container.is_defined(idx),
+            ColumnValues::Int2(container) => container.is_defined(idx),
+            ColumnValues::Int4(container) => container.is_defined(idx),
+            ColumnValues::Int8(container) => container.is_defined(idx),
+            ColumnValues::Int16(container) => container.is_defined(idx),
+            ColumnValues::Uint1(container) => container.is_defined(idx),
+            ColumnValues::Uint2(container) => container.is_defined(idx),
+            ColumnValues::Uint4(container) => container.is_defined(idx),
+            ColumnValues::Uint8(container) => container.is_defined(idx),
+            ColumnValues::Uint16(container) => container.is_defined(idx),
+            ColumnValues::Utf8(container) => container.is_defined(idx),
+            ColumnValues::Date(container) => container.is_defined(idx),
+            ColumnValues::DateTime(container) => container.is_defined(idx),
+            ColumnValues::Time(container) => container.is_defined(idx),
+            ColumnValues::Interval(container) => container.is_defined(idx),
+            ColumnValues::RowId(container) => container.is_defined(idx),
+            ColumnValues::Uuid4(container) => container.is_defined(idx),
+            ColumnValues::Uuid7(container) => container.is_defined(idx),
+            ColumnValues::Blob(container) => container.is_defined(idx),
+            ColumnValues::Undefined(_) => false,
         }
     }
 
@@ -169,168 +203,8 @@ impl ColumnValues {
         }
     }
 
-    // FIXME wrapping and then later unwrapping a value feels pretty stupid -- FIXME
     pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
-        todo!()
-        // match self {
-        //     ColumnValues::Bool(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Bool(v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Float4(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::float4(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Float8(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::float8(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Int1(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Int1(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Int2(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Int2(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Int4(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Int4(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Int8(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Int8(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Int16(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Int16(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Utf8(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Utf8(v.clone()) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Uint1(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Uint1(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Uint2(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Uint2(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Uint4(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Uint4(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Uint8(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Uint8(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Uint16(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Uint16(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Date(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Date(v.clone()) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::DateTime(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::DateTime(v.clone()) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Time(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Time(v.clone()) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Interval(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Interval(v.clone()) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::RowId(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::RowId(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Uuid4(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Uuid4(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Uuid7(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Uuid7(*v) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Blob(values, bitvec) => Box::new(
-        //         values
-        //             .iter()
-        //             .zip(bitvec.iter())
-        //             .map(|(v, b)| if b { Value::Blob(v.clone()) } else { Value::Undefined })
-        //             .into_iter(),
-        //     ),
-        //     ColumnValues::Undefined(size) => {
-        //         Box::new((0..*size).map(|_| Value::Undefined).collect::<Vec<Value>>().into_iter())
-        //     }
-        // }
+        Box::new((0..self.len()).map(move |i| self.get_value(i)))
     }
 }
 
@@ -388,6 +262,34 @@ impl ColumnValues {
             ColumnValues::Uuid7(container) => container.capacity(),
             ColumnValues::Blob(container) => container.capacity(),
             ColumnValues::Undefined(container) => container.capacity(),
+        }
+    }
+
+    pub fn as_string(&self, index: usize) -> String {
+        match self {
+            ColumnValues::Bool(container) => container.as_string(index),
+            ColumnValues::Float4(container) => container.as_string(index),
+            ColumnValues::Float8(container) => container.as_string(index),
+            ColumnValues::Int1(container) => container.as_string(index),
+            ColumnValues::Int2(container) => container.as_string(index),
+            ColumnValues::Int4(container) => container.as_string(index),
+            ColumnValues::Int8(container) => container.as_string(index),
+            ColumnValues::Int16(container) => container.as_string(index),
+            ColumnValues::Uint1(container) => container.as_string(index),
+            ColumnValues::Uint2(container) => container.as_string(index),
+            ColumnValues::Uint4(container) => container.as_string(index),
+            ColumnValues::Uint8(container) => container.as_string(index),
+            ColumnValues::Uint16(container) => container.as_string(index),
+            ColumnValues::Utf8(container) => container.as_string(index),
+            ColumnValues::Date(container) => container.as_string(index),
+            ColumnValues::DateTime(container) => container.as_string(index),
+            ColumnValues::Time(container) => container.as_string(index),
+            ColumnValues::Interval(container) => container.as_string(index),
+            ColumnValues::RowId(container) => container.as_string(index),
+            ColumnValues::Uuid4(container) => container.as_string(index),
+            ColumnValues::Uuid7(container) => container.as_string(index),
+            ColumnValues::Blob(container) => container.as_string(index),
+            ColumnValues::Undefined(container) => container.as_string(index),
         }
     }
 }

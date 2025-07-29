@@ -19,12 +19,12 @@ impl ScalarFunction for BlobB64 {
         let column = columns.get(0).unwrap();
 
         match &column.values() {
-            ColumnValues::Utf8(values, bitvec) => {
-                let mut result_values = Vec::with_capacity(values.len());
+            ColumnValues::Utf8(container) => {
+                let mut result_values = Vec::with_capacity(container.values().len());
 
                 for i in 0..row_count {
-                    if bitvec.get(i) {
-                        let b64_str = &values[i];
+                    if container.is_defined(i) {
+                        let b64_str = &container[i];
                         let blob = Blob::from_b64(OwnedSpan::testing(b64_str))?;
                         result_values.push(blob);
                     } else {
@@ -32,7 +32,7 @@ impl ScalarFunction for BlobB64 {
                     }
                 }
 
-                Ok(ColumnValues::blob_with_bitvec(result_values, bitvec.clone()))
+                Ok(ColumnValues::blob_with_bitvec(result_values, container.bitvec().clone()))
             }
             _ => unimplemented!("BlobB64 only supports text input"),
         }
@@ -43,7 +43,7 @@ impl ScalarFunction for BlobB64 {
 mod tests {
     use super::*;
     use reifydb_core::frame::{ColumnQualified, FrameColumn};
-    use reifydb_core::{BitVec, CowVec};
+    use reifydb_core::frame::column::container::StringContainer;
 
     #[test]
     fn test_blob_b64_valid_input() {
@@ -51,18 +51,18 @@ mod tests {
 
         // "Hello!" in base64 is "SGVsbG8h"
         let b64_values = vec!["SGVsbG8h".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(b64_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(b64_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), "Hello!".as_bytes());
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), "Hello!".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -73,18 +73,18 @@ mod tests {
         let function = BlobB64::new();
 
         let b64_values = vec!["".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(b64_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(b64_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), &[] as &[u8]);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), &[] as &[u8]);
         } else {
             panic!("Expected BLOB column values");
         }
@@ -96,18 +96,18 @@ mod tests {
 
         // "Hello" in base64 is "SGVsbG8="
         let b64_values = vec!["SGVsbG8=".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(b64_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(b64_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), "Hello".as_bytes());
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), "Hello".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -119,23 +119,23 @@ mod tests {
 
         // "A" = "QQ==", "BC" = "QkM=", "DEF" = "REVG"
         let b64_values = vec!["QQ==".to_string(), "QkM=".to_string(), "REVG".to_string()];
-        let bitvec = BitVec::from_slice(&[true, true, true]);
+        let bitvec = vec![true, true, true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(b64_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(b64_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 3);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(bitvec.get(1), true);
-            assert_eq!(bitvec.get(2), true);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 3);
+            assert!(container.is_defined(0));
+            assert!(container.is_defined(1));
+            assert!(container.is_defined(2));
 
-            assert_eq!(blobs[0].as_bytes(), "A".as_bytes());
-            assert_eq!(blobs[1].as_bytes(), "BC".as_bytes());
-            assert_eq!(blobs[2].as_bytes(), "DEF".as_bytes());
+            assert_eq!(container[0].as_bytes(), "A".as_bytes());
+            assert_eq!(container[1].as_bytes(), "BC".as_bytes());
+            assert_eq!(container[2].as_bytes(), "DEF".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -146,23 +146,23 @@ mod tests {
         let function = BlobB64::new();
 
         let b64_values = vec!["QQ==".to_string(), "".to_string(), "REVG".to_string()];
-        let bitvec = BitVec::from_slice(&[true, false, true]);
+        let bitvec = vec![true, false, true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(b64_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(b64_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 3);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(bitvec.get(1), false);
-            assert_eq!(bitvec.get(2), true);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 3);
+            assert!(container.is_defined(0));
+            assert!(!container.is_defined(1));
+            assert!(container.is_defined(2));
 
-            assert_eq!(blobs[0].as_bytes(), "A".as_bytes());
-            assert_eq!(blobs[1].as_bytes(), [].as_slice() as &[u8]);
-            assert_eq!(blobs[2].as_bytes(), "DEF".as_bytes());
+            assert_eq!(container[0].as_bytes(), "A".as_bytes());
+            assert_eq!(container[1].as_bytes(), [].as_slice() as &[u8]);
+            assert_eq!(container[2].as_bytes(), "DEF".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -174,18 +174,18 @@ mod tests {
 
         // Binary data: [0xde, 0xad, 0xbe, 0xef] in base64 is "3q2+7w=="
         let b64_values = vec!["3q2+7w==".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(b64_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(b64_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
         } else {
             panic!("Expected BLOB column values");
         }
@@ -196,10 +196,10 @@ mod tests {
         let function = BlobB64::new();
 
         let b64_values = vec!["invalid@base64!".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(b64_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(b64_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1);
@@ -211,10 +211,10 @@ mod tests {
         let function = BlobB64::new();
 
         let b64_values = vec!["SGVsbG8===".to_string()]; // Too many padding characters
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(b64_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(b64_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1);

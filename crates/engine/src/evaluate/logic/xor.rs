@@ -21,13 +21,13 @@ impl Evaluator {
         let right = self.evaluate(&expr.right, ctx)?;
 
         match (&left.values(), &right.values()) {
-            (ColumnValues::Bool(l, lv), ColumnValues::Bool(r, rv)) => {
-                let mut values = Vec::with_capacity(l.len());
-                let mut bitvec = Vec::with_capacity(lv.len());
+            (ColumnValues::Bool(l_container), ColumnValues::Bool(r_container)) => {
+                let mut values = Vec::with_capacity(l_container.values().len());
+                let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
 
-                for i in 0..l.len() {
-                    if lv.get(i) && rv.get(i) {
-                        values.push(l.get(i) != r.get(i));
+                for i in 0..l_container.values().len() {
+                    if l_container.is_defined(i) && r_container.is_defined(i) {
+                        values.push(l_container.values().get(i) != r_container.values().get(i));
                         bitvec.push(true);
                     } else {
                         values.push(false);

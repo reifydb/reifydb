@@ -23,18 +23,18 @@ impl ScalarFunction for Avg {
 
         for col in columns {
             match &col.values() {
-                ColumnValues::Int2(vals, bitvec) => {
+                ColumnValues::Int2(container) => {
                     for i in 0..row_count {
-                        if bitvec.get(i) {
-                            sum[i] += vals[i] as f64;
+                        if let Some(value) = container.get(i) {
+                            sum[i] += *value as f64;
                             count[i] += 1;
                         }
                     }
                 }
-                ColumnValues::Float8(vals, bitvec) => {
+                ColumnValues::Float8(container) => {
                     for i in 0..row_count {
-                        if bitvec.get(i) {
-                            sum[i] += vals[i];
+                        if let Some(value) = container.get(i) {
+                            sum[i] += *value;
                             count[i] += 1;
                         }
                     }

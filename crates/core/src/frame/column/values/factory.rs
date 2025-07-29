@@ -162,8 +162,8 @@ impl ColumnValues {
         ColumnValues::Int16(NumberContainer::new(values, bitvec))
     }
 
-    pub fn utf8(values: impl IntoIterator<Item = String>) -> Self {
-        let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    pub fn utf8(values: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        let values = values.into_iter().map(|c| c.into()).collect::<Vec<_>>();
         ColumnValues::Utf8(StringContainer::from_vec(values))
     }
 

@@ -55,7 +55,7 @@ impl Evaluator {
     ) -> crate::Result<FrameColumn> {
         let take = ctx.take.unwrap_or(usize::MAX);
 
-        match col.values().get(0) {
+        match col.values().get_value(0) {
             Value::Bool(_) => {
                 let mut values = Vec::new();
                 let mut bitvec = Vec::new();

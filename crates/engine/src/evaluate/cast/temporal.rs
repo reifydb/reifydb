@@ -2,21 +2,22 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::frame::ColumnValues;
+use reifydb_core::frame::column::container::StringContainer;
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
-use reifydb_core::{error, BitVec, BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type};
+use reifydb_core::{error, BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type};
 
 pub fn to_temporal(
     values: &ColumnValues,
     target: Type,
     span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnValues> {
-    if let ColumnValues::Utf8(string_values, bitvec) = values {
+    if let ColumnValues::Utf8(container) = values {
         match target {
-            Type::Date => to_date(string_values, bitvec, span),
-            Type::DateTime => to_datetime(string_values, bitvec, span),
-            Type::Time => to_time(string_values, bitvec, span),
-            Type::Interval => to_interval(string_values, bitvec, span),
+            Type::Date => to_date(container, span),
+            Type::DateTime => to_datetime(container, span),
+            Type::Time => to_time(container, span),
+            Type::Interval => to_interval(container, span),
             _ => {
                 let source_type = values.get_type();
                 reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
@@ -32,13 +33,13 @@ macro_rules! impl_to_temporal {
     ($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
         #[inline]
         fn $fn_name(
-            values: &[String],
-            bitvec: &BitVec,
+            container: &StringContainer,
             span: impl Fn() -> OwnedSpan,
         ) -> crate::Result<ColumnValues> {
-            let mut out = ColumnValues::with_capacity($target_type, values.len());
-            for (idx, val) in values.iter().enumerate() {
-                if bitvec.get(idx) {
+            let mut out = ColumnValues::with_capacity($target_type, container.len());
+            for idx in 0..container.len() {
+                if container.is_defined(idx) {
+                    let val = &container[idx];
                     let temp_span = BorrowedSpan::new(val.as_str());
 
                     let parsed = $parse_fn(temp_span).map_err(|mut e| {

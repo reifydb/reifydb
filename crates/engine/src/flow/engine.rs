@@ -183,7 +183,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
                             let value = if let Some(input_column) =
                                 frame.columns.iter().find(|col| col.name() == table_column.name)
                             {
-                                input_column.values().get(row_idx)
+                                input_column.values().get_value(row_idx)
                             } else {
                                 Value::Undefined
                             };

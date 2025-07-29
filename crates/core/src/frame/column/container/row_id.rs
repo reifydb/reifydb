@@ -3,11 +3,20 @@
 
 use crate::{BitVec, CowVec, RowId};
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RowIdContainer {
     values: CowVec<RowId>,
     bitvec: BitVec,
+}
+
+impl Deref for RowIdContainer {
+    type Target = [RowId];
+
+    fn deref(&self) -> &Self::Target {
+        self.values.as_slice()
+    }
 }
 
 impl RowIdContainer {
@@ -59,7 +68,7 @@ impl RowIdContainer {
     }
 
     pub fn get(&self, index: usize) -> Option<&RowId> {
-        if index < self.len() && self.bitvec.get(index) {
+        if index < self.len() && self.is_defined(index) {
             self.values.get(index)
         } else {
             None
@@ -74,12 +83,32 @@ impl RowIdContainer {
         &mut self.bitvec
     }
 
+    pub fn is_defined(&self, idx: usize) -> bool {
+        idx < self.len() && self.bitvec.get(idx)
+    }
+
     pub fn values(&self) -> &CowVec<RowId> {
         &self.values
     }
 
     pub fn values_mut(&mut self) -> &mut CowVec<RowId> {
         &mut self.values
+    }
+
+    pub fn as_string(&self, index: usize) -> String {
+        if index < self.len() && self.is_defined(index) {
+            self.values[index].to_string()
+        } else {
+            "Undefined".to_string()
+        }
+    }
+
+    pub fn get_value(&self, index: usize) -> crate::Value {
+        if index < self.len() && self.is_defined(index) {
+            crate::Value::RowId(self.values[index])
+        } else {
+            crate::Value::Undefined
+        }
     }
 
     pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
@@ -141,6 +170,13 @@ impl RowIdContainer {
         self.values = CowVec::new(new_values);
         self.bitvec = new_bitvec;
     }
+
+    pub fn take(&self, num: usize) -> Self {
+        Self {
+            values: self.values.take(num),
+            bitvec: self.bitvec.take(num),
+        }
+    }
 }
 
 impl Default for RowIdContainer {
@@ -179,7 +215,7 @@ mod tests {
         
         // All should be defined
         for i in 0..3 {
-            assert!(container.bitvec().get(i));
+            assert!(container.is_defined(i));
         }
     }
 
@@ -206,9 +242,9 @@ mod tests {
         assert_eq!(container.get(1), None); // undefined
         assert_eq!(container.get(2), Some(&row_id2));
         
-        assert!(container.bitvec().get(0));
-        assert!(!container.bitvec().get(1));
-        assert!(container.bitvec().get(2));
+        assert!(container.is_defined(0));
+        assert!(!container.is_defined(1));
+        assert!(container.is_defined(2));
     }
 
     #[test]

@@ -23,36 +23,34 @@ impl AggregateFunction for Min {
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
         match &column.values() {
-            ColumnValues::Float8(values, bitvec) => {
+            ColumnValues::Float8(container) => {
                 for (group, indices) in groups {
                     let min_val = indices
                         .iter()
-                        .filter(|&&i| bitvec.get(i))
-                        .map(|&i| values[i])
+                        .filter_map(|&i| container.get(i))
                         .min_by(|a, b| a.partial_cmp(b).unwrap());
 
                     if let Some(min_val) = min_val {
                         self.mins
                             .entry(group.clone())
-                            .and_modify(|v| *v = f64::min(*v, min_val))
-                            .or_insert(min_val);
+                            .and_modify(|v| *v = f64::min(*v, *min_val))
+                            .or_insert(*min_val);
                     }
                 }
                 Ok(())
             }
-            ColumnValues::Int2(values, bitvec) => {
+            ColumnValues::Int2(container) => {
                 for (group, indices) in groups {
                     let min_val = indices
                         .iter()
-                        .filter(|&&i| bitvec.get(i))
-                        .map(|&i| values[i])
+                        .filter_map(|&i| container.get(i))
                         .min_by(|a, b| a.partial_cmp(b).unwrap());
 
                     if let Some(min_val) = min_val {
                         self.mins
                             .entry(group.clone())
-                            .and_modify(|v| *v = f64::min(*v, min_val as f64))
-                            .or_insert(min_val as f64);
+                            .and_modify(|v| *v = f64::min(*v, *min_val as f64))
+                            .or_insert(*min_val as f64);
                     }
                 }
                 Ok(())

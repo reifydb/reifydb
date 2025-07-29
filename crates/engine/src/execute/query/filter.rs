@@ -46,12 +46,12 @@ impl ExecutionPlan for FilterNode {
 
                 // Create filter mask from result
                 let filter_mask = match result.values() {
-                    ColumnValues::Bool(values, bitvec) => {
+                    ColumnValues::Bool(container) => {
                         let mut mask = BitVec::repeat(row_count, false);
                         for i in 0..row_count {
-                            if i < values.len() && i < bitvec.len() {
-                                let valid = bitvec.get(i);
-                                let filter_result = values.get(i);
+                            if i < container.values().len() && i < container.bitvec().len() {
+                                let valid = container.is_defined(i);
+                                let filter_result = container.values().get(i);
                                 mask.set(i, valid & filter_result);
                             }
                         }

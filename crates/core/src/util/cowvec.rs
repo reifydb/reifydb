@@ -170,6 +170,11 @@ impl<T: Clone + PartialEq> CowVec<T> {
         let ptr = self.inner.as_ptr() as usize;
         ptr % alignment == 0
     }
+
+    pub fn take(&self, n: usize) -> Self {
+        let len = n.min(self.len());
+        CowVec::new(self.inner[..len].to_vec())
+    }
 }
 
 impl<T: Clone + PartialEq> IntoIterator for CowVec<T> {

@@ -59,8 +59,8 @@ impl ExecutionPlan for SortNode {
 
         indices.sort_unstable_by(|&l, &r| {
             for (col, dir) in &key_refs {
-                let vl = col.get(l);
-                let vr = col.get(r);
+                let vl = col.get_value(l);
+                let vr = col.get_value(r);
                 let ord = vl.partial_cmp(&vr).unwrap_or(Equal);
                 let ord = match dir {
                     Asc => ord,

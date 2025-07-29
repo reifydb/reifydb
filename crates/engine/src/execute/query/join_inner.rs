@@ -103,7 +103,7 @@ impl ExecutionPlan for InnerJoinNode {
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {
                     let col = evaluate(cond, &ctx).unwrap();
-                    matches!(col.values().get(0), Value::Bool(true)) && acc
+                    matches!(col.values().get_value(0), Value::Bool(true)) && acc
                 });
 
                 if all_true {

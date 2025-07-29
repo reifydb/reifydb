@@ -17,7 +17,7 @@ use crate::value::{Date, DateTime, Interval, Time};
 use super::{PoolAllocator, Pools};
 
 /// Trait for containers that can be released back to a pool
-trait Releasable: Clone {
+pub trait Releasable: Clone {
     fn release_to_pool(self, pools: &Pools);
 }
 
@@ -135,12 +135,12 @@ impl<T: Releasable> PooledGuard<T> {
     pub fn to_owned(mut self) -> T {
         let container = self.container.take().expect("Container already taken");
         let cloned_container = container.clone();
-        
+
         // Release the original container back to the pool
         if let Some(pools) = self.pools.upgrade() {
             container.release_to_pool(&pools);
         }
-        
+
         cloned_container
     }
 

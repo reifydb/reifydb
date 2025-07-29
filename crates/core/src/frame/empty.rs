@@ -31,7 +31,7 @@ impl Frame {
                     Type::Int4 => ColumnValues::int4(vec![]),
                     Type::Int8 => ColumnValues::int8(vec![]),
                     Type::Int16 => ColumnValues::int16(vec![]),
-                    Type::Utf8 => ColumnValues::utf8(vec![]),
+                    Type::Utf8 => ColumnValues::utf8(Vec::<String>::new()),
                     Type::Uint1 => ColumnValues::uint1(vec![]),
                     Type::Uint2 => ColumnValues::uint2(vec![]),
                     Type::Uint4 => ColumnValues::uint4(vec![]),
@@ -45,7 +45,7 @@ impl Frame {
                     Type::Uuid4 => ColumnValues::uuid4(vec![]),
                     Type::Uuid7 => ColumnValues::uuid7(vec![]),
                     Type::Blob => ColumnValues::blob(vec![]),
-                    Type::Undefined => ColumnValues::Undefined(0),
+                    Type::Undefined => ColumnValues::undefined(0),
                 };
                 FrameColumn::TableQualified(TableQualified {
                     table: table.name.clone(),

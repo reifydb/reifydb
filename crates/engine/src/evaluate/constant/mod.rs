@@ -10,6 +10,7 @@ use crate::evaluate::{EvaluationContext, Evaluator};
 use number::NumberParser;
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::frame::{ColumnValues, FrameColumn, ColumnQualified};
+use reifydb_core::frame::column::container::undefined::UndefinedContainer;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::{Type, return_error};
@@ -105,7 +106,7 @@ impl Evaluator {
             ConstantExpression::Temporal { span } => {
                 TemporalParser::parse_temporal(span.clone(), row_count)?
             }
-            ConstantExpression::Undefined { .. } => ColumnValues::Undefined(row_count),
+            ConstantExpression::Undefined { .. } => ColumnValues::Undefined(UndefinedContainer::new(row_count)),
         })
     }
 

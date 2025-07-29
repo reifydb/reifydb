@@ -68,14 +68,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
                 // Extract RowId values - return error if any are undefined
                 let row_ids = match &row_id_column.values() {
-                    ColumnValues::RowId(row_ids, bitvec) => {
+                    ColumnValues::RowId(container) => {
                         // Check that all row IDs are defined
-                        for i in 0..row_ids.len() {
-                            if !bitvec.get(i) {
+                        for i in 0..container.values().len() {
+                            if !container.is_defined(i) {
                                 return_error!(engine::invalid_row_id_values());
                             }
                         }
-                        row_ids
+                        container.values()
                     }
                     _ => return_error!(engine::invalid_row_id_values()),
                 };

@@ -2,9 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::value::IsUuid;
-use crate::{BitVec, CowVec};
+use crate::value::uuid::{Uuid4, Uuid7};
+use crate::{BitVec, CowVec, Value};
+use Value::Undefined;
 use serde::{Deserialize, Serialize};
+use std::any::TypeId;
 use std::fmt::Debug;
+use std::mem::transmute_copy;
+use std::ops::Deref;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UuidContainer<T>
@@ -15,31 +20,33 @@ where
     bitvec: BitVec,
 }
 
+impl<T> Deref for UuidContainer<T>
+where
+    T: IsUuid,
+{
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        self.values.as_slice()
+    }
+}
+
 impl<T> UuidContainer<T>
 where
     T: IsUuid + Clone + Debug + Default,
 {
     pub fn new(values: Vec<T>, bitvec: BitVec) -> Self {
         debug_assert_eq!(values.len(), bitvec.len());
-        Self {
-            values: CowVec::new(values),
-            bitvec,
-        }
+        Self { values: CowVec::new(values), bitvec }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            values: CowVec::with_capacity(capacity),
-            bitvec: BitVec::with_capacity(capacity),
-        }
+        Self { values: CowVec::with_capacity(capacity), bitvec: BitVec::with_capacity(capacity) }
     }
 
     pub fn from_vec(values: Vec<T>) -> Self {
         let len = values.len();
-        Self {
-            values: CowVec::new(values),
-            bitvec: BitVec::repeat(len, true),
-        }
+        Self { values: CowVec::new(values), bitvec: BitVec::repeat(len, true) }
     }
 
     pub fn len(&self) -> usize {
@@ -67,11 +74,7 @@ where
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
-        if index < self.len() && self.bitvec.get(index) {
-            self.values.get(index)
-        } else {
-            None
-        }
+        if index < self.len() && self.is_defined(index) { self.values.get(index) } else { None }
     }
 
     pub fn bitvec(&self) -> &BitVec {
@@ -82,12 +85,45 @@ where
         &mut self.bitvec
     }
 
+    pub fn is_defined(&self, idx: usize) -> bool {
+        idx < self.len() && self.bitvec.get(idx)
+    }
+
     pub fn values(&self) -> &CowVec<T> {
         &self.values
     }
 
     pub fn values_mut(&mut self) -> &mut CowVec<T> {
         &mut self.values
+    }
+
+    pub fn as_string(&self, index: usize) -> String {
+        if index < self.len() && self.is_defined(index) {
+            self.values[index].to_string()
+        } else {
+            "Undefined".to_string()
+        }
+    }
+
+    pub fn get_value(&self, index: usize) -> Value
+    where
+        T: 'static,
+    {
+        if index < self.len() && self.is_defined(index) {
+            let value = self.values[index];
+
+            if TypeId::of::<T>() == TypeId::of::<Uuid4>() {
+                let uuid_val = unsafe { transmute_copy::<T, Uuid4>(&value) };
+                Value::Uuid4(uuid_val)
+            } else if TypeId::of::<T>() == TypeId::of::<Uuid7>() {
+                let uuid_val = unsafe { transmute_copy::<T, Uuid7>(&value) };
+                Value::Uuid7(uuid_val)
+            } else {
+                Undefined
+            }
+        } else {
+            Undefined
+        }
     }
 
     pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
@@ -112,25 +148,23 @@ where
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_values: Vec<T> = self.values.iter().skip(start).take(end - start).cloned().collect();
+        let new_values: Vec<T> =
+            self.values.iter().skip(start).take(end - start).cloned().collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
-        Self {
-            values: CowVec::new(new_values),
-            bitvec: BitVec::from_slice(&new_bitvec),
-        }
+        Self { values: CowVec::new(new_values), bitvec: BitVec::from_slice(&new_bitvec) }
     }
 
     pub fn filter(&mut self, mask: &BitVec) {
         let mut new_values = Vec::with_capacity(mask.count_ones());
         let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
-        
+
         for (i, keep) in mask.iter().enumerate() {
             if keep && i < self.len() {
                 new_values.push(self.values[i].clone());
                 new_bitvec.push(self.bitvec.get(i));
             }
         }
-        
+
         self.values = CowVec::new(new_values);
         self.bitvec = new_bitvec;
     }
@@ -138,7 +172,7 @@ where
     pub fn reorder(&mut self, indices: &[usize]) {
         let mut new_values = Vec::with_capacity(indices.len());
         let mut new_bitvec = BitVec::with_capacity(indices.len());
-        
+
         for &idx in indices {
             if idx < self.len() {
                 new_values.push(self.values[idx].clone());
@@ -148,9 +182,16 @@ where
                 new_bitvec.push(false);
             }
         }
-        
+
         self.values = CowVec::new(new_values);
         self.bitvec = new_bitvec;
+    }
+
+    pub fn take(&self, num: usize) -> Self {
+        Self {
+            values: self.values.take(num),
+            bitvec: self.bitvec.take(num),
+        }
     }
 }
 
@@ -166,8 +207,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::uuid::{Uuid4, Uuid7};
     use crate::BitVec;
+    use crate::value::uuid::{Uuid4, Uuid7};
 
     #[test]
     fn test_uuid4_container() {
@@ -175,14 +216,14 @@ mod tests {
         let uuid2 = Uuid4::generate();
         let uuids = vec![uuid1, uuid2];
         let container = UuidContainer::from_vec(uuids.clone());
-        
+
         assert_eq!(container.len(), 2);
         assert_eq!(container.get(0), Some(&uuids[0]));
         assert_eq!(container.get(1), Some(&uuids[1]));
-        
+
         // All should be defined
         for i in 0..2 {
-            assert!(container.bitvec().get(i));
+            assert!(container.is_defined(i));
         }
     }
 
@@ -192,7 +233,7 @@ mod tests {
         let uuid2 = Uuid7::generate();
         let uuids = vec![uuid1, uuid2];
         let container = UuidContainer::from_vec(uuids.clone());
-        
+
         assert_eq!(container.len(), 2);
         assert_eq!(container.get(0), Some(&uuids[0]));
         assert_eq!(container.get(1), Some(&uuids[1]));
@@ -211,19 +252,19 @@ mod tests {
         let mut container: UuidContainer<Uuid4> = UuidContainer::with_capacity(3);
         let uuid1 = Uuid4::generate();
         let uuid2 = Uuid4::generate();
-        
+
         container.push(uuid1);
         container.push_undefined();
         container.push(uuid2);
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&uuid1));
         assert_eq!(container.get(1), None); // undefined
         assert_eq!(container.get(2), Some(&uuid2));
-        
-        assert!(container.bitvec().get(0));
-        assert!(!container.bitvec().get(1));
-        assert!(container.bitvec().get(2));
+
+        assert!(container.is_defined(0));
+        assert!(!container.is_defined(1));
+        assert!(container.is_defined(2));
     }
 
     #[test]
@@ -231,12 +272,12 @@ mod tests {
         let uuid1 = Uuid4::generate();
         let uuid2 = Uuid4::generate();
         let uuid3 = Uuid4::generate();
-        
+
         let mut container1 = UuidContainer::from_vec(vec![uuid1, uuid2]);
         let container2 = UuidContainer::from_vec(vec![uuid3]);
-        
+
         container1.extend(&container2).unwrap();
-        
+
         assert_eq!(container1.len(), 3);
         assert_eq!(container1.get(0), Some(&uuid1));
         assert_eq!(container1.get(1), Some(&uuid2));
@@ -248,7 +289,7 @@ mod tests {
         let uuid = Uuid7::generate();
         let mut container = UuidContainer::from_vec(vec![uuid]);
         container.extend_from_undefined(2);
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&uuid));
         assert_eq!(container.get(1), None); // undefined
@@ -263,22 +304,18 @@ mod tests {
         let uuids = vec![uuid1, uuid2, uuid3];
         let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
         let container = UuidContainer::new(uuids.clone(), bitvec);
-        
+
         let collected: Vec<Option<Uuid4>> = container.iter().collect();
         assert_eq!(collected, vec![Some(uuids[0]), None, Some(uuids[2])]);
     }
 
     #[test]
     fn test_slice() {
-        let uuids = vec![
-            Uuid4::generate(),
-            Uuid4::generate(),
-            Uuid4::generate(),
-            Uuid4::generate(),
-        ];
+        let uuids =
+            vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
         let container = UuidContainer::from_vec(uuids.clone());
         let sliced = container.slice(1, 3);
-        
+
         assert_eq!(sliced.len(), 2);
         assert_eq!(sliced.get(0), Some(&uuids[1]));
         assert_eq!(sliced.get(1), Some(&uuids[2]));
@@ -286,17 +323,13 @@ mod tests {
 
     #[test]
     fn test_filter() {
-        let uuids = vec![
-            Uuid4::generate(),
-            Uuid4::generate(),
-            Uuid4::generate(),
-            Uuid4::generate(),
-        ];
+        let uuids =
+            vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
         let mut container = UuidContainer::from_vec(uuids.clone());
         let mask = BitVec::from_slice(&[true, false, true, false]);
-        
+
         container.filter(&mask);
-        
+
         assert_eq!(container.len(), 2);
         assert_eq!(container.get(0), Some(&uuids[0]));
         assert_eq!(container.get(1), Some(&uuids[2]));
@@ -304,16 +337,12 @@ mod tests {
 
     #[test]
     fn test_reorder() {
-        let uuids = vec![
-            Uuid4::generate(),
-            Uuid4::generate(),
-            Uuid4::generate(),
-        ];
+        let uuids = vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
         let mut container = UuidContainer::from_vec(uuids.clone());
         let indices = [2, 0, 1];
-        
+
         container.reorder(&indices);
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&uuids[2])); // was index 2
         assert_eq!(container.get(1), Some(&uuids[0])); // was index 0
@@ -323,9 +352,11 @@ mod tests {
     #[test]
     fn test_mixed_uuid_types() {
         // Test that we can have different UUID containers
-        let uuid4_container: UuidContainer<Uuid4> = UuidContainer::from_vec(vec![Uuid4::generate()]);
-        let uuid7_container: UuidContainer<Uuid7> = UuidContainer::from_vec(vec![Uuid7::generate()]);
-        
+        let uuid4_container: UuidContainer<Uuid4> =
+            UuidContainer::from_vec(vec![Uuid4::generate()]);
+        let uuid7_container: UuidContainer<Uuid7> =
+            UuidContainer::from_vec(vec![Uuid7::generate()]);
+
         assert_eq!(uuid4_container.len(), 1);
         assert_eq!(uuid7_container.len(), 1);
     }

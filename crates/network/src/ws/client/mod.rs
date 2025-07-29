@@ -10,10 +10,14 @@ use crate::ws::{
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, TableQualified};
+use reifydb_core::frame::column::container::{
+    BoolContainer, NumberContainer, StringContainer, TemporalContainer, 
+    UndefinedContainer, RowIdContainer, UuidContainer, BlobContainer
+};
 use reifydb_core::value::Blob;
 use reifydb_core::value::temporal::parse_interval;
 use reifydb_core::{
-    BitVec, CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err,
+    Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -289,7 +293,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::$variant(CowVec::new(values), bitvec.into())
+            ColumnValues::$variant(NumberContainer::new(values, bitvec.into()))
         }};
     }
 
@@ -303,7 +307,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     _ => false, // treat ⟪undefined⟫ or anything else as false
                 })
                 .collect();
-            ColumnValues::Bool(BitVec::from_slice(&values), bitvec.into())
+            ColumnValues::Bool(BoolContainer::new(values, bitvec.into()))
         }
         Type::Float4 => parse!(f32, Float4),
         Type::Float8 => parse!(f64, Float8),
@@ -322,7 +326,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                 .iter()
                 .map(|s| if s == "⟪undefined⟫" { "".to_string() } else { s.clone() })
                 .collect();
-            ColumnValues::Utf8(CowVec::new(values), bitvec.into())
+            ColumnValues::Utf8(StringContainer::new(values, bitvec.into()))
         }
         Type::Date => {
             let values: Vec<Date> = data
@@ -344,7 +348,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Date(CowVec::new(values), bitvec.into())
+            ColumnValues::Date(TemporalContainer::new(values, bitvec.into()))
         }
         Type::DateTime => {
             let values: Vec<DateTime> = data
@@ -395,7 +399,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::DateTime(CowVec::new(values), bitvec.into())
+            ColumnValues::DateTime(TemporalContainer::new(values, bitvec.into()))
         }
         Type::Time => {
             let values: Vec<Time> = data
@@ -433,7 +437,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Time(CowVec::new(values), bitvec.into())
+            ColumnValues::Time(TemporalContainer::new(values, bitvec.into()))
         }
         Type::Interval => {
             let values: Vec<Interval> = data
@@ -447,9 +451,9 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Interval(CowVec::new(values), bitvec.into())
+            ColumnValues::Interval(TemporalContainer::new(values, bitvec.into()))
         }
-        Type::Undefined => ColumnValues::Undefined(data.len()),
+        Type::Undefined => ColumnValues::Undefined(UndefinedContainer::new(data.len())),
         Type::RowId => {
             let values: Vec<_> = data
                 .into_iter()
@@ -465,7 +469,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::RowId(CowVec::new(values), bitvec.into())
+            ColumnValues::RowId(RowIdContainer::new(values, bitvec.into()))
         }
         Type::Uuid4 => {
             let values: Vec<reifydb_core::value::uuid::Uuid4> = data
@@ -480,7 +484,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Uuid4(CowVec::new(values), bitvec.into())
+            ColumnValues::Uuid4(UuidContainer::new(values, bitvec.into()))
         }
         Type::Uuid7 => {
             let values: Vec<reifydb_core::value::uuid::Uuid7> = data
@@ -495,7 +499,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Uuid7(CowVec::new(values), bitvec.into())
+            ColumnValues::Uuid7(UuidContainer::new(values, bitvec.into()))
         }
         Type::Blob => {
             let values: Vec<Blob> = data
@@ -517,7 +521,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Blob(CowVec::new(values), bitvec.into())
+            ColumnValues::Blob(BlobContainer::new(values, bitvec.into()))
         }
     }
 }

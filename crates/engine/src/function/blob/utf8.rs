@@ -19,12 +19,12 @@ impl ScalarFunction for BlobUtf8 {
         let column = columns.get(0).unwrap();
 
         match &column.values() {
-            ColumnValues::Utf8(values, bitvec) => {
-                let mut result_values = Vec::with_capacity(values.len());
+            ColumnValues::Utf8(container) => {
+                let mut result_values = Vec::with_capacity(container.values().len());
 
                 for i in 0..row_count {
-                    if bitvec.get(i) {
-                        let utf8_str = &values[i];
+                    if container.is_defined(i) {
+                        let utf8_str = &container[i];
                         let blob = Blob::from_utf8(OwnedSpan::testing(utf8_str));
                         result_values.push(blob);
                     } else {
@@ -32,7 +32,7 @@ impl ScalarFunction for BlobUtf8 {
                     }
                 }
 
-                Ok(ColumnValues::blob_with_bitvec(result_values, bitvec.clone()))
+                Ok(ColumnValues::blob_with_bitvec(result_values, container.bitvec().clone()))
             }
             _ => unimplemented!("BlobUtf8 only supports text input"),
         }
@@ -43,25 +43,25 @@ impl ScalarFunction for BlobUtf8 {
 mod tests {
     use super::*;
     use reifydb_core::frame::{ColumnQualified, FrameColumn};
-    use reifydb_core::{BitVec, CowVec};
+    use reifydb_core::frame::column::container::StringContainer;
 
     #[test]
     fn test_blob_utf8_simple_ascii() {
         let function = BlobUtf8::new();
 
         let utf8_values = vec!["Hello!".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), "Hello!".as_bytes());
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), "Hello!".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -72,18 +72,18 @@ mod tests {
         let function = BlobUtf8::new();
 
         let utf8_values = vec!["".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), &[] as &[u8]);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), &[] as &[u8]);
         } else {
             panic!("Expected BLOB column values");
         }
@@ -95,18 +95,18 @@ mod tests {
 
         // Test Unicode characters: emoji, accented chars, etc.
         let utf8_values = vec!["Hello 🌍! Café naïve".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), "Hello 🌍! Café naïve".as_bytes());
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), "Hello 🌍! Café naïve".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -118,18 +118,18 @@ mod tests {
 
         // Test various multibyte UTF-8 characters
         let utf8_values = vec!["日本語 中文 한국어 العربية".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), "日本語 中文 한국어 العربية".as_bytes());
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), "日本語 中文 한국어 العربية".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -141,18 +141,18 @@ mod tests {
 
         // Test special characters including newlines, tabs, etc.
         let utf8_values = vec!["Line1\nLine2\tTabbed\r\nWindows".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), "Line1\nLine2\tTabbed\r\nWindows".as_bytes());
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), "Line1\nLine2\tTabbed\r\nWindows".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -164,23 +164,23 @@ mod tests {
 
         let utf8_values =
             vec!["First".to_string(), "Second 🚀".to_string(), "Third café".to_string()];
-        let bitvec = BitVec::from_slice(&[true, true, true]);
+        let bitvec = vec![true, true, true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 3);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(bitvec.get(1), true);
-            assert_eq!(bitvec.get(2), true);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 3);
+            assert!(container.is_defined(0));
+            assert!(container.is_defined(1));
+            assert!(container.is_defined(2));
 
-            assert_eq!(blobs[0].as_bytes(), "First".as_bytes());
-            assert_eq!(blobs[1].as_bytes(), "Second 🚀".as_bytes());
-            assert_eq!(blobs[2].as_bytes(), "Third café".as_bytes());
+            assert_eq!(container[0].as_bytes(), "First".as_bytes());
+            assert_eq!(container[1].as_bytes(), "Second 🚀".as_bytes());
+            assert_eq!(container[2].as_bytes(), "Third café".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -191,23 +191,23 @@ mod tests {
         let function = BlobUtf8::new();
 
         let utf8_values = vec!["First".to_string(), "".to_string(), "Third".to_string()];
-        let bitvec = BitVec::from_slice(&[true, false, true]);
+        let bitvec = vec![true, false, true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 3);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(bitvec.get(1), false);
-            assert_eq!(bitvec.get(2), true);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 3);
+            assert!(container.is_defined(0));
+            assert!(!container.is_defined(1));
+            assert!(container.is_defined(2));
 
-            assert_eq!(blobs[0].as_bytes(), "First".as_bytes());
-            assert_eq!(blobs[1].as_bytes(), [].as_slice() as &[u8]);
-            assert_eq!(blobs[2].as_bytes(), "Third".as_bytes());
+            assert_eq!(container[0].as_bytes(), "First".as_bytes());
+            assert_eq!(container[1].as_bytes(), [].as_slice() as &[u8]);
+            assert_eq!(container[2].as_bytes(), "Third".as_bytes());
         } else {
             panic!("Expected BLOB column values");
         }
@@ -219,19 +219,19 @@ mod tests {
 
         // Test JSON-like data which is common to store as UTF-8
         let utf8_values = vec![r#"{"name": "John", "age": 30, "city": "New York"}"#.to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
             assert_eq!(
-                blobs[0].as_bytes(),
+                container[0].as_bytes(),
                 r#"{"name": "John", "age": 30, "city": "New York"}"#.as_bytes()
             );
         } else {
@@ -246,19 +246,19 @@ mod tests {
         // Test a longer string to verify no issues with size
         let long_string = "A".repeat(1000);
         let utf8_values = vec![long_string.clone()];
-        let bitvec = BitVec::from_slice(&[true]);
+        let bitvec = vec![true];
         let input_column = FrameColumn::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(utf8_values), bitvec.clone()),
+            values: ColumnValues::Utf8(StringContainer::new(utf8_values, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), long_string.as_bytes());
-            assert_eq!(blobs[0].as_bytes().len(), 1000);
+        if let ColumnValues::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), long_string.as_bytes());
+            assert_eq!(container[0].as_bytes().len(), 1000);
         } else {
             panic!("Expected BLOB column values");
         }

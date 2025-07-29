@@ -45,5 +45,5 @@ pub(crate) fn coerce_value_to_column_type(
         || BorrowedSpan::new(&value_str).to_owned(),
     )?;
 
-    Ok(coerced_column.get(0))
+    Ok(coerced_column.get_value(0))
 }

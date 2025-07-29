@@ -24,14 +24,14 @@ impl AggregateFunction for Avg {
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
         match &column.values() {
-            ColumnValues::Float8(values, bitvec) => {
+            ColumnValues::Float8(container) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;
                     let mut count = 0;
 
                     for &i in indices {
-                        if bitvec.get(i) {
-                            sum += values[i];
+                        if let Some(value) = container.get(i) {
+                            sum += *value;
                             count += 1;
                         }
                     }
@@ -47,14 +47,14 @@ impl AggregateFunction for Avg {
                 }
                 Ok(())
             }
-            ColumnValues::Int2(values, bitvec) => {
+            ColumnValues::Int2(container) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;
                     let mut count = 0;
 
                     for &i in indices {
-                        if bitvec.get(i) {
-                            sum += values[i] as f64;
+                        if let Some(value) = container.get(i) {
+                            sum += *value as f64;
                             count += 1;
                         }
                     }

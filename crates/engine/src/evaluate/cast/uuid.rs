@@ -3,9 +3,10 @@
 
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::frame::ColumnValues;
+use reifydb_core::frame::column::container::{StringContainer, UuidContainer};
 use reifydb_core::value::uuid::parse::{parse_uuid4, parse_uuid7};
 use reifydb_core::value::uuid::{Uuid4, Uuid7};
-use reifydb_core::{BitVec, BorrowedSpan, OwnedSpan, Type, error, CowVec};
+use reifydb_core::{BorrowedSpan, OwnedSpan, Type, error};
 
 pub fn to_uuid(
     values: &ColumnValues,
@@ -13,9 +14,9 @@ pub fn to_uuid(
     span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnValues> {
     match values {
-        ColumnValues::Utf8(vals, bitvec) => from_text(vals, bitvec, target, span),
-        ColumnValues::Uuid4(vals, bitvec) => from_uuid4(vals, bitvec, target, span),
-        ColumnValues::Uuid7(vals, bitvec) => from_uuid7(vals, bitvec, target, span),
+        ColumnValues::Utf8(container) => from_text(container, target, span),
+        ColumnValues::Uuid4(container) => from_uuid4(container, target, span),
+        ColumnValues::Uuid7(container) => from_uuid7(container, target, span),
         _ => {
             let source_type = values.get_type();
             reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
@@ -25,14 +26,13 @@ pub fn to_uuid(
 
 #[inline]
 fn from_text(
-    values: &[String],
-    bitvec: &BitVec,
+    container: &StringContainer,
     target: Type,
     span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnValues> {
     match target {
-        Type::Uuid4 => to_uuid4(values, bitvec, span),
-        Type::Uuid7 => to_uuid7(values, bitvec, span),
+        Type::Uuid4 => to_uuid4(container, span),
+        Type::Uuid7 => to_uuid7(container, span),
         _ => {
             let source_type = Type::Utf8;
             reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
@@ -44,13 +44,13 @@ macro_rules! impl_to_uuid {
     ($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
         #[inline]
         fn $fn_name(
-            values: &[String],
-            bitvec: &BitVec,
+            container: &StringContainer,
             span: impl Fn() -> OwnedSpan,
         ) -> crate::Result<ColumnValues> {
-            let mut out = ColumnValues::with_capacity($target_type, values.len());
-            for (idx, val) in values.iter().enumerate() {
-                if bitvec.get(idx) {
+            let mut out = ColumnValues::with_capacity($target_type, container.len());
+            for idx in 0..container.len() {
+                if container.is_defined(idx) {
+                    let val = &container[idx];
                     let temp_span = BorrowedSpan::new(val.as_str());
 
                     let parsed = $parse_fn(temp_span).map_err(|mut e| {
@@ -80,11 +80,11 @@ impl_to_uuid!(to_uuid4, Uuid4, Type::Uuid4, parse_uuid4);
 impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
 
 #[inline]
-fn from_uuid4(values: &[Uuid4], bitvec: &BitVec, target: Type, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
+fn from_uuid4(container: &UuidContainer<Uuid4>, target: Type, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
     match target {
         Type::Uuid4 => {
             // Same type, just clone
-            Ok(ColumnValues::Uuid4(CowVec::new(values.to_vec()), bitvec.clone()))
+            Ok(ColumnValues::Uuid4(UuidContainer::new(container.values().to_vec(), container.bitvec().clone())))
         }
         _ => {
             // UUID4 to other types should be handled by the main cast routing
@@ -96,11 +96,11 @@ fn from_uuid4(values: &[Uuid4], bitvec: &BitVec, target: Type, span: impl Fn() -
 }
 
 #[inline]
-fn from_uuid7(values: &[Uuid7], bitvec: &BitVec, target: Type, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
+fn from_uuid7(container: &UuidContainer<Uuid7>, target: Type, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnValues> {
     match target {
         Type::Uuid7 => {
             // Same type, just clone  
-            Ok(ColumnValues::Uuid7(CowVec::new(values.to_vec()), bitvec.clone()))
+            Ok(ColumnValues::Uuid7(UuidContainer::new(container.values().to_vec(), container.bitvec().clone())))
         }
         _ => {
             // UUID7 to other types should be handled by the main cast routing

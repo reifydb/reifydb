@@ -23,10 +23,10 @@ impl AggregateFunction for Sum {
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
         match &column.values() {
-            ColumnValues::Float8(values, bitvec) => {
+            ColumnValues::Float8(container) => {
                 for (group, indices) in groups {
                     let sum: f64 =
-                        indices.iter().filter(|&&i| bitvec.get(i)).map(|&i| values[i]).sum();
+                        indices.iter().filter_map(|&i| container.get(i)).sum();
 
                     self.sums.insert(group.clone(), Value::float8(sum));
                 }

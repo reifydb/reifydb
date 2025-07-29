@@ -33,8 +33,8 @@ impl Evaluator {
         let le_result = self.less_than_equal(&less_equal_expr, ctx)?;
 
         // Check that both results are boolean (they should be if the comparison succeeded)
-        if !matches!(ge_result.values(), ColumnValues::Bool(_, _))
-            || !matches!(le_result.values(), ColumnValues::Bool(_, _))
+        if !matches!(ge_result.values(), ColumnValues::Bool(_))
+            || !matches!(le_result.values(), ColumnValues::Bool(_))
         {
             // This should not happen if the comparison operators work correctly,
             // but we handle it as a safety measure
@@ -52,13 +52,13 @@ impl Evaluator {
         let le_values = le_result.values();
 
         match (ge_values, le_values) {
-            (ColumnValues::Bool(ge_vals, ge_bitvec), ColumnValues::Bool(le_vals, le_bitvec)) => {
-                let mut result_values = Vec::with_capacity(ge_vals.len());
-                let mut result_bitvec = Vec::with_capacity(ge_bitvec.len());
+            (ColumnValues::Bool(ge_container), ColumnValues::Bool(le_container)) => {
+                let mut result_values = Vec::with_capacity(ge_container.len());
+                let mut result_bitvec = Vec::with_capacity(ge_container.len());
 
-                for i in 0..ge_vals.len() {
-                    if ge_bitvec.get(i) && le_bitvec.get(i) {
-                        result_values.push(ge_vals.get(i) && le_vals.get(i));
+                for i in 0..ge_container.len() {
+                    if ge_container.is_defined(i) && le_container.is_defined(i) {
+                        result_values.push(ge_container.values().get(i) && le_container.values().get(i));
                         result_bitvec.push(true);
                     } else {
                         result_values.push(false);

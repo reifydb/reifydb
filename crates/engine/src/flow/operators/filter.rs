@@ -67,9 +67,9 @@ impl FilterOperator {
         let mut bv = BitVec::repeat(row_count, true);
 
         match result_column.values() {
-            ColumnValues::Bool(values, bitvec) => {
-                for (idx, val) in values.iter().enumerate() {
-                    debug_assert!(bitvec.get(idx));
+            ColumnValues::Bool(container) => {
+                for (idx, val) in container.values().iter().enumerate() {
+                    debug_assert!(container.is_defined(idx));
                     bv.set(idx, val);
                 }
             }

@@ -33,8 +33,20 @@ impl UndefinedContainer {
         self.len = 0;
     }
 
+    pub fn is_defined(&self, _idx: usize) -> bool {
+        false
+    }
+
     pub fn push_undefined(&mut self) {
         self.len += 1;
+    }
+
+    pub fn as_string(&self, _index: usize) -> String {
+        "Undefined".to_string()
+    }
+
+    pub fn get_value(&self, _index: usize) -> crate::Value {
+        crate::Value::Undefined
     }
 
     pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
@@ -64,6 +76,12 @@ impl UndefinedContainer {
 
     pub fn reorder(&mut self, indices: &[usize]) {
         self.len = indices.len();
+    }
+
+    pub fn take(&self, num: usize) -> Self {
+        Self {
+            len: num.min(self.len),
+        }
     }
 }
 

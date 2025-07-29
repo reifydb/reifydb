@@ -71,14 +71,14 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
             // Extract RowId values - panic if any are undefined
             let row_ids = match &row_id_column.values() {
-                ColumnValues::RowId(row_ids, bitvec) => {
+                ColumnValues::RowId(container) => {
                     // Check that all row IDs are defined
-                    for i in 0..row_ids.len() {
-                        if !bitvec.get(i) {
+                    for i in 0..container.values().len() {
+                        if !container.is_defined(i) {
                             return_error!(engine::invalid_row_id_values());
                         }
                     }
-                    row_ids
+                    container.values()
                 }
                 _ => return_error!(engine::invalid_row_id_values()),
             };
@@ -93,7 +93,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     let mut value = if let Some(input_column) =
                         frame.columns.iter().find(|col| col.name() == table_column.name)
                     {
-                        input_column.values().get(row_idx)
+                        input_column.values().get_value(row_idx)
                     } else {
                         Value::Undefined
                     };

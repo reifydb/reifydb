@@ -21,27 +21,27 @@ impl ScalarFunction for Abs {
         let column = columns.get(0).unwrap();
 
         match &column.values() {
-            ColumnValues::Int1(v, b) => {
-                let mut values = Vec::with_capacity(v.len());
+            ColumnValues::Int1(container) => {
+                let mut values = Vec::with_capacity(container.len());
 
                 for i in 0..row_count {
-                    if b.get(i) {
-                        values.push(if v[i] < 0 { v[i] * -1 } else { v[i] });
+                    if let Some(value) = container.get(i) {
+                        values.push(if *value < 0 { *value * -1 } else { *value });
                     }
                 }
 
-                Ok(ColumnValues::int1_with_bitvec(values, b))
+                Ok(ColumnValues::int1_with_bitvec(values, container.bitvec()))
             }
-            ColumnValues::Int2(v, b) => {
-                let mut values = Vec::with_capacity(v.len());
+            ColumnValues::Int2(container) => {
+                let mut values = Vec::with_capacity(container.len());
 
                 for i in 0..row_count {
-                    if b.get(i) {
-                        values.push(if v[i] < 0 { v[i] * -1 } else { v[i] });
+                    if let Some(value) = container.get(i) {
+                        values.push(if *value < 0 { *value * -1 } else { *value });
                     }
                 }
 
-                Ok(ColumnValues::int2_with_bitvec(values, b))
+                Ok(ColumnValues::int2_with_bitvec(values, container.bitvec()))
             }
             _ => unimplemented!(),
         }

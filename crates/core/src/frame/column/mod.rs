@@ -3,21 +3,14 @@
 
 use crate::Type;
 pub use layout::FrameColumnLayout;
-pub use push::Push;
 use serde::{Deserialize, Serialize};
 pub use values::ColumnValues;
 
 pub mod container;
-mod extend;
-mod filter;
-mod get;
 mod layout;
 pub mod pool;
 pub(crate) mod pooled;
-mod push;
 mod qualification;
-mod reorder;
-mod slice;
 mod values;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

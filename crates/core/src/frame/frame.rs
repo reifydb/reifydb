@@ -1,14 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::frame::column::ColumnQualified;
+use crate::frame::{ColumnValues, FrameColumn};
 use crate::Type::Undefined;
 use crate::Value;
-use crate::frame::column::ColumnQualified;
-use crate::frame::iterator::FrameIter;
-use crate::frame::{ColumnValues, FrameColumn};
-use std::collections::HashMap;
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frame {
@@ -25,7 +23,7 @@ impl Frame {
 
         for (idx, (name, value)) in rows.into_iter().enumerate() {
             let values = match value {
-                Value::Undefined => ColumnValues::Undefined(1),
+                Value::Undefined => ColumnValues::undefined(1),
                 Value::Bool(v) => ColumnValues::bool([v]),
                 Value::Float4(v) => ColumnValues::float4([v.into()]),
                 Value::Float8(v) => ColumnValues::float8([v.into()]),
@@ -87,7 +85,7 @@ impl Frame {
     }
 
     pub fn row(&self, i: usize) -> Vec<Value> {
-        self.columns.iter().map(|c| c.values().get(i)).collect()
+        self.columns.iter().map(|c| c.values().get_value(i)).collect()
     }
 
     pub fn column(&self, name: &str) -> Option<&FrameColumn> {
@@ -120,16 +118,6 @@ impl Frame {
         }
     }
 
-    pub fn iter(&self) -> FrameIter<'_> {
-        let col_names = self.columns.iter().map(|c| c.qualified_name()).collect::<Vec<_>>();
-        FrameIter {
-            df: self,
-            row_index: 0,
-            row_total: self.shape().0,
-            column_index: Arc::new(col_names),
-        }
-    }
-
     pub fn row_count(&self) -> usize {
         self.columns.first().map_or(0, |col| col.values().len())
     }
@@ -139,7 +127,13 @@ impl Frame {
     }
 
     pub fn get_row(&self, index: usize) -> Vec<Value> {
-        self.columns.iter().map(|col| col.values().get(index)).collect()
+        self.columns.iter().map(|col| col.values().get_value(index)).collect()
+    }
+}
+
+impl FrameColumn {
+    pub fn extend(&mut self, other: FrameColumn) -> crate::Result<()> {
+        self.values_mut().extend(other.values().clone())
     }
 }
 
@@ -203,14 +197,14 @@ mod tests {
         assert_eq!(frame.shape(), (1, 4));
 
         // Check that the values are correctly stored
-        assert_eq!(frame.column("date_col").unwrap().values().get(0), Value::Date(date));
+        assert_eq!(frame.column("date_col").unwrap().values().get_value(0), Value::Date(date));
         assert_eq!(
-            frame.column("datetime_col").unwrap().values().get(0),
+            frame.column("datetime_col").unwrap().values().get_value(0),
             Value::DateTime(datetime)
         );
-        assert_eq!(frame.column("time_col").unwrap().values().get(0), Value::Time(time));
+        assert_eq!(frame.column("time_col").unwrap().values().get_value(0), Value::Time(time));
         assert_eq!(
-            frame.column("interval_col").unwrap().values().get(0),
+            frame.column("interval_col").unwrap().values().get_value(0),
             Value::Interval(interval)
         );
     }
@@ -233,21 +227,21 @@ mod tests {
         assert_eq!(frame.shape(), (1, 6));
 
         // Check all values are correctly stored
-        assert_eq!(frame.column("bool_col").unwrap().values().get(0), Value::Bool(true));
-        assert_eq!(frame.column("int_col").unwrap().values().get(0), Value::Int4(42));
+        assert_eq!(frame.column("bool_col").unwrap().values().get_value(0), Value::Bool(true));
+        assert_eq!(frame.column("int_col").unwrap().values().get_value(0), Value::Int4(42));
         assert_eq!(
-            frame.column("str_col").unwrap().values().get(0),
+            frame.column("str_col").unwrap().values().get_value(0),
             Value::Utf8("hello".to_string())
         );
-        assert_eq!(frame.column("date_col").unwrap().values().get(0), Value::Date(date));
-        assert_eq!(frame.column("time_col").unwrap().values().get(0), Value::Time(time));
-        assert_eq!(frame.column("undefined_col").unwrap().values().get(0), Value::Undefined);
+        assert_eq!(frame.column("date_col").unwrap().values().get_value(0), Value::Date(date));
+        assert_eq!(frame.column("time_col").unwrap().values().get_value(0), Value::Time(time));
+        assert_eq!(frame.column("undefined_col").unwrap().values().get_value(0), Value::Undefined);
     }
 
     #[test]
     fn test_single_row_normal_column_names_work() {
         let frame = Frame::single_row([("normal_column", Value::Int4(42))]);
         assert_eq!(frame.columns.len(), 1);
-        assert_eq!(frame.column("normal_column").unwrap().values().get(0), Value::Int4(42));
+        assert_eq!(frame.column("normal_column").unwrap().values().get_value(0), Value::Int4(42));
     }
 }

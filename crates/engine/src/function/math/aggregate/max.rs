@@ -23,19 +23,18 @@ impl AggregateFunction for Max {
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
         match &column.values() {
-            ColumnValues::Float8(values, bitvec) => {
+            ColumnValues::Float8(container) => {
                 for (group, indices) in groups {
                     let max_val = indices
                         .iter()
-                        .filter(|&&i| bitvec.get(i))
-                        .map(|&i| values[i])
+                        .filter_map(|&i| container.get(i))
                         .max_by(|a, b| a.partial_cmp(b).unwrap());
 
                     if let Some(max_val) = max_val {
                         self.maxs
                             .entry(group.clone())
-                            .and_modify(|v| *v = f64::max(*v, max_val))
-                            .or_insert(max_val);
+                            .and_modify(|v| *v = f64::max(*v, *max_val))
+                            .or_insert(*max_val);
                     }
                 }
                 Ok(())
