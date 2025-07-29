@@ -5,7 +5,7 @@ use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_core::BitVec;
 use reifydb_core::frame::{
-    ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
+    BufferedPools, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
 };
 use reifydb_core::interface::{Rx, Table, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
@@ -21,6 +21,7 @@ pub struct ExecutionContext {
     pub table: Option<Table>,
     pub batch_size: usize,
     pub preserve_row_ids: bool,
+    pub buffered: BufferedPools,
 }
 
 #[derive(Debug)]
@@ -143,6 +144,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     table: None,
                     batch_size: 1024,
                     preserve_row_ids: false,
+                    buffered: BufferedPools::default(),
                 });
                 let mut node = compile(plan, rx, context.clone());
                 let mut result: Option<Frame> = None;

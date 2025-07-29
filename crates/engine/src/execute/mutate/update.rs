@@ -6,7 +6,7 @@ use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::error::diagnostic::engine;
-use reifydb_core::frame::{ColumnValues, Frame};
+use reifydb_core::frame::{BufferedPools, ColumnValues, Frame};
 use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
@@ -47,6 +47,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 table: Some(table.clone()),
                 batch_size: 1024,
                 preserve_row_ids: true,
+                buffered: BufferedPools::default(),
             }),
         );
 
@@ -58,6 +59,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             table: Some(table.clone()),
             batch_size: 1024,
             preserve_row_ids: true,
+            buffered: BufferedPools::default(),
         };
         while let Some(Batch { frame, mask }) = input_node.next(&context, tx)? {
             // Find the RowId column - return error if not found
@@ -135,7 +137,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
                         Value::Time(v) => layout.set_time(&mut row, table_idx, v),
                         Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
-                        Value::RowId(_v) => {},
+                        Value::RowId(_v) => {}
                         Value::Uuid4(v) => layout.set_uuid(&mut row, table_idx, *v),
                         Value::Uuid7(v) => layout.set_uuid(&mut row, table_idx, *v),
                         Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),

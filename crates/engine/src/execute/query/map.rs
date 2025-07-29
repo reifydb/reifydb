@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::expression::Expression;
-use reifydb_core::frame::{BufferedPools, Frame, FrameColumn, FrameLayout};
+use reifydb_core::frame::{Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, ColumnDescriptor};
@@ -37,7 +37,7 @@ impl MapNode {
             columns,
             row_count,
             take: None,
-            buffered: BufferedPools::default(),
+            buffered: ctx.buffered.clone(),
         };
 
         // Check if this is an alias expression and we have table information
@@ -128,7 +128,7 @@ impl MapWithoutInputNode {
 }
 
 impl ExecutionPlan for MapWithoutInputNode {
-    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }
@@ -145,7 +145,7 @@ impl ExecutionPlan for MapWithoutInputNode {
                     columns: Vec::new(),
                     row_count: 1,
                     take: None,
-                    buffered: BufferedPools::default(),
+                    buffered: ctx.buffered.clone(),
                 },
             )?;
 

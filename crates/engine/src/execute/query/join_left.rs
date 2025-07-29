@@ -4,7 +4,9 @@
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::expression::Expression;
-use reifydb_core::frame::{BufferedPools, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified};
+use reifydb_core::frame::{
+    ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
+};
 use reifydb_core::interface::Rx;
 use reifydb_core::{BitVec, Value};
 
@@ -100,7 +102,8 @@ impl ExecutionPlan for LeftJoinNode {
                         .collect(),
                     row_count: 1,
                     take: Some(1),
-                    buffered: BufferedPools::default(),
+                    buffered: ctx.buffered.clone(),
+
                 };
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {

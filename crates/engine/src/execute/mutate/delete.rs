@@ -5,7 +5,7 @@ use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::error::diagnostic::engine;
-use reifydb_core::frame::{ColumnValues, Frame};
+use reifydb_core::frame::{BufferedPools, ColumnValues, Frame};
 use reifydb_core::interface::{EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange};
 use reifydb_core::{
     EncodedKeyRange, IntoOwnedSpan, Value,
@@ -46,6 +46,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     table: Some(table.clone()),
                     batch_size: 1024,
                     preserve_row_ids: true,
+                    buffered: BufferedPools::default(),
                 }),
             );
 
@@ -54,6 +55,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 table: Some(table.clone()),
                 batch_size: 1024,
                 preserve_row_ids: true,
+                buffered: BufferedPools::default(),
             };
 
             while let Some(Batch { frame, mask }) = input_node.next(&context, tx)? {
