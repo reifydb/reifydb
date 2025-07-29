@@ -1,66 +1,68 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod factory;
+mod from;
+
+use crate::frame::column::container::*;
 use crate::value::uuid::{Uuid4, Uuid7};
-use crate::value::Blob;
-use crate::RowId;
-use crate::{BitVec, CowVec, Type, Value};
+use crate::{BitVec, Type, Value};
 use crate::{Date, DateTime, Interval, Time};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColumnValues {
-    Bool(BitVec, BitVec),
-    Float4(CowVec<f32>, BitVec),
-    Float8(CowVec<f64>, BitVec),
-    Int1(CowVec<i8>, BitVec),
-    Int2(CowVec<i16>, BitVec),
-    Int4(CowVec<i32>, BitVec),
-    Int8(CowVec<i64>, BitVec),
-    Int16(CowVec<i128>, BitVec),
-    Uint1(CowVec<u8>, BitVec),
-    Uint2(CowVec<u16>, BitVec),
-    Uint4(CowVec<u32>, BitVec),
-    Uint8(CowVec<u64>, BitVec),
-    Uint16(CowVec<u128>, BitVec),
-    Utf8(CowVec<String>, BitVec),
-    Date(CowVec<Date>, BitVec),
-    DateTime(CowVec<DateTime>, BitVec),
-    Time(CowVec<Time>, BitVec),
-    Interval(CowVec<Interval>, BitVec),
-    RowId(CowVec<RowId>, BitVec),
-    Uuid4(CowVec<Uuid4>, BitVec),
-    Uuid7(CowVec<Uuid7>, BitVec),
-    Blob(CowVec<Blob>, BitVec),
+    Bool(BoolContainer),
+    Float4(NumberContainer<f32>),
+    Float8(NumberContainer<f64>),
+    Int1(NumberContainer<i8>),
+    Int2(NumberContainer<i16>),
+    Int4(NumberContainer<i32>),
+    Int8(NumberContainer<i64>),
+    Int16(NumberContainer<i128>),
+    Uint1(NumberContainer<u8>),
+    Uint2(NumberContainer<u16>),
+    Uint4(NumberContainer<u32>),
+    Uint8(NumberContainer<u64>),
+    Uint16(NumberContainer<u128>),
+    Utf8(StringContainer),
+    Date(TemporalContainer<Date>),
+    DateTime(TemporalContainer<DateTime>),
+    Time(TemporalContainer<Time>),
+    Interval(TemporalContainer<Interval>),
+    RowId(RowIdContainer),
+    Uuid4(UuidContainer<Uuid4>),
+    Uuid7(UuidContainer<Uuid7>),
+    Blob(BlobContainer),
     // special case: all undefined
-    Undefined(usize),
+    Undefined(UndefinedContainer),
 }
 
 impl ColumnValues {
     pub fn get_type(&self) -> Type {
         match self {
-            ColumnValues::Bool(_, _) => Type::Bool,
-            ColumnValues::Float4(_, _) => Type::Float4,
-            ColumnValues::Float8(_, _) => Type::Float8,
-            ColumnValues::Int1(_, _) => Type::Int1,
-            ColumnValues::Int2(_, _) => Type::Int2,
-            ColumnValues::Int4(_, _) => Type::Int4,
-            ColumnValues::Int8(_, _) => Type::Int8,
-            ColumnValues::Int16(_, _) => Type::Int16,
-            ColumnValues::Uint1(_, _) => Type::Uint1,
-            ColumnValues::Uint2(_, _) => Type::Uint2,
-            ColumnValues::Uint4(_, _) => Type::Uint4,
-            ColumnValues::Uint8(_, _) => Type::Uint8,
-            ColumnValues::Uint16(_, _) => Type::Uint16,
-            ColumnValues::Utf8(_, _) => Type::Utf8,
-            ColumnValues::Date(_, _) => Type::Date,
-            ColumnValues::DateTime(_, _) => Type::DateTime,
-            ColumnValues::Time(_, _) => Type::Time,
-            ColumnValues::Interval(_, _) => Type::Interval,
-            ColumnValues::RowId(_, _) => Type::RowId,
-            ColumnValues::Uuid4(_, _) => Type::Uuid4,
-            ColumnValues::Uuid7(_, _) => Type::Uuid7,
-            ColumnValues::Blob(_, _) => Type::Blob,
+            ColumnValues::Bool(_) => Type::Bool,
+            ColumnValues::Float4(_) => Type::Float4,
+            ColumnValues::Float8(_) => Type::Float8,
+            ColumnValues::Int1(_) => Type::Int1,
+            ColumnValues::Int2(_) => Type::Int2,
+            ColumnValues::Int4(_) => Type::Int4,
+            ColumnValues::Int8(_) => Type::Int8,
+            ColumnValues::Int16(_) => Type::Int16,
+            ColumnValues::Uint1(_) => Type::Uint1,
+            ColumnValues::Uint2(_) => Type::Uint2,
+            ColumnValues::Uint4(_) => Type::Uint4,
+            ColumnValues::Uint8(_) => Type::Uint8,
+            ColumnValues::Uint16(_) => Type::Uint16,
+            ColumnValues::Utf8(_) => Type::Utf8,
+            ColumnValues::Date(_) => Type::Date,
+            ColumnValues::DateTime(_) => Type::DateTime,
+            ColumnValues::Time(_) => Type::Time,
+            ColumnValues::Interval(_) => Type::Interval,
+            ColumnValues::RowId(_) => Type::RowId,
+            ColumnValues::Uuid4(_) => Type::Uuid4,
+            ColumnValues::Uuid7(_) => Type::Uuid7,
+            ColumnValues::Blob(_) => Type::Blob,
             ColumnValues::Undefined(_) => Type::Undefined,
         }
     }
@@ -111,28 +113,28 @@ impl ColumnValues {
 impl ColumnValues {
     pub fn bitvec(&self) -> &BitVec {
         match self {
-            ColumnValues::Bool(_, bitvec) => bitvec,
-            ColumnValues::Float4(_, bitvec) => bitvec,
-            ColumnValues::Float8(_, bitvec) => bitvec,
-            ColumnValues::Int1(_, bitvec) => bitvec,
-            ColumnValues::Int2(_, bitvec) => bitvec,
-            ColumnValues::Int4(_, bitvec) => bitvec,
-            ColumnValues::Int8(_, bitvec) => bitvec,
-            ColumnValues::Int16(_, bitvec) => bitvec,
-            ColumnValues::Uint1(_, bitvec) => bitvec,
-            ColumnValues::Uint2(_, bitvec) => bitvec,
-            ColumnValues::Uint4(_, bitvec) => bitvec,
-            ColumnValues::Uint8(_, bitvec) => bitvec,
-            ColumnValues::Uint16(_, bitvec) => bitvec,
-            ColumnValues::Utf8(_, bitvec) => bitvec,
-            ColumnValues::Date(_, bitvec) => bitvec,
-            ColumnValues::DateTime(_, bitvec) => bitvec,
-            ColumnValues::Time(_, bitvec) => bitvec,
-            ColumnValues::Interval(_, bitvec) => bitvec,
-            ColumnValues::RowId(_, bitvec) => bitvec,
-            ColumnValues::Uuid4(_, bitvec) => bitvec,
-            ColumnValues::Uuid7(_, bitvec) => bitvec,
-            ColumnValues::Blob(_, bitvec) => bitvec,
+            ColumnValues::Bool(container) => container.bitvec(),
+            ColumnValues::Float4(container) => container.bitvec(),
+            ColumnValues::Float8(container) => container.bitvec(),
+            ColumnValues::Int1(container) => container.bitvec(),
+            ColumnValues::Int2(container) => container.bitvec(),
+            ColumnValues::Int4(container) => container.bitvec(),
+            ColumnValues::Int8(container) => container.bitvec(),
+            ColumnValues::Int16(container) => container.bitvec(),
+            ColumnValues::Uint1(container) => container.bitvec(),
+            ColumnValues::Uint2(container) => container.bitvec(),
+            ColumnValues::Uint4(container) => container.bitvec(),
+            ColumnValues::Uint8(container) => container.bitvec(),
+            ColumnValues::Uint16(container) => container.bitvec(),
+            ColumnValues::Utf8(container) => container.bitvec(),
+            ColumnValues::Date(container) => container.bitvec(),
+            ColumnValues::DateTime(container) => container.bitvec(),
+            ColumnValues::Time(container) => container.bitvec(),
+            ColumnValues::Interval(container) => container.bitvec(),
+            ColumnValues::RowId(container) => container.bitvec(),
+            ColumnValues::Uuid4(container) => container.bitvec(),
+            ColumnValues::Uuid7(container) => container.bitvec(),
+            ColumnValues::Blob(container) => container.bitvec(),
             ColumnValues::Undefined(_) => unreachable!(),
         }
     }
@@ -169,852 +171,223 @@ impl ColumnValues {
 
     // FIXME wrapping and then later unwrapping a value feels pretty stupid -- FIXME
     pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
-        match self {
-            ColumnValues::Bool(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Bool(v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Float4(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::float4(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Float8(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::float8(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Int1(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Int1(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Int2(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Int2(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Int4(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Int4(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Int8(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Int8(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Int16(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Int16(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Utf8(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Utf8(v.clone()) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Uint1(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Uint1(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Uint2(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Uint2(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Uint4(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Uint4(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Uint8(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Uint8(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Uint16(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Uint16(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Date(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Date(v.clone()) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::DateTime(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::DateTime(v.clone()) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Time(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Time(v.clone()) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Interval(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Interval(v.clone()) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::RowId(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::RowId(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Uuid4(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Uuid4(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Uuid7(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Uuid7(*v) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Blob(values, bitvec) => Box::new(
-                values
-                    .iter()
-                    .zip(bitvec.iter())
-                    .map(|(v, b)| if b { Value::Blob(v.clone()) } else { Value::Undefined })
-                    .into_iter(),
-            ),
-            ColumnValues::Undefined(size) => {
-                Box::new((0..*size).map(|_| Value::Undefined).collect::<Vec<Value>>().into_iter())
-            }
-        }
-    }
-}
-
-impl ColumnValues {
-    pub fn bool(values: impl IntoIterator<Item = bool>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Bool(BitVec::from_slice(&values), BitVec::repeat(len, true))
-    }
-
-    pub fn bool_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Bool(BitVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn bool_with_bitvec(
-        values: impl IntoIterator<Item = bool>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Bool(BitVec::from_slice(&values), bitvec)
-    }
-
-    pub fn float4(values: impl IntoIterator<Item = f32>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Float4(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn float4_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Float4(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn float4_with_bitvec(
-        values: impl IntoIterator<Item = f32>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Float4(CowVec::new(values), bitvec)
-    }
-
-    pub fn float8(values: impl IntoIterator<Item = f64>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Float8(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn float8_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Float8(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn float8_with_bitvec(
-        values: impl IntoIterator<Item = f64>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Float8(CowVec::new(values), bitvec)
-    }
-
-    pub fn int1(values: impl IntoIterator<Item = i8>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Int1(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn int1_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int1(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn int1_with_bitvec(
-        values: impl IntoIterator<Item = i8>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Int1(CowVec::new(values), bitvec)
-    }
-
-    pub fn int2(values: impl IntoIterator<Item = i16>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Int2(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn int2_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int2(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn int2_with_bitvec(
-        values: impl IntoIterator<Item = i16>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Int2(CowVec::new(values), bitvec)
-    }
-
-    pub fn int4(values: impl IntoIterator<Item = i32>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Int4(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn int4_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int4(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn int4_with_bitvec(
-        values: impl IntoIterator<Item = i32>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Int4(CowVec::new(values), bitvec)
-    }
-
-    pub fn int8(values: impl IntoIterator<Item = i64>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Int8(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn int8_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int8(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn int8_with_bitvec(
-        values: impl IntoIterator<Item = i64>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Int8(CowVec::new(values), bitvec)
-    }
-
-    pub fn int16(values: impl IntoIterator<Item = i128>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Int16(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn int16_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Int16(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn int16_with_bitvec(
-        values: impl IntoIterator<Item = i128>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Int16(CowVec::new(values), bitvec)
-    }
-
-    pub fn utf8<'a>(values: impl IntoIterator<Item = String>) -> Self {
-        let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Utf8(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn utf8_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Utf8(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn utf8_with_bitvec<'a>(
-        values: impl IntoIterator<Item = String>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Utf8(CowVec::new(values), bitvec)
-    }
-
-    pub fn uint1(values: impl IntoIterator<Item = u8>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Uint1(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn uint1_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint1(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn uint1_with_bitvec(
-        values: impl IntoIterator<Item = u8>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Uint1(CowVec::new(values), bitvec)
-    }
-
-    pub fn uint2(values: impl IntoIterator<Item = u16>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Uint2(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn uint2_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint2(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn uint2_with_bitvec(
-        values: impl IntoIterator<Item = u16>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Uint2(CowVec::new(values), bitvec)
-    }
-
-    pub fn uint4(values: impl IntoIterator<Item = u32>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Uint4(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn uint4_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint4(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn uint4_with_bitvec(
-        values: impl IntoIterator<Item = u32>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Uint4(CowVec::new(values), bitvec)
-    }
-
-    pub fn uint8(values: impl IntoIterator<Item = u64>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Uint8(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn uint8_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint8(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn uint8_with_bitvec(
-        values: impl IntoIterator<Item = u64>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Uint8(CowVec::new(values), bitvec)
-    }
-
-    pub fn uint16(values: impl IntoIterator<Item = u128>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Uint16(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn uint16_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uint16(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn uint16_with_bitvec(
-        values: impl IntoIterator<Item = u128>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Uint16(CowVec::new(values), bitvec)
-    }
-
-    pub fn date(values: impl IntoIterator<Item = Date>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Date(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn date_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Date(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn date_with_bitvec(
-        values: impl IntoIterator<Item = Date>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Date(CowVec::new(values), bitvec)
-    }
-
-    pub fn datetime(values: impl IntoIterator<Item = DateTime>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::DateTime(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn datetime_with_capacity(capacity: usize) -> Self {
-        ColumnValues::DateTime(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn datetime_with_bitvec(
-        values: impl IntoIterator<Item = DateTime>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::DateTime(CowVec::new(values), bitvec)
-    }
-
-    pub fn time(values: impl IntoIterator<Item = Time>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Time(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn time_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Time(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn time_with_bitvec(
-        values: impl IntoIterator<Item = Time>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Time(CowVec::new(values), bitvec)
-    }
-
-    pub fn interval(values: impl IntoIterator<Item = Interval>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Interval(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn interval_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Interval(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn interval_with_bitvec(
-        values: impl IntoIterator<Item = Interval>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Interval(CowVec::new(values), bitvec)
-    }
-
-    pub fn uuid4(values: impl IntoIterator<Item = Uuid4>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Uuid4(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn uuid4_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uuid4(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn uuid4_with_bitvec(
-        values: impl IntoIterator<Item = Uuid4>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Uuid4(CowVec::new(values), bitvec)
-    }
-
-    pub fn uuid7(values: impl IntoIterator<Item = Uuid7>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Uuid7(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn uuid7_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Uuid7(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn uuid7_with_bitvec(
-        values: impl IntoIterator<Item = Uuid7>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Uuid7(CowVec::new(values), bitvec)
-    }
-
-    pub fn blob(values: impl IntoIterator<Item = Blob>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::Blob(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn blob_with_capacity(capacity: usize) -> Self {
-        ColumnValues::Blob(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn blob_with_bitvec(
-        values: impl IntoIterator<Item = Blob>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::Blob(CowVec::new(values), bitvec)
-    }
-
-    pub fn undefined(len: usize) -> Self {
-        ColumnValues::Undefined(len)
-    }
-}
-
-impl ColumnValues {
-    pub fn from_many(value: Value, row_count: usize) -> Self {
-        match value {
-            Value::Bool(v) => ColumnValues::bool(vec![v; row_count]),
-            Value::Float4(v) => ColumnValues::float4([v.value()]),
-            Value::Float8(v) => ColumnValues::float8([v.value()]),
-            Value::Int1(v) => ColumnValues::int1(vec![v; row_count]),
-            Value::Int2(v) => ColumnValues::int2(vec![v; row_count]),
-            Value::Int4(v) => ColumnValues::int4(vec![v; row_count]),
-            Value::Int8(v) => ColumnValues::int8(vec![v; row_count]),
-            Value::Int16(v) => ColumnValues::int16(vec![v; row_count]),
-            Value::Utf8(v) => ColumnValues::utf8(vec![v; row_count]),
-            Value::Uint1(v) => ColumnValues::uint1(vec![v; row_count]),
-            Value::Uint2(v) => ColumnValues::uint2(vec![v; row_count]),
-            Value::Uint4(v) => ColumnValues::uint4(vec![v; row_count]),
-            Value::Uint8(v) => ColumnValues::uint8(vec![v; row_count]),
-            Value::Uint16(v) => ColumnValues::uint16(vec![v; row_count]),
-            Value::Date(v) => ColumnValues::date(vec![v; row_count]),
-            Value::DateTime(v) => ColumnValues::datetime(vec![v; row_count]),
-            Value::Time(v) => ColumnValues::time(vec![v; row_count]),
-            Value::Interval(v) => ColumnValues::interval(vec![v; row_count]),
-            Value::RowId(v) => ColumnValues::row_id(vec![v; row_count]),
-            Value::Uuid4(v) => ColumnValues::uuid4(vec![v; row_count]),
-            Value::Uuid7(v) => ColumnValues::uuid7(vec![v; row_count]),
-            Value::Blob(v) => ColumnValues::blob(vec![v; row_count]),
-            Value::Undefined => ColumnValues::undefined(row_count),
-        }
-    }
-}
-
-impl From<Value> for ColumnValues {
-    fn from(value: Value) -> Self {
-        Self::from_many(value, 1)
+        todo!()
+        // match self {
+        //     ColumnValues::Bool(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Bool(v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Float4(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::float4(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Float8(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::float8(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Int1(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Int1(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Int2(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Int2(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Int4(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Int4(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Int8(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Int8(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Int16(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Int16(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Utf8(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Utf8(v.clone()) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Uint1(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Uint1(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Uint2(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Uint2(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Uint4(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Uint4(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Uint8(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Uint8(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Uint16(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Uint16(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Date(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Date(v.clone()) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::DateTime(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::DateTime(v.clone()) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Time(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Time(v.clone()) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Interval(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Interval(v.clone()) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::RowId(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::RowId(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Uuid4(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Uuid4(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Uuid7(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Uuid7(*v) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Blob(values, bitvec) => Box::new(
+        //         values
+        //             .iter()
+        //             .zip(bitvec.iter())
+        //             .map(|(v, b)| if b { Value::Blob(v.clone()) } else { Value::Undefined })
+        //             .into_iter(),
+        //     ),
+        //     ColumnValues::Undefined(size) => {
+        //         Box::new((0..*size).map(|_| Value::Undefined).collect::<Vec<Value>>().into_iter())
+        //     }
+        // }
     }
 }
 
 impl ColumnValues {
     pub fn len(&self) -> usize {
         match self {
-            ColumnValues::Bool(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Blob(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Float4(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Float8(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Int1(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Int2(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Int4(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Int8(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Int16(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Utf8(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Uint1(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Uint2(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Uint4(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Uint8(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Uint16(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Date(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::DateTime(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Time(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Interval(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::RowId(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Uuid4(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Uuid7(v, b) => {
-                debug_assert_eq!(v.len(), b.len());
-                v.len()
-            }
-            ColumnValues::Undefined(n) => *n,
+            ColumnValues::Bool(container) => container.len(),
+            ColumnValues::Float4(container) => container.len(),
+            ColumnValues::Float8(container) => container.len(),
+            ColumnValues::Int1(container) => container.len(),
+            ColumnValues::Int2(container) => container.len(),
+            ColumnValues::Int4(container) => container.len(),
+            ColumnValues::Int8(container) => container.len(),
+            ColumnValues::Int16(container) => container.len(),
+            ColumnValues::Uint1(container) => container.len(),
+            ColumnValues::Uint2(container) => container.len(),
+            ColumnValues::Uint4(container) => container.len(),
+            ColumnValues::Uint8(container) => container.len(),
+            ColumnValues::Uint16(container) => container.len(),
+            ColumnValues::Utf8(container) => container.len(),
+            ColumnValues::Date(container) => container.len(),
+            ColumnValues::DateTime(container) => container.len(),
+            ColumnValues::Time(container) => container.len(),
+            ColumnValues::Interval(container) => container.len(),
+            ColumnValues::RowId(container) => container.len(),
+            ColumnValues::Uuid4(container) => container.len(),
+            ColumnValues::Uuid7(container) => container.len(),
+            ColumnValues::Blob(container) => container.len(),
+            ColumnValues::Undefined(container) => container.len(),
         }
     }
 
     pub fn capacity(&self) -> usize {
         match self {
-            ColumnValues::Bool(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Blob(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Float4(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Float8(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Int1(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Int2(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Int4(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Int8(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Int16(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Utf8(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Uint1(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Uint2(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Uint4(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Uint8(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Uint16(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Date(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::DateTime(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Time(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Interval(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::RowId(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Uuid4(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Uuid7(v, b) => {
-                debug_assert!(v.capacity() <= b.capacity());
-                v.capacity()
-            }
-            ColumnValues::Undefined(size) => *size,
-        }
-    }
-}
-
-impl ColumnValues {
-    pub fn row_id(row_ids: impl IntoIterator<Item = RowId>) -> Self {
-        let values = row_ids.into_iter().collect::<Vec<_>>();
-        let len = values.len();
-        ColumnValues::RowId(CowVec::new(values), BitVec::repeat(len, true))
-    }
-
-    pub fn row_id_with_capacity(capacity: usize) -> Self {
-        ColumnValues::RowId(CowVec::with_capacity(capacity), BitVec::with_capacity(capacity))
-    }
-
-    pub fn row_id_with_bitvec(
-        row_ids: impl IntoIterator<Item = RowId>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
-        let values = row_ids.into_iter().collect::<Vec<_>>();
-        let bitvec = bitvec.into();
-        assert_eq!(bitvec.len(), values.len());
-        ColumnValues::RowId(CowVec::new(values), bitvec)
-    }
-
-    pub fn as_row_id(&self) -> &[RowId] {
-        match self {
-            ColumnValues::RowId(values, _) => values,
-            _ => panic!("not a row id column"),
-        }
-    }
-
-    pub fn as_row_id_mut(&mut self) -> &mut CowVec<RowId> {
-        match self {
-            ColumnValues::RowId(values, _) => values,
-            _ => panic!("not a row id column"),
+            ColumnValues::Bool(container) => container.capacity(),
+            ColumnValues::Float4(container) => container.capacity(),
+            ColumnValues::Float8(container) => container.capacity(),
+            ColumnValues::Int1(container) => container.capacity(),
+            ColumnValues::Int2(container) => container.capacity(),
+            ColumnValues::Int4(container) => container.capacity(),
+            ColumnValues::Int8(container) => container.capacity(),
+            ColumnValues::Int16(container) => container.capacity(),
+            ColumnValues::Uint1(container) => container.capacity(),
+            ColumnValues::Uint2(container) => container.capacity(),
+            ColumnValues::Uint4(container) => container.capacity(),
+            ColumnValues::Uint8(container) => container.capacity(),
+            ColumnValues::Uint16(container) => container.capacity(),
+            ColumnValues::Utf8(container) => container.capacity(),
+            ColumnValues::Date(container) => container.capacity(),
+            ColumnValues::DateTime(container) => container.capacity(),
+            ColumnValues::Time(container) => container.capacity(),
+            ColumnValues::Interval(container) => container.capacity(),
+            ColumnValues::RowId(container) => container.capacity(),
+            ColumnValues::Uuid4(container) => container.capacity(),
+            ColumnValues::Uuid7(container) => container.capacity(),
+            ColumnValues::Blob(container) => container.capacity(),
+            ColumnValues::Undefined(container) => container.capacity(),
         }
     }
 }
