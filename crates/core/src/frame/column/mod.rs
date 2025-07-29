@@ -4,15 +4,17 @@
 use crate::Type;
 pub use layout::FrameColumnLayout;
 pub use push::Push;
-pub use values::ColumnValues;
 use serde::{Deserialize, Serialize};
+pub use values::ColumnValues;
 
 mod extend;
 mod filter;
 mod get;
 mod layout;
-pub mod pool;
-mod pooled;
+// pub mod old_pool;
+pub mod container;
+// mod pool; // TODO: Re-enable after container trait refactor
+pub(crate) mod pooled;
 mod push;
 mod qualification;
 mod reorder;

@@ -1,55 +1,109 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! BitVec buffer pools for efficient reuse of bit vector allocations.
-use super::{BufferPool,  PoolConfig, PoolStatistics, PooledBuffer};
+use super::{BufferedPool, PoolConfig, PoolStatistics, PooledBuffer};
 use crate::BitVec;
+use crate::frame::POOL_SIZE_THRESHOLDS;
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::frame::common::PoolBase;
 
-/// Specialized pool for BitVec allocations with size-based bucketing.
 #[derive(Debug)]
 pub struct BitVecPool {
-    base: PoolBase<BitVec>,
+    pools: [RefCell<Vec<BitVec>>; 6],
+    config: PoolConfig,
+    stats: RefCell<PoolStatistics>,
 }
 
 impl BitVecPool {
-    /// Create a new BitVec pool with the given configuration.
     pub fn new(config: PoolConfig) -> Self {
         Self {
-            base: PoolBase::new(config),
+            pools: [
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+            ],
+            config,
+            stats: RefCell::new(PoolStatistics::new()),
         }
     }
 
-    /// Return a BitVec to the appropriate size bucket.
+    fn bucket_for_capacity(&self, capacity: usize) -> usize {
+        for (i, &threshold) in POOL_SIZE_THRESHOLDS.iter().enumerate() {
+            if capacity <= threshold {
+                return i;
+            }
+        }
+        POOL_SIZE_THRESHOLDS.len() - 1
+    }
+
+    fn update_stats(&self, hit: bool) {
+        let mut stats = self.stats.borrow_mut();
+        if hit {
+            stats.hits += 1;
+        } else {
+            stats.misses += 1;
+        }
+        stats.update_hit_rate();
+    }
+
+    fn count(&self) -> usize {
+        let mut total = 0;
+
+        for bucket in &self.pools {
+            total += bucket.try_borrow().map(|v| v.len()).unwrap_or(0);
+        }
+
+        total
+    }
+
+    pub fn clear(&self) {
+        for bucket in &self.pools {
+            bucket.borrow_mut().clear();
+        }
+        *self.stats.borrow_mut() = PoolStatistics::new();
+    }
+
+    fn return_to_bucket(&self, item: BitVec, capacity: usize) {
+        let bucket_idx = self.bucket_for_capacity(capacity);
+
+        // Return to pool if under limit
+        let bucket = &self.pools[bucket_idx];
+        let mut bucket_guard = bucket.borrow_mut();
+        if bucket_guard.len() < self.config.max_buffers_per_bucket {
+            bucket_guard.push(item);
+        }
+        // If over limit, just drop the item (let it be deallocated)
+    }
+
     pub fn return_bitvec(&self, bitvec: BitVec) {
         let capacity = bitvec.capacity();
 
         // Create a cleared BitVec for the pool - use capacity bits, all set to false
         let cleared_bitvec = BitVec::repeat(capacity, false);
-        self.base.return_to_bucket(cleared_bitvec, capacity);
+        self.return_to_bucket(cleared_bitvec, capacity);
     }
 
-    /// Get a BitVec from the appropriate size bucket.
     fn get_from_bucket(&self, capacity: usize) -> Option<BitVec> {
-        let bucket_idx = self.base.bucket_for_capacity(capacity);
+        let bucket_idx = self.bucket_for_capacity(capacity);
 
         // Try the exact bucket first
-        let bucket = &self.base.pools[bucket_idx];
+        let bucket = &self.pools[bucket_idx];
         // Respect max_buffers_per_bucket limit when acquiring
         let mut bucket_guard = bucket.borrow_mut();
-        let available_count = bucket_guard.len().min(self.base.config.max_buffers_per_bucket);
+        let available_count = bucket_guard.len().min(self.config.max_buffers_per_bucket);
         if available_count > 0 {
             return bucket_guard.pop();
         }
         drop(bucket_guard);
 
         // If no suitable BitVec in the exact bucket, try larger buckets
-        for larger_bucket_idx in (bucket_idx + 1)..self.base.pools.len() {
-            let bucket = &self.base.pools[larger_bucket_idx];
+        for larger_bucket_idx in (bucket_idx + 1)..self.pools.len() {
+            let bucket = &self.pools[larger_bucket_idx];
             let mut bucket_guard = bucket.borrow_mut();
-            let available_count = bucket_guard.len().min(self.base.config.max_buffers_per_bucket);
+            let available_count = bucket_guard.len().min(self.config.max_buffers_per_bucket);
             if available_count > 0 {
                 return bucket_guard.pop();
             }
@@ -57,11 +111,10 @@ impl BitVecPool {
         None
     }
 
-    /// Calculate current memory usage across all buckets.
     fn calculate_memory_usage(&self) -> usize {
         let mut total = 0;
 
-        for bucket in &self.base.pools {
+        for bucket in &self.pools {
             if let Ok(bucket_guard) = bucket.try_borrow() {
                 total += bucket_guard.iter().map(|bv| bv.len() / 8).sum::<usize>();
             }
@@ -71,11 +124,11 @@ impl BitVecPool {
     }
 }
 
-impl BufferPool<bool> for BitVecPool {
+impl BufferedPool<bool> for BitVecPool {
     fn acquire(&self, capacity: usize) -> PooledBuffer<bool> {
         // Try to get a BitVec from the pool first
         if let Some(bitvec) = self.get_from_bucket(capacity) {
-            self.base.update_stats(true); // Hit
+            self.update_stats(true); // Hit
 
             // Use the pooled BitVec capacity as hint, but create new Vec<bool>
             let actual_capacity = bitvec.len().max(capacity);
@@ -84,20 +137,20 @@ impl BufferPool<bool> for BitVecPool {
         } else {
             // Allocate a new buffer
             let buffer = Vec::with_capacity(capacity);
-            self.base.update_stats(false); // Miss
+            self.update_stats(false); // Miss
             PooledBuffer::new(buffer, Rc::new(RefCell::new(Wrapper::new(self))))
         }
     }
 
     fn stats(&self) -> PoolStatistics {
-        let mut stats = self.base.stats.borrow_mut();
-        stats.current_buffers = self.base.count();
+        let mut stats = self.stats.borrow_mut();
+        stats.current_buffers = self.count();
         stats.total_memory = self.calculate_memory_usage();
 
         // Calculate buffer size statistics
         let mut sizes = Vec::new();
 
-        for bucket in &self.base.pools {
+        for bucket in &self.pools {
             if let Ok(bucket_guard) = bucket.try_borrow() {
                 sizes.extend(bucket_guard.iter().map(|bv| bv.len()));
             }
@@ -113,10 +166,13 @@ impl BufferPool<bool> for BitVecPool {
     }
 
     fn clear(&self) {
-        self.base.clear();
+        for bucket in &self.pools {
+            bucket.borrow_mut().clear();
+        }
+        *self.stats.borrow_mut() = PoolStatistics::new();
     }
 
-    fn return_buffer(&self, buffer: Vec<bool>) {
+    fn release(&self, buffer: Vec<bool>) {
         // Convert Vec<bool> back to BitVec for returning to pool
         // We'll create a BitVec with the same capacity as the original Vec
         let capacity = buffer.capacity();
@@ -125,22 +181,18 @@ impl BufferPool<bool> for BitVecPool {
     }
 }
 
-/// Specialized pool methods for BitVec operations.
 impl BitVecPool {
-    /// Acquire a BitVec directly (not wrapped in PooledBuffer).
-    /// This is more efficient when working directly with BitVec operations.
     pub fn acquire_bitvec(&self, capacity: usize) -> BitVec {
         if let Some(bitvec) = self.get_from_bucket(capacity) {
-            self.base.update_stats(true);
+            self.update_stats(true);
             if bitvec.len() >= capacity { bitvec } else { BitVec::with_capacity(capacity) }
         } else {
-            self.base.update_stats(false);
+            self.update_stats(false);
             BitVec::with_capacity(capacity)
         }
     }
 }
 
-/// Wrapper to allow the pool to be used as a trait object.
 struct Wrapper {
     pool_ptr: *const BitVecPool,
 }
@@ -155,7 +207,7 @@ impl Wrapper {
     }
 }
 
-impl BufferPool<bool> for Wrapper {
+impl BufferedPool<bool> for Wrapper {
     fn acquire(&self, capacity: usize) -> PooledBuffer<bool> {
         self.pool().acquire(capacity)
     }
@@ -168,8 +220,8 @@ impl BufferPool<bool> for Wrapper {
         self.pool().clear()
     }
 
-    fn return_buffer(&self, buffer: Vec<bool>) {
-        self.pool().return_buffer(buffer);
+    fn release(&self, buffer: Vec<bool>) {
+        self.pool().release(buffer);
     }
 }
 
@@ -181,11 +233,11 @@ mod tests {
     fn test_bitvec_pool_bucket_selection() {
         let pool = BitVecPool::new(PoolConfig::default());
 
-        assert_eq!(pool.base.bucket_for_capacity(8), 0); // Small bucket
-        assert_eq!(pool.base.bucket_for_capacity(32), 1); // Medium bucket
-        assert_eq!(pool.base.bucket_for_capacity(128), 2); // Large bucket
-        assert_eq!(pool.base.bucket_for_capacity(512), 4); // Very large bucket
-        assert_eq!(pool.base.bucket_for_capacity(1024), 5); // Max bucket
+        assert_eq!(pool.bucket_for_capacity(8), 0); // Small bucket
+        assert_eq!(pool.bucket_for_capacity(32), 1); // Medium bucket
+        assert_eq!(pool.bucket_for_capacity(128), 2); // Large bucket
+        assert_eq!(pool.bucket_for_capacity(512), 4); // Very large bucket
+        assert_eq!(pool.bucket_for_capacity(1024), 5); // Max bucket
     }
 
     #[test]

@@ -1,14 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BitVec {
     inner: Arc<BitVecInner>,
+}
+
+impl Default for BitVec {
+    fn default() -> Self {
+        Self { inner: Arc::new(BitVecInner { bits: vec![], len: 0 }) }
+    }
 }
 
 impl From<&BitVec> for BitVec {

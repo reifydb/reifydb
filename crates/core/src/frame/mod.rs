@@ -3,7 +3,7 @@
 
 pub use column::{
     ColumnQualified, ColumnValues, FrameColumn, FrameColumnLayout, FullyQualified, Push,
-    TableQualified, Unqualified, pool::*,
+    TableQualified, Unqualified, pooled::BufferedPools
 };
 pub use frame::Frame;
 pub use layout::FrameLayout;

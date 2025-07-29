@@ -1,50 +1,92 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Numeric buffer pools for efficient reuse of Vec<T> allocations.
-//!
-//! These pools are size-bucketed to maximize reuse while minimizing memory waste.
-
-use super::{BufferPool, PoolConfig, PoolStatistics, PooledBuffer};
-use crate::frame::common::PoolBase;
+use super::{BufferedPool, PoolConfig, PoolStatistics, PooledBuffer};
+use crate::frame::POOL_SIZE_THRESHOLDS;
 use crate::value::IsNumber;
 use std::cell::RefCell;
 use std::mem::size_of;
 use std::rc::Rc;
 
-/// Size-bucketed pool for numeric types (i8, i16, i32, i64, i128, f32, f64, etc.)
 #[derive(Debug)]
 pub struct NumericPool<T>
 where
     T: IsNumber + 'static,
 {
-    base: PoolBase<Vec<T>>,
+    pools: [RefCell<Vec<Vec<T>>>; 6],
+    config: PoolConfig,
+    stats: RefCell<PoolStatistics>,
 }
 
 impl<T> NumericPool<T>
 where
     T: IsNumber + 'static,
 {
-    /// Create a new numeric pool with the given configuration.
     pub fn new(config: PoolConfig) -> Self {
-        Self { base: PoolBase::new(config) }
+        Self {
+            pools: [
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+                RefCell::new(Vec::new()),
+            ],
+            config,
+            stats: RefCell::new(PoolStatistics::new()),
+        }
     }
 
-    /// Return a buffer to the appropriate size bucket.
-    pub fn return_buffer(&self, mut buffer: Vec<T>) {
+    fn bucket_for_capacity(&self, capacity: usize) -> usize {
+        for (i, &threshold) in POOL_SIZE_THRESHOLDS.iter().enumerate() {
+            if capacity <= threshold {
+                return i;
+            }
+        }
+        POOL_SIZE_THRESHOLDS.len() - 1
+    }
+
+    fn update_stats(&self, hit: bool) {
+        let mut stats = self.stats.borrow_mut();
+        if hit {
+            stats.hits += 1;
+        } else {
+            stats.misses += 1;
+        }
+        stats.update_hit_rate();
+    }
+
+    fn count(&self) -> usize {
+        let mut total = 0;
+
+        for bucket in &self.pools {
+            total += bucket.try_borrow().map(|v| v.len()).unwrap_or(0);
+        }
+
+        total
+    }
+
+    pub fn release(&self, mut buffer: Vec<T>) {
         buffer.clear(); // Clear data but keep allocation
         let capacity = buffer.capacity();
-        self.base.return_to_bucket(buffer, capacity);
+        let bucket_idx = self.bucket_for_capacity(capacity);
+
+        // Return to pool if under limit
+        let bucket = &self.pools[bucket_idx];
+        let mut bucket_guard = bucket.borrow_mut();
+        if bucket_guard.len() < self.config.max_buffers_per_bucket {
+            bucket_guard.push(buffer);
+        }
+        // If over limit, just drop the item (let it be deallocated)
     }
 
-    /// Get a buffer from the appropriate size bucket.
     fn get_from_bucket(&self, capacity: usize) -> Option<Vec<T>> {
-        let bucket_idx = self.base.bucket_for_capacity(capacity);
-        let bucket = &self.base.pools[bucket_idx];
+        let bucket_idx = self.bucket_for_capacity(capacity);
+        let bucket = &self.pools[bucket_idx];
 
         // Find a buffer with sufficient capacity
         let mut bucket_guard = bucket.borrow_mut();
-        let available_count = bucket_guard.len().min(self.base.config.max_buffers_per_bucket);
+        let available_count = bucket_guard.len().min(self.config.max_buffers_per_bucket);
 
         for i in (0..available_count).rev() {
             if bucket_guard[i].capacity() >= capacity {
@@ -54,11 +96,10 @@ where
         None
     }
 
-    /// Calculate current memory usage across all buckets.
     fn calculate_memory_usage(&self) -> usize {
         let mut total = 0;
 
-        for bucket in &self.base.pools {
+        for bucket in &self.pools {
             if let Ok(bucket_guard) = bucket.try_borrow() {
                 total += bucket_guard.iter().map(|v| v.capacity() * size_of::<T>()).sum::<usize>();
             }
@@ -68,7 +109,7 @@ where
     }
 }
 
-impl<T> BufferPool<T> for NumericPool<T>
+impl<T> BufferedPool<T> for NumericPool<T>
 where
     T: IsNumber + 'static,
 {
@@ -79,25 +120,25 @@ where
             if buffer.capacity() < capacity {
                 buffer.reserve(capacity - buffer.capacity());
             }
-            self.base.update_stats(true); // Hit
+            self.update_stats(true); // Hit
             PooledBuffer::new(buffer, Rc::new(RefCell::new(Wrapper::new(self))))
         } else {
             // Allocate a new buffer
             let buffer = Vec::with_capacity(capacity);
-            self.base.update_stats(false); // Miss
+            self.update_stats(false); // Miss
             PooledBuffer::new(buffer, Rc::new(RefCell::new(Wrapper::new(self))))
         }
     }
 
     fn stats(&self) -> PoolStatistics {
-        let mut stats = self.base.stats.borrow_mut();
-        stats.current_buffers = self.base.count();
+        let mut stats = self.stats.borrow_mut();
+        stats.current_buffers = self.count();
         stats.total_memory = self.calculate_memory_usage();
 
         // Calculate buffer size statistics
         let mut sizes = Vec::new();
 
-        for bucket in &self.base.pools {
+        for bucket in &self.pools {
             if let Ok(bucket_guard) = bucket.try_borrow() {
                 sizes.extend(bucket_guard.iter().map(|v| v.capacity()));
             }
@@ -113,12 +154,16 @@ where
     }
 
     fn clear(&self) {
-        self.base.clear();
+        for bucket in &self.pools {
+            bucket.borrow_mut().clear();
+        }
+        *self.stats.borrow_mut() = PoolStatistics::new();
+    }
+
+    fn release(&self, _buffer: Vec<T>) {
     }
 }
 
-/// Wrapper to allow the pool to be used as a trait object while maintaining
-/// the ability to return buffers to the concrete pool type.
 struct Wrapper<T>
 where
     T: IsNumber + 'static,
@@ -139,7 +184,7 @@ where
     }
 }
 
-impl<T> BufferPool<T> for Wrapper<T>
+impl<T> BufferedPool<T> for Wrapper<T>
 where
     T: IsNumber + 'static,
 {
@@ -155,8 +200,8 @@ where
         self.pool().clear()
     }
 
-    fn return_buffer(&self, buffer: Vec<T>) {
-        self.pool().return_buffer(buffer);
+    fn release(&self, buffer: Vec<T>) {
+        self.pool().release(buffer);
     }
 }
 

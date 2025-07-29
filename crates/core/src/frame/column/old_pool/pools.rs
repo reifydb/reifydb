@@ -3,7 +3,7 @@
 
 //! Complete buffer pool manager that coordinates all buffer pools.
 
-use super::{PoolConfig, impl_bitvec::BitVecPool, impl_number::NumericPool};
+use super::{PoolConfig, impl_bitvec::BitVecPool, impl_numeric::NumericPool};
 use std::ops::Deref;
 use std::rc::Rc;
 

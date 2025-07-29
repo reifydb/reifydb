@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::RowId;
-use crate::value::Blob;
 use crate::value::uuid::{Uuid4, Uuid7};
+use crate::value::Blob;
+use crate::RowId;
 use crate::{BitVec, CowVec, Type, Value};
 use crate::{Date, DateTime, Interval, Time};
 use serde::{Deserialize, Serialize};
