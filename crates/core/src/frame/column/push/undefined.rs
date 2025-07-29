@@ -8,77 +8,77 @@ use crate::{Date, DateTime, Interval, RowId, Time};
 impl ColumnValues {
     pub fn push_undefined(&mut self) {
         match self {
-            ColumnValues::Bool(values, bitvecity) => {
+            ColumnValues::Bool(values, bitvec) => {
                 values.push(false);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Float4(values, bitvecity) => {
+            ColumnValues::Float4(values, bitvec) => {
                 values.push(0.0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Float8(values, bitvecity) => {
+            ColumnValues::Float8(values, bitvec) => {
                 values.push(0.0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Int1(values, bitvecity) => {
+            ColumnValues::Int1(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Int2(values, bitvecity) => {
+            ColumnValues::Int2(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Int4(values, bitvecity) => {
+            ColumnValues::Int4(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Int8(values, bitvecity) => {
+            ColumnValues::Int8(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Int16(values, bitvecity) => {
+            ColumnValues::Int16(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Utf8(values, bitvecity) => {
+            ColumnValues::Utf8(values, bitvec) => {
                 values.push(String::new());
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Uint1(values, bitvecity) => {
+            ColumnValues::Uint1(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Uint2(values, bitvecity) => {
+            ColumnValues::Uint2(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Uint4(values, bitvecity) => {
+            ColumnValues::Uint4(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Uint8(values, bitvecity) => {
+            ColumnValues::Uint8(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Uint16(values, bitvecity) => {
+            ColumnValues::Uint16(values, bitvec) => {
                 values.push(0);
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Date(values, bitvecity) => {
+            ColumnValues::Date(values, bitvec) => {
                 values.push(Date::default());
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::DateTime(values, bitvecity) => {
+            ColumnValues::DateTime(values, bitvec) => {
                 values.push(DateTime::default());
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Time(values, bitvecity) => {
+            ColumnValues::Time(values, bitvec) => {
                 values.push(Time::default());
-                bitvecity.push(false);
+                bitvec.push(false);
             }
-            ColumnValues::Interval(values, bitvecity) => {
+            ColumnValues::Interval(values, bitvec) => {
                 values.push(Interval::default());
-                bitvecity.push(false);
+                bitvec.push(false);
             }
             ColumnValues::Undefined(len) => {
                 *len += 1;

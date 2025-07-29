@@ -510,8 +510,8 @@ where
     <L as Promote<R>>::Output: SafeAdd,
     ColumnValues: Push<<L as Promote<R>>::Output>,
 {
-    assert_eq!(l.len(), r.len());
-    assert_eq!(lv.len(), rv.len());
+    debug_assert_eq!(l.len(), r.len());
+    debug_assert_eq!(lv.len(), rv.len());
 
     let mut values = ctx.pooled_values(ty, lv.len());
     for i in 0..l.len() {

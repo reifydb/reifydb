@@ -506,6 +506,9 @@ where
     R: IsNumber + Copy,
     <L as Promote<R>>::Output: PartialOrd,
 {
+    debug_assert_eq!(l.len(), r.len());
+    debug_assert_eq!(lv.len(), rv.len());
+
     let mut values = Vec::with_capacity(l.len());
     let mut bitvec = Vec::with_capacity(l.len());
 
@@ -535,6 +538,9 @@ fn compare_temporal<T>(
 where
     T: IsTemporal,
 {
+    debug_assert_eq!(l.len(), r.len());
+    debug_assert_eq!(lv.len(), rv.len());
+
     let mut values = Vec::with_capacity(l.len());
     let mut bitvec = Vec::with_capacity(lv.len());
 
@@ -561,6 +567,10 @@ fn compare_utf8(
     rv: &BitVec,
     span: OwnedSpan,
 ) -> FrameColumn {
+
+    debug_assert_eq!(l.len(), r.len());
+    debug_assert_eq!(lv.len(), rv.len());
+
     let mut values = Vec::with_capacity(l.len());
     let mut bitvec = Vec::with_capacity(lv.len());
 
