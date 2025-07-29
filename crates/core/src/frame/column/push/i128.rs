@@ -84,7 +84,7 @@ impl Push<i128> for ColumnValues {
             },
             ColumnValues::Undefined(len) => {
                 let mut values = vec![0i128; *len];
-                let mut bitvec = BitVec::new(*len, false);
+                let mut bitvec = BitVec::repeat(*len, false);
                 values.push(value);
                 bitvec.push(true);
                 *self = ColumnValues::Int16(CowVec::new(values), bitvec);

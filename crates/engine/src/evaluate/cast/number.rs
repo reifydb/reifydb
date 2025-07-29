@@ -705,7 +705,7 @@ mod tests {
         #[test]
         fn test_invalid_bitmaps_are_undefined() {
             let values = [1i16];
-            let bitvec = BitVec::new(1, false);
+            let bitvec = BitVec::repeat(1, false);
             let ctx = TestCtx::new();
 
             let result = demote_vec::<i16, i8>(

@@ -114,7 +114,7 @@ impl Push<u16> for ColumnValues {
             },
             ColumnValues::Undefined(len) => {
                 let mut values = vec![0u16; *len];
-                let mut bitvec = BitVec::new(*len, false);
+                let mut bitvec = BitVec::repeat(*len, false);
                 values.push(value);
                 bitvec.push(true);
                 *self = ColumnValues::Uint2(CowVec::new(values), bitvec);

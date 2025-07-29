@@ -27,7 +27,7 @@ impl BitVecPool {
         let capacity = bitvec.capacity();
 
         // Create a cleared BitVec for the pool - use capacity bits, all set to false
-        let cleared_bitvec = BitVec::new(capacity, false);
+        let cleared_bitvec = BitVec::repeat(capacity, false);
         self.base.return_to_bucket(cleared_bitvec, capacity);
     }
 
@@ -120,7 +120,7 @@ impl BufferPool<bool> for BitVecPool {
         // Convert Vec<bool> back to BitVec for returning to pool
         // We'll create a BitVec with the same capacity as the original Vec
         let capacity = buffer.capacity();
-        let bitvec = BitVec::new(capacity, false); // Use new() so it has proper length
+        let bitvec = BitVec::repeat(capacity, false); // Use new() so it has proper length
         self.return_bitvec(bitvec);
     }
 }

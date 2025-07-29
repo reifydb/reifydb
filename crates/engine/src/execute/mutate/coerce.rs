@@ -1,7 +1,7 @@
 use crate::evaluate::EvaluationContext;
 use crate::evaluate::cast::cast_column_values;
 use reifydb_core::frame::{BufferedPools, ColumnValues};
-use reifydb_core::{BitVec, BorrowedSpan, ColumnDescriptor, Span, Type, Value};
+use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 
 /// Attempts to coerce a single Value to match the target column type using the existing casting infrastructure
 ///
@@ -37,7 +37,6 @@ pub(crate) fn coerce_value_to_column_type(
         &EvaluationContext {
             target_column: Some(column),
             column_policies,
-            mask: BitVec::new(1, true),
             columns: Vec::new(),
             row_count: 1,
             take: None,

@@ -3,6 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
+use reifydb_core::BitVec;
 use reifydb_core::expression::Expression;
 use reifydb_core::frame::{ColumnValues, FrameLayout};
 use reifydb_core::interface::Rx;
@@ -20,21 +21,20 @@ impl FilterNode {
 
 impl ExecutionPlan for FilterNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame, mut mask }) = self.input.next(ctx, rx)? {
-            let row_count = frame.row_count();
+        while let Some(Batch { mut frame }) = self.input.next(ctx, rx)? {
+            let mut row_count = frame.row_count();
 
-            // Apply filters lazily - stop early if mask becomes empty
+            // Apply each filter expression sequentially
             for filter_expr in &self.expressions {
                 // Early exit if no rows remain
-                if !mask.any() {
+                if row_count == 0 {
                     break;
                 }
 
-                // Create evaluation context with current mask state
+                // Create evaluation context for all current rows
                 let eval_ctx = EvaluationContext {
                     target_column: None,
                     column_policies: Vec::new(),
-                    mask: mask.clone(),
                     columns: frame.columns.clone(),
                     row_count,
                     take: None,
@@ -44,35 +44,28 @@ impl ExecutionPlan for FilterNode {
                 // Evaluate the filter expression
                 let result = evaluate(filter_expr, &eval_ctx)?;
 
-                // Apply the filter result to the mask
-                match result.values() {
+                // Create filter mask from result
+                let filter_mask = match result.values() {
                     ColumnValues::Bool(values, bitvec) => {
-                        // The result only contains values for rows where mask was true
-                        // We need to map these back to the original row indices
-                        let mut result_idx = 0;
+                        let mut mask = BitVec::repeat(row_count, false);
                         for i in 0..row_count {
-                            if i < mask.len() && mask.get(i) {
-                                // This row was visible to the filter evaluation
-                                if result_idx < values.len() && result_idx < bitvec.len() {
-                                    let valid = bitvec.get(result_idx);
-                                    let filter_result = values.get(result_idx);
-                                    mask.set(i, valid & filter_result);
-                                } else {
-                                    // Safety: if result is shorter than expected, exclude this row
-                                    mask.set(i, false);
-                                }
-                                result_idx += 1;
+                            if i < values.len() && i < bitvec.len() {
+                                let valid = bitvec.get(i);
+                                let filter_result = values.get(i);
+                                mask.set(i, valid & filter_result);
                             }
-                            // If mask.get(i) was false, this row stays false (no change needed)
                         }
+                        mask
                     }
                     _ => panic!("filter expression must evaluate to a boolean column"),
-                }
+                };
+
+                frame.filter(&filter_mask)?;
+                row_count = frame.row_count();
             }
 
-            // Only return batch if any rows remain after filtering
-            if mask.any() {
-                return Ok(Some(Batch { frame, mask }));
+            if row_count > 0 {
+                return Ok(Some(Batch { frame }));
             }
         }
         Ok(None)

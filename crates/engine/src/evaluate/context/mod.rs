@@ -12,7 +12,7 @@ mod promote;
 
 use reifydb_core::frame::{BufferedPools, ColumnValues, FrameColumn};
 use reifydb_core::{
-    BitVec, ColumnDescriptor, Type,
+    ColumnDescriptor, Type,
     interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 };
 
@@ -20,7 +20,6 @@ use reifydb_core::{
 pub(crate) struct EvaluationContext<'a> {
     pub(crate) target_column: Option<ColumnDescriptor<'a>>,
     pub(crate) column_policies: Vec<ColumnPolicyKind>,
-    pub(crate) mask: BitVec,
     pub(crate) columns: Vec<FrameColumn>,
     pub(crate) row_count: usize,
     pub(crate) take: Option<usize>,
@@ -33,7 +32,6 @@ impl<'a> EvaluationContext<'a> {
         Self {
             target_column: None,
             column_policies: Vec::new(),
-            mask: BitVec::new(0, false),
             columns: vec![],
             row_count: 1,
             take: None,

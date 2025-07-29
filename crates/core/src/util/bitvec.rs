@@ -56,7 +56,7 @@ impl Iterator for BitVecIter {
 }
 
 impl BitVec {
-    pub fn new(len: usize, value: bool) -> Self {
+    pub fn repeat(len: usize, value: bool) -> Self {
         if value {
             BitVec::from_fn(len, |_| true)
         } else {
@@ -66,7 +66,7 @@ impl BitVec {
     }
 
     pub fn from_slice(slice: &[bool]) -> Self {
-        let mut bv = BitVec::new(slice.len(), false);
+        let mut bv = BitVec::repeat(slice.len(), false);
         for i in 0..slice.len() {
             if slice[i] {
                 bv.set(i, true);
@@ -80,7 +80,7 @@ impl BitVec {
     }
 
     pub fn from_fn(len: usize, mut f: impl FnMut(usize) -> bool) -> Self {
-        let mut bv = BitVec::new(len, false);
+        let mut bv = BitVec::repeat(len, false);
         for i in 0..len {
             if f(i) {
                 bv.set(i, true);
@@ -395,7 +395,7 @@ mod tests {
 
         #[test]
         fn test_all_false() {
-            let bv = BitVec::new(10, false);
+            let bv = BitVec::repeat(10, false);
             assert_eq!(bv.len(), 10);
             for i in 0..10 {
                 assert!(!bv.get(i), "expected bit {} to be false", i);
@@ -404,7 +404,7 @@ mod tests {
 
         #[test]
         fn test_all_true() {
-            let bv = BitVec::new(10, true);
+            let bv = BitVec::repeat(10, true);
             assert_eq!(bv.len(), 10);
             for i in 0..10 {
                 assert!(bv.get(i), "expected bit {} to be true", i);
@@ -417,7 +417,7 @@ mod tests {
 
         #[test]
         fn test_ok() {
-            let mut bv = BitVec::new(16, false);
+            let mut bv = BitVec::repeat(16, false);
             bv.set(3, true);
             bv.set(7, true);
             bv.set(15, true);
@@ -432,14 +432,14 @@ mod tests {
         #[test]
         #[should_panic(expected = "assertion failed")]
         fn test_get_out_of_bounds() {
-            let bv = BitVec::new(8, false);
+            let bv = BitVec::repeat(8, false);
             bv.get(8);
         }
 
         #[test]
         #[should_panic(expected = "assertion failed")]
         fn test_set_out_of_bounds() {
-            let mut bv = BitVec::new(8, false);
+            let mut bv = BitVec::repeat(8, false);
             bv.set(8, true);
         }
     }
@@ -892,13 +892,13 @@ mod tests {
 
         #[test]
         fn test_count_ones_all_false() {
-            let bv = BitVec::new(10, false);
+            let bv = BitVec::repeat(10, false);
             assert_eq!(bv.count_ones(), 0);
         }
 
         #[test]
         fn test_count_ones_all_true() {
-            let bv = BitVec::new(10, true);
+            let bv = BitVec::repeat(10, true);
             assert_eq!(bv.count_ones(), 10);
         }
 
@@ -934,14 +934,14 @@ mod tests {
 
         #[test]
         fn test_any_none_all_false() {
-            let bv = BitVec::new(10, false);
+            let bv = BitVec::repeat(10, false);
             assert!(!bv.any());
             assert!(bv.none());
         }
 
         #[test]
         fn test_any_none_all_true() {
-            let bv = BitVec::new(10, true);
+            let bv = BitVec::repeat(10, true);
             assert!(bv.any());
             assert!(!bv.none());
         }
@@ -1015,13 +1015,13 @@ mod tests {
 
         #[test]
         fn test_display_all_false() {
-            let bv = BitVec::new(5, false);
+            let bv = BitVec::repeat(5, false);
             assert_eq!(format!("{}", bv), "00000");
         }
 
         #[test]
         fn test_display_all_true() {
-            let bv = BitVec::new(5, true);
+            let bv = BitVec::repeat(5, true);
             assert_eq!(format!("{}", bv), "11111");
         }
 
@@ -1045,8 +1045,8 @@ mod tests {
 
         #[test]
         fn test_and_all_true() {
-            let a = BitVec::new(5, true);
-            let b = BitVec::new(5, true);
+            let a = BitVec::repeat(5, true);
+            let b = BitVec::repeat(5, true);
             let result = a.and(&b);
             assert_eq!(result.len(), 5);
             for i in 0..5 {
@@ -1056,8 +1056,8 @@ mod tests {
 
         #[test]
         fn test_and_all_false() {
-            let a = BitVec::new(5, false);
-            let b = BitVec::new(5, false);
+            let a = BitVec::repeat(5, false);
+            let b = BitVec::repeat(5, false);
             let result = a.and(&b);
             assert_eq!(result.len(), 5);
             for i in 0..5 {
@@ -1092,8 +1092,8 @@ mod tests {
         #[test]
         #[should_panic(expected = "assertion `left == right` failed")]
         fn test_and_different_lengths() {
-            let a = BitVec::new(3, true);
-            let b = BitVec::new(5, true);
+            let a = BitVec::repeat(3, true);
+            let b = BitVec::repeat(5, true);
             a.and(&b); // Should panic due to different lengths
         }
     }
@@ -1217,7 +1217,7 @@ mod tests {
 
         #[test]
         fn test_set_cow() {
-            let mut owned = BitVec::new(8, false);
+            let mut owned = BitVec::repeat(8, false);
             owned.set(1, true);
 
             let ptr_before_owned = ptr_of(&owned);
@@ -1235,8 +1235,8 @@ mod tests {
 
         #[test]
         fn test_extend_cow() {
-            let mut owned = BitVec::new(4, false);
-            let extension = BitVec::new(4, true);
+            let mut owned = BitVec::repeat(4, false);
+            let extension = BitVec::repeat(4, true);
 
             let ptr_before_owned = ptr_of(&owned);
             owned.extend(&extension);

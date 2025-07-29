@@ -124,10 +124,10 @@ impl ColumnValues {
             // Promote Undefined
             (ColumnValues::Undefined(l_len), typed_lr) => match typed_lr {
                 ColumnValues::Bool(r, rb) => {
-                    let mut values = BitVec::new(*l_len, false);
+                    let mut values = BitVec::repeat(*l_len, false);
                     values.extend(&r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::Bool(values, bitvec);
@@ -136,7 +136,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0.0f32; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::float4_with_bitvec(values, bitvec);
@@ -145,7 +145,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0.0f64; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::float8_with_bitvec(values, bitvec);
@@ -154,7 +154,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0i8; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::int1_with_bitvec(values, bitvec);
@@ -163,7 +163,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0i16; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::int2_with_bitvec(values, bitvec);
@@ -172,7 +172,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0i32; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::int4_with_bitvec(values, bitvec);
@@ -181,7 +181,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0i64; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::int8_with_bitvec(values, bitvec);
@@ -190,7 +190,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0i128; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::int16_with_bitvec(values, bitvec);
@@ -199,7 +199,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec!["".to_string(); *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::utf8_with_bitvec(values, bitvec);
@@ -208,7 +208,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0u8; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::uint1_with_bitvec(values, bitvec);
@@ -217,7 +217,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0u16; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::uint2_with_bitvec(values, bitvec);
@@ -226,7 +226,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0u32; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::uint4_with_bitvec(values, bitvec);
@@ -235,7 +235,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0u64; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::uint8_with_bitvec(values, bitvec);
@@ -244,7 +244,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![0u128; *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::uint16_with_bitvec(values, bitvec);
@@ -253,7 +253,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![Date::default(); *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::date_with_bitvec(values, bitvec);
@@ -262,7 +262,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![DateTime::default(); *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::datetime_with_bitvec(values, bitvec);
@@ -271,7 +271,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![Time::default(); *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::time_with_bitvec(values, bitvec);
@@ -280,7 +280,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![Interval::default(); *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::interval_with_bitvec(values, bitvec);
@@ -293,7 +293,7 @@ impl ColumnValues {
                         ]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::uuid4_with_bitvec(values, bitvec);
@@ -306,7 +306,7 @@ impl ColumnValues {
                         ]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::uuid7_with_bitvec(values, bitvec);
@@ -315,7 +315,7 @@ impl ColumnValues {
                     let mut values = CowVec::new(vec![Blob::new(vec![]); *l_len]);
                     values.extend(r);
 
-                    let mut bitvec = BitVec::new(*l_len, false);
+                    let mut bitvec = BitVec::repeat(*l_len, false);
                     bitvec.extend(&rb);
 
                     *self = ColumnValues::blob_with_bitvec(values, bitvec);

@@ -4,7 +4,7 @@
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::frame::{ColumnQualified, Frame, FrameColumn, FrameLayout, TableQualified};
 use reifydb_core::interface::Rx;
-use reifydb_core::{BitVec, JoinType, Value};
+use reifydb_core::{JoinType, Value};
 use std::collections::HashSet;
 
 pub(crate) struct NaturalJoinNode {
@@ -30,7 +30,7 @@ impl NaturalJoinNode {
     ) -> crate::Result<Frame> {
         let mut result: Option<Frame> = None;
 
-        while let Some(Batch { frame, mask: _ }) = node.next(ctx, rx)? {
+        while let Some(Batch { frame }) = node.next(ctx, rx)? {
             if let Some(mut acc) = result.take() {
                 acc.append_frame(frame)?;
                 result = Some(acc);
@@ -98,7 +98,6 @@ impl ExecutionPlan for NaturalJoinNode {
             .collect();
 
         let mut result_rows = Vec::new();
-        let mut mask = BitVec::new(0, true);
 
         for i in 0..left_rows {
             let left_row = left_frame.get_row(i);
@@ -121,7 +120,6 @@ impl ExecutionPlan for NaturalJoinNode {
                         }
                     }
                     result_rows.push(combined);
-                    mask.push(true);
                     matched = true;
                 }
             }
@@ -133,7 +131,6 @@ impl ExecutionPlan for NaturalJoinNode {
                 let undefined_count = right_frame.column_count() - excluded_right_cols.len();
                 combined.extend(vec![Value::Undefined; undefined_count]);
                 result_rows.push(combined);
-                mask.push(true);
             }
         }
 
@@ -178,7 +175,7 @@ impl ExecutionPlan for NaturalJoinNode {
             .collect();
 
         self.layout = Some(FrameLayout::from_frame(&frame));
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { frame }))
     }
 
     fn layout(&self) -> Option<FrameLayout> {

@@ -48,7 +48,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame, mask }) = input_node.next(
+        while let Some(Batch { frame }) = input_node.next(
             &Arc::new(ExecutionContext {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
@@ -61,10 +61,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             let row_count = frame.row_count();
 
             for row_idx in 0..row_count {
-                if !mask.get(row_idx) {
-                    continue;
-                }
-
                 let mut row = layout.allocate_row();
 
                 // For each table column, find if it exists in the input frame

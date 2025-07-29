@@ -49,20 +49,11 @@ impl Operator for FilterOperator {
 
 impl FilterOperator {
     fn filter(&self, frame: &Frame) -> crate::Result<Frame> {
-        // if frame.is_empty() {
-        //     return Ok(frame.clone());
-        // }
-        //
-        // Create evaluation context from frame
-        // let eval_ctx = EvaluationContext::from_frame(frame);
-        //
-
         let row_count = frame.row_count();
 
         let eval_ctx = EvaluationContext {
             target_column: None,
             column_policies: Vec::new(),
-            mask: BitVec::new(row_count, true),
             columns: frame.columns.clone(),
             row_count,
             take: None,
@@ -73,7 +64,7 @@ impl FilterOperator {
         let result_column = evaluate(&self.predicate, &eval_ctx)?;
         let mut frame = frame.clone();
 
-        let mut bv = BitVec::new(row_count, true);
+        let mut bv = BitVec::repeat(row_count, true);
 
         match result_column.values() {
             ColumnValues::Bool(values, bitvec) => {
@@ -85,7 +76,7 @@ impl FilterOperator {
             _ => unreachable!(),
         }
 
-        frame.filter(&bv).unwrap();
+        frame.filter(&bv)?;
 
         Ok(frame)
     }

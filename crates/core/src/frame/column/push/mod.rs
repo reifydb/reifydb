@@ -44,7 +44,7 @@ macro_rules! impl_push {
                     }
                     ColumnValues::Undefined(len) => {
                         let mut values = vec![Default::default(); *len];
-                        let mut bitvec = BitVec::new(*len, false);
+                        let mut bitvec = BitVec::repeat(*len, false);
                         values.push(value);
                         bitvec.push(true);
 
@@ -69,8 +69,8 @@ impl Push<bool> for ColumnValues {
                 bitvec.push(true);
             }
             ColumnValues::Undefined(len) => {
-                let mut values = BitVec::new(*len, false);
-                let mut bitvec = BitVec::new(*len, false);
+                let mut values = BitVec::repeat(*len, false);
+                let mut bitvec = BitVec::repeat(*len, false);
                 values.push(value);
                 bitvec.push(true);
 
@@ -101,7 +101,7 @@ impl Push<String> for ColumnValues {
             }
             ColumnValues::Undefined(len) => {
                 let mut values = vec![String::default(); *len];
-                let mut bitvec = BitVec::new(*len, false);
+                let mut bitvec = BitVec::repeat(*len, false);
                 values.push(value);
                 bitvec.push(true);
 

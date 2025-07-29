@@ -59,92 +59,92 @@ impl Frame {
                 let size = *size;
                 let new_data = match layout.value(index) {
                     Type::Bool => ColumnValues::bool_with_bitvec(
-                        CowVec::new(vec![false; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![false; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Float4 => ColumnValues::float4_with_bitvec(
-                        CowVec::new(vec![0.0f32; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0.0f32; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Float8 => ColumnValues::float8_with_bitvec(
-                        CowVec::new(vec![0.0f64; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0.0f64; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Int1 => ColumnValues::int1_with_bitvec(
-                        CowVec::new(vec![0i8; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0i8; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Int2 => ColumnValues::int2_with_bitvec(
-                        CowVec::new(vec![0i16; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0i16; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Int4 => ColumnValues::int4_with_bitvec(
-                        CowVec::new(vec![0i32; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0i32; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Int8 => ColumnValues::int8_with_bitvec(
-                        CowVec::new(vec![0i64; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0i64; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Int16 => ColumnValues::int16_with_bitvec(
-                        CowVec::new(vec![0i128; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0i128; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Utf8 => ColumnValues::utf8_with_bitvec(
-                        CowVec::new(vec![String::new(); size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![String::new(); size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Uint1 => ColumnValues::uint1_with_bitvec(
-                        CowVec::new(vec![0u8; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0u8; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Uint2 => ColumnValues::uint2_with_bitvec(
-                        CowVec::new(vec![0u16; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0u16; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Uint4 => ColumnValues::uint4_with_bitvec(
-                        CowVec::new(vec![0u32; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0u32; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Uint8 => ColumnValues::uint8_with_bitvec(
-                        CowVec::new(vec![0u64; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0u64; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Uint16 => ColumnValues::uint16_with_bitvec(
-                        CowVec::new(vec![0u128; size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![0u128; size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Date => ColumnValues::date_with_bitvec(
-                        CowVec::new(vec![Date::default(); size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![Date::default(); size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::DateTime => ColumnValues::datetime_with_bitvec(
-                        CowVec::new(vec![DateTime::default(); size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![DateTime::default(); size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Time => ColumnValues::time_with_bitvec(
-                        CowVec::new(vec![Time::default(); size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![Time::default(); size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Interval => ColumnValues::interval_with_bitvec(
-                        CowVec::new(vec![Interval::default(); size]),
-                        BitVec::new(size, false),
+						CowVec::new(vec![Interval::default(); size]),
+						BitVec::repeat(size, false),
                     ),
                     Type::Undefined => column.values().clone(),
                     Type::RowId => {
                         ColumnValues::row_id(CowVec::new(vec![Default::default(); size]))
                     }
                     Type::Uuid4 => ColumnValues::uuid4_with_bitvec(
-                        vec![crate::value::uuid::Uuid4::from(uuid::Uuid::nil()); size],
-                        BitVec::new(size, false),
+						vec![crate::value::uuid::Uuid4::from(uuid::Uuid::nil()); size],
+						BitVec::repeat(size, false),
                     ),
                     Type::Uuid7 => ColumnValues::uuid7_with_bitvec(
-                        vec![crate::value::uuid::Uuid7::from(uuid::Uuid::nil()); size],
-                        BitVec::new(size, false),
+						vec![crate::value::uuid::Uuid7::from(uuid::Uuid::nil()); size],
+						BitVec::repeat(size, false),
                     ),
                     Type::Blob => ColumnValues::blob_with_bitvec(
-                        vec![Blob::new(vec![]); size],
-                        BitVec::new(size, false),
+						vec![Blob::new(vec![]); size],
+						BitVec::repeat(size, false),
                     ),
                 };
 

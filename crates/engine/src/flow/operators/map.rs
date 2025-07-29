@@ -1,7 +1,6 @@
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
-use reifydb_core::BitVec;
 use reifydb_core::expression::Expression;
 use reifydb_core::frame::{BufferedPools, Frame};
 
@@ -53,7 +52,6 @@ impl MapOperator {
         let eval_ctx = EvaluationContext {
             target_column: None,
             column_policies: Vec::new(),
-            mask: BitVec::new(row_count, true),
             columns: frame.columns.clone(),
             row_count,
             take: None,

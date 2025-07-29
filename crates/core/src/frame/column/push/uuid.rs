@@ -15,7 +15,7 @@ impl Push<Uuid4> for ColumnValues {
             }
             ColumnValues::Undefined(len) => {
                 let mut values = vec![Uuid4::default(); *len];
-                let mut bitvec = BitVec::new(*len, false);
+                let mut bitvec = BitVec::repeat(*len, false);
                 values.push(value);
                 bitvec.push(true);
                 *self = ColumnValues::uuid4_with_bitvec(values, bitvec);
@@ -39,7 +39,7 @@ impl Push<Uuid7> for ColumnValues {
             }
             ColumnValues::Undefined(len) => {
                 let mut values = vec![Uuid7::default(); *len];
-                let mut bitvec = BitVec::new(*len, false);
+                let mut bitvec = BitVec::repeat(*len, false);
                 values.push(value);
                 bitvec.push(true);
                 *self = ColumnValues::uuid7_with_bitvec(values, bitvec);

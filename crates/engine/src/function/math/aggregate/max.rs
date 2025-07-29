@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::frame::{FrameColumn, ColumnValues};
 use crate::function::AggregateFunction;
-use reifydb_core::{BitVec, Value};
+use reifydb_core::Value;
+use reifydb_core::frame::{ColumnValues, FrameColumn};
 use std::collections::HashMap;
 
 pub struct Max {
@@ -18,17 +18,16 @@ impl Max {
 
 impl AggregateFunction for Max {
     fn aggregate(
-		&mut self,
-		column: &FrameColumn,
-		mask: &BitVec,
-		groups: &HashMap<Vec<Value>, Vec<usize>>,
+        &mut self,
+        column: &FrameColumn,
+        groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
         match &column.values() {
             ColumnValues::Float8(values, bitvec) => {
                 for (group, indices) in groups {
                     let max_val = indices
                         .iter()
-                        .filter(|&&i| bitvec.get(i) && mask.get(i))
+                        .filter(|&&i| bitvec.get(i))
                         .map(|&i| values[i])
                         .max_by(|a, b| a.partial_cmp(b).unwrap());
 

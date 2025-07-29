@@ -9,7 +9,7 @@ use reifydb_core::frame::{
     FrameLayout,
 };
 use reifydb_core::interface::{Rx, Table};
-use reifydb_core::{BitVec, ColumnDescriptor, Value};
+use reifydb_core::{ColumnDescriptor, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -52,7 +52,7 @@ impl ExecutionPlan for InlineDataNode {
             if self.layout.is_none() {
                 self.layout = Some(FrameLayout::from_frame(&frame));
             }
-            return Ok(Some(Batch { frame, mask: BitVec::new(0, true) }));
+            return Ok(Some(Batch { frame }));
         }
 
         // Choose execution path based on whether we have table schema
@@ -99,7 +99,6 @@ impl InlineDataNode {
                     let ctx = EvaluationContext {
                         target_column: None,
                         column_policies: Vec::new(),
-                        mask: BitVec::new(1, true),
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
@@ -129,9 +128,8 @@ impl InlineDataNode {
 
         let frame = Frame::new_with_name(frame_columns, "inline");
         self.layout = Some(FrameLayout::from_frame(&frame));
-        let mask = BitVec::new(frame.row_count(), true);
 
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { frame }))
     }
 
     fn next_with_table_schema(&mut self) -> crate::Result<Option<Batch>> {
@@ -178,7 +176,6 @@ impl InlineDataNode {
                             .iter()
                             .map(|cp| cp.policy.clone())
                             .collect(),
-                        mask: BitVec::new(1, true),
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
@@ -199,8 +196,7 @@ impl InlineDataNode {
         }
 
         let frame = Frame::new_with_name(frame_columns, "inline");
-        let mask = BitVec::new(frame.row_count(), true);
 
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { frame }))
     }
 }

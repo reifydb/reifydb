@@ -7,7 +7,7 @@ use reifydb_core::expression::Expression;
 use reifydb_core::frame::{Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
-use reifydb_core::{BitVec, ColumnDescriptor};
+use reifydb_core::ColumnDescriptor;
 
 pub(crate) struct MapNode {
     input: Box<dyn ExecutionPlan>,
@@ -26,14 +26,12 @@ impl MapNode {
         &self,
         expr: &Expression,
         ctx: &'a ExecutionContext,
-        mask: BitVec,
         columns: Vec<FrameColumn>,
         row_count: usize,
     ) -> EvaluationContext<'a> {
         let mut result = EvaluationContext {
             target_column: None,
             column_policies: Vec::new(),
-            mask,
             columns,
             row_count,
             take: None,
@@ -67,7 +65,7 @@ impl MapNode {
 
 impl ExecutionPlan for MapNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame, mask }) = self.input.next(ctx, rx)? {
+        while let Some(Batch { frame }) = self.input.next(ctx, rx)? {
             let mut columns = Vec::with_capacity(self.expressions.len());
 
             // Only preserve RowId column if the execution context requires it
@@ -75,13 +73,11 @@ impl ExecutionPlan for MapNode {
                 if let Some(row_id_column) =
                     frame.columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
                 {
-                    let mut filtered_row_id_column = row_id_column.clone();
-                    filtered_row_id_column.filter(&mask)?;
-                    columns.push(filtered_row_id_column);
+                    columns.push(row_id_column.clone());
                 }
             }
 
-            let filtered_row_count = mask.count_ones();
+            let row_count = frame.row_count();
 
             for expr in &self.expressions {
                 let column = evaluate(
@@ -89,9 +85,8 @@ impl ExecutionPlan for MapNode {
                     &self.create_evaluation_context(
                         expr,
                         ctx,
-                        mask.clone(),
                         frame.columns.clone(),
-                        filtered_row_count,
+                        row_count,
                     ),
                 )?;
 
@@ -105,8 +100,7 @@ impl ExecutionPlan for MapNode {
 
             let new_frame = Frame::new(columns);
 
-            let new_mask = BitVec::new(new_frame.row_count(), true);
-            return Ok(Some(Batch { frame: new_frame, mask: new_mask }));
+            return Ok(Some(Batch { frame: new_frame }));
         }
         Ok(None)
     }
@@ -141,7 +135,6 @@ impl ExecutionPlan for MapWithoutInputNode {
                 &EvaluationContext {
                     target_column: None,
                     column_policies: Vec::new(),
-                    mask: BitVec::new(1, true),
                     columns: Vec::new(),
                     row_count: 1,
                     take: None,
@@ -154,8 +147,7 @@ impl ExecutionPlan for MapWithoutInputNode {
 
         let frame = Frame::new(columns);
         self.layout = Some(FrameLayout::from_frame(&frame));
-        let row_count = frame.row_count();
-        Ok(Some(Batch { frame, mask: BitVec::new(row_count, true) }))
+        Ok(Some(Batch { frame }))
     }
 
     fn layout(&self) -> Option<FrameLayout> {

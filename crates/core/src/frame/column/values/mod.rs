@@ -335,7 +335,7 @@ impl ColumnValues {
     pub fn bool(values: impl IntoIterator<Item = bool>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Bool(BitVec::from_slice(&values), BitVec::new(len, true))
+        ColumnValues::Bool(BitVec::from_slice(&values), BitVec::repeat(len, true))
     }
 
     pub fn bool_with_capacity(capacity: usize) -> Self {
@@ -355,7 +355,7 @@ impl ColumnValues {
     pub fn float4(values: impl IntoIterator<Item = f32>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Float4(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Float4(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn float4_with_capacity(capacity: usize) -> Self {
@@ -375,7 +375,7 @@ impl ColumnValues {
     pub fn float8(values: impl IntoIterator<Item = f64>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Float8(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Float8(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn float8_with_capacity(capacity: usize) -> Self {
@@ -395,7 +395,7 @@ impl ColumnValues {
     pub fn int1(values: impl IntoIterator<Item = i8>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int1(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Int1(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn int1_with_capacity(capacity: usize) -> Self {
@@ -415,7 +415,7 @@ impl ColumnValues {
     pub fn int2(values: impl IntoIterator<Item = i16>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int2(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Int2(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn int2_with_capacity(capacity: usize) -> Self {
@@ -435,7 +435,7 @@ impl ColumnValues {
     pub fn int4(values: impl IntoIterator<Item = i32>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int4(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Int4(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn int4_with_capacity(capacity: usize) -> Self {
@@ -455,7 +455,7 @@ impl ColumnValues {
     pub fn int8(values: impl IntoIterator<Item = i64>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int8(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Int8(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn int8_with_capacity(capacity: usize) -> Self {
@@ -475,7 +475,7 @@ impl ColumnValues {
     pub fn int16(values: impl IntoIterator<Item = i128>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Int16(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Int16(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn int16_with_capacity(capacity: usize) -> Self {
@@ -495,7 +495,7 @@ impl ColumnValues {
     pub fn utf8<'a>(values: impl IntoIterator<Item = String>) -> Self {
         let values = values.into_iter().map(|c| c.to_string()).collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Utf8(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Utf8(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn utf8_with_capacity(capacity: usize) -> Self {
@@ -515,7 +515,7 @@ impl ColumnValues {
     pub fn uint1(values: impl IntoIterator<Item = u8>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint1(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Uint1(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn uint1_with_capacity(capacity: usize) -> Self {
@@ -535,7 +535,7 @@ impl ColumnValues {
     pub fn uint2(values: impl IntoIterator<Item = u16>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint2(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Uint2(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn uint2_with_capacity(capacity: usize) -> Self {
@@ -555,7 +555,7 @@ impl ColumnValues {
     pub fn uint4(values: impl IntoIterator<Item = u32>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint4(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Uint4(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn uint4_with_capacity(capacity: usize) -> Self {
@@ -575,7 +575,7 @@ impl ColumnValues {
     pub fn uint8(values: impl IntoIterator<Item = u64>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint8(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Uint8(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn uint8_with_capacity(capacity: usize) -> Self {
@@ -595,7 +595,7 @@ impl ColumnValues {
     pub fn uint16(values: impl IntoIterator<Item = u128>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uint16(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Uint16(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn uint16_with_capacity(capacity: usize) -> Self {
@@ -615,7 +615,7 @@ impl ColumnValues {
     pub fn date(values: impl IntoIterator<Item = Date>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Date(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Date(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn date_with_capacity(capacity: usize) -> Self {
@@ -635,7 +635,7 @@ impl ColumnValues {
     pub fn datetime(values: impl IntoIterator<Item = DateTime>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::DateTime(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::DateTime(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn datetime_with_capacity(capacity: usize) -> Self {
@@ -655,7 +655,7 @@ impl ColumnValues {
     pub fn time(values: impl IntoIterator<Item = Time>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Time(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Time(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn time_with_capacity(capacity: usize) -> Self {
@@ -675,7 +675,7 @@ impl ColumnValues {
     pub fn interval(values: impl IntoIterator<Item = Interval>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Interval(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Interval(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn interval_with_capacity(capacity: usize) -> Self {
@@ -695,7 +695,7 @@ impl ColumnValues {
     pub fn uuid4(values: impl IntoIterator<Item = Uuid4>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uuid4(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Uuid4(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn uuid4_with_capacity(capacity: usize) -> Self {
@@ -715,7 +715,7 @@ impl ColumnValues {
     pub fn uuid7(values: impl IntoIterator<Item = Uuid7>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Uuid7(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Uuid7(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn uuid7_with_capacity(capacity: usize) -> Self {
@@ -735,7 +735,7 @@ impl ColumnValues {
     pub fn blob(values: impl IntoIterator<Item = Blob>) -> Self {
         let values = values.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::Blob(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::Blob(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn blob_with_capacity(capacity: usize) -> Self {
@@ -987,7 +987,7 @@ impl ColumnValues {
     pub fn row_id(row_ids: impl IntoIterator<Item = RowId>) -> Self {
         let values = row_ids.into_iter().collect::<Vec<_>>();
         let len = values.len();
-        ColumnValues::RowId(CowVec::new(values), BitVec::new(len, true))
+        ColumnValues::RowId(CowVec::new(values), BitVec::repeat(len, true))
     }
 
     pub fn row_id_with_capacity(capacity: usize) -> Self {

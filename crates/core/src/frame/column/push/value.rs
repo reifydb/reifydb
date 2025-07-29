@@ -13,7 +13,7 @@ impl ColumnValues {
                 ColumnValues::Bool(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![false; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::bool_with_bitvec(values, bitvec);
@@ -25,7 +25,7 @@ impl ColumnValues {
                 ColumnValues::Float4(_, _) => self.push(v.value()),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0.0f32; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v.value());
                     bitvec.push(true);
                     *self = ColumnValues::float4_with_bitvec(values, bitvec);
@@ -37,7 +37,7 @@ impl ColumnValues {
                 ColumnValues::Float8(_, _) => self.push(v.value()),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0.0f64; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v.value());
                     bitvec.push(true);
                     *self = ColumnValues::float8_with_bitvec(values, bitvec);
@@ -49,7 +49,7 @@ impl ColumnValues {
                 ColumnValues::Int1(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::int1_with_bitvec(values, bitvec);
@@ -61,7 +61,7 @@ impl ColumnValues {
                 ColumnValues::Int2(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::int2_with_bitvec(values, bitvec);
@@ -73,7 +73,7 @@ impl ColumnValues {
                 ColumnValues::Int4(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::int4_with_bitvec(values, bitvec);
@@ -85,7 +85,7 @@ impl ColumnValues {
                 ColumnValues::Int8(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::int8_with_bitvec(values, bitvec);
@@ -97,7 +97,7 @@ impl ColumnValues {
                 ColumnValues::Int16(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::int16_with_bitvec(values, bitvec);
@@ -109,7 +109,7 @@ impl ColumnValues {
                 ColumnValues::Utf8(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec!["".to_string(); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::utf8_with_bitvec(values, bitvec);
@@ -121,7 +121,7 @@ impl ColumnValues {
                 ColumnValues::Uint1(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::uint1_with_bitvec(values, bitvec);
@@ -133,7 +133,7 @@ impl ColumnValues {
                 ColumnValues::Uint2(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::uint2_with_bitvec(values, bitvec);
@@ -145,7 +145,7 @@ impl ColumnValues {
                 ColumnValues::Uint4(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::uint4_with_bitvec(values, bitvec);
@@ -157,7 +157,7 @@ impl ColumnValues {
                 ColumnValues::Uint8(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::uint8_with_bitvec(values, bitvec);
@@ -169,7 +169,7 @@ impl ColumnValues {
                 ColumnValues::Uint16(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![0; *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::uint16_with_bitvec(values, bitvec);
@@ -181,7 +181,7 @@ impl ColumnValues {
                 ColumnValues::Date(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![Date::default(); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::date_with_bitvec(values, bitvec);
@@ -193,7 +193,7 @@ impl ColumnValues {
                 ColumnValues::DateTime(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![DateTime::default(); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::datetime_with_bitvec(values, bitvec);
@@ -205,7 +205,7 @@ impl ColumnValues {
                 ColumnValues::Time(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![Time::default(); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::time_with_bitvec(values, bitvec);
@@ -217,7 +217,7 @@ impl ColumnValues {
                 ColumnValues::Interval(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![Interval::default(); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::interval_with_bitvec(values, bitvec);
@@ -229,7 +229,7 @@ impl ColumnValues {
                 ColumnValues::Uuid4(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![Uuid4::default(); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::uuid4_with_bitvec(values, bitvec);
@@ -241,7 +241,7 @@ impl ColumnValues {
                 ColumnValues::Uuid7(_, _) => self.push(v),
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![Uuid7::default(); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::uuid7_with_bitvec(values, bitvec);
@@ -257,7 +257,7 @@ impl ColumnValues {
                 }
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![RowId::default(); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(row_id);
                     bitvec.push(true);
                     *self = ColumnValues::row_id_with_bitvec(values, bitvec);
@@ -271,7 +271,7 @@ impl ColumnValues {
                 }
                 ColumnValues::Undefined(len) => {
                     let mut values = vec![Blob::new(vec![]); *len];
-                    let mut bitvec = BitVec::new(*len, false);
+                    let mut bitvec = BitVec::repeat(*len, false);
                     values.push(v);
                     bitvec.push(true);
                     *self = ColumnValues::blob_with_bitvec(values, bitvec);

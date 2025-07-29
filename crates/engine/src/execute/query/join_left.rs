@@ -8,7 +8,7 @@ use reifydb_core::frame::{
     ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
 };
 use reifydb_core::interface::Rx;
-use reifydb_core::{BitVec, Value};
+use reifydb_core::Value;
 
 pub(crate) struct LeftJoinNode {
     left: Box<dyn ExecutionPlan>,
@@ -33,7 +33,7 @@ impl LeftJoinNode {
     ) -> crate::Result<Frame> {
         let mut result: Option<Frame> = None;
 
-        while let Some(Batch { frame, mask: _ }) = node.next(ctx, rx)? {
+        while let Some(Batch { frame }) = node.next(ctx, rx)? {
             if let Some(mut acc) = result.take() {
                 acc.append_frame(frame)?;
                 result = Some(acc);
@@ -68,7 +68,6 @@ impl ExecutionPlan for LeftJoinNode {
             .collect();
 
         let mut result_rows = Vec::new();
-        let mut mask = BitVec::new(0, true);
 
         for i in 0..left_rows {
             let left_row = left_frame.get_row(i);
@@ -83,7 +82,6 @@ impl ExecutionPlan for LeftJoinNode {
                 let ctx = EvaluationContext {
                     target_column: None,
                     column_policies: Vec::new(),
-                    mask: BitVec::new(1, true),
                     columns: all_values
                         .iter()
                         .cloned()
@@ -115,7 +113,6 @@ impl ExecutionPlan for LeftJoinNode {
                     let mut combined = left_row.clone();
                     combined.extend(right_row.clone());
                     result_rows.push(combined);
-                    mask.push(true);
                     matched = true;
                 }
             }
@@ -124,7 +121,6 @@ impl ExecutionPlan for LeftJoinNode {
                 let mut combined = left_row.clone();
                 combined.extend(vec![Value::Undefined; right_width]);
                 result_rows.push(combined);
-                mask.push(true);
             }
         }
 
@@ -164,7 +160,7 @@ impl ExecutionPlan for LeftJoinNode {
             .collect();
 
         self.layout = Some(FrameLayout::from_frame(&frame));
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { frame }))
     }
 
     fn layout(&self) -> Option<FrameLayout> {

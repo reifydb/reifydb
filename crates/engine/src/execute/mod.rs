@@ -3,7 +3,6 @@
 
 use crate::function::{Functions, math};
 use query::compile::compile;
-use reifydb_core::BitVec;
 use reifydb_core::frame::{
     BufferedPools, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
 };
@@ -27,7 +26,6 @@ pub struct ExecutionContext {
 #[derive(Debug)]
 pub(crate) struct Batch {
     pub frame: Frame,
-    pub mask: BitVec,
 }
 
 pub(crate) trait ExecutionPlan {
@@ -149,8 +147,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 let mut node = compile(plan, rx, context.clone());
                 let mut result: Option<Frame> = None;
 
-                while let Some(Batch { mut frame, mask }) = node.next(&context, rx)? {
-                    frame.filter(&mask)?;
+                while let Some(Batch { frame }) = node.next(&context, rx)? {
                     if let Some(mut result_frame) = result.take() {
                         result_frame.append_frame(frame)?;
                         result = Some(result_frame);

@@ -4,10 +4,10 @@
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;
+use reifydb_core::Value;
+use reifydb_core::expression::Expression;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
-use reifydb_core::{BitVec, Value};
-use reifydb_core::expression::Expression;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -47,7 +47,7 @@ impl ExecutionPlan for AggregateNode {
         let mut seen_groups = HashSet::<Vec<Value>>::new();
         let mut group_key_order: Vec<Vec<Value>> = Vec::new();
 
-        while let Some(Batch { frame, mask }) = self.input.next(ctx, rx)? {
+        while let Some(Batch { frame }) = self.input.next(ctx, rx)? {
             let groups = frame.group_by_view(&keys)?;
 
             for (group_key, _) in &groups {
@@ -59,7 +59,7 @@ impl ExecutionPlan for AggregateNode {
             for projection in &mut projections {
                 if let Projection::Aggregate { function, column, .. } = projection {
                     let column = frame.column(column).unwrap();
-                    function.aggregate(column, &mask, &groups).unwrap();
+                    function.aggregate(column, &groups).unwrap();
                 }
             }
         }
@@ -91,13 +91,10 @@ impl ExecutionPlan for AggregateNode {
             }
         }
 
-        let row_count = group_key_order.len();
-        let mask = BitVec::new(row_count, true);
-
         let frame = Frame::new(result_columns);
         self.layout = Some(FrameLayout::from_frame(&frame));
 
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { frame }))
     }
 
     fn layout(&self) -> Option<FrameLayout> {

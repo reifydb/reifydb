@@ -10,7 +10,7 @@ use reifydb_core::interface::{EncodableKey, Table, TableRowKey};
 use reifydb_core::interface::{EncodableKeyRange, Rx, TableRowKeyRange};
 use reifydb_core::row::Layout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
-use reifydb_core::{BitVec, EncodedKey};
+use reifydb_core::EncodedKey;
 use std::ops::Bound::{Excluded, Included};
 use std::sync::Arc;
 
@@ -99,8 +99,7 @@ impl ExecutionPlan for ScanFrameNode {
             frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);
         }
 
-        let mask = BitVec::new(frame.row_count(), true);
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { frame }))
     }
 
     fn layout(&self) -> Option<FrameLayout> {

@@ -58,7 +58,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 buffered: BufferedPools::default(),
             };
 
-            while let Some(Batch { frame, mask }) = input_node.next(&context, tx)? {
+            while let Some(Batch { frame }) = input_node.next(&context, tx)? {
                 // Find the RowId column - return error if not found
                 let Some(row_id_column) =
                     frame.columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
@@ -81,20 +81,13 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 };
 
                 for row_idx in 0..frame.row_count() {
-                    if !mask.get(row_idx) {
-                        continue;
-                    }
-
-                    // Delete the row using the existing RowId from the frame
                     let row_id = row_ids[row_idx];
                     tx.remove(&TableRowKey { table: table.id, row: row_id }.encode())?;
-
                     deleted_count += 1;
                 }
             }
         } else {
             // Delete entire table - scan all rows and delete them
-
             let range = TableRowKeyRange { table: table.id };
 
             let keys = tx
