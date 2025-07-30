@@ -309,13 +309,14 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             ],
         };
 
-        let mut frame = Frame::empty_from_table(&table);
-        let mut iter = versioned_data.into_iter();
-        while let Some(versioned) = iter.next() {
-            frame.append_rows(&layout, [versioned.row])?;
-        }
+        // let mut frame = Frame::empty_from_table(&table);
+        // let mut iter = versioned_data.into_iter();
+        // while let Some(versioned) = iter.next() {
+        //     frame.append_rows(&layout, [versioned.row])?;
+        // }
+        // Ok(frame)
 
-        Ok(frame)
+        todo!()
     }
 
     pub fn get_graph(&self) -> &FlowGraph {

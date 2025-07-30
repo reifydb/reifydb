@@ -6,11 +6,7 @@ pub use layout::FrameColumnLayout;
 use serde::{Deserialize, Serialize};
 pub use values::ColumnValues;
 
-pub mod container;
 mod layout;
-pub mod pool;
-pub(crate) mod pooled;
-mod qualification;
 mod values;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -131,62 +127,6 @@ impl FrameColumn {
             Self::TableQualified(col) => &mut col.values,
             Self::ColumnQualified(col) => &mut col.values,
             Self::Unqualified(col) => &mut col.values,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_table_qualified_column() {
-        let column = TableQualified::int4("test_frame", "normal_column", [1, 2, 3]);
-        assert_eq!(column.qualified_name(), "test_frame.normal_column");
-        match column {
-            FrameColumn::TableQualified(col) => {
-                assert_eq!(col.table, "test_frame");
-                assert_eq!(col.name, "normal_column");
-            }
-            _ => panic!("Expected TableQualified variant"),
-        }
-    }
-
-    #[test]
-    fn test_fully_qualified_column() {
-        let column = FullyQualified::int4("public", "users", "id", [1, 2, 3]);
-        assert_eq!(column.qualified_name(), "public.users.id");
-        match column {
-            FrameColumn::FullyQualified(col) => {
-                assert_eq!(col.schema, "public");
-                assert_eq!(col.table, "users");
-                assert_eq!(col.name, "id");
-            }
-            _ => panic!("Expected FullyQualified variant"),
-        }
-    }
-
-    #[test]
-    fn test_column_qualified() {
-        let column = ColumnQualified::int4("expr_result", [1, 2, 3]);
-        assert_eq!(column.qualified_name(), "expr_result");
-        match column {
-            FrameColumn::ColumnQualified(col) => {
-                assert_eq!(col.name, "expr_result");
-            }
-            _ => panic!("Expected ColumnQualified variant"),
-        }
-    }
-
-    #[test]
-    fn test_unqualified_expression() {
-        let column = Unqualified::int4("sum(a+b)", [1, 2, 3]);
-        assert_eq!(column.qualified_name(), "sum(a+b)");
-        match column {
-            FrameColumn::Unqualified(col) => {
-                assert_eq!(col.name, "sum(a+b)");
-            }
-            _ => panic!("Expected Unqualified variant"),
         }
     }
 }

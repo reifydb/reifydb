@@ -10,15 +10,13 @@ use crate::ws::{
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, TableQualified};
-use reifydb_core::frame::column::container::{
-    BoolContainer, NumberContainer, StringContainer, TemporalContainer, 
-    UndefinedContainer, RowIdContainer, UuidContainer, BlobContainer
-};
 use reifydb_core::value::Blob;
-use reifydb_core::value::temporal::parse_interval;
-use reifydb_core::{
-    Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err,
+use reifydb_core::value::container::{
+    BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
+    TemporalContainer, UndefinedContainer, UuidContainer,
 };
+use reifydb_core::value::temporal::parse_interval;
+use reifydb_core::{Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};

@@ -3,9 +3,6 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::core::Value;
-use reifydb::core::frame::Frame;
-use reifydb::engine::flow::change::{Change, Diff};
 use reifydb::engine::flow::compile::compile_to_flow;
 use reifydb::engine::flow::engine::FlowEngine;
 use reifydb::engine::flow::node::NodeType;
@@ -138,21 +135,23 @@ create computed view test.adults(name: utf8, age: int1) with {
                 println!("Inserting user: {} (age {})", name, age);
 
                 // Create frame with user data
-                let frame = Frame::from_rows(
-                    &["name", "age"],
-                    &[vec![Value::Utf8(name.to_string()), Value::Int1(age)]],
-                );
+                // let frame = Frame::from_rows(
+                //     &["name", "age"],
+                //     &[vec![Value::Utf8(name.to_string()), Value::Int1(age)]],
+                // );
+                //
+                // // Process the change through the dataflow
+                // engine
+                //     .process_change(
+                //         &source_node_id,
+                //         Diff {
+                //             changes: vec![Change::Insert { frame }],
+                //             metadata: Default::default(),
+                //         },
+                //     )
+                //     .unwrap();
 
-                // Process the change through the dataflow
-                engine
-                    .process_change(
-                        &source_node_id,
-                        Diff {
-                            changes: vec![Change::Insert { frame }],
-                            metadata: Default::default(),
-                        },
-                    )
-                    .unwrap();
+                todo!()
             }
 
             // Query the computed view results

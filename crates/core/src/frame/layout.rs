@@ -6,6 +6,7 @@ use crate::frame::{
     ColumnQualified, ColumnValues, Frame, FrameColumn, FrameColumnLayout, FullyQualified,
     TableQualified, Unqualified,
 };
+use crate::value::container::UndefinedContainer;
 
 #[derive(Debug, Clone)]
 pub struct FrameLayout {
@@ -26,7 +27,10 @@ impl Frame {
         for (i, column_layout) in layout_with_qualification.columns.iter().enumerate() {
             if i < self.columns.len() {
                 let column = &mut self.columns[i];
-                let values = std::mem::replace(column.values_mut(), ColumnValues::undefined(0));
+                let values = std::mem::replace(
+                    column.values_mut(),
+                    ColumnValues::Undefined(UndefinedContainer::new(0)),
+                );
 
                 *column = match (&column_layout.schema, &column_layout.table) {
                     (Some(schema), Some(table)) => FrameColumn::FullyQualified(FullyQualified {

@@ -3,10 +3,16 @@
 
 use crate::grpc::client::grpc;
 use reifydb_core::error::diagnostic::{Diagnostic, DiagnosticColumn};
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn, TableQualified, ColumnQualified};
-use reifydb_core::value::uuid::{Uuid4, Uuid7};
+use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, TableQualified};
 use reifydb_core::value::Blob;
-use reifydb_core::{Date, DateTime, Interval, OwnedSpan, RowId, SpanColumn, SpanLine, Time, Type};
+use reifydb_core::value::container::{
+    BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
+    TemporalContainer, UndefinedContainer, UuidContainer,
+};
+use reifydb_core::value::uuid::{Uuid4, Uuid7};
+use reifydb_core::{
+    BitVec, Date, DateTime, Interval, OwnedSpan, RowId, SpanColumn, SpanLine, Time, Type,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -47,7 +53,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
         let column_values = match data_type {
             Type::Bool => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::BoolValue(b)) => {
@@ -60,12 +66,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::bool_with_bitvec(data, bitvec)
+                ColumnValues::Bool(BoolContainer::new(data, bitvec))
             }
 
             Type::Float4 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Float32Value(f)) => {
@@ -78,12 +84,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::float4_with_bitvec(data, bitvec)
+                ColumnValues::Float4(NumberContainer::new(data, bitvec))
             }
 
             Type::Float8 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Float64Value(f)) => {
@@ -96,12 +102,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::float8_with_bitvec(data, bitvec)
+                ColumnValues::Float8(NumberContainer::new(data, bitvec))
             }
 
             Type::Int1 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int1Value(i)) => {
@@ -114,12 +120,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int1_with_bitvec(data, bitvec)
+                ColumnValues::Int1(NumberContainer::new(data, bitvec))
             }
 
             Type::Int2 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int2Value(i)) => {
@@ -132,12 +138,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int2_with_bitvec(data, bitvec)
+                ColumnValues::Int2(NumberContainer::new(data, bitvec))
             }
 
             Type::Int4 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int4Value(i)) => {
@@ -150,12 +156,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int4_with_bitvec(data, bitvec)
+                ColumnValues::Int4(NumberContainer::new(data, bitvec))
             }
 
             Type::Int8 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int8Value(i)) => {
@@ -168,12 +174,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int8_with_bitvec(data, bitvec)
+                ColumnValues::Int8(NumberContainer::new(data, bitvec))
             }
 
             Type::Int16 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Int16Value(grpc::Int128 { high, low })) => {
@@ -186,12 +192,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::int16_with_bitvec(data, bitvec)
+                ColumnValues::Int16(NumberContainer::new(data, bitvec))
             }
 
             Type::Uint1 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint1Value(i)) => {
@@ -204,12 +210,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint1_with_bitvec(data, bitvec)
+                ColumnValues::Uint1(NumberContainer::new(data, bitvec))
             }
 
             Type::Uint2 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint2Value(i)) => {
@@ -222,12 +228,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint2_with_bitvec(data, bitvec)
+                ColumnValues::Uint2(NumberContainer::new(data, bitvec))
             }
 
             Type::Uint4 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint4Value(i)) => {
@@ -240,12 +246,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint4_with_bitvec(data, bitvec)
+                ColumnValues::Uint4(NumberContainer::new(data, bitvec))
             }
 
             Type::Uint8 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint8Value(i)) => {
@@ -258,12 +264,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint8_with_bitvec(data, bitvec)
+                ColumnValues::Uint8(NumberContainer::new(data, bitvec))
             }
 
             Type::Uint16 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uint16Value(grpc::UInt128 { high, low })) => {
@@ -276,12 +282,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uint16_with_bitvec(data, bitvec)
+                ColumnValues::Uint16(NumberContainer::new(data, bitvec))
             }
 
             Type::Utf8 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::StringValue(s)) => {
@@ -294,12 +300,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::utf8_with_bitvec(data, bitvec)
+                ColumnValues::Utf8(StringContainer::new(data, bitvec))
             }
 
             Type::Date => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::DateValue(grpc::Date { days_since_epoch })) => {
@@ -317,12 +323,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::date_with_bitvec(data, bitvec)
+                ColumnValues::Date(TemporalContainer::new(data, bitvec))
             }
 
             Type::DateTime => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::DatetimeValue(grpc::DateTime { seconds, nanos })) => {
@@ -340,12 +346,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::datetime_with_bitvec(data, bitvec)
+                ColumnValues::DateTime(TemporalContainer::new(data, bitvec))
             }
 
             Type::Time => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::TimeValue(grpc::Time { nanos_since_midnight })) => {
@@ -365,12 +371,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::time_with_bitvec(data, bitvec)
+                ColumnValues::Time(TemporalContainer::new(data, bitvec))
             }
 
             Type::Interval => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::IntervalValue(grpc::Interval { months, days, nanos })) => {
@@ -383,13 +389,13 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::interval_with_bitvec(data, bitvec)
+                ColumnValues::Interval(TemporalContainer::new(data, bitvec))
             }
 
-            Type::Undefined => ColumnValues::undefined(values.len()),
+            Type::Undefined => ColumnValues::Undefined(UndefinedContainer::new(values.len())),
             Type::RowId => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::RowIdValue(row_id)) => {
@@ -402,12 +408,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::row_id_with_bitvec(data, bitvec)
+                ColumnValues::RowId(RowIdContainer::new(data, bitvec))
             }
 
             Type::Uuid4 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uuid4Value(bytes)) => {
@@ -425,12 +431,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uuid4_with_bitvec(data, bitvec)
+                ColumnValues::Uuid4(UuidContainer::new(data, bitvec))
             }
 
             Type::Uuid7 => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::Uuid7Value(bytes)) => {
@@ -448,12 +454,12 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::uuid7_with_bitvec(data, bitvec)
+                ColumnValues::Uuid7(UuidContainer::new(data, bitvec))
             }
 
             Type::Blob => {
                 let mut data = Vec::with_capacity(values.len());
-                let mut bitvec = Vec::with_capacity(values.len());
+                let mut bitvec = BitVec::with_capacity(values.len());
                 for v in values {
                     match v.r#type {
                         Some(GrpcType::BlobValue(bytes)) => {
@@ -466,7 +472,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                         }
                     }
                 }
-                ColumnValues::blob_with_bitvec(data, bitvec)
+                ColumnValues::Blob(BlobContainer::new(data, bitvec))
             }
         };
 

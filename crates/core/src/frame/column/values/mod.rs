@@ -1,20 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod extend;
-mod factory;
-mod filter;
-mod from;
-mod get;
-mod reorder;
-mod slice;
-mod take;
-
-use crate::frame::column::container::*;
+use crate::value::container::{
+    BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
+    TemporalContainer, UndefinedContainer, UuidContainer,
+};
 use crate::value::uuid::{Uuid4, Uuid7};
 use crate::{BitVec, Type, Value};
 use crate::{Date, DateTime, Interval, Time};
 use serde::{Deserialize, Serialize};
+
+mod get;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColumnValues {
@@ -142,6 +138,10 @@ impl ColumnValues {
     pub fn is_uuid(&self) -> bool {
         matches!(self.get_type(), Type::Uuid4 | Type::Uuid7)
     }
+
+    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
+        Box::new((0..self.len()).map(move |i| self.get_value(i)))
+    }
 }
 
 impl ColumnValues {
@@ -171,40 +171,6 @@ impl ColumnValues {
             ColumnValues::Blob(container) => container.bitvec(),
             ColumnValues::Undefined(_) => unreachable!(),
         }
-    }
-}
-
-impl ColumnValues {
-    pub fn with_capacity(target: Type, capacity: usize) -> Self {
-        match target {
-            Type::Bool => Self::bool_with_capacity(capacity),
-            Type::Float4 => Self::float4_with_capacity(capacity),
-            Type::Float8 => Self::float8_with_capacity(capacity),
-            Type::Int1 => Self::int1_with_capacity(capacity),
-            Type::Int2 => Self::int2_with_capacity(capacity),
-            Type::Int4 => Self::int4_with_capacity(capacity),
-            Type::Int8 => Self::int8_with_capacity(capacity),
-            Type::Int16 => Self::int16_with_capacity(capacity),
-            Type::Uint1 => Self::uint1_with_capacity(capacity),
-            Type::Uint2 => Self::uint2_with_capacity(capacity),
-            Type::Uint4 => Self::uint4_with_capacity(capacity),
-            Type::Uint8 => Self::uint8_with_capacity(capacity),
-            Type::Uint16 => Self::uint16_with_capacity(capacity),
-            Type::Utf8 => Self::utf8_with_capacity(capacity),
-            Type::Date => Self::date_with_capacity(capacity),
-            Type::DateTime => Self::datetime_with_capacity(capacity),
-            Type::Time => Self::time_with_capacity(capacity),
-            Type::Interval => Self::interval_with_capacity(capacity),
-            Type::RowId => Self::row_id_with_capacity(capacity),
-            Type::Uuid4 => Self::uuid4_with_capacity(capacity),
-            Type::Uuid7 => Self::uuid7_with_capacity(capacity),
-            Type::Blob => Self::blob_with_capacity(capacity),
-            Type::Undefined => Self::undefined(capacity),
-        }
-    }
-
-    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
-        Box::new((0..self.len()).map(move |i| self.get_value(i)))
     }
 }
 
