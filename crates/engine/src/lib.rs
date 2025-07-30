@@ -8,6 +8,7 @@ pub use reifydb_core::Result;
 pub use engine::Engine;
 pub use execute::{execute_rx, execute_tx};
 
+mod column;
 mod engine;
 mod evaluate;
 pub(crate) mod execute;

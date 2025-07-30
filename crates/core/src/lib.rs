@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
 pub use value::{
-    Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, RowId, Time, Type, Value,
+    Blob, Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, RowId, Time, Type, Uuid4,
+    Uuid7, Value,
 };
 
 pub type Result<T> = std::result::Result<T, Error>;
