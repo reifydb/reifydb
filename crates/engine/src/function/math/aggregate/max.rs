@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::{EngineColumn, EngineColumnData};
 use crate::function::AggregateFunction;
 use reifydb_core::Value;
-use reifydb_core::frame::{ColumnValues, FrameColumn};
 use std::collections::HashMap;
 
 pub struct Max {
@@ -19,11 +19,11 @@ impl Max {
 impl AggregateFunction for Max {
     fn aggregate(
         &mut self,
-        column: &FrameColumn,
+        column: &EngineColumn,
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
-        match &column.values() {
-            ColumnValues::Float8(container) => {
+        match &column.data() {
+            EngineColumnData::Float8(container) => {
                 for (group, indices) in groups {
                     let max_val = indices
                         .iter()
@@ -43,15 +43,15 @@ impl AggregateFunction for Max {
         }
     }
 
-    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnValues)> {
+    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, EngineColumnData)> {
         let mut keys = Vec::with_capacity(self.maxs.len());
-        let mut values = ColumnValues::float8_with_capacity(self.maxs.len());
+        let mut data = EngineColumnData::float8_with_capacity(self.maxs.len());
 
         for (key, max) in std::mem::take(&mut self.maxs) {
             keys.push(key);
-            values.push_value(Value::float8(max));
+            data.push_value(Value::float8(max));
         }
 
-        Ok((keys, values))
+        Ok((keys, data))
     }
 }

@@ -6,7 +6,7 @@ use reifydb_core::BitVec;
 
 impl EngineColumn {
     pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
-        self.values_mut().filter(mask)
+        self.data_mut().filter(mask)
     }
 }
 

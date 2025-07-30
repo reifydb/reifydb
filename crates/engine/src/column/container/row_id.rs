@@ -7,7 +7,7 @@ use std::ops::Deref;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RowIdContainer {
-    values: CowVec<RowId>,
+    data: CowVec<RowId>,
     bitvec: BitVec,
 }
 
@@ -15,61 +15,61 @@ impl Deref for RowIdContainer {
     type Target = [RowId];
 
     fn deref(&self) -> &Self::Target {
-        self.values.as_slice()
+        self.data.as_slice()
     }
 }
 
 impl RowIdContainer {
-    pub fn new(values: Vec<RowId>, bitvec: BitVec) -> Self {
-        debug_assert_eq!(values.len(), bitvec.len());
+    pub fn new(data: Vec<RowId>, bitvec: BitVec) -> Self {
+        debug_assert_eq!(data.len(), bitvec.len());
         Self {
-            values: CowVec::new(values),
+            data: CowVec::new(data),
             bitvec,
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            values: CowVec::with_capacity(capacity),
+            data: CowVec::with_capacity(capacity),
             bitvec: BitVec::with_capacity(capacity),
         }
     }
 
-    pub fn from_vec(values: Vec<RowId>) -> Self {
-        let len = values.len();
+    pub fn from_vec(data: Vec<RowId>) -> Self {
+        let len = data.len();
         Self {
-            values: CowVec::new(values),
+            data: CowVec::new(data),
             bitvec: BitVec::repeat(len, true),
         }
     }
 
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.values.len(), self.bitvec.len());
-        self.values.len()
+        debug_assert_eq!(self.data.len(), self.bitvec.len());
+        self.data.len()
     }
 
     pub fn capacity(&self) -> usize {
-        debug_assert!(self.values.capacity() >= self.bitvec.capacity());
-        self.values.capacity().min(self.bitvec.capacity())
+        debug_assert!(self.data.capacity() >= self.bitvec.capacity());
+        self.data.capacity().min(self.bitvec.capacity())
     }
 
     pub fn is_empty(&self) -> bool {
-        self.values.is_empty()
+        self.data.is_empty()
     }
 
     pub fn push(&mut self, value: RowId) {
-        self.values.push(value);
+        self.data.push(value);
         self.bitvec.push(true);
     }
 
     pub fn push_undefined(&mut self) {
-        self.values.push(RowId::default());
+        self.data.push(RowId::default());
         self.bitvec.push(false);
     }
 
     pub fn get(&self, index: usize) -> Option<&RowId> {
         if index < self.len() && self.is_defined(index) {
-            self.values.get(index)
+            self.data.get(index)
         } else {
             None
         }
@@ -87,17 +87,17 @@ impl RowIdContainer {
         idx < self.len() && self.bitvec.get(idx)
     }
 
-    pub fn values(&self) -> &CowVec<RowId> {
-        &self.values
+    pub fn data(&self) -> &CowVec<RowId> {
+        &self.data
     }
 
-    pub fn values_mut(&mut self) -> &mut CowVec<RowId> {
-        &mut self.values
+    pub fn data_mut(&mut self) -> &mut CowVec<RowId> {
+        &mut self.data
     }
 
     pub fn as_string(&self, index: usize) -> String {
         if index < self.len() && self.is_defined(index) {
-            self.values[index].to_string()
+            self.data[index].to_string()
         } else {
             "Undefined".to_string()
         }
@@ -105,75 +105,75 @@ impl RowIdContainer {
 
     pub fn get_value(&self, index: usize) -> Value {
         if index < self.len() && self.is_defined(index) {
-            Value::RowId(self.values[index])
+            Value::RowId(self.data[index])
         } else {
             Value::Undefined
         }
     }
 
     pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
-        self.values.extend(other.values.iter().cloned());
+        self.data.extend(other.data.iter().cloned());
         self.bitvec.extend(&other.bitvec);
         Ok(())
     }
 
     pub fn extend_from_undefined(&mut self, len: usize) {
-        self.values.extend(std::iter::repeat(RowId::default()).take(len));
+        self.data.extend(std::iter::repeat(RowId::default()).take(len));
         self.bitvec.extend(&BitVec::repeat(len, false));
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Option<RowId>> + '_ {
-        self.values
+        self.data
             .iter()
             .zip(self.bitvec.iter())
             .map(|(&v, defined)| if defined { Some(v) } else { None })
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_values: Vec<RowId> = self.values.iter().skip(start).take(end - start).cloned().collect();
+        let new_data: Vec<RowId> = self.data.iter().skip(start).take(end - start).cloned().collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
         Self {
-            values: CowVec::new(new_values),
+            data: CowVec::new(new_data),
             bitvec: BitVec::from_slice(&new_bitvec),
         }
     }
 
     pub fn filter(&mut self, mask: &BitVec) {
-        let mut new_values = Vec::with_capacity(mask.count_ones());
+        let mut new_data = Vec::with_capacity(mask.count_ones());
         let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
         
         for (i, keep) in mask.iter().enumerate() {
             if keep && i < self.len() {
-                new_values.push(self.values[i].clone());
+                new_data.push(self.data[i].clone());
                 new_bitvec.push(self.bitvec.get(i));
             }
         }
         
-        self.values = CowVec::new(new_values);
+        self.data = CowVec::new(new_data);
         self.bitvec = new_bitvec;
     }
 
     pub fn reorder(&mut self, indices: &[usize]) {
-        let mut new_values = Vec::with_capacity(indices.len());
+        let mut new_data = Vec::with_capacity(indices.len());
         let mut new_bitvec = BitVec::with_capacity(indices.len());
         
         for &idx in indices {
             if idx < self.len() {
-                new_values.push(self.values[idx].clone());
+                new_data.push(self.data[idx].clone());
                 new_bitvec.push(self.bitvec.get(idx));
             } else {
-                new_values.push(RowId::default());
+                new_data.push(RowId::default());
                 new_bitvec.push(false);
             }
         }
         
-        self.values = CowVec::new(new_values);
+        self.data = CowVec::new(new_data);
         self.bitvec = new_bitvec;
     }
 
     pub fn take(&self, num: usize) -> Self {
         Self {
-            values: self.values.take(num),
+            data: self.data.take(num),
             bitvec: self.bitvec.take(num),
         }
     }
@@ -359,14 +359,14 @@ mod tests {
     }
 
     #[test]
-    fn test_values_access() {
+    fn test_data_access() {
         let mut container = RowIdContainer::from_vec(vec![RowId::new(1), RowId::new(2)]);
         
         // Test immutable access
-        assert_eq!(container.values().len(), 2);
+        assert_eq!(container.data().len(), 2);
         
         // Test mutable access
-        container.values_mut().push(RowId::new(3));
+        container.data_mut().push(RowId::new(3));
         container.bitvec_mut().push(true);
         
         assert_eq!(container.len(), 3);

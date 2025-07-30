@@ -1,13 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::frame::Frame;
+use crate::column::layout::FrameLayout;
+use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;
 use reifydb_core::Value;
-use reifydb_rql::expression::Expression;
-use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
+use reifydb_rql::expression::Expression;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -71,21 +73,21 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Group { alias, column, .. } => {
                     let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-                    let mut c = FrameColumn::ColumnQualified(ColumnQualified {
+                    let mut c = EngineColumn::ColumnQualified(ColumnQualified {
                         name: alias.fragment.clone(),
-                        values: ColumnValues::int2_with_capacity(group_key_order.len()),
+                        data: EngineColumnData::int2_with_capacity(group_key_order.len()),
                     });
                     for key in &group_key_order {
-                        c.values_mut().push_value(key[col_idx].clone());
+                        c.data_mut().push_value(key[col_idx].clone());
                     }
                     result_columns.push(c);
                 }
                 Projection::Aggregate { alias, mut function, .. } => {
-                    let (keys_out, mut values) = function.finalize().unwrap();
-                    align_column_values(&group_key_order, &keys_out, &mut values).unwrap();
-                    result_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
+                    let (keys_out, mut data) = function.finalize().unwrap();
+                    align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
+                    result_columns.push(EngineColumn::ColumnQualified(ColumnQualified {
                         name: alias.fragment.clone(),
-                        values,
+                        data,
                     }));
                 }
             }
@@ -145,10 +147,10 @@ fn parse_keys_and_aggregates<'a>(
     Ok((keys, projections))
 }
 
-fn align_column_values(
+fn align_column_data(
     group_key_order: &[Vec<Value>],
     keys: &[Vec<Value>],
-    values: &mut ColumnValues,
+    data: &mut EngineColumnData,
 ) -> crate::Result<()> {
     let mut key_to_index = HashMap::new();
     for (i, key) in keys.iter().enumerate() {
@@ -167,6 +169,6 @@ fn align_column_values(
         })
         .collect::<crate::Result<Vec<_>>>()?;
 
-    values.reorder(&reorder_indices);
+    data.reorder(&reorder_indices);
     Ok(())
 }

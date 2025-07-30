@@ -7,51 +7,51 @@ use std::ops::Deref;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StringContainer {
-    values: CowVec<String>,
+    data: CowVec<String>,
     bitvec: BitVec,
 }
 
 impl StringContainer {
-    pub fn new(values: Vec<String>, bitvec: BitVec) -> Self {
-        debug_assert_eq!(values.len(), bitvec.len());
-        Self { values: CowVec::new(values), bitvec }
+    pub fn new(data: Vec<String>, bitvec: BitVec) -> Self {
+        debug_assert_eq!(data.len(), bitvec.len());
+        Self { data: CowVec::new(data), bitvec }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { values: CowVec::with_capacity(capacity), bitvec: BitVec::with_capacity(capacity) }
+        Self { data: CowVec::with_capacity(capacity), bitvec: BitVec::with_capacity(capacity) }
     }
 
-    pub fn from_vec(values: Vec<String>) -> Self {
-        let len = values.len();
-        Self { values: CowVec::new(values), bitvec: BitVec::repeat(len, true) }
+    pub fn from_vec(data: Vec<String>) -> Self {
+        let len = data.len();
+        Self { data: CowVec::new(data), bitvec: BitVec::repeat(len, true) }
     }
 
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.values.len(), self.bitvec.len());
-        self.values.len()
+        debug_assert_eq!(self.data.len(), self.bitvec.len());
+        self.data.len()
     }
 
     pub fn capacity(&self) -> usize {
-        debug_assert!(self.values.capacity() >= self.bitvec.capacity());
-        self.values.capacity().min(self.bitvec.capacity())
+        debug_assert!(self.data.capacity() >= self.bitvec.capacity());
+        self.data.capacity().min(self.bitvec.capacity())
     }
 
     pub fn is_empty(&self) -> bool {
-        self.values.is_empty()
+        self.data.is_empty()
     }
 
     pub fn push(&mut self, value: String) {
-        self.values.push(value);
+        self.data.push(value);
         self.bitvec.push(true);
     }
 
     pub fn push_undefined(&mut self) {
-        self.values.push(String::new());
+        self.data.push(String::new());
         self.bitvec.push(false);
     }
 
     pub fn get(&self, index: usize) -> Option<&String> {
-        if index < self.len() && self.is_defined(index) { self.values.get(index) } else { None }
+        if index < self.len() && self.is_defined(index) { self.data.get(index) } else { None }
     }
 
     pub fn bitvec(&self) -> &BitVec {
@@ -66,17 +66,17 @@ impl StringContainer {
         idx < self.len() && self.bitvec.get(idx)
     }
 
-    pub fn values(&self) -> &CowVec<String> {
-        &self.values
+    pub fn data(&self) -> &CowVec<String> {
+        &self.data
     }
 
-    pub fn values_mut(&mut self) -> &mut CowVec<String> {
-        &mut self.values
+    pub fn data_mut(&mut self) -> &mut CowVec<String> {
+        &mut self.data
     }
 
     pub fn as_string(&self, index: usize) -> String {
         if index < self.len() && self.is_defined(index) {
-            self.values[index].clone()
+            self.data[index].clone()
         } else {
             "Undefined".to_string()
         }
@@ -84,73 +84,73 @@ impl StringContainer {
 
     pub fn get_value(&self, index: usize) -> Value {
         if index < self.len() && self.is_defined(index) {
-            Value::Utf8(self.values[index].clone())
+            Value::Utf8(self.data[index].clone())
         } else {
             Value::Undefined
         }
     }
 
     pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
-        self.values.extend(other.values.iter().cloned());
+        self.data.extend(other.data.iter().cloned());
         self.bitvec.extend(&other.bitvec);
         Ok(())
     }
 
     pub fn extend_from_undefined(&mut self, len: usize) {
-        self.values.extend(std::iter::repeat(String::new()).take(len));
+        self.data.extend(std::iter::repeat(String::new()).take(len));
         self.bitvec.extend(&BitVec::repeat(len, false));
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Option<&String>> + '_ {
-        self.values
+        self.data
             .iter()
             .zip(self.bitvec.iter())
             .map(|(v, defined)| if defined { Some(v) } else { None })
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_values: Vec<String> =
-            self.values.iter().skip(start).take(end - start).cloned().collect();
+        let new_data: Vec<String> =
+            self.data.iter().skip(start).take(end - start).cloned().collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
-        Self { values: CowVec::new(new_values), bitvec: BitVec::from_slice(&new_bitvec) }
+        Self { data: CowVec::new(new_data), bitvec: BitVec::from_slice(&new_bitvec) }
     }
 
     pub fn filter(&mut self, mask: &BitVec) {
-        let mut new_values = Vec::with_capacity(mask.count_ones());
+        let mut new_data = Vec::with_capacity(mask.count_ones());
         let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
 
         for (i, keep) in mask.iter().enumerate() {
             if keep && i < self.len() {
-                new_values.push(self.values[i].clone());
+                new_data.push(self.data[i].clone());
                 new_bitvec.push(self.bitvec.get(i));
             }
         }
 
-        self.values = CowVec::new(new_values);
+        self.data = CowVec::new(new_data);
         self.bitvec = new_bitvec;
     }
 
     pub fn reorder(&mut self, indices: &[usize]) {
-        let mut new_values = Vec::with_capacity(indices.len());
+        let mut new_data = Vec::with_capacity(indices.len());
         let mut new_bitvec = BitVec::with_capacity(indices.len());
 
         for &idx in indices {
             if idx < self.len() {
-                new_values.push(self.values[idx].clone());
+                new_data.push(self.data[idx].clone());
                 new_bitvec.push(self.bitvec.get(idx));
             } else {
-                new_values.push(String::new());
+                new_data.push(String::new());
                 new_bitvec.push(false);
             }
         }
 
-        self.values = CowVec::new(new_values);
+        self.data = CowVec::new(new_data);
         self.bitvec = new_bitvec;
     }
 
     pub fn take(&self, num: usize) -> Self {
         Self {
-            values: self.values.take(num),
+            data: self.data.take(num),
             bitvec: self.bitvec.take(num),
         }
     }
@@ -160,7 +160,7 @@ impl Deref for StringContainer {
     type Target = [String];
 
     fn deref(&self) -> &Self::Target {
-        self.values.as_slice()
+        self.data.as_slice()
     }
 }
 
@@ -177,9 +177,9 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let values = vec!["hello".to_string(), "world".to_string(), "test".to_string()];
+        let data = vec!["hello".to_string(), "world".to_string(), "test".to_string()];
         let bitvec = BitVec::from_slice(&[true, true, true]);
-        let container = StringContainer::new(values.clone(), bitvec);
+        let container = StringContainer::new(data.clone(), bitvec);
 
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&"hello".to_string()));
@@ -189,8 +189,8 @@ mod tests {
 
     #[test]
     fn test_from_vec() {
-        let values = vec!["foo".to_string(), "bar".to_string(), "baz".to_string()];
-        let container = StringContainer::from_vec(values);
+        let data = vec!["foo".to_string(), "bar".to_string(), "baz".to_string()];
+        let container = StringContainer::from_vec(data);
 
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&"foo".to_string()));
@@ -256,9 +256,9 @@ mod tests {
 
     #[test]
     fn test_iter() {
-        let values = vec!["x".to_string(), "y".to_string(), "z".to_string()];
+        let data = vec!["x".to_string(), "y".to_string(), "z".to_string()];
         let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-        let container = StringContainer::new(values, bitvec);
+        let container = StringContainer::new(data, bitvec);
 
         let collected: Vec<Option<&String>> = container.iter().collect();
         assert_eq!(collected, vec![Some(&"x".to_string()), None, Some(&"z".to_string())]);

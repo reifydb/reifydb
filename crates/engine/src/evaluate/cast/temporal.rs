@@ -1,30 +1,30 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use reifydb_core::frame::ColumnValues;
-use reifydb_core::frame::column::container::StringContainer;
+use crate::column::EngineColumnData;
+use crate::column::container::StringContainer;
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
-use reifydb_core::{error, BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type};
+use reifydb_core::{BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type, error};
 
 pub fn to_temporal(
-    values: &ColumnValues,
+    data: &EngineColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
-    if let ColumnValues::Utf8(container) = values {
+) -> crate::Result<EngineColumnData> {
+    if let EngineColumnData::Utf8(container) = data {
         match target {
             Type::Date => to_date(container, span),
             Type::DateTime => to_datetime(container, span),
             Type::Time => to_time(container, span),
             Type::Interval => to_interval(container, span),
             _ => {
-                let source_type = values.get_type();
+                let source_type = data.get_type();
                 reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
             }
         }
     } else {
-        let source_type = values.get_type();
+        let source_type = data.get_type();
         reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
     }
 }
@@ -35,8 +35,8 @@ macro_rules! impl_to_temporal {
         fn $fn_name(
             container: &StringContainer,
             span: impl Fn() -> OwnedSpan,
-        ) -> crate::Result<ColumnValues> {
-            let mut out = ColumnValues::with_capacity($target_type, container.len());
+        ) -> crate::Result<EngineColumnData> {
+            let mut out = EngineColumnData::with_capacity($target_type, container.len());
             for idx in 0..container.len() {
                 if container.is_defined(idx) {
                     let val = &container[idx];

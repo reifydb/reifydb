@@ -4,10 +4,11 @@
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::SortDirection::{Asc, Desc};
 use reifydb_core::error::diagnostic::query;
-use reifydb_core::frame::{Frame, FrameLayout};
 use reifydb_core::interface::Rx;
 use reifydb_core::{SortKey, error};
 use std::cmp::Ordering::Equal;
+use crate::column::frame::Frame;
+use crate::column::layout::FrameLayout;
 
 pub(crate) struct SortNode {
     input: Box<dyn ExecutionPlan>,
@@ -27,7 +28,7 @@ impl ExecutionPlan for SortNode {
         while let Some(Batch { frame }) = self.input.next(ctx, rx)? {
             if let Some(existing_frame) = &mut frame_opt {
                 for (i, col) in frame.columns.into_iter().enumerate() {
-                    existing_frame.columns[i].values_mut().extend(col.values().clone())?;
+                    existing_frame.columns[i].data_mut().extend(col.data().clone())?;
                 }
             } else {
                 frame_opt = Some(frame);
@@ -50,7 +51,7 @@ impl ExecutionPlan for SortNode {
                         c.qualified_name() == key.column.fragment || c.name() == key.column.fragment
                     })
                     .ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-                Ok::<_, reifydb_core::Error>((col.values().clone(), key.direction.clone()))
+                Ok::<_, reifydb_core::Error>((col.data().clone(), key.direction.clone()))
             })
             .collect::<crate::Result<Vec<_>>>()?;
 
@@ -75,7 +76,7 @@ impl ExecutionPlan for SortNode {
         });
 
         for col in &mut frame.columns {
-            col.values_mut().reorder(&indices);
+            col.data_mut().reorder(&indices);
         }
 
         Ok(Some(Batch { frame }))

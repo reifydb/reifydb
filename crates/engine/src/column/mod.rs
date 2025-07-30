@@ -7,8 +7,13 @@ use serde::{Deserialize, Serialize};
 
 pub mod container;
 mod data;
+pub(crate) mod frame;
+pub(crate) mod layout;
 pub mod pool;
 mod qualification;
+
+mod transform;
+mod view;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EngineColumn {
@@ -64,24 +69,24 @@ impl EngineColumn {
         }
     }
 
-    pub fn with_new_values(&self, values: EngineColumnData) -> EngineColumn {
+    pub fn with_new_data(&self, data: EngineColumnData) -> EngineColumn {
         match self {
             Self::FullyQualified(col) => Self::FullyQualified(FullyQualified {
                 schema: col.schema.clone(),
                 table: col.table.clone(),
                 name: col.name.clone(),
-                data: values,
+                data: data,
             }),
             Self::TableQualified(col) => Self::TableQualified(TableQualified {
                 table: col.table.clone(),
                 name: col.name.clone(),
-                data: values,
+                data: data,
             }),
             Self::ColumnQualified(col) => {
-                Self::ColumnQualified(ColumnQualified { name: col.name.clone(), data: values })
+                Self::ColumnQualified(ColumnQualified { name: col.name.clone(), data: data })
             }
             Self::Unqualified(col) => {
-                Self::Unqualified(Unqualified { name: col.name.clone(), data: values })
+                Self::Unqualified(Unqualified { name: col.name.clone(), data: data })
             }
         }
     }
@@ -113,7 +118,7 @@ impl EngineColumn {
         }
     }
 
-    pub fn values(&self) -> &EngineColumnData {
+    pub fn data(&self) -> &EngineColumnData {
         match self {
             Self::FullyQualified(col) => &col.data,
             Self::TableQualified(col) => &col.data,
@@ -122,7 +127,7 @@ impl EngineColumn {
         }
     }
 
-    pub fn values_mut(&mut self) -> &mut EngineColumnData {
+    pub fn data_mut(&mut self) -> &mut EngineColumnData {
         match self {
             Self::FullyQualified(col) => &mut col.data,
             Self::TableQualified(col) => &mut col.data,

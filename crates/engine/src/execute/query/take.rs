@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::layout::FrameLayout;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::frame::FrameLayout;
 use reifydb_core::interface::Rx;
 
 pub(crate) struct TakeNode {

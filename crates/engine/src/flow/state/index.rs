@@ -8,15 +8,15 @@ pub struct IndexKey(pub Vec<Value>);
 
 impl IndexKey {
     pub fn from_row(row: &Row, columns: &[usize]) -> crate::Result<Self> {
-        let mut values = Vec::new();
+        let mut data = Vec::new();
         for &idx in columns {
-            values.push(row.get(idx)?);
+            data.push(row.get(idx)?);
         }
-        Ok(Self(values))
+        Ok(Self(data))
     }
 
-    pub fn from_values(values: Vec<Value>) -> Self {
-        Self(values)
+    pub fn from_data(data: Vec<Value>) -> Self {
+        Self(data)
     }
 }
 
@@ -51,8 +51,8 @@ impl Index {
         self.data.get(key)
     }
 
-    pub fn get_by_values(&self, values: Vec<Value>) -> Option<&HashSet<usize>> {
-        let key = IndexKey::from_values(values);
+    pub fn get_by_data(&self, data: Vec<Value>) -> Option<&HashSet<usize>> {
+        let key = IndexKey::from_data(data);
         self.lookup(&key)
     }
 

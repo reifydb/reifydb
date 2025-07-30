@@ -10,7 +10,7 @@ mod convert;
 mod demote;
 mod promote;
 
-use reifydb_core::frame::{BufferedPools, ColumnValues, FrameColumn};
+use crate::column::{EngineColumn, EngineColumnData};
 use reifydb_core::{
     ColumnDescriptor, Type,
     interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
@@ -20,10 +20,9 @@ use reifydb_core::{
 pub(crate) struct EvaluationContext<'a> {
     pub(crate) target_column: Option<ColumnDescriptor<'a>>,
     pub(crate) column_policies: Vec<ColumnPolicyKind>,
-    pub(crate) columns: Vec<FrameColumn>,
+    pub(crate) columns: Vec<EngineColumn>,
     pub(crate) row_count: usize,
     pub(crate) take: Option<usize>,
-    pub(crate) buffered: BufferedPools,
 }
 
 impl<'a> EvaluationContext<'a> {
@@ -35,7 +34,6 @@ impl<'a> EvaluationContext<'a> {
             columns: vec![],
             row_count: 1,
             take: None,
-            buffered: BufferedPools::default(),
         }
     }
 
@@ -49,7 +47,7 @@ impl<'a> EvaluationContext<'a> {
     }
 
     #[inline]
-    pub fn pooled_values(&self, target: Type, capacity: usize) -> ColumnValues {
-        ColumnValues::new_pooled(target, capacity, &self.buffered)
+    pub fn pooled(&self, target: Type, capacity: usize) -> EngineColumnData {
+        EngineColumnData::with_capacity(target, capacity)
     }
 }

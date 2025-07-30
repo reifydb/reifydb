@@ -16,7 +16,7 @@ pub struct NumberContainer<T>
 where
     T: IsNumber,
 {
-    values: CowVec<T>,
+    data: CowVec<T>,
     bitvec: BitVec,
 }
 
@@ -27,7 +27,7 @@ where
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
-        self.values.as_slice()
+        self.data.as_slice()
     }
 }
 
@@ -35,46 +35,46 @@ impl<T> NumberContainer<T>
 where
     T: IsNumber + Clone + Debug + Default,
 {
-    pub fn new(values: Vec<T>, bitvec: BitVec) -> Self {
-        debug_assert_eq!(values.len(), bitvec.len());
-        Self { values: CowVec::new(values), bitvec }
+    pub fn new(data: Vec<T>, bitvec: BitVec) -> Self {
+        debug_assert_eq!(data.len(), bitvec.len());
+        Self { data: CowVec::new(data), bitvec }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { values: CowVec::with_capacity(capacity), bitvec: BitVec::with_capacity(capacity) }
+        Self { data: CowVec::with_capacity(capacity), bitvec: BitVec::with_capacity(capacity) }
     }
 
-    pub fn from_vec(values: Vec<T>) -> Self {
-        let len = values.len();
-        Self { values: CowVec::new(values), bitvec: BitVec::repeat(len, true) }
+    pub fn from_vec(data: Vec<T>) -> Self {
+        let len = data.len();
+        Self { data: CowVec::new(data), bitvec: BitVec::repeat(len, true) }
     }
 
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.values.len(), self.bitvec.len());
-        self.values.len()
+        debug_assert_eq!(self.data.len(), self.bitvec.len());
+        self.data.len()
     }
 
     pub fn capacity(&self) -> usize {
-        debug_assert!(self.values.capacity() >= self.bitvec.capacity());
-        self.values.capacity().min(self.bitvec.capacity())
+        debug_assert!(self.data.capacity() >= self.bitvec.capacity());
+        self.data.capacity().min(self.bitvec.capacity())
     }
 
     pub fn is_empty(&self) -> bool {
-        self.values.is_empty()
+        self.data.is_empty()
     }
 
     pub fn push(&mut self, value: T) {
-        self.values.push(value);
+        self.data.push(value);
         self.bitvec.push(true);
     }
 
     pub fn push_undefined(&mut self) {
-        self.values.push(T::default());
+        self.data.push(T::default());
         self.bitvec.push(false);
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
-        if index < self.len() && self.is_defined(index) { self.values.get(index) } else { None }
+        if index < self.len() && self.is_defined(index) { self.data.get(index) } else { None }
     }
 
     pub fn bitvec(&self) -> &BitVec {
@@ -89,17 +89,17 @@ where
         idx < self.len() && self.bitvec.get(idx)
     }
 
-    pub fn values(&self) -> &CowVec<T> {
-        &self.values
+    pub fn data(&self) -> &CowVec<T> {
+        &self.data
     }
 
-    pub fn values_mut(&mut self) -> &mut CowVec<T> {
-        &mut self.values
+    pub fn data_mut(&mut self) -> &mut CowVec<T> {
+        &mut self.data
     }
 
     pub fn as_string(&self, index: usize) -> String {
         if index < self.len() && self.is_defined(index) {
-            self.values[index].to_string()
+            self.data[index].to_string()
         } else {
             "Undefined".to_string()
         }
@@ -110,7 +110,7 @@ where
         T: 'static,
     {
         if index < self.len() && self.is_defined(index) {
-            let value = self.values[index];
+            let value = self.data[index];
 
             if TypeId::of::<T>() == TypeId::of::<f32>() {
                 let f_val = unsafe { transmute_copy::<T, f32>(&value) };
@@ -157,13 +157,13 @@ where
     }
 
     pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
-        self.values.extend(other.values.iter().cloned());
+        self.data.extend(other.data.iter().cloned());
         self.bitvec.extend(&other.bitvec);
         Ok(())
     }
 
     pub fn extend_from_undefined(&mut self, len: usize) {
-        self.values.extend(std::iter::repeat(T::default()).take(len));
+        self.data.extend(std::iter::repeat(T::default()).take(len));
         self.bitvec.extend(&BitVec::repeat(len, false));
     }
 
@@ -171,67 +171,67 @@ where
     where
         T: Copy,
     {
-        self.values
+        self.data
             .iter()
             .zip(self.bitvec.iter())
             .map(|(&v, defined)| if defined { Some(v) } else { None })
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_values: Vec<T> =
-            self.values.iter().skip(start).take(end - start).cloned().collect();
+        let new_data: Vec<T> =
+            self.data.iter().skip(start).take(end - start).cloned().collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
-        Self { values: CowVec::new(new_values), bitvec: BitVec::from_slice(&new_bitvec) }
+        Self { data: CowVec::new(new_data), bitvec: BitVec::from_slice(&new_bitvec) }
     }
 
     pub fn filter(&mut self, mask: &BitVec) {
-        let mut new_values = Vec::with_capacity(mask.count_ones());
+        let mut new_data = Vec::with_capacity(mask.count_ones());
         let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
 
         for (i, keep) in mask.iter().enumerate() {
             if keep && i < self.len() {
-                new_values.push(self.values[i].clone());
+                new_data.push(self.data[i].clone());
                 new_bitvec.push(self.bitvec.get(i));
             }
         }
 
-        self.values = CowVec::new(new_values);
+        self.data = CowVec::new(new_data);
         self.bitvec = new_bitvec;
     }
 
     pub fn reorder(&mut self, indices: &[usize]) {
-        let mut new_values = Vec::with_capacity(indices.len());
+        let mut new_data = Vec::with_capacity(indices.len());
         let mut new_bitvec = BitVec::with_capacity(indices.len());
 
         for &idx in indices {
             if idx < self.len() {
-                new_values.push(self.values[idx].clone());
+                new_data.push(self.data[idx].clone());
                 new_bitvec.push(self.bitvec.get(idx));
             } else {
-                new_values.push(T::default());
+                new_data.push(T::default());
                 new_bitvec.push(false);
             }
         }
 
-        self.values = CowVec::new(new_values);
+        self.data = CowVec::new(new_data);
         self.bitvec = new_bitvec;
     }
 
     pub fn push_with_convert<U>(&mut self, value: U, converter: impl FnOnce(U) -> Option<T>) {
         match converter(value) {
             Some(v) => {
-                self.values.push(v);
+                self.data.push(v);
                 self.bitvec.push(true);
             }
             None => {
-                self.values.push(T::default());
+                self.data.push(T::default());
                 self.bitvec.push(false);
             }
         }
     }
 
     pub fn take(&self, num: usize) -> Self {
-        Self { values: self.values.take(num), bitvec: self.bitvec.take(num) }
+        Self { data: self.data.take(num), bitvec: self.bitvec.take(num) }
     }
 }
 
@@ -242,9 +242,9 @@ mod tests {
 
     #[test]
     fn test_new_i32() {
-        let values = vec![1, 2, 3];
+        let data = vec![1, 2, 3];
         let bitvec = BitVec::from_slice(&[true, true, true]);
-        let container = NumberContainer::new(values.clone(), bitvec);
+        let container = NumberContainer::new(data.clone(), bitvec);
 
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&1));
@@ -254,8 +254,8 @@ mod tests {
 
     #[test]
     fn test_from_vec_f64() {
-        let values = vec![1.1, 2.2, 3.3];
-        let container = NumberContainer::from_vec(values);
+        let data = vec![1.1, 2.2, 3.3];
+        let container = NumberContainer::from_vec(data);
 
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&1.1));
@@ -322,9 +322,9 @@ mod tests {
 
     #[test]
     fn test_iter_u8() {
-        let values = vec![1u8, 2, 3];
+        let data = vec![1u8, 2, 3];
         let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-        let container = NumberContainer::new(values, bitvec);
+        let container = NumberContainer::new(data, bitvec);
 
         let collected: Vec<Option<u8>> = container.iter().collect();
         assert_eq!(collected, vec![Some(1), None, Some(3)]);
@@ -387,14 +387,14 @@ mod tests {
     }
 
     #[test]
-    fn test_values_access() {
+    fn test_data_access() {
         let mut container = NumberContainer::from_vec(vec![1i32, 2, 3]);
 
         // Test immutable access
-        assert_eq!(container.values().len(), 3);
+        assert_eq!(container.data().len(), 3);
 
         // Test mutable access
-        container.values_mut().push(4);
+        container.data_mut().push(4);
         container.bitvec_mut().push(true);
 
         assert_eq!(container.len(), 4);

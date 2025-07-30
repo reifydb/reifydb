@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::{ColumnQualified, EngineColumn, EngineColumnData, TableQualified};
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_rql::expression::Expression;
-use reifydb_core::frame::{
-    ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
-};
-use reifydb_core::interface::Rx;
 use reifydb_core::Value;
+use reifydb_core::interface::Rx;
+use reifydb_rql::expression::Expression;
+use crate::column::frame::Frame;
+use crate::column::layout::FrameLayout;
 
 pub(crate) struct InnerJoinNode {
     left: Box<dyn ExecutionPlan>,
@@ -74,36 +74,35 @@ impl ExecutionPlan for InnerJoinNode {
             for j in 0..right_rows {
                 let right_row = right_frame.get_row(j);
 
-                let all_values =
+                let all_data =
                     left_row.iter().cloned().chain(right_row.iter().cloned()).collect::<Vec<_>>();
 
                 let ctx = EvaluationContext {
                     target_column: None,
                     column_policies: Vec::new(),
-                    columns: all_values
+                    columns: all_data
                         .iter()
                         .cloned()
                         .zip(left_frame.columns.iter().chain(&right_frame.columns))
                         .map(|(v, col)| match col.table() {
-                            Some(table) => FrameColumn::TableQualified(TableQualified {
+                            Some(table) => EngineColumn::TableQualified(TableQualified {
                                 table: table.to_string(),
                                 name: col.name().to_string(),
-                                values: ColumnValues::from(v),
+                                data: EngineColumnData::from(v),
                             }),
-                            None => FrameColumn::ColumnQualified(ColumnQualified {
+                            None => EngineColumn::ColumnQualified(ColumnQualified {
                                 name: col.name().to_string(),
-                                values: ColumnValues::from(v),
+                                data: EngineColumnData::from(v),
                             }),
                         })
                         .collect(),
                     row_count: 1,
                     take: Some(1),
-                    buffered: ctx.buffered.clone(),
                 };
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {
                     let col = evaluate(cond, &ctx).unwrap();
-                    matches!(col.values().get_value(0), Value::Bool(true)) && acc
+                    matches!(col.data().get_value(0), Value::Bool(true)) && acc
                 });
 
                 if all_true {
@@ -124,14 +123,14 @@ impl ExecutionPlan for InnerJoinNode {
         for (i, col_meta) in column_metadata.iter().enumerate() {
             let old_column = &frame.columns[i];
             frame.columns[i] = match col_meta.table() {
-                Some(table) => FrameColumn::TableQualified(TableQualified {
+                Some(table) => EngineColumn::TableQualified(TableQualified {
                     table: table.to_string(),
                     name: col_meta.name().to_string(),
-                    values: old_column.values().clone(),
+                    data: old_column.data().clone(),
                 }),
-                None => FrameColumn::ColumnQualified(ColumnQualified {
+                None => EngineColumn::ColumnQualified(ColumnQualified {
                     name: col_meta.name().to_string(),
-                    values: old_column.values().clone(),
+                    data: old_column.data().clone(),
                 }),
             };
         }

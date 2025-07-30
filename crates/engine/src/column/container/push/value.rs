@@ -354,7 +354,7 @@ mod tests {
         let EngineColumnData::Bool(container) = col else {
             panic!("Expected Bool");
         };
-        assert_eq!(container.values().to_vec(), vec![true, false]);
+        assert_eq!(container.data().to_vec(), vec![true, false]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -365,7 +365,7 @@ mod tests {
         let EngineColumnData::Bool(container) = col else {
             panic!("Expected Bool");
         };
-        assert_eq!(container.values().to_vec(), vec![true, false]);
+        assert_eq!(container.data().to_vec(), vec![true, false]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -376,7 +376,7 @@ mod tests {
         let EngineColumnData::Bool(container) = col else {
             panic!("Expected Bool");
         };
-        assert_eq!(container.values().to_vec(), vec![false, false, true]);
+        assert_eq!(container.data().to_vec(), vec![false, false, true]);
         assert_eq!(container.bitvec().to_vec(), vec![false, false, true]);
     }
 
@@ -387,7 +387,7 @@ mod tests {
         let EngineColumnData::Float4(container) = col else {
             panic!("Expected Float4");
         };
-        assert_eq!(container.values().as_slice(), &[1.0, 2.0]);
+        assert_eq!(container.data().as_slice(), &[1.0, 2.0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -398,7 +398,7 @@ mod tests {
         let EngineColumnData::Float4(container) = col else {
             panic!("Expected Float4");
         };
-        assert_eq!(container.values().as_slice(), &[1.0, 0.0]);
+        assert_eq!(container.data().as_slice(), &[1.0, 0.0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -409,7 +409,7 @@ mod tests {
         let EngineColumnData::Float4(container) = col else {
             panic!("Expected Float4");
         };
-        assert_eq!(container.values().as_slice(), &[0.0, 3.14]);
+        assert_eq!(container.data().as_slice(), &[0.0, 3.14]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -420,7 +420,7 @@ mod tests {
         let EngineColumnData::Float8(container) = col else {
             panic!("Expected Float8");
         };
-        assert_eq!(container.values().as_slice(), &[1.0, 2.0]);
+        assert_eq!(container.data().as_slice(), &[1.0, 2.0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -431,7 +431,7 @@ mod tests {
         let EngineColumnData::Float8(container) = col else {
             panic!("Expected Float8");
         };
-        assert_eq!(container.values().as_slice(), &[1.0, 0.0]);
+        assert_eq!(container.data().as_slice(), &[1.0, 0.0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -442,7 +442,7 @@ mod tests {
         let EngineColumnData::Float8(container) = col else {
             panic!("Expected Float8");
         };
-        assert_eq!(container.values().as_slice(), &[0.0, 2.718]);
+        assert_eq!(container.data().as_slice(), &[0.0, 2.718]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -453,7 +453,7 @@ mod tests {
         let EngineColumnData::Int1(container) = col else {
             panic!("Expected Int1");
         };
-        assert_eq!(container.values().as_slice(), &[1, 2]);
+        assert_eq!(container.data().as_slice(), &[1, 2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -464,7 +464,7 @@ mod tests {
         let EngineColumnData::Int1(container) = col else {
             panic!("Expected Int1");
         };
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -475,7 +475,7 @@ mod tests {
         let EngineColumnData::Int1(container) = col else {
             panic!("Expected Int1");
         };
-        assert_eq!(container.values().as_slice(), &[0, 5]);
+        assert_eq!(container.data().as_slice(), &[0, 5]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -486,7 +486,7 @@ mod tests {
         let EngineColumnData::Int2(container) = col else {
             panic!("Expected Int2");
         };
-        assert_eq!(container.values().as_slice(), &[1, 3]);
+        assert_eq!(container.data().as_slice(), &[1, 3]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -497,7 +497,7 @@ mod tests {
         let EngineColumnData::Int2(container) = col else {
             panic!("Expected Int2");
         };
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -508,7 +508,7 @@ mod tests {
         let EngineColumnData::Int2(container) = col else {
             panic!("Expected Int2");
         };
-        assert_eq!(container.values().as_slice(), &[0, 10]);
+        assert_eq!(container.data().as_slice(), &[0, 10]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -519,7 +519,7 @@ mod tests {
         let EngineColumnData::Int4(container) = col else {
             panic!("Expected Int4");
         };
-        assert_eq!(container.values().as_slice(), &[10, 20]);
+        assert_eq!(container.data().as_slice(), &[10, 20]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -530,7 +530,7 @@ mod tests {
         let EngineColumnData::Int4(container) = col else {
             panic!("Expected Int4");
         };
-        assert_eq!(container.values().as_slice(), &[10, 0]);
+        assert_eq!(container.data().as_slice(), &[10, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -541,7 +541,7 @@ mod tests {
         let EngineColumnData::Int4(container) = col else {
             panic!("Expected Int4");
         };
-        assert_eq!(container.values().as_slice(), &[0, 20]);
+        assert_eq!(container.data().as_slice(), &[0, 20]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -552,7 +552,7 @@ mod tests {
         let EngineColumnData::Int8(container) = col else {
             panic!("Expected Int8");
         };
-        assert_eq!(container.values().as_slice(), &[100, 200]);
+        assert_eq!(container.data().as_slice(), &[100, 200]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -563,7 +563,7 @@ mod tests {
         let EngineColumnData::Int8(container) = col else {
             panic!("Expected Int8");
         };
-        assert_eq!(container.values().as_slice(), &[100, 0]);
+        assert_eq!(container.data().as_slice(), &[100, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -574,7 +574,7 @@ mod tests {
         let EngineColumnData::Int8(container) = col else {
             panic!("Expected Int8");
         };
-        assert_eq!(container.values().as_slice(), &[0, 30]);
+        assert_eq!(container.data().as_slice(), &[0, 30]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -585,7 +585,7 @@ mod tests {
         let EngineColumnData::Int16(container) = col else {
             panic!("Expected Int16");
         };
-        assert_eq!(container.values().as_slice(), &[1000, 2000]);
+        assert_eq!(container.data().as_slice(), &[1000, 2000]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -596,7 +596,7 @@ mod tests {
         let EngineColumnData::Int16(container) = col else {
             panic!("Expected Int16");
         };
-        assert_eq!(container.values().as_slice(), &[1000, 0]);
+        assert_eq!(container.data().as_slice(), &[1000, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -607,7 +607,7 @@ mod tests {
         let EngineColumnData::Int16(container) = col else {
             panic!("Expected Int16");
         };
-        assert_eq!(container.values().as_slice(), &[0, 40]);
+        assert_eq!(container.data().as_slice(), &[0, 40]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -618,7 +618,7 @@ mod tests {
         let EngineColumnData::Uint1(container) = col else {
             panic!("Expected Uint1");
         };
-        assert_eq!(container.values().as_slice(), &[1, 2]);
+        assert_eq!(container.data().as_slice(), &[1, 2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -629,7 +629,7 @@ mod tests {
         let EngineColumnData::Uint1(container) = col else {
             panic!("Expected Uint1");
         };
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -640,7 +640,7 @@ mod tests {
         let EngineColumnData::Uint1(container) = col else {
             panic!("Expected Uint1");
         };
-        assert_eq!(container.values().as_slice(), &[0, 1]);
+        assert_eq!(container.data().as_slice(), &[0, 1]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -651,7 +651,7 @@ mod tests {
         let EngineColumnData::Uint2(container) = col else {
             panic!("Expected Uint2");
         };
-        assert_eq!(container.values().as_slice(), &[10, 20]);
+        assert_eq!(container.data().as_slice(), &[10, 20]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -662,7 +662,7 @@ mod tests {
         let EngineColumnData::Uint2(container) = col else {
             panic!("Expected Uint2");
         };
-        assert_eq!(container.values().as_slice(), &[10, 0]);
+        assert_eq!(container.data().as_slice(), &[10, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -673,7 +673,7 @@ mod tests {
         let EngineColumnData::Uint2(container) = col else {
             panic!("Expected Uint2");
         };
-        assert_eq!(container.values().as_slice(), &[0, 2]);
+        assert_eq!(container.data().as_slice(), &[0, 2]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -684,7 +684,7 @@ mod tests {
         let EngineColumnData::Uint4(container) = col else {
             panic!("Expected Uint4");
         };
-        assert_eq!(container.values().as_slice(), &[100, 200]);
+        assert_eq!(container.data().as_slice(), &[100, 200]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -695,7 +695,7 @@ mod tests {
         let EngineColumnData::Uint4(container) = col else {
             panic!("Expected Uint4");
         };
-        assert_eq!(container.values().as_slice(), &[100, 0]);
+        assert_eq!(container.data().as_slice(), &[100, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -706,7 +706,7 @@ mod tests {
         let EngineColumnData::Uint4(container) = col else {
             panic!("Expected Uint4");
         };
-        assert_eq!(container.values().as_slice(), &[0, 3]);
+        assert_eq!(container.data().as_slice(), &[0, 3]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -717,7 +717,7 @@ mod tests {
         let EngineColumnData::Uint8(container) = col else {
             panic!("Expected Uint8");
         };
-        assert_eq!(container.values().as_slice(), &[1000, 2000]);
+        assert_eq!(container.data().as_slice(), &[1000, 2000]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -728,7 +728,7 @@ mod tests {
         let EngineColumnData::Uint8(container) = col else {
             panic!("Expected Uint8");
         };
-        assert_eq!(container.values().as_slice(), &[1000, 0]);
+        assert_eq!(container.data().as_slice(), &[1000, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -739,7 +739,7 @@ mod tests {
         let EngineColumnData::Uint8(container) = col else {
             panic!("Expected Uint8");
         };
-        assert_eq!(container.values().as_slice(), &[0, 4]);
+        assert_eq!(container.data().as_slice(), &[0, 4]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -750,7 +750,7 @@ mod tests {
         let EngineColumnData::Uint16(container) = col else {
             panic!("Expected Uint16");
         };
-        assert_eq!(container.values().as_slice(), &[10000, 20000]);
+        assert_eq!(container.data().as_slice(), &[10000, 20000]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -761,7 +761,7 @@ mod tests {
         let EngineColumnData::Uint16(container) = col else {
             panic!("Expected Uint16");
         };
-        assert_eq!(container.values().as_slice(), &[10000, 0]);
+        assert_eq!(container.data().as_slice(), &[10000, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -772,7 +772,7 @@ mod tests {
         let EngineColumnData::Uint16(container) = col else {
             panic!("Expected Uint16");
         };
-        assert_eq!(container.values().as_slice(), &[0, 5]);
+        assert_eq!(container.data().as_slice(), &[0, 5]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -783,7 +783,7 @@ mod tests {
         let EngineColumnData::Utf8(container) = col else {
             panic!("Expected Utf8");
         };
-        assert_eq!(container.values().as_slice(), &["hello".to_string(), "world".to_string()]);
+        assert_eq!(container.data().as_slice(), &["hello".to_string(), "world".to_string()]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -794,7 +794,7 @@ mod tests {
         let EngineColumnData::Utf8(container) = col else {
             panic!("Expected Utf8");
         };
-        assert_eq!(container.values().as_slice(), &["hello".to_string(), "".to_string()]);
+        assert_eq!(container.data().as_slice(), &["hello".to_string(), "".to_string()]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -805,7 +805,7 @@ mod tests {
         let EngineColumnData::Utf8(container) = col else {
             panic!("Expected Utf8");
         };
-        assert_eq!(container.values().as_slice(), &["".to_string(), "ok".to_string()]);
+        assert_eq!(container.data().as_slice(), &["".to_string(), "ok".to_string()]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -816,7 +816,7 @@ mod tests {
         let EngineColumnData::Int2(container) = col else {
             panic!("Expected Int2");
         };
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -829,7 +829,7 @@ mod tests {
         let EngineColumnData::Date(container) = col else {
             panic!("Expected Date");
         };
-        assert_eq!(container.values().as_slice(), &[date1, date2]);
+        assert_eq!(container.data().as_slice(), &[date1, date2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -842,7 +842,7 @@ mod tests {
         let EngineColumnData::Date(container) = col else {
             panic!("Expected Date");
         };
-        assert_eq!(container.values().as_slice(), &[date1, Date::default()]);
+        assert_eq!(container.data().as_slice(), &[date1, Date::default()]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -855,7 +855,7 @@ mod tests {
         let EngineColumnData::Date(container) = col else {
             panic!("Expected Date");
         };
-        assert_eq!(container.values().as_slice(), &[Date::default(), date]);
+        assert_eq!(container.data().as_slice(), &[Date::default(), date]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -868,7 +868,7 @@ mod tests {
         let EngineColumnData::DateTime(container) = col else {
             panic!("Expected DateTime");
         };
-        assert_eq!(container.values().as_slice(), &[dt1, dt2]);
+        assert_eq!(container.data().as_slice(), &[dt1, dt2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -881,7 +881,7 @@ mod tests {
         let EngineColumnData::DateTime(container) = col else {
             panic!("Expected DateTime");
         };
-        assert_eq!(container.values().as_slice(), &[dt1, DateTime::default()]);
+        assert_eq!(container.data().as_slice(), &[dt1, DateTime::default()]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -894,7 +894,7 @@ mod tests {
         let EngineColumnData::DateTime(container) = col else {
             panic!("Expected DateTime");
         };
-        assert_eq!(container.values().as_slice(), &[DateTime::default(), dt]);
+        assert_eq!(container.data().as_slice(), &[DateTime::default(), dt]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -907,7 +907,7 @@ mod tests {
         let EngineColumnData::Time(container) = col else {
             panic!("Expected Time");
         };
-        assert_eq!(container.values().as_slice(), &[time1, time2]);
+        assert_eq!(container.data().as_slice(), &[time1, time2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -920,7 +920,7 @@ mod tests {
         let EngineColumnData::Time(container) = col else {
             panic!("Expected Time");
         };
-        assert_eq!(container.values().as_slice(), &[time1, Time::default()]);
+        assert_eq!(container.data().as_slice(), &[time1, Time::default()]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -933,7 +933,7 @@ mod tests {
         let EngineColumnData::Time(container) = col else {
             panic!("Expected Time");
         };
-        assert_eq!(container.values().as_slice(), &[Time::default(), time]);
+        assert_eq!(container.data().as_slice(), &[Time::default(), time]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -946,7 +946,7 @@ mod tests {
         let EngineColumnData::Interval(container) = col else {
             panic!("Expected Interval");
         };
-        assert_eq!(container.values().as_slice(), &[interval1, interval2]);
+        assert_eq!(container.data().as_slice(), &[interval1, interval2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -958,7 +958,7 @@ mod tests {
         let EngineColumnData::Interval(container) = col else {
             panic!("Expected Interval");
         };
-        assert_eq!(container.values().as_slice(), &[interval1, Interval::default()]);
+        assert_eq!(container.data().as_slice(), &[interval1, Interval::default()]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -970,7 +970,7 @@ mod tests {
         let EngineColumnData::Interval(container) = col else {
             panic!("Expected Interval");
         };
-        assert_eq!(container.values().as_slice(), &[Interval::default(), interval]);
+        assert_eq!(container.data().as_slice(), &[Interval::default(), interval]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -983,7 +983,7 @@ mod tests {
         let EngineColumnData::RowId(container) = col else {
             panic!("Expected RowId");
         };
-        assert_eq!(container.values().as_slice(), &[row_id1, row_id2]);
+        assert_eq!(container.data().as_slice(), &[row_id1, row_id2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -995,7 +995,7 @@ mod tests {
         let EngineColumnData::RowId(container) = col else {
             panic!("Expected RowId");
         };
-        assert_eq!(container.values().as_slice(), &[row_id1, RowId::default()]);
+        assert_eq!(container.data().as_slice(), &[row_id1, RowId::default()]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -1007,7 +1007,7 @@ mod tests {
         let EngineColumnData::RowId(container) = col else {
             panic!("Expected RowId");
         };
-        assert_eq!(container.values().as_slice(), &[RowId::default(), row_id]);
+        assert_eq!(container.data().as_slice(), &[RowId::default(), row_id]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -1020,7 +1020,7 @@ mod tests {
         let EngineColumnData::Uuid4(container) = col else {
             panic!("Expected Uuid4");
         };
-        assert_eq!(container.values().as_slice(), &[uuid1, uuid2]);
+        assert_eq!(container.data().as_slice(), &[uuid1, uuid2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -1032,7 +1032,7 @@ mod tests {
         let EngineColumnData::Uuid4(container) = col else {
             panic!("Expected Uuid4");
         };
-        assert_eq!(container.values().as_slice(), &[uuid1, Uuid4::from(Uuid::nil())]);
+        assert_eq!(container.data().as_slice(), &[uuid1, Uuid4::from(Uuid::nil())]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -1044,7 +1044,7 @@ mod tests {
         let EngineColumnData::Uuid4(container) = col else {
             panic!("Expected Uuid4");
         };
-        assert_eq!(container.values().as_slice(), &[Uuid4::from(Uuid::nil()), uuid]);
+        assert_eq!(container.data().as_slice(), &[Uuid4::from(Uuid::nil()), uuid]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 
@@ -1057,7 +1057,7 @@ mod tests {
         let EngineColumnData::Uuid7(container) = col else {
             panic!("Expected Uuid7");
         };
-        assert_eq!(container.values().as_slice(), &[uuid1, uuid2]);
+        assert_eq!(container.data().as_slice(), &[uuid1, uuid2]);
         assert_eq!(container.bitvec().to_vec(), vec![true, true]);
     }
 
@@ -1069,7 +1069,7 @@ mod tests {
         let EngineColumnData::Uuid7(container) = col else {
             panic!("Expected Uuid7");
         };
-        assert_eq!(container.values().as_slice(), &[uuid1, Uuid7::from(Uuid::nil())]);
+        assert_eq!(container.data().as_slice(), &[uuid1, Uuid7::from(Uuid::nil())]);
         assert_eq!(container.bitvec().to_vec(), vec![true, false]);
     }
 
@@ -1081,7 +1081,7 @@ mod tests {
         let EngineColumnData::Uuid7(container) = col else {
             panic!("Expected Uuid7");
         };
-        assert_eq!(container.values().as_slice(), &[Uuid7::from(Uuid::nil()), uuid]);
+        assert_eq!(container.data().as_slice(), &[Uuid7::from(Uuid::nil()), uuid]);
         assert_eq!(container.bitvec().to_vec(), vec![false, true]);
     }
 }

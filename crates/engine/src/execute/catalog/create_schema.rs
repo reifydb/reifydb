@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::frame::Frame;
 use crate::execute::Executor;
-use reifydb_core::frame::Frame;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;
 use reifydb_core::error::diagnostic::catalog::schema_already_exists;

@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::EngineColumnData;
+use crate::column::layout::FrameLayout;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::BitVec;
-use reifydb_rql::expression::Expression;
-use reifydb_core::frame::{ColumnValues, FrameLayout};
 use reifydb_core::interface::Rx;
+use reifydb_rql::expression::Expression;
 
 pub(crate) struct FilterNode {
     input: Box<dyn ExecutionPlan>,
@@ -38,20 +39,19 @@ impl ExecutionPlan for FilterNode {
                     columns: frame.columns.clone(),
                     row_count,
                     take: None,
-                    buffered: ctx.buffered.clone(),
                 };
 
                 // Evaluate the filter expression
                 let result = evaluate(filter_expr, &eval_ctx)?;
 
                 // Create filter mask from result
-                let filter_mask = match result.values() {
-                    ColumnValues::Bool(container) => {
+                let filter_mask = match result.data() {
+                    EngineColumnData::Bool(container) => {
                         let mut mask = BitVec::repeat(row_count, false);
                         for i in 0..row_count {
-                            if i < container.values().len() && i < container.bitvec().len() {
+                            if i < container.data().len() && i < container.bitvec().len() {
                                 let valid = container.is_defined(i);
-                                let filter_result = container.values().get(i);
+                                let filter_result = container.data().get(i);
                                 mask.set(i, valid & filter_result);
                             }
                         }

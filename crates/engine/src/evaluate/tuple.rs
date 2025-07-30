@@ -1,5 +1,5 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::frame::FrameColumn;
+use crate::column::EngineColumn;
 use reifydb_rql::expression::TupleExpression;
 
 impl Evaluator {
@@ -7,7 +7,7 @@ impl Evaluator {
         &mut self,
         tuple: &TupleExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<FrameColumn> {
+    ) -> crate::Result<EngineColumn> {
         // Handle the common case where parentheses are used for grouping a single expression
         // e.g., "not (price == 75 and price == 300)" creates a tuple with one logical expression
         if tuple.expressions.len() == 1 {

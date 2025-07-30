@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::error::diagnostic::query::column_not_found;
 use reifydb_rql::expression::ColumnExpression;
-use reifydb_core::frame::{ColumnValues, FrameColumn};
+use crate::column::{EngineColumnData, EngineColumn};
 use reifydb_core::value::{Blob, Uuid4, Uuid7};
 use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
 
@@ -13,12 +13,12 @@ impl Evaluator {
         &mut self,
         column: &ColumnExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<FrameColumn> {
+    ) -> crate::Result<EngineColumn> {
         let name = column.0.fragment.to_string();
 
         // First try exact qualified name match
         if let Some(col) = ctx.columns.iter().find(|c| c.qualified_name() == name) {
-            return self.extract_column_values(col, ctx);
+            return self.extract_column_data(col, ctx);
         }
 
         // Then find all matches by unqualified name and select the most qualified one
@@ -45,521 +45,521 @@ impl Evaluator {
             .map(|(_, c)| *c)
             .unwrap(); // Safe because we know the list is not empty
 
-        self.extract_column_values(best_match, ctx)
+        self.extract_column_data(best_match, ctx)
     }
 
-    fn extract_column_values(
+    fn extract_column_data(
         &mut self,
-        col: &FrameColumn,
+        col: &EngineColumn,
         ctx: &EvaluationContext,
-    ) -> crate::Result<FrameColumn> {
+    ) -> crate::Result<EngineColumn> {
         let take = ctx.take.unwrap_or(usize::MAX);
 
-        match col.values().get_value(0) {
+        match col.data().get_value(0) {
             Value::Bool(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Bool(b) => {
-                            values.push(b);
+                            data.push(b);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(false);
+                            data.push(false);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::bool_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::bool_with_bitvec(data, bitvec)))
             }
 
             Value::Float4(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Float4(v) => {
-                            values.push(v.value());
+                            data.push(v.value());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0.0f32);
+                            data.push(0.0f32);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::float4_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::float4_with_bitvec(data, bitvec)))
             }
 
             Value::Float8(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Float8(v) => {
-                            values.push(v.value());
+                            data.push(v.value());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0.0f64);
+                            data.push(0.0f64);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::float8_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::float8_with_bitvec(data, bitvec)))
             }
 
             Value::Int1(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Int1(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::int1_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::int1_with_bitvec(data, bitvec)))
             }
 
             Value::Int2(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Int2(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::int2_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::int2_with_bitvec(data, bitvec)))
             }
 
             Value::Int4(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Int4(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::int4_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::int4_with_bitvec(data, bitvec)))
             }
 
             Value::Int8(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Int8(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::int8_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::int8_with_bitvec(data, bitvec)))
             }
 
             Value::Int16(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Int16(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::int16_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::int16_with_bitvec(data, bitvec)))
             }
 
             Value::Utf8(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Utf8(s) => {
-                            values.push(s.clone());
+                            data.push(s.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push("".to_string());
+                            data.push("".to_string());
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::utf8_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::utf8_with_bitvec(data, bitvec)))
             }
 
             Value::Uint1(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Uint1(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::uint1_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::uint1_with_bitvec(data, bitvec)))
             }
 
             Value::Uint2(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Uint2(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::uint2_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::uint2_with_bitvec(data, bitvec)))
             }
 
             Value::Uint4(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Uint4(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::uint4_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::uint4_with_bitvec(data, bitvec)))
             }
 
             Value::Uint8(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Uint8(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::uint8_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::uint8_with_bitvec(data, bitvec)))
             }
 
             Value::Uint16(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Uint16(n) => {
-                            values.push(n);
+                            data.push(n);
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(0);
+                            data.push(0);
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::uint16_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::uint16_with_bitvec(data, bitvec)))
             }
 
             Value::Date(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Date(d) => {
-                            values.push(d.clone());
+                            data.push(d.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(Date::default());
+                            data.push(Date::default());
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::date_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::date_with_bitvec(data, bitvec)))
             }
 
             Value::DateTime(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::DateTime(dt) => {
-                            values.push(dt.clone());
+                            data.push(dt.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(DateTime::default());
+                            data.push(DateTime::default());
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::datetime_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::datetime_with_bitvec(data, bitvec)))
             }
 
             Value::Time(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Time(t) => {
-                            values.push(t.clone());
+                            data.push(t.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(Time::default());
+                            data.push(Time::default());
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::time_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::time_with_bitvec(data, bitvec)))
             }
 
             Value::Interval(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Interval(i) => {
-                            values.push(i.clone());
+                            data.push(i.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(Interval::default());
+                            data.push(Interval::default());
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::interval_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::interval_with_bitvec(data, bitvec)))
             }
             Value::RowId(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::RowId(i) => {
-                            values.push(i.clone());
+                            data.push(i.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(RowId::default());
+                            data.push(RowId::default());
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::row_id_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::row_id_with_bitvec(data, bitvec)))
             }
             Value::Uuid4(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Uuid4(i) => {
-                            values.push(i.clone());
+                            data.push(i.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(Uuid4::default());
+                            data.push(Uuid4::default());
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::uuid4_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::uuid4_with_bitvec(data, bitvec)))
             }
             Value::Uuid7(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Uuid7(i) => {
-                            values.push(i.clone());
+                            data.push(i.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(Uuid7::default());
+                            data.push(Uuid7::default());
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::uuid7_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::uuid7_with_bitvec(data, bitvec)))
             }
             Value::Blob(_) => {
-                let mut values = Vec::new();
+                let mut data = Vec::new();
                 let mut bitvec = Vec::new();
                 let mut count = 0;
-                for v in col.values().iter() {
+                for v in col.data().iter() {
                     if count >= take {
                         break;
                     }
                     match v {
                         Value::Blob(b) => {
-                            values.push(b.clone());
+                            data.push(b.clone());
                             bitvec.push(true);
                         }
                         _ => {
-                            values.push(Blob::new(vec![]));
+                            data.push(Blob::new(vec![]));
                             bitvec.push(false);
                         }
                     }
                     count += 1;
                 }
-                Ok(col.with_new_values(ColumnValues::blob_with_bitvec(values, bitvec)))
+                Ok(col.with_new_data(EngineColumnData::blob_with_bitvec(data, bitvec)))
             }
             Value::Undefined => {
                 let count = std::cmp::min(ctx.row_count, take);
-                Ok(col.with_new_values(ColumnValues::undefined(count)))
+                Ok(col.with_new_data(EngineColumnData::undefined(count)))
             }
         }
     }

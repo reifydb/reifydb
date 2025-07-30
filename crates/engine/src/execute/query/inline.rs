@@ -1,15 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::frame::Frame;
+use crate::column::layout::{EngineColumnLayout, FrameLayout};
+use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_rql::expression::KeyedExpression;
-use reifydb_core::frame::{
-    BufferedPools, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameColumnLayout,
-    FrameLayout,
-};
 use reifydb_core::interface::{Rx, Table};
 use reifydb_core::{ColumnDescriptor, Value};
+use reifydb_rql::expression::KeyedExpression;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -32,7 +31,7 @@ impl InlineDataNode {
         let columns = table
             .columns
             .iter()
-            .map(|col| FrameColumnLayout { schema: None, table: None, name: col.name.clone() })
+            .map(|col| EngineColumnLayout { schema: None, table: None, name: col.name.clone() })
             .collect();
 
         FrameLayout { columns }
@@ -92,7 +91,7 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_name in all_columns {
-            let mut column_values = ColumnValues::undefined(0);
+            let mut column_data = EngineColumnData::undefined(0);
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_name) {
@@ -102,27 +101,26 @@ impl InlineDataNode {
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
-                        buffered: BufferedPools::default(),
                     };
 
                     let evaluated = evaluate(&keyed_expr.expression, &ctx)?;
 
                     // Take the first value from the evaluated result
-                    let mut iter = evaluated.values().iter();
+                    let mut iter = evaluated.data().iter();
                     if let Some(value) = iter.next() {
-                        column_values.push_value(value);
+                        column_data.push_value(value);
                     } else {
-                        column_values.push_value(Value::Undefined);
+                        column_data.push_value(Value::Undefined);
                     }
                 } else {
                     // Missing column for this row, use Undefined
-                    column_values.push_value(Value::Undefined);
+                    column_data.push_value(Value::Undefined);
                 }
             }
 
-            frame_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
+            frame_columns.push(EngineColumn::ColumnQualified(ColumnQualified {
                 name: column_name,
-                values: column_values,
+                data: column_data,
             }));
         }
 
@@ -152,7 +150,7 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_layout in &layout.columns {
-            let mut column_values = ColumnValues::undefined(0);
+            let mut column_data = EngineColumnData::undefined(0);
 
             // Find the corresponding table column for policies
             let table_column =
@@ -179,19 +177,17 @@ impl InlineDataNode {
                         columns: Vec::new(),
                         row_count: 1,
                         take: None,
-                        buffered: BufferedPools::default(),
                     };
 
-                    column_values
-                        .extend(evaluate(&keyed_expr.expression, &ctx)?.values().clone())?;
+                    column_data.extend(evaluate(&keyed_expr.expression, &ctx)?.data().clone())?;
                 } else {
-                    column_values.push_value(Value::Undefined);
+                    column_data.push_value(Value::Undefined);
                 }
             }
 
-            frame_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
+            frame_columns.push(EngineColumn::ColumnQualified(ColumnQualified {
                 name: column_layout.name.clone(),
-                values: column_values,
+                data: column_data,
             }));
         }
 

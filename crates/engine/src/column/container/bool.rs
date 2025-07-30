@@ -7,52 +7,52 @@ use std::ops::Deref;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BoolContainer {
-    values: BitVec,
+    data: BitVec,
     bitvec: BitVec,
 }
 
 impl BoolContainer {
-    pub fn new(values: Vec<bool>, bitvec: BitVec) -> Self {
-        debug_assert_eq!(values.len(), bitvec.len());
-        Self { values: BitVec::from_slice(&values), bitvec }
+    pub fn new(data: Vec<bool>, bitvec: BitVec) -> Self {
+        debug_assert_eq!(data.len(), bitvec.len());
+        Self { data: BitVec::from_slice(&data), bitvec }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { values: BitVec::with_capacity(capacity), bitvec: BitVec::with_capacity(capacity) }
+        Self { data: BitVec::with_capacity(capacity), bitvec: BitVec::with_capacity(capacity) }
     }
 
-    pub fn from_vec(values: Vec<bool>) -> Self {
-        let len = values.len();
-        Self { values: BitVec::from_slice(&values), bitvec: BitVec::repeat(len, true) }
+    pub fn from_vec(data: Vec<bool>) -> Self {
+        let len = data.len();
+        Self { data: BitVec::from_slice(&data), bitvec: BitVec::repeat(len, true) }
     }
 
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.values.len(), self.bitvec.len());
-        self.values.len()
+        debug_assert_eq!(self.data.len(), self.bitvec.len());
+        self.data.len()
     }
 
     pub fn capacity(&self) -> usize {
-        debug_assert!(self.values.capacity() >= self.bitvec.capacity());
-        self.values.capacity().min(self.bitvec.capacity())
+        debug_assert!(self.data.capacity() >= self.bitvec.capacity());
+        self.data.capacity().min(self.bitvec.capacity())
     }
 
     pub fn is_empty(&self) -> bool {
-        self.values.len() == 0
+        self.data.len() == 0
     }
 
     pub fn push(&mut self, value: bool) {
-        self.values.push(value);
+        self.data.push(value);
         self.bitvec.push(true);
     }
 
     pub fn push_undefined(&mut self) {
-        self.values.push(false);
+        self.data.push(false);
         self.bitvec.push(false);
     }
 
     pub fn get(&self, index: usize) -> Option<bool> {
         if index < self.len() && self.is_defined(index) {
-            Some(self.values.get(index))
+            Some(self.data.get(index))
         } else {
             None
         }
@@ -70,17 +70,17 @@ impl BoolContainer {
         idx < self.len() && self.bitvec.get(idx)
     }
 
-    pub fn values(&self) -> &BitVec {
-        &self.values
+    pub fn data(&self) -> &BitVec {
+        &self.data
     }
 
-    pub fn values_mut(&mut self) -> &mut BitVec {
-        &mut self.values
+    pub fn data_mut(&mut self) -> &mut BitVec {
+        &mut self.data
     }
 
     pub fn as_string(&self, index: usize) -> String {
         if index < self.len() && self.is_defined(index) {
-            self.values.get(index).to_string()
+            self.data.get(index).to_string()
         } else {
             "Undefined".to_string()
         }
@@ -88,77 +88,77 @@ impl BoolContainer {
 
     pub fn get_value(&self, index: usize) -> Value {
         if index < self.len() && self.is_defined(index) {
-            Value::Bool(self.values.get(index))
+            Value::Bool(self.data.get(index))
         } else {
             Value::Undefined
         }
     }
 
     pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
-        self.values.extend(&other.values);
+        self.data.extend(&other.data);
         self.bitvec.extend(&other.bitvec);
         Ok(())
     }
 
     pub fn extend_from_undefined(&mut self, len: usize) {
-        self.values.extend(&BitVec::repeat(len, false));
+        self.data.extend(&BitVec::repeat(len, false));
         self.bitvec.extend(&BitVec::repeat(len, false));
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Option<bool>> + '_ {
-        self.values
+        self.data
             .iter()
             .zip(self.bitvec.iter())
             .map(|(v, defined)| if defined { Some(v) } else { None })
     }
 
     pub fn into_iter(self) -> impl Iterator<Item = Option<bool>> {
-        let values: Vec<bool> = self.values.iter().collect();
+        let data: Vec<bool> = self.data.iter().collect();
         let bitvec: Vec<bool> = self.bitvec.iter().collect();
-        values.into_iter().zip(bitvec).map(|(v, defined)| if defined { Some(v) } else { None })
+        data.into_iter().zip(bitvec).map(|(v, defined)| if defined { Some(v) } else { None })
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_values: Vec<bool> = self.values.iter().skip(start).take(end - start).collect();
+        let new_data: Vec<bool> = self.data.iter().skip(start).take(end - start).collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
-        Self { values: BitVec::from_slice(&new_values), bitvec: BitVec::from_slice(&new_bitvec) }
+        Self { data: BitVec::from_slice(&new_data), bitvec: BitVec::from_slice(&new_bitvec) }
     }
 
     pub fn filter(&mut self, mask: &BitVec) {
-        let mut new_values = BitVec::with_capacity(mask.count_ones());
+        let mut new_data = BitVec::with_capacity(mask.count_ones());
         let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
 
         for (i, keep) in mask.iter().enumerate() {
             if keep && i < self.len() {
-                new_values.push(self.values.get(i));
+                new_data.push(self.data.get(i));
                 new_bitvec.push(self.bitvec.get(i));
             }
         }
 
-        self.values = new_values;
+        self.data = new_data;
         self.bitvec = new_bitvec;
     }
 
     pub fn reorder(&mut self, indices: &[usize]) {
-        let mut new_values = BitVec::with_capacity(indices.len());
+        let mut new_data = BitVec::with_capacity(indices.len());
         let mut new_bitvec = BitVec::with_capacity(indices.len());
 
         for &idx in indices {
             if idx < self.len() {
-                new_values.push(self.values.get(idx));
+                new_data.push(self.data.get(idx));
                 new_bitvec.push(self.bitvec.get(idx));
             } else {
-                new_values.push(false);
+                new_data.push(false);
                 new_bitvec.push(false);
             }
         }
 
-        self.values = new_values;
+        self.data = new_data;
         self.bitvec = new_bitvec;
     }
 
     pub fn take(&self, num: usize) -> Self {
-        Self { values: self.values.take(num), bitvec: self.bitvec.take(num) }
+        Self { data: self.data.take(num), bitvec: self.bitvec.take(num) }
     }
 }
 
@@ -166,7 +166,7 @@ impl Deref for BoolContainer {
     type Target = BitVec;
 
     fn deref(&self) -> &Self::Target {
-        &self.values
+        &self.data
     }
 }
 
@@ -183,9 +183,9 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let values = vec![true, false, true];
+        let data = vec![true, false, true];
         let bitvec = BitVec::from_slice(&[true, true, true]);
-        let container = BoolContainer::new(values.clone(), bitvec);
+        let container = BoolContainer::new(data.clone(), bitvec);
 
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(true));
@@ -195,8 +195,8 @@ mod tests {
 
     #[test]
     fn test_from_vec() {
-        let values = vec![true, false, true];
-        let container = BoolContainer::from_vec(values);
+        let data = vec![true, false, true];
+        let container = BoolContainer::from_vec(data);
 
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(true));
@@ -251,9 +251,9 @@ mod tests {
 
     #[test]
     fn test_iter() {
-        let values = vec![true, false, true];
+        let data = vec![true, false, true];
         let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-        let container = BoolContainer::new(values, bitvec);
+        let container = BoolContainer::new(data, bitvec);
 
         let collected: Vec<Option<bool>> = container.iter().collect();
         assert_eq!(collected, vec![Some(true), None, Some(true)]);

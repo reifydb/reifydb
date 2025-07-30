@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::{EngineColumn, EngineColumnData};
 use crate::function::AggregateFunction;
 use reifydb_core::Value;
-use reifydb_core::frame::{ColumnValues, FrameColumn};
 use std::collections::HashMap;
 
 pub struct Avg {
@@ -20,11 +20,11 @@ impl Avg {
 impl AggregateFunction for Avg {
     fn aggregate(
         &mut self,
-        column: &FrameColumn,
+        column: &EngineColumn,
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
-        match &column.values() {
-            ColumnValues::Float8(container) => {
+        match &column.data() {
+            EngineColumnData::Float8(container) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;
                     let mut count = 0;
@@ -47,7 +47,7 @@ impl AggregateFunction for Avg {
                 }
                 Ok(())
             }
-            ColumnValues::Int2(container) => {
+            EngineColumnData::Int2(container) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;
                     let mut count = 0;
@@ -74,9 +74,9 @@ impl AggregateFunction for Avg {
         }
     }
 
-    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnValues)> {
+    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, EngineColumnData)> {
         let mut keys = Vec::with_capacity(self.sums.len());
-        let mut values = ColumnValues::float8_with_capacity(self.sums.len());
+        let mut data = EngineColumnData::float8_with_capacity(self.sums.len());
 
         for (key, sum) in std::mem::take(&mut self.sums) {
             let count = self.counts.remove(&key).unwrap_or(0);
@@ -87,9 +87,9 @@ impl AggregateFunction for Avg {
             };
 
             keys.push(key);
-            values.push_value(Value::float8(avg));
+            data.push_value(Value::float8(avg));
         }
 
-        Ok((keys, values))
+        Ok((keys, data))
     }
 }

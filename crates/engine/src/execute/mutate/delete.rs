@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::EngineColumnData;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::error::diagnostic::engine;
-use reifydb_core::frame::{BufferedPools, ColumnValues, Frame};
 use reifydb_core::interface::{EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange};
 use reifydb_core::{
     EncodedKeyRange, IntoOwnedSpan, Value,
@@ -16,6 +16,7 @@ use reifydb_core::{
 use reifydb_rql::plan::physical::DeletePlan;
 use std::collections::Bound::Included;
 use std::sync::Arc;
+use crate::column::frame::Frame;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn delete(
@@ -46,7 +47,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     table: Some(table.clone()),
                     batch_size: 1024,
                     preserve_row_ids: true,
-                    buffered: BufferedPools::default(),
                 }),
             );
 
@@ -55,7 +55,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 table: Some(table.clone()),
                 batch_size: 1024,
                 preserve_row_ids: true,
-                buffered: BufferedPools::default(),
             };
 
             while let Some(Batch { frame }) = input_node.next(&context, tx)? {
@@ -66,16 +65,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     return_error!(engine::missing_row_id_column());
                 };
 
-                // Extract RowId values - return error if any are undefined
-                let row_ids = match &row_id_column.values() {
-                    ColumnValues::RowId(container) => {
+                // Extract RowId data - return error if any are undefined
+                let row_ids = match &row_id_column.data() {
+                    EngineColumnData::RowId(container) => {
                         // Check that all row IDs are defined
-                        for i in 0..container.values().len() {
+                        for i in 0..container.data().len() {
                             if !container.is_defined(i) {
                                 return_error!(engine::invalid_row_id_values());
                             }
                         }
-                        container.values()
+                        container.data()
                     }
                     _ => return_error!(engine::invalid_row_id_values()),
                 };

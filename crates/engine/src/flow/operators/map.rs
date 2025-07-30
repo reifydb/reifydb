@@ -1,8 +1,7 @@
-use crate::evaluate::{EvaluationContext, evaluate};
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
+use reifydb_core::frame::Frame;
 use reifydb_rql::expression::Expression;
-use reifydb_core::frame::{BufferedPools, Frame};
 
 pub struct MapOperator {
     expressions: Vec<Expression>,
@@ -42,30 +41,30 @@ impl Operator for MapOperator {
 
 impl MapOperator {
     fn project_frame(&self, frame: &Frame) -> crate::Result<Frame> {
-        if frame.is_empty() {
-            return Ok(frame.clone());
-        }
-
-        let row_count = frame.row_count();
-
-        // Create evaluation context from input frame
-        let eval_ctx = EvaluationContext {
-            target_column: None,
-            column_policies: Vec::new(),
-            columns: frame.columns.clone(),
-            row_count,
-            take: None,
-            buffered: BufferedPools::default(),
-        };
-
-        // Evaluate each expression to get projected columns
-        let mut projected_columns = Vec::new();
-        for expr in &self.expressions {
-            let column = evaluate(expr, &eval_ctx)?;
-            projected_columns.push(column);
-        }
-
-        // Build new frame from projected columns
-        Ok(Frame::new(projected_columns))
+        // if frame.is_empty() {
+        //     return Ok(frame.clone());
+        // }
+        //
+        // let row_count = frame.row_count();
+        //
+        // // Create evaluation context from input frame
+        // let eval_ctx = EvaluationContext {
+        //     target_column: None,
+        //     column_policies: Vec::new(),
+        //     columns: frame.columns.clone(),
+        //     row_count,
+        //     take: None,
+        // };
+        //
+        // // Evaluate each expression to get projected columns
+        // let mut projected_columns = Vec::new();
+        // for expr in &self.expressions {
+        //     let column = evaluate(expr, &eval_ctx)?;
+        //     projected_columns.push(column);
+        // }
+        //
+        // // Build new frame from projected columns
+        // Ok(Frame::new(projected_columns))
+        todo!()
     }
 }

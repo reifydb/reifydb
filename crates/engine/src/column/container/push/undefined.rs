@@ -45,7 +45,7 @@ mod tests {
             panic!("Expected Bool");
         };
 
-        assert_eq!(container.values().to_vec(), vec![true, false]);
+        assert_eq!(container.data().to_vec(), vec![true, false]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -58,7 +58,7 @@ mod tests {
             panic!("Expected Float4");
         };
 
-        assert_eq!(container.values().as_slice(), &[1.0, 0.0]);
+        assert_eq!(container.data().as_slice(), &[1.0, 0.0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -71,7 +71,7 @@ mod tests {
             panic!("Expected Float8");
         };
 
-        assert_eq!(container.values().as_slice(), &[1.0, 0.0]);
+        assert_eq!(container.data().as_slice(), &[1.0, 0.0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -84,7 +84,7 @@ mod tests {
             panic!("Expected Int1");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -97,7 +97,7 @@ mod tests {
             panic!("Expected Int2");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -110,7 +110,7 @@ mod tests {
             panic!("Expected Int4");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -123,7 +123,7 @@ mod tests {
             panic!("Expected Int8");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -136,7 +136,7 @@ mod tests {
             panic!("Expected Int16");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -149,7 +149,7 @@ mod tests {
             panic!("Expected Utf8");
         };
 
-        assert_eq!(container.values().as_slice(), &["a".to_string(), "".to_string()]);
+        assert_eq!(container.data().as_slice(), &["a".to_string(), "".to_string()]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -162,7 +162,7 @@ mod tests {
             panic!("Expected Uint1");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -175,7 +175,7 @@ mod tests {
             panic!("Expected Uint2");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -188,7 +188,7 @@ mod tests {
             panic!("Expected Uint4");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -201,7 +201,7 @@ mod tests {
             panic!("Expected Uint8");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }
@@ -214,7 +214,7 @@ mod tests {
             panic!("Expected Uint16");
         };
 
-        assert_eq!(container.values().as_slice(), &[1, 0]);
+        assert_eq!(container.data().as_slice(), &[1, 0]);
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
     }

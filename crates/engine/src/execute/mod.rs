@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::frame::Frame;
+use crate::column::layout::FrameLayout;
+use crate::column::{ColumnQualified, EngineColumn, EngineColumnData, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
-use reifydb_core::frame::{
-    BufferedPools, ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
-};
 use reifydb_core::interface::{Rx, Table, Tx, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
@@ -20,7 +20,6 @@ pub struct ExecutionContext {
     pub table: Option<Table>,
     pub batch_size: usize,
     pub preserve_row_ids: bool,
-    pub buffered: BufferedPools,
 }
 
 #[derive(Debug)]
@@ -142,7 +141,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     table: None,
                     batch_size: 1024,
                     preserve_row_ids: false,
-                    buffered: BufferedPools::default(),
                 });
                 let mut node = compile(plan, rx, context.clone());
                 let mut result: Option<Frame> = None;
@@ -166,20 +164,20 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     Ok(frame.into())
                 } else {
                     // empty frame - reconstruct table, for better UX
-                    let columns: Vec<FrameColumn> = node
+                    let columns: Vec<EngineColumn> = node
                         .layout()
                         .unwrap_or(FrameLayout { columns: vec![] })
                         .columns
                         .into_iter()
                         .map(|layout| match layout.table {
-                            Some(table) => FrameColumn::TableQualified(TableQualified {
+                            Some(table) => EngineColumn::TableQualified(TableQualified {
                                 table,
                                 name: layout.name,
-                                values: ColumnValues::undefined(0),
+                                data: EngineColumnData::undefined(0),
                             }),
-                            None => FrameColumn::ColumnQualified(ColumnQualified {
+                            None => EngineColumn::ColumnQualified(ColumnQualified {
                                 name: layout.name,
-                                values: ColumnValues::undefined(0),
+                                data: EngineColumnData::undefined(0),
                             }),
                         })
                         .collect();

@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
 use reifydb_core::err;
 use reifydb_core::error::diagnostic::operator;
-use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, TableQualified};
+use crate::column::{ColumnQualified, EngineColumnData, EngineColumn, TableQualified};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
@@ -12,15 +12,15 @@ impl Evaluator {
         &mut self,
         prefix: &PrefixExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<FrameColumn> {
+    ) -> crate::Result<EngineColumn> {
         let column = evaluate(&prefix.expression, ctx)?;
 
-        match column.values() {
-            // ColumnValues::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
-            ColumnValues::Bool(container) => match prefix.operator {
+        match column.data() {
+            // EngineColumnData::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
+            EngineColumnData::Bool(container) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    let mut result = Vec::with_capacity(container.values().len());
-                    for (idx, val) in container.values().iter().enumerate() {
+                    let mut result = Vec::with_capacity(container.data().len());
+                    for (idx, val) in container.data().iter().enumerate() {
                         if container.is_defined(idx) {
                             result.push(!val);
                         } else {
@@ -28,14 +28,14 @@ impl Evaluator {
                         }
                     }
                     Ok(match column.table() {
-                        Some(table) => FrameColumn::TableQualified(TableQualified {
+                        Some(table) => EngineColumn::TableQualified(TableQualified {
                             table: table.to_string(),
                             name: column.name().to_string(),
-                            values: ColumnValues::bool_with_bitvec(result, container.bitvec()),
+                            data: EngineColumnData::bool_with_bitvec(result, container.bitvec()),
                         }),
-                        None => FrameColumn::ColumnQualified(ColumnQualified {
+                        None => EngineColumn::ColumnQualified(ColumnQualified {
                             name: column.name().to_string(),
-                            values: ColumnValues::bool_with_bitvec(result, container.bitvec()),
+                            data: EngineColumnData::bool_with_bitvec(result, container.bitvec()),
                         }),
                     })
                 }
@@ -44,9 +44,9 @@ impl Evaluator {
                 )),
             },
 
-            ColumnValues::Float4(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for (idx, val) in container.values().iter().enumerate() {
+            EngineColumnData::Float4(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
@@ -62,21 +62,21 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::float4_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::float4_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::float4_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::float4_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Float8(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for (idx, val) in container.values().iter().enumerate() {
+            EngineColumnData::Float8(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
@@ -92,21 +92,21 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::float8_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::float8_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::float8_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::float8_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Int1(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for (idx, val) in container.values().iter().enumerate() {
+            EngineColumnData::Int1(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
@@ -122,21 +122,21 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int1_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int1_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Int2(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for (idx, val) in container.values().iter().enumerate() {
+            EngineColumnData::Int2(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
@@ -152,21 +152,21 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int2_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int2_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Int4(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for (idx, val) in container.values().iter().enumerate() {
+            EngineColumnData::Int4(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
@@ -182,21 +182,21 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int4_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int4_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Int8(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for (idx, val) in container.values().iter().enumerate() {
+            EngineColumnData::Int8(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
@@ -212,21 +212,21 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int8_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int8_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Int16(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for (idx, val) in container.values().iter().enumerate() {
+            EngineColumnData::Int16(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
                             PrefixOperator::Minus(_) => -*val,
@@ -242,19 +242,19 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int16_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int16_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Utf8(_) => match prefix.operator {
+            EngineColumnData::Utf8(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_text(prefix.span()))
                 }
@@ -263,9 +263,9 @@ impl Evaluator {
                 )),
             },
 
-            ColumnValues::Uint1(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for val in container.values().iter() {
+            EngineColumnData::Uint1(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for val in container.data().iter() {
                     let signed = *val as i8;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
@@ -276,21 +276,21 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int1_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int1_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Uint2(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for val in container.values().iter() {
+            EngineColumnData::Uint2(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for val in container.data().iter() {
                     let signed = *val as i16;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
@@ -301,21 +301,21 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int2_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int2_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Uint4(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for val in container.values().iter() {
+            EngineColumnData::Uint4(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for val in container.data().iter() {
                     let signed = *val as i32;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
@@ -326,21 +326,21 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int4_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int4_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            ColumnValues::Uint8(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for val in container.values().iter() {
+            EngineColumnData::Uint8(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for val in container.data().iter() {
                     let signed = *val as i64;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
@@ -351,20 +351,20 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int8_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int8_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
-            ColumnValues::Uint16(container) => {
-                let mut result = Vec::with_capacity(container.values().len());
-                for val in container.values().iter() {
+            EngineColumnData::Uint16(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for val in container.data().iter() {
                     let signed = *val as i128;
                     result.push(match prefix.operator {
                         PrefixOperator::Minus(_) => -signed,
@@ -375,67 +375,67 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => EngineColumn::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: ColumnValues::int16_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => EngineColumn::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: ColumnValues::int16_with_bitvec(result, container.bitvec()),
+                        data: EngineColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
-            // ColumnValues::Undefined(_) => {
-            //     Err("Cannot apply prefix operator to undefined values".into())
+            // EngineColumnData::Undefined(_) => {
+            //     Err("Cannot apply prefix operator to undefined data".into())
             // }
-            ColumnValues::Undefined(_) => {
+            EngineColumnData::Undefined(_) => {
                 unimplemented!()
             }
 
-            ColumnValues::Date(_) => match prefix.operator {
+            EngineColumnData::Date(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            ColumnValues::DateTime(_) => match prefix.operator {
+            EngineColumnData::DateTime(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            ColumnValues::Time(_) => match prefix.operator {
+            EngineColumnData::Time(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            ColumnValues::Interval(_) => match prefix.operator {
+            EngineColumnData::Interval(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            ColumnValues::RowId(_) => match prefix.operator {
+            EngineColumnData::RowId(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_number(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            ColumnValues::Uuid4(_) => match prefix.operator {
+            EngineColumnData::Uuid4(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_uuid(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            ColumnValues::Uuid7(_) => match prefix.operator {
+            EngineColumnData::Uuid7(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_uuid(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            ColumnValues::Blob(_) => match prefix.operator {
+            EngineColumnData::Blob(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(reifydb_core::error::diagnostic::engine::frame_error(
                         "Cannot apply NOT operator to BLOB".to_string()

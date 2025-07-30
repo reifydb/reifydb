@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::frame::Frame;
 use crate::execute::Executor;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::table::TableToCreate;
 use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_already_exists};
-use reifydb_core::frame::Frame;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
 use reifydb_core::{Value, return_error};
 use reifydb_rql::plan::physical::CreateTablePlan;

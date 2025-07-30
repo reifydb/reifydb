@@ -2,10 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::frame::{ColumnQualified, Frame, FrameColumn, FrameLayout, TableQualified};
 use reifydb_core::interface::Rx;
 use reifydb_core::{JoinType, Value};
 use std::collections::HashSet;
+use crate::column::{ColumnQualified, EngineColumn, TableQualified};
+use crate::column::frame::Frame;
+use crate::column::layout::FrameLayout;
 
 pub(crate) struct NaturalJoinNode {
     left: Box<dyn ExecutionPlan>,
@@ -127,7 +129,7 @@ impl ExecutionPlan for NaturalJoinNode {
             // Handle LEFT natural join - include unmatched left rows
             if !matched && matches!(self.join_type, JoinType::Left) {
                 let mut combined = left_row.clone();
-                // Add undefined values for non-common right columns
+                // Add undefined data for non-common right columns
                 let undefined_count = right_frame.column_count() - excluded_right_cols.len();
                 combined.extend(vec![Value::Undefined; undefined_count]);
                 result_rows.push(combined);
@@ -135,7 +137,7 @@ impl ExecutionPlan for NaturalJoinNode {
         }
 
         // Create frame with proper qualified column structure
-        let mut column_metadata: Vec<&FrameColumn> = left_frame.columns.iter().collect();
+        let mut column_metadata: Vec<&EngineColumn> = left_frame.columns.iter().collect();
         for (idx, col) in right_frame.columns.iter().enumerate() {
             if !excluded_right_cols.contains(&idx) {
                 column_metadata.push(col);
@@ -149,14 +151,14 @@ impl ExecutionPlan for NaturalJoinNode {
         for (i, col_meta) in column_metadata.iter().enumerate() {
             let old_column = &frame.columns[i];
             frame.columns[i] = match col_meta.table() {
-                Some(table) => FrameColumn::TableQualified(TableQualified {
+                Some(table) => EngineColumn::TableQualified(TableQualified {
                     table: table.to_string(),
                     name: col_meta.name().to_string(),
-                    values: old_column.values().clone(),
+                    data: old_column.data().clone(),
                 }),
-                None => FrameColumn::ColumnQualified(ColumnQualified {
+                None => EngineColumn::ColumnQualified(ColumnQualified {
                     name: col_meta.name().to_string(),
-                    values: old_column.values().clone(),
+                    data: old_column.data().clone(),
                 }),
             };
         }

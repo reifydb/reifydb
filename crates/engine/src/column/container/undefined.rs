@@ -170,7 +170,7 @@ mod tests {
 
         container.filter(&mask);
 
-        assert_eq!(container.len(), 4); // 4 true values in mask
+        assert_eq!(container.len(), 4); // 4 true data in mask
     }
 
     #[test]
@@ -224,7 +224,7 @@ mod tests {
         // Start empty
         assert_eq!(container.len(), 0);
 
-        // Add some undefined values
+        // Add some undefined data
         container.push_undefined();
         container.push_undefined();
         container.extend_from_undefined(3);

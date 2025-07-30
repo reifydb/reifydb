@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::frame::{ColumnValues, FrameColumn};
+use crate::column::{EngineColumn, EngineColumnData};
 use crate::function::ScalarFunction;
 
 pub struct Abs;
@@ -15,33 +15,33 @@ impl Abs {
 impl ScalarFunction for Abs {
     fn scalar(
         &self,
-        columns: &[FrameColumn],
+        columns: &[EngineColumn],
         row_count: usize,
-    ) -> crate::Result<ColumnValues> {
+    ) -> crate::Result<EngineColumnData> {
         let column = columns.get(0).unwrap();
 
-        match &column.values() {
-            ColumnValues::Int1(container) => {
-                let mut values = Vec::with_capacity(container.len());
+        match &column.data() {
+            EngineColumnData::Int1(container) => {
+                let mut data = Vec::with_capacity(container.len());
 
                 for i in 0..row_count {
                     if let Some(value) = container.get(i) {
-                        values.push(if *value < 0 { *value * -1 } else { *value });
+                        data.push(if *value < 0 { *value * -1 } else { *value });
                     }
                 }
 
-                Ok(ColumnValues::int1_with_bitvec(values, container.bitvec()))
+                Ok(EngineColumnData::int1_with_bitvec(data, container.bitvec()))
             }
-            ColumnValues::Int2(container) => {
-                let mut values = Vec::with_capacity(container.len());
+            EngineColumnData::Int2(container) => {
+                let mut data = Vec::with_capacity(container.len());
 
                 for i in 0..row_count {
                     if let Some(value) = container.get(i) {
-                        values.push(if *value < 0 { *value * -1 } else { *value });
+                        data.push(if *value < 0 { *value * -1 } else { *value });
                     }
                 }
 
-                Ok(ColumnValues::int2_with_bitvec(values, container.bitvec()))
+                Ok(EngineColumnData::int2_with_bitvec(data, container.bitvec()))
             }
             _ => unimplemented!(),
         }

@@ -45,7 +45,7 @@ impl OperatorType {
             OperatorType::Join { .. } => true, // Hash tables for both sides
             OperatorType::Aggregate { .. } => true, // Running aggregation state
             OperatorType::TopK { .. } => true, // Sorted buffer of top K elements
-            OperatorType::Distinct { .. } => true, // Set of seen values
+            OperatorType::Distinct { .. } => true, // Set of seen data
         }
     }
 }

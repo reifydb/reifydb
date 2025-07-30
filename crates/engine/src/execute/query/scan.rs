@@ -1,16 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::frame::Frame;
+use crate::column::layout::{EngineColumnLayout, FrameLayout};
+use crate::column::{EngineColumn, EngineColumnData, TableQualified};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
+use reifydb_core::EncodedKey;
 use reifydb_core::EncodedKeyRange;
-use reifydb_core::frame::{
-    ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout, TableQualified,
-};
 use reifydb_core::interface::{EncodableKey, Table, TableRowKey};
 use reifydb_core::interface::{EncodableKeyRange, Rx, TableRowKeyRange};
 use reifydb_core::row::Layout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
-use reifydb_core::EncodedKey;
 use std::ops::Bound::{Excluded, Included};
 use std::sync::Arc;
 
@@ -25,14 +25,14 @@ pub(crate) struct ScanFrameNode {
 
 impl ScanFrameNode {
     pub fn new(table: Table, context: Arc<ExecutionContext>) -> crate::Result<Self> {
-        let values = table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
-        let row_layout = Layout::new(&values);
+        let data = table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
+        let row_layout = Layout::new(&data);
 
         let layout = FrameLayout {
             columns: table
                 .columns
                 .iter()
-                .map(|col| FrameColumnLayout { schema: None, table: None, name: col.name.clone() })
+                .map(|col| EngineColumnLayout { schema: None, table: None, name: col.name.clone() })
                 .collect(),
         };
 
@@ -90,10 +90,10 @@ impl ExecutionPlan for ScanFrameNode {
 
         // Add the RowId column to the frame if requested
         if ctx.preserve_row_ids {
-            let row_id_column = FrameColumn::TableQualified(TableQualified {
+            let row_id_column = EngineColumn::TableQualified(TableQualified {
                 table: self.table.name.clone(),
                 name: ROW_ID_COLUMN_NAME.to_string(),
-                values: ColumnValues::row_id(row_ids),
+                data: EngineColumnData::row_id(row_ids),
             });
             frame.columns.push(row_id_column);
             frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);

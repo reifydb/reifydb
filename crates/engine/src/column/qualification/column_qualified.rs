@@ -3,256 +3,256 @@ use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, Date, DateTime, Interval, RowId, Time, Uuid4, Uuid7};
 
 impl ColumnQualified {
-    pub fn bool(name: &str, values: impl IntoIterator<Item = bool>) -> EngineColumn {
+    pub fn bool(name: &str, data: impl IntoIterator<Item = bool>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::bool(values),
+            data: EngineColumnData::bool(data),
         })
     }
 
     pub fn bool_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = bool>,
+        data: impl IntoIterator<Item = bool>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::bool_with_bitvec(values, bitvec),
+            data: EngineColumnData::bool_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn float4(name: &str, values: impl IntoIterator<Item = f32>) -> EngineColumn {
+    pub fn float4(name: &str, data: impl IntoIterator<Item = f32>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::float4(values),
+            data: EngineColumnData::float4(data),
         })
     }
 
     pub fn float4_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = f32>,
+        data: impl IntoIterator<Item = f32>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::float4_with_bitvec(values, bitvec),
+            data: EngineColumnData::float4_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn float8(name: &str, values: impl IntoIterator<Item = f64>) -> EngineColumn {
+    pub fn float8(name: &str, data: impl IntoIterator<Item = f64>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::float8(values),
+            data: EngineColumnData::float8(data),
         })
     }
 
     pub fn float8_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = f64>,
+        data: impl IntoIterator<Item = f64>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::float8_with_bitvec(values, bitvec),
+            data: EngineColumnData::float8_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn int1(name: &str, values: impl IntoIterator<Item = i8>) -> EngineColumn {
+    pub fn int1(name: &str, data: impl IntoIterator<Item = i8>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int1(values),
+            data: EngineColumnData::int1(data),
         })
     }
 
     pub fn int1_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = i8>,
+        data: impl IntoIterator<Item = i8>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int1_with_bitvec(values, bitvec),
+            data: EngineColumnData::int1_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn int2(name: &str, values: impl IntoIterator<Item = i16>) -> EngineColumn {
+    pub fn int2(name: &str, data: impl IntoIterator<Item = i16>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int2(values),
+            data: EngineColumnData::int2(data),
         })
     }
 
     pub fn int2_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = i16>,
+        data: impl IntoIterator<Item = i16>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int2_with_bitvec(values, bitvec),
+            data: EngineColumnData::int2_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn int4(name: &str, values: impl IntoIterator<Item = i32>) -> EngineColumn {
+    pub fn int4(name: &str, data: impl IntoIterator<Item = i32>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int4(values),
+            data: EngineColumnData::int4(data),
         })
     }
 
     pub fn int4_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = i32>,
+        data: impl IntoIterator<Item = i32>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int4_with_bitvec(values, bitvec),
+            data: EngineColumnData::int4_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn int8(name: &str, values: impl IntoIterator<Item = i64>) -> EngineColumn {
+    pub fn int8(name: &str, data: impl IntoIterator<Item = i64>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int8(values),
+            data: EngineColumnData::int8(data),
         })
     }
 
     pub fn int8_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = i64>,
+        data: impl IntoIterator<Item = i64>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int8_with_bitvec(values, bitvec),
+            data: EngineColumnData::int8_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn int16(name: &str, values: impl IntoIterator<Item = i128>) -> EngineColumn {
+    pub fn int16(name: &str, data: impl IntoIterator<Item = i128>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int16(values),
+            data: EngineColumnData::int16(data),
         })
     }
 
     pub fn int16_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = i128>,
+        data: impl IntoIterator<Item = i128>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::int16_with_bitvec(values, bitvec),
+            data: EngineColumnData::int16_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn uint1(name: &str, values: impl IntoIterator<Item = u8>) -> EngineColumn {
+    pub fn uint1(name: &str, data: impl IntoIterator<Item = u8>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint1(values),
+            data: EngineColumnData::uint1(data),
         })
     }
 
     pub fn uint1_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = u8>,
+        data: impl IntoIterator<Item = u8>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint1_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint1_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn uint2(name: &str, values: impl IntoIterator<Item = u16>) -> EngineColumn {
+    pub fn uint2(name: &str, data: impl IntoIterator<Item = u16>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint2(values),
+            data: EngineColumnData::uint2(data),
         })
     }
 
     pub fn uint2_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = u16>,
+        data: impl IntoIterator<Item = u16>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint2_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint2_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn uint4(name: &str, values: impl IntoIterator<Item = u32>) -> EngineColumn {
+    pub fn uint4(name: &str, data: impl IntoIterator<Item = u32>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint4(values),
+            data: EngineColumnData::uint4(data),
         })
     }
 
     pub fn uint4_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = u32>,
+        data: impl IntoIterator<Item = u32>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint4_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint4_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn uint8(name: &str, values: impl IntoIterator<Item = u64>) -> EngineColumn {
+    pub fn uint8(name: &str, data: impl IntoIterator<Item = u64>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint8(values),
+            data: EngineColumnData::uint8(data),
         })
     }
 
     pub fn uint8_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = u64>,
+        data: impl IntoIterator<Item = u64>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint8_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint8_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn uint16(name: &str, values: impl IntoIterator<Item = u128>) -> EngineColumn {
+    pub fn uint16(name: &str, data: impl IntoIterator<Item = u128>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint16(values),
+            data: EngineColumnData::uint16(data),
         })
     }
 
     pub fn uint16_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = u128>,
+        data: impl IntoIterator<Item = u128>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uint16_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint16_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn utf8<'a>(name: &str, values: impl IntoIterator<Item = &'a str>) -> EngineColumn {
+    pub fn utf8<'a>(name: &str, data: impl IntoIterator<Item = &'a str>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::utf8(values.into_iter().map(|s| s.to_string())),
+            data: EngineColumnData::utf8(data.into_iter().map(|s| s.to_string())),
         })
     }
 
     pub fn utf8_with_bitvec<'a>(
         name: &str,
-        values: impl IntoIterator<Item = &'a str>,
+        data: impl IntoIterator<Item = &'a str>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
             data: EngineColumnData::utf8_with_bitvec(
-                values.into_iter().map(|s| s.to_string()),
+                data.into_iter().map(|s| s.to_string()),
                 bitvec,
             ),
         })
@@ -266,129 +266,129 @@ impl ColumnQualified {
     }
 
     // Temporal types
-    pub fn date(name: &str, values: impl IntoIterator<Item = Date>) -> EngineColumn {
+    pub fn date(name: &str, data: impl IntoIterator<Item = Date>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::date(values),
+            data: EngineColumnData::date(data),
         })
     }
 
     pub fn date_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = Date>,
+        data: impl IntoIterator<Item = Date>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::date_with_bitvec(values, bitvec),
+            data: EngineColumnData::date_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn datetime(name: &str, values: impl IntoIterator<Item = DateTime>) -> EngineColumn {
+    pub fn datetime(name: &str, data: impl IntoIterator<Item = DateTime>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::datetime(values),
+            data: EngineColumnData::datetime(data),
         })
     }
 
     pub fn datetime_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = DateTime>,
+        data: impl IntoIterator<Item = DateTime>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::datetime_with_bitvec(values, bitvec),
+            data: EngineColumnData::datetime_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn time(name: &str, values: impl IntoIterator<Item = Time>) -> EngineColumn {
+    pub fn time(name: &str, data: impl IntoIterator<Item = Time>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::time(values),
+            data: EngineColumnData::time(data),
         })
     }
 
     pub fn time_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = Time>,
+        data: impl IntoIterator<Item = Time>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::time_with_bitvec(values, bitvec),
+            data: EngineColumnData::time_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn interval(name: &str, values: impl IntoIterator<Item = Interval>) -> EngineColumn {
+    pub fn interval(name: &str, data: impl IntoIterator<Item = Interval>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::interval(values),
+            data: EngineColumnData::interval(data),
         })
     }
 
     pub fn interval_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = Interval>,
+        data: impl IntoIterator<Item = Interval>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::interval_with_bitvec(values, bitvec),
+            data: EngineColumnData::interval_with_bitvec(data, bitvec),
         })
     }
 
     // UUID types
-    pub fn uuid4(name: &str, values: impl IntoIterator<Item = Uuid4>) -> EngineColumn {
+    pub fn uuid4(name: &str, data: impl IntoIterator<Item = Uuid4>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uuid4(values),
+            data: EngineColumnData::uuid4(data),
         })
     }
 
     pub fn uuid4_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = Uuid4>,
+        data: impl IntoIterator<Item = Uuid4>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uuid4_with_bitvec(values, bitvec),
+            data: EngineColumnData::uuid4_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn uuid7(name: &str, values: impl IntoIterator<Item = Uuid7>) -> EngineColumn {
+    pub fn uuid7(name: &str, data: impl IntoIterator<Item = Uuid7>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uuid7(values),
+            data: EngineColumnData::uuid7(data),
         })
     }
 
     pub fn uuid7_with_bitvec(
         name: &str,
-        values: impl IntoIterator<Item = Uuid7>,
+        data: impl IntoIterator<Item = Uuid7>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: name.to_string(),
-            data: EngineColumnData::uuid7_with_bitvec(values, bitvec),
+            data: EngineColumnData::uuid7_with_bitvec(data, bitvec),
         })
     }
 
-    pub fn row_id(values: impl IntoIterator<Item = RowId>) -> EngineColumn {
+    pub fn row_id(data: impl IntoIterator<Item = RowId>) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: ROW_ID_COLUMN_NAME.to_string(),
-            data: EngineColumnData::row_id(values),
+            data: EngineColumnData::row_id(data),
         })
     }
 
     pub fn row_id_with_bitvec(
-        values: impl IntoIterator<Item = RowId>,
+        data: impl IntoIterator<Item = RowId>,
         bitvec: impl Into<BitVec>,
     ) -> EngineColumn {
         EngineColumn::ColumnQualified(Self {
             name: ROW_ID_COLUMN_NAME.to_string(),
-            data: EngineColumnData::row_id_with_bitvec(values, bitvec),
+            data: EngineColumnData::row_id_with_bitvec(data, bitvec),
         })
     }
 }

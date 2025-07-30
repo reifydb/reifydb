@@ -1,6 +1,6 @@
+use crate::column::EngineColumnData;
 use crate::evaluate::EvaluationContext;
-use crate::evaluate::cast::cast_column_values;
-use reifydb_core::frame::{BufferedPools, ColumnValues};
+use crate::evaluate::cast::cast_column_data;
 use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 
 /// Attempts to coerce a single Value to match the target column type using the existing casting infrastructure
@@ -26,13 +26,13 @@ pub(crate) fn coerce_value_to_column_type(
         return Ok(value);
     }
 
-    let temp_column_values = ColumnValues::from(value.clone());
+    let temp_column_data = EngineColumnData::from(value.clone());
     let value_str = value.to_string();
 
     let column_policies = column.policies.clone();
 
-    let coerced_column = cast_column_values(
-        &temp_column_values,
+    let coerced_column = cast_column_data(
+        &temp_column_data,
         target,
         &EvaluationContext {
             target_column: Some(column),
@@ -40,7 +40,6 @@ pub(crate) fn coerce_value_to_column_type(
             columns: Vec::new(),
             row_count: 1,
             take: None,
-            buffered: BufferedPools::default(),
         },
         || BorrowedSpan::new(&value_str).to_owned(),
     )?;

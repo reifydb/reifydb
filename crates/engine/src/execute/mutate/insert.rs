@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::frame::Frame;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::{Catalog, sequence::TableRowSequence};
 use reifydb_core::error::diagnostic::catalog::table_not_found;
-use reifydb_core::frame::{BufferedPools, Frame};
 use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
@@ -41,7 +41,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 table: Some(table.clone()),
                 batch_size: 1024,
                 preserve_row_ids: false,
-                buffered: BufferedPools::default(),
             }),
         );
 
@@ -54,7 +53,6 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 table: Some(table.clone()),
                 batch_size: 1024,
                 preserve_row_ids: false,
-                buffered: BufferedPools::default(),
             }),
             tx,
         )? {
@@ -68,7 +66,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     let mut value = if let Some(input_column) =
                         frame.columns.iter().find(|col| col.name() == table_column.name)
                     {
-                        input_column.values().get_value(row_idx)
+                        input_column.data().get_value(row_idx)
                     } else {
                         Value::Undefined
                     };

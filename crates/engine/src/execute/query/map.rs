@@ -1,13 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::EngineColumn;
+use crate::column::frame::Frame;
+use crate::column::layout::FrameLayout;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_rql::expression::Expression;
-use reifydb_core::frame::{Frame, FrameColumn, FrameLayout};
+use reifydb_core::ColumnDescriptor;
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
-use reifydb_core::ColumnDescriptor;
+use reifydb_rql::expression::Expression;
+use crate::execute::query::layout::derive_frame_column_layout;
 
 pub(crate) struct MapNode {
     input: Box<dyn ExecutionPlan>,
@@ -26,7 +29,7 @@ impl MapNode {
         &self,
         expr: &Expression,
         ctx: &'a ExecutionContext,
-        columns: Vec<FrameColumn>,
+        columns: Vec<EngineColumn>,
         row_count: usize,
     ) -> EvaluationContext<'a> {
         let mut result = EvaluationContext {
@@ -35,7 +38,6 @@ impl MapNode {
             columns,
             row_count,
             take: None,
-            buffered: ctx.buffered.clone(),
         };
 
         // Check if this is an alias expression and we have table information
@@ -82,19 +84,13 @@ impl ExecutionPlan for MapNode {
             for expr in &self.expressions {
                 let column = evaluate(
                     expr,
-                    &self.create_evaluation_context(
-                        expr,
-                        ctx,
-                        frame.columns.clone(),
-                        row_count,
-                    ),
+                    &self.create_evaluation_context(expr, ctx, frame.columns.clone(), row_count),
                 )?;
 
                 columns.push(column);
             }
 
-            let layout =
-                Expression::derive_frame_column_layout(&self.expressions, ctx.preserve_row_ids);
+            let layout = derive_frame_column_layout(&self.expressions, ctx.preserve_row_ids);
 
             self.layout = Some(layout);
 
@@ -138,7 +134,6 @@ impl ExecutionPlan for MapWithoutInputNode {
                     columns: Vec::new(),
                     row_count: 1,
                     take: None,
-                    buffered: ctx.buffered.clone(),
                 },
             )?;
 
