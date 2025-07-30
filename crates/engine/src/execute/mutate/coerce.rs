@@ -1,4 +1,5 @@
-use crate::column::ColumnData;
+use crate::columnar::ColumnData;
+use crate::columnar::columns::Columns;
 use crate::evaluate::EvaluationContext;
 use crate::evaluate::cast::cast_column_data;
 use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};
@@ -37,7 +38,7 @@ pub(crate) fn coerce_value_to_column_type(
         &EvaluationContext {
             target_column: Some(column),
             column_policies,
-            columns: Vec::new(),
+            columns: Columns::empty(),
             row_count: 1,
             take: None,
         },

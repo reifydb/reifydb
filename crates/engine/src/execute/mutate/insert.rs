@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::columns::Columns;
+use crate::columnar::columns::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::{Catalog, sequence::TableRowSequence};
-use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::interface::{EncodableKey, TableRowKey};
+use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
     interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
@@ -47,7 +47,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame }) = input_node.next(
+        while let Some(Batch { columns }) = input_node.next(
             &Arc::new(ExecutionContext {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
@@ -56,15 +56,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }),
             tx,
         )? {
-            let row_count = frame.row_count();
+            let row_count = columns.row_count();
 
             for row_idx in 0..row_count {
                 let mut row = layout.allocate_row();
 
-                // For each table column, find if it exists in the input frame
+                // For each table column, find if it exists in the input columns
                 for (table_idx, table_column) in table.columns.iter().enumerate() {
                     let mut value = if let Some(input_column) =
-                        frame.columns.iter().find(|col| col.name() == table_column.name)
+                        columns.iter().find(|col| col.name() == table_column.name)
                     {
                         input_column.data().get_value(row_idx)
                     } else {
@@ -120,7 +120,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }
         }
 
-        // Return summary frame
+        // Return summary columns
         Ok(Columns::single_row([
             ("schema", Value::Utf8(schema.name)),
             ("table", Value::Utf8(table.name)),

@@ -19,18 +19,18 @@ impl Operator for MapOperator {
 
         for change in diff.changes {
             match change {
-                Change::Insert { frame } => {
-                    let projected_frame = self.project_frame(&frame)?;
-                    output_changes.push(Change::Insert { frame: projected_frame });
+                Change::Insert { columns } => {
+                    let projected_columns = self.project_columns(&columns)?;
+                    output_changes.push(Change::Insert { columns: projected_columns });
                 }
                 Change::Update { old, new } => {
-                    let projected_frame = self.project_frame(&new)?;
-                    output_changes.push(Change::Update { old, new: projected_frame });
+                    let projected_columns = self.project_columns(&new)?;
+                    output_changes.push(Change::Update { old, new: projected_columns });
                 }
-                Change::Remove { frame } => {
+                Change::Remove { columns } => {
                     // For removes, we might need to project to maintain schema consistency
-                    let projected_frame = self.project_frame(&frame)?;
-                    output_changes.push(Change::Remove { frame: projected_frame });
+                    let projected_columns = self.project_columns(&columns)?;
+                    output_changes.push(Change::Remove { columns: projected_columns });
                 }
             }
         }
@@ -40,18 +40,18 @@ impl Operator for MapOperator {
 }
 
 impl MapOperator {
-    fn project_frame(&self, frame: &Frame) -> crate::Result<Frame> {
-        // if frame.is_empty() {
-        //     return Ok(frame.clone());
+    fn project_columns(&self, frames: &Frame) -> crate::Result<Frame> {
+        // if columns.is_empty() {
+        //     return Ok(columns.clone());
         // }
         //
-        // let row_count = frame.row_count();
+        // let row_count = columns.row_count();
         //
-        // // Create evaluation context from input frame
+        // // Create evaluation context from input columns
         // let eval_ctx = EvaluationContext {
         //     target_column: None,
         //     column_policies: Vec::new(),
-        //     columns: frame.columns.clone(),
+        //     columns: columns.columns.clone(),
         //     row_count,
         //     take: None,
         // };
@@ -63,8 +63,8 @@ impl MapOperator {
         //     projected_columns.push(column);
         // }
         //
-        // // Build new frame from projected columns
-        // Ok(Frame::new(projected_columns))
+        // // Build new columns from projected columns
+        // Ok(Columns::new(projected_columns))
         todo!()
     }
 }

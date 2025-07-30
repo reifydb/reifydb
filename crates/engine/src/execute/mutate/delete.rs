@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::ColumnData;
+use crate::columnar::ColumnData;
+use crate::columnar::columns::Columns;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
+use reifydb_core::interface::{EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange};
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
-use reifydb_core::interface::{EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange};
 use reifydb_core::{
     EncodedKeyRange, IntoOwnedSpan, Value,
     interface::{Tx, UnversionedStorage, VersionedStorage},
@@ -16,7 +17,6 @@ use reifydb_core::{
 use reifydb_rql::plan::physical::DeletePlan;
 use std::collections::Bound::Included;
 use std::sync::Arc;
-use crate::column::columns::Columns;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn delete(
@@ -57,10 +57,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 preserve_row_ids: true,
             };
 
-            while let Some(Batch { frame }) = input_node.next(&context, tx)? {
+            while let Some(Batch { columns }) = input_node.next(&context, tx)? {
                 // Find the RowId column - return error if not found
                 let Some(row_id_column) =
-                    frame.columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
+                    columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
                 else {
                     return_error!(engine::missing_row_id_column());
                 };
@@ -79,7 +79,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     _ => return_error!(engine::invalid_row_id_values()),
                 };
 
-                for row_idx in 0..frame.row_count() {
+                for row_idx in 0..columns.row_count() {
                     let row_id = row_ids[row_idx];
                     tx.remove(&TableRowKey { table: table.id, row: row_id }.encode())?;
                     deleted_count += 1;
@@ -102,7 +102,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }
         }
 
-        // Return summary frame
+        // Return summary columns
         Ok(Columns::single_row([
             ("schema", Value::Utf8(schema.name)),
             ("table", Value::Utf8(table.name)),

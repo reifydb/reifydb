@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::ColumnData;
-use crate::column::columns::Columns;
+use crate::columnar::ColumnData;
+use crate::columnar::columns::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
+use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
-use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
     interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
@@ -60,10 +60,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             batch_size: 1024,
             preserve_row_ids: true,
         };
-        while let Some(Batch { frame }) = input_node.next(&context, tx)? {
+        while let Some(Batch { columns }) = input_node.next(&context, tx)? {
             // Find the RowId column - return error if not found
-            let Some(row_id_column) =
-                frame.columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
+            let Some(row_id_column) = columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
             else {
                 return_error!(engine::missing_row_id_column());
             };
@@ -82,15 +81,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 _ => return_error!(engine::invalid_row_id_values()),
             };
 
-            let row_count = frame.row_count();
+            let row_count = columns.row_count();
 
             for row_idx in 0..row_count {
                 let mut row = layout.allocate_row();
 
-                // For each table column, find if it exists in the input frame
+                // For each table column, find if it exists in the input columns
                 for (table_idx, table_column) in table.columns.iter().enumerate() {
                     let mut value = if let Some(input_column) =
-                        frame.columns.iter().find(|col| col.name() == table_column.name)
+                        columns.iter().find(|col| col.name() == table_column.name)
                     {
                         input_column.data().get_value(row_idx)
                     } else {
@@ -140,7 +139,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                     }
                 }
 
-                // Update the row using the existing RowId from the frame
+                // Update the row using the existing RowId from the columns
                 let row_id = row_ids[row_idx];
                 tx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row)?;
 
@@ -148,7 +147,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }
         }
 
-        // Return summary frame
+        // Return summary columns
         Ok(Columns::single_row([
             ("schema", Value::Utf8(schema.name)),
             ("table", Value::Utf8(table.name)),

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::column::ColumnData;
+use crate::columnar::ColumnData;
 use reifydb_core::value::container::NumberContainer;
 
 use crate::evaluate::{Convert, Demote, Promote};

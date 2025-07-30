@@ -7,7 +7,7 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
-use crate::column::{ColumnQualified, Column, ColumnData, TableQualified};
+use crate::columnar::{ColumnQualified, Column, ColumnData, TableQualified};
 use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
 use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::{OwnedSpan, Type, err, error};
@@ -89,7 +89,7 @@ pub fn cast_column_data(
 
 #[cfg(test)]
 mod tests {
-    use crate::column::ColumnData;
+    use crate::columnar::ColumnData;
     use crate::evaluate::EvaluationContext;
     use crate::evaluate::Expression;
     use crate::evaluate::evaluate;

@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::columns::Columns;
-use crate::column::layout::{ColumnLayout, ColumnsLayout};
-use crate::column::{Column, ColumnData, ColumnQualified};
+use crate::columnar::columns::Columns;
+use crate::columnar::layout::{ColumnLayout, ColumnsLayout};
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::interface::{Rx, Table};
@@ -22,12 +22,12 @@ pub(crate) struct InlineDataNode {
 impl InlineDataNode {
     pub fn new(rows: Vec<Vec<KeyedExpression>>, context: Arc<ExecutionContext>) -> Self {
         let layout =
-            context.table.as_ref().map(|table| Self::create_frame_layout_from_table(table));
+            context.table.as_ref().map(|table| Self::create_columns_layout_from_table(table));
 
         Self { rows, layout, context, executed: false }
     }
 
-    fn create_frame_layout_from_table(table: &Table) -> ColumnsLayout {
+    fn create_columns_layout_from_table(table: &Table) -> ColumnsLayout {
         let columns = table
             .columns
             .iter()
@@ -47,11 +47,11 @@ impl ExecutionPlan for InlineDataNode {
         self.executed = true;
 
         if self.rows.is_empty() {
-            let frame = Columns::empty();
+            let columns = Columns::empty();
             if self.layout.is_none() {
-                self.layout = Some(ColumnsLayout::from_columns(&frame));
+                self.layout = Some(ColumnsLayout::from_columns(&columns));
             }
-            return Ok(Some(Batch { frame }));
+            return Ok(Some(Batch { columns }));
         }
 
         // Choose execution path based on whether we have table schema
@@ -87,8 +87,8 @@ impl InlineDataNode {
             rows_data.push(row_map);
         }
 
-        // Create frame columns with equal length
-        let mut frame_columns = Vec::new();
+        // Create columns columns with equal length
+        let mut columns_columns = Vec::new();
 
         for column_name in all_columns {
             let mut column_data = ColumnData::undefined(0);
@@ -98,7 +98,7 @@ impl InlineDataNode {
                     let ctx = EvaluationContext {
                         target_column: None,
                         column_policies: Vec::new(),
-                        columns: Vec::new(),
+                        columns: Columns::empty(),
                         row_count: 1,
                         take: None,
                     };
@@ -118,16 +118,16 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(Column::ColumnQualified(ColumnQualified {
+            columns_columns.push(Column::ColumnQualified(ColumnQualified {
                 name: column_name,
                 data: column_data,
             }));
         }
 
-        let frame = Columns::new(frame_columns);
-        self.layout = Some(ColumnsLayout::from_columns(&frame));
+        let columns = Columns::new(columns_columns);
+        self.layout = Some(ColumnsLayout::from_columns(&columns));
 
-        Ok(Some(Batch { frame }))
+        Ok(Some(Batch { columns }))
     }
 
     fn next_with_table_schema(&mut self) -> crate::Result<Option<Batch>> {
@@ -146,8 +146,8 @@ impl InlineDataNode {
             rows_data.push(row_map);
         }
 
-        // Create frame columns based on table schema
-        let mut frame_columns = Vec::new();
+        // Create columns columns based on table schema
+        let mut columns_columns = Vec::new();
 
         for column_layout in &layout.columns {
             let mut column_data = ColumnData::undefined(0);
@@ -174,7 +174,7 @@ impl InlineDataNode {
                             .iter()
                             .map(|cp| cp.policy.clone())
                             .collect(),
-                        columns: Vec::new(),
+                        columns: Columns::empty(),
                         row_count: 1,
                         take: None,
                     };
@@ -185,14 +185,14 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(Column::ColumnQualified(ColumnQualified {
+            columns_columns.push(Column::ColumnQualified(ColumnQualified {
                 name: column_layout.name.clone(),
                 data: column_data,
             }));
         }
 
-        let frame = Columns::new(frame_columns);
+        let columns = Columns::new(columns_columns);
 
-        Ok(Some(Batch { frame }))
+        Ok(Some(Batch { columns }))
     }
 }

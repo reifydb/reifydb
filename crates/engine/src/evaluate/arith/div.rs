@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::push::Push;
+use crate::columnar::push::Push;
 use reifydb_core::value::container::number::NumberContainer;
-use crate::column::{ColumnQualified, Column, ColumnData};
+use crate::columnar::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
 use reifydb_core::result::error::diagnostic::operator::div_cannot_be_applied_to_incompatible_types;

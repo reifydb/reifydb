@@ -20,10 +20,10 @@ impl Operator for FilterOperator {
         for change in diff.changes {
             todo!()
             // match change {
-            // Change::Insert { frame } => {
-            //     let filtered_frame = self.filter(&frame)?;
-            //     if !filtered_frame.is_empty() {
-            //         output_changes.push(Change::Insert { frame: filtered_frame });
+            // Change::Insert { columns } => {
+            //     let filtered_columns = self.filter(&columns)?;
+            //     if !filtered_columns.is_empty() {
+            //         output_changes.push(Change::Insert { columns: filtered_columns });
             //     }
             // }
             // Change::Update { old, new } => {
@@ -32,12 +32,12 @@ impl Operator for FilterOperator {
             //         output_changes.push(Change::Update { old, new: filtered_new });
             //     } else {
             //         // If new doesn't pass filter, emit remove of old
-            //         output_changes.push(Change::Remove { frame: old });
+            //         output_changes.push(Change::Remove { columns: old });
             //     }
             // }
-            // Change::Remove { frame } => {
+            // Change::Remove { columns } => {
             //     // Always pass through removes
-            //     output_changes.push(Change::Remove { frame });
+            //     output_changes.push(Change::Remove { columns });
             // }
             // }
         }
@@ -47,20 +47,20 @@ impl Operator for FilterOperator {
 }
 
 impl FilterOperator {
-    fn filter(&self, frame: &Frame) -> crate::Result<Frame> {
-        // let row_count = frame.row_count();
+    fn filter(&self, frames: &Frame) -> crate::Result<Frame> {
+        // let row_count = columns.row_count();
         //
         // let eval_ctx = EvaluationContext {
         //     target_column: None,
         //     column_policies: Vec::new(),
-        //     columns: frame.columns.clone(),
+        //     columns: columns.columns.clone(),
         //     row_count,
         //     take: None,
         // };
         //
         // // Evaluate predicate to get boolean column
         // let result_column = evaluate(&self.predicate, &eval_ctx)?;
-        // let mut frame = frame.clone();
+        // let mut columns = columns.clone();
         //
         // let mut bv = BitVec::repeat(row_count, true);
         //
@@ -74,9 +74,9 @@ impl FilterOperator {
         //     _ => unreachable!(),
         // }
         //
-        // frame.filter(&bv)?;
+        // columns.filter(&bv)?;
         //
-        // Ok(frame)
+        // Ok(columns)
         todo!()
     }
 }

@@ -164,12 +164,12 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         for change in &diff.changes {
             todo!()
             // match change {
-            //     Change::Insert { frame } => {
-            //         // Convert frame to row deltas
-            //         // let frame_deltas = self.frame_to_deltas(frame, node_id)?;
-            //         // deltas.extend(frame_deltas);
+            //     Change::Insert { columns } => {
+            //         // Convert columns to row deltas
+            //         // let columns_deltas = self.columns_to_deltas(columns, node_id)?;
+            //         // deltas.extend(columns_deltas);
             //
-            //         let row_count = frame.row_count();
+            //         let row_count = columns.row_count();
             //
             //         for row_idx in 0..row_count {
             //             // if !mask.get(row_idx) {
@@ -178,10 +178,10 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             //
             //             let mut row = layout.allocate_row();
             //
-            //             // For each table column, find if it exists in the input frame
+            //             // For each table column, find if it exists in the input columns
             //             for (table_idx, table_column) in table.columns.iter().enumerate() {
             //                 let value = if let Some(input_column) =
-            //                     frame.columns.iter().find(|col| col.name() == table_column.name)
+            //                     columns.columns.iter().find(|col| col.name() == table_column.name)
             //                 {
             //                     input_column.values().get_value(row_idx)
             //                 } else {
@@ -242,15 +242,15 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             //     }
             //     Change::Update { old: _, new: _ } => {
             //         // For updates, we could implement a more sophisticated approach
-            //         // For now, just insert the new frame
-            //         // let frame_deltas = self.frame_to_deltas(new, node_id)?;
-            //         // deltas.extend(frame_deltas);
+            //         // For now, just insert the new columns
+            //         // let columns_deltas = self.columns_to_deltas(new, node_id)?;
+            //         // deltas.extend(columns_deltas);
             //         todo!()
             //     }
-            //     Change::Remove { frame: _ } => {
-            //         // Convert frame to remove deltas
-            //         // let frame_deltas = self.frame_to_remove_deltas(frame, node_id)?;
-            //         // deltas.extend(frame_deltas);
+            //     Change::Remove { columns: _ } => {
+            //         // Convert columns to remove deltas
+            //         // let columns_deltas = self.columns_to_remove_deltas(columns, node_id)?;
+            //         // deltas.extend(columns_deltas);
             //         todo!()
             //     }
             // }
@@ -265,7 +265,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             if let Some(node) = self.graph.get_node(&node_id) {
                 if let NodeType::Sink { name, .. } = &node.node_type {
                     if name == view_name {
-                        return self.read_frame_from_storage(&node_id);
+                        return self.read_columns_from_storage(&node_id);
                     }
                 }
             }
@@ -273,7 +273,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         panic!("View {} not found", view_name);
     }
 
-    fn read_frame_from_storage(&self, node_id: &NodeId) -> Result<Frame> {
+    fn read_columns_from_storage(&self, node_id: &NodeId) -> Result<Frame> {
         // Start a read transaction
         let mut rx = self.transaction.begin_rx()?;
 
@@ -309,12 +309,12 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             ],
         };
 
-        // let mut frame = Frame::empty_from_table(&table);
+        // let mut columns = Columns::empty_from_table(&table);
         // let mut iter = versioned_data.into_iter();
         // while let Some(versioned) = iter.next() {
-        //     frame.append_rows(&layout, [versioned.row])?;
+        //     columns.append_rows(&layout, [versioned.row])?;
         // }
-        // Ok(frame)
+        // Ok(columns)
 
         todo!()
     }

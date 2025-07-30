@@ -5,7 +5,7 @@ use reifydb_core::result::error::diagnostic::operator::{
     and_can_not_applied_to_number, and_can_not_applied_to_temporal, and_can_not_applied_to_text,
     and_can_not_applied_to_uuid,
 };
-use crate::column::{ColumnQualified, ColumnData, Column};
+use crate::columnar::{ColumnQualified, ColumnData, Column};
 use reifydb_core::return_error;
 use reifydb_rql::expression::AndExpression;
 

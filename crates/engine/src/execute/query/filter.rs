@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::ColumnData;
-use crate::column::layout::ColumnsLayout;
+use crate::columnar::ColumnData;
+use crate::columnar::layout::ColumnsLayout;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::BitVec;
@@ -22,8 +22,8 @@ impl FilterNode {
 
 impl ExecutionPlan for FilterNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { mut frame }) = self.input.next(ctx, rx)? {
-            let mut row_count = frame.row_count();
+        while let Some(Batch { mut columns }) = self.input.next(ctx, rx)? {
+            let mut row_count = columns.row_count();
 
             // Apply each filter expression sequentially
             for filter_expr in &self.expressions {
@@ -36,7 +36,7 @@ impl ExecutionPlan for FilterNode {
                 let eval_ctx = EvaluationContext {
                     target_column: None,
                     column_policies: Vec::new(),
-                    columns: frame.columns.clone(),
+                    columns: columns.clone(),
                     row_count,
                     take: None,
                 };
@@ -60,12 +60,12 @@ impl ExecutionPlan for FilterNode {
                     _ => panic!("filter expression must evaluate to a boolean column"),
                 };
 
-                frame.filter(&filter_mask)?;
-                row_count = frame.row_count();
+                columns.filter(&filter_mask)?;
+                row_count = columns.row_count();
             }
 
             if row_count > 0 {
-                return Ok(Some(Batch { frame }));
+                return Ok(Some(Batch { columns }));
             }
         }
         Ok(None)

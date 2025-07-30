@@ -9,7 +9,7 @@ mod uuid;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use number::NumberParser;
 use reifydb_core::result::error::diagnostic::cast;
-use crate::column::{ColumnData, Column, ColumnQualified};
+use crate::columnar::{ColumnData, Column, ColumnQualified};
 use reifydb_core::value::container::undefined::UndefinedContainer;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};

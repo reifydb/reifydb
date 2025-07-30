@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::columns::Columns;
-use crate::column::layout::ColumnsLayout;
-use crate::column::{ColumnQualified, Column, ColumnData};
+use crate::columnar::columns::Columns;
+use crate::columnar::layout::ColumnsLayout;
+use crate::columnar::{ColumnQualified, Column, ColumnData};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;
@@ -49,8 +49,8 @@ impl ExecutionPlan for AggregateNode {
         let mut seen_groups = HashSet::<Vec<Value>>::new();
         let mut group_key_order: Vec<Vec<Value>> = Vec::new();
 
-        while let Some(Batch { frame }) = self.input.next(ctx, rx)? {
-            let groups = frame.group_by_view(&keys)?;
+        while let Some(Batch { columns }) = self.input.next(ctx, rx)? {
+            let groups = columns.group_by_view(&keys)?;
 
             for (group_key, _) in &groups {
                 if seen_groups.insert(group_key.clone()) {
@@ -60,7 +60,7 @@ impl ExecutionPlan for AggregateNode {
 
             for projection in &mut projections {
                 if let Projection::Aggregate { function, column, .. } = projection {
-                    let column = frame.column(column).unwrap();
+                    let column = columns.column(column).unwrap();
                     function.aggregate(column, &groups).unwrap();
                 }
             }
@@ -93,10 +93,10 @@ impl ExecutionPlan for AggregateNode {
             }
         }
 
-        let frame = Columns::new(result_columns);
-        self.layout = Some(ColumnsLayout::from_columns(&frame));
+        let columns = Columns::new(result_columns);
+        self.layout = Some(ColumnsLayout::from_columns(&columns));
 
-        Ok(Some(Batch { frame }))
+        Ok(Some(Batch { columns }))
     }
 
     fn layout(&self) -> Option<ColumnsLayout> {

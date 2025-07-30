@@ -4,7 +4,7 @@
 use reifydb_core::value::container::{
     BoolContainer, NumberContainer, StringContainer, TemporalContainer,
 };
-use crate::column::{ColumnQualified, Column, ColumnData};
+use crate::columnar::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use Type::Bool;
 use reifydb_core::result::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;

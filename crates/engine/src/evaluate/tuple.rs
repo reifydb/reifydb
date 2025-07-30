@@ -1,5 +1,5 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::column::Column;
+use crate::columnar::Column;
 use reifydb_rql::expression::TupleExpression;
 
 impl Evaluator {

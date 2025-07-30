@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{Column, ColumnData};
+use crate::columnar::{Column, ColumnData};
 use crate::function::ScalarFunction;
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::Blob;
@@ -46,7 +46,7 @@ impl ScalarFunction for BlobB64url {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::column::ColumnQualified;
+    use crate::columnar::ColumnQualified;
     use reifydb_core::value::container::StringContainer;
 
     #[test]

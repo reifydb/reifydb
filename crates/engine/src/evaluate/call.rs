@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{ColumnQualified, Column};
+use crate::columnar::{ColumnQualified, Column};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::error;
 use reifydb_core::result::error::diagnostic::function;

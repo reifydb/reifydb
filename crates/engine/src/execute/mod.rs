@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::columns::Columns;
-use crate::column::layout::ColumnsLayout;
-use crate::column::{Column, ColumnData, ColumnQualified, TableQualified};
+use crate::columnar::columns::Columns;
+use crate::columnar::layout::ColumnsLayout;
+use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_core::interface::{Rx, Table, Tx, UnversionedStorage, VersionedStorage};
@@ -24,7 +24,7 @@ pub struct ExecutionContext {
 
 #[derive(Debug)]
 pub(crate) struct Batch {
-    pub frame: Columns,
+    pub columns: Columns,
 }
 
 pub(crate) trait ExecutionPlan {
@@ -130,7 +130,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     fn execute_query_plan(self, rx: &mut impl Rx, plan: PhysicalPlan) -> crate::Result<Columns> {
         match plan {
             // PhysicalPlan::Describe { plan } => {
-            //     // FIXME evaluating the entire frame is quite wasteful but good enough to write some tests
+            //     // FIXME evaluating the entire columns is quite wasteful but good enough to write some tests
             //     let result = self.execute_query_plan(rx, *plan)?;
             //     let ExecutionResult::Query { columns, .. } = result else { panic!() };
             //     Ok(ExecutionResult::DescribeQuery { columns })
@@ -145,25 +145,25 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 let mut node = compile(plan, rx, context.clone());
                 let mut result: Option<Columns> = None;
 
-                while let Some(Batch { frame }) = node.next(&context, rx)? {
-                    if let Some(mut result_frame) = result.take() {
-                        result_frame.append_frame(frame)?;
-                        result = Some(result_frame);
+                while let Some(Batch { columns }) = node.next(&context, rx)? {
+                    if let Some(mut result_columns) = result.take() {
+                        result_columns.append_columns(columns)?;
+                        result = Some(result_columns);
                     } else {
-                        result = Some(frame);
+                        result = Some(columns);
                     }
                 }
 
                 let layout = node.layout();
 
-                if let Some(mut frame) = result {
+                if let Some(mut columns) = result {
                     if let Some(layout) = layout {
-                        frame.apply_layout(&layout);
+                        columns.apply_layout(&layout);
                     }
 
-                    Ok(frame.into())
+                    Ok(columns.into())
                 } else {
-                    // empty frame - reconstruct table, for better UX
+                    // empty columns - reconstruct table, for better UX
                     let columns: Vec<Column> = node
                         .layout()
                         .unwrap_or(ColumnsLayout { columns: vec![] })
@@ -182,7 +182,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         })
                         .collect();
 
-                    Ok(Columns { columns })
+                    Ok(Columns::new(columns))
                 }
             }
         }

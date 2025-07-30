@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::columns::Columns;
+use crate::columnar::layout::ColumnsLayout;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::SortDirection::{Asc, Desc};
-use reifydb_core::result::error::diagnostic::query;
 use reifydb_core::interface::Rx;
+use reifydb_core::result::error::diagnostic::query;
 use reifydb_core::{SortKey, error};
 use std::cmp::Ordering::Equal;
-use crate::column::columns::Columns;
-use crate::column::layout::ColumnsLayout;
 
 pub(crate) struct SortNode {
     input: Box<dyn ExecutionPlan>,
@@ -23,19 +23,19 @@ impl SortNode {
 
 impl ExecutionPlan for SortNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        let mut frame_opt: Option<Columns> = None;
+        let mut columns_opt: Option<Columns> = None;
 
-        while let Some(Batch { frame }) = self.input.next(ctx, rx)? {
-            if let Some(existing_frame) = &mut frame_opt {
-                for (i, col) in frame.columns.into_iter().enumerate() {
-                    existing_frame.columns[i].data_mut().extend(col.data().clone())?;
+        while let Some(Batch { columns }) = self.input.next(ctx, rx)? {
+            if let Some(existing_columns) = &mut columns_opt {
+                for (i, col) in columns.into_iter().enumerate() {
+                    existing_columns[i].data_mut().extend(col.data().clone())?;
                 }
             } else {
-                frame_opt = Some(frame);
+                columns_opt = Some(columns);
             }
         }
 
-        let mut frame = match frame_opt {
+        let mut columns = match columns_opt {
             Some(f) => f,
             None => return Ok(None),
         };
@@ -44,8 +44,7 @@ impl ExecutionPlan for SortNode {
             .by
             .iter()
             .map(|key| {
-                let col = frame
-                    .columns
+                let col = columns
                     .iter()
                     .find(|c| {
                         c.qualified_name() == key.column.fragment || c.name() == key.column.fragment
@@ -55,7 +54,7 @@ impl ExecutionPlan for SortNode {
             })
             .collect::<crate::Result<Vec<_>>>()?;
 
-        let row_count = frame.row_count();
+        let row_count = columns.row_count();
         let mut indices: Vec<usize> = (0..row_count).collect();
 
         indices.sort_unstable_by(|&l, &r| {
@@ -75,11 +74,11 @@ impl ExecutionPlan for SortNode {
             Equal
         });
 
-        for col in &mut frame.columns {
+        for col in columns.iter_mut() {
             col.data_mut().reorder(&indices);
         }
 
-        Ok(Some(Batch { frame }))
+        Ok(Some(Batch { columns }))
     }
 
     fn layout(&self) -> Option<ColumnsLayout> {

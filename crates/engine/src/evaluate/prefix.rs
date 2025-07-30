@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
 use reifydb_core::err;
 use reifydb_core::result::error::diagnostic::operator;
-use crate::column::{ColumnQualified, ColumnData, Column, TableQualified};
+use crate::columnar::{ColumnQualified, ColumnData, Column, TableQualified};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {

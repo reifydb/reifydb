@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::columns::Columns;
-use crate::column::layout::{ColumnLayout, ColumnsLayout};
-use crate::column::{Column, ColumnData, TableQualified};
+use crate::columnar::columns::Columns;
+use crate::columnar::layout::{ColumnLayout, ColumnsLayout};
+use crate::columnar::{Column, ColumnData, TableQualified};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::EncodedKey;
 use reifydb_core::EncodedKeyRange;
@@ -14,7 +14,7 @@ use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::ops::Bound::{Excluded, Included};
 use std::sync::Arc;
 
-pub(crate) struct ScanFrameNode {
+pub(crate) struct ScanColumnsNode {
     table: Table,
     context: Arc<ExecutionContext>,
     layout: ColumnsLayout,
@@ -23,7 +23,7 @@ pub(crate) struct ScanFrameNode {
     exhausted: bool,
 }
 
-impl ScanFrameNode {
+impl ScanColumnsNode {
     pub fn new(table: Table, context: Arc<ExecutionContext>) -> crate::Result<Self> {
         let data = table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
         let row_layout = Layout::new(&data);
@@ -40,7 +40,7 @@ impl ScanFrameNode {
     }
 }
 
-impl ExecutionPlan for ScanFrameNode {
+impl ExecutionPlan for ScanColumnsNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.exhausted {
             return Ok(None);
@@ -85,20 +85,20 @@ impl ExecutionPlan for ScanFrameNode {
 
         self.last_key = new_last_key;
 
-        let mut frame = Columns::empty_from_table(&self.table);
-        frame.append_rows(&self.row_layout, batch_rows.into_iter())?;
+        let mut columns = Columns::empty_from_table(&self.table);
+        columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
-        // Add the RowId column to the frame if requested
+        // Add the RowId column to the columns if requested
         if ctx.preserve_row_ids {
             let row_id_column = Column::TableQualified(TableQualified {
                 table: self.table.name.clone(),
                 name: ROW_ID_COLUMN_NAME.to_string(),
                 data: ColumnData::row_id(row_ids),
             });
-            frame.columns.push(row_id_column);
+            columns.0.push(row_id_column);
         }
 
-        Ok(Some(Batch { frame }))
+        Ok(Some(Batch { columns }))
     }
 
     fn layout(&self) -> Option<ColumnsLayout> {

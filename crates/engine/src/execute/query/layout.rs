@@ -1,8 +1,8 @@
-use crate::column::layout::{ColumnLayout, ColumnsLayout};
+use crate::columnar::layout::{ColumnLayout, ColumnsLayout};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_rql::expression::{ConstantExpression, Expression};
 
-pub fn derive_frame_column_layout(
+pub fn derive_columns_column_layout(
     expressions: &[Expression],
     preserve_row_ids: bool,
 ) -> ColumnsLayout {
@@ -18,13 +18,13 @@ pub fn derive_frame_column_layout(
     }
 
     for expr in expressions {
-        columns.push(frame_column_layout(expr));
+        columns.push(columns_column_layout(expr));
     }
 
     ColumnsLayout { columns }
 }
 
-fn frame_column_layout(expr: &Expression) -> ColumnLayout {
+fn columns_column_layout(expr: &Expression) -> ColumnLayout {
     match expr {
         Expression::Alias(alias_expr) => ColumnLayout {
             schema: None,

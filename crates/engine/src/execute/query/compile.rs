@@ -8,7 +8,7 @@ use crate::execute::query::join_inner::InnerJoinNode;
 use crate::execute::query::join_left::LeftJoinNode;
 use crate::execute::query::join_natural::NaturalJoinNode;
 use crate::execute::query::map::{MapNode, MapWithoutInputNode};
-use crate::execute::query::scan::ScanFrameNode;
+use crate::execute::query::scan::ScanColumnsNode;
 use crate::execute::query::sort::SortNode;
 use crate::execute::query::take::TakeNode;
 use crate::execute::{ExecutionContext, ExecutionPlan};
@@ -86,7 +86,7 @@ pub(crate) fn compile(
                 .unwrap()
                 .unwrap();
 
-            Box::new(ScanFrameNode::new(table, context).unwrap())
+            Box::new(ScanColumnsNode::new(table, context).unwrap())
         }
         PhysicalPlan::CreateComputedView(_)
         | PhysicalPlan::CreateSchema(_)

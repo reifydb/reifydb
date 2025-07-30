@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::Column;
-use crate::column::columns::Columns;
-use crate::column::layout::ColumnsLayout;
+use crate::columnar::columns::Columns;
+use crate::columnar::layout::ColumnsLayout;
 use crate::evaluate::{EvaluationContext, evaluate};
+use crate::execute::query::layout::derive_columns_column_layout;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::ColumnDescriptor;
 use reifydb_core::interface::Rx;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_rql::expression::Expression;
-use crate::execute::query::layout::derive_frame_column_layout;
 
 pub(crate) struct MapNode {
     input: Box<dyn ExecutionPlan>,
@@ -29,7 +28,7 @@ impl MapNode {
         &self,
         expr: &Expression,
         ctx: &'a ExecutionContext,
-        columns: Vec<Column>,
+        columns: Columns,
         row_count: usize,
     ) -> EvaluationContext<'a> {
         let mut result = EvaluationContext {
@@ -67,36 +66,34 @@ impl MapNode {
 
 impl ExecutionPlan for MapNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        while let Some(Batch { frame }) = self.input.next(ctx, rx)? {
-            let mut columns = Vec::with_capacity(self.expressions.len());
+        while let Some(Batch { columns }) = self.input.next(ctx, rx)? {
+            let mut new_columns = Vec::with_capacity(self.expressions.len());
 
             // Only preserve RowId column if the execution context requires it
             if ctx.preserve_row_ids {
                 if let Some(row_id_column) =
-                    frame.columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
+                    columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
                 {
-                    columns.push(row_id_column.clone());
+                    new_columns.push(row_id_column.clone());
                 }
             }
 
-            let row_count = frame.row_count();
+            let row_count = columns.row_count();
 
             for expr in &self.expressions {
                 let column = evaluate(
                     expr,
-                    &self.create_evaluation_context(expr, ctx, frame.columns.clone(), row_count),
+                    &self.create_evaluation_context(expr, ctx, columns.clone(), row_count),
                 )?;
 
-                columns.push(column);
+                new_columns.push(column);
             }
 
-            let layout = derive_frame_column_layout(&self.expressions, ctx.preserve_row_ids);
+            let layout = derive_columns_column_layout(&self.expressions, ctx.preserve_row_ids);
 
             self.layout = Some(layout);
 
-            let new_frame = Columns::new(columns);
-
-            return Ok(Some(Batch { frame: new_frame }));
+            return Ok(Some(Batch { columns: Columns::new(new_columns) }));
         }
         Ok(None)
     }
@@ -131,7 +128,7 @@ impl ExecutionPlan for MapWithoutInputNode {
                 &EvaluationContext {
                     target_column: None,
                     column_policies: Vec::new(),
-                    columns: Vec::new(),
+                    columns: Columns::empty(),
                     row_count: 1,
                     take: None,
                 },
@@ -140,9 +137,9 @@ impl ExecutionPlan for MapWithoutInputNode {
             columns.push(column);
         }
 
-        let frame = Columns::new(columns);
-        self.layout = Some(ColumnsLayout::from_columns(&frame));
-        Ok(Some(Batch { frame }))
+        let columns = Columns::new(columns);
+        self.layout = Some(ColumnsLayout::from_columns(&columns));
+        Ok(Some(Batch { columns }))
     }
 
     fn layout(&self) -> Option<ColumnsLayout> {

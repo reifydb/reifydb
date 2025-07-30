@@ -4,7 +4,7 @@
 use reifydb_core::value::container::number::NumberContainer;
 use reifydb_core::value::container::string::StringContainer;
 use reifydb_core::value::container::temporal::TemporalContainer;
-use crate::column::{ColumnQualified, Column, ColumnData};
+use crate::columnar::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::Type::Bool;
 use reifydb_core::result::error::diagnostic::operator::less_than_cannot_be_applied_to_incompatible_types;

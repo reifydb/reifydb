@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{ColumnQualified, TableQualified};
+use crate::columnar::{ColumnQualified, TableQualified};
 use reifydb_rql::expression::Expression;
 
-use crate::column::Column;
+use crate::columnar::Column;
 use crate::function::{Functions, blob, math};
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
 

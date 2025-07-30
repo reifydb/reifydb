@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::column::ColumnData;
+use crate::columnar::ColumnData;
 use reifydb_core::value::container::{BoolContainer, NumberContainer, TemporalContainer, UuidContainer};
 use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::value::{IsNumber, IsTemporal, IsUuid};
