@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::column::columns::Columns;
+use crate::column::layout::ColumnsLayout;
+use crate::column::{Column, ColumnQualified, TableQualified};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::interface::Rx;
 use reifydb_core::{JoinType, Value};
 use std::collections::HashSet;
-use crate::column::{ColumnQualified, Column, TableQualified};
-use crate::column::columns::Columns;
-use crate::column::layout::ColumnsLayout;
 
 pub(crate) struct NaturalJoinNode {
     left: Box<dyn ExecutionPlan>,
@@ -44,7 +44,10 @@ impl NaturalJoinNode {
         Ok(result)
     }
 
-    fn find_common_columns(left_frame: &Columns, right_frame: &Columns) -> Vec<(String, usize, usize)> {
+    fn find_common_columns(
+        left_frame: &Columns,
+        right_frame: &Columns,
+    ) -> Vec<(String, usize, usize)> {
         let mut common_columns = Vec::new();
 
         for (left_idx, left_col) in left_frame.columns.iter().enumerate() {
@@ -162,19 +165,6 @@ impl ExecutionPlan for NaturalJoinNode {
                 }),
             };
         }
-
-        // Rebuild indexes with updated column info
-        frame.index =
-            frame.columns.iter().enumerate().map(|(i, col)| (col.qualified_name(), i)).collect();
-
-        frame.frame_index = frame
-            .columns
-            .iter()
-            .enumerate()
-            .filter_map(|(i, col)| {
-                col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i))
-            })
-            .collect();
 
         self.layout = Some(ColumnsLayout::from_columns(&frame));
         Ok(Some(Batch { frame }))

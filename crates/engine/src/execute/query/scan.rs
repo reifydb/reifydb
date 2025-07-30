@@ -96,7 +96,6 @@ impl ExecutionPlan for ScanFrameNode {
                 data: ColumnData::row_id(row_ids),
             });
             frame.columns.push(row_id_column);
-            frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);
         }
 
         Ok(Some(Batch { frame }))

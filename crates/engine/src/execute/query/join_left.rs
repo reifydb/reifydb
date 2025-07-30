@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::evaluate::{EvaluationContext, evaluate};
-use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_rql::expression::Expression;
-use reifydb_core::interface::Rx;
-use reifydb_core::Value;
-use crate::column::{ColumnQualified, Column, ColumnData, TableQualified};
 use crate::column::columns::Columns;
 use crate::column::layout::ColumnsLayout;
+use crate::column::{Column, ColumnData, ColumnQualified, TableQualified};
+use crate::evaluate::{EvaluationContext, evaluate};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
+use reifydb_core::Value;
+use reifydb_core::interface::Rx;
+use reifydb_rql::expression::Expression;
 
 pub(crate) struct LeftJoinNode {
     left: Box<dyn ExecutionPlan>,
@@ -100,7 +100,6 @@ impl ExecutionPlan for LeftJoinNode {
                         .collect(),
                     row_count: 1,
                     take: Some(1),
-
                 };
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {
@@ -144,19 +143,6 @@ impl ExecutionPlan for LeftJoinNode {
                 }),
             };
         }
-
-        // Rebuild indexes with updated column info
-        frame.index =
-            frame.columns.iter().enumerate().map(|(i, col)| (col.qualified_name(), i)).collect();
-
-        frame.frame_index = frame
-            .columns
-            .iter()
-            .enumerate()
-            .filter_map(|(i, col)| {
-                col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i))
-            })
-            .collect();
 
         self.layout = Some(ColumnsLayout::from_columns(&frame));
         Ok(Some(Batch { frame }))

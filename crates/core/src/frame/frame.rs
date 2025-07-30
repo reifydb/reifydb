@@ -3,14 +3,10 @@
 
 use crate::frame::FrameColumn;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frame {
-    pub name: String,
     pub columns: Vec<FrameColumn>,
-    pub index: HashMap<String, usize>, // Maps qualified_name -> column index
-    pub frame_index: HashMap<(String, String), usize>, // Maps (frame, name) -> index
 }
 
 impl Frame {
@@ -18,17 +14,15 @@ impl Frame {
         // let n = columns.first().map_or(0, |c| c.values().len());
         // assert!(columns.iter().all(|c| c.values().len() == n));
 
-        let (index, frame_index) = build_indices(&columns);
-        Self { name: "frame".to_string(), columns, index, frame_index }
+        Self { columns }
     }
 
-    pub fn new_with_name(columns: Vec<FrameColumn>, name: impl Into<String>) -> Self {
-        // let n = columns.first().map_or(0, |c| c.values().len());
-        // assert!(columns.iter().all(|c| c.values().len() == n));
-
-        let (index, frame_index) = build_indices(&columns);
-        Self { name: name.into(), columns, index, frame_index }
-    }
+    // pub fn new_with_name(columns: Vec<FrameColumn>, name: impl Into<String>) -> Self {
+    //     // let n = columns.first().map_or(0, |c| c.values().len());
+    //     // assert!(columns.iter().all(|c| c.values().len() == n));
+    //
+    //     Self { name: name.into(), columns }
+    // }
 
     // pub fn shape(&self) -> (usize, usize) {
     //     (self.columns.get(0).map(|c| c.values().len()).unwrap_or(0), self.columns.len())
@@ -50,9 +44,9 @@ impl Frame {
     //         .or_else(|| self.columns.iter().find(|col| col.name() == name))
     // }
 
-    pub fn column_by_source(&self, frame: &str, name: &str) -> Option<&FrameColumn> {
-        self.frame_index.get(&(frame.to_string(), name.to_string())).map(|&i| &self.columns[i])
-    }
+    // pub fn column_by_source(&self, frame: &str, name: &str) -> Option<&FrameColumn> {
+    //     self.frame_index.get(&(frame.to_string(), name.to_string())).map(|&i| &self.columns[i])
+    // }
 
     // pub fn column_values(&self, name: &str) -> Option<&ColumnValues> {
     //     // Try qualified name first, then try as original name
@@ -83,18 +77,4 @@ impl Frame {
     // pub fn get_row(&self, index: usize) -> Vec<Value> {
     //     self.columns.iter().map(|col| col.values().get_value(index)).collect()
     // }
-}
-
-pub(crate) fn build_indices(
-    columns: &[FrameColumn],
-) -> (HashMap<String, usize>, HashMap<(String, String), usize>) {
-    let index = columns.iter().enumerate().map(|(i, col)| (col.qualified_name(), i)).collect();
-    let frame_index = columns
-        .iter()
-        .enumerate()
-        .filter_map(|(i, col)| {
-            col.table.as_ref().map(|sf| ((sf.to_string(), col.name.to_string()), i))
-        })
-        .collect();
-    (index, frame_index)
 }

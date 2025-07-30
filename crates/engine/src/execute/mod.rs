@@ -3,7 +3,7 @@
 
 use crate::column::columns::Columns;
 use crate::column::layout::ColumnsLayout;
-use crate::column::{ColumnQualified, Column, ColumnData, TableQualified};
+use crate::column::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_core::interface::{Rx, Table, Tx, UnversionedStorage, VersionedStorage};
@@ -182,21 +182,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         })
                         .collect();
 
-                    let index = columns
-                        .iter()
-                        .enumerate()
-                        .map(|(i, col)| (col.qualified_name(), i))
-                        .collect();
-
-                    let frame_index = columns
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(i, col)| {
-                            col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i))
-                        })
-                        .collect();
-
-                    Ok(Columns { name: "".to_string(), columns, index, frame_index })
+                    Ok(Columns { columns })
                 }
             }
         }

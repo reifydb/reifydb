@@ -202,28 +202,19 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
     let mut result = Vec::new();
 
     for frame in payload.frames {
-        let mut index = HashMap::new();
         let columns = frame
             .columns
             .into_iter()
             .enumerate()
-            .map(|(i, col)| {
-                index.insert(col.name.clone(), i);
-                FrameColumn {
-                    schema: None,
-                    table: col.frame,
-                    name: col.name,
-                    values: convert_column_values(col.ty, col.data),
-                }
+            .map(|(i, col)| FrameColumn {
+                schema: None,
+                table: col.frame,
+                name: col.name,
+                values: convert_column_values(col.ty, col.data),
             })
             .collect();
 
-        result.push(Frame {
-            name: frame.name,
-            columns,
-            index,
-            frame_index: std::collections::HashMap::new(),
-        })
+        result.push(Frame { columns })
     }
 
     result
@@ -233,28 +224,19 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
     let mut result = Vec::new();
 
     for frame in payload.frames {
-        let mut index = HashMap::new();
         let columns = frame
             .columns
             .into_iter()
             .enumerate()
-            .map(|(i, col)| {
-                index.insert(col.name.clone(), i);
-                FrameColumn {
-                    schema: None,
-                    table: col.frame,
-                    name: col.name,
-                    values: convert_column_values(col.ty, col.data),
-                }
+            .map(|(i, col)| FrameColumn {
+                schema: None,
+                table: col.frame,
+                name: col.name,
+                values: convert_column_values(col.ty, col.data),
             })
             .collect();
 
-        result.push(Frame {
-            name: frame.name,
-            columns,
-            index,
-            frame_index: std::collections::HashMap::new(),
-        })
+        result.push(Frame { columns })
     }
 
     result

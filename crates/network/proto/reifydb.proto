@@ -33,8 +33,7 @@ message RxResult {
 }
 
 message Frame {
-  string name = 1;
-  repeated Column columns = 2;
+  repeated Column columns = 1;
 }
 
 message Column {

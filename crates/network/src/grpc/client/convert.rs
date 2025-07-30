@@ -13,7 +13,6 @@ use reifydb_core::value::uuid::{Uuid4, Uuid7};
 use reifydb_core::{
     BitVec, Date, DateTime, Interval, OwnedSpan, RowId, SpanColumn, SpanLine, Time, Type,
 };
-use std::collections::HashMap;
 use uuid::Uuid;
 
 pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
@@ -40,8 +39,6 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
     use grpc::value::Type as GrpcType;
 
     let mut columns = Vec::with_capacity(frame.columns.len());
-    let mut index = HashMap::with_capacity(frame.columns.len());
-    let mut source_index = HashMap::with_capacity(frame.columns.len());
 
     for (i, grpc_col) in frame.columns.into_iter().enumerate() {
         let data_type = Type::from_u8(grpc_col.ty as u8);
@@ -493,11 +490,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
                 None => name.clone(),
             }
         };
-        index.insert(qualified_name, i);
-        if let Some(sf) = &frame {
-            source_index.insert((sf.clone(), name.clone()), i);
-        }
     }
 
-    Frame { name: frame.name, columns, index, frame_index: source_index }
+    Frame { columns }
 }

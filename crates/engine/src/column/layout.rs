@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::columns::{Columns, build_indices};
+use crate::column::columns::Columns;
 use crate::column::{
-    ColumnQualified, Column, ColumnData, FullyQualified, TableQualified, Unqualified,
+    Column, ColumnData, ColumnQualified, FullyQualified, TableQualified, Unqualified,
 };
 
 #[derive(Debug, Clone)]
@@ -73,10 +73,6 @@ impl Columns {
                 };
             }
         }
-
-        let (index, frame_index) = build_indices(&self.columns);
-        self.index = index;
-        self.frame_index = frame_index;
     }
 
     fn qualify_duplicates_only(&self, layout: &ColumnsLayout) -> ColumnsLayout {
@@ -143,7 +139,7 @@ impl Columns {
                                         // Use frame name as fallback table qualification
                                         ColumnLayout {
                                             schema: None,
-                                            table: Some(self.name.clone()),
+                                            table: None,
                                             name: column_layout.name.clone(),
                                         }
                                     }
@@ -152,7 +148,7 @@ impl Columns {
                                 // Use frame name as fallback table qualification
                                 ColumnLayout {
                                     schema: None,
-                                    table: Some(self.name.clone()),
+                                    table: None,
                                     name: column_layout.name.clone(),
                                 }
                             }

@@ -10,10 +10,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Columns {
-    pub name: String,
     pub columns: Vec<Column>,
-    pub index: HashMap<String, usize>, // Maps qualified_name -> column index
-    pub frame_index: HashMap<(String, String), usize>, // Maps (frame, name) -> index
 }
 
 impl From<ColumnData> for ColumnValues {
@@ -73,12 +70,7 @@ impl From<Column> for FrameColumn {
 
 impl From<Columns> for Frame {
     fn from(value: Columns) -> Self {
-        Self {
-            name: value.name,
-            columns: value.columns.into_iter().map(|col| col.into()).collect(),
-            index: value.index,
-            frame_index: value.frame_index,
-        }
+        Self { columns: value.columns.into_iter().map(|col| col.into()).collect() }
     }
 }
 
@@ -119,8 +111,7 @@ impl Columns {
             columns.push(column);
         }
 
-        let (final_index, frame_index) = build_indices(&columns);
-        Columns { name: "frame".to_string(), columns, index: final_index, frame_index }
+        Columns { columns }
     }
 }
 
@@ -129,16 +120,14 @@ impl Columns {
         let n = columns.first().map_or(0, |c| c.data().len());
         assert!(columns.iter().all(|c| c.data().len() == n));
 
-        let (index, frame_index) = build_indices(&columns);
-        Self { name: "frame".to_string(), columns, index, frame_index }
+        Self { columns }
     }
 
     pub fn new_with_name(columns: Vec<Column>, name: impl Into<String>) -> Self {
         let n = columns.first().map_or(0, |c| c.data().len());
         assert!(columns.iter().all(|c| c.data().len() == n));
 
-        let (index, frame_index) = build_indices(&columns);
-        Self { name: name.into(), columns, index, frame_index }
+        Self { columns }
     }
 
     pub fn shape(&self) -> (usize, usize) {
@@ -154,33 +143,7 @@ impl Columns {
     }
 
     pub fn column(&self, name: &str) -> Option<&Column> {
-        // Try qualified name first, then try as original name
-        self.index
-            .get(name)
-            .map(|&i| &self.columns[i])
-            .or_else(|| self.columns.iter().find(|col| col.name() == name))
-    }
-
-    pub fn column_by_source(&self, frame: &str, name: &str) -> Option<&Column> {
-        self.frame_index.get(&(frame.to_string(), name.to_string())).map(|&i| &self.columns[i])
-    }
-
-    pub fn column_values(&self, name: &str) -> Option<&ColumnData> {
-        // Try qualified name first, then try as original name
-        self.index
-            .get(name)
-            .map(|&i| self.columns[i].data())
-            .or_else(|| self.columns.iter().find(|col| col.name() == name).map(|col| col.data()))
-    }
-
-    pub fn column_values_mut(&mut self, name: &str) -> Option<&mut ColumnData> {
-        // Try qualified name first, then try as original name
-        if let Some(&i) = self.index.get(name) {
-            Some(self.columns[i].data_mut())
-        } else {
-            let pos = self.columns.iter().position(|col| col.name() == name)?;
-            Some(self.columns[pos].data_mut())
-        }
+        self.columns.iter().find(|col| col.name() == name)
     }
 
     pub fn row_count(&self) -> usize {
@@ -229,12 +192,7 @@ impl Columns {
 
 impl Columns {
     pub fn empty() -> Self {
-        Self {
-            name: "frame".to_string(),
-            columns: vec![],
-            index: HashMap::new(),
-            frame_index: HashMap::new(),
-        }
+        Self { columns: vec![] }
     }
 
     pub fn empty_from_table(table: &Table) -> Self {
@@ -274,18 +232,6 @@ impl Columns {
 
         Self::new_with_name(columns, table.name.clone())
     }
-}
-
-pub(crate) fn build_indices(
-    columns: &[Column],
-) -> (HashMap<String, usize>, HashMap<(String, String), usize>) {
-    let index = columns.iter().enumerate().map(|(i, col)| (col.qualified_name(), i)).collect();
-    let frame_index = columns
-        .iter()
-        .enumerate()
-        .filter_map(|(i, col)| col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
-        .collect();
-    (index, frame_index)
 }
 
 #[cfg(test)]

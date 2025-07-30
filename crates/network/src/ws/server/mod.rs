@@ -259,7 +259,7 @@ where
                                                                         payload: ResponsePayload::Tx(TxResponse {
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
-                                                                                    name: frame.name,
+                                                                                    name: "GONE".to_string(), //FIXME
                                                                                     columns: frame.columns.into_iter().map(|c| {
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
@@ -316,7 +316,7 @@ where
                                                                         payload: ResponsePayload::Rx(RxResponse {
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
-                                                                                    name: frame.name,
+                                                                                    name: "GONE".to_string(), // FIXME
                                                                                     columns: frame.columns.into_iter().map(|c| {
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),

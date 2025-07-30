@@ -159,7 +159,6 @@ fn map_frame(frame: Frame) -> grpc::Frame {
     };
 
     Frame {
-        name: frame.name,
         columns: frame
             .columns
             .into_iter()
