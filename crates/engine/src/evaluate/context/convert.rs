@@ -3,7 +3,7 @@
 
 use crate::evaluate::EvaluationContext;
 use reifydb_core::interface::ColumnSaturationPolicy;
-use reifydb_core::error::diagnostic::number::{integer_precision_loss, number_out_of_range};
+use reifydb_core::result::error::diagnostic::number::{integer_precision_loss, number_out_of_range};
 use reifydb_core::value::number::SafeConvert;
 use reifydb_core::{GetType, IntoOwnedSpan, error};
 

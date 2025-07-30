@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::column::{ColumnQualified, Column, ColumnData};
-use reifydb_core::error::diagnostic::operator::{
+use reifydb_core::result::error::diagnostic::operator::{
     xor_can_not_applied_to_number, xor_can_not_applied_to_temporal, xor_can_not_applied_to_text,
     xor_can_not_applied_to_uuid,
 };

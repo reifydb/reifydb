@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::column::{Column, ColumnData, ColumnQualified, TableQualified};
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::interface::Table;
+use reifydb_core::result::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::{Type, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

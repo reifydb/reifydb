@@ -6,7 +6,7 @@ use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, TokenKind};
 use crate::ast::parse::{Parser, Precedence, error};
 use crate::ast::{Ast, AstInfix, AstMap, InfixOperator};
-use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
+use reifydb_core::result::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
 impl Parser {

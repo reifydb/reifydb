@@ -8,8 +8,8 @@ use crate::ws::{
     TxRequest, TxResponse,
 };
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::result::error::diagnostic::Diagnostic;
+use reifydb_core::result::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::value::Blob;
 use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,

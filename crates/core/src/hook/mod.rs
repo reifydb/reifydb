@@ -174,7 +174,7 @@ macro_rules! return_hooks {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::diagnostic::Diagnostic;
+    use crate::result::error::diagnostic::Diagnostic;
     use crate::hook::{BoxedHookIter, Callback, Hook, Hooks};
     use crate::return_error;
     use std::sync::{Arc, Mutex};

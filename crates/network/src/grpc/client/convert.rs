@@ -2,8 +2,8 @@
 // This file is licensed under the MIT
 
 use crate::grpc::client::grpc;
-use reifydb_core::error::diagnostic::{Diagnostic, DiagnosticColumn};
-use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::result::error::diagnostic::{Diagnostic, DiagnosticColumn};
+use reifydb_core::result::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::value::Blob;
 use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,

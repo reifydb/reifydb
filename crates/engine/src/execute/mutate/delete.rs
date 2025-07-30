@@ -4,8 +4,8 @@
 use crate::column::ColumnData;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
-use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
-use reifydb_core::error::diagnostic::engine;
+use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
+use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::interface::{EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange};
 use reifydb_core::{
     EncodedKeyRange, IntoOwnedSpan, Value,

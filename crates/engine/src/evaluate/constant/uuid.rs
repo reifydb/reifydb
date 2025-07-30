@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use reifydb_core::error::diagnostic::cast;
+use reifydb_core::result::error::diagnostic::cast;
 use crate::column::ColumnData;
 use reifydb_core::value::uuid::parse::{parse_uuid4, parse_uuid7};
 use reifydb_core::{Span, Type, return_error};

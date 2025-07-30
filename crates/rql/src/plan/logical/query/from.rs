@@ -6,7 +6,7 @@ use crate::expression::ExpressionCompiler;
 use crate::expression::{IdentExpression, KeyedExpression};
 use crate::plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode};
 use reifydb_core::err;
-use reifydb_core::error::diagnostic::Diagnostic;
+use reifydb_core::result::error::diagnostic::Diagnostic;
 
 impl Compiler {
     pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalPlan> {

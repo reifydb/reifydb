@@ -3,7 +3,7 @@
 
 use crate::execute::{execute_rx, execute_tx};
 use crate::system::SystemStartCallback;
-use reifydb_core::frame::Frame;
+use reifydb_core::result::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnStartHook;
 use reifydb_core::interface::{

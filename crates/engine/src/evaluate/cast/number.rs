@@ -5,7 +5,7 @@ use crate::column::ColumnData;
 use reifydb_core::value::container::NumberContainer;
 
 use crate::evaluate::{Convert, Demote, Promote};
-use reifydb_core::error::diagnostic::cast;
+use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{
     SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,

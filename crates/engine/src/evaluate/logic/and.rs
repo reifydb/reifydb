@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::error::diagnostic::operator::{
+use reifydb_core::result::error::diagnostic::operator::{
     and_can_not_applied_to_number, and_can_not_applied_to_temporal, and_can_not_applied_to_text,
     and_can_not_applied_to_uuid,
 };

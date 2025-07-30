@@ -9,7 +9,7 @@ pub mod uuid;
 
 use crate::column::{ColumnQualified, Column, ColumnData, TableQualified};
 use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
-use reifydb_core::error::diagnostic::cast;
+use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::{OwnedSpan, Type, err, error};
 use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;

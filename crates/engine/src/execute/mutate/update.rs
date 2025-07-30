@@ -6,8 +6,8 @@ use crate::column::columns::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
-use reifydb_core::error::diagnostic::catalog::{schema_not_found, table_not_found};
-use reifydb_core::error::diagnostic::engine;
+use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
+use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,

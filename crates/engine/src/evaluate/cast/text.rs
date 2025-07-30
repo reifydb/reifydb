@@ -3,7 +3,7 @@
 
 use crate::column::ColumnData;
 use reifydb_core::value::container::{BoolContainer, NumberContainer, TemporalContainer, UuidContainer};
-use reifydb_core::error::diagnostic::cast;
+use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::value::{IsNumber, IsTemporal, IsUuid};
 use reifydb_core::{OwnedSpan, Type};
 use std::fmt::{Debug, Display};

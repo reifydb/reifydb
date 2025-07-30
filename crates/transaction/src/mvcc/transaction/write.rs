@@ -11,12 +11,12 @@
 
 use super::*;
 use crate::mvcc::marker::Marker;
-use crate::mvcc::types::Pending;
 use crate::mvcc::transaction::version::VersionProvider;
+use crate::mvcc::types::Pending;
 use reifydb_core::delta::Delta;
-use reifydb_core::error::diagnostic::transaction;
+use reifydb_core::diagnostic::transaction;
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, Version, return_error, error};
+use reifydb_core::{EncodedKey, Version, error, return_error};
 
 pub struct TransactionManagerTx<C, L, P>
 where
@@ -274,7 +274,10 @@ where
             return_error!(transaction::transaction_rolled_back());
         }
 
-        self.modify(Pending { delta: Delta::Update { key: key.clone(), row }, version: self.version })
+        self.modify(Pending {
+            delta: Delta::Update { key: key.clone(), row },
+            version: self.version,
+        })
     }
 
     fn modify(&mut self, pending: Pending) -> Result<(), reifydb_core::Error> {

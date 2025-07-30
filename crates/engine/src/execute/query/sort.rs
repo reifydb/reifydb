@@ -3,7 +3,7 @@
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::SortDirection::{Asc, Desc};
-use reifydb_core::error::diagnostic::query;
+use reifydb_core::result::error::diagnostic::query;
 use reifydb_core::interface::Rx;
 use reifydb_core::{SortKey, error};
 use std::cmp::Ordering::Equal;

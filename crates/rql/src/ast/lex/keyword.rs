@@ -10,7 +10,7 @@ use nom::combinator::{map, not, peek};
 use nom::sequence::terminated;
 use nom::{IResult, Input, Parser};
 use nom_locate::LocatedSpan;
-use reifydb_core::error::diagnostic::ast;
+use reifydb_core::result::error::diagnostic::ast;
 
 macro_rules! keyword {
     (

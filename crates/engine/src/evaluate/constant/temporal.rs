@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::column::ColumnData;
-use reifydb_core::error::diagnostic::temporal;
+use reifydb_core::result::error::diagnostic::temporal;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
 use reifydb_core::{return_error, Span, Type};
 
@@ -63,7 +63,7 @@ impl TemporalParser {
         target: Type,
         row_count: usize,
     ) -> crate::Result<ColumnData> {
-        use reifydb_core::error::diagnostic::cast;
+        use reifydb_core::result::error::diagnostic::cast;
 
         match target {
             Type::Date => {

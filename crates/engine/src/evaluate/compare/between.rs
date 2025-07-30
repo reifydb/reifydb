@@ -3,7 +3,7 @@
 
 use crate::column::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
+use reifydb_core::result::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
 use reifydb_core::return_error;
 use reifydb_rql::expression::{
     BetweenExpression, GreaterThanEqualExpression, LessThanEqualExpression,

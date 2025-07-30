@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::column::ColumnData;
-use reifydb_core::error::diagnostic::{cast, number};
+use reifydb_core::result::error::diagnostic::{cast, number};
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::{return_error, Span, Type};

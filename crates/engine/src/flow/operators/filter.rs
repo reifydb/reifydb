@@ -1,6 +1,6 @@
 use crate::flow::change::Diff;
 use crate::flow::operators::{Operator, OperatorContext};
-use reifydb_core::frame::Frame;
+use reifydb_core::result::Frame;
 use reifydb_rql::expression::Expression;
 
 pub struct FilterOperator {

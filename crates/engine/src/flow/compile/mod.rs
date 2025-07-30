@@ -12,7 +12,7 @@ mod sources;
 use crate::flow::flow::FlowGraph;
 use crate::flow::node::{NodeId, NodeType};
 use crate::Result;
-use reifydb_core::error::diagnostic::flow::flow_error;
+use reifydb_core::result::error::diagnostic::flow::flow_error;
 use reifydb_core::interface::{SchemaId, Table, TableId};
 use reifydb_rql::plan::logical::{CreateComputedViewNode, LogicalPlan};
 use std::collections::HashMap;

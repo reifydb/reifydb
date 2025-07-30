@@ -1,4 +1,4 @@
-use crate::frame::Frame;
+use crate::result::frame::Frame;
 use crate::hook::Hooks;
 use crate::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
 use std::sync::RwLockWriteGuard;

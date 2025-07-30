@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::error::diagnostic::number::{
+use crate::result::error::diagnostic::number::{
     invalid_number_format, nan_not_allowed, number_out_of_range,
 };
 use crate::value::is::{IsFloat, IsInt, IsUint};

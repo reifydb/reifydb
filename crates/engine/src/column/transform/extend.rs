@@ -3,7 +3,7 @@
 
 use crate::column::ColumnData;
 use crate::column::columns::Columns;
-use reifydb_core::error::diagnostic::engine;
+use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::row::{EncodedRow, Layout};
 use reifydb_core::{
     BitVec, Blob, Date, DateTime, Interval, Time, Type, Uuid4, Uuid7, return_error,

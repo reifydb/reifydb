@@ -5,7 +5,7 @@ use crate::column::push::Push;
 use crate::column::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
-use reifydb_core::error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types;
+use reifydb_core::result::error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::container::NumberContainer;
 use reifydb_core::value::number::{Promote, SafeAdd};

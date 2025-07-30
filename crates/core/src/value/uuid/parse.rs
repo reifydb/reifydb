@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::error::diagnostic::uuid::{invalid_uuid4_format, invalid_uuid7_format};
+use crate::result::error::diagnostic::uuid::{invalid_uuid4_format, invalid_uuid7_format};
 use crate::value::{Uuid4, Uuid7};
 use crate::{Error, Span, err};
 use ::uuid::Uuid;

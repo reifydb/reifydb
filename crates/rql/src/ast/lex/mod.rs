@@ -20,7 +20,7 @@ use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
 use reifydb_core::{SpanLine, SpanColumn, OwnedSpan};
-use reifydb_core::error::diagnostic::ast;
+use reifydb_core::result::error::diagnostic::ast;
 
 mod display;
 mod identifier;

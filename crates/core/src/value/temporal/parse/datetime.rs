@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{return_error, BorrowedSpan, DateTime, Error, Span};
-use crate::error::diagnostic::temporal;
+use crate::result::error::diagnostic::temporal;
 use super::date::parse_date;
 use super::time::parse_time;
 

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Token, TokenKind};
-use reifydb_core::error::diagnostic::{Diagnostic, ast};
+use reifydb_core::result::error::diagnostic::{Diagnostic, ast};
 
 pub(crate) fn expected_identifier_error(got: Token) -> Diagnostic {
     ast::expected_identifier_error(got.span)

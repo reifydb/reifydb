@@ -6,7 +6,7 @@ use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, StringContainer, TemporalContainer,
     UuidContainer,
 };
-use reifydb_core::error::diagnostic::engine;
+use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::return_error;
 
 impl ColumnData {

@@ -3,11 +3,11 @@ use super::flow::FlowGraph;
 use super::node::{NodeId, NodeType, OperatorType};
 use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
 use crate::Result;
-use reifydb_core::frame::Frame;
 use reifydb_core::interface::{
     Column, ColumnId, ColumnIndex, EncodableKeyRange, Rx, SchemaId, Table, TableId,
     TableRowKeyRange, Transaction, Tx, UnversionedStorage, VersionedStorage,
 };
+use reifydb_core::result::Frame;
 use reifydb_core::row::Layout;
 use reifydb_core::{EncodedKeyRange, Type};
 use std::collections::Bound::Included;

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{err, Error};
-use crate::error::diagnostic::number::nan_not_allowed;
+use crate::result::error::diagnostic::number::nan_not_allowed;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::cmp::Ordering;

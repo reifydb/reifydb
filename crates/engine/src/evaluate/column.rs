@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::error::diagnostic::query::column_not_found;
+use reifydb_core::result::error::diagnostic::query::column_not_found;
 use reifydb_rql::expression::ColumnExpression;
 use crate::column::{ColumnData, Column};
 use reifydb_core::value::{Blob, Uuid4, Uuid7};

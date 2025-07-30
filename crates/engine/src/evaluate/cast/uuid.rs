@@ -3,7 +3,7 @@
 
 use crate::column::ColumnData;
 use reifydb_core::value::container::{StringContainer, UuidContainer};
-use reifydb_core::error::diagnostic::cast;
+use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::value::uuid::parse::{parse_uuid4, parse_uuid7};
 use reifydb_core::value::uuid::{Uuid4, Uuid7};
 use reifydb_core::{BorrowedSpan, OwnedSpan, Type, error};

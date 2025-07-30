@@ -3,8 +3,8 @@
 
 use crate::column::ColumnData;
 use reifydb_core::value::container::{NumberContainer, StringContainer};
-use reifydb_core::error::diagnostic::boolean::invalid_number_boolean;
-use reifydb_core::error::diagnostic::cast;
+use reifydb_core::result::error::diagnostic::boolean::invalid_number_boolean;
+use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::{OwnedSpan, Type, return_error};

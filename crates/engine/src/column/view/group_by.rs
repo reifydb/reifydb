@@ -3,7 +3,7 @@
 
 use crate::column::ColumnData;
 use crate::column::columns::Columns;
-use reifydb_core::error::diagnostic::engine;
+use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::{Value, error};
 use std::collections::HashMap;
 

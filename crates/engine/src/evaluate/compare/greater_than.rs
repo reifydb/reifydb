@@ -7,7 +7,7 @@ use reifydb_core::value::container::temporal::TemporalContainer;
 use crate::column::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::Type::Bool;
-use reifydb_core::error::diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types;
+use reifydb_core::result::error::diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types;
 use reifydb_core::value::number::Promote;
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::{OwnedSpan, return_error, value};
