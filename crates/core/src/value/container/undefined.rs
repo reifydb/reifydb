@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use Value::Undefined;
-use reifydb_core::{BitVec, Value};
+use crate::{BitVec, Value};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -48,7 +47,7 @@ impl UndefinedContainer {
     }
 
     pub fn get_value(&self, _index: usize) -> Value {
-        Undefined
+        Value::Undefined
     }
 
     pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
@@ -92,7 +91,7 @@ impl Default for UndefinedContainer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::BitVec;
+    use crate::BitVec;
 
     #[test]
     fn test_new() {

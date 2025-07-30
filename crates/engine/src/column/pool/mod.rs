@@ -14,7 +14,7 @@ mod stats;
 
 pub use guard::PooledGuard;
 
-use crate::column::container::*;
+use reifydb_core::value::container::*;
 use crate::column::pool::allocator::{PoolAllocator, StdPoolAllocator};
 use crate::column::pool::stats::PoolStats;
 use reifydb_core::value::uuid::{Uuid4, Uuid7};

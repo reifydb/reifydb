@@ -47,7 +47,7 @@ impl ScalarFunction for BlobUtf8 {
 mod tests {
     use super::*;
     use crate::column::ColumnQualified;
-    use crate::column::container::StringContainer;
+    use reifydb_core::value::container::StringContainer;
 
     #[test]
     fn test_blob_utf8_simple_ascii() {

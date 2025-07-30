@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::column::EngineColumnData;
-use crate::column::container::{
+use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, StringContainer, TemporalContainer,
     UuidContainer,
 };

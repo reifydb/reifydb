@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{BitVec, CowVec, RowId, Value};
+use crate::{BitVec, CowVec, RowId, Value};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -22,25 +22,16 @@ impl Deref for RowIdContainer {
 impl RowIdContainer {
     pub fn new(data: Vec<RowId>, bitvec: BitVec) -> Self {
         debug_assert_eq!(data.len(), bitvec.len());
-        Self {
-            data: CowVec::new(data),
-            bitvec,
-        }
+        Self { data: CowVec::new(data), bitvec }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            data: CowVec::with_capacity(capacity),
-            bitvec: BitVec::with_capacity(capacity),
-        }
+        Self { data: CowVec::with_capacity(capacity), bitvec: BitVec::with_capacity(capacity) }
     }
 
     pub fn from_vec(data: Vec<RowId>) -> Self {
         let len = data.len();
-        Self {
-            data: CowVec::new(data),
-            bitvec: BitVec::repeat(len, true),
-        }
+        Self { data: CowVec::new(data), bitvec: BitVec::repeat(len, true) }
     }
 
     pub fn len(&self) -> usize {
@@ -68,11 +59,7 @@ impl RowIdContainer {
     }
 
     pub fn get(&self, index: usize) -> Option<&RowId> {
-        if index < self.len() && self.is_defined(index) {
-            self.data.get(index)
-        } else {
-            None
-        }
+        if index < self.len() && self.is_defined(index) { self.data.get(index) } else { None }
     }
 
     pub fn bitvec(&self) -> &BitVec {
@@ -130,25 +117,23 @@ impl RowIdContainer {
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_data: Vec<RowId> = self.data.iter().skip(start).take(end - start).cloned().collect();
+        let new_data: Vec<RowId> =
+            self.data.iter().skip(start).take(end - start).cloned().collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
-        Self {
-            data: CowVec::new(new_data),
-            bitvec: BitVec::from_slice(&new_bitvec),
-        }
+        Self { data: CowVec::new(new_data), bitvec: BitVec::from_slice(&new_bitvec) }
     }
 
     pub fn filter(&mut self, mask: &BitVec) {
         let mut new_data = Vec::with_capacity(mask.count_ones());
         let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
-        
+
         for (i, keep) in mask.iter().enumerate() {
             if keep && i < self.len() {
                 new_data.push(self.data[i].clone());
                 new_bitvec.push(self.bitvec.get(i));
             }
         }
-        
+
         self.data = CowVec::new(new_data);
         self.bitvec = new_bitvec;
     }
@@ -156,7 +141,7 @@ impl RowIdContainer {
     pub fn reorder(&mut self, indices: &[usize]) {
         let mut new_data = Vec::with_capacity(indices.len());
         let mut new_bitvec = BitVec::with_capacity(indices.len());
-        
+
         for &idx in indices {
             if idx < self.len() {
                 new_data.push(self.data[idx].clone());
@@ -166,16 +151,13 @@ impl RowIdContainer {
                 new_bitvec.push(false);
             }
         }
-        
+
         self.data = CowVec::new(new_data);
         self.bitvec = new_bitvec;
     }
 
     pub fn take(&self, num: usize) -> Self {
-        Self {
-            data: self.data.take(num),
-            bitvec: self.bitvec.take(num),
-        }
+        Self { data: self.data.take(num), bitvec: self.bitvec.take(num) }
     }
 }
 
@@ -188,7 +170,6 @@ impl Default for RowIdContainer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::{BitVec, RowId};
 
     #[test]
     fn test_new() {
@@ -197,7 +178,7 @@ mod tests {
         let row_ids = vec![row_id1, row_id2];
         let bitvec = BitVec::from_slice(&[true, true]);
         let container = RowIdContainer::new(row_ids.clone(), bitvec);
-        
+
         assert_eq!(container.len(), 2);
         assert_eq!(container.get(0), Some(&row_ids[0]));
         assert_eq!(container.get(1), Some(&row_ids[1]));
@@ -207,12 +188,12 @@ mod tests {
     fn test_from_vec() {
         let row_ids = vec![RowId::new(10), RowId::new(20), RowId::new(30)];
         let container = RowIdContainer::from_vec(row_ids.clone());
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&row_ids[0]));
         assert_eq!(container.get(1), Some(&row_ids[1]));
         assert_eq!(container.get(2), Some(&row_ids[2]));
-        
+
         // All should be defined
         for i in 0..3 {
             assert!(container.is_defined(i));
@@ -232,16 +213,16 @@ mod tests {
         let mut container = RowIdContainer::with_capacity(3);
         let row_id1 = RowId::new(100);
         let row_id2 = RowId::new(200);
-        
+
         container.push(row_id1);
         container.push_undefined();
         container.push(row_id2);
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&row_id1));
         assert_eq!(container.get(1), None); // undefined
         assert_eq!(container.get(2), Some(&row_id2));
-        
+
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
         assert!(container.is_defined(2));
@@ -252,12 +233,12 @@ mod tests {
         let row_id1 = RowId::new(1);
         let row_id2 = RowId::new(2);
         let row_id3 = RowId::new(3);
-        
+
         let mut container1 = RowIdContainer::from_vec(vec![row_id1, row_id2]);
         let container2 = RowIdContainer::from_vec(vec![row_id3]);
-        
+
         container1.extend(&container2).unwrap();
-        
+
         assert_eq!(container1.len(), 3);
         assert_eq!(container1.get(0), Some(&row_id1));
         assert_eq!(container1.get(1), Some(&row_id2));
@@ -269,7 +250,7 @@ mod tests {
         let row_id = RowId::new(42);
         let mut container = RowIdContainer::from_vec(vec![row_id]);
         container.extend_from_undefined(2);
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&row_id));
         assert_eq!(container.get(1), None); // undefined
@@ -284,7 +265,7 @@ mod tests {
         let row_ids = vec![row_id1, row_id2, row_id3];
         let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
         let container = RowIdContainer::new(row_ids.clone(), bitvec);
-        
+
         let collected: Vec<Option<RowId>> = container.iter().collect();
         assert_eq!(collected, vec![Some(row_ids[0]), None, Some(row_ids[2])]);
     }
@@ -298,7 +279,7 @@ mod tests {
             RowId::new(4),
         ]);
         let sliced = container.slice(1, 3);
-        
+
         assert_eq!(sliced.len(), 2);
         assert_eq!(sliced.get(0), Some(&RowId::new(2)));
         assert_eq!(sliced.get(1), Some(&RowId::new(3)));
@@ -313,9 +294,9 @@ mod tests {
             RowId::new(4),
         ]);
         let mask = BitVec::from_slice(&[true, false, true, false]);
-        
+
         container.filter(&mask);
-        
+
         assert_eq!(container.len(), 2);
         assert_eq!(container.get(0), Some(&RowId::new(1)));
         assert_eq!(container.get(1), Some(&RowId::new(3)));
@@ -323,15 +304,12 @@ mod tests {
 
     #[test]
     fn test_reorder() {
-        let mut container = RowIdContainer::from_vec(vec![
-            RowId::new(10),
-            RowId::new(20),
-            RowId::new(30),
-        ]);
+        let mut container =
+            RowIdContainer::from_vec(vec![RowId::new(10), RowId::new(20), RowId::new(30)]);
         let indices = [2, 0, 1];
-        
+
         container.reorder(&indices);
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&RowId::new(30))); // was index 2
         assert_eq!(container.get(1), Some(&RowId::new(10))); // was index 0
@@ -342,12 +320,12 @@ mod tests {
     fn test_reorder_with_out_of_bounds() {
         let mut container = RowIdContainer::from_vec(vec![RowId::new(1), RowId::new(2)]);
         let indices = [1, 5, 0]; // index 5 is out of bounds
-        
+
         container.reorder(&indices);
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(0), Some(&RowId::new(2))); // was index 1
-        assert_eq!(container.get(1), None);                 // out of bounds -> undefined
+        assert_eq!(container.get(1), None); // out of bounds -> undefined
         assert_eq!(container.get(2), Some(&RowId::new(1))); // was index 0
     }
 
@@ -361,14 +339,14 @@ mod tests {
     #[test]
     fn test_data_access() {
         let mut container = RowIdContainer::from_vec(vec![RowId::new(1), RowId::new(2)]);
-        
+
         // Test immutable access
         assert_eq!(container.data().len(), 2);
-        
+
         // Test mutable access
         container.data_mut().push(RowId::new(3));
         container.bitvec_mut().push(true);
-        
+
         assert_eq!(container.len(), 3);
         assert_eq!(container.get(2), Some(&RowId::new(3)));
     }

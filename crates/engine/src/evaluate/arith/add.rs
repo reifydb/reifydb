@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::container::{NumberContainer, Push};
+use crate::column::push::Push;
 use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
 use reifydb_core::error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types;
 use reifydb_core::value::IsNumber;
+use reifydb_core::value::container::NumberContainer;
 use reifydb_core::value::number::{Promote, SafeAdd};
 use reifydb_core::{GetType, Type, return_error};
 use reifydb_rql::expression::AddExpression;

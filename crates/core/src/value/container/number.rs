@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::Value::{Uint1, Uint2, Uint16};
+use crate::value::IsNumber;
+use crate::{BitVec, CowVec, OrderedF32, OrderedF64, Value};
 use Value::{Int1, Int2, Int4, Int8, Int16, Uint4, Uint8, Undefined};
-use reifydb_core::Value::{Uint1, Uint2, Uint16};
-use reifydb_core::value::IsNumber;
-use reifydb_core::{BitVec, CowVec, OrderedF32, OrderedF64, Value};
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
 use std::fmt::Debug;
@@ -178,8 +178,7 @@ where
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_data: Vec<T> =
-            self.data.iter().skip(start).take(end - start).cloned().collect();
+        let new_data: Vec<T> = self.data.iter().skip(start).take(end - start).cloned().collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
         Self { data: CowVec::new(new_data), bitvec: BitVec::from_slice(&new_bitvec) }
     }
@@ -238,7 +237,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::BitVec;
+    use crate::BitVec;
 
     #[test]
     fn test_new_i32() {

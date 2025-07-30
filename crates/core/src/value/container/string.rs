@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{BitVec, CowVec, Value};
+use crate::{BitVec, CowVec, Value};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -149,10 +149,7 @@ impl StringContainer {
     }
 
     pub fn take(&self, num: usize) -> Self {
-        Self {
-            data: self.data.take(num),
-            bitvec: self.bitvec.take(num),
-        }
+        Self { data: self.data.take(num), bitvec: self.bitvec.take(num) }
     }
 }
 
@@ -173,7 +170,7 @@ impl Default for StringContainer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::BitVec;
+    use crate::BitVec;
 
     #[test]
     fn test_new() {

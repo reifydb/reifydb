@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::column::EngineColumnData;
-use crate::column::container::NumberContainer;
+use reifydb_core::value::container::NumberContainer;
 
 use crate::evaluate::{Convert, Demote, Promote};
 use reifydb_core::error::diagnostic::cast;
@@ -546,7 +546,7 @@ where
 #[cfg(test)]
 mod tests {
     mod promote {
-        use crate::column::container::NumberContainer;
+        use reifydb_core::value::container::NumberContainer;
         use crate::evaluate::Promote;
         use crate::evaluate::cast::number::promote_vec;
         use reifydb_core::value::number::SafePromote;
@@ -667,7 +667,7 @@ mod tests {
     mod demote {
         use crate::evaluate::Demote;
         use crate::evaluate::cast::number::demote_vec;
-        use crate::column::container::NumberContainer;
+        use reifydb_core::value::container::NumberContainer;
         use reifydb_core::value::number::SafeDemote;
         use reifydb_core::{BitVec, Type};
         use reifydb_core::{IntoOwnedSpan, OwnedSpan};

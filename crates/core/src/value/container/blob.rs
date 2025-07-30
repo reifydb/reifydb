@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::value::Blob;
-use reifydb_core::{BitVec, CowVec, Value};
+use crate::{BitVec, Blob, CowVec, Value};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -118,8 +117,7 @@ impl BlobContainer {
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_data: Vec<Blob> =
-            self.data.iter().skip(start).take(end - start).cloned().collect();
+        let new_data: Vec<Blob> = self.data.iter().skip(start).take(end - start).cloned().collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
         Self { data: CowVec::new(new_data), bitvec: BitVec::from_slice(&new_bitvec) }
     }
@@ -171,8 +169,8 @@ impl Default for BlobContainer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::BitVec;
-    use reifydb_core::value::Blob;
+    use crate::BitVec;
+    use crate::Blob;
 
     #[test]
     fn test_new() {

@@ -10,7 +10,7 @@ mod reorder;
 mod slice;
 mod take;
 
-use crate::column::container::{
+use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
     TemporalContainer, UndefinedContainer, UuidContainer,
 };

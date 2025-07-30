@@ -10,7 +10,7 @@
 use std::ops::{Deref, DerefMut};
 use std::rc::{Rc, Weak};
 
-use crate::column::container::*;
+use reifydb_core::value::container::*;
 use reifydb_core::value::uuid::{Uuid4, Uuid7};
 use reifydb_core::value::{Date, DateTime, Interval, Time};
 

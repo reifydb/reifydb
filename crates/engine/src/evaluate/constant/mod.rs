@@ -10,7 +10,7 @@ use crate::evaluate::{EvaluationContext, Evaluator};
 use number::NumberParser;
 use reifydb_core::error::diagnostic::cast;
 use crate::column::{EngineColumnData, EngineColumn, ColumnQualified};
-use crate::column::container::undefined::UndefinedContainer;
+use reifydb_core::value::container::undefined::UndefinedContainer;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::{Type, return_error};

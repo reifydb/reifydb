@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::container::number::NumberContainer;
-use crate::column::container::string::StringContainer;
-use crate::column::container::temporal::TemporalContainer;
+use reifydb_core::value::container::number::NumberContainer;
+use reifydb_core::value::container::string::StringContainer;
+use reifydb_core::value::container::temporal::TemporalContainer;
 use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::Type::Bool;

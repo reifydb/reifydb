@@ -2,9 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::column::{ColumnQualified, EngineColumn, EngineColumnData, TableQualified};
-use reifydb_core::error::diagnostic::engine;
 use reifydb_core::interface::Table;
-use reifydb_core::{Type, Value, return_error};
+use reifydb_core::{Type, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -32,20 +31,20 @@ impl Frame {
                 Value::Int4(v) => EngineColumnData::int4([v]),
                 Value::Int8(v) => EngineColumnData::int8([v]),
                 Value::Int16(v) => EngineColumnData::int16([v]),
-                Value::Utf8(ref v) => EngineColumnData::utf8([v.clone()]),
+                Value::Utf8(v) => EngineColumnData::utf8([v.clone()]),
                 Value::Uint1(v) => EngineColumnData::uint1([v]),
                 Value::Uint2(v) => EngineColumnData::uint2([v]),
                 Value::Uint4(v) => EngineColumnData::uint4([v]),
                 Value::Uint8(v) => EngineColumnData::uint8([v]),
                 Value::Uint16(v) => EngineColumnData::uint16([v]),
-                Value::Date(ref v) => EngineColumnData::date([v.clone()]),
-                Value::DateTime(ref v) => EngineColumnData::datetime([v.clone()]),
-                Value::Time(ref v) => EngineColumnData::time([v.clone()]),
-                Value::Interval(ref v) => EngineColumnData::interval([v.clone()]),
+                Value::Date(v) => EngineColumnData::date([v.clone()]),
+                Value::DateTime(v) => EngineColumnData::datetime([v.clone()]),
+                Value::Time(v) => EngineColumnData::time([v.clone()]),
+                Value::Interval(v) => EngineColumnData::interval([v.clone()]),
                 Value::RowId(v) => EngineColumnData::row_id([v]),
                 Value::Uuid4(v) => EngineColumnData::uuid4([v]),
                 Value::Uuid7(v) => EngineColumnData::uuid7([v]),
-                Value::Blob(ref v) => EngineColumnData::blob([v.clone()]),
+                Value::Blob(v) => EngineColumnData::blob([v.clone()]),
             };
 
             let column =
@@ -161,7 +160,6 @@ impl Frame {
         Frame::new(columns)
     }
 }
-
 
 impl Frame {
     pub fn empty() -> Self {

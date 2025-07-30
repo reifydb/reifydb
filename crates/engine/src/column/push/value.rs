@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
+use crate::column::data::EngineColumnData;
 use reifydb_core::Value;
 
 impl EngineColumnData {
@@ -342,9 +342,9 @@ impl EngineColumnData {
 
 #[cfg(test)]
 mod tests {
-    use crate::column::EngineColumnData;
-    use reifydb_core::value::uuid::{Uuid4, Uuid7};
+    use crate::column::data::EngineColumnData;
     use reifydb_core::{Date, DateTime, Interval, OrderedF32, OrderedF64, RowId, Time, Value};
+    use reifydb_core::value::uuid::{Uuid4, Uuid7};
     use uuid::Uuid;
 
     #[test]
@@ -835,7 +835,6 @@ mod tests {
 
     #[test]
     fn test_undefined_date() {
-        use Date;
         let date1 = Date::from_ymd(2023, 1, 1).unwrap();
         let mut col = EngineColumnData::date(vec![date1]);
         col.push_value(Value::Undefined);
@@ -848,7 +847,6 @@ mod tests {
 
     #[test]
     fn test_push_value_to_undefined_date() {
-        use Date;
         let date = Date::from_ymd(2023, 6, 15).unwrap();
         let mut col = EngineColumnData::undefined(1);
         col.push_value(Value::Date(date));
@@ -913,7 +911,6 @@ mod tests {
 
     #[test]
     fn test_undefined_time() {
-        use Time;
         let time1 = Time::from_hms(12, 30, 0).unwrap();
         let mut col = EngineColumnData::time(vec![time1]);
         col.push_value(Value::Undefined);
@@ -926,7 +923,6 @@ mod tests {
 
     #[test]
     fn test_push_value_to_undefined_time() {
-        use Time;
         let time = Time::from_hms(15, 20, 10).unwrap();
         let mut col = EngineColumnData::undefined(1);
         col.push_value(Value::Time(time));

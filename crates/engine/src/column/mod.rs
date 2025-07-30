@@ -5,7 +5,6 @@ pub use data::EngineColumnData;
 use reifydb_core::Type;
 use serde::{Deserialize, Serialize};
 
-pub mod container;
 mod data;
 pub(crate) mod frame;
 pub(crate) mod layout;
@@ -14,6 +13,7 @@ mod qualification;
 
 mod transform;
 mod view;
+pub mod push;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EngineColumn {

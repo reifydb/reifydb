@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
-use crate::column::container::push::Push;
+use crate::column::data::EngineColumnData;
+use crate::column::push::Push;
 use reifydb_core::value::{Uuid4, Uuid7};
 
 impl Push<Uuid4> for EngineColumnData {

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{BitVec, Value};
+use crate::{BitVec, Value};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -51,11 +51,7 @@ impl BoolContainer {
     }
 
     pub fn get(&self, index: usize) -> Option<bool> {
-        if index < self.len() && self.is_defined(index) {
-            Some(self.data.get(index))
-        } else {
-            None
-        }
+        if index < self.len() && self.is_defined(index) { Some(self.data.get(index)) } else { None }
     }
 
     pub fn bitvec(&self) -> &BitVec {
@@ -179,7 +175,7 @@ impl Default for BoolContainer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::BitVec;
+    use crate::BitVec;
 
     #[test]
     fn test_new() {

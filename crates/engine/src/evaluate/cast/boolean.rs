@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::column::EngineColumnData;
-use crate::column::container::{NumberContainer, StringContainer};
+use reifydb_core::value::container::{NumberContainer, StringContainer};
 use reifydb_core::error::diagnostic::boolean::invalid_number_boolean;
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::IsNumber;

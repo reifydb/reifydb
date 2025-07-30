@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::value::IsTemporal;
-use reifydb_core::value::{Date, DateTime, Interval, Time};
-use reifydb_core::{BitVec, CowVec, Value};
+use crate::value::IsUuid;
+use crate::value::uuid::{Uuid4, Uuid7};
+use crate::{BitVec, CowVec, Value};
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
 use std::fmt::Debug;
@@ -11,17 +11,17 @@ use std::mem::transmute_copy;
 use std::ops::Deref;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TemporalContainer<T>
+pub struct UuidContainer<T>
 where
-    T: IsTemporal,
+    T: IsUuid,
 {
     data: CowVec<T>,
     bitvec: BitVec,
 }
 
-impl<T> Deref for TemporalContainer<T>
+impl<T> Deref for UuidContainer<T>
 where
-    T: IsTemporal,
+    T: IsUuid,
 {
     type Target = [T];
 
@@ -30,9 +30,9 @@ where
     }
 }
 
-impl<T> TemporalContainer<T>
+impl<T> UuidContainer<T>
 where
-    T: IsTemporal + Clone + Debug + Default,
+    T: IsUuid + Clone + Debug + Default,
 {
     pub fn new(data: Vec<T>, bitvec: BitVec) -> Self {
         debug_assert_eq!(data.len(), bitvec.len());
@@ -109,20 +109,14 @@ where
         T: 'static,
     {
         if index < self.len() && self.is_defined(index) {
-            let value = &self.data[index];
+            let value = self.data[index];
 
-            if TypeId::of::<T>() == TypeId::of::<Date>() {
-                let date_val = unsafe { transmute_copy::<T, Date>(value) };
-                Value::Date(date_val)
-            } else if TypeId::of::<T>() == TypeId::of::<DateTime>() {
-                let datetime_val = unsafe { transmute_copy::<T, DateTime>(value) };
-                Value::DateTime(datetime_val)
-            } else if TypeId::of::<T>() == TypeId::of::<Time>() {
-                let time_val = unsafe { transmute_copy::<T, Time>(value) };
-                Value::Time(time_val)
-            } else if TypeId::of::<T>() == TypeId::of::<Interval>() {
-                let interval_val = unsafe { transmute_copy::<T, Interval>(value) };
-                Value::Interval(interval_val)
+            if TypeId::of::<T>() == TypeId::of::<Uuid4>() {
+                let uuid_val = unsafe { transmute_copy::<T, Uuid4>(&value) };
+                Value::Uuid4(uuid_val)
+            } else if TypeId::of::<T>() == TypeId::of::<Uuid7>() {
+                let uuid_val = unsafe { transmute_copy::<T, Uuid7>(&value) };
+                Value::Uuid7(uuid_val)
             } else {
                 Value::Undefined
             }
@@ -153,8 +147,7 @@ where
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        let new_data: Vec<T> =
-            self.data.iter().skip(start).take(end - start).cloned().collect();
+        let new_data: Vec<T> = self.data.iter().skip(start).take(end - start).cloned().collect();
         let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
         Self { data: CowVec::new(new_data), bitvec: BitVec::from_slice(&new_bitvec) }
     }
@@ -197,9 +190,9 @@ where
     }
 }
 
-impl<T> Default for TemporalContainer<T>
+impl<T> Default for UuidContainer<T>
 where
-    T: IsTemporal + Clone + Debug + Default,
+    T: IsUuid + Clone + Debug + Default,
 {
     fn default() -> Self {
         Self::with_capacity(0)
@@ -209,69 +202,41 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::{BitVec, Date, DateTime, Interval, Time};
+    use crate::BitVec;
+    use crate::value::uuid::{Uuid4, Uuid7};
 
     #[test]
-    fn test_date_container() {
-        let dates = vec![
-            Date::from_ymd(2023, 1, 1).unwrap(),
-            Date::from_ymd(2023, 6, 15).unwrap(),
-            Date::from_ymd(2023, 12, 31).unwrap(),
-        ];
-        let container = TemporalContainer::from_vec(dates.clone());
+    fn test_uuid4_container() {
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
+        let uuids = vec![uuid1, uuid2];
+        let container = UuidContainer::from_vec(uuids.clone());
 
-        assert_eq!(container.len(), 3);
-        assert_eq!(container.get(0), Some(&dates[0]));
-        assert_eq!(container.get(1), Some(&dates[1]));
-        assert_eq!(container.get(2), Some(&dates[2]));
+        assert_eq!(container.len(), 2);
+        assert_eq!(container.get(0), Some(&uuids[0]));
+        assert_eq!(container.get(1), Some(&uuids[1]));
 
         // All should be defined
-        for i in 0..3 {
+        for i in 0..2 {
             assert!(container.is_defined(i));
         }
     }
 
     #[test]
-    fn test_datetime_container() {
-        let datetimes = vec![
-            DateTime::from_timestamp(1000000000).unwrap(),
-            DateTime::from_timestamp(2000000000).unwrap(),
-        ];
-        let container = TemporalContainer::from_vec(datetimes.clone());
+    fn test_uuid7_container() {
+        let uuid1 = Uuid7::generate();
+        let uuid2 = Uuid7::generate();
+        let uuids = vec![uuid1, uuid2];
+        let container = UuidContainer::from_vec(uuids.clone());
 
         assert_eq!(container.len(), 2);
-        assert_eq!(container.get(0), Some(&datetimes[0]));
-        assert_eq!(container.get(1), Some(&datetimes[1]));
-    }
-
-    #[test]
-    fn test_time_container() {
-        let times = vec![
-            Time::from_hms(9, 0, 0).unwrap(),
-            Time::from_hms(12, 30, 45).unwrap(),
-            Time::from_hms(23, 59, 59).unwrap(),
-        ];
-        let container = TemporalContainer::from_vec(times.clone());
-
-        assert_eq!(container.len(), 3);
-        assert_eq!(container.get(0), Some(&times[0]));
-        assert_eq!(container.get(1), Some(&times[1]));
-        assert_eq!(container.get(2), Some(&times[2]));
-    }
-
-    #[test]
-    fn test_interval_container() {
-        let intervals = vec![Interval::from_days(30), Interval::from_hours(24)];
-        let container = TemporalContainer::from_vec(intervals.clone());
-
-        assert_eq!(container.len(), 2);
-        assert_eq!(container.get(0), Some(&intervals[0]));
-        assert_eq!(container.get(1), Some(&intervals[1]));
+        assert_eq!(container.get(0), Some(&uuids[0]));
+        assert_eq!(container.get(1), Some(&uuids[1]));
     }
 
     #[test]
     fn test_with_capacity() {
-        let container: TemporalContainer<Date> = TemporalContainer::with_capacity(10);
+        let container: UuidContainer<Uuid4> = UuidContainer::with_capacity(10);
         assert_eq!(container.len(), 0);
         assert!(container.is_empty());
         assert!(container.capacity() >= 10);
@@ -279,16 +244,18 @@ mod tests {
 
     #[test]
     fn test_push_with_undefined() {
-        let mut container: TemporalContainer<Date> = TemporalContainer::with_capacity(3);
+        let mut container: UuidContainer<Uuid4> = UuidContainer::with_capacity(3);
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
 
-        container.push(Date::from_ymd(2023, 1, 1).unwrap());
+        container.push(uuid1);
         container.push_undefined();
-        container.push(Date::from_ymd(2023, 12, 31).unwrap());
+        container.push(uuid2);
 
         assert_eq!(container.len(), 3);
-        assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
+        assert_eq!(container.get(0), Some(&uuid1));
         assert_eq!(container.get(1), None); // undefined
-        assert_eq!(container.get(2), Some(&Date::from_ymd(2023, 12, 31).unwrap()));
+        assert_eq!(container.get(2), Some(&uuid2));
 
         assert!(container.is_defined(0));
         assert!(!container.is_defined(1));
@@ -297,97 +264,101 @@ mod tests {
 
     #[test]
     fn test_extend() {
-        let mut container1 = TemporalContainer::from_vec(vec![
-            Date::from_ymd(2023, 1, 1).unwrap(),
-            Date::from_ymd(2023, 6, 15).unwrap(),
-        ]);
-        let container2 = TemporalContainer::from_vec(vec![Date::from_ymd(2023, 12, 31).unwrap()]);
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
+        let uuid3 = Uuid4::generate();
+
+        let mut container1 = UuidContainer::from_vec(vec![uuid1, uuid2]);
+        let container2 = UuidContainer::from_vec(vec![uuid3]);
 
         container1.extend(&container2).unwrap();
 
         assert_eq!(container1.len(), 3);
-        assert_eq!(container1.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
-        assert_eq!(container1.get(1), Some(&Date::from_ymd(2023, 6, 15).unwrap()));
-        assert_eq!(container1.get(2), Some(&Date::from_ymd(2023, 12, 31).unwrap()));
+        assert_eq!(container1.get(0), Some(&uuid1));
+        assert_eq!(container1.get(1), Some(&uuid2));
+        assert_eq!(container1.get(2), Some(&uuid3));
     }
 
     #[test]
     fn test_extend_from_undefined() {
-        let mut container = TemporalContainer::from_vec(vec![Date::from_ymd(2023, 1, 1).unwrap()]);
+        let uuid = Uuid7::generate();
+        let mut container = UuidContainer::from_vec(vec![uuid]);
         container.extend_from_undefined(2);
 
         assert_eq!(container.len(), 3);
-        assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
+        assert_eq!(container.get(0), Some(&uuid));
         assert_eq!(container.get(1), None); // undefined
         assert_eq!(container.get(2), None); // undefined
     }
 
     #[test]
     fn test_iter() {
-        let dates = vec![
-            Date::from_ymd(2023, 1, 1).unwrap(),
-            Date::from_ymd(2023, 6, 15).unwrap(),
-            Date::from_ymd(2023, 12, 31).unwrap(),
-        ];
+        let uuid1 = Uuid4::generate();
+        let uuid2 = Uuid4::generate();
+        let uuid3 = Uuid4::generate();
+        let uuids = vec![uuid1, uuid2, uuid3];
         let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-        let container = TemporalContainer::new(dates.clone(), bitvec);
+        let container = UuidContainer::new(uuids.clone(), bitvec);
 
-        let collected: Vec<Option<Date>> = container.iter().collect();
-        assert_eq!(collected, vec![Some(dates[0]), None, Some(dates[2])]);
+        let collected: Vec<Option<Uuid4>> = container.iter().collect();
+        assert_eq!(collected, vec![Some(uuids[0]), None, Some(uuids[2])]);
     }
 
     #[test]
     fn test_slice() {
-        let container = TemporalContainer::from_vec(vec![
-            Time::from_hms(9, 0, 0).unwrap(),
-            Time::from_hms(12, 0, 0).unwrap(),
-            Time::from_hms(15, 0, 0).unwrap(),
-            Time::from_hms(18, 0, 0).unwrap(),
-        ]);
+        let uuids =
+            vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
+        let container = UuidContainer::from_vec(uuids.clone());
         let sliced = container.slice(1, 3);
 
         assert_eq!(sliced.len(), 2);
-        assert_eq!(sliced.get(0), Some(&Time::from_hms(12, 0, 0).unwrap()));
-        assert_eq!(sliced.get(1), Some(&Time::from_hms(15, 0, 0).unwrap()));
+        assert_eq!(sliced.get(0), Some(&uuids[1]));
+        assert_eq!(sliced.get(1), Some(&uuids[2]));
     }
 
     #[test]
     fn test_filter() {
-        let mut container = TemporalContainer::from_vec(vec![
-            Date::from_ymd(2023, 1, 1).unwrap(),
-            Date::from_ymd(2023, 2, 1).unwrap(),
-            Date::from_ymd(2023, 3, 1).unwrap(),
-            Date::from_ymd(2023, 4, 1).unwrap(),
-        ]);
+        let uuids =
+            vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
+        let mut container = UuidContainer::from_vec(uuids.clone());
         let mask = BitVec::from_slice(&[true, false, true, false]);
 
         container.filter(&mask);
 
         assert_eq!(container.len(), 2);
-        assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
-        assert_eq!(container.get(1), Some(&Date::from_ymd(2023, 3, 1).unwrap()));
+        assert_eq!(container.get(0), Some(&uuids[0]));
+        assert_eq!(container.get(1), Some(&uuids[2]));
     }
 
     #[test]
     fn test_reorder() {
-        let mut container = TemporalContainer::from_vec(vec![
-            Date::from_ymd(2023, 1, 1).unwrap(),
-            Date::from_ymd(2023, 6, 15).unwrap(),
-            Date::from_ymd(2023, 12, 31).unwrap(),
-        ]);
+        let uuids = vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
+        let mut container = UuidContainer::from_vec(uuids.clone());
         let indices = [2, 0, 1];
 
         container.reorder(&indices);
 
         assert_eq!(container.len(), 3);
-        assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 12, 31).unwrap())); // was index 2
-        assert_eq!(container.get(1), Some(&Date::from_ymd(2023, 1, 1).unwrap())); // was index 0
-        assert_eq!(container.get(2), Some(&Date::from_ymd(2023, 6, 15).unwrap())); // was index 1
+        assert_eq!(container.get(0), Some(&uuids[2])); // was index 2
+        assert_eq!(container.get(1), Some(&uuids[0])); // was index 0
+        assert_eq!(container.get(2), Some(&uuids[1])); // was index 1
+    }
+
+    #[test]
+    fn test_mixed_uuid_types() {
+        // Test that we can have different UUID containers
+        let uuid4_container: UuidContainer<Uuid4> =
+            UuidContainer::from_vec(vec![Uuid4::generate()]);
+        let uuid7_container: UuidContainer<Uuid7> =
+            UuidContainer::from_vec(vec![Uuid7::generate()]);
+
+        assert_eq!(uuid4_container.len(), 1);
+        assert_eq!(uuid7_container.len(), 1);
     }
 
     #[test]
     fn test_default() {
-        let container: TemporalContainer<Date> = TemporalContainer::default();
+        let container: UuidContainer<Uuid4> = UuidContainer::default();
         assert_eq!(container.len(), 0);
         assert!(container.is_empty());
     }

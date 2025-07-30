@@ -2,7 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::column::EngineColumnData;
-use reifydb_core::{Date, DateTime, Interval, Time};
+use reifydb_core::Date;
+use reifydb_core::DateTime;
+use reifydb_core::Interval;
+use reifydb_core::Time;
 use std::fmt::Debug;
 
 mod i128;
@@ -42,7 +45,8 @@ macro_rules! impl_push {
                         container.push(value);
                     }
                     EngineColumnData::Undefined(container) => {
-                        let mut new_container = EngineColumnData::$factory(vec![<$t>::default(); container.len()]);
+                        let mut new_container =
+                            EngineColumnData::$factory(vec![<$t>::default(); container.len()]);
                         if let EngineColumnData::$variant(new_container) = &mut new_container {
                             new_container.push(value);
                         }
@@ -72,10 +76,7 @@ impl Push<bool> for EngineColumnData {
                 }
                 *self = new_container;
             }
-            other => panic!(
-                "called `push::<bool>()` on EngineColumnData::{:?}",
-                other.get_type()
-            ),
+            other => panic!("called `push::<bool>()` on EngineColumnData::{:?}", other.get_type()),
         }
     }
 }
@@ -87,7 +88,6 @@ impl_push!(DateTime, DateTime, datetime);
 impl_push!(Time, Time, time);
 impl_push!(Interval, Interval, interval);
 
-
 impl Push<String> for EngineColumnData {
     fn push(&mut self, value: String) {
         match self {
@@ -95,13 +95,16 @@ impl Push<String> for EngineColumnData {
                 container.push(value);
             }
             EngineColumnData::Undefined(container) => {
-                let mut new_container = EngineColumnData::utf8(vec![String::default(); container.len()]);
+                let mut new_container =
+                    EngineColumnData::utf8(vec![String::default(); container.len()]);
                 if let EngineColumnData::Utf8(new_container) = &mut new_container {
                     new_container.push(value);
                 }
                 *self = new_container;
             }
-            other => panic!("called `push::<String>()` on EngineColumnData::{:?}", other.get_type()),
+            other => {
+                panic!("called `push::<String>()` on EngineColumnData::{:?}", other.get_type())
+            }
         }
     }
 }

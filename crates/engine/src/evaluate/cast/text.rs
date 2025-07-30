@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::column::EngineColumnData;
-use crate::column::container::{BoolContainer, NumberContainer, TemporalContainer, UuidContainer};
+use reifydb_core::value::container::{BoolContainer, NumberContainer, TemporalContainer, UuidContainer};
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::{IsNumber, IsTemporal, IsUuid};
 use reifydb_core::{OwnedSpan, Type};

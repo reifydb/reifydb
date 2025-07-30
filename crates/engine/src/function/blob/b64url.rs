@@ -47,7 +47,7 @@ impl ScalarFunction for BlobB64url {
 mod tests {
     use super::*;
     use crate::column::ColumnQualified;
-    use crate::column::container::StringContainer;
+    use reifydb_core::value::container::StringContainer;
 
     #[test]
     fn test_blob_b64url_valid_input() {

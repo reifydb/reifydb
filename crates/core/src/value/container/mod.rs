@@ -4,7 +4,6 @@
 pub mod blob;
 pub mod bool;
 pub mod number;
-pub mod push;
 pub mod row_id;
 pub mod string;
 pub mod temporal;
@@ -14,7 +13,6 @@ pub mod uuid;
 pub use blob::*;
 pub use bool::*;
 pub use number::*;
-pub use push::Push;
 pub use row_id::*;
 pub use string::*;
 pub use temporal::*;

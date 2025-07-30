@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
+use crate::column::data::EngineColumnData;
 
 impl EngineColumnData {
     pub fn push_undefined(&mut self) {
@@ -35,7 +35,7 @@ impl EngineColumnData {
 
 #[cfg(test)]
 mod tests {
-    use crate::column::EngineColumnData;
+    use crate::column::data::EngineColumnData;
 
     #[test]
     fn test_bool() {
